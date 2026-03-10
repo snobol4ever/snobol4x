@@ -41,4 +41,16 @@ void *sno_enter(void **frame_ptr, size_t frame_size);
 void  sno_exit(void **frame_ptr);
 void  sno_arena_reset(void);   /* call between matches — resets arena to empty */
 
+/* ---------- value stack ------------------------------------------- */
+/* Used by evaluate() — patterns push computed integer values.       */
+/* Max depth 256 covers any expression the worm generates.           */
+
+#define SNO_VSTACK_SIZE 256
+
+void    sno_vpush(int64_t v);
+int64_t sno_vpop(void);
+int64_t sno_vpeek(void);
+void    sno_vreset(void);
+int     sno_vdepth(void);
+
 #endif /* SNOBOL4_TINY_RUNTIME_H */

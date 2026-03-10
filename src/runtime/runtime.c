@@ -67,3 +67,40 @@ void sno_exit(void **frame_ptr) {
     size_t total = (sizeof(frame_header_t) + hdr->size + 7) & ~(size_t)7;
     _sno_arena_pos -= total;
 }
+
+/* ---------- value stack ------------------------------------------- */
+
+static int64_t _sno_vstack[SNO_VSTACK_SIZE];
+static int     _sno_vdepth = 0;
+
+void sno_vpush(int64_t v) {
+    if (_sno_vdepth >= SNO_VSTACK_SIZE) {
+        fputs("sno_vpush: value stack overflow\n", stderr);
+        exit(1);
+    }
+    _sno_vstack[_sno_vdepth++] = v;
+}
+
+int64_t sno_vpop(void) {
+    if (_sno_vdepth <= 0) {
+        fputs("sno_vpop: value stack underflow\n", stderr);
+        exit(1);
+    }
+    return _sno_vstack[--_sno_vdepth];
+}
+
+int64_t sno_vpeek(void) {
+    if (_sno_vdepth <= 0) {
+        fputs("sno_vpeek: value stack empty\n", stderr);
+        exit(1);
+    }
+    return _sno_vstack[_sno_vdepth - 1];
+}
+
+void sno_vreset(void) {
+    _sno_vdepth = 0;
+}
+
+int sno_vdepth(void) {
+    return _sno_vdepth;
+}
