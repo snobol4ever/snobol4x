@@ -1,0 +1,103 @@
+#!/usr/bin/env python3
+"""
+snoc — SNOBOL4-tiny compiler (Sprint 14)
+
+Usage:
+    snoc <file.sno>              # compile + run
+    snoc --emit-c <file.sno>     # emit C only, print to stdout
+    snoc --emit-ir <file.sno>    # emit IR only, print to stdout
+
+Pipeline:
+    .sno → parser.py → IR → emit_c.py → C → cc → binary → run
+"""
+
+import sys
+import os
+import subprocess
+import tempfile
+
+# Resolve paths relative to this file
+HERE    = os.path.dirname(os.path.abspath(__file__))
+SRC     = os.path.join(HERE, 'src')
+RUNTIME = os.path.join(SRC, 'runtime')
+
+sys.path.insert(0, os.path.join(SRC, 'ir'))
+sys.path.insert(0, os.path.join(SRC, 'codegen'))
+sys.path.insert(0, os.path.join(SRC, 'parser'))
+
+from parser  import parse_program
+from emit_c  import FuncEmitter, emit_program
+from ir      import Graph
+
+
+def compile_sno(source_path, emit_ir=False, emit_c_only=False):
+    source = open(source_path).read()
+
+    # 1. Parse → IR
+    graph = parse_program(source)
+
+    if emit_ir:
+        for name in graph.names():
+            print(f"  {name}: {graph.get(name)}")
+        return 0
+
+    # 2. IR → C
+    root = list(graph.names())[-1]   # MAIN is always last
+    # find MAIN
+    for name in graph.names():
+        if name == 'MAIN':
+            root = 'MAIN'
+            break
+
+    c_src = emit_program(graph, root_name=root, subject='', include_main=True)
+
+    # Fix the runtime include path to be absolute
+    c_src = c_src.replace(
+        '#include "../../src/runtime/runtime.h"',
+        f'#include "{RUNTIME}/runtime.h"'
+    )
+
+    if emit_c_only:
+        print(c_src)
+        return 0
+
+    # 3. C → binary
+    with tempfile.NamedTemporaryFile(suffix='.c', mode='w',
+                                     delete=False) as cf:
+        cf.write(c_src)
+        c_path = cf.name
+
+    runtime_c = os.path.join(RUNTIME, 'runtime.c')
+    bin_path  = c_path.replace('.c', '')
+
+    result = subprocess.run(
+        ['cc', '-O2', '-o', bin_path, c_path, runtime_c,
+         f'-I{RUNTIME}'],
+        capture_output=True, text=True
+    )
+
+    if result.returncode != 0:
+        print("Compile error:", file=sys.stderr)
+        print(result.stderr, file=sys.stderr)
+        os.unlink(c_path)
+        return 1
+
+    os.unlink(c_path)
+
+    # 4. Run
+    result = subprocess.run([bin_path], capture_output=False)
+    os.unlink(bin_path)
+    return result.returncode
+
+
+if __name__ == '__main__':
+    args = sys.argv[1:]
+    emit_ir   = '--emit-ir' in args
+    emit_c    = '--emit-c'  in args
+    files     = [a for a in args if not a.startswith('--')]
+
+    if not files:
+        print("Usage: snoc [--emit-ir | --emit-c] <file.sno>", file=sys.stderr)
+        sys.exit(1)
+
+    sys.exit(compile_sno(files[0], emit_ir=emit_ir, emit_c_only=emit_c))

@@ -72,11 +72,17 @@ class Assign:
     var: str
 
 @dataclass
+class Print:
+    """Unconditional output: prints a string literal, consumes no cursor.
+    Always succeeds. Models SNOBOL4 OUTPUT = 'string' (Sprint 14)."""
+    expr: str   # string value to print
+
+@dataclass
 class Ref:
     name: str  # forward reference resolved at codegen time
 
 Node = Union[Lit, Any, Span, Break, Len, Pos, Rpos, Arb, Arbno,
-             Alt, Cat, Assign, Ref]
+             Alt, Cat, Assign, Print, Ref]
 
 
 # ---------- graph ----------------------------------------------------

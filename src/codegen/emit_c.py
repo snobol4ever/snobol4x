@@ -15,7 +15,7 @@ All match state is global: Sigma (subject), Omega (length), Delta (cursor).
 """
 
 from ir import (Graph, Node, Lit, Any as IrAny, Span, Break,
-                Len, Pos, Rpos, Arb, Arbno, Alt, Cat, Assign, Ref)
+                Len, Pos, Rpos, Arb, Arbno, Alt, Cat, Assign, Print, Ref)
 
 
 # ---------------------------------------------------------------------------
@@ -144,6 +144,13 @@ class FlatEmitter:
             self.L(f"{nid}_child_fail:")
             self.L(f"    cursor = {nid}_cursors[{nid}_depth];  {nid}_depth--;")
             self.L(f"    goto {omega};")
+
+        elif isinstance(node, Print):
+            safe = node.expr.replace('\\','\\\\').replace('"','\\"')
+            self.L(f"{nid}_alpha:")
+            self.L(f'    sno_output_cstr("{safe}");')
+            self.L(f"    goto {gamma};")
+            self.L(f"{nid}_beta:  goto {omega};")
 
         elif isinstance(node, Ref):
             self.L(f"{nid}_alpha:  goto {node.name}_alpha;")
