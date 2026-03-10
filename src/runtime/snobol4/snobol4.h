@@ -35,6 +35,7 @@ typedef enum {
     SNO_TABLE   = 7,   /* SnoTable* (GC-managed) */
     SNO_CODE    = 8,   /* compiled code block */
     SNO_UDEF    = 9,   /* user-defined datatype instance */
+    SNO_FAIL    = 10,  /* explicit failure sentinel — propagates F-branch */
 } SnoType;
 
 struct _Tree;
@@ -63,7 +64,10 @@ typedef struct SnoVal {
 #define SNO_INT_VAL(i_) ((SnoVal){ .type = SNO_INT,  .i = (i_) })
 #define SNO_REAL_VAL(r_)((SnoVal){ .type = SNO_REAL, .r = (r_) })
 #define SNO_TREE_VAL(t_)((SnoVal){ .type = SNO_TREE, .t = (t_) })
+#define SNO_FAIL_VAL    ((SnoVal){ .type = SNO_FAIL, .i = 0 })
 #define SNO_TYPE(v_)    ((v_).type)
+
+static inline int sno_is_fail(SnoVal v) { return v.type == SNO_FAIL; }
 
 /* ============================================================
  * String operations

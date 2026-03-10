@@ -275,9 +275,9 @@ SnoArray *sno_array_new2d(int lo1, int hi1, int lo2, int hi2) {
 }
 
 SnoVal sno_array_get(SnoArray *a, int i) {
-    if (!a) return SNO_NULL_VAL;
+    if (!a) return SNO_FAIL_VAL;
     int idx = i - a->lo;
-    if (idx < 0 || idx >= (a->hi - a->lo + 1)) return SNO_NULL_VAL;
+    if (idx < 0 || idx >= (a->hi - a->lo + 1)) return SNO_FAIL_VAL;
     return a->data[idx];
 }
 
@@ -289,11 +289,13 @@ void sno_array_set(SnoArray *a, int i, SnoVal v) {
 }
 
 SnoVal sno_array_get2(SnoArray *a, int i, int j) {
-    if (!a) return SNO_NULL_VAL;
+    if (!a) return SNO_FAIL_VAL;
     int cols = a->ndim;  /* cols stored in ndim for 2D */
     int row  = i - a->lo;
     /* j-origin: assume lo2 = 1 (SNOBOL4 default) */
     int col  = j - 1;
+    if (row < 0 || row >= (a->hi - a->lo + 1)) return SNO_FAIL_VAL;
+    if (col < 0 || col >= cols) return SNO_FAIL_VAL;
     int idx  = row * cols + col;
     return a->data[idx];
 }

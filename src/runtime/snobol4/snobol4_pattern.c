@@ -601,6 +601,8 @@ int sno_match_pattern(SnoVal pat, const char *subject) {
 
 int sno_match_and_replace(SnoVal *subject, SnoVal pat, SnoVal replacement) {
     if (!subject) return 0;
+    /* P002: if replacement value signals failure, propagate it as F-branch */
+    if (sno_is_fail(replacement)) return 0;
 
     const char *s = sno_to_str(*subject);
     if (!s) s = "";
