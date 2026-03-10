@@ -126,13 +126,13 @@ static double bench_bison_anbn(char ** corpus, int * lens, int n) {
     /* warmup */
     for (int i = 0; i < 1000; i++) {
         bison_anbn_init(corpus[i%n], lens[i%n]);
-        anbn_parse();
+        anbn_yyparse();
         sink += bison_anbn_result;
     }
     long long t0 = ns_now();
     for (int i = 0; i < ITERS; i++) {
         bison_anbn_init(corpus[i%n], lens[i%n]);
-        anbn_parse();
+        anbn_yyparse();
         sink += bison_anbn_result;
     }
     long long t1 = ns_now();
@@ -157,13 +157,13 @@ static double bench_bison_dyck(char ** corpus, int * lens, int n) {
     volatile int sink = 0;
     for (int i = 0; i < 1000; i++) {
         bison_dyck_init(corpus[i%n], lens[i%n]);
-        dyck_parse();
+        dyck_yyparse();
         sink += bison_dyck_result;
     }
     long long t0 = ns_now();
     for (int i = 0; i < ITERS; i++) {
         bison_dyck_init(corpus[i%n], lens[i%n]);
-        dyck_parse();
+        dyck_yyparse();
         sink += bison_dyck_result;
     }
     long long t1 = ns_now();
