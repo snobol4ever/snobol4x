@@ -56,6 +56,7 @@ enum {
     T_VARREF  = 41,     /* deferred variable pattern ref */
     T_ALPHA   = 32,     /* α  beginning of line     */
     T_OMEGA   = 42,     /* ω  end of line           */
+    T_CAPTURE = 43,     /* capture: single child; on success fires cap_fn(cap_slot, start, end) */
 };
 
 /* The four Byrd Box signals */
@@ -108,5 +109,19 @@ typedef struct {
     int end;       /* cursor position at match end */
 } MatchResult;
 
+/* Capture callback: fired when a T_CAPTURE node succeeds.
+ * cap_slot: opaque int (index into the caller's capture table).
+ * start, end: byte offsets within the subject passed to engine_match_ex. */
+typedef void (*CaptureFn)(int cap_slot, int start, int end, void *userdata);
+
+typedef struct {
+    CaptureFn   cap_fn;    /* NULL = no captures */
+    void       *cap_data;  /* passed through to cap_fn unmodified */
+} EngineOpts;
+
 /*--- engine_match: run root against subject[0..subject_len) ---*/
 MatchResult engine_match(Pattern *root, const char *subject, int subject_len);
+
+/*--- engine_match_ex: same, with capture callback support ---*/
+MatchResult engine_match_ex(Pattern *root, const char *subject, int subject_len,
+                             const EngineOpts *opts);

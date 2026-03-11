@@ -12,6 +12,7 @@
  *   engine_match() — the main dispatch loop
  *======================================================================================*/
 #include "engine.h"
+#include <stdio.h>
 
 /*======================================================================================
  * Psi — realloc'd array.  Plain push/pop stack.  Deep-copied into omega snapshots.
@@ -76,6 +77,10 @@ typedef struct {
     int             fenced;
     int             yielded;
     int             ctx;
+    /* Capture support — non-NULL when engine_match_ex is used */
+    CaptureFn       cap_fn;
+    void           *cap_data;
+    int             cap_start;  /* DELTA at the point T_CAPTURE entered its child */
 } State;
 
 /*======================================================================================
@@ -280,8 +285,17 @@ static inline bool scan_OMEGA(State *z) { return z->DELTA == z->OMEGA || (z->DEL
 /*======================================================================================
  * THE MATCH ENGINE
  *======================================================================================*/
-MatchResult engine_match(Pattern *pattern, const char *subject, int subject_len) {
+MatchResult engine_match(Pattern *root, const char *subject, int subject_len) {
+    return engine_match_ex(root, subject, subject_len, NULL);
+}
+
+MatchResult engine_match_ex(Pattern *root, const char *subject, int subject_len,
+                             const EngineOpts *opts) {
     MatchResult result = {0, 0, 0};
+
+    if (getenv("SNO_PAT_DEBUG") && subject_len >= 4 && subject_len <= 8) {
+        fprintf(stderr, "  ENGINE_ENTRY slen=%d subj=%.10s\n", subject_len, subject ? subject : "(null)");
+    }
 
     Psi   psi   = {NULL, 0, 0};
     Omega omega = {NULL, 0, 0};
@@ -289,12 +303,20 @@ MatchResult engine_match(Pattern *pattern, const char *subject, int subject_len)
     int a = PROCEED;
     State Z;
     memset(&Z, 0, sizeof(Z));
-    Z.SIGMA = subject;
-    Z.OMEGA = subject_len;
-    Z.sigma = subject;
-    Z.PI    = pattern;
+    Z.SIGMA    = subject;
+    Z.OMEGA    = subject_len;
+    Z.sigma    = subject;
+    Z.PI       = root;
+    Z.cap_fn   = opts ? opts->cap_fn   : NULL;
+    Z.cap_data = opts ? opts->cap_data : NULL;
 
+    int _iter = 0;
     while (Z.PI) {
+        if (++_iter > 10000000) {
+            if (getenv("SNO_PAT_DEBUG"))
+                fprintf(stderr, "  ENGINE LOOP LIMIT slen=%d a=%d\n", subject_len, a);
+            break;
+        }
         int t = Z.PI->type;
         switch (t << 2 | a) {
 /*--- Π (alternation) ---------------------------------------------------------------*/
@@ -309,9 +331,18 @@ MatchResult engine_match(Pattern *pattern, const char *subject, int subject_len)
 /*--- Σ (sequence) ------------------------------------------------------------------*/
         case T_SIGMA<<2|PROCEED:
             if (Z.ctx < Z.PI->n) { a = PROCEED;                                z_down(&Z, &psi);              break; }
-            else                 { a = SUCCESS;                                 z_up(&Z, &psi);                break; }
-        case T_SIGMA<<2|SUCCESS: { a = PROCEED;                                 z_move_next(&Z);               break; }
-        case T_SIGMA<<2|FAILURE: { a = RECEDE;   omega_pop(&omega, &Z, &psi);                                  break; }
+            else                 {
+                if (getenv("SNO_PAT_DEBUG") && Z.OMEGA <= 6)
+                    fprintf(stderr, "  SIGMA SUCCESS ctx=%d/%d delta=%d\n", Z.ctx, Z.PI->n, Z.delta);
+                a = SUCCESS;                                 z_up(&Z, &psi);                break; }
+        case T_SIGMA<<2|SUCCESS:
+            if (getenv("SNO_PAT_DEBUG") && Z.OMEGA <= 6)
+                fprintf(stderr, "  SIGMA<<SUCCESS ctx=%d/%d delta=%d\n", Z.ctx, Z.PI->n, Z.delta);
+            { a = PROCEED;                                 z_move_next(&Z);               break; }
+        case T_SIGMA<<2|FAILURE:
+            if (getenv("SNO_PAT_DEBUG") && Z.OMEGA <= 6)
+                fprintf(stderr, "  SIGMA FAILURE ctx=%d/%d delta=%d\n", Z.ctx, Z.PI->n, Z.delta);
+            { a = RECEDE;   omega_pop(&omega, &Z, &psi);                                  break; }
 /*--- ρ (conjunction) ---------------------------------------------------------------*/
         case T_RHO<<2|PROCEED:
             if (Z.ctx < Z.PI->n) { a = PROCEED;                                z_down(&Z, &psi);              break; }
@@ -330,11 +361,18 @@ MatchResult engine_match(Pattern *pattern, const char *subject, int subject_len)
             else                 { a = FAILURE;                                 z_up_fail(&Z, &psi);           break; }
 /*--- ARBNO -------------------------------------------------------------------------*/
         case T_ARBNO<<2|PROCEED:
+            if (getenv("SNO_PAT_DEBUG") && Z.OMEGA <= 6)
+                fprintf(stderr, "  ARBNO PROCEED ctx=%d DELTA=%d OMEGA=%d\n", Z.ctx, Z.DELTA, Z.OMEGA);
             if (Z.ctx == 0)      { a = SUCCESS;  omega_push(&omega, &Z, &psi); z_up_track(&Z, &psi, &omega);  break; }
             else                 { a = PROCEED;  omega_push(&omega, &Z, &psi); z_down_single(&Z, &psi);       break; }
-        case T_ARBNO<<2|SUCCESS: { a = SUCCESS;                                 z_up_track(&Z, &psi, &omega);  break; }
+        case T_ARBNO<<2|SUCCESS:
+            if (getenv("SNO_PAT_DEBUG") && Z.OMEGA <= 6)
+                fprintf(stderr, "  ARBNO SUCCESS delta=%d OMEGA=%d\n", Z.delta, Z.OMEGA);
+            { a = SUCCESS;                                 z_up_track(&Z, &psi, &omega);  break; }
         case T_ARBNO<<2|FAILURE: { a = RECEDE;   omega_pop(&omega, &Z, &psi);                                  break; }
         case T_ARBNO<<2|RECEDE:
+            if (getenv("SNO_PAT_DEBUG") && Z.OMEGA <= 6)
+                fprintf(stderr, "  ARBNO RECEDE ctx=%d yielded=%d fenced=%d DELTA=%d\n", Z.ctx, Z.yielded, Z.fenced, Z.DELTA);
             if (Z.fenced)        { a = FAILURE;                                 z_up_fail(&Z, &psi);           break; }
             else if (Z.yielded)  { a = PROCEED;                                 z_move_next(&Z);               break; }
             else                 { a = FAILURE;                                 z_up_fail(&Z, &psi);           break; }
@@ -375,7 +413,16 @@ MatchResult engine_match(Pattern *pattern, const char *subject, int subject_len)
         case T_EPSILON<<2|PROCEED: { a = SUCCESS;                                z_up(&Z, &psi);               break; }
 /*--- Leaf scanners -----------------------------------------------------------------*/
         case T_LITERAL<<2|PROCEED:
-            if (scan_LITERAL(&Z))  { a = SUCCESS; z_up(&Z, &psi); } else { a = FAILURE; z_up_fail(&Z, &psi); } break;
+            if (scan_LITERAL(&Z)) {
+                if (getenv("SNO_PAT_DEBUG") && Z.OMEGA <= 6)
+                    fprintf(stderr, "  LIT '%.*s' MATCH delta=%d\n", Z.PI->s_len, Z.PI->s, Z.delta);
+                a = SUCCESS; z_up(&Z, &psi);
+            } else {
+                if (getenv("SNO_PAT_DEBUG") && Z.OMEGA <= 6 && Z.PI->s_len <= 4)
+                    fprintf(stderr, "  LIT '%.*s' FAIL at delta=%d\n", Z.PI->s_len, Z.PI->s, Z.delta);
+                a = FAILURE; z_up_fail(&Z, &psi);
+            }
+            break;
 
         case T_ANY<<2|PROCEED:
             if (scan_ANY(&Z))      { a = SUCCESS; z_up(&Z, &psi); } else { a = FAILURE; z_up_fail(&Z, &psi); } break;
@@ -384,7 +431,16 @@ MatchResult engine_match(Pattern *pattern, const char *subject, int subject_len)
         case T_SPAN<<2|PROCEED:
             if (scan_SPAN(&Z))     { a = SUCCESS; z_up(&Z, &psi); } else { a = FAILURE; z_up_fail(&Z, &psi); } break;
         case T_BREAK<<2|PROCEED:
-            if (scan_BREAK(&Z))    { a = SUCCESS; z_up(&Z, &psi); } else { a = FAILURE; z_up_fail(&Z, &psi); } break;
+            if (scan_BREAK(&Z)) {
+                if (getenv("SNO_PAT_DEBUG") && Z.OMEGA <= 6)
+                    fprintf(stderr, "  BREAK MATCH delta=%d chars='%.8s'\n", Z.delta, Z.PI->chars);
+                a = SUCCESS; z_up(&Z, &psi);
+            } else {
+                if (getenv("SNO_PAT_DEBUG") && Z.OMEGA <= 6)
+                    fprintf(stderr, "  BREAK FAIL at delta=%d chars='%.8s'\n", Z.delta, Z.PI->chars);
+                a = FAILURE; z_up_fail(&Z, &psi);
+            }
+            break;
         case T_POS<<2|PROCEED:
             if (scan_POS(&Z))      { a = SUCCESS; z_up(&Z, &psi); } else { a = FAILURE; z_up_fail(&Z, &psi); } break;
         case T_RPOS<<2|PROCEED:
@@ -408,6 +464,43 @@ MatchResult engine_match(Pattern *pattern, const char *subject, int subject_len)
         case T_MARB<<2|RECEDE:
             if (!Z.fenced)         { a = PROCEED;                                z_stay_next(&Z); break; }
             else                   { a = FAILURE;                                z_up_fail(&Z, &psi); break; }
+/*--- T_CAPTURE (capture the span matched by child) ---------------------------------*/
+        case T_CAPTURE<<2|PROCEED: {
+            /* Record start, push omega for potential backtrack, descend into child */
+            int _cap_slot = Z.PI->n;
+            Z.cap_start = Z.DELTA;
+            if (getenv("SNO_PAT_DEBUG"))
+                fprintf(stderr, "  T_CAPTURE PROCEED slot=%d DELTA=%d\n", _cap_slot, Z.cap_start);
+            omega_push(&omega, &Z, &psi);
+            z_down_single(&Z, &psi);
+            a = PROCEED;
+            break;
+        }
+        case T_CAPTURE<<2|SUCCESS:
+            /* Child matched: fire callback with (cap_slot, start, delta_end).
+             * Z.delta = uncommitted cursor after child's match. */
+            if (getenv("SNO_PAT_DEBUG"))
+                fprintf(stderr, "  T_CAPTURE SUCCESS slot=%d delta=%d (cap_start=%d) psi_depth=%d\n",
+                    Z.PI->n, Z.delta, Z.cap_start, psi.count);
+            if (Z.cap_fn)
+                Z.cap_fn(Z.PI->n, Z.cap_start, Z.delta, Z.cap_data);
+            a = SUCCESS;
+            z_up(&Z, &psi);
+            if (getenv("SNO_PAT_DEBUG") && Z.PI)
+                fprintf(stderr, "  T_CAPTURE SUCCESS: after z_up, Z.PI->type=%d Z.ctx=%d\n", Z.PI->type, Z.ctx);
+            break;
+        case T_CAPTURE<<2|FAILURE:
+            if (getenv("SNO_PAT_DEBUG"))
+                fprintf(stderr, "  T_CAPTURE FAILURE slot=%d\n", Z.PI->n);
+            a = RECEDE;
+            omega_pop(&omega, &Z, &psi);
+            break;
+        case T_CAPTURE<<2|RECEDE:
+            if (getenv("SNO_PAT_DEBUG"))
+                fprintf(stderr, "  T_CAPTURE RECEDE slot=%d\n", Z.PI->n);
+            a = FAILURE;
+            z_up_fail(&Z, &psi);
+            break;
 /*-----------------------------------------------------------------------------------*/
         default:
             a = FAILURE;
@@ -420,6 +513,11 @@ MatchResult engine_match(Pattern *pattern, const char *subject, int subject_len)
         result.matched = 1;
         result.start   = 0;
         result.end     = Z.delta;
+    }
+
+    if (getenv("SNO_PAT_DEBUG") && subject_len <= 6 && subject_len > 0) {
+        fprintf(stderr, "  engine_match_ex: slen=%d -> a=%d matched=%d end=%d\n",
+            subject_len, a, result.matched, result.end);
     }
 
     /* Cleanup */

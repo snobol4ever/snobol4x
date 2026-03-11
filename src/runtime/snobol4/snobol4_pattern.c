@@ -508,44 +508,40 @@ static Pattern *materialise(SnoPattern *sp, MatchCtx *ctx) {
     case SPAT_ASSIGN_IMM:
     case SPAT_ASSIGN_COND: {
         /*
-         * Capture assignment: we wrap the child pattern in a T_SIGMA
-         * with a T_LEN(0) sentinel that records the capture boundaries.
-         * 
-         * Real approach: we use a special T_MARB (mark-arb) hack.
-         * Simpler approach for correctness: just match the child and
-         * record what was matched via cursor positions using T_POS capture.
+         * Capture assignment: PAT . var  (conditional) or  PAT $ var  (immediate).
          *
-         * Simplest correct approach: materialise child, then after the
-         * match, we can't easily get the captured text from engine_match.
+         * We materialise this as a T_CAPTURE node wrapping the child. T_CAPTURE fires
+         * a callback with (cap_slot, start, end) when the child succeeds. The cap_slot
+         * is the index into ctx->captures[] where we stored the variable name.
          *
-         * For now: materialise the child pattern and record a capture
-         * intent. The capture will be applied as the subject match range.
-         * Since we don't have sub-match positions from the engine, we use
-         * T_MARBNO which stores positions — but that's complex.
-         *
-         * Practical decision: wrap with POS capture markers.
-         * We use a T_SIGMA with the child as the only element, and 
-         * post-process by noting start/end from overall match.
-         * 
-         * TODO: implement proper sub-match captures when engine supports it.
-         * For now: just materialise the child (captures won't fire yet).
+         * The callback (capture_callback below) is called by engine_match_ex, reads
+         * ctx->captures[cap_slot].var_name, and calls sno_var_set with the matched span.
          */
-        Pattern *child = materialise(sp->left, ctx);
-
-        /* Record capture intent for later */
-        if (ctx->ncaptures < MAX_CAPTURES) {
-            /* We need the var name — extract from sp->var */
-            const char *vname = NULL;
-            SnoVal vv = sp->var;
-            if (vv.type == SNO_STR) vname = vv.s;
-            else if (vv.type == SNO_NULL) vname = "";
-            /* For indirect var (the var holds the target name): */
-            ctx->captures[ctx->ncaptures].var_name = vname ? GC_strdup(vname) : NULL;
-            ctx->captures[ctx->ncaptures].is_imm   = (sp->kind == SPAT_ASSIGN_IMM);
-            ctx->ncaptures++;
+        if (ctx->ncaptures >= MAX_CAPTURES) {
+            /* Too many captures — degrade to no-capture (child only) */
+            return materialise(sp->left, ctx);
         }
 
-        return child;  /* child does the actual matching */
+        /* Record capture metadata */
+        const char *vname = NULL;
+        SnoVal vv = sp->var;
+        if (vv.type == SNO_STR) vname = vv.s;
+        int slot = ctx->ncaptures;
+        ctx->captures[slot].var_name = vname ? GC_strdup(vname) : NULL;
+        ctx->captures[slot].is_imm   = (sp->kind == SPAT_ASSIGN_IMM);
+        ctx->captures[slot].start    = -1;
+        ctx->captures[slot].end      = -1;
+        ctx->ncaptures++;
+
+        /* Materialise child */
+        Pattern *child = materialise(sp->left, ctx);
+
+        /* Wrap in T_CAPTURE node */
+        Pattern *cap = pattern_alloc(&ctx->pl);
+        cap->type        = T_CAPTURE;
+        cap->n           = slot;      /* cap_slot: which capture[] entry to fill */
+        cap->children[0] = child;
+        return cap;
     }
 
     case SPAT_USER_CALL: {
@@ -571,6 +567,37 @@ static Pattern *materialise(SnoPattern *sp, MatchCtx *ctx) {
 }
 
 /* =========================================================================
+ * capture_callback — fired by engine_match_ex when a T_CAPTURE node succeeds
+ * ===================================================================== */
+static void capture_callback(int cap_slot, int start, int end, void *userdata) {
+    MatchCtx *ctx = (MatchCtx *)userdata;
+    if (cap_slot < 0 || cap_slot >= ctx->ncaptures) return;
+    Capture *cap = &ctx->captures[cap_slot];
+    cap->start = start + ctx->scan_start;
+    cap->end   = end   + ctx->scan_start;
+    if (getenv("SNO_PAT_DEBUG"))
+        fprintf(stderr, "  CAPTURE_CB: slot=%d var=%s start=%d end=%d\n",
+            cap_slot, cap->var_name ? cap->var_name : "(null)", cap->start, cap->end);
+}
+
+/* Apply captures: call sno_var_set for each fired capture */
+static void apply_captures(MatchCtx *ctx) {
+    for (int i = 0; i < ctx->ncaptures; i++) {
+        Capture *cap = &ctx->captures[i];
+        if (cap->start < 0 || !cap->var_name || !cap->var_name[0]) continue;
+        int len = cap->end - cap->start;
+        if (len < 0) len = 0;
+        char *text = (char *)GC_MALLOC(len + 1);
+        if (ctx->subject)
+            memcpy(text, ctx->subject + cap->start, len);
+        text[len] = '\0';
+        sno_var_set(cap->var_name, SNO_STR_VAL(text));
+        if (getenv("SNO_PAT_DEBUG"))
+            fprintf(stderr, "CAPTURE: %s = \"%.*s\"\n", cap->var_name, len, text);
+    }
+}
+
+/* =========================================================================
  * sno_match_pattern — top-level match entry point
  * ===================================================================== */
 
@@ -578,8 +605,17 @@ static Pattern *materialise(SnoPattern *sp, MatchCtx *ctx) {
 static int try_match_at(SnoPattern *sp, const char *subject, int slen, int start, MatchCtx *ctx) {
     ctx->scan_start = start;
     Pattern *root = materialise(sp, ctx);
-    MatchResult mr = engine_match(root, subject + start, slen - start);
-    if (mr.matched) return start + mr.end;
+    EngineOpts opts;
+    opts.cap_fn   = (ctx->ncaptures > 0) ? capture_callback : NULL;
+    opts.cap_data = ctx;
+    MatchResult mr = engine_match_ex(root, subject + start, slen - start, &opts);
+    if (getenv("SNO_PAT_DEBUG") && slen < 20)
+        fprintf(stderr, "  try_match_at: start=%d slen=%d -> matched=%d end=%d\n",
+            start, slen, mr.matched, mr.end);
+    if (mr.matched) {
+        apply_captures(ctx);
+        return start + mr.end;
+    }
     return -1;
 }
 
@@ -646,14 +682,20 @@ int sno_match_and_replace(SnoVal *subject, SnoVal pat, SnoVal replacement) {
     int match_start = -1, match_end = -1;
     for (int start = 0; start <= slen; start++) {
         MatchCtx ctx; memset(&ctx, 0, sizeof(ctx)); ctx.subject = s;
+        ctx.scan_start = start;
         Pattern *root = materialise(sp, &ctx);
-        MatchResult mr = engine_match(root, s + start, slen - start);
-        pattern_free_all(&ctx.pl);
+        EngineOpts opts;
+        opts.cap_fn   = (ctx.ncaptures > 0) ? capture_callback : NULL;
+        opts.cap_data = &ctx;
+        MatchResult mr = engine_match_ex(root, s + start, slen - start, &opts);
         if (mr.matched) {
+            apply_captures(&ctx);
             match_start = start;
             match_end   = start + mr.end;
+            pattern_free_all(&ctx.pl);
             break;
         }
+        pattern_free_all(&ctx.pl);
         if (start == slen) break;
     }
     if (match_start < 0) return 0;
