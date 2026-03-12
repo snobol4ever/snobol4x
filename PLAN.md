@@ -98,6 +98,26 @@ SNOBOL4 guarantees a statement succeeds or fails atomically. ABORT inside a
 pattern mid-statement should abort the whole statement cleanly, not leave
 a half-executed replacement. The statement boundary is exactly right.
 
+### Line number diagnostics fall out for free
+
+Each statement's `setjmp` is emitted immediately after `/* line N */`. When
+the longjmp fires, the catching boundary knows exactly which line it is:
+
+```c
+/* line 45 */
+sno_abort_lineno = 45;
+if (setjmp(sno_abort_jmp) == 0) {
+    ...Byrd Box...
+} else {
+    fprintf(stderr, "file.sno:45  stmt 312: ABORT\n");
+    goto _SNO_ABORT_HANDLER;
+}
+```
+
+CSNOBOL4-style error output — `file:LINE stmt N: EVENT` — is implicit in
+which catch boundary fires. No stack crawl needed. No debug info needed.
+The line number is structural.
+
 ---
 
 ## §7 — Sprint 24 Plan: Function-per-DEFINE in emit.c

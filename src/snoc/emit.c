@@ -252,21 +252,26 @@ static void emit_assign_target(Expr *lhs, const char *rhs_str) {
 /* ============================================================
  * Emit goto field
  * ============================================================ */
+
+/* Emit a single branch target — handles RETURN/FRETURN/NRETURN/END specially */
+static void emit_goto_target(const char *label, const char *fn) {
+    if      (strcasecmp(label,"RETURN") ==0) E("goto _SNO_RETURN_%s", fn);
+    else if (strcasecmp(label,"FRETURN")==0) E("goto _SNO_FRETURN_%s", fn);
+    else if (strcasecmp(label,"NRETURN")==0) E("goto _SNO_FRETURN_%s", fn); /* NRETURN = FRETURN */
+    else if (strcasecmp(label,"END")    ==0) E("goto _SNO_END");
+    else                                     E("goto _L%s", cs(label));
+}
+
 static void emit_goto(SnoGoto *g, const char *fn, int result_ok) {
     if (!g) { E("    goto _SNO_NEXT_%d;\n", cur_stmt_next_uid); return; }
     if (g->uncond) {
-        if      (strcasecmp(g->uncond,"RETURN") ==0) E("    goto _SNO_RETURN_%s;\n",fn);
-        else if (strcasecmp(g->uncond,"FRETURN")==0) E("    goto _SNO_FRETURN_%s;\n",fn);
-        else if (strcasecmp(g->uncond,"END")    ==0) E("    goto _SNO_END;\n");
-        else E("    goto _L%s;\n", cs(g->uncond));
+        E("    "); emit_goto_target(g->uncond, fn); E(";\n");
     } else {
         if (result_ok) {
-            /* we have a runtime result variable _ok */
-            if (g->onsuccess) E("    if(_ok) goto _L%s;\n", cs(g->onsuccess));
-            if (g->onfailure) E("    if(!_ok) goto _L%s;\n", cs(g->onfailure));
+            if (g->onsuccess) { E("    if(_ok) "); emit_goto_target(g->onsuccess, fn); E(";\n"); }
+            if (g->onfailure) { E("    if(!_ok) "); emit_goto_target(g->onfailure, fn); E(";\n"); }
         } else {
-            /* no runtime result — success-only goto */
-            if (g->onsuccess) E("    goto _L%s;\n", cs(g->onsuccess));
+            if (g->onsuccess) { E("    "); emit_goto_target(g->onsuccess, fn); E(";\n"); }
             if (g->onfailure) { /* can't reach failure — skip */ }
         }
         E("    goto _SNO_NEXT_%d;\n", cur_stmt_next_uid);
@@ -321,8 +326,8 @@ static void emit_stmt(Stmt *s, const char *fn) {
         if (!s->go) { E("    goto _SNO_NEXT_%d;\n", cur_stmt_next_uid); }
         else if (s->go->uncond) { emit_goto(s->go, fn, 0); }
         else {
-            if (s->go->onsuccess) E("    if(_ok%d) goto _L%s;\n", u, cs(s->go->onsuccess));
-            if (s->go->onfailure) E("    if(!_ok%d) goto _L%s;\n", u, cs(s->go->onfailure));
+            if (s->go->onsuccess) { E("    if(_ok%d) ", u); emit_goto_target(s->go->onsuccess, fn); E(";\n"); }
+            if (s->go->onfailure) { E("    if(!_ok%d) ", u); emit_goto_target(s->go->onfailure, fn); E(";\n"); }
             E("    goto _SNO_NEXT_%d;\n", cur_stmt_next_uid);
         }
         return;
@@ -337,8 +342,8 @@ static void emit_stmt(Stmt *s, const char *fn) {
         if (!s->go) { E("    goto _SNO_NEXT_%d;\n", cur_stmt_next_uid); }
         else if (s->go->uncond) { emit_goto(s->go, fn, 0); }
         else {
-            if (s->go->onsuccess) E("    if(_ok%d) goto _L%s;\n", u, cs(s->go->onsuccess));
-            if (s->go->onfailure) E("    if(!_ok%d) goto _L%s;\n", u, cs(s->go->onfailure));
+            if (s->go->onsuccess) { E("    if(_ok%d) ", u); emit_goto_target(s->go->onsuccess, fn); E(";\n"); }
+            if (s->go->onfailure) { E("    if(!_ok%d) ", u); emit_goto_target(s->go->onfailure, fn); E(";\n"); }
             E("    goto _SNO_NEXT_%d;\n", cur_stmt_next_uid);
         }
     }
@@ -348,12 +353,10 @@ static void emit_stmt(Stmt *s, const char *fn) {
  * Symbol collection — walk entire AST, collect variable names
  * ============================================================ */
 
-/* Simple hash set of variable names */
 #define SYM_MAX 4096
 static char *sym_table[SYM_MAX];
 static int   sym_count = 0;
 
-/* Names that should NOT become static locals — routed through sno_var_set/get */
 static const char *io_names[] = {
     "OUTPUT","INPUT","PUNCH","TERMINAL","TRACE",NULL
 };
@@ -367,7 +370,6 @@ static int is_io_name(const char *name) {
 static void sym_add(const char *name) {
     if (!name || !*name) return;
     if (is_io_name(name)) return;
-    /* deduplicate */
     for (int i=0; i<sym_count; i++)
         if (strcmp(sym_table[i], name)==0) return;
     if (sym_count < SYM_MAX)
@@ -378,7 +380,7 @@ static void collect_expr(Expr *e) {
     if (!e) return;
     switch (e->kind) {
     case E_VAR:   sym_add(e->sval); break;
-    case E_ARRAY: sym_add(e->sval); break;  /* array variable itself */
+    case E_ARRAY: sym_add(e->sval); break;
     default: break;
     }
     collect_expr(e->left);
@@ -400,16 +402,9 @@ static void collect_symbols(Program *prog) {
 }
 
 /* ============================================================
- * OUTPUT/INPUT: route through sno_var_set/sno_var_get
- *
- * snoc emits: sno_set(_OUTPUT, val)
- * We want:    sno_var_set("OUTPUT", val)
- *
- * We override emit_assign_target for IO names, and override emit_expr
- * for E_VAR on IO names.
+ * IO assignment routing
  * ============================================================ */
 
-/* Wrapper: emit an lvalue assignment, routing IO names through var table */
 static void emit_assign_target_io(Expr *lhs, const char *rhs_str) {
     if (lhs && lhs->kind == E_VAR && is_io_name(lhs->sval)) {
         E("sno_var_set(\"%s\", %s);\n", lhs->sval, rhs_str);
@@ -418,53 +413,321 @@ static void emit_assign_target_io(Expr *lhs, const char *rhs_str) {
     emit_assign_target(lhs, rhs_str);
 }
 
-/* Emit expr, substituting IO variable names with sno_var_get() calls */
-/* We patch emit_expr's E_VAR case via a post-process: instead of patching
- * the existing emit_expr (which is static), we provide a wrapper that checks
- * for IO names before calling emit_expr for E_VAR nodes.
- * Since emit_expr is already defined as static void, we add a new emit_expr_top
- * that handles the IO routing at the top level. */
-
 /* ============================================================
- * Program header and body
+ * DEFINE function table
+ *
+ * Pre-pass: scan for DEFINE('fn(a,b)loc1,loc2') calls.
+ * Parse the proto string → name, args[], locals[].
+ * The SNOBOL4 label matching fn_name marks the start of the body.
  * ============================================================ */
 
+#define FN_MAX  256
+#define ARG_MAX  32
+
+#define BODY_MAX 8
+
+typedef struct {
+    char  *name;               /* function name, e.g. "pp" */
+    char  *args[ARG_MAX];      /* parameter names */
+    int    nargs;
+    char  *locals[ARG_MAX];    /* local variable names */
+    int    nlocals;
+    Stmt  *body_starts[BODY_MAX]; /* ALL entry points for this function */
+    int    nbody_starts;
+    Stmt  *define_stmt;        /* the last DEFINE(...) statement */
+} FnDef;
+
+static FnDef fn_table[FN_MAX];
+static int   fn_count = 0;
+
+/* Return fn index if label matches a known function entry, else -1 */
+static int fn_by_label(const char *label) {
+    if (!label) return -1;
+    for (int i=0; i<fn_count; i++)
+        if (strcasecmp(fn_table[i].name, label)==0) return i;
+    return -1;
+}
+
+/* Return fn index if stmt is the DEFINE(...) call for it, else -1 */
+static int fn_by_define_stmt(Stmt *s) {
+    for (int i=0; i<fn_count; i++)
+        if (fn_table[i].define_stmt == s) return i;
+    return -1;
+}
+
+/* Parse "fn(a,b)loc1,loc2" into a FnDef */
+static void parse_proto(const char *proto, FnDef *fn) {
+    /* fn name: up to '(' or end */
+    int i=0;
+    char buf[256];
+    int j=0;
+    while (proto[i] && proto[i]!='(' && proto[i]!=')') buf[j++]=proto[i++];
+    buf[j]='\0';
+    /* trim trailing spaces */
+    while (j>0 && buf[j-1]==' ') buf[--j]='\0';
+    fn->name = strdup(buf);
+    fn->nargs = 0;
+    fn->nlocals = 0;
+
+    if (proto[i]=='(') {
+        i++; /* skip ( */
+        while (proto[i] && proto[i]!=')') {
+            j=0;
+            while (proto[i] && proto[i]!=',' && proto[i]!=')') buf[j++]=proto[i++];
+            buf[j]='\0';
+            /* trim */
+            while (j>0&&(buf[j-1]==' '||buf[j-1]=='\t')) buf[--j]='\0';
+            int k=0; while(buf[k]==' '||buf[k]=='\t') k++;
+            if (buf[k] && fn->nargs < ARG_MAX)
+                fn->args[fn->nargs++] = strdup(buf+k);
+            if (proto[i]==',') i++;
+        }
+        if (proto[i]==')') i++;
+    }
+
+    /* locals after ')': comma-separated */
+    while (proto[i]) {
+        j=0;
+        while (proto[i] && proto[i]!=',') buf[j++]=proto[i++];
+        buf[j]='\0';
+        int k=0; while(buf[k]==' '||buf[k]=='\t') k++;
+        /* trim trailing */
+        while (j>0&&(buf[j-1]==' '||buf[j-1]=='\t')) buf[--j]='\0';
+        if (buf[k] && fn->nlocals < ARG_MAX)
+            fn->locals[fn->nlocals++] = strdup(buf+k);
+        if (proto[i]==',') i++;
+    }
+}
+
+/* Check if a statement is DEFINE('proto') or DEFINE('proto','label') */
+static const char *stmt_define_proto(Stmt *s) {
+    if (!s->subject) return NULL;
+    Expr *e = s->subject;
+    if (e->kind != E_CALL) return NULL;
+    if (strcasecmp(e->sval,"DEFINE")!=0) return NULL;
+    if (e->nargs < 1) return NULL;
+    if (e->args[0]->kind != E_STR) return NULL;
+    return e->args[0]->sval;
+}
+
+static void collect_functions(Program *prog) {
+    fn_count = 0;
+    for (Stmt *s = prog->head; s; s = s->next) {
+        const char *proto = stmt_define_proto(s);
+        if (!proto) continue;
+        if (fn_count >= FN_MAX) break;
+        FnDef *fn = &fn_table[fn_count];
+        memset(fn, 0, sizeof *fn);
+        parse_proto(proto, fn);
+        fn->define_stmt = s;
+        /* Deduplicate: if this name already exists, overwrite it */
+        int found = -1;
+        for (int i=0; i<fn_count; i++)
+            if (strcasecmp(fn_table[i].name, fn->name)==0) { found=i; break; }
+        if (found >= 0) {
+            /* Free old name/args/locals, replace with new definition */
+            fn_table[found] = *fn;
+        } else {
+            fn_count++;
+        }
+    }
+    /* Second pass: find ALL body_starts for each function */
+    for (int i=0; i<fn_count; i++) {
+        fn_table[i].nbody_starts = 0;
+        for (Stmt *s = prog->head; s; s = s->next) {
+            if (s->label && strcasecmp(s->label, fn_table[i].name)==0) {
+                if (fn_table[i].nbody_starts < BODY_MAX)
+                    fn_table[i].body_starts[fn_table[i].nbody_starts++] = s;
+            }
+        }
+    }
+}
+
+/* ============================================================
+ * Emit header
+ * ============================================================ */
 static void emit_header(void) {
     E("/* generated by snoc */\n");
     E("#include \"snoc_runtime.h\"\n\n");
 }
 
-static void emit_var_decls(void) {
-    E("    /* --- SNOBOL4 variable declarations --- */\n");
+/* ============================================================
+ * Emit global variable declarations (main-scope statics)
+ * Only globals — function args/locals are emitted per-function.
+ * ============================================================ */
+
+/* Return 1 if name is an arg or local of any known function */
+static int is_fn_local(const char *name) {
+    for (int i=0; i<fn_count; i++) {
+        FnDef *fn = &fn_table[i];
+        /* function name itself is a local (return value variable) */
+        if (strcasecmp(fn->name, name)==0) return 1;
+        for (int j=0; j<fn->nargs; j++)
+            if (strcasecmp(fn->args[j], name)==0) return 1;
+        for (int j=0; j<fn->nlocals; j++)
+            if (strcasecmp(fn->locals[j], name)==0) return 1;
+    }
+    return 0;
+}
+
+static void emit_global_var_decls(void) {
+    E("/* --- global SNOBOL4 variables --- */\n");
     for (int i=0; i<sym_count; i++) {
-        E("    static SnoVal %s = {0};\n", cs(sym_table[i]));
+        if (!is_fn_local(sym_table[i]))
+            E("static SnoVal %s = {0};\n", cs(sym_table[i]));
     }
     E("\n");
 }
 
-void snoc_emit(Program *prog, FILE *f) {
-    out = f;
+/* ============================================================
+ * Emit one DEFINE'd function
+ * ============================================================ */
+static void emit_fn(FnDef *fn, Program *prog) {
+    (void)prog;
+    E("static SnoVal _sno_fn_%s(SnoVal *_args, int _nargs) {\n", fn->name);
 
-    /* Phase 1: collect all variable names */
-    collect_symbols(prog);
+    /* Per-function jmp_buf for ABORT handling */
+    E("    jmp_buf _fn_abort_jmp;\n");
+    E("    if (setjmp(_fn_abort_jmp) != 0) return SNO_FAIL_VAL;\n");
+    E("    sno_push_abort_handler(&_fn_abort_jmp);\n\n");
 
-    emit_header();
+    /* Return-value variable (same name as function) */
+    E("    SnoVal %s = {0}; /* return value */\n", cs(fn->name));
 
+    /* Args — bound from _args[] */
+    for (int i=0; i<fn->nargs; i++)
+        E("    SnoVal %s = (_nargs>%d)?_args[%d]:SNO_NULL_VAL;\n",
+          cs(fn->args[i]), i, i);
+
+    /* Locals */
+    for (int i=0; i<fn->nlocals; i++)
+        E("    SnoVal %s = {0};\n", cs(fn->locals[i]));
+    E("\n");
+
+    /* Body statements — use LAST body only (last DEFINE wins) */
+    if (fn->nbody_starts == 0) {
+        E("    goto _SNO_RETURN_%s;\n", fn->name);
+    } else {
+        Stmt *bs = fn->body_starts[fn->nbody_starts - 1];  /* last = winning */
+        for (Stmt *s = bs; s; s = s->next) {
+            if (s->is_end) break;
+            if (s != bs && s->label) {
+                int other = fn_by_label(s->label);
+                if (other >= 0 && strcasecmp(fn_table[other].name, fn->name) != 0)
+                    break;
+            }
+            cur_stmt_next_uid = uid();
+            emit_stmt(s, fn->name);
+            E("_SNO_NEXT_%d:;\n", cur_stmt_next_uid);
+        }
+        E("    goto _SNO_RETURN_%s;\n", fn->name);
+    }
+
+    E("\n_SNO_RETURN_%s:\n", fn->name);
+    E("    sno_pop_abort_handler();\n");
+    E("    return sno_get(%s);\n", cs(fn->name));
+    E("_SNO_FRETURN_%s:\n", fn->name);
+    E("    sno_pop_abort_handler();\n");
+    E("    return SNO_FAIL_VAL;\n");
+    E("}\n\n");
+}
+
+/* ============================================================
+ * Emit forward declarations for all functions
+ * ============================================================ */
+static void emit_fn_forwards(void) {
+    for (int i=0; i<fn_count; i++)
+        E("static SnoVal _sno_fn_%s(SnoVal *_args, int _nargs);\n",
+          fn_table[i].name);
+    E("\n");
+}
+
+/* ============================================================
+ * Main entry point emitter
+ * ============================================================ */
+static int stmt_is_in_any_fn_body(Stmt *s) {
+    for (int i=0; i<fn_count; i++) {
+        if (fn_table[i].nbody_starts == 0) continue;
+        /* ALL body regions are owned by this function — even the non-winning ones
+         * are dead code but should not leak into main */
+        for (int b=0; b<fn_table[i].nbody_starts; b++) {
+            Stmt *bs = fn_table[i].body_starts[b];
+            for (Stmt *t = bs; t; t = t->next) {
+                if (t->is_end) break;
+                if (t != bs && t->label) {
+                    int other = fn_by_label(t->label);
+                    if (other >= 0 && strcasecmp(fn_table[other].name, fn_table[i].name) != 0)
+                        break;
+                }
+                if (t == s) return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+static void emit_main(Program *prog) {
     E("int main(void) {\n");
     E("    sno_init();\n\n");
 
-    /* Phase 2: emit variable declarations */
-    emit_var_decls();
+    /* Register all DEFINE'd functions */
+    for (int i=0; i<fn_count; i++) {
+        /* Reconstruct the proto spec string: "name(a,b)loc1,loc2" */
+        E("    sno_define(\"");
+        E("%s(", fn_table[i].name);
+        for (int j=0; j<fn_table[i].nargs; j++) {
+            if (j) E(",");
+            E("%s", fn_table[i].args[j]);
+        }
+        E(")");
+        for (int j=0; j<fn_table[i].nlocals; j++) {
+            if (j) E(","); else E("");
+            E("%s", fn_table[i].locals[j]);
+        }
+        E("\", _sno_fn_%s);\n", fn_table[i].name);
+    }
+    E("\n");
 
-    /* Phase 3: emit statements */
+    /* Emit main-level statements only */
     for (Stmt *s = prog->head; s; s = s->next) {
+        /* END stmt — emit the end label and stop */
+        if (s->is_end) {
+            E("\n_SNO_END:;\n");
+            E("    sno_finish();\n");
+            E("    return 0;\n");
+            E("}\n");
+            return;
+        }
+        /* Skip statements that live inside a function body */
+        if (stmt_is_in_any_fn_body(s)) continue;
+        /* Skip the DEFINE(...) call statements themselves */
+        if (stmt_define_proto(s)) continue;
+
         cur_stmt_next_uid = uid();
         emit_stmt(s, "main");
         E("_SNO_NEXT_%d:;\n", cur_stmt_next_uid);
     }
 
-    E("\n_SNO_END:;\n");
-    E("    sno_finish();\n");
-    E("    return 0;\n");
-    E("}\n");
+    /* Fallback if no END stmt found */
+}
+
+/* ============================================================
+ * Public entry point
+ * ============================================================ */
+void snoc_emit(Program *prog, FILE *f) {
+    out = f;
+
+    /* Phase 1: collect variable names and function definitions */
+    collect_symbols(prog);
+    collect_functions(prog);
+
+    /* Phase 2: emit */
+    emit_header();
+    emit_global_var_decls();
+    emit_fn_forwards();
+
+    for (int i=0; i<fn_count; i++)
+        emit_fn(&fn_table[i], prog);
+
+    emit_main(prog);
 }

@@ -71,6 +71,7 @@ struct Stmt {
     Expr    *replacement;  /* NULL if no = field */
     SnoGoto *go;           /* NULL if no : field */
     int      lineno;
+    int      is_end;       /* 1 if this is the END statement */
     Stmt    *next;
 };
 

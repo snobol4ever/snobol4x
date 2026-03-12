@@ -149,4 +149,45 @@ static inline void _snoc_replace(SnoVal *subj, SnoMatch *m, SnoVal repl) {
 static inline void sno_init(void)    { sno_runtime_init(); }
 static inline void sno_finish(void)  { }
 
+/* ---- ABORT / exception handler stack ----
+ *
+ * Architecture (Session 27 eureka):
+ *   Normal pattern failure: pure Byrd Box gotos, zero overhead.
+ *   ABORT and genuinely bad things: longjmp to nearest handler.
+ *   Each statement is a setjmp catch boundary.
+ *   Each DEFINE'd function is also a catch boundary.
+ *   Line number is implicit in which boundary catches — free diagnostics.
+ */
+#include <setjmp.h>
+
+#define SNO_ABORT_STACK_MAX 256
+static jmp_buf *_sno_abort_stack[SNO_ABORT_STACK_MAX];
+static int      _sno_abort_depth = 0;
+static int      _sno_abort_lineno = 0;
+
+static inline void sno_push_abort_handler(jmp_buf *jb) {
+    if (_sno_abort_depth < SNO_ABORT_STACK_MAX)
+        _sno_abort_stack[_sno_abort_depth++] = jb;
+}
+static inline void sno_pop_abort_handler(void) {
+    if (_sno_abort_depth > 0) _sno_abort_depth--;
+}
+static inline void sno_abort(int lineno) {
+    _sno_abort_lineno = lineno;
+    if (_sno_abort_depth > 0)
+        longjmp(*_sno_abort_stack[_sno_abort_depth-1], 1);
+    /* No handler — fatal */
+    fprintf(stderr, "ABORT at line %d\n", lineno);
+    exit(1);
+}
+
+/* Macro for generated per-statement abort guard.
+ * Usage: SNO_STMT_BEGIN(lineno) ... SNO_STMT_END(lineno, fn, onfail_label)
+ * Normal path: falls through.
+ * ABORT path: jumps to onfail_label (which should be :F() target or FRETURN).
+ */
+#define SNO_ABORT_GUARD_DECL   jmp_buf _stmt_jmp;
+#define SNO_ABORT_GUARD_SET    (sno_push_abort_handler(&_stmt_jmp), setjmp(_stmt_jmp))
+#define SNO_ABORT_GUARD_POP    sno_pop_abort_handler()
+
 #endif /* SNOC_RUNTIME_H */

@@ -100,7 +100,16 @@ line
                 prog->nstmts++;
             }
         }
-    | END_LABEL NEWLINE { YYACCEPT; }
+    | END_LABEL NEWLINE {
+            /* END marks program termination but function bodies follow it */
+            Stmt *s = stmt_new();
+            s->label = strdup("END");
+            s->is_end = 1;
+            s->lineno = lineno_stmt;
+            if (!prog->head) prog->head = prog->tail = s;
+            else { prog->tail->next = s; prog->tail = s; }
+            prog->nstmts++;
+        }
     | NEWLINE           { }
     | error NEWLINE     { yyerrok; }
     ;
