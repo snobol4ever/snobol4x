@@ -1015,8 +1015,21 @@ static void emit_fn(FnDef *fn, Program *prog) {
     cur_fn_def  = fn;
     E("static SnoVal _sno_fn_%s(SnoVal *_args, int _nargs) {\n", fn->name);
 
+    /* CSNOBOL4 DEFF8/DEFF10/DEFF6 semantics: save caller's hash values on entry,
+     * restore them on ALL exit paths (RETURN, FRETURN, abort/setjmp).
+     * ALL SNOBOL4 variables are natural (hashed) — NEVER skip save/restore. */
+
+    /* --- Save declarations (must come before setjmp to be in scope at restore labels) --- */
+    for (int i = 0; i < fn->nargs; i++)
+        E("    SnoVal _saved_%s = sno_var_get(\"%s\"); /* save caller's hash value */\n",
+          cs(fn->args[i]), fn->args[i]);
+    for (int i = 0; i < fn->nlocals; i++)
+        E("    SnoVal _saved_%s = sno_var_get(\"%s\"); /* save caller's hash value */\n",
+          cs(fn->locals[i]), fn->locals[i]);
+    E("\n");
+
     E("    jmp_buf _fn_abort_jmp;\n");
-    E("    if (setjmp(_fn_abort_jmp) != 0) return SNO_FAIL_VAL;\n");
+    E("    if (setjmp(_fn_abort_jmp) != 0) goto _SNO_ABORT_%s;\n", fn->name);
     E("    sno_push_abort_handler(&_fn_abort_jmp);\n\n");
 
     /* Return-value variable — skip if an arg has the same name */
@@ -1027,11 +1040,19 @@ static void emit_fn(FnDef *fn, Program *prog) {
         if (!clash)
             E("    SnoVal %s = {0}; /* return value */\n", cs(fn->name));
     }
-    for (int i = 0; i < fn->nargs; i++)
+    /* Declare C stack locals and install args into hash (DEFF8: save+assign) */
+    for (int i = 0; i < fn->nargs; i++) {
         E("    SnoVal %s = (_nargs>%d)?_args[%d]:SNO_NULL_VAL;\n",
           cs(fn->args[i]), i, i);
-    for (int i = 0; i < fn->nlocals; i++)
+        E("    sno_var_set(\"%s\", %s); /* install arg in hash */\n",
+          fn->args[i], cs(fn->args[i]));
+    }
+    /* Declare C stack locals and install as NULL into hash (DEFF10: save+null) */
+    for (int i = 0; i < fn->nlocals; i++) {
         E("    SnoVal %s = {0};\n", cs(fn->locals[i]));
+        E("    sno_var_set(\"%s\", SNO_NULL_VAL); /* install local as null in hash */\n",
+          fn->locals[i]);
+    }
     E("\n");
 
     if (fn->nbody_starts == 0) {
@@ -1048,12 +1069,38 @@ static void emit_fn(FnDef *fn, Program *prog) {
         E("    goto _SNO_RETURN_%s;\n", fn->name);
     }
 
+    /* --- RETURN path: restore caller's hash values (DEFF6: restore in reverse) --- */
     E("\n_SNO_RETURN_%s:\n", fn->name);
     E("    sno_pop_abort_handler();\n");
+    for (int i = fn->nlocals - 1; i >= 0; i--)
+        E("    sno_var_set(\"%s\", _saved_%s); /* restore caller's value */\n",
+          fn->locals[i], cs(fn->locals[i]));
+    for (int i = fn->nargs - 1; i >= 0; i--)
+        E("    sno_var_set(\"%s\", _saved_%s); /* restore caller's value */\n",
+          fn->args[i], cs(fn->args[i]));
     E("    return sno_get(%s);\n", cs(fn->name));
+
+    /* --- FRETURN path: restore caller's hash values --- */
     E("_SNO_FRETURN_%s:\n", fn->name);
     E("    sno_pop_abort_handler();\n");
+    for (int i = fn->nlocals - 1; i >= 0; i--)
+        E("    sno_var_set(\"%s\", _saved_%s); /* restore caller's value */\n",
+          fn->locals[i], cs(fn->locals[i]));
+    for (int i = fn->nargs - 1; i >= 0; i--)
+        E("    sno_var_set(\"%s\", _saved_%s); /* restore caller's value */\n",
+          fn->args[i], cs(fn->args[i]));
     E("    return SNO_FAIL_VAL;\n");
+
+    /* --- ABORT path (setjmp fired): restore then return FAIL --- */
+    E("_SNO_ABORT_%s:\n", fn->name);
+    for (int i = fn->nlocals - 1; i >= 0; i--)
+        E("    sno_var_set(\"%s\", _saved_%s); /* restore caller's value */\n",
+          fn->locals[i], cs(fn->locals[i]));
+    for (int i = fn->nargs - 1; i >= 0; i--)
+        E("    sno_var_set(\"%s\", _saved_%s); /* restore caller's value */\n",
+          fn->args[i], cs(fn->args[i]));
+    E("    return SNO_FAIL_VAL;\n");
+
     E("}\n\n");
 }
 
