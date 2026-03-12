@@ -295,9 +295,11 @@ def emit_expr(e):
     if k == 'alt':
         return f'sno_pat_alt({emit_as_pattern(e.left)}, {emit_as_pattern(e.right)})'
     if k == 'cond_assign' or k == 'assign_cond':
-        return f'sno_pat_assign_cond({emit_as_pattern(e.child)}, {emit_expr(e.var) if e.var else "SNO_NULL_VAL"})'
+        _var = f'SNO_STR_VAL("{e.var.val}")' if e.var and getattr(e.var,"kind",None)=="var" else (emit_expr(e.var) if e.var else "SNO_NULL_VAL")
+        return f'sno_pat_assign_cond({emit_as_pattern(e.child)}, {_var})'
     if k == 'assign_imm':
-        return f'sno_pat_assign_imm({emit_as_pattern(e.child)}, {emit_expr(e.var) if e.var else "SNO_NULL_VAL"})'
+        _var = f'SNO_STR_VAL("{e.var.val}")' if e.var and getattr(e.var,"kind",None)=="var" else (emit_expr(e.var) if e.var else "SNO_NULL_VAL")
+        return f'sno_pat_assign_imm({emit_as_pattern(e.child)}, {_var})'
     return f'SNO_NULL_VAL /* unhandled expr kind={k} */'
 
 
@@ -571,14 +573,22 @@ def emit_pattern_expr(p):
         from ir import Expr as _Expr
         child = (emit_as_pattern(p.child) if isinstance(p.child, _Expr)
                  else emit_pattern_expr(p.child))
-        var   = emit_expr(p.var) if p.var else 'SNO_NULL_VAL'
+        # sno_pat_assign_imm needs the variable NAME (SNO_STR), not its value
+        if p.var and getattr(p.var, 'kind', None) == 'var':
+            var = f'SNO_STR_VAL("{p.var.val}")'
+        else:
+            var = emit_expr(p.var) if p.var else 'SNO_NULL_VAL'
         return f'sno_pat_assign_imm({child}, {var})'
 
     if k == 'assign_cond':
         from ir import Expr as _Expr
         child = (emit_as_pattern(p.child) if isinstance(p.child, _Expr)
                  else emit_pattern_expr(p.child))
-        var   = emit_expr(p.var) if p.var else 'SNO_NULL_VAL'
+        # sno_pat_assign_cond needs the variable NAME (SNO_STR), not its value
+        if p.var and getattr(p.var, 'kind', None) == 'var':
+            var = f'SNO_STR_VAL("{p.var.val}")'
+        else:
+            var = emit_expr(p.var) if p.var else 'SNO_NULL_VAL'
         return f'sno_pat_assign_cond({child}, {var})'
 
     if k == 'call':

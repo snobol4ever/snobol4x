@@ -291,6 +291,35 @@ void sno_runtime_init(void) {
     sno_register_fn("t",        _b_tree_t,   1, 1);
     sno_register_fn("v",        _b_tree_v,   1, 1);
     sno_register_fn("c",        _b_tree_c,   1, 1);
+    /* Sprint 23: pre-init &ALPHABET-derived constants from global.sno
+     * &ALPHABET is a 256-char binary string; POS(n) LEN(1) . var extracts char(n).
+     * Since SNO_STR_VAL uses strlen, &ALPHABET[0]=NUL causes all matches to fail.
+     * We pre-initialize the key character constants directly. */
+    {
+        char *_ch = GC_malloc_atomic(2);
+        _ch[0] = (char)9;  _ch[1] = '\0'; sno_var_set("tab", SNO_STR_VAL(_ch));
+        _ch = GC_malloc_atomic(2);
+        _ch[0] = (char)9;  _ch[1] = '\0'; sno_var_set("ht", SNO_STR_VAL(_ch));
+        _ch = GC_malloc_atomic(2);
+        _ch[0] = (char)10; _ch[1] = '\0'; sno_var_set("nl", SNO_STR_VAL(_ch));
+        _ch = GC_malloc_atomic(2);
+        _ch[0] = (char)10; _ch[1] = '\0'; sno_var_set("lf", SNO_STR_VAL(_ch));
+        _ch = GC_malloc_atomic(2);
+        _ch[0] = (char)13; _ch[1] = '\0'; sno_var_set("cr", SNO_STR_VAL(_ch));
+        _ch = GC_malloc_atomic(2);
+        _ch[0] = (char)12; _ch[1] = '\0'; sno_var_set("ff", SNO_STR_VAL(_ch));
+        _ch = GC_malloc_atomic(2);
+        _ch[0] = (char)11; _ch[1] = '\0'; sno_var_set("vt", SNO_STR_VAL(_ch));
+        _ch = GC_malloc_atomic(2);
+        _ch[0] = (char)8;  _ch[1] = '\0'; sno_var_set("bs", SNO_STR_VAL(_ch));
+        sno_var_set("nul", SNO_STR_VAL(""));  /* char(0) = empty in string context */
+        _ch = GC_malloc_atomic(2);
+        _ch[0] = (char)47; _ch[1] = '\0'; sno_var_set("fSlash", SNO_STR_VAL(_ch));
+        _ch = GC_malloc_atomic(2);
+        _ch[0] = (char)92; _ch[1] = '\0'; sno_var_set("bSlash", SNO_STR_VAL(_ch));
+        _ch = GC_malloc_atomic(2);
+        _ch[0] = (char)59; _ch[1] = '\0'; sno_var_set("semicolon", SNO_STR_VAL(_ch));
+    }
 }
 
 /* ============================================================
