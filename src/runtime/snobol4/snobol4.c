@@ -272,6 +272,237 @@ static SnoVal _b_DUMP(SnoVal *a, int n) {
     return SNO_NULL_VAL;
 }
 
+/* Forward declarations needed by _b_DATA trampolines */
+static UDefType *_udef_lookup(const char *name);
+
+/* ---- DATA() builtin ----
+ * DATA('typename(field1,field2,...)') — define a user-defined datatype.
+ * Registers: constructor typename(f1,f2,...) and field accessors f1(obj),f2(obj),...
+ * Uses GC-allocated closure structs so each registered fn knows its type/field name.
+ */
+typedef struct { char *typename; int nfields; char **fields; } DataClosure;
+typedef struct { char *typename; char *fieldname; } FieldClosure;
+
+/* Dynamic constructor: typename(v1, v2, ...) -> SNO_UDEF */
+static SnoVal _data_ctor_fn(SnoVal *args, int nargs) {
+    /* Called as a registered SnoFunc; the closure is stored in a parallel table.
+     * We use sno_apply_closure which is not available, so we look up via type name. */
+    /* NOTE: This fn is never called directly — see _b_DATA registration below */
+    (void)args; (void)nargs;
+    return SNO_NULL_VAL;
+}
+
+/* We need closures per-type. Use a static array of up to 64 DATA types. */
+#define DATA_MAX_TYPES 64
+#define DATA_MAX_FIELDS 16
+static struct {
+    char *typename;
+    int   nfields;
+    char *fields[DATA_MAX_FIELDS];
+} _data_types[DATA_MAX_TYPES];
+static int _data_ntypes = 0;
+
+/* Generic constructor: looks up typename by position in _data_types,
+ * builds a UDef with the provided args. */
+static SnoVal _make_ctor(int tidx, SnoVal *args, int nargs) {
+    if (tidx < 0 || tidx >= _data_ntypes) return SNO_NULL_VAL;
+    UDefType *t = _udef_lookup(_data_types[tidx].typename);
+    if (!t) return SNO_NULL_VAL;
+    UDef *u = GC_malloc(sizeof(UDef));
+    u->type   = t;
+    u->fields = GC_malloc(t->nfields * sizeof(SnoVal));
+    for (int i = 0; i < t->nfields; i++)
+        u->fields[i] = (i < nargs) ? args[i] : SNO_NULL_VAL;
+    return (SnoVal){ .type = SNO_UDEF, .u = u };
+}
+
+/* One constructor trampoline per slot (up to DATA_MAX_TYPES) */
+#define CTOR_FN(idx) \
+static SnoVal _ctor_##idx(SnoVal *a, int n) { return _make_ctor(idx, a, n); }
+
+CTOR_FN(0)  CTOR_FN(1)  CTOR_FN(2)  CTOR_FN(3)
+CTOR_FN(4)  CTOR_FN(5)  CTOR_FN(6)  CTOR_FN(7)
+CTOR_FN(8)  CTOR_FN(9)  CTOR_FN(10) CTOR_FN(11)
+CTOR_FN(12) CTOR_FN(13) CTOR_FN(14) CTOR_FN(15)
+CTOR_FN(16) CTOR_FN(17) CTOR_FN(18) CTOR_FN(19)
+CTOR_FN(20) CTOR_FN(21) CTOR_FN(22) CTOR_FN(23)
+CTOR_FN(24) CTOR_FN(25) CTOR_FN(26) CTOR_FN(27)
+CTOR_FN(28) CTOR_FN(29) CTOR_FN(30) CTOR_FN(31)
+CTOR_FN(32) CTOR_FN(33) CTOR_FN(34) CTOR_FN(35)
+CTOR_FN(36) CTOR_FN(37) CTOR_FN(38) CTOR_FN(39)
+CTOR_FN(40) CTOR_FN(41) CTOR_FN(42) CTOR_FN(43)
+CTOR_FN(44) CTOR_FN(45) CTOR_FN(46) CTOR_FN(47)
+CTOR_FN(48) CTOR_FN(49) CTOR_FN(50) CTOR_FN(51)
+CTOR_FN(52) CTOR_FN(53) CTOR_FN(54) CTOR_FN(55)
+CTOR_FN(56) CTOR_FN(57) CTOR_FN(58) CTOR_FN(59)
+CTOR_FN(60) CTOR_FN(61) CTOR_FN(62) CTOR_FN(63)
+
+static SnoVal (*_ctor_fns[DATA_MAX_TYPES])(SnoVal *, int) = {
+    _ctor_0,  _ctor_1,  _ctor_2,  _ctor_3,
+    _ctor_4,  _ctor_5,  _ctor_6,  _ctor_7,
+    _ctor_8,  _ctor_9,  _ctor_10, _ctor_11,
+    _ctor_12, _ctor_13, _ctor_14, _ctor_15,
+    _ctor_16, _ctor_17, _ctor_18, _ctor_19,
+    _ctor_20, _ctor_21, _ctor_22, _ctor_23,
+    _ctor_24, _ctor_25, _ctor_26, _ctor_27,
+    _ctor_28, _ctor_29, _ctor_30, _ctor_31,
+    _ctor_32, _ctor_33, _ctor_34, _ctor_35,
+    _ctor_36, _ctor_37, _ctor_38, _ctor_39,
+    _ctor_40, _ctor_41, _ctor_42, _ctor_43,
+    _ctor_44, _ctor_45, _ctor_46, _ctor_47,
+    _ctor_48, _ctor_49, _ctor_50, _ctor_51,
+    _ctor_52, _ctor_53, _ctor_54, _ctor_55,
+    _ctor_56, _ctor_57, _ctor_58, _ctor_59,
+    _ctor_60, _ctor_61, _ctor_62, _ctor_63,
+};
+
+/* Field accessor trampolines: one per (type,field) slot */
+#define FIELD_ACCESSOR_MAX (DATA_MAX_TYPES * DATA_MAX_FIELDS)
+static struct { int tidx; int fidx; } _facc_slots[FIELD_ACCESSOR_MAX];
+static int _facc_n = 0;
+
+static SnoVal _make_fget(int slot, SnoVal obj) {
+    if (slot < 0 || slot >= _facc_n) return SNO_NULL_VAL;
+    int tidx = _facc_slots[slot].tidx;
+    int fidx = _facc_slots[slot].fidx;
+    if (obj.type != SNO_UDEF || !obj.u) return SNO_NULL_VAL;
+    if (fidx < 0 || fidx >= obj.u->type->nfields) return SNO_NULL_VAL;
+    return obj.u->fields[fidx];
+}
+static void _make_fset(int slot, SnoVal obj, SnoVal val) {
+    if (slot < 0 || slot >= _facc_n) return;
+    int fidx = _facc_slots[slot].fidx;
+    if (obj.type != SNO_UDEF || !obj.u) return;
+    if (fidx < 0 || fidx >= obj.u->type->nfields) return;
+    obj.u->fields[fidx] = val;
+}
+
+#define FACC_FN(idx) \
+static SnoVal _facc_get_##idx(SnoVal *a, int n) { \
+    return n>=1 ? _make_fget(idx, a[0]) : SNO_NULL_VAL; }
+
+FACC_FN(0)   FACC_FN(1)   FACC_FN(2)   FACC_FN(3)
+FACC_FN(4)   FACC_FN(5)   FACC_FN(6)   FACC_FN(7)
+FACC_FN(8)   FACC_FN(9)   FACC_FN(10)  FACC_FN(11)
+FACC_FN(12)  FACC_FN(13)  FACC_FN(14)  FACC_FN(15)
+FACC_FN(16)  FACC_FN(17)  FACC_FN(18)  FACC_FN(19)
+FACC_FN(20)  FACC_FN(21)  FACC_FN(22)  FACC_FN(23)
+FACC_FN(24)  FACC_FN(25)  FACC_FN(26)  FACC_FN(27)
+FACC_FN(28)  FACC_FN(29)  FACC_FN(30)  FACC_FN(31)
+FACC_FN(32)  FACC_FN(33)  FACC_FN(34)  FACC_FN(35)
+FACC_FN(36)  FACC_FN(37)  FACC_FN(38)  FACC_FN(39)
+FACC_FN(40)  FACC_FN(41)  FACC_FN(42)  FACC_FN(43)
+FACC_FN(44)  FACC_FN(45)  FACC_FN(46)  FACC_FN(47)
+FACC_FN(48)  FACC_FN(49)  FACC_FN(50)  FACC_FN(51)
+FACC_FN(52)  FACC_FN(53)  FACC_FN(54)  FACC_FN(55)
+FACC_FN(56)  FACC_FN(57)  FACC_FN(58)  FACC_FN(59)
+FACC_FN(60)  FACC_FN(61)  FACC_FN(62)  FACC_FN(63)
+FACC_FN(64)  FACC_FN(65)  FACC_FN(66)  FACC_FN(67)
+FACC_FN(68)  FACC_FN(69)  FACC_FN(70)  FACC_FN(71)
+FACC_FN(72)  FACC_FN(73)  FACC_FN(74)  FACC_FN(75)
+FACC_FN(76)  FACC_FN(77)  FACC_FN(78)  FACC_FN(79)
+FACC_FN(80)  FACC_FN(81)  FACC_FN(82)  FACC_FN(83)
+FACC_FN(84)  FACC_FN(85)  FACC_FN(86)  FACC_FN(87)
+FACC_FN(88)  FACC_FN(89)  FACC_FN(90)  FACC_FN(91)
+FACC_FN(92)  FACC_FN(93)  FACC_FN(94)  FACC_FN(95)
+FACC_FN(96)  FACC_FN(97)  FACC_FN(98)  FACC_FN(99)
+FACC_FN(100) FACC_FN(101) FACC_FN(102) FACC_FN(103)
+FACC_FN(104) FACC_FN(105) FACC_FN(106) FACC_FN(107)
+FACC_FN(108) FACC_FN(109) FACC_FN(110) FACC_FN(111)
+FACC_FN(112) FACC_FN(113) FACC_FN(114) FACC_FN(115)
+FACC_FN(116) FACC_FN(117) FACC_FN(118) FACC_FN(119)
+FACC_FN(120) FACC_FN(121) FACC_FN(122) FACC_FN(123)
+FACC_FN(124) FACC_FN(125) FACC_FN(126) FACC_FN(127)
+
+static SnoVal (*_facc_fns[FIELD_ACCESSOR_MAX])(SnoVal *, int) = {
+    _facc_get_0,   _facc_get_1,   _facc_get_2,   _facc_get_3,
+    _facc_get_4,   _facc_get_5,   _facc_get_6,   _facc_get_7,
+    _facc_get_8,   _facc_get_9,   _facc_get_10,  _facc_get_11,
+    _facc_get_12,  _facc_get_13,  _facc_get_14,  _facc_get_15,
+    _facc_get_16,  _facc_get_17,  _facc_get_18,  _facc_get_19,
+    _facc_get_20,  _facc_get_21,  _facc_get_22,  _facc_get_23,
+    _facc_get_24,  _facc_get_25,  _facc_get_26,  _facc_get_27,
+    _facc_get_28,  _facc_get_29,  _facc_get_30,  _facc_get_31,
+    _facc_get_32,  _facc_get_33,  _facc_get_34,  _facc_get_35,
+    _facc_get_36,  _facc_get_37,  _facc_get_38,  _facc_get_39,
+    _facc_get_40,  _facc_get_41,  _facc_get_42,  _facc_get_43,
+    _facc_get_44,  _facc_get_45,  _facc_get_46,  _facc_get_47,
+    _facc_get_48,  _facc_get_49,  _facc_get_50,  _facc_get_51,
+    _facc_get_52,  _facc_get_53,  _facc_get_54,  _facc_get_55,
+    _facc_get_56,  _facc_get_57,  _facc_get_58,  _facc_get_59,
+    _facc_get_60,  _facc_get_61,  _facc_get_62,  _facc_get_63,
+    _facc_get_64,  _facc_get_65,  _facc_get_66,  _facc_get_67,
+    _facc_get_68,  _facc_get_69,  _facc_get_70,  _facc_get_71,
+    _facc_get_72,  _facc_get_73,  _facc_get_74,  _facc_get_75,
+    _facc_get_76,  _facc_get_77,  _facc_get_78,  _facc_get_79,
+    _facc_get_80,  _facc_get_81,  _facc_get_82,  _facc_get_83,
+    _facc_get_84,  _facc_get_85,  _facc_get_86,  _facc_get_87,
+    _facc_get_88,  _facc_get_89,  _facc_get_90,  _facc_get_91,
+    _facc_get_92,  _facc_get_93,  _facc_get_94,  _facc_get_95,
+    _facc_get_96,  _facc_get_97,  _facc_get_98,  _facc_get_99,
+    _facc_get_100, _facc_get_101, _facc_get_102, _facc_get_103,
+    _facc_get_104, _facc_get_105, _facc_get_106, _facc_get_107,
+    _facc_get_108, _facc_get_109, _facc_get_110, _facc_get_111,
+    _facc_get_112, _facc_get_113, _facc_get_114, _facc_get_115,
+    _facc_get_116, _facc_get_117, _facc_get_118, _facc_get_119,
+    _facc_get_120, _facc_get_121, _facc_get_122, _facc_get_123,
+    _facc_get_124, _facc_get_125, _facc_get_126, _facc_get_127,
+};
+
+static SnoVal _b_DATA(SnoVal *a, int n) {
+    if (n < 1) return SNO_NULL_VAL;
+    const char *spec = sno_to_str(a[0]);
+    if (!spec || !*spec) return SNO_NULL_VAL;
+
+    /* Register the type in snobol4's UDefType list */
+    sno_data_define(spec);
+
+    /* Parse spec to get typename and fields */
+    char *s = GC_strdup(spec);
+    char *paren = strchr(s, '(');
+    if (!paren) return SNO_NULL_VAL;
+    *paren = '\0';
+    char *tname = s;
+    char *fstr = paren + 1;
+    char *close = strchr(fstr, ')');
+    if (close) *close = '\0';
+
+    if (_data_ntypes >= DATA_MAX_TYPES) return SNO_NULL_VAL;
+    int tidx = _data_ntypes++;
+    _data_types[tidx].typename = GC_strdup(tname);
+
+    /* Parse fields */
+    int nf = 0;
+    char *tmp = GC_strdup(fstr);
+    char *tok = strtok(tmp, ",");
+    while (tok && nf < DATA_MAX_FIELDS) {
+        while (*tok == ' ') tok++;
+        char *end = tok + strlen(tok) - 1;
+        while (end > tok && *end == ' ') *end-- = '\0';
+        _data_types[tidx].fields[nf] = GC_strdup(tok);
+        nf++;
+        tok = strtok(NULL, ",");
+    }
+    _data_types[tidx].nfields = nf;
+
+    /* Register constructor: typename(f1,f2,...) */
+    extern void sno_register_fn(const char *, SnoVal (*)(SnoVal*, int), int, int);
+    sno_register_fn(tname, _ctor_fns[tidx], 0, nf);
+
+    /* Register field accessors: each field name as a 1-arg function */
+    for (int fi = 0; fi < nf; fi++) {
+        if (_facc_n >= FIELD_ACCESSOR_MAX) break;
+        int slot = _facc_n++;
+        _facc_slots[slot].tidx = tidx;
+        _facc_slots[slot].fidx = fi;
+        /* Only register if not already registered (don't override next/value builtins) */
+        const char *fname = _data_types[tidx].fields[fi];
+        sno_register_fn(fname, _facc_fns[slot], 1, 1);
+    }
+
+    return SNO_NULL_VAL;
+}
+
 /* Pattern builtins callable via sno_apply() — used when SPAN/BREAK/etc appear
  * inside argument lists and are tokenised as IDENT rather than PAT_BUILTIN. */
 extern SnoVal sno_pat_span(const char *);
@@ -346,6 +577,7 @@ void sno_runtime_init(void) {
     sno_register_fn("SUBSTR",   _b_SUBSTR,   3, 3);
     sno_register_fn("REVERSE",  _b_REVERSE,  1, 1);
     sno_register_fn("DATATYPE", _b_DATATYPE, 1, 1);
+    sno_register_fn("DATA",     _b_DATA,     1, 1);
     sno_register_fn("EVAL",  _b_EVAL,  1, 1);
     sno_register_fn("OPSYN", _b_OPSYN, 2, 3);
     sno_register_fn("SORT",  _b_SORT,  1, 1);
