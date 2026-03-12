@@ -386,11 +386,21 @@ static void emit_stmt(Stmt *s, const char *fn) {
 
     /* ---- pure assignment: subject = replacement, no pattern ---- */
     if (!s->pattern && s->replacement) {
-        char rhs[32]; int u=uid(); snprintf(rhs,sizeof rhs,"_v%d",u);
-        E("{ SnoVal %s = ", rhs); emit_expr(s->replacement); E(";\n");
+        int u=uid();
+        E("SnoVal _v%d = ", u); emit_expr(s->replacement); E(";\n");
+        E("int _ok%d = !SNO_IS_FAIL(_v%d);\n", u, u);
+        E("if(_ok%d) {\n", u);
+        char rhs[32]; snprintf(rhs,sizeof rhs,"_v%d",u);
         emit_assign_target_io(s->subject, rhs);
         E("}\n");
-        emit_goto(s->go, fn, 0);
+        /* emit goto using _ok%d for conditional :S/:F branches */
+        if (!s->go) { E("    goto _SNO_NEXT_%d;\n", cur_stmt_next_uid); }
+        else if (s->go->uncond) { emit_goto(s->go, fn, 0); }
+        else {
+            if (s->go->onsuccess) { E("    if(_ok%d) ", u); emit_goto_target(s->go->onsuccess, fn); E(";\n"); }
+            if (s->go->onfailure) { E("    if(!_ok%d) ", u); emit_goto_target(s->go->onfailure, fn); E(";\n"); }
+            E("    goto _SNO_NEXT_%d;\n", cur_stmt_next_uid);
+        }
         return;
     }
 

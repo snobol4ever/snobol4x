@@ -75,14 +75,32 @@ static inline void _snoc_iset(SnoVal nameVal, SnoVal v) {
 
 /* ---- Array / table access ---- */
 static inline SnoVal _snoc_aref(SnoVal arr, SnoVal *keys, int n) {
-    if (n <= 0 || arr.type != SNO_TABLE) return SNO_NULL_VAL;
-    const char *k = sno_to_str(keys[0]);
-    return sno_table_get(arr.tbl, k ? k : "");
+    if (n <= 0) return SNO_FAIL_VAL;
+    if (arr.type == SNO_TABLE) {
+        const char *k = sno_to_str(keys[0]);
+        return sno_table_get(arr.tbl, k ? k : "");
+    }
+    if (arr.type == SNO_ARRAY) {
+        int i = (int)sno_to_int(keys[0]);
+        if (n == 1) return sno_array_get(arr.a, i);
+        int j = (int)sno_to_int(keys[1]);
+        return sno_array_get2(arr.a, i, j);
+    }
+    return SNO_FAIL_VAL;
 }
 static inline void _snoc_aset(SnoVal arr, SnoVal *keys, int n, SnoVal v) {
-    if (n <= 0 || arr.type != SNO_TABLE) return;
-    const char *k = sno_to_str(keys[0]);
-    sno_table_set(arr.tbl, k ? k : "", v);
+    if (n <= 0) return;
+    if (arr.type == SNO_TABLE) {
+        const char *k = sno_to_str(keys[0]);
+        sno_table_set(arr.tbl, k ? k : "", v);
+        return;
+    }
+    if (arr.type == SNO_ARRAY) {
+        int i = (int)sno_to_int(keys[0]);
+        if (n == 1) { sno_array_set(arr.a, i, v); return; }
+        int j = (int)sno_to_int(keys[1]);
+        sno_array_set2(arr.a, i, j, v);
+    }
 }
 static inline SnoVal _snoc_index(SnoVal base, SnoVal *keys, int n) {
     return _snoc_aref(base, keys, n);
