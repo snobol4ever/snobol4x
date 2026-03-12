@@ -633,15 +633,31 @@ static void parse_proto(const char *proto, FnDef *fn) {
     }
 }
 
-/* Check if a statement is DEFINE('proto') or DEFINE('proto','label') */
+/* Flatten a string-literal expression (E_STR or E_CONCAT chain of E_STR)
+ * into a single static buffer.  Returns NULL if any node is not a string. */
+static char _define_proto_buf[4096];
+static const char *flatten_str_expr(Expr *e) {
+    if (!e) return NULL;
+    if (e->kind == E_STR) return e->sval;
+    if (e->kind == E_CONCAT) {
+        const char *l = flatten_str_expr(e->left);
+        const char *r = flatten_str_expr(e->right);
+        if (!l || !r) return NULL;
+        snprintf(_define_proto_buf, sizeof _define_proto_buf, "%s%s", l, r);
+        return _define_proto_buf;
+    }
+    return NULL;
+}
+
+/* Check if a statement is DEFINE('proto') or DEFINE('proto' 'locals' ...)
+ * The first argument may be a chain of concatenated string literals. */
 static const char *stmt_define_proto(Stmt *s) {
     if (!s->subject) return NULL;
     Expr *e = s->subject;
     if (e->kind != E_CALL) return NULL;
     if (strcasecmp(e->sval,"DEFINE")!=0) return NULL;
     if (e->nargs < 1) return NULL;
-    if (e->args[0]->kind != E_STR) return NULL;
-    return e->args[0]->sval;
+    return flatten_str_expr(e->args[0]);
 }
 
 static void collect_functions(Program *prog) {
