@@ -350,8 +350,6 @@ static void emit_goto_target(const char *label, const char *fn) {
         E("goto _SNO_NEXT_%d", cur_stmt_next_uid); return;
     }
     if (!in_main && !label_is_in_fn_body(label, fn)) {
-        /* Label is not inside this function's body at all — it's a main-scope label.
-         * Can't jump there from a C function; emit fallthrough. */
         E("goto _SNO_NEXT_%d", cur_stmt_next_uid); return;
     }
     E("goto _L%s", cs_label(label));
@@ -704,16 +702,10 @@ static void collect_functions(Program *prog) {
 static int is_body_boundary(const char *label, const char *cur_fn) {
     if (!label) return 0;
     for (int i = 0; i < fn_count; i++) {
-        /* (a) another function's entry label */
         if (strcasecmp(fn_table[i].name, label) == 0 &&
             strcasecmp(fn_table[i].name, cur_fn) != 0) return 1;
-        /* (b) any function's end_label */
         if (fn_table[i].end_label &&
-            strcasecmp(fn_table[i].end_label, label) == 0) {
-            fprintf(stderr, "DEBUG boundary HIT: label=%s cur_fn=%s via fn=%s end_label=%s\n",
-                    label, cur_fn, fn_table[i].name, fn_table[i].end_label);
-            return 1;
-        }
+            strcasecmp(fn_table[i].end_label, label) == 0) return 1;
     }
     return 0;
 }
@@ -797,16 +789,12 @@ static void emit_fn(FnDef *fn, Program *prog) {
     E("\n");
 
     if (fn->nbody_starts == 0) {
-        fprintf(stderr, "DEBUG emit_fn %s: nbody_starts=0, no body\n", fn->name);
         E("    goto _SNO_RETURN_%s;\n", fn->name);
     } else {
-        fprintf(stderr, "DEBUG emit_fn %s: nbody_starts=%d\n", fn->name, fn->nbody_starts);
         Stmt *bs = fn->body_starts[fn->nbody_starts - 1]; /* last DEFINE wins */
         for (Stmt *s = bs; s; s = s->next) {
             if (s->is_end) break;
             if (s != bs && is_body_boundary(s->label, fn->name)) break;
-            if (s->label && strcasecmp(fn->name,"refs")==0)
-                fprintf(stderr, "DEBUG refs body stmt label=%s\n", s->label);
             cur_stmt_next_uid = uid();
             emit_stmt(s, fn->name);
             E("_SNO_NEXT_%d:;\n", cur_stmt_next_uid);
@@ -896,12 +884,8 @@ void snoc_emit(Program *prog, FILE *f) {
     /* Phase 1: collect variable names and function definitions */
     collect_symbols(prog);
     collect_functions(prog);
-    /* DEBUG: dump end_labels */
-    for (int i=0; i<fn_count; i++)
-        fprintf(stderr, "FN[%d] %s end_label=%s\n", i, fn_table[i].name,
-                fn_table[i].end_label ? fn_table[i].end_label : "(null)");
 
-    emit_header();
+    /* Phase 2: emit */    emit_header();
     emit_global_var_decls();
     emit_fn_forwards();
 
