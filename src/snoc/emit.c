@@ -517,6 +517,7 @@ typedef struct {
     Stmt  *body_starts[BODY_MAX]; /* ALL entry points for this function */
     int    nbody_starts;
     Stmt  *define_stmt;        /* the last DEFINE(...) statement */
+    char  *end_label;          /* label that ends the body (from DEFINE's goto) */
 } FnDef;
 
 static FnDef fn_table[FN_MAX];
@@ -528,6 +529,36 @@ static int fn_by_label(const char *label) {
     for (int i=0; i<fn_count; i++)
         if (strcasecmp(fn_table[i].name, label)==0) return i;
     return -1;
+}
+
+/* Global boundary-label set: every function entry label AND every function
+ * end label.  A function body stops when it hits ANY boundary label that is
+ * not its own entry label. Built once after collect_functions() completes. */
+#define BOUNDARY_MAX (FN_MAX * 2 + 8)
+static char *boundary_labels[BOUNDARY_MAX];
+static int   boundary_count = 0;
+
+static void boundary_add(const char *lbl) {
+    if (!lbl || !*lbl) return;
+    for (int i = 0; i < boundary_count; i++)
+        if (strcasecmp(boundary_labels[i], lbl) == 0) return;
+    if (boundary_count < BOUNDARY_MAX)
+        boundary_labels[boundary_count++] = strdup(lbl);
+}
+
+static int is_boundary_label(const char *lbl) {
+    if (!lbl) return 0;
+    for (int i = 0; i < boundary_count; i++)
+        if (strcasecmp(boundary_labels[i], lbl) == 0) return 1;
+    return 0;
+}
+
+static void build_boundary_labels(void) {
+    boundary_count = 0;
+    for (int i = 0; i < fn_count; i++) {
+        boundary_add(fn_table[i].name);       /* entry label */
+        boundary_add(fn_table[i].end_label);  /* end label (may be NULL) */
+    }
 }
 
 /* Return fn index if stmt is the DEFINE(...) call for it, else -1 */
@@ -602,6 +633,25 @@ static void collect_functions(Program *prog) {
         memset(fn, 0, sizeof *fn);
         parse_proto(proto, fn);
         fn->define_stmt = s;
+        /* Extract end-of-body label from DEFINE's goto.
+         * Two forms:
+         *   1. DEFINE('fn()')  :(FnEnd)   -- goto on same statement
+         *   2. DEFINE('fn()')             -- goto on the NEXT standalone statement
+         *      :(FnEnd)
+         */
+        fn->end_label = NULL;
+        if (s->go) {
+            if (s->go->uncond)   fn->end_label = strdup(s->go->uncond);
+            else if (s->go->onsuccess) fn->end_label = strdup(s->go->onsuccess);
+        }
+        if (!fn->end_label && s->next) {
+            Stmt *nxt = s->next;
+            /* A standalone goto: no label being defined here, no subject, just a goto */
+            if (!nxt->subject && !nxt->pattern && !nxt->replacement
+                    && nxt->go && nxt->go->uncond) {
+                fn->end_label = strdup(nxt->go->uncond);
+            }
+        }
         /* Deduplicate: if this name already exists, overwrite it */
         int found = -1;
         for (int i=0; i<fn_count; i++)
@@ -630,19 +680,53 @@ static void collect_functions(Program *prog) {
  * within any body region of function fn_name.
  * If fn_name is NULL, return 1 if label appears in ANY function's body.
  * ============================================================ */
-static int label_is_in_fn_body(const char *label, const char *fn_name) {
-    for (int i=0; i<fn_count; i++) {
-        if (fn_name && strcasecmp(fn_table[i].name, fn_name)!=0) continue;
-        for (int b=0; b<fn_table[i].nbody_starts; b++) {
+/* ============================================================
+ * Body boundary rule:
+ *   A function body stops when it hits a statement whose label is:
+ *   (a) another DEFINE'd function's entry label, OR
+ *   (b) a known end_label of any function (the closing marker).
+ *   Plain internal labels (io1, assign2, etc.) do NOT stop the body.
+ * ============================================================ */
+
+static int is_body_boundary(const char *label, const char *cur_fn) {
+    if (!label) return 0;
+    for (int i = 0; i < fn_count; i++) {
+        /* (a) another function's entry label */
+        if (strcasecmp(fn_table[i].name, label) == 0 &&
+            strcasecmp(fn_table[i].name, cur_fn) != 0) return 1;
+        /* (b) any function's end_label */
+        if (fn_table[i].end_label &&
+            strcasecmp(fn_table[i].end_label, label) == 0) return 1;
+    }
+    return 0;
+}
+
+/* Return 1 if stmt s is inside the body of fn_name (NULL = any fn) */
+static int stmt_in_fn_body(Stmt *s, const char *fn_name) {
+    for (int i = 0; i < fn_count; i++) {
+        if (fn_name && strcasecmp(fn_table[i].name, fn_name) != 0) continue;
+        for (int b = 0; b < fn_table[i].nbody_starts; b++) {
             Stmt *bs = fn_table[i].body_starts[b];
             for (Stmt *t = bs; t; t = t->next) {
                 if (t->is_end) break;
-                if (t != bs && t->label) {
-                    int other = fn_by_label(t->label);
-                    if (other >= 0 && strcasecmp(fn_table[other].name, fn_table[i].name) != 0)
-                        break;
-                }
-                if (t->label && strcasecmp(t->label, label)==0) return 1;
+                if (t != bs && is_body_boundary(t->label, fn_table[i].name)) break;
+                if (t == s) return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+/* label_is_in_fn_body: used by emit_goto_target to detect cross-fn gotos */
+static int label_is_in_fn_body(const char *label, const char *fn_name) {
+    for (int i = 0; i < fn_count; i++) {
+        if (fn_name && strcasecmp(fn_table[i].name, fn_name) != 0) continue;
+        for (int b = 0; b < fn_table[i].nbody_starts; b++) {
+            Stmt *bs = fn_table[i].body_starts[b];
+            for (Stmt *t = bs; t; t = t->next) {
+                if (t->is_end) break;
+                if (t != bs && is_body_boundary(t->label, fn_table[i].name)) break;
+                if (t->label && strcasecmp(t->label, label) == 0) return 1;
             }
         }
     }
@@ -658,32 +742,12 @@ static void emit_header(void) {
 }
 
 /* ============================================================
- * Emit global variable declarations (main-scope statics)
- * Only globals — function args/locals are emitted per-function.
+ * Emit global variable declarations
  * ============================================================ */
-
-/* Return 1 if name is an arg or local of any known function */
-static int is_fn_local(const char *name) {
-    for (int i=0; i<fn_count; i++) {
-        FnDef *fn = &fn_table[i];
-        /* function name itself is a local (return value variable) */
-        if (strcasecmp(fn->name, name)==0) return 1;
-        for (int j=0; j<fn->nargs; j++)
-            if (strcasecmp(fn->args[j], name)==0) return 1;
-        for (int j=0; j<fn->nlocals; j++)
-            if (strcasecmp(fn->locals[j], name)==0) return 1;
-    }
-    return 0;
-}
-
 static void emit_global_var_decls(void) {
     E("/* --- global SNOBOL4 variables --- */\n");
-    for (int i=0; i<sym_count; i++) {
-        /* All SNOBOL4 variables are global.
-         * Function args/locals emit local C vars that shadow the global
-         * within the function body -- correct SNOBOL4 semantics. */
+    for (int i = 0; i < sym_count; i++)
         E("static SnoVal %s = {0};\n", cs(sym_table[i]));
-    }
     E("\n");
 }
 
@@ -692,46 +756,36 @@ static void emit_global_var_decls(void) {
  * ============================================================ */
 static void emit_fn(FnDef *fn, Program *prog) {
     (void)prog;
-    lreg_reset();                /* fresh label registry per function */
+    lreg_reset();
     cur_fn_name = fn->name;
     E("static SnoVal _sno_fn_%s(SnoVal *_args, int _nargs) {\n", fn->name);
 
-    /* Per-function jmp_buf for ABORT handling */
     E("    jmp_buf _fn_abort_jmp;\n");
     E("    if (setjmp(_fn_abort_jmp) != 0) return SNO_FAIL_VAL;\n");
     E("    sno_push_abort_handler(&_fn_abort_jmp);\n\n");
 
-    /* Return-value variable (same name as function) — only emit if no arg has same name */
+    /* Return-value variable — skip if an arg has the same name */
     {
-        int name_clashes_with_arg = 0;
-        for (int i=0; i<fn->nargs; i++)
-            if (strcasecmp(fn->args[i], fn->name)==0) { name_clashes_with_arg=1; break; }
-        if (!name_clashes_with_arg)
+        int clash = 0;
+        for (int i = 0; i < fn->nargs; i++)
+            if (strcasecmp(fn->args[i], fn->name) == 0) { clash = 1; break; }
+        if (!clash)
             E("    SnoVal %s = {0}; /* return value */\n", cs(fn->name));
     }
-
-    /* Args — bound from _args[] */
-    for (int i=0; i<fn->nargs; i++)
+    for (int i = 0; i < fn->nargs; i++)
         E("    SnoVal %s = (_nargs>%d)?_args[%d]:SNO_NULL_VAL;\n",
           cs(fn->args[i]), i, i);
-
-    /* Locals */
-    for (int i=0; i<fn->nlocals; i++)
+    for (int i = 0; i < fn->nlocals; i++)
         E("    SnoVal %s = {0};\n", cs(fn->locals[i]));
     E("\n");
 
-    /* Body statements — use LAST body only (last DEFINE wins) */
     if (fn->nbody_starts == 0) {
         E("    goto _SNO_RETURN_%s;\n", fn->name);
     } else {
-        Stmt *bs = fn->body_starts[fn->nbody_starts - 1];  /* last = winning */
+        Stmt *bs = fn->body_starts[fn->nbody_starts - 1]; /* last DEFINE wins */
         for (Stmt *s = bs; s; s = s->next) {
             if (s->is_end) break;
-            if (s != bs && s->label) {
-                int other = fn_by_label(s->label);
-                if (other >= 0 && strcasecmp(fn_table[other].name, fn->name) != 0)
-                    break;
-            }
+            if (s != bs && is_body_boundary(s->label, fn->name)) break;
             cur_stmt_next_uid = uid();
             emit_stmt(s, fn->name);
             E("_SNO_NEXT_%d:;\n", cur_stmt_next_uid);
@@ -752,7 +806,7 @@ static void emit_fn(FnDef *fn, Program *prog) {
  * Emit forward declarations for all functions
  * ============================================================ */
 static void emit_fn_forwards(void) {
-    for (int i=0; i<fn_count; i++)
+    for (int i = 0; i < fn_count; i++)
         E("static SnoVal _sno_fn_%s(SnoVal *_args, int _nargs);\n",
           fn_table[i].name);
     E("\n");
@@ -762,24 +816,7 @@ static void emit_fn_forwards(void) {
  * Main entry point emitter
  * ============================================================ */
 static int stmt_is_in_any_fn_body(Stmt *s) {
-    for (int i=0; i<fn_count; i++) {
-        if (fn_table[i].nbody_starts == 0) continue;
-        /* ALL body regions are owned by this function — even the non-winning ones
-         * are dead code but should not leak into main */
-        for (int b=0; b<fn_table[i].nbody_starts; b++) {
-            Stmt *bs = fn_table[i].body_starts[b];
-            for (Stmt *t = bs; t; t = t->next) {
-                if (t->is_end) break;
-                if (t != bs && t->label) {
-                    int other = fn_by_label(t->label);
-                    if (other >= 0 && strcasecmp(fn_table[other].name, fn_table[i].name) != 0)
-                        break;
-                }
-                if (t == s) return 1;
-            }
-        }
-    }
-    return 0;
+    return stmt_in_fn_body(s, NULL);
 }
 
 static void emit_main(Program *prog) {

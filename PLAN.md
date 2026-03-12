@@ -255,6 +255,40 @@ src/runtime/engine.c                         engine_match_ex (required)
 
 ---
 
+## §12 — SIL / CSNOBOL4 execution model (Lon, 2026-03-12)
+
+**How CSNOBOL4 actually works in memory:**
+
+CSNOBOL4's `CODE()` function compiles a SNOBOL4 program into a single flat
+array (sequence) of nodes in memory. A **label is just an index** into that
+array — nothing more. Execution proceeds node-by-node, sequentially.
+
+**The body-boundary rule follows directly from this:**
+A function's body is the contiguous run of nodes starting at its entry label
+and ending at the **next label** encountered in the source — any label at all,
+regardless of what it names. There is no explicit "end of function" marker.
+Execution **runs off a cliff** at the next label; that cliff is where the next
+block begins.
+
+**Implication for snoc / emit.c:**
+The correct rule for carving out a C function from SNOBOL4 source is:
+
+> Emit statements from the entry label up to (but not including) the next
+> labeled statement. Stop at ANY label — function entry, function end-label,
+> intermediate label, anything.
+
+This is why the DEFINE + `:(FnEnd)` idiom works: `FnEnd` is just the next
+label in source order, so it naturally terminates the body. It does NOT need
+to be stored or parsed separately. The `end_label` field in `FnDef` is
+**unnecessary** under this model and should be removed.
+
+**The DEFINE / end-label pattern is a convention, not a mechanism.**
+Programs can have `DEFINE DEFINE DEFINE … code code code END` with no
+per-DEFINE end-label at all — and SIL handles it identically because
+label-to-label is the only boundary rule.
+
+---
+
 ## §11 — SNOBOL4 semantics quick reference
 
 - `DEFINE('fn(a,b)loc1')` — registers fn; body starts at SNOBOL4 label `fn`
