@@ -31,7 +31,58 @@ static void E(const char *fmt, ...) {
     va_list ap; va_start(ap,fmt); vfprintf(out,fmt,ap); va_end(ap);
 }
 
-/* C-safe version of a SNOBOL4 name */
+/* C-safe version of a SNOBOL4 name — always unique per call (heap-allocated) */
+static char *cs_alloc(const char *s) {
+    char base[512]; int j=0;
+    base[j++]='_';
+    for (int i=0; s[i]&&j<510; i++) {
+        unsigned char c=(unsigned char)s[i];
+        base[j++]=(isalnum(c)||c=='_')?(char)c:'_';
+    }
+    base[j]='\0';
+    return strdup(base);
+}
+
+/* Label registry — per-function, reset at the start of each function body.
+ * Detects collisions and appends disambiguation suffix.
+ * Maps original SNOBOL4 label → unique C label within the current function. */
+#define LREG_MAX 8192
+typedef struct { char *orig; char *csafe; } LReg;
+static LReg  lreg[LREG_MAX];
+static int   lreg_count = 0;
+
+static void lreg_reset(void) {
+    for (int i=0; i<lreg_count; i++) { free(lreg[i].orig); free(lreg[i].csafe); }
+    lreg_count = 0;
+}
+
+/* cs_label: return unique C label for SNOBOL4 label s within current function */
+static const char *cs_label(const char *s) {
+    /* Return previously registered entry */
+    for (int i=0; i<lreg_count; i++)
+        if (strcmp(lreg[i].orig, s)==0) return lreg[i].csafe;
+    /* Compute base C name */
+    char *base = cs_alloc(s);
+    /* Find unique candidate (no collision with existing csafe entries) */
+    char candidate[520];
+    strcpy(candidate, base);
+    int suffix=2, collision=1;
+    while (collision) {
+        collision=0;
+        for (int i=0; i<lreg_count; i++)
+            if (strcmp(lreg[i].csafe, candidate)==0) { collision=1; break; }
+        if (collision) snprintf(candidate, sizeof candidate, "%s_%d", base, suffix++);
+    }
+    free(base);
+    if (lreg_count < LREG_MAX) {
+        lreg[lreg_count].orig  = strdup(s);
+        lreg[lreg_count].csafe = strdup(candidate);
+        lreg_count++;
+    }
+    return lreg[lreg_count-1].csafe;
+}
+
+/* cs: C-safe name for variables (not labels) — simple, no registry */
 static char csafe_buf[512];
 static const char *cs(const char *s) {
     int i=0, j=0;
@@ -249,17 +300,48 @@ static void emit_assign_target(Expr *lhs, const char *rhs_str) {
     }
 }
 
+/* Current function being emitted (NULL = main) */
+static const char *cur_fn_name = NULL;
+
+/* Return 1 if label is defined within the body region of fn_name.
+ * This is used to detect cross-function goto references. */
+static int label_is_in_fn_body(const char *label, const char *fn_name);
+
+/* Forward: current stmt next uid for fallthrough */
+/* (cur_stmt_next_uid already declared above) */
+
 /* ============================================================
  * Emit goto field
  * ============================================================ */
 
-/* Emit a single branch target — handles RETURN/FRETURN/NRETURN/END specially */
+/* Emit a single branch target — handles RETURN/FRETURN/NRETURN/END specially.
+ * Also handles:
+ *   "error"     -> FRETURN (beauty.sno idiom: :F(error) means fail the function)
+ *   "_COMPUTED" -> computed-goto stub (just fall through)
+ *   Cross-fn labels -> fallthrough (label is in a different function's body)
+ * All SNOBOL4 label -> C label mappings go through cs_label() for uniqueness.
+ */
 static void emit_goto_target(const char *label, const char *fn) {
-    if      (strcasecmp(label,"RETURN") ==0) E("goto _SNO_RETURN_%s", fn);
-    else if (strcasecmp(label,"FRETURN")==0) E("goto _SNO_FRETURN_%s", fn);
-    else if (strcasecmp(label,"NRETURN")==0) E("goto _SNO_FRETURN_%s", fn); /* NRETURN = FRETURN */
-    else if (strcasecmp(label,"END")    ==0) E("goto _SNO_END");
-    else                                     E("goto _L%s", cs(label));
+    if      (strcasecmp(label,"RETURN") ==0) { E("goto _SNO_RETURN_%s", fn); return; }
+    else if (strcasecmp(label,"FRETURN")==0) { E("goto _SNO_FRETURN_%s", fn); return; }
+    else if (strcasecmp(label,"NRETURN")==0) { E("goto _SNO_FRETURN_%s", fn); return; }
+    else if (strcasecmp(label,"END")    ==0) {
+        /* :(END) from inside a function - can't jump to _SNO_END in main; treat as FRETURN */
+        if (fn && strcasecmp(fn,"main")!=0) { E("goto _SNO_FRETURN_%s", fn); return; }
+        E("goto _SNO_END"); return;
+    }
+    else if (strcasecmp(label,"error")  ==0) { E("goto _SNO_FRETURN_%s", fn); return; }
+    else if (strcasecmp(label,"$COMPUTED")==0 || strcasecmp(label,"_COMPUTED")==0) {
+        /* Computed goto not supported - treat as fallthrough */
+        E("goto _SNO_NEXT_%d", cur_stmt_next_uid); return;
+    }
+    /* Check if label lives in a different function's body (cross-fn goto in DEFINE idiom).
+     * If the label belongs to some function's body but NOT to fn's body, it's a skip-over
+     * goto used in the DEFINE idiom.  Replace with fallthrough. */
+    if (label_is_in_fn_body(label, NULL) && !label_is_in_fn_body(label, fn)) {
+        E("goto _SNO_NEXT_%d", cur_stmt_next_uid); return;
+    }
+    E("goto _L%s", cs_label(label));
 }
 
 static void emit_goto(SnoGoto *g, const char *fn, int result_ok) {
@@ -283,7 +365,7 @@ static void emit_goto(SnoGoto *g, const char *fn, int result_ok) {
  * ============================================================ */
 static void emit_stmt(Stmt *s, const char *fn) {
     E("/* line %d */\n", s->lineno);
-    if (s->label) E("_L%s:;\n", cs(s->label));
+    if (s->label) E("_L%s:;\n", cs_label(s->label));
 
     /* label-only statement */
     if (!s->subject) {
@@ -544,6 +626,30 @@ static void collect_functions(Program *prog) {
 }
 
 /* ============================================================
+ * label_is_in_fn_body: return 1 if 'label' (a SNOBOL4 label) appears
+ * within any body region of function fn_name.
+ * If fn_name is NULL, return 1 if label appears in ANY function's body.
+ * ============================================================ */
+static int label_is_in_fn_body(const char *label, const char *fn_name) {
+    for (int i=0; i<fn_count; i++) {
+        if (fn_name && strcasecmp(fn_table[i].name, fn_name)!=0) continue;
+        for (int b=0; b<fn_table[i].nbody_starts; b++) {
+            Stmt *bs = fn_table[i].body_starts[b];
+            for (Stmt *t = bs; t; t = t->next) {
+                if (t->is_end) break;
+                if (t != bs && t->label) {
+                    int other = fn_by_label(t->label);
+                    if (other >= 0 && strcasecmp(fn_table[other].name, fn_table[i].name) != 0)
+                        break;
+                }
+                if (t->label && strcasecmp(t->label, label)==0) return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+/* ============================================================
  * Emit header
  * ============================================================ */
 static void emit_header(void) {
@@ -573,8 +679,10 @@ static int is_fn_local(const char *name) {
 static void emit_global_var_decls(void) {
     E("/* --- global SNOBOL4 variables --- */\n");
     for (int i=0; i<sym_count; i++) {
-        if (!is_fn_local(sym_table[i]))
-            E("static SnoVal %s = {0};\n", cs(sym_table[i]));
+        /* All SNOBOL4 variables are global.
+         * Function args/locals emit local C vars that shadow the global
+         * within the function body -- correct SNOBOL4 semantics. */
+        E("static SnoVal %s = {0};\n", cs(sym_table[i]));
     }
     E("\n");
 }
@@ -584,6 +692,8 @@ static void emit_global_var_decls(void) {
  * ============================================================ */
 static void emit_fn(FnDef *fn, Program *prog) {
     (void)prog;
+    lreg_reset();                /* fresh label registry per function */
+    cur_fn_name = fn->name;
     E("static SnoVal _sno_fn_%s(SnoVal *_args, int _nargs) {\n", fn->name);
 
     /* Per-function jmp_buf for ABORT handling */
@@ -591,8 +701,14 @@ static void emit_fn(FnDef *fn, Program *prog) {
     E("    if (setjmp(_fn_abort_jmp) != 0) return SNO_FAIL_VAL;\n");
     E("    sno_push_abort_handler(&_fn_abort_jmp);\n\n");
 
-    /* Return-value variable (same name as function) */
-    E("    SnoVal %s = {0}; /* return value */\n", cs(fn->name));
+    /* Return-value variable (same name as function) — only emit if no arg has same name */
+    {
+        int name_clashes_with_arg = 0;
+        for (int i=0; i<fn->nargs; i++)
+            if (strcasecmp(fn->args[i], fn->name)==0) { name_clashes_with_arg=1; break; }
+        if (!name_clashes_with_arg)
+            E("    SnoVal %s = {0}; /* return value */\n", cs(fn->name));
+    }
 
     /* Args — bound from _args[] */
     for (int i=0; i<fn->nargs; i++)
@@ -667,6 +783,8 @@ static int stmt_is_in_any_fn_body(Stmt *s) {
 }
 
 static void emit_main(Program *prog) {
+    lreg_reset();
+    cur_fn_name = "main";
     E("int main(void) {\n");
     E("    sno_init();\n\n");
 
