@@ -165,15 +165,16 @@ check('comments skipped, 2 stmts', len(prog.stmts) == 2)
 # ---------------------------------------------------------------------------
 print('\n[13. Integration: beauty.sno (full -INCLUDE expansion)]')
 if os.path.exists(BEAUTY_RUN):
-    prog    = parse_file(BEAUTY_RUN)
+    INC_DIR = os.path.abspath(os.path.join(ROOT, '..', 'SNOBOL4-corpus', 'programs', 'inc'))
+    prog    = parse_file(BEAUTY_RUN, include_dirs=[INC_DIR])
     labels  = [s.label for s in prog.stmts if s.label]
     empties = [s for s in prog.stmts
                if s.subject is None and s.pattern is None
                and s.replacement is None and s.goto is None
                and s.label is None]
 
-    check('1104 statements total',   len(prog.stmts) == 1104)
-    check('316 labels',              len(labels) == 316)
+    check('1214 statements total',   len(prog.stmts) == 1214)
+    check('311 labels',              len(labels) == 311)
     check('0 empty (parse failures)',len(empties) == 0)
 
     label_set = set(labels)

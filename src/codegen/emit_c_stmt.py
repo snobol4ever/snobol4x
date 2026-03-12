@@ -1308,10 +1308,12 @@ if __name__ == '__main__':
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'parser'))
     from sno_parser import parse_file
 
-    if len(sys.argv) < 2:
-        print('Usage: emit_c_stmt.py <file.sno>', file=sys.stderr)
-        sys.exit(1)
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument('source')
+    ap.add_argument('-I', dest='include_dirs', action='append', default=[])
+    args = ap.parse_args()
 
-    prog = parse_file(sys.argv[1])
+    prog = parse_file(args.source, include_dirs=args.include_dirs)
     print(f'/* Parsed {len(prog.stmts)} statements */', file=sys.stderr)
     print(emit_program(prog))

@@ -188,7 +188,7 @@ def _tokenise_line(line, lineno, tokens):
         i += 1
 
 
-def tokenise(source, base_dir='.'):
+def tokenise(source, base_dir='.', include_dirs=None):
     """Tokenise full SNOBOL4 source with -INCLUDE expansion.
     Returns list of Token (NEWLINE-separated logical lines).
     """
@@ -202,13 +202,21 @@ def tokenise(source, base_dir='.'):
         # -INCLUDE directive
         m = re.match(r'^-INCLUDE\s+[\'"](.+?)[\'"]\s*$', line, re.IGNORECASE)
         if m:
-            inc_file = os.path.join(base_dir, m.group(1))
-            try:
+            inc_name = m.group(1)
+            search_dirs = [base_dir] + (include_dirs or [])
+            inc_file = None
+            for d in search_dirs:
+                candidate = os.path.join(d, inc_name)
+                if os.path.exists(candidate):
+                    inc_file = candidate
+                    break
+            if inc_file:
                 inc_src = open(inc_file).read()
-            except FileNotFoundError:
-                # Try same dir as source
+                inc_base = os.path.dirname(inc_file)
+            else:
                 inc_src = ''
-            inc_tokens_sub = tokenise(inc_src, os.path.dirname(inc_file) or base_dir)
+                inc_base = base_dir
+            inc_tokens_sub = tokenise(inc_src, inc_base, include_dirs)
             # Recursion returns a flat token list; just extend
             logical_lines.append(('__INCLUDE__', lineno, inc_tokens_sub))
             i += 1
@@ -1038,18 +1046,18 @@ def _parse_pattern(toks, lineno):
 # Top-level entry point
 # ---------------------------------------------------------------------------
 
-def parse_file(path):
+def parse_file(path, include_dirs=None):
     """Parse a SNOBOL4 source file, returning a Program."""
     src      = open(path).read()
     base_dir = os.path.dirname(os.path.abspath(path))
-    tokens   = tokenise(src, base_dir)
+    tokens   = tokenise(src, base_dir, include_dirs)
     parser   = Parser(tokens)
     return parser.parse_program()
 
 
-def parse_source(src, base_dir='.'):
+def parse_source(src, base_dir='.', include_dirs=None):
     """Parse SNOBOL4 source string, returning a Program."""
-    tokens = tokenise(src, base_dir)
+    tokens = tokenise(src, base_dir, include_dirs)
     parser = Parser(tokens)
     return parser.parse_program()
 
