@@ -1,7 +1,7 @@
 /*
  * snobol4_inc.h — hardcoded SNOBOL4 .inc library functions
  *
- * These are C implementations of the .inc files used by beauty_run.sno:
+ * These are C implementations of the .inc files used by beauty.sno:
  *   global.inc  — global variables (digits, tab, nl, ucase/lcase alphabets)
  *   is.inc      — IsSpitbol, IsSnobol4, IsType
  *   FENCE.inc   — FENCE primitive (already in pattern engine)
@@ -100,7 +100,7 @@ SnoVal sno_T8Trace(SnoVal lvl, SnoVal str, SnoVal ofs);
 SnoVal sno_T8Pos(SnoVal ofs, SnoVal map);
 
 /* -------------------------------------------------------------------------
- * Additional helpers used in beauty_run.sno
+ * Additional helpers used in beauty.sno
  * ---------------------------------------------------------------------- */
 SnoVal sno_LEQ(SnoVal a, SnoVal b);   /* lexicographic LE */
 SnoVal sno_LGT(SnoVal a, SnoVal b);   /* lexicographic GT */
@@ -109,6 +109,6 @@ SnoVal sno_LLT(SnoVal a, SnoVal b);
 SnoVal sno_LLE(SnoVal a, SnoVal b);
 SnoVal sno_LNE(SnoVal a, SnoVal b);
 
-/* ss() and pp() are defined in beautiful.c (compiled from beauty_run.sno) */
+/* ss() and pp() are defined in beautiful.c (compiled from beauty.sno) */
 
 #endif /* SNOBOL4_INC_H */

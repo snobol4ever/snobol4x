@@ -3,7 +3,7 @@ oracle_sprint20_parser.py — Sprint 20 parser oracle
 
 Tests the full SNOBOL4 statement parser (sno_parser.py) against:
   1. Unit tests for each statement structure
-  2. Integration: beauty_run.sno parses 1104/316/0 (stmts/labels/failures)
+  2. Integration: beauty.sno parses 1104/316/0 (stmts/labels/failures)
 """
 
 import sys
@@ -17,7 +17,7 @@ from sno_parser import parse_source, parse_file
 from ir import Expr, PatExpr, Goto, Stmt, Program
 
 BEAUTY_RUN = os.path.abspath(os.path.join(ROOT, '..', 'SNOBOL4-corpus',
-                              'programs', 'inc', 'beauty_run.sno'))
+                              'programs', 'beauty', 'beauty.sno'))
 
 passed = 0
 failed = 0
@@ -163,7 +163,7 @@ prog = parse(src)
 check('comments skipped, 2 stmts', len(prog.stmts) == 2)
 
 # ---------------------------------------------------------------------------
-print('\n[13. Integration: beauty_run.sno (full -INCLUDE expansion)]')
+print('\n[13. Integration: beauty.sno (full -INCLUDE expansion)]')
 if os.path.exists(BEAUTY_RUN):
     prog    = parse_file(BEAUTY_RUN)
     labels  = [s.label for s in prog.stmts if s.label]

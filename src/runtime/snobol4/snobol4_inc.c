@@ -1,7 +1,7 @@
 /*
  * snobol4_inc.c — C implementations of SNOBOL4 .inc library functions
  *
- * Implements the library used by beauty_run.sno:
+ * Implements the library used by beauty.sno:
  *   global, is, io, case, assign, match, Gen, Qize, ShiftReduce, Tree, Stack
  */
 
@@ -300,7 +300,7 @@ SnoVal sno_Qize(SnoVal s) {
 extern SnoVal sno_field_get(SnoVal obj, const char *field);
 
 SnoVal sno_Shift(SnoVal t_arg) {
-    /* Shift(t, v) — but in beauty_run.sno it's called as Shift('tag', value) */
+    /* Shift(t, v) — but in beauty.sno it's called as Shift('tag', value) */
     /* For now t_arg is the tree type tag, value is empty */
     SnoVal s = sno_make_tree(t_arg, SNO_STR_VAL(""), SNO_INT_VAL(0), SNO_NULL_VAL);
     sno_push_val(s);
@@ -336,7 +336,7 @@ SnoVal sno_XDump(SnoVal x) { (void)x; return SNO_NULL_VAL; }
 
 /* =========================================================================
  * omega.inc / trace.inc: TV, TW, TX, TY, TZ, T8Trace, T8Pos
- * All are no-ops when doDebug == 0 (beauty_run.sno sets doDebug = 0).
+ * All are no-ops when doDebug == 0 (beauty.sno sets doDebug = 0).
  * ===================================================================== */
 
 SnoVal sno_TV(SnoVal lvl, SnoVal pat, SnoVal name) { return pat; }
