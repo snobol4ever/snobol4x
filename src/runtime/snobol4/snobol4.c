@@ -202,6 +202,15 @@ static SnoVal _b_DATATYPE(SnoVal *a, int n) {
     return SNO_STR_VAL((char*)sno_datatype(a[0]));
 }
 
+/* EVAL / OPSYN / SORT wrappers — file scope required */
+extern SnoVal sno_eval(SnoVal);
+extern SnoVal sno_opsyn(SnoVal, SnoVal, SnoVal);
+extern SnoVal sno_sort_fn(SnoVal);
+static SnoVal _b_EVAL(SnoVal *a, int n)  { return sno_eval(n>0?a[0]:SNO_NULL_VAL); }
+static SnoVal _b_OPSYN(SnoVal *a, int n) {
+    return sno_opsyn(n>0?a[0]:SNO_NULL_VAL,n>1?a[1]:SNO_NULL_VAL,n>2?a[2]:SNO_NULL_VAL); }
+static SnoVal _b_SORT(SnoVal *a, int n)  { return sno_sort_fn(n>0?a[0]:SNO_NULL_VAL); }
+
 /* Sprint 23: counter stack and tree field accessors as callable SnoVal functions */
 static SnoVal _b_nPush(SnoVal *a, int n) {
     (void)a; (void)n;
@@ -290,7 +299,9 @@ void sno_runtime_init(void) {
     sno_register_fn("SUBSTR",   _b_SUBSTR,   3, 3);
     sno_register_fn("REVERSE",  _b_REVERSE,  1, 1);
     sno_register_fn("DATATYPE", _b_DATATYPE, 1, 1);
-    /* Sprint 23: counter stack and tree field accessors */
+    sno_register_fn("EVAL",  _b_EVAL,  1, 1);
+    sno_register_fn("OPSYN", _b_OPSYN, 2, 3);
+    sno_register_fn("SORT",  _b_SORT,  1, 1);
     sno_register_fn("nPush",    _b_nPush,    0, 0);
     sno_register_fn("nInc",     _b_nInc,     0, 0);
     sno_register_fn("nDec",     _b_nDec,     0, 0);
@@ -353,10 +364,14 @@ char *sno_concat(const char *a, const char *b) {
     return r;
 }
 
-/* P003: SnoVal concat — propagates SNO_FAIL_VAL if either operand is FAIL */
+/* P003: SnoVal concat — propagates SNO_FAIL_VAL if either operand is FAIL.
+ * If either operand is a PATTERN, build a pattern concatenation instead of
+ * string concatenation (blank-juxtaposition of patterns = pattern cat). */
 SnoVal sno_concat_sv(SnoVal a, SnoVal b) {
     if (a.type == SNO_FAIL) return SNO_FAIL_VAL;
     if (b.type == SNO_FAIL) return SNO_FAIL_VAL;
+    if (a.type == SNO_PATTERN || b.type == SNO_PATTERN)
+        return sno_pat_cat(a, b);
     const char *sa = sno_to_str(a);
     const char *sb = sno_to_str(b);
     return SNO_STR_VAL(sno_concat(sa, sb));

@@ -879,10 +879,12 @@ static int _ev_args(SnoEvalCtx *e, SnoVal *args, int maxargs) {
     int na = 0;
     _ev_skip(e);
     while (e->s[e->pos] && e->s[e->pos] != ')') {
+        int pos_before = e->pos;
         if (na > 0) { if (e->s[e->pos] == ',') e->pos++; _ev_skip(e); }
         if (na < maxargs) args[na++] = _ev_val(e);
         else _ev_val(e);
         _ev_skip(e);
+        if (e->pos == pos_before) break; /* no progress — avoid infinite loop */
     }
     if (e->s[e->pos] == ')') e->pos++;
     return na;

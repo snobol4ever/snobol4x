@@ -230,6 +230,15 @@ static void emit_pat(Expr *e) {
     case E_CONCAT:
         E("sno_pat_cat("); emit_pat(e->left); E(","); emit_pat(e->right); E(")"); break;
 
+    case E_MUL:
+        /* pat * x — parsed as arithmetic multiply, but in pattern context
+         * this is: left_pattern concat *right (deferred ref to right) */
+        E("sno_pat_cat("); emit_pat(e->left); E(",");
+        if (e->right && e->right->kind == E_VAR)
+            E("sno_pat_ref(\"%s\")", e->right->sval);
+        else { E("sno_pat_deref("); emit_expr(e->right); E(")"); }
+        E(")"); break;
+
     case E_REDUCE:
         /* & in pattern context: reduce(left, right) — returns a pattern */
         E("sno_var_as_pattern(sno_apply(\"reduce\",(SnoVal[]){"); emit_expr(e->left); E(","); emit_expr(e->right); E("},2))"); break;
@@ -418,6 +427,9 @@ static int is_pat_node(Expr *e) {
     if (e->kind == E_COND)   return 1;  /* .var capture */
     if (e->kind == E_ALT)    return 1;  /* | alternation */
     if (e->kind == E_REDUCE) return 1;  /* & reduce() call — always pattern context */
+    /* E_MUL(pat_node, x) — parsed from "pat *x" where * is multiplication token
+     * but semantically is pattern-concat with deferred ref *x */
+    if (e->kind == E_MUL && is_pat_node(e->left)) return 1;
     return 0;
 }
 
@@ -853,10 +865,12 @@ static void collect_functions(Program *prog) {
                 fn->end_label = strdup(nxt->go->uncond);
             }
         }
-        /* Deduplicate: if this name already exists, overwrite it */
+        /* Deduplicate: if this name already exists, overwrite it.
+         * SNOBOL4 function names are case-sensitive — use strcmp, not strcasecmp.
+         * e.g. "Pop(var)" (stack.sno) and "pop()" (semantic.sno) are DIFFERENT. */
         int found = -1;
         for (int i=0; i<fn_count; i++)
-            if (strcasecmp(fn_table[i].name, fn->name)==0) { found=i; break; }
+            if (strcmp(fn_table[i].name, fn->name)==0) { found=i; break; }
         if (found >= 0) {
             /* Free old name/args/locals, replace with new definition */
             fn_table[found] = *fn;
