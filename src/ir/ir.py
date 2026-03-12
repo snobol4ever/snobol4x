@@ -37,6 +37,10 @@ class Break:
     charset: str
 
 @dataclass
+class Notany:
+    charset: str
+
+@dataclass
 class Len:
     n: int
 
@@ -81,7 +85,7 @@ class Print:
 class Ref:
     name: str  # forward reference resolved at codegen time
 
-Node = Union[Lit, Any, Span, Break, Len, Pos, Rpos, Arb, Arbno,
+Node = Union[Lit, Any, Span, Break, Notany, Len, Pos, Rpos, Arb, Arbno,
              Alt, Cat, Assign, Print, Ref]
 
 
@@ -183,7 +187,8 @@ class Graph:
             if isinstance(n, Ref):   label += f'("{n.name}")'
             if isinstance(n, Any):   label += f'("{n.charset}")'
             if isinstance(n, Span):  label += f'("{n.charset}")'
-            if isinstance(n, Break): label += f'("{n.charset}")'
+            if isinstance(n, Break):  label += f'("{n.charset}")'
+            if isinstance(n, Notany): label += f'("{n.charset}")'
             lines.append(f'  {nid} [label="{label}"];')
 
         def walk(n) -> str:
