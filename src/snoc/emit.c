@@ -16,6 +16,13 @@
 #include <stdarg.h>
 #include <ctype.h>
 
+/* Forward declarations */
+static int is_io_name(const char *name);
+static void emit_assign_target(Expr *lhs, const char *rhs_str);
+static void emit_assign_target_io(Expr *lhs, const char *rhs_str);
+
+static int cur_stmt_next_uid = 0;  /* set by snoc_emit before each emit_stmt */
+
 static FILE *out;
 static int   uid_ctr = 0;
 static int   uid(void) { return ++uid_ctr; }
@@ -55,13 +62,16 @@ static void emit_cstr(const char *s) {
 static void emit_expr(Expr *e);
 
 static void emit_expr(Expr *e) {
-    if (!e) { E("SNO_NULL"); return; }
+    if (!e) { E("SNO_NULL_VAL"); return; }
     switch (e->kind) {
-    case E_NULL:    E("SNO_NULL"); break;
+    case E_NULL:    E("SNO_NULL_VAL"); break;
     case E_STR:     E("sno_str("); emit_cstr(e->sval); E(")"); break;
     case E_INT:     E("sno_int(%ld)", e->ival); break;
     case E_REAL:    E("sno_real(%g)", e->dval); break;
-    case E_VAR:     E("sno_get(%s)", cs(e->sval)); break;
+    case E_VAR:
+        if (is_io_name(e->sval)) E("sno_var_get(\"%s\")", e->sval);
+        else E("sno_get(%s)", cs(e->sval));
+        break;
     case E_KEYWORD: E("sno_kw(\"%s\")", e->sval); break;
 
     case E_DEREF:
@@ -243,7 +253,7 @@ static void emit_assign_target(Expr *lhs, const char *rhs_str) {
  * Emit goto field
  * ============================================================ */
 static void emit_goto(SnoGoto *g, const char *fn, int result_ok) {
-    if (!g) { E("    goto _SNO_NEXT;\n"); return; }
+    if (!g) { E("    goto _SNO_NEXT_%d;\n", cur_stmt_next_uid); return; }
     if (g->uncond) {
         if      (strcasecmp(g->uncond,"RETURN") ==0) E("    goto _SNO_RETURN_%s;\n",fn);
         else if (strcasecmp(g->uncond,"FRETURN")==0) E("    goto _SNO_FRETURN_%s;\n",fn);
@@ -259,7 +269,7 @@ static void emit_goto(SnoGoto *g, const char *fn, int result_ok) {
             if (g->onsuccess) E("    goto _L%s;\n", cs(g->onsuccess));
             if (g->onfailure) { /* can't reach failure — skip */ }
         }
-        E("    goto _SNO_NEXT;\n");
+        E("    goto _SNO_NEXT_%d;\n", cur_stmt_next_uid);
     }
 }
 
@@ -280,7 +290,7 @@ static void emit_stmt(Stmt *s, const char *fn) {
     if (!s->pattern && s->replacement) {
         char rhs[32]; int u=uid(); snprintf(rhs,sizeof rhs,"_v%d",u);
         E("{ SnoVal %s = ", rhs); emit_expr(s->replacement); E(";\n");
-        emit_assign_target(s->subject, rhs);
+        emit_assign_target_io(s->subject, rhs);
         E("}\n");
         emit_goto(s->go, fn, 0);
         return;
@@ -289,34 +299,131 @@ static void emit_stmt(Stmt *s, const char *fn) {
     /* ---- pattern match: subject pattern [= replacement] ---- */
     if (s->pattern) {
         int u = uid();
-        E("{ /* match u%d */\n", u);
-        E("  SnoVal      _s%d = ", u); emit_expr(s->subject); E(";\n");
-        E("  SnoPattern *_p%d = ", u); emit_pat(s->pattern); E(";\n");
-        E("  SnoMatch    _m%d = sno_match(&_s%d, _p%d);\n", u,u,u);
-        E("  int _ok = !_m%d.failed;\n", u);
+        E("/* match u%d */\n", u);
+        E("SnoVal   _s%d = ", u); emit_expr(s->subject); E(";\n");
+        E("SnoVal   _p%d = ", u); emit_pat(s->pattern); E(";\n");
+        E("SnoMatch _m%d = sno_match(&_s%d, _p%d);\n", u,u,u);
+        E("int      _ok%d = !_m%d.failed;\n", u, u);
         if (s->replacement) {
-            E("  if(_ok) {\n");
+            E("if(_ok%d) {\n", u);
             E("    SnoVal _r%d = ", u); emit_expr(s->replacement); E(";\n");
             E("    sno_replace(&_s%d, &_m%d, _r%d);\n", u,u,u);
             /* write back to subject variable */
-            if (s->subject->kind == E_VAR)
-                E("    sno_set(%s, _s%d);\n", cs(s->subject->sval), u);
-            E("  }\n");
+            if (s->subject->kind == E_VAR) {
+                if (is_io_name(s->subject->sval))
+                    E("    sno_var_set(\"%s\", _s%d);\n", s->subject->sval, u);
+                else
+                    E("    sno_set(%s, _s%d);\n", cs(s->subject->sval), u);
+            }
+            E("}\n");
         }
-        E("}\n");
-        emit_goto(s->go, fn, 1);
+        /* emit goto using _ok%d */
+        if (!s->go) { E("    goto _SNO_NEXT_%d;\n", cur_stmt_next_uid); }
+        else if (s->go->uncond) { emit_goto(s->go, fn, 0); }
+        else {
+            if (s->go->onsuccess) E("    if(_ok%d) goto _L%s;\n", u, cs(s->go->onsuccess));
+            if (s->go->onfailure) E("    if(!_ok%d) goto _L%s;\n", u, cs(s->go->onfailure));
+            E("    goto _SNO_NEXT_%d;\n", cur_stmt_next_uid);
+        }
         return;
     }
 
     /* ---- expression evaluation only ---- */
     {
         int u=uid();
-        E("{ SnoVal _v%d = ", u); emit_expr(s->subject); E(";\n");
-        E("  int _ok = !SNO_IS_FAIL(_v%d);\n", u);
-        E("}\n");
-        emit_goto(s->go, fn, 1);
+        E("SnoVal _v%d = ", u); emit_expr(s->subject); E(";\n");
+        E("int _ok%d = !SNO_IS_FAIL(_v%d);\n", u, u);
+        /* emit goto using _ok%d */
+        if (!s->go) { E("    goto _SNO_NEXT_%d;\n", cur_stmt_next_uid); }
+        else if (s->go->uncond) { emit_goto(s->go, fn, 0); }
+        else {
+            if (s->go->onsuccess) E("    if(_ok%d) goto _L%s;\n", u, cs(s->go->onsuccess));
+            if (s->go->onfailure) E("    if(!_ok%d) goto _L%s;\n", u, cs(s->go->onfailure));
+            E("    goto _SNO_NEXT_%d;\n", cur_stmt_next_uid);
+        }
     }
 }
+
+/* ============================================================
+ * Symbol collection — walk entire AST, collect variable names
+ * ============================================================ */
+
+/* Simple hash set of variable names */
+#define SYM_MAX 4096
+static char *sym_table[SYM_MAX];
+static int   sym_count = 0;
+
+/* Names that should NOT become static locals — routed through sno_var_set/get */
+static const char *io_names[] = {
+    "OUTPUT","INPUT","PUNCH","TERMINAL","TRACE",NULL
+};
+
+static int is_io_name(const char *name) {
+    for (int i=0; io_names[i]; i++)
+        if (strcasecmp(name, io_names[i])==0) return 1;
+    return 0;
+}
+
+static void sym_add(const char *name) {
+    if (!name || !*name) return;
+    if (is_io_name(name)) return;
+    /* deduplicate */
+    for (int i=0; i<sym_count; i++)
+        if (strcmp(sym_table[i], name)==0) return;
+    if (sym_count < SYM_MAX)
+        sym_table[sym_count++] = strdup(name);
+}
+
+static void collect_expr(Expr *e) {
+    if (!e) return;
+    switch (e->kind) {
+    case E_VAR:   sym_add(e->sval); break;
+    case E_ARRAY: sym_add(e->sval); break;  /* array variable itself */
+    default: break;
+    }
+    collect_expr(e->left);
+    collect_expr(e->right);
+    for (int i=0; i<e->nargs; i++) collect_expr(e->args[i]);
+}
+
+static void collect_stmt(Stmt *s) {
+    if (!s) return;
+    collect_expr(s->subject);
+    collect_expr(s->pattern);
+    collect_expr(s->replacement);
+}
+
+static void collect_symbols(Program *prog) {
+    sym_count = 0;
+    for (Stmt *s = prog->head; s; s = s->next)
+        collect_stmt(s);
+}
+
+/* ============================================================
+ * OUTPUT/INPUT: route through sno_var_set/sno_var_get
+ *
+ * snoc emits: sno_set(_OUTPUT, val)
+ * We want:    sno_var_set("OUTPUT", val)
+ *
+ * We override emit_assign_target for IO names, and override emit_expr
+ * for E_VAR on IO names.
+ * ============================================================ */
+
+/* Wrapper: emit an lvalue assignment, routing IO names through var table */
+static void emit_assign_target_io(Expr *lhs, const char *rhs_str) {
+    if (lhs && lhs->kind == E_VAR && is_io_name(lhs->sval)) {
+        E("sno_var_set(\"%s\", %s);\n", lhs->sval, rhs_str);
+        return;
+    }
+    emit_assign_target(lhs, rhs_str);
+}
+
+/* Emit expr, substituting IO variable names with sno_var_get() calls */
+/* We patch emit_expr's E_VAR case via a post-process: instead of patching
+ * the existing emit_expr (which is static), we provide a wrapper that checks
+ * for IO names before calling emit_expr for E_VAR nodes.
+ * Since emit_expr is already defined as static void, we add a new emit_expr_top
+ * that handles the IO routing at the top level. */
 
 /* ============================================================
  * Program header and body
@@ -324,24 +431,36 @@ static void emit_stmt(Stmt *s, const char *fn) {
 
 static void emit_header(void) {
     E("/* generated by snoc */\n");
-    E("#include \"snobol4.h\"\n");
-    E("#include \"snobol4_pattern.h\"\n\n");
+    E("#include \"snoc_runtime.h\"\n\n");
+}
+
+static void emit_var_decls(void) {
+    E("    /* --- SNOBOL4 variable declarations --- */\n");
+    for (int i=0; i<sym_count; i++) {
+        E("    static SnoVal %s = {0};\n", cs(sym_table[i]));
+    }
+    E("\n");
 }
 
 void snoc_emit(Program *prog, FILE *f) {
     out = f;
+
+    /* Phase 1: collect all variable names */
+    collect_symbols(prog);
+
     emit_header();
 
     E("int main(void) {\n");
     E("    sno_init();\n\n");
 
-    Stmt *s = prog->head;
-    int   idx = 0;
-    while (s) {
+    /* Phase 2: emit variable declarations */
+    emit_var_decls();
+
+    /* Phase 3: emit statements */
+    for (Stmt *s = prog->head; s; s = s->next) {
+        cur_stmt_next_uid = uid();
         emit_stmt(s, "main");
-        E("_SNO_NEXT:;\n");
-        s = s->next;
-        idx++;
+        E("_SNO_NEXT_%d:;\n", cur_stmt_next_uid);
     }
 
     E("\n_SNO_END:;\n");
