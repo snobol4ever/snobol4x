@@ -37,7 +37,10 @@ typedef enum {
     E_IMM,          /* expr $ var  — immediate assignment */
     /* calls */
     E_CALL,         /* f(args) */
-    E_ARRAY,        /* a[subs] */
+    E_ARRAY,        /* a[subs] — named array subscript */
+    E_INDEX,        /* expr[subs] — postfix subscript on any expression */
+    E_AT,           /* @var — cursor position capture */
+    E_ASSIGN,       /* var = expr inside expression context (DIFFER(x = f())) */
 } EKind;
 
 typedef struct Expr Expr;

@@ -107,6 +107,25 @@ static void emit_expr(Expr *e) {
         }
         E("},%d)", e->nargs);
         break;
+
+    case E_INDEX:
+        /* postfix subscript: expr[i] — e.g. c(x)[i] */
+        E("sno_index("); emit_expr(e->left); E(",(SnoVal[]){");
+        for (int i=0; i<e->nargs; i++) {
+            if (i) E(","); emit_expr(e->args[i]);
+        }
+        E("},%d)", e->nargs);
+        break;
+
+    case E_AT:
+        /* @var — cursor position capture: evaluates to cursor int */
+        E("sno_cursor_get(\"%s\")", e->sval);
+        break;
+
+    case E_ASSIGN:
+        /* var = expr inside expression context */
+        E("sno_assign_expr(%s,", cs(e->left->sval)); emit_expr(e->right); E(")");
+        break;
     }
 }
 
@@ -186,6 +205,9 @@ static void emit_pat(Expr *e) {
     }
 
     /* value nodes that shouldn't appear in pattern context — treat as var */
+    case E_INDEX:
+    case E_AT:
+    case E_ASSIGN:
     default:
         E("sno_pat_val("); emit_expr(e); E(")"); break;
     }

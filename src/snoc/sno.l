@@ -156,20 +156,38 @@ static int is_pat_builtin(const char *s) {
     return 0;
 }
 
+/* ---- bracket type stack for comma-as-alternation disambiguation ----
+ * In SNOBOL4, (expr, expr) means ALT when the paren is a grouping paren (not a function call).
+ * We track whether the current open-paren was preceded by IDENT/PAT_BUILTIN (= function call)
+ * or was a plain grouping paren. Commas in grouping parens return PIPE (alt).
+ */
+#define BSTACK_MAX 64
+static int bstack[BSTACK_MAX];   /* 1 = function-call paren, 0 = grouping paren */
+static int bstack_top = 0;
+static int last_was_callable = 0;  /* set after IDENT( or PAT_BUILTIN( */
+
 %}
 
 %option noyywrap never-interactive yylineno
 %x GT
 
 ALPHA   [A-Za-z\x80-\xff]
+/* IDENT in expression context: standard SNOBOL4 identifier characters */
 IDENT   {ALPHA}([A-Za-z0-9._/\x80-\xff])*
+/* SLABEL: special label — any printable non-whitespace char sequence starting with alpha,
+ * but occurring ONLY after \x01 (LABEL_MARK injected by join_file).
+ * This allows labels like pp_:() pp_:<> pp_! ss_# ss_$ pp_, pp_| pp_[] etc. */
+SLABEL_CONT  [^ \t\n\x01]+
 DIGIT   [0-9]
 WS      [ \t]+
 
 %%
 
     /* ---- label marker injected by join_file ---- */
-\x01{IDENT}     {
+    /* A SNOBOL4 label starts with \x01 and runs to the first whitespace.
+     * beauty.sno uses labels like: pp_:() pp_:<> pp_! ss_# ss_,0 pp_[] etc.
+     * We must NOT tokenise operators inside the label name. */
+\x01[^ \t\n]+   {
                     char *lab = intern(yytext+1);
                     if (strcasecmp(lab,"END") == 0) { jpos=jlen; yylval.sval=lab; return END_LABEL; }
                     lineno_stmt = yylineno;
@@ -200,17 +218,28 @@ WS      [ \t]+
        and routed through emit_pat's E_CALL path which handles them. */
 {IDENT}/"("     {
                     yylval.sval = intern(yytext);
+                    last_was_callable = 1;
                     return is_pat_builtin(yytext) ? PAT_BUILTIN : IDENT;
                 }
-{IDENT}         { yylval.sval = intern(yytext); return IDENT; }
+{IDENT}         { yylval.sval = intern(yytext); last_was_callable = 0; return IDENT; }
 
     /* ---- operators ---- */
 "**"            { return STARSTAR; }
 "~"             { return DOT; }        /* ~ is alias for . */
 ":"             { BEGIN(GT); return COLON; }
 "="             { return EQ; }
-"("             { return LPAREN; }
-")"             { return RPAREN; }
+"("             {
+                    /* push: was last token callable? 1=function-call paren, 0=grouping paren */
+                    if (bstack_top < BSTACK_MAX)
+                        bstack[bstack_top++] = last_was_callable;
+                    last_was_callable = 0;
+                    return LPAREN;
+                }
+")"             {
+                    if (bstack_top > 0) bstack_top--;
+                    last_was_callable = 0;
+                    return RPAREN;
+                }
 "["             { return LBRACKET; }
 "]"             { return RBRACKET; }
 "+"             { return PLUS; }
@@ -221,8 +250,15 @@ WS      [ \t]+
 "|"             { return PIPE; }
 "."             { return DOT; }
 "$"             { return DOLLAR; }
-","             { return COMMA; }
-";"             { return NEWLINE; }
+","             {
+                    /* In a grouping paren (bstack top = 0), comma = ALT (PIPE).
+                     * In a function-call paren (bstack top = 1), comma = COMMA. */
+                    if (bstack_top > 0 && bstack[bstack_top-1] == 0)
+                        return PIPE;
+                    return COMMA;
+                }
+"@"             { return AT; }
+";"[^\n]*       { return NEWLINE; }  /* ; terminates stmt; rest of line is discarded */
 
 .               { snoc_error(yylineno, "unexpected char '%s'", yytext); }
 
@@ -242,14 +278,25 @@ WS      [ \t]+
                     yylval.sval = intern("$COMPUTED");
                     return IDENT;
                 }
+<GT>"$"\'[^\']*\'  {
+                    /* computed goto: $'label' — label is the string content */
+                    /* yytext is: $'label'  → extract between quotes */
+                    char *q = strchr(yytext, '\'');
+                    int n = (int)(strchr(q+1,'\'') - (q+1));
+                    yylval.sval = intern_n(q+1, n);
+                    return IDENT;
+                }
 <GT>"$"         { return DOLLAR; }
 <GT>\'[^\']*\'  { yylval.sval=intern_n(yytext+1,yyleng-2); return STR; }
 <GT>\"[^\"]*\"  { yylval.sval=intern_n(yytext+1,yyleng-2); return STR; }
 <GT>{DIGIT}+    { yylval.ival=atol(yytext); return INT; }
 <GT>"&"{IDENT}  { yylval.sval=intern(yytext+1); return KEYWORD; }
-<GT>{IDENT}     { yylval.sval=intern(yytext); return IDENT; }
+    /* Label names in goto field may contain special chars like ():!#$%&|^~?@,[]<>
+     * e.g. :(pp_:()) :($'pp_,1') :(pp_[]) etc.
+     * Match as IDENT: anything non-whitespace, non-paren, non-semicolon, non-newline. */
+<GT>[^ \t\n(),;><]+  { yylval.sval=intern(yytext); return IDENT; }
 <GT>","         { return COMMA; }
-<GT>";"         { BEGIN(INITIAL); return NEWLINE; }
+<GT>";"[^\n]*   { BEGIN(INITIAL); return NEWLINE; }  /* ; ends stmt, rest of line discarded */
 <GT>\n          { BEGIN(INITIAL); lineno_stmt=yylineno; return NEWLINE; }
 <GT>.           { }
 
@@ -294,3 +341,4 @@ Program *snoc_parse(FILE *f, const char *filename) {
     free(jbuf); jbuf = NULL;
     return parsed_program;
 }
+

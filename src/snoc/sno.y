@@ -64,11 +64,11 @@ extern int  lineno_stmt;
 %token <dval>  REAL
 %token  EQ COLON LPAREN RPAREN LBRACKET RBRACKET
 %token  STARSTAR CARET PLUS MINUS STAR SLASH
-%token  PIPE DOT DOLLAR AMP COMMA
+%token  PIPE DOT DOLLAR AMP COMMA AT
 %token  SGOTO FGOTO NEWLINE
 
 %type <stmt>  stmt
-%type <expr>  expr term factor atom primary
+%type <expr>  expr term factor atom primary opt_expr
 %type <expr>  pat_expr pat_alt pat_cat pat_cap pat_atom
 %type <expr>  opt_repl
 %type <go>    opt_goto goto_clauses
@@ -108,6 +108,10 @@ line
 stmt
     : opt_label
         { Stmt *s=stmt_new(); s->label=$1; s->lineno=lineno_stmt; $$=s; }
+    | opt_label COLON goto_clauses
+        { /* label-only with goto: FENCE :(RETURN) */
+          Stmt *s=stmt_new(); s->label=$1; s->go=(SnoGoto*)$3;
+          s->lineno=lineno_stmt; $$=s; }
     | opt_label expr opt_repl opt_goto
         { Stmt *s=stmt_new(); s->label=$1; s->subject=$2;
           s->replacement=$3; s->go=(SnoGoto*)$4;
@@ -152,12 +156,21 @@ factor
     | MINUS factor %prec UMINUS  { $$=binop(E_NEG,NULL,$2); }
     | PLUS  factor %prec UMINUS  { $$=$2; }                    /* unary + is identity */
     | DOLLAR factor %prec UDEREF { $$=binop(E_DEREF,NULL,$2); }
+    | DOLLAR STR %prec UDEREF    { /* $'name' — indirect variable reference */
+                                   Expr *s=expr_new(E_STR); s->sval=$2;
+                                   $$=binop(E_DEREF,NULL,s); }
     | DOT factor %prec UDEREF    { $$=binop(E_COND,NULL,$2); }  /* .X = name ref */
     | STAR factor %prec UDEREF   { $$=binop(E_DEREF,$2,NULL); } /* *X = indirect in expr */
+    | AT IDENT               { /* @var — cursor position capture */
+                               Expr *e=expr_new(E_AT); e->sval=$2; $$=e; }
     ;
 
 atom
     : primary               { $$=$1; }
+    | atom LBRACKET arglist RBRACKET
+        { /* postfix subscript: expr[i] — e.g. c(x)[i] */
+          AL *al=$3; Expr *e=expr_new(E_INDEX);
+          e->left=$1; e->args=al->a; e->nargs=al->n; free(al); $$=e; }
     ;
 
 primary
@@ -180,8 +193,17 @@ primary
 
 arglist    : /* empty */ { $$=al_new(); } | arglist_ne { $$=$1; } ;
 arglist_ne
-    : expr                  { AL *al=al_new(); al_push(al,$1); $$=al; }
-    | arglist_ne COMMA expr { al_push($1,$3); $$=$1; }
+    : opt_expr                  { AL *al=al_new(); al_push(al,$1); $$=al; }
+    | arglist_ne COMMA opt_expr { al_push($1,$3); $$=$1; }
+    ;
+/* opt_expr: an optional expression — NULL for empty slots (consecutive commas)
+ * ALSO allows IDENT = expr for the SNOBOL4 "assign-in-arg" idiom: DIFFER(x = Pop()) */
+opt_expr
+    : expr    { $$=$1; }
+    | IDENT EQ expr
+        { Expr *e=expr_new(E_ASSIGN);
+          e->left=expr_new(E_VAR); e->left->sval=$1; e->right=$3; $$=e; }
+    | /* empty */ { $$=NULL; }
     ;
 
 /* ============================================================
