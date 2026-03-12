@@ -316,6 +316,94 @@ label-to-label is the only boundary rule.
 
 ---
 
+## §13 — SNOBOL4 Datatype Coverage (Session 47, 2026-03-12)
+
+### The full SNOBOL4 type inventory vs. what snoc/runtime handles
+
+| SNOBOL4 Type | `SnoVal` type | `DATATYPE()` returns | Status for beauty.sno |
+|---|---|---|---|
+| **STRING** | `SNO_NULL`(0) + `SNO_STR`(1) | `"STRING"` | ✅ Full |
+| **INTEGER** | `SNO_INT`(2) | `"INTEGER"` | ✅ Full |
+| **REAL** | `SNO_REAL`(3) | `"REAL"` | ⚠️ Type exists, arithmetic thin |
+| **PATTERN** | `SNO_PATTERN`(5) | `"PATTERN"` | ✅ Full (Byrd Box engine) |
+| **ARRAY** | `SNO_ARRAY`(6) | `"ARRAY"` | ✅ 1D+2D, `sno_aref`/`sno_aset` |
+| **TABLE** | `SNO_TABLE`(7) | `"TABLE"` | ✅ Hash-bucketed |
+| **CODE** | `SNO_CODE`(8) | `"CODE"` | 🔴 Stub — **not needed by beauty.sno** |
+| **EXPRESSION** | `SNO_TREE`(4) — tag = node type | `v.t->tag` (e.g. `"snoStmt"`) | ✅ **Kludged, but works**: we use `SNO_TREE` with the tag field as the EXPRESSION type name. `ShiftReduce.sno`'s `Reduce` checks `IDENT(DATATYPE(t), "EXPRESSION")` — passes when `t` is a `SNO_TREE` node whose tag equals `"EXPRESSION"`. We hand-roll the tree at compile time. |
+| **NAME** | *(none)* | — | 🔴 **No runtime NAME type** — see §13.1 below |
+| **UDEF** (user-defined via `DATA()`) | `SNO_UDEF`(9) | `v.u->type->name` | ⚠️ Struct exists, no `DATA()` callable |
+
+### §13.1 — How we handle l-values without a NAME type
+
+SNOBOL4 has a first-class NAME type: `NAME(X)` returns an object representing
+the l-value `X`, which can be stored, passed to functions, and assigned through.
+**We don't implement this.** Instead snoc cheats at compile time:
+
+**Simple variable** `X = expr`:
+```c
+sno_set(_X, rhs);
+sno_var_set("X", _X);   /* two writes: C local + global hash */
+```
+The l-value is resolved statically. No NAME object needed. ✅
+
+**Array element** `A[i,j] = expr`:
+```c
+sno_aset(_A, (SnoVal[]){i_val, j_val}, 2, rhs);
+```
+Subscript emitted directly. ✅
+
+**Indirect** `$X = expr` / `*X = expr` (E_DEREF):
+```c
+sno_iset(nameVal, rhs);
+/* → _snoc_iset: sno_var_set(sno_to_str(nameVal), rhs) */
+```
+Works only when `X` holds a plain string that is a variable name.
+Cannot handle `NAME(A[i,j])` or dynamic l-value expressions. ⚠️
+
+**Pattern conditional assignment** `pat . var` and `pat $ var`:
+Stored as a string `"varname"` inside the pattern node (`SPAT_COND`),
+resolved at match time via `sno_var_set`. Not a NAME object — just a
+string. Works for beauty.sno's use. ✅
+
+**Why this is safe for beauty.sno:**
+beauty.sno never passes l-values as function arguments, never stores NAME
+objects in variables, never does `APPLY(fn, NAME(A[i,j]))`. All l-values
+in beauty.sno are syntactically visible at compile time — snoc emits the
+right `sno_set`/`sno_aset`/`sno_iset` call directly.
+
+**The rule:** snoc resolves l-values **statically at compile time**.
+NAME as a runtime first-class type is deferred — not needed for Milestone 0.
+
+### §13.2 — EXPRESSION type and the bootstrap parser
+
+`reduce(t, n)` in `semantic.sno` checks `IDENT(DATATYPE(t), "EXPRESSION")`:
+
+```snobol4
+reduce_    reduce = EVAL("epsilon . *Reduce(" t ", " n ")")  :(RETURN)
+Reduce     IDENT(DATATYPE(t), "EXPRESSION")                 :F(Reduce0)
+           t = EVAL(t)                                       :F(FRETURN)
+```
+
+This test passes when `t` is a `SNO_TREE` node whose `.tag` is `"EXPRESSION"`.
+We arrange this by having `snoExprN` pattern assignments produce Tree nodes
+tagged `"EXPRESSION"` via the Shift/Reduce stack machine. `sno_datatype()`
+returns `v.t->tag` for `SNO_TREE` values — so the tag IS the DATATYPE string.
+
+**The kludge:** We hand-roll the EXPRESSION type as a SNO_TREE with tag
+`"EXPRESSION"` rather than implementing a distinct `SNO_EXPRESSION` type.
+This is intentional — beauty.sno's EXPRESSION objects ARE parse trees.
+Conflating them is correct for our use case.
+
+### §13.3 — CODE type: not used by beauty.sno
+
+`CODE()` compiles a string to executable code at runtime (CSNOBOL4's
+dynamic compilation). beauty.sno and all its `-INCLUDE` files make zero
+calls to `CODE()`. `XDump.sno` has `IDENT(objType, 'CODE')` as a datatype
+guard but that branch is never reached. `SNO_CODE` stub is sufficient —
+we never need to execute a CODE object for Milestone 0.
+
+---
+
 ## §11 — SNOBOL4 semantics quick reference
 
 - `DEFINE('fn(a,b)loc1')` — registers fn; body starts at SNOBOL4 label `fn`

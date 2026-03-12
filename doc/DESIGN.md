@@ -488,3 +488,56 @@ implements is therefore not SNOBOL4 — it is **whatever grammar is loaded into
 
 This means SNOBOL4-tiny is not a SNOBOL4 compiler. It is a **compiler compiler**
 whose input language is a SNOBOL4 pattern expression.
+
+---
+
+## Datatype Model and L-value Strategy (Session 47, 2026-03-12)
+
+### SnoVal type tags
+
+```c
+SNO_NULL    = 0   /* empty string — DATATYPE = "STRING" */
+SNO_STR     = 1   /* char*        — DATATYPE = "STRING" */
+SNO_INT     = 2   /* int64_t      — DATATYPE = "INTEGER" */
+SNO_REAL    = 3   /* double       — DATATYPE = "REAL" */
+SNO_TREE    = 4   /* Tree*        — DATATYPE = v.t->tag  ← the kludge */
+SNO_PATTERN = 5   /* Pattern*     — DATATYPE = "PATTERN" */
+SNO_ARRAY   = 6   /* SnoArray*    — DATATYPE = "ARRAY" */
+SNO_TABLE   = 7   /* SnoTable*    — DATATYPE = "TABLE" */
+SNO_CODE    = 8   /* stub         — DATATYPE = "CODE" (never executed) */
+SNO_UDEF    = 9   /* user-defined — DATATYPE = v.u->type->name */
+SNO_FAIL    = 10  /* failure sentinel — not a SNOBOL4 type */
+```
+
+### The EXPRESSION kludge
+
+SNOBOL4's EXPRESSION type is a first-class unevaluated expression object.
+We represent it as `SNO_TREE` with the `.tag` field set to `"EXPRESSION"`.
+`sno_datatype()` returns `v.t->tag` for SNO_TREE, so `DATATYPE(t) == "EXPRESSION"`
+is true exactly when the tree was built by the expression parser.
+
+This works because beauty.sno's EXPRESSION objects ARE parse trees —
+no semantic gap between the kludge and the real semantics.
+
+### No NAME type — l-values resolved statically
+
+SNOBOL4 NAME type: a first-class l-value object (variable ref, array subscript,
+conditional-assign target). We have none. snoc resolves all l-values at
+**compile time** and emits the appropriate C call:
+
+| L-value form | Emitted C | Mechanism |
+|---|---|---|
+| `X = rhs` | `sno_set(_X, rhs); sno_var_set("X", _X)` | direct, both C local + hash |
+| `A[i,j] = rhs` | `sno_aset(_A, keys, 2, rhs)` | subscript direct |
+| `$X = rhs` | `sno_iset(X_val, rhs)` | string→var-name indirection |
+| `pat . var` | `SPAT_COND` stores `"var"` string | resolved at match time |
+
+This is safe for beauty.sno because all l-values are syntactically visible
+at compile time. NAME as a runtime first-class type is not needed for Milestone 0.
+
+### CODE type: stub only
+
+`CODE()` dynamically compiles a SNOBOL4 string to executable code.
+beauty.sno and all its `-INCLUDE` files make **zero calls** to `CODE()`.
+`SNO_CODE` exists in the type enum but is never instantiated or executed.
+Not needed for Milestone 0.

@@ -557,3 +557,64 @@ Rationale: The insight that Alt IS the dispatcher is architecturally significant
 should be locked in now. It changes how we think about what SNOBOL4-tiny *is*:
 not a SNOBOL4 compiler but a grammar-driven compiler compiler. Every decision
 downstream should be made with this in mind.
+
+---
+
+## Decision 9: NAME type and l-value strategy (Session 47, 2026-03-12)
+
+### The question
+
+SNOBOL4 has a first-class NAME type. `NAME(X)` returns an object representing
+the l-value of `X`. Functions can receive NAME arguments and assign through
+them. Does snoc need to implement NAME as a runtime type?
+
+### Analysis
+
+beauty.sno never:
+- passes l-values as function arguments
+- stores NAME objects in variables
+- uses `APPLY(fn, NAME(A[i,j]))` or similar dynamic l-value passing
+
+All l-values in beauty.sno are syntactically visible at the call site.
+snoc can always determine statically whether an assignment target is a simple
+variable, array subscript, or indirect string — and emit the right C call.
+
+### Decision: DECIDED — compile-time l-value resolution, no NAME type
+
+snoc resolves l-values at **compile time**. No `SNO_NAME` type is needed
+for Milestone 0. The four cases are:
+
+1. `X = rhs` → `sno_set(_X, rhs); sno_var_set("X", _X)`
+2. `A[i,j] = rhs` → `sno_aset(_A, keys, n, rhs)`
+3. `$X = rhs` → `sno_iset(X_val, rhs)` (string-as-varname)
+4. `pat . var` → SPAT_COND node stores varname string, resolved at match time
+
+NAME as a runtime first-class type is deferred until a program requires it.
+
+---
+
+## Decision 10: EXPRESSION type and SNO_TREE (Session 47, 2026-03-12)
+
+### The question
+
+SNOBOL4 has an EXPRESSION type for unevaluated expressions. beauty.sno's
+`ShiftReduce.sno` tests `IDENT(DATATYPE(t), "EXPRESSION")`. How do we
+satisfy this without implementing a distinct EXPRESSION type?
+
+### Decision: DECIDED — SNO_TREE with tag = "EXPRESSION"
+
+`sno_datatype()` returns `v.t->tag` for `SNO_TREE`. We arrange that
+expression parser Tree nodes are tagged `"EXPRESSION"`. The test
+`IDENT(DATATYPE(t), "EXPRESSION")` passes naturally.
+
+No semantic gap: beauty.sno's EXPRESSION objects ARE parse trees.
+The kludge is correct by construction.
+
+---
+
+## Decision 11: CODE type (Session 47, 2026-03-12)
+
+### Decision: DECIDED — stub only, not needed for Milestone 0
+
+beauty.sno and all 19 `-INCLUDE` files it uses make **zero calls** to `CODE()`.
+`SNO_CODE` stays as a type tag stub. Implementation deferred indefinitely.
