@@ -28,8 +28,8 @@
  *   E1 | E2                    → (E1 | E2)
  *   E1 ? E2                    → E1 ? E2
  *   E1 ? E2 <- E3              → E1 ? E2 = E3
- *   return E                   → FRETURN E
- *   fail                       → FRETURN
+ *   return E                   → FUNCNAME = E / :(RETURN)
+ *   fail                       → :(FRETURN)
  *
  * Initial-clause guard:
  *   IDENT(F_RB_INIT_,'1') :S(F_RB_BODY_)
@@ -52,6 +52,8 @@ static int rb_label       = 0;
 static int rb_loop_top[64];
 static int rb_loop_end[64];
 static int rb_loop_depth  = 0;
+static const char *rb_current_func = "";
+static int rb_stmt_fail_label = 0;  /* when >0, simple stmts append :F(rb_end_N) */
 
 static int next_label(void) { return ++rb_label; }
 
@@ -258,21 +260,27 @@ static void emit_stmt(RStmt *s, FILE *out) {
     switch (s->kind) {
 
         case RS_EXPR:
-            fprintf(out,"        "); emit_expr(s->expr,out); fprintf(out,"\n"); break;
+            fprintf(out,"        "); emit_expr(s->expr,out);
+            if (rb_stmt_fail_label) fprintf(out," :F(rb_end_%d)", rb_stmt_fail_label);
+            fprintf(out,"\n"); break;
 
         case RS_MATCH:
             fprintf(out,"        ");
             emit_expr(s->expr,out); fprintf(out," ? "); emit_expr(s->pat,out);
+            if (rb_stmt_fail_label) fprintf(out," :F(rb_end_%d)", rb_stmt_fail_label);
             fprintf(out,"\n"); break;
 
         case RS_REPLACE:
             fprintf(out,"        ");
             emit_expr(s->expr,out); fprintf(out," ? "); emit_expr(s->pat,out);
-            fprintf(out," = "); emit_expr(s->repl,out); fprintf(out,"\n"); break;
+            fprintf(out," = "); emit_expr(s->repl,out);
+            if (rb_stmt_fail_label) fprintf(out," :F(rb_end_%d)", rb_stmt_fail_label);
+            fprintf(out,"\n"); break;
 
         case RS_REPLN:
             fprintf(out,"        ");
             emit_expr(s->expr,out); fprintf(out," ? "); emit_expr(s->pat,out);
+            if (rb_stmt_fail_label) fprintf(out," :F(rb_end_%d)", rb_stmt_fail_label);
             fprintf(out," = ''\n"); break;
 
         /* if E then S1 [else S2] */
@@ -332,7 +340,9 @@ static void emit_stmt(RStmt *s, FILE *out) {
             int n = next_label(), n_end = next_label();
             push_loop(n, n_end);
             fprintf(out,"rb_top_%d\n", n);
+            rb_stmt_fail_label = n_end;
             emit_stmt(s->alt, out);
+            rb_stmt_fail_label = 0;
             fprintf(out,"        :(rb_top_%d)\n", n);
             fprintf(out,"rb_end_%d\n", n_end);
             pop_loop(); break;
@@ -397,12 +407,13 @@ static void emit_stmt(RStmt *s, FILE *out) {
                 rb_loop_depth > 0 ? rb_loop_top[rb_loop_depth-1] : 0);
             break;
 
-        case RS_FAIL:   fprintf(out,"        FRETURN\n"); break;
+        case RS_FAIL:   fprintf(out,"        :(FRETURN)\n"); break;
         case RS_STOP:   fprintf(out,"        END\n"); break;
 
         case RS_RETURN:
             if (s->retval) {
-                fprintf(out,"        RETURN "); emit_expr(s->retval,out); fprintf(out,"\n");
+                fprintf(out,"        %s = ", rb_current_func); emit_expr(s->retval,out); fprintf(out,"\n");
+                fprintf(out,"        :(RETURN)\n");
             } else {
                 fprintf(out,"        :(RETURN)\n");
             }
@@ -456,8 +467,15 @@ static void emit_function(RDecl *d, FILE *out) {
         emit_stmt(d->initial, out);
         fprintf(out,"%s_RB_BODY_\n", name);
     }
+    rb_current_func = name;
     emit_stmt_list(d->body, out);
-    fprintf(out,"        :(RETURN)\n");
+    /* only emit fall-off return if body doesn't already end with return/fail */
+    {
+        RStmt *last = d->body;
+        while (last && last->next) last = last->next;
+        if (!last || (last->kind != RS_RETURN && last->kind != RS_FAIL))
+            fprintf(out,"        :(RETURN)\n");
+    }
     fprintf(out,"%s_end\n\n", name);
 }
 
