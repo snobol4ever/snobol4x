@@ -275,26 +275,11 @@ static Expr *parse_expr13(Lex *lx) {
     if (!l) return NULL;
     for (;;) {
         /* binary ~ requires WS ~ WS */
+        LexMark m13 = lex_mark(lx);
         if (lex_peek(lx).kind != T_WS) break;
-        /* peek past WS to see if next is ~ */
-        /* We need 2-token lookahead: save pos, try, restore on fail */
-        /* Simpler: consume WS tentatively, check for ~ */
-        Token ws = lex_next(lx); (void)ws;
-        skip_ws(lx);
+        lex_next(lx); /* consume WS */
         if (lex_peek(lx).kind != T_TILDE) {
-            /* Not a binary ~. The WS we consumed is the concat separator —
-               but we're in expr13, above the concat level (expr4), so this
-               WS means "done with expr13, return to concat".
-               Push the WS back by signaling the caller.
-               We do this by returning l and leaving lx pointing at whatever
-               follows the already-consumed WS.
-               The concat level (expr4) will see the next token and continue. */
-            /* Actually we need to put the WS back — use the peeked slot trick */
-            /* Since we already consumed it, set a flag... the cleanest solution:
-               re-tokenize by backing up pos.  But Lex doesn't support unget of T_WS
-               since WS isn't stored.  Instead, use the peeked slot to inject a T_WS. */
-            lx->peek = (Token){T_WS, NULL, 0, 0, lx->lineno};
-            lx->peeked = 1;
+            lex_restore(lx, m13);
             break;
         }
         lex_next(lx); /* consume ~ */
@@ -310,8 +295,9 @@ static Expr *parse_expr13(Lex *lx) {
 static Expr *parse_expr12(Lex *lx) {
     Expr *l = parse_expr13(lx);
     if (!l) return NULL;
+    LexMark m12 = lex_mark(lx);
     if (lex_peek(lx).kind != T_WS) return l;
-    lex_next(lx); skip_ws(lx); /* consume WS */
+    lex_next(lx); /* consume WS */
     TokKind op = lex_peek(lx).kind;
     if (op == T_DOLLAR || op == T_DOT) {
         lex_next(lx); skip_ws(lx);
@@ -319,9 +305,7 @@ static Expr *parse_expr12(Lex *lx) {
         EKind k = (op==T_DOLLAR) ? E_IMM : E_COND;
         return binop(k, l, r);
     }
-    /* put WS back */
-    lx->peek = (Token){T_WS, NULL, 0, 0, lx->lineno};
-    lx->peeked = 1;
+    lex_restore(lx, m12);
     return l;
 }
 
@@ -340,15 +324,14 @@ static Expr *parse_lbin(Lex *lx, ParseFn next_fn,
     Expr *l = next_fn(lx);
     if (!l) return NULL;
     for (;;) {
+        LexMark m = lex_mark(lx);
         if (lex_peek(lx).kind != T_WS) break;
-        lex_next(lx); skip_ws(lx); /* consume WS */
+        lex_next(lx); /* consume WS */
         TokKind k = lex_peek(lx).kind;
         int found = -1;
         for (int i=0; i<nops; i++) if (k==ops[i]) { found=i; break; }
         if (found < 0) {
-            /* WS was concat separator or end — put it back */
-            lx->peek = (Token){T_WS, NULL, 0, 0, lx->lineno};
-            lx->peeked = 1;
+            lex_restore(lx, m); /* restore to before WS */
             break;
         }
         lex_next(lx); /* consume operator */
@@ -364,14 +347,14 @@ static Expr *parse_rbin(Lex *lx, ParseFn next_fn,
                          const TokKind *ops, const EKind *ekinds, int nops) {
     Expr *l = next_fn(lx);
     if (!l) return NULL;
+    LexMark m = lex_mark(lx);
     if (lex_peek(lx).kind != T_WS) return l;
-    lex_next(lx); skip_ws(lx);
+    lex_next(lx); /* consume WS */
     TokKind k = lex_peek(lx).kind;
     int found = -1;
     for (int i=0; i<nops; i++) if (k==ops[i]) { found=i; break; }
     if (found < 0) {
-        lx->peek = (Token){T_WS, NULL, 0, 0, lx->lineno};
-        lx->peeked = 1;
+        lex_restore(lx, m);
         return l;
     }
     lex_next(lx); skip_ws(lx);
@@ -451,7 +434,7 @@ static int is_concat_start(TokKind k) {
         /* binary operators that must be surrounded by WS */
         case T_AT: case T_PLUS: case T_MINUS: case T_HASH:
         case T_SLASH: case T_STAR: case T_PCT: case T_CARET:
-        case T_BANG: case T_STARSTAR: case T_DOLLAR: case T_DOT:
+        case T_BANG: case T_STARSTAR: case T_DOT:
         case T_TILDE: case T_EQ: case T_QMARK: case T_AMP: case T_PIPE:
         /* terminators */
         case T_COMMA: case T_RPAREN: case T_RBRACKET: case T_RANGLE:
@@ -472,10 +455,13 @@ static Expr *parse_expr4(Lex *lx) {
     items[0] = first;
 
     for (;;) {
-        if (lex_peek(lx).kind != T_WS) break;
+        TokKind pk = lex_peek(lx).kind;
+        if (pk != T_WS) break;
         /* look ahead: consume WS, check if what follows is a concat start */
-        lex_next(lx); skip_ws(lx);
-        if (!is_concat_start(lex_peek(lx).kind)) {
+        lex_next(lx);
+        skip_ws(lx);
+        TokKind pk2 = lex_peek(lx).kind;
+        if (!is_concat_start(pk2)) {
             /* put WS back — it belongs to a higher level */
             lx->peek = (Token){T_WS, NULL, 0, 0, lx->lineno};
             lx->peeked = 1;
@@ -507,11 +493,11 @@ static Expr *parse_expr3(Lex *lx) {
     Expr *l = parse_expr4(lx);
     if (!l) return NULL;
     for (;;) {
+        LexMark m3 = lex_mark(lx);
         if (lex_peek(lx).kind != T_WS) break;
-        lex_next(lx); skip_ws(lx);
+        lex_next(lx);
         if (lex_peek(lx).kind != T_PIPE) {
-            lx->peek = (Token){T_WS, NULL, 0, 0, lx->lineno};
-            lx->peeked = 1;
+            lex_restore(lx, m3);
             break;
         }
         lex_next(lx); skip_ws(lx);
@@ -540,8 +526,9 @@ static Expr *parse_expr2(Lex *lx) {
 static Expr *parse_expr0(Lex *lx) {
     Expr *l = parse_expr2(lx);
     if (!l) return NULL;
+    LexMark m0 = lex_mark(lx);
     if (lex_peek(lx).kind != T_WS) return l;
-    lex_next(lx); skip_ws(lx);
+    lex_next(lx);
     TokKind k = lex_peek(lx).kind;
     if (k == T_EQ) {
         lex_next(lx); skip_ws(lx);
@@ -551,10 +538,9 @@ static Expr *parse_expr0(Lex *lx) {
     if (k == T_QMARK) {
         lex_next(lx); skip_ws(lx);
         Expr *r = parse_expr0(lx);
-        return binop(E_COND, l, r);  /* ? = pattern-match / interrogate */
+        return binop(E_COND, l, r);
     }
-    lx->peek = (Token){T_WS, NULL, 0, 0, lx->lineno};
-    lx->peeked = 1;
+    lex_restore(lx, m0);
     return l;
 }
 

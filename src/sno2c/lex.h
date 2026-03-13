@@ -55,3 +55,8 @@ typedef struct {
 } LineArray;
 
 #endif /* LEX_H */
+
+/* Checkpoint for speculative lookahead — save and restore full lexer state */
+typedef struct { int pos; Token peek; int peeked; } LexMark;
+static inline LexMark lex_mark(Lex *lx) { LexMark m; m.pos=lx->pos; m.peek=lx->peek; m.peeked=lx->peeked; return m; }
+static inline void lex_restore(Lex *lx, LexMark m) { lx->pos=m.pos; lx->peek=m.peek; lx->peeked=m.peeked; }
