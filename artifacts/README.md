@@ -46,7 +46,24 @@ gcc -O0 -g beauty_full_first_clean.c \
 
 ---
 
-## `beauty_full_session50.c`
+## `beauty_full_session51.c`
+
+**What**: Generated C from `sno2c beauty.sno -I $INC` at Session 51 (this session).
+The `parse_expr3` fix — pattern field now correctly includes `|` alternation while
+excluding `=` and `?`. Replacement-statement segfault remains fixed from session50.
+
+**When**: Session 51, 2026-03-13.
+
+**Stats**: 12,744 lines of C. md5: `5fb3368822fb7b764e8e88682a83b48f`
+
+**Compiles with 0 gcc errors.** Binary runs but smoke tests still 0/21.
+Active bug: `sno_iset` on DATA object fields doesn't persist — `val(n) = val(n) + 1`
+has no effect. Root cause: `sno_iset` receives a copy of the field value, not a
+pointer into the data structure.
+
+---
+
+
 
 **What**: Generated C from `snoc beauty.sno -I $INC` at Session 50.
 The active debugging target — contains the grammar init bug under investigation.
