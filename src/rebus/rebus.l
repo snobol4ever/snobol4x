@@ -97,8 +97,9 @@ static int last_tok=0;
 static int needs_semi(int tok) {
     switch(tok) {
         case T_IDENT: case T_STR: case T_INT: case T_REAL: case T_KEYWORD:
-        case ')': case ']':
+        case ')': case ']': case '}':
         case T_END: case T_EXIT: case T_NEXT: case T_FAIL: case T_STOP:
+        case T_RETURN:
             return 1;
         default: return 0;
     }

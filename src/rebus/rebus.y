@@ -277,7 +277,8 @@ opt_locals
 
 opt_initial
     : /* empty */              { $$ = NULL; }
-    | T_INITIAL stmt ';'       { $$ = $2; }
+    | T_INITIAL compound_stmt               { $$ = $2; }
+    | T_INITIAL stmt ';'                    { $$ = $2; }
     ;
 
 /* A stmt_list returns the first stmt of a linked list (via ->next).
@@ -289,7 +290,15 @@ stmt_list
 
 stmt_list_ne
     : stmt ';'                  { $$ = $1; }
+    | compound_stmt             { $$ = $1; }
     | stmt_list_ne stmt ';'     {
+            if (!$1) { $$ = $2; }
+            else {
+                RStmt *t = $1; while (t->next) t = t->next;
+                t->next = $2; $$ = $1;
+            }
+        }
+    | stmt_list_ne compound_stmt {
             if (!$1) { $$ = $2; }
             else {
                 RStmt *t = $1; while (t->next) t = t->next;
