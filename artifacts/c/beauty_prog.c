@@ -1200,7 +1200,7 @@ _L_IncCounter:;
 SnoVal _v70 = sno_add(sno_apply("value",(SnoVal[]){sno_deref(sno_str("#N"))},1),sno_int(1));
 int _ok70 = !SNO_IS_FAIL(_v70);
 if(_ok70) {
-sno_iset(sno_apply("value",(SnoVal[]){sno_deref(sno_str("#N"))},1),_v70);
+sno_field_set(sno_deref(sno_str("#N")), "value", _v70);
 }
     goto _SNO_NEXT_69;
 _SNO_NEXT_69:;
@@ -1246,7 +1246,7 @@ _L_DecCounter:;
 SnoVal _v76 = sno_sub(sno_apply("value",(SnoVal[]){sno_deref(sno_str("#N"))},1),sno_int(1));
 int _ok76 = !SNO_IS_FAIL(_v76);
 if(_ok76) {
-sno_iset(sno_apply("value",(SnoVal[]){sno_deref(sno_str("#N"))},1),_v76);
+sno_field_set(sno_deref(sno_str("#N")), "value", _v76);
 }
     goto _SNO_NEXT_75;
 _SNO_NEXT_75:;
@@ -2395,7 +2395,7 @@ _L_Insert4:;
 SnoVal _v238 = sno_add(sno_apply("n",(SnoVal[]){sno_get(_x)},1),sno_int(1));
 int _ok238 = !SNO_IS_FAIL(_v238);
 if(_ok238) {
-sno_iset(sno_apply("n",(SnoVal[]){sno_get(_x)},1),_v238);
+sno_field_set(sno_get(_x), "n", _v238);
 }
     goto _SNO_NEXT_237;
 _SNO_NEXT_237:;
@@ -2403,7 +2403,7 @@ _SNO_NEXT_237:;
 SnoVal _v240 = sno_get(_c);
 int _ok240 = !SNO_IS_FAIL(_v240);
 if(_ok240) {
-sno_iset(sno_apply("c",(SnoVal[]){sno_get(_x)},1),_v240);
+sno_field_set(sno_get(_x), "c", _v240);
 }
     goto _SNO_RETURN_Insert;
 _SNO_NEXT_239:;
@@ -2535,7 +2535,7 @@ _L_Remove4:;
 SnoVal _v258 = sno_sub(sno_apply("n",(SnoVal[]){sno_get(_x)},1),sno_int(1));
 int _ok258 = !SNO_IS_FAIL(_v258);
 if(_ok258) {
-sno_iset(sno_apply("n",(SnoVal[]){sno_get(_x)},1),_v258);
+sno_field_set(sno_get(_x), "n", _v258);
 }
     goto _SNO_NEXT_257;
 _SNO_NEXT_257:;
@@ -2543,7 +2543,7 @@ _SNO_NEXT_257:;
 SnoVal _v260 = sno_get(_c);
 int _ok260 = !SNO_IS_FAIL(_v260);
 if(_ok260) {
-sno_iset(sno_apply("c",(SnoVal[]){sno_get(_x)},1),_v260);
+sno_field_set(sno_get(_x), "c", _v260);
 }
     goto _SNO_RETURN_Remove;
 _SNO_NEXT_259:;
