@@ -85,10 +85,6 @@ typedef struct {
     /* Variable-resolve support for T_VARREF (deferred pattern refs inside ARBNO) */
     VarResolveFn    var_fn;
     void           *var_data;
-    /* Absolute start offset of this sub-string in the original subject.
-     * Used to make T_POS/T_TAB work correctly when materialise is done once
-     * at scan_start=0 and re-used across multiple position attempts. */
-    int             scan_start;
 } State;
 
 /*======================================================================================
@@ -281,10 +277,10 @@ static bool scan_BAL(State *z) {
     return false;
 }
 
-static inline bool scan_POS(State *z)   { return z->PI->n == z->DELTA + z->scan_start; }
+static inline bool scan_POS(State *z)   { return z->PI->n == z->DELTA; }
 static inline bool scan_RPOS(State *z)  { return z->PI->n == z->OMEGA - z->DELTA; }
 static inline bool scan_LEN(State *z)   { return scan_move(z, z->PI->n); }
-static inline bool scan_TAB(State *z)   { return scan_move(z, z->PI->n - z->DELTA - z->scan_start); }
+static inline bool scan_TAB(State *z)   { return scan_move(z, z->PI->n - z->DELTA); }
 static inline bool scan_REM(State *z)   { return scan_move(z, z->OMEGA - z->DELTA); }
 static inline bool scan_RTAB(State *z)  { return scan_move(z, z->OMEGA - z->DELTA - z->PI->n); }
 static inline bool scan_ALPHA(State *z) { return z->DELTA == 0 || (z->DELTA > 0 && z->SIGMA[-1] == '\n'); }
@@ -319,7 +315,6 @@ MatchResult engine_match_ex(Pattern *root, const char *subject, int subject_len,
     Z.cap_data = opts ? opts->cap_data : NULL;
     Z.var_fn   = opts ? opts->var_fn   : NULL;
     Z.var_data = opts ? opts->var_data : NULL;
-    Z.scan_start = opts ? opts->scan_start : 0;
 
     int _iter = 0;
     while (Z.PI) {

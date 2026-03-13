@@ -696,29 +696,7 @@ static Pattern *var_resolve_callback(const char *name, void *userdata) {
     return materialise(sp, ctx);
 }
 
-/* Internal: try match using a pre-materialised root at a single starting offset.
- * Does NOT call materialise — caller must do that once. */
-static int try_match_at_root(Pattern *root, const char *subject, int slen, int start, MatchCtx *ctx) {
-    ctx->scan_start = start;
-    EngineOpts opts;
-    opts.cap_fn    = (ctx->ncaptures > 0) ? capture_callback : NULL;
-    opts.cap_data  = ctx;
-    opts.var_fn    = var_resolve_callback;
-    opts.var_data  = ctx;
-    opts.scan_start = start;
-    MatchResult mr = engine_match_ex(root, subject + start, slen - start, &opts);
-    if (getenv("SNO_PAT_DEBUG") && slen < 20)
-        fprintf(stderr, "  try_match_at: start=%d slen=%d -> matched=%d end=%d\n",
-            start, slen, mr.matched, mr.end);
-    if (mr.matched) {
-        apply_captures(ctx);
-        return start + mr.end;
-    }
-    return -1;
-}
-
-/* Internal: materialise then try match at a single starting offset.
- * Used for sno_match_and_replace and other single-shot callers. */
+/* Internal: try match at a single starting offset. Returns match end (>=start) or -1. */
 static int try_match_at(SnoPattern *sp, const char *subject, int slen, int start, MatchCtx *ctx) {
     ctx->scan_start = start;
     Pattern *root = materialise(sp, ctx);
@@ -727,7 +705,6 @@ static int try_match_at(SnoPattern *sp, const char *subject, int slen, int start
     opts.cap_data = ctx;
     opts.var_fn   = var_resolve_callback;
     opts.var_data = ctx;
-    opts.scan_start = start;
     MatchResult mr = engine_match_ex(root, subject + start, slen - start, &opts);
     if (getenv("SNO_PAT_DEBUG") && slen < 20)
         fprintf(stderr, "  try_match_at: start=%d slen=%d -> matched=%d end=%d\n",
@@ -756,33 +733,23 @@ int sno_match_pattern(SnoVal pat, const char *subject) {
 
     int slen = (int)strlen(subject);
 
-    /* Materialise the pattern ONCE (scan_start=0 for absolute POS/TAB values).
-     * This prevents side-effect functions (Reduce, nInc, etc.) inside SPAT_USER_CALL
-     * from being called N times (once per scan position). The engine receives
-     * opts.scan_start per position so T_POS/T_TAB compute correctly. */
-    MatchCtx mat_ctx; memset(&mat_ctx, 0, sizeof(mat_ctx)); mat_ctx.subject = subject;
-    Pattern *root = materialise(sp, &mat_ctx);
-
     /* SNOBOL4 unanchored match: try each starting position */
     if (sno_kw_anchor) {
         /* &ANCHOR=1: anchored at position 0 only */
         MatchCtx ctx; memset(&ctx, 0, sizeof(ctx)); ctx.subject = subject;
-        int r = try_match_at_root(root, subject, slen, 0, &ctx);
-        pattern_free_all(&mat_ctx.pl);
+        int r = try_match_at(sp, subject, slen, 0, &ctx);
+        pattern_free_all(&ctx.pl);
         return r >= 0;
     }
 
     for (int start = 0; start <= slen; start++) {
         MatchCtx ctx; memset(&ctx, 0, sizeof(ctx)); ctx.subject = subject;
-        int r = try_match_at_root(root, subject, slen, start, &ctx);
-        if (r >= 0) {
-            pattern_free_all(&mat_ctx.pl);
-            return 1;
-        }
+        int r = try_match_at(sp, subject, slen, start, &ctx);
+        pattern_free_all(&ctx.pl);
+        if (r >= 0) return 1;
         /* Don't scan past end for patterns that consume nothing */
         if (start == slen) break;
     }
-    pattern_free_all(&mat_ctx.pl);
     return 0;
 }
 
@@ -808,32 +775,26 @@ int sno_match_and_replace(SnoVal *subject, SnoVal pat, SnoVal replacement) {
     SnoPattern *sp = spat_of(pat);
     if (!sp) return 0;
 
-    /* Materialise once to prevent side-effect functions firing per scan position */
-    MatchCtx mat_ctx; memset(&mat_ctx, 0, sizeof(mat_ctx)); mat_ctx.subject = s;
-    Pattern *mat_root = materialise(sp, &mat_ctx);
-
     /* Try each starting position */
     int match_start = -1, match_end = -1;
     for (int start = 0; start <= slen; start++) {
         MatchCtx ctx; memset(&ctx, 0, sizeof(ctx)); ctx.subject = s;
         ctx.scan_start = start;
+        Pattern *root = materialise(sp, &ctx);
         EngineOpts opts;
-        opts.cap_fn    = (ctx.ncaptures > 0) ? capture_callback : NULL;
-        opts.cap_data  = &ctx;
-        opts.var_fn    = var_resolve_callback;
-        opts.var_data  = &ctx;
-        opts.scan_start = start;
-        MatchResult mr = engine_match_ex(mat_root, s + start, slen - start, &opts);
+        opts.cap_fn   = (ctx.ncaptures > 0) ? capture_callback : NULL;
+        opts.cap_data = &ctx;
+        MatchResult mr = engine_match_ex(root, s + start, slen - start, &opts);
         if (mr.matched) {
             apply_captures(&ctx);
             match_start = start;
             match_end   = start + mr.end;
-            pattern_free_all(&mat_ctx.pl);
+            pattern_free_all(&ctx.pl);
             break;
         }
+        pattern_free_all(&ctx.pl);
         if (start == slen) break;
     }
-    if (match_start < 0) pattern_free_all(&mat_ctx.pl);
     if (match_start < 0) return 0;
 
     const char *repl = sno_to_str(replacement);

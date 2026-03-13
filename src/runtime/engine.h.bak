@@ -127,7 +127,6 @@ typedef struct {
     void         *cap_data;  /* passed through to cap_fn unmodified */
     VarResolveFn  var_fn;    /* NULL = T_VARREF hits default (CONCEDE) */
     void         *var_data;  /* passed through to var_fn unmodified */
-    int           scan_start; /* absolute start offset in original subject (for T_POS/T_TAB) */
 } EngineOpts;
 
 /*--- engine_match: run root against subject[0..subject_len) ---*/
