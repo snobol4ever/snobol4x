@@ -6,7 +6,7 @@
  * handles -INCLUDE, and prefixes label-bearing lines with \x01 (LABEL_MARK).
  * Flex sees a clean one-statement-per-line buffer via YY_INPUT.
  *
- * Space is returned as a SPACE token — it is the concat operator.
+ * Space is returned as a _ token — it is the concat operator.
  * IDENT immediately followed by '(' has no space between, so it is
  * unambiguous as a function call vs concat-with-group.
  */
@@ -173,7 +173,8 @@ WS      [ \t]+
                     yylval.sval = lab; return LABEL;
                 }
 
-{WS}            { return SPACE; }
+{WS}/[A-Za-z0-9'\"(+\-*/$^@&.~]  { return _; }
+{WS}            { /* space before operator or EOL — skip */ }
 \n              { BEGIN(INITIAL); lineno_stmt = yylineno; return NEWLINE; }
 
     /* ---- strings ---- */
@@ -190,23 +191,8 @@ WS      [ \t]+
 "&"             { yylval.sval = intern("&"); return AMP; }
 
     /* ---- identifiers ---- */
-    /* PAT_BUILTIN only when directly followed by '(' AND at statement level
-       (bstack_top == 0, i.e. not inside a function-call arglist).
-       Inside parens (e.g. foo(POS(0) ANY(...))), these are IDENT so they parse
-       as value-expr function calls, not as pattern-expr starters.
-       This disambiguates: `str POS(0) ANY(..) . x =` is parsed as
-       subject=str, pattern=POS(0) ANY(..) . x, replacement=empty.
-       Zero-arg builtins (ARB, REM, FAIL…) used bare are returned as IDENT
-       and routed through emit_pat's E_CALL path which handles them. */
-{IDENT}/"("     {
-                    yylval.sval = intern(yytext);
-                    last_was_callable = 1;
-                    /* PAT_BUILTIN only at top-level (not inside arglist parens) */
-                    if (is_pat_builtin(yytext) && bstack_top == 0)
-                        return PAT_BUILTIN;
-                    return IDENT;
-                }
-{IDENT}         { yylval.sval = intern(yytext); last_was_callable = 0; return IDENT; }
+{IDENT}/"("     { yylval.sval = intern(yytext); return IDENT; }
+{IDENT}         { yylval.sval = intern(yytext); return IDENT; }
 
     /* ---- operators ---- */
 "**"            { return STARSTAR; }
@@ -225,13 +211,7 @@ WS      [ \t]+
 "|"             { return PIPE; }
 "."             { return DOT; }
 "$"             { return DOLLAR; }
-","             {
-                    /* In a grouping paren (bstack top = 0), comma = ALT (PIPE).
-                     * In a function-call paren (bstack top = 1), comma = COMMA. */
-                    if (bstack_top > 0 && bstack[bstack_top-1] == 0)
-                        return PIPE;
-                    return COMMA;
-                }
+","             { return COMMA; }
 "@"             { return AT; }
 ";"[^\n]*       { return NEWLINE; }  /* ; terminates stmt; rest of line is discarded */
 
@@ -273,7 +253,6 @@ WS      [ \t]+
 <GT>","         { return COMMA; }
 <GT>";"[^\n]*   { BEGIN(INITIAL); return NEWLINE; }  /* ; ends stmt, rest of line discarded */
 <GT>\n          { BEGIN(INITIAL); lineno_stmt=yylineno; return NEWLINE; }
-<GT>.           { }
 
 %%
 

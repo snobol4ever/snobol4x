@@ -60,7 +60,7 @@ extern int  lineno_stmt;
 %token  EQ COLON LPAREN RPAREN LBRACKET RBRACKET
 %token  STARSTAR CARET PLUS MINUS STAR SLASH
 %token  PIPE DOT DOLLAR AMP COMMA AT
-%token  SGOTO FGOTO NEWLINE
+%token  SGOTO FGOTO NEWLINE _
 
 %type <stmt>  stmt
 %type <expr>  expr term factor atom primary opt_repl opt_expr
@@ -75,6 +75,8 @@ extern int  lineno_stmt;
 %right STARSTAR CARET
 %right UMINUS UDEREF
 %left  LBRACKET
+%left  _
+%nonassoc SUBJ
 
 %%
 
@@ -108,25 +110,25 @@ line
     ;
 
 stmt
-    : opt_label
+    : LABEL
         { Stmt *s=stmt_new(); s->label=$1; s->lineno=lineno_stmt; $$=s; }
     | opt_label COLON goto_clauses
         { Stmt *s=stmt_new(); s->label=$1; s->go=(SnoGoto*)$3;
           s->lineno=lineno_stmt; $$=s; }
-    | opt_label expr opt_goto
+    | opt_label term opt_goto %prec SUBJ
         { Stmt *s=stmt_new(); s->label=$1; s->subject=$2;
           s->go=(SnoGoto*)$3; s->lineno=lineno_stmt; $$=s; }
-    | opt_label expr EQ opt_repl opt_goto
+    | opt_label term EQ opt_repl opt_goto %prec SUBJ
         { Stmt *s=stmt_new(); s->label=$1; s->subject=$2;
           s->replacement=$4; s->go=(SnoGoto*)$5;
           s->lineno=lineno_stmt; $$=s; }
-    | opt_label expr expr opt_goto
+    | opt_label term _ expr opt_goto %prec SUBJ
         { Stmt *s=stmt_new(); s->label=$1; s->subject=$2;
-          s->pattern=$3; s->go=(SnoGoto*)$4;
+          s->pattern=$4; s->go=(SnoGoto*)$5;
           s->lineno=lineno_stmt; $$=s; }
-    | opt_label expr expr EQ opt_repl opt_goto
+    | opt_label term _ expr EQ opt_repl opt_goto %prec SUBJ
         { Stmt *s=stmt_new(); s->label=$1; s->subject=$2;
-          s->pattern=$3; s->replacement=$5; s->go=(SnoGoto*)$6;
+          s->pattern=$4; s->replacement=$6; s->go=(SnoGoto*)$7;
           s->lineno=lineno_stmt; $$=s; }
     ;
 
@@ -141,7 +143,7 @@ opt_goto : /* empty */ { $$=NULL; } | COLON goto_clauses { $$=$2; } ;
 
 expr
     : term                          { $$=$1; }
-    | expr term                     { $$=binop(E_CONCAT,$1,$2); }
+    | expr _ term               { $$=binop(E_CONCAT,$1,$3); }
     | expr AMP term                 { $$=binop(E_REDUCE,$1,$3); }
     | expr PLUS  term               { $$=binop(E_ADD,$1,$3); }
     | expr MINUS term               { $$=binop(E_SUB,$1,$3); }
@@ -187,9 +189,6 @@ primary
     | IDENT LPAREN arglist RPAREN
         { AL *al=$3; Expr *e=expr_new(E_CALL);
           e->sval=$1; e->args=al->a; e->nargs=al->n; free(al); $$=e; }
-    | IDENT LBRACKET arglist RBRACKET
-        { AL *al=$3; Expr *e=expr_new(E_ARRAY);
-          e->sval=$1; e->args=al->a; e->nargs=al->n; free(al); $$=e; }
     | IDENT     { Expr *e=expr_new(E_VAR); e->sval=$1; $$=e; }
     | LPAREN expr RPAREN            { $$=$2; }
     | LPAREN expr COMMA arglist_ne RPAREN
@@ -214,7 +213,6 @@ opt_expr
     | IDENT EQ expr
         { Expr *e=expr_new(E_ASSIGN);
           e->left=expr_new(E_VAR); e->left->sval=$1; e->right=$3; $$=e; }
-    | /* empty */   { $$=NULL; }
     ;
 
 goto_clauses
