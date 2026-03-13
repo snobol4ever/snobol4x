@@ -4,7 +4,7 @@ CFLAGS = -Wall -Wno-unused-function -Wno-unused-variable \
 BISON  = bison
 FLEX   = flex
 
-SRCS   = rebus.tab.c lex.rebus.c rebus_print.c rebus_main.c
+SRCS   = rebus.tab.c lex.rebus.c rebus_print.c rebus_emit.c rebus_main.c
 OBJS   = $(SRCS:.c=.o)
 
 .PHONY: all clean test
