@@ -61,6 +61,10 @@ typedef struct {
     char *onsuccess;
     char *onfailure;
     char *uncond;
+    /* For computed gotos $(expr): the expression text (NULL if not computed) */
+    char *computed_success_expr;
+    char *computed_failure_expr;
+    char *computed_uncond_expr;
 } SnoGoto;
 
 /* ---- statement ---- */
@@ -99,6 +103,7 @@ static inline char *intern_n(const char *s, int n) {
 /* ---- public API ---- */
 void     snoc_add_include_dir(const char *d);
 Program *snoc_parse(FILE *f, const char *filename);
+Expr    *parse_expr_from_str(const char *src); /* for computed goto dispatch */
 void     snoc_emit(Program *prog, FILE *out);
 
 /* ---- Byrd box emitter (emit_byrd.c) ---- */

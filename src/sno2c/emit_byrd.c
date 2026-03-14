@@ -1045,27 +1045,34 @@ static void emit_arbno(Expr *child,
     snprintf(child_ok,   LBUF, "%s_child_ok",   alpha);
     snprintf(child_fail, LBUF, "%s_child_fail", alpha);
 
-    char depth_var[LBUF], stack_var[LBUF];
+    char depth_var[LBUF], stack_var[LBUF], stk_save[LBUF];
     snprintf(depth_var, LBUF, "%s_depth",   alpha);
     snprintf(stack_var, LBUF, "%s_cursors", alpha);
+    snprintf(stk_save,  LBUF, "%s_saved_stk", alpha);
     decl_add("int %s",         depth_var);
     decl_add("int64_t %s[64]", stack_var);
+    /* Save/restore $'@S' (tree stack) across ARBNO iterations.
+     * The zero-match alpha path fires Reduce immediately, pushing a tree
+     * onto @S.  When ARBNO extends via beta that stray tree must be undone
+     * before the next Reduce fires, or Reduce(Stmt,7) consumes it as a child. */
+    decl_add("SnoVal %s",      stk_save);
 
-    /* α: zero matches → succeed immediately */
-    PL(alpha, gamma, "%s = -1;", depth_var);
+    /* α: snapshot @S, zero matches → succeed immediately */
+    PL(alpha, gamma, "%s = var_get(\"@S\"); %s = -1;", stk_save, depth_var);
 
-    /* β: extend by one — save cursor, try child */
+    /* β: restore @S to pre-alpha snapshot, then extend by one */
     PLG(beta, NULL);
-    /* Re-establish counter frame if nPop fired on the alpha-path success.
-     * When nPush()→ARBNO(0)→Reduce→nPop() completes and Parse is re-entered
-     * via beta, _ntop=-1.  A single conditional npush() here restores it so
-     * nInc() inside Command counts correctly. */
+    /* Undo any Reduce side-effects from the previous shorter match */
+    PS(NULL, "var_set(\"@S\", %s);", stk_save);
+    /* Re-establish counter frame if nPop fired on the alpha-path success */
     PS(NULL, "if (!nhas_frame()) npush();");
     PS(omega,    "if (++%s >= 64)", depth_var);
     PS(child_α,  "%s[%s] = %s;", stack_var, depth_var, cursor);
 
-    /* child_ok: child matched → ARBNO offers another match */
-    PLG(child_ok, gamma);
+    /* child_ok: child matched → update @S snapshot, ARBNO offers another match */
+    PLG(child_ok, NULL);
+    /* Snapshot @S after successful child so next beta restores to this point */
+    PS(gamma, "%s = var_get(\"@S\");", stk_save);
 
     /* child_fail: child failed → restore cursor, pop, ARBNO fails */
     PLG(child_fail, NULL);

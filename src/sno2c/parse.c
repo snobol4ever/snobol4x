@@ -601,7 +601,7 @@ static char *parse_goto_label(Lex *lx) {
     } else if (t.kind==T_DOLLAR) {
         lex_next(lx);
         if (lex_peek(lx).kind==T_LPAREN) {
-            /* $(expr) — computed goto: consume balanced parens, store as $COMPUTED */
+            /* $(expr) — computed goto: capture expression text for emitter */
             int depth=1;
             lex_next(lx); /* consume '(' */
             /* scan raw source to grab the expression text */
@@ -611,12 +611,14 @@ static char *parse_goto_label(Lex *lx) {
                 if (tok.kind==T_LPAREN) depth++;
                 else if (tok.kind==T_RPAREN) depth--;
             }
-            /* re-parse the expression properly */
             int end = lx->pos - 1; /* back up past closing ) */
-            Lex sub = {0};
-            lex_open_str(&sub, lx->src + start, end - start, lx->lineno);
-            (void)parse_expr0(&sub); /* parse but discard — emitter uses $COMPUTED */
-            label = strdup("$COMPUTED");
+            /* Store as "$COMPUTED:expr_text" so emitter can emit dispatch */
+            int elen = end - start;
+            char *buf = malloc(12 + elen + 1);
+            memcpy(buf, "$COMPUTED:", 10);
+            memcpy(buf + 10, lx->src + start, elen);
+            buf[10 + elen] = '\0';
+            label = buf;
         } else {
             /* $IDENT — simple indirect */
             Token n2 = lex_next(lx);
@@ -776,4 +778,14 @@ Program *parse_program(LineArray *lines) {
     }
 
     return prog;
+}
+
+/* Public wrapper: parse a SNOBOL4 expression from a string.
+ * Used by the emitter for computed gotos ($COMPUTED:expr_text). */
+Expr *parse_expr_from_str(const char *src) {
+    if (!src || !*src) return NULL;
+    Lex lx = {0};
+    lex_open_str(&lx, src, (int)strlen(src), 0);
+    lex_next(&lx); /* prime */
+    return parse_expr0(&lx);
 }

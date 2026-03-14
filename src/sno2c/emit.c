@@ -461,9 +461,23 @@ static void emit_goto_target(const char *label, const char *fn) {
         else if (strcasecmp(label,"END")==0) {
             E("return NULL"); return;
         }
-        else if (strcasecmp(label,"$COMPUTED")==0 ||
-                 strcasecmp(label,"_COMPUTED")==0) {
-            E("return (void*)_tramp_next_%d", cur_stmt_next_uid); return;
+        else if (strncasecmp(label,"$COMPUTED",9)==0) {
+            /* Computed goto: $COMPUTED:expr_text
+             * Re-parse the stored expression, emit runtime label lookup. */
+            const char *expr_src = (label[9]==':') ? label+10 : NULL;
+            if (expr_src && *expr_src) {
+                Expr *ce = parse_expr_from_str(expr_src);
+                if (ce) {
+                    E("{ const char *_cgoto_lbl = to_str(");
+                    emit_expr(ce);
+                    E("); return sno_computed_goto(_cgoto_lbl); }");
+                } else {
+                    E("return (void*)_tramp_next_%d", cur_stmt_next_uid);
+                }
+            } else {
+                E("return (void*)_tramp_next_%d", cur_stmt_next_uid);
+            }
+            return;
         }
         /* Cross-scope: fall through */
         if (label_is_in_fn_body(label, NULL) && !label_is_in_fn_body(label, fn)) {
@@ -497,7 +511,12 @@ static void emit_goto_target(const char *label, const char *fn) {
         if (in_main) { E("goto _SNO_END"); return; }
         E("goto _SNO_FRETURN_%s", fn); return;
     }
-    else if (strcasecmp(label,"$COMPUTED")==0 || strcasecmp(label,"_COMPUTED")==0) {
+    else if (strncasecmp(label,"$COMPUTED",9)==0 || strcasecmp(label,"_COMPUTED")==0) {
+        /* Computed goto: $COMPUTED:expr — NOT YET IMPLEMENTED in fn-body mode.
+         * The expression text is preserved in label[10..] but we cannot emit
+         * a proper dispatch here because tramp_labels/fn_table are not in scope.
+         * Session 71 ONE NEXT ACTION: emit a sno_computed_goto() dispatch table
+         * function after all block/fn forward declarations in emit_trampoline_main(). */
         E("goto _SNO_NEXT_%d", cur_stmt_next_uid); return;
     }
     if (label_is_in_fn_body(label, NULL) && !label_is_in_fn_body(label, fn)) {
@@ -808,6 +827,10 @@ static void emit_stmt(Stmt *s, const char *fn) {
         /* Declare _ok before the Byrd block (C: no jumps over declarations) */
         E("int _ok%d = 0;\n", u);
         E("_mstart%d = _cur%d;\n", u, u);
+        /* Checkpoint $'@S' (tree stack) before the pattern match.
+         * On match failure, restore to undo any Shift/Reduce side-effects
+         * (e.g. a zero-match ARBNO leaves a stray Parse tree on @S). */
+        E("SnoVal _stk_save_%d = var_get(\"@S\");\n", u);
 
         /* SNOBOL4 pattern matching is a substring scan: wrap pattern in ARB
          * unless the leftmost node is POS() which anchors to a position. */
@@ -853,8 +876,9 @@ static void emit_stmt(Stmt *s, const char *fn) {
         }
         E("goto %s;\n", done_lbl);
 
-        /* omega: mtch failed */
+        /* omega: mtch failed — restore @S to pre-match state */
         E("%s:;\n", fail_lbl);
+        E("var_set(\"@S\", _stk_save_%d);\n", u);
         E("_ok%d = 0;\n", u);
 
         E("%s:;\n", done_lbl);
