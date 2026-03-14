@@ -173,3 +173,18 @@ Next action: implement `byrd_emit_named_pattern` in emit_byrd.c (Technique 1).
 - md5: d53a75d1f42342071c807e4035a85878
 - gcc errors: 0
 - Active bug: Internal Error on START — Shift(7) fires correctly, Reduce('Stmt',7) fires, but sno still FAIL after Pop()
+
+## Session 73 — beauty_tramp_session73.c
+**Changes since S69 (sessions 70-72 no artifact):**
+- fix(emit_byrd): emit_simple_val E_STR strips outer single-quote pairs — STR_VAL("'Stmt'") → STR_VAL("Stmt")
+- fix(emit): computed-goto dispatch strips all quote chars from _cg before strcmp chain
+- fix(runtime): evl() returns string value for quoted string literals (EVAL("'Stmt'") → "Stmt")
+
+**Result:** * comment ✅  X = 1 ✅  START still empty — new bug: c field of tree node
+returns SSTR (type=1) instead of ARRAY when accessed via indx(). pp_Parse loop gets
+SFAIL for c[1] because indx() cannot index a string as array.
+
+- Lines: 30108
+- md5: 95c6eb104a1ab7cf5c8415c9fbbf9245
+- gcc errors: 0
+- Active bug: START empty — c(parse_node) returns SSTR not ARRAY; indx(c,1) → FAIL
