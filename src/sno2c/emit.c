@@ -15,10 +15,11 @@
 #include <string.h>
 #include <stdarg.h>
 #include <ctype.h>
+#include "emit_cnode.h"
 
 /* Forward declarations */
 static int is_io_name(const char *name);
-static int is_defined_function(const char *name);
+int is_defined_function(const char *name);
 static void emit_assign_target(Expr *lhs, const char *rhs_str);
 static void emit_assign_target_io(Expr *lhs, const char *rhs_str);
 
@@ -41,6 +42,35 @@ static void E(const char *fmt, ...) {
 }
 
 /* Three-column pretty printer — shared with emit_byrd.c */
+
+/* -----------------------------------------------------------------------
+ * Sprint 1 validation: assert build_expr+cn_flat_print == emit_expr
+ * Build with: make CFLAGS="-DCNODE_VALIDATE ..."
+ * ----------------------------------------------------------------------- */
+#ifdef CNODE_VALIDATE
+static void emit_expr(Expr *e);
+static void emit_expr_validated(Expr *e) {
+    char *old_buf = NULL; size_t old_sz = 0;
+    FILE *old_fp = open_memstream(&old_buf, &old_sz);
+    FILE *saved = out; out = old_fp;
+    emit_expr(e);
+    out = saved; fclose(old_fp);
+
+    char *new_buf = NULL; size_t new_sz = 0;
+    FILE *new_fp = open_memstream(&new_buf, &new_sz);
+    CArena *ar = cn_arena_new(65536);
+    cn_flat_print(build_expr(ar, e), new_fp);
+    fclose(new_fp); cn_arena_free(ar);
+
+    if (old_sz != new_sz || memcmp(old_buf, new_buf, old_sz) != 0)
+        fprintf(stderr, "\nCNODE MISMATCH:\n  OLD: %.200s\n  NEW: %.200s\n",
+                old_buf, new_buf);
+
+    fwrite(old_buf, 1, old_sz, out);
+    free(old_buf); free(new_buf);
+}
+#define emit_expr(e) emit_expr_validated(e)
+#endif /* CNODE_VALIDATE */
 #define PRETTY_OUT out
 #include "emit_pretty.h"
 
@@ -125,7 +155,85 @@ static void emit_cstr(const char *s) {
  * ============================================================ */
 static void emit_expr(Expr *e);
 static void emit_pat(Expr *e);
-static int  expr_contains_pattern(Expr *e);
+int expr_contains_pattern(Expr *e);
+
+/* -----------------------------------------------------------------------
+ * emit_chain_pretty — multi-line indented binary chain emitter
+ *
+ * Walks a left-associative binary chain (E_CONCAT/E_ALT) collecting all
+ * leaves, then emits as indented multi-line nested calls.
+ *
+ * fn_name:  "concat_sv", "pat_cat", "pat_alt"
+ * emit_leaf: emit_expr or emit_pat — called for each leaf node
+ * min_depth: minimum chain depth before pretty-printing kicks in (3)
+ *
+ * Output form (depth 4, fn="concat_sv"):
+ *   concat_sv(
+ *       concat_sv(
+ *           concat_sv(leaf0, leaf1),
+ *           leaf2),
+ *       leaf3)
+ * ----------------------------------------------------------------------- */
+#define CHAIN_MAX 64
+static void emit_chain_pretty(Expr *e, int kind,
+                               const char *fn_name,
+                               void (*emit_leaf)(Expr *),
+                               int min_depth) {
+    /* Count depth */
+    int depth = 0;
+    for (Expr *n = e; n->kind == kind; n = n->left) depth++;
+
+    if (depth < min_depth) {
+        /* Short — keep inline */
+        E("%s(", fn_name); emit_leaf(e->left); E(","); emit_leaf(e->right); E(")");
+        return;
+    }
+
+    /* Collect leaves (left spine → right-to-left, then reverse) */
+    Expr *leaves[CHAIN_MAX];
+    int n = 0;
+    Expr *cur = e;
+    while (cur->kind == kind && n < CHAIN_MAX - 1) {
+        leaves[n++] = cur->right;
+        cur = cur->left;
+    }
+    leaves[n++] = cur;
+    /* Reverse to get left-to-right order */
+    for (int i = 0, j = n-1; i < j; i++, j--) {
+        Expr *tmp = leaves[i]; leaves[i] = leaves[j]; leaves[j] = tmp;
+    }
+
+    /* Emit: nested left-associative with 4-space indent per nesting level.
+     *
+     * For n leaves:
+     *   fn(                  <- open (n-2) times
+     *     fn(
+     *       fn(leaf0, leaf1),
+     *       leaf2),
+     *     leaf3)
+     */
+    int indent = 4;
+    /* Opening preamble: (n-2) lines each starting a new concat level */
+    for (int i = 0; i < n - 2; i++) {
+        E("%s(\n", fn_name);
+        for (int s = 0; s < indent; s++) E(" ");
+    }
+    /* Innermost pair */
+    E("%s(", fn_name);
+    emit_leaf(leaves[0]);
+    E(",\n");
+    for (int s = 0; s < indent; s++) E(" ");
+    emit_leaf(leaves[1]);
+    E(")");
+    /* Close each outer level, appending next right-arg */
+    for (int i = 2; i < n; i++) {
+        E(",\n");
+        for (int s = 0; s < indent; s++) E(" ");
+        emit_leaf(leaves[i]);
+        E(")");
+    }
+}
+#undef CHAIN_MAX
 
 static void emit_expr(Expr *e) {
     if (!e) { E("NULL_VAL"); return; }
@@ -165,50 +273,9 @@ static void emit_expr(Expr *e) {
 
     case E_NEG: E("neg("); emit_expr(e->right); E(")"); break;
 
-    case E_CONCAT: {
-        /* Count chain depth to decide whether to pretty-print */
-        int depth = 0;
-        for (Expr *n = e; n->kind == E_CONCAT; n = n->left) depth++;
-        if (depth < 3) {
-            /* Short chain — keep inline */
-            E("concat_sv("); emit_expr(e->left); E(","); emit_expr(e->right); E(")");
-        } else {
-            /* Long chain — collect leaves and emit indented */
-            /* Max concat depth in beauty.sno is ~20 */
-            #define MAX_CONCAT_LEAVES 64
-            Expr *leaves[MAX_CONCAT_LEAVES];
-            int n = 0;
-            /* Walk left spine to collect leaves in order */
-            Expr *cur = e;
-            while (cur->kind == E_CONCAT && n < MAX_CONCAT_LEAVES - 1) {
-                leaves[n++] = cur->right;   /* push right children (will reverse) */
-                cur = cur->left;
-            }
-            leaves[n++] = cur;  /* leftmost leaf */
-            /* leaves[] is now right-to-left; reverse for left-to-right order */
-            for (int i = 0, j = n-1; i < j; i++, j--) {
-                Expr *tmp = leaves[i]; leaves[i] = leaves[j]; leaves[j] = tmp;
-            }
-            /* Emit as nested concat_sv with 4-space indent per level.
-             * Build from right: concat_sv(concat_sv(..., leaf[n-2]), leaf[n-1]) */
-            /* Emit opening parens — one concat_sv( per pair except the innermost */
-            for (int i = 0; i < n - 2; i++) E("concat_sv(\n    ");
-            /* Innermost pair */
-            E("concat_sv(");
-            emit_expr(leaves[0]);
-            E(",\n    ");
-            emit_expr(leaves[1]);
-            E(")");
-            /* Close each level, emitting next right-arg */
-            for (int i = 2; i < n; i++) {
-                E(",\n    ");
-                emit_expr(leaves[i]);
-                E(")");
-            }
-            #undef MAX_CONCAT_LEAVES
-        }
+    case E_CONCAT:
+        emit_chain_pretty(e, E_CONCAT, "concat_sv", emit_expr, 2);
         break;
-    }
 
     case E_REDUCE: E("aply(\"reduce\",(SnoVal[]){"); emit_expr(e->left); E(","); emit_expr(e->right); E("},2)"); break;
     case E_ADD:    E("add(");    emit_expr(e->left); E(","); emit_expr(e->right); E(")"); break;
@@ -311,7 +378,8 @@ static void emit_pat(Expr *e) {
         break;
 
     case E_CONCAT:
-        E("pat_cat("); emit_pat(e->left); E(","); emit_pat(e->right); E(")"); break;
+        emit_chain_pretty(e, E_CONCAT, "pat_cat", emit_pat, 2);
+        break;
 
     case E_MUL:
         /* pat * x — parsed as arithmetic multiply, but in pattern context
@@ -331,7 +399,8 @@ static void emit_pat(Expr *e) {
         E("pat_user_call(\"reduce\",(SnoVal[]){"); emit_expr(e->left); E(","); emit_expr(e->right); E("},2)"); break;
 
     case E_ALT:
-        E("pat_alt("); emit_pat(e->left); E(","); emit_pat(e->right); E(")"); break;
+        emit_chain_pretty(e, E_ALT, "pat_alt", emit_pat, 2);
+        break;
 
     case E_COND: {
         /* pat . var */
@@ -703,7 +772,7 @@ static int is_pat_node(Expr *e) {
  *   - E_DEREF whose left child is E_VAR — "*varname" deferred pattern ref
  *   - E_CONCAT or E_ALT whose subtree contains any of the above
  */
-static int expr_contains_pattern(Expr *e) {
+int expr_contains_pattern(Expr *e) {
     if (!e) return 0;
     if (is_pat_node(e)) return 1;
     /* *varname — deferred pattern ref (grammar: left=NULL, right=E_VAR) */
@@ -1160,7 +1229,7 @@ static void emit_computed_goto_inline(const char *label, const char *fn) {
  * known SNOBOL4 standard library function.  Used to distinguish CALL from
  * variable-concatenation-with-grouping: in SNOBOL4, nl('+') where nl is a
  * variable (not a function) means CONCAT(nl, '+'), not a function call. */
-static int is_defined_function(const char *name) {
+int is_defined_function(const char *name) {
     if (name && (strcasecmp(name,"snoXList")==0 || strcasecmp(name,"snoX3")==0)) fprintf(stderr, "DEBUG is_defined_function(%s)\n", name);
     static const char *std[] = {
         "APPLY","ARG","ARRAY","ATAN","BACKSPACE","BREAK","BREAKX",
