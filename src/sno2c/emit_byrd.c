@@ -150,14 +150,31 @@ void byrd_preregister_named_pattern(const char *varname) {
     named_pat_register(varname, tyname, fnname);
 }
 
+/* Emit typedef forward-declarations for all registered named pattern structs.
+ * Must be called BEFORE byrd_emit_named_fwdecls so the struct pointer types
+ * in function prototypes are valid incomplete-type pointers.
+ *   typedef struct pat_X_t pat_X_t;   (incomplete — enough for pointer use)
+ */
+void byrd_emit_named_typedecls(FILE *out_file) {
+    for (int i = 0; i < named_pat_count; i++) {
+        fprintf(out_file,
+            "typedef struct %s %s;\n",
+            named_pat_registry[i].typename,
+            named_pat_registry[i].typename);
+    }
+    if (named_pat_count > 0) fprintf(out_file, "\n");
+}
+
 /* Emit forward declarations for ALL registered named patterns.
  * Must be called once, after all byrd_preregister_named_pattern calls,
- * and BEFORE any byrd_emit_named_pattern calls. */
+ * and BEFORE any byrd_emit_named_pattern calls.
+ * Signature: pat_X(subj, slen, cur_ptr, zz, entry) */
 void byrd_emit_named_fwdecls(FILE *out_file) {
     for (int i = 0; i < named_pat_count; i++) {
         fprintf(out_file,
-            "static SnoVal %s(const char *, int64_t, int64_t *, int);\n",
-            named_pat_registry[i].fnname);
+            "static SnoVal %s(const char *, int64_t, int64_t *, %s **, int);\n",
+            named_pat_registry[i].fnname,
+            named_pat_registry[i].typename);
     }
     if (named_pat_count > 0) fprintf(out_file, "\n");
 }
@@ -170,15 +187,15 @@ static const NamedPat *named_pat_lookup(const char *varname) {
 }
 
 /* -----------------------------------------------------------------------
- * Static storage declarations
+ * Local storage declarations
  *
- * The oracle files use static storage for saved cursors, ARBNO stacks, etc.
- * We collect these declarations during the emit pass and print them before
- * the goto chain.
+ * Two modes:
+ *   Normal (in_named_pat == 0): emit `static TYPE name;` as before.
+ *   Struct  (in_named_pat == 1): collect into a struct typedef, emit
+ *     `#define name z->name` aliases so the code body is unchanged.
  *
- * Simple approach: emit them inline via a two-pass mechanism.
- * We use a declaration buffer (pre-allocated, written during emit, flushed
- * before the code section).
+ * Child frame pointers for E_DEREF calls inside a named pattern are
+ * collected in child_decl_buf (separate buffer, same lifetime).
  * ----------------------------------------------------------------------- */
 
 #define DECL_BUF_MAX  256
@@ -187,14 +204,25 @@ static const NamedPat *named_pat_lookup(const char *varname) {
 static char decl_buf[DECL_BUF_MAX][DECL_LINE_MAX];
 static int  decl_count;
 
+/* Child frame pointer declarations: "struct pat_Y_t *Y_z_UID"
+ * Collected during byrd_emit of a named pattern body. */
+static char child_decl_buf[DECL_BUF_MAX][DECL_LINE_MAX];
+static int  child_decl_count;
+
 /* Cross-call dedup: tracks statics already emitted in the current C function.
  * Reset by byrd_fn_scope_reset() when emit.c opens a new C function. */
 static char fn_seen[DECL_BUF_MAX][DECL_LINE_MAX];
 static int  fn_seen_count;
 
+/* Struct mode — set by byrd_emit_named_pattern */
+static int  in_named_pat = 0;
+
 void byrd_fn_scope_reset(void) { fn_seen_count = 0; }
 
-static void decl_reset(void) { decl_count = 0; }
+static void decl_reset(void) {
+    decl_count = 0;
+    child_decl_count = 0;
+}
 
 static void decl_add(const char *fmt, ...) {
     if (decl_count >= DECL_BUF_MAX) return;
@@ -206,12 +234,45 @@ static void decl_add(const char *fmt, ...) {
     /* Dedup within this pattern's decl buffer */
     for (int i = 0; i < decl_count; i++)
         if (strcmp(decl_buf[i], tmp) == 0) return;
-    /* Dedup across patterns in same C function */
-    for (int i = 0; i < fn_seen_count; i++)
-        if (strcmp(fn_seen[i], tmp) == 0) return;
+    /* In non-struct mode: dedup across patterns in same C function */
+    if (!in_named_pat) {
+        for (int i = 0; i < fn_seen_count; i++)
+            if (strcmp(fn_seen[i], tmp) == 0) return;
+    }
     memcpy(decl_buf[decl_count++], tmp, DECL_LINE_MAX);
 }
 
+/* Add a child frame pointer field to child_decl_buf.
+ * fmt must be a C declaration like "struct pat_Y_t *Y_z_7".
+ * Returns the field name (last token) so the caller can reference z->fieldname. */
+static void child_decl_add(const char *decl) {
+    if (child_decl_count >= DECL_BUF_MAX) return;
+    for (int i = 0; i < child_decl_count; i++)
+        if (strcmp(child_decl_buf[i], decl) == 0) return;
+    strncpy(child_decl_buf[child_decl_count++], decl, DECL_LINE_MAX - 1);
+}
+
+/* Extract the field name from a declaration string "TYPE name" or "TYPE *name"
+ * or "TYPE name[N]". Returns a pointer into the string at the start of the name. */
+static const char *decl_field_name(const char *decl) {
+    /* If there's an array bracket, the name ends just before '[' */
+    const char *bracket = strchr(decl, '[');
+    const char *end = bracket ? bracket : decl + strlen(decl);
+    /* Walk backwards over the identifier */
+    while (end > decl && (isalnum((unsigned char)end[-1]) || end[-1] == '_')) end--;
+    return end;
+}
+
+/* Length of the field name (needed when there's an array suffix). */
+static int decl_field_name_len(const char *decl) {
+    const char *bracket = strchr(decl, '[');
+    const char *end = bracket ? bracket : decl + strlen(decl);
+    const char *start = end;
+    while (start > decl && (isalnum((unsigned char)start[-1]) || start[-1] == '_')) start--;
+    return (int)(end - start);
+}
+
+/* Emit normal static storage (non-struct mode). */
 static void decl_flush(void) {
     if (decl_count == 0) return;
     B("    /* === static storage === */\n");
@@ -222,6 +283,55 @@ static void decl_flush(void) {
             memcpy(fn_seen[fn_seen_count++], decl_buf[i], DECL_LINE_MAX);
     }
     B("\n");
+}
+
+/* Emit struct typedef + field #defines for named pattern struct mode.
+ * tyname = "pat_X_t", safe = "X"
+ * Writes to out_file (not byrd_out — called before code body is spliced). */
+static void decl_flush_as_struct(FILE *out_file, const char *tyname) {
+    /* Struct typedef */
+    fprintf(out_file, "typedef struct %s {\n", tyname);
+    for (int i = 0; i < decl_count; i++)
+        fprintf(out_file, "    %s;\n", decl_buf[i]);
+    for (int i = 0; i < child_decl_count; i++)
+        fprintf(out_file, "    %s;\n", child_decl_buf[i]);
+    fprintf(out_file, "} %s;\n\n", tyname);
+}
+
+/* Emit #define aliases so the code body can use bare names via z->name. */
+static void decl_emit_defines(FILE *out_file) {
+    for (int i = 0; i < decl_count; i++) {
+        const char *nm = decl_field_name(decl_buf[i]);
+        int len = decl_field_name_len(decl_buf[i]);
+        if (len > 0)
+            fprintf(out_file, "#define %.*s z->%.*s\n", len, nm, len, nm);
+    }
+    for (int i = 0; i < child_decl_count; i++) {
+        const char *nm = decl_field_name(child_decl_buf[i]);
+        int len = decl_field_name_len(child_decl_buf[i]);
+        if (len > 0)
+            fprintf(out_file, "#define %.*s z->%.*s\n", len, nm, len, nm);
+    }
+    if (decl_count + child_decl_count > 0)
+        fprintf(out_file, "\n");
+}
+
+/* Emit #undef for all defines. */
+static void decl_emit_undefs(FILE *out_file) {
+    for (int i = 0; i < decl_count; i++) {
+        const char *nm = decl_field_name(decl_buf[i]);
+        int len = decl_field_name_len(decl_buf[i]);
+        if (len > 0)
+            fprintf(out_file, "#undef %.*s\n", len, nm);
+    }
+    for (int i = 0; i < child_decl_count; i++) {
+        const char *nm = decl_field_name(child_decl_buf[i]);
+        int len = decl_field_name_len(child_decl_buf[i]);
+        if (len > 0)
+            fprintf(out_file, "#undef %.*s\n", len, nm);
+    }
+    if (decl_count + child_decl_count > 0)
+        fprintf(out_file, "\n");
 }
 
 /* -----------------------------------------------------------------------
@@ -1355,29 +1465,44 @@ static void byrd_emit(Expr *pat,
 
         if (np) {
             /* Compiled path: direct function call — no engine.c.
-             * New signature: pat_X(subj, slen, &cursor, entry)
-             * Returns FAIL_VAL on fail, non-fail on success (cursor updated). */
+             * Signature: pat_X(subj, slen, &cursor, &child_frame, entry)
+             * The child frame pointer lives in the parent struct (Technique 1).
+             * We emit bare field names — the #define aliases expand them. */
+            int uid = byrd_uid();
             char saved_cur[LBUF];
-            snprintf(saved_cur, LBUF, "deref_%d_saved_cur", byrd_uid());
+            snprintf(saved_cur, LBUF, "deref_%d_saved_cur", uid);
             decl_add("int64_t %s", saved_cur);
 
-            /* alpha: first call — entry 0 */
+            /* Child frame pointer field in parent struct */
+            char child_field[LBUF];
+            snprintf(child_field, LBUF, "deref_%d_z", uid);
+            {
+                char child_decl[DECL_LINE_MAX];
+                snprintf(child_decl, DECL_LINE_MAX, "%s *%s", np->typename, child_field);
+                if (in_named_pat)
+                    child_decl_add(child_decl);
+                else
+                    decl_add("%s *%s", np->typename, child_field);
+            }
+
+            /* alpha: first call — entry 0
+             * Use bare child_field so #define expands to z->child_field */
             B("%s: {\n", alpha);
-            B("    %s = %s;\n", saved_cur, cursor);  /* save cursor before call */
-            B("    SnoVal _r_%s = %s(%s, %s, &%s, 0);\n",
-              varname, np->fnname, subj, subj_len, cursor);
-            B("    if (is_fail(_r_%s)) { %s = %s; goto %s; }\n",
-              varname, cursor, saved_cur, omega);
+            B("    %s = %s;\n", saved_cur, cursor);
+            B("    SnoVal _r_%d = %s(%s, %s, &%s, &%s, 0);\n",
+              uid, np->fnname, subj, subj_len, cursor, child_field);
+            B("    if (is_fail(_r_%d)) { %s = %s; goto %s; }\n",
+              uid, cursor, saved_cur, omega);
             B("    goto %s;\n", gamma);
             B("}\n");
 
-            /* beta: backtrack — entry 1, restore cursor first */
+            /* beta: backtrack — entry 1 */
             B("%s: {\n", beta);
-            B("    %s = %s;\n", cursor, saved_cur);  /* restore for backtrack */
-            B("    SnoVal _r_%s = %s(%s, %s, &%s, 1);\n",
-              varname, np->fnname, subj, subj_len, cursor);
-            B("    if (is_fail(_r_%s)) { %s = %s; goto %s; }\n",
-              varname, cursor, saved_cur, omega);
+            B("    %s = %s;\n", cursor, saved_cur);
+            B("    SnoVal _r_%d_b = %s(%s, %s, &%s, &%s, 1);\n",
+              uid, np->fnname, subj, subj_len, cursor, child_field);
+            B("    if (is_fail(_r_%d_b)) { %s = %s; goto %s; }\n",
+              uid, cursor, saved_cur, omega);
             B("    goto %s;\n", gamma);
             B("}\n");
             return;
@@ -1585,6 +1710,10 @@ void byrd_emit_named_pattern(const char *varname, Expr *pat, FILE *out_file) {
     snprintf(root_alpha, LBUF, "_%s_alpha", safe);
     snprintf(root_beta,  LBUF, "_%s_beta",  safe);
 
+    /* Struct mode ON — decl_add will collect into struct fields,
+     * child_decl_add will collect child frame pointers separately. */
+    in_named_pat = 1;
+
     byrd_out = code_file;
     byrd_uid_ctr = uid_saved;
     decl_reset();
@@ -1598,34 +1727,48 @@ void byrd_emit_named_pattern(const char *varname, Expr *pat, FILE *out_file) {
     fflush(code_file);
     fclose(code_file);
 
+    in_named_pat = 0;
     byrd_out = out_file;
 
+    /* 1. Emit the struct typedef (uses decl_buf + child_decl_buf collected above) */
+    decl_flush_as_struct(out_file, tyname);
+
+    /* 2. Emit the function with new signature: pat_X(subj, slen, cur_ptr, **zz, entry) */
     fprintf(out_file,
         "static SnoVal %s(const char *_subj_np, int64_t _slen_np,\n"
-        "                  int64_t *_cur_ptr_np, int _entry_np) {\n"
+        "                  int64_t *_cur_ptr_np, %s **_zz_np, int _entry_np) {\n"
+        "    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(%s)); }\n"
+        "    %s *z = *_zz_np;\n"
         "    int64_t _cur_np = *_cur_ptr_np;\n",
-        fnname);
+        fnname, tyname, tyname, tyname);
 
-    decl_flush();
+    /* 3. Emit #defines so code body uses bare names via z-> */
+    decl_emit_defines(out_file);
 
+    /* 4. Entry dispatch */
     fprintf(out_file,
         "    if (_entry_np == 0) goto %s;\n"
         "    if (_entry_np == 1) goto %s;\n"
         "    goto %s;\n",
         root_alpha, root_beta, omega_lbl);
 
+    /* 5. Splice the code body */
     if (code_buf && code_size > 0)
         fwrite(code_buf, 1, code_size, out_file);
     free(code_buf);
 
+    /* 6. Success/fail exits */
     fprintf(out_file,
         "    %s:;\n"
         "        *_cur_ptr_np = _cur_np;\n"
-        "        return STR_VAL(\"\");\n"   /* success: cursor updated, return non-fail */
+        "        return STR_VAL(\"\");\n"
         "    %s:;\n"
-        "        return FAIL_VAL;\n"
-        "}\n\n",
+        "        return FAIL_VAL;\n",
         gamma_lbl, omega_lbl);
+
+    /* 7. Emit #undefs and close function */
+    decl_emit_undefs(out_file);
+    fprintf(out_file, "}\n\n");
 }
 
 /* =======================================================================

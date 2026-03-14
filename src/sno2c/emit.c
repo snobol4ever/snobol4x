@@ -1570,7 +1570,8 @@ static void emit_trampoline_program(Program *prog) {
         }
     }
 
-    /* 0a.5: emit ALL forward decls in one block before any function body */
+    /* 0a.5: emit ALL struct typedef fwd-decls, then function fwd-decls */
+    byrd_emit_named_typedecls(out);
     byrd_emit_named_fwdecls(out);
 
     /* 0b: emit function bodies */

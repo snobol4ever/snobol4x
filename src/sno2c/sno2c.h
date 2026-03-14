@@ -105,6 +105,7 @@ void     snoc_emit(Program *prog, FILE *out);
 void byrd_fn_scope_reset(void);   /* call at start of each emitted C function */
 void byrd_named_pat_reset(void);  /* clear registry between programs */
 void byrd_preregister_named_pattern(const char *varname); /* forward-register name */
+void byrd_emit_named_typedecls(FILE *out_file); /* emit struct typedef fwd-decls */
 void byrd_emit_named_fwdecls(FILE *out_file); /* emit all forward decls at once */
 void byrd_emit_pattern(Expr *pat, FILE *out_file,
                        const char *root_name,
