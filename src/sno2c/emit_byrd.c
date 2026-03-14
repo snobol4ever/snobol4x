@@ -164,6 +164,70 @@ static void emit_cstr(const char *s) {
     fputc('"', byrd_out);
 }
 
+/* -----------------------------------------------------------------------
+ * emit_charset_cexpr — build a C expression (written into buf) that evaluates
+ * at runtime to a `const char *` charset string, given an Expr* AST node.
+ *
+ * E_STR  → "literal"          (compile-time constant)
+ * E_VAR  → sno_to_str(sno_var_get("name"))
+ * E_CONCAT → sno_concat(lhs, rhs)   (both sides recursed)
+ * fallback → ""
+ * ----------------------------------------------------------------------- */
+static void emit_charset_cexpr(Expr *arg, char *buf, int bufsz);
+
+static void emit_charset_cexpr(Expr *arg, char *buf, int bufsz) {
+    if (!arg) { snprintf(buf, bufsz, "\"\""); return; }
+    switch (arg->kind) {
+    case E_STR: {
+        /* Build a quoted C literal via emit_cstr logic, inline into buf */
+        const char *s = arg->sval ? arg->sval : "";
+        int pos = 0;
+        buf[pos++] = '"';
+        for (; *s && pos < bufsz - 4; s++) {
+            if (*s == '"' || *s == '\\') buf[pos++] = '\\';
+            else if (*s == '\n') { buf[pos++] = '\\'; buf[pos++] = 'n'; continue; }
+            else if (*s == '\t') { buf[pos++] = '\\'; buf[pos++] = 't'; continue; }
+            buf[pos++] = *s;
+        }
+        buf[pos++] = '"';
+        buf[pos]   = '\0';
+        return;
+    }
+    case E_VAR:
+        snprintf(buf, bufsz, "sno_to_str(sno_var_get(\"%s\"))",
+                 arg->sval ? arg->sval : "");
+        return;
+    case E_CONCAT: {
+        char lbuf[512], rbuf[512];
+        emit_charset_cexpr(arg->left,  lbuf, (int)sizeof lbuf);
+        emit_charset_cexpr(arg->right, rbuf, (int)sizeof rbuf);
+        /* sno_concat is #define'd as sno_concat_sv(SnoVal,SnoVal) in snoc_runtime.h,
+         * so we must wrap char* sides in SNO_STR_VAL and extract result with sno_to_str. */
+        snprintf(buf, bufsz,
+                 "sno_to_str(sno_concat_sv(SNO_STR_VAL(%s), SNO_STR_VAL(%s)))",
+                 lbuf, rbuf);
+        return;
+    }
+    case E_KEYWORD:
+        /* &UCASE, &LCASE etc — sno_kw(name) = sno_var_get(name) → SnoVal */
+        snprintf(buf, bufsz, "sno_to_str(sno_var_get(\"%s\"))",
+                 arg->sval ? arg->sval : "");
+        return;
+    case E_DEREF:
+        /* $varname — indirect: left child holds the var name node */
+        if (arg->left && arg->left->sval)
+            snprintf(buf, bufsz, "sno_to_str(sno_var_get(\"%s\"))", arg->left->sval);
+        else
+            snprintf(buf, bufsz, "\"\"");
+        return;
+    default:
+        fprintf(stderr, "emit_charset_cexpr: unhandled kind=%d sval=%s\n",
+                (int)arg->kind, arg->sval ? arg->sval : "(null)");
+        snprintf(buf, bufsz, "\"\"");
+        return;
+    }
+}
+
 /* Forward declarations for leaf emitters */
 static void emit_lit(const char *s,
                      const char *alpha, const char *beta,
@@ -433,9 +497,7 @@ static void emit_any(const char *cs,
 
     B("%s:\n", alpha);
     B("    if (%s >= %s) goto %s;\n", cursor, subj_len, omega);
-    B("    if (!strchr(", cursor);
-    emit_cstr(cs);
-    B(", %s[%s])) goto %s;\n", subj, cursor, omega);
+    B("    if (!strchr(%s, %s[%s])) goto %s;\n", cs, subj, cursor, omega);
     B("    %s = %s;\n", saved, cursor);
     B("    %s++;\n", cursor);
     B("    goto %s;\n", gamma);
@@ -460,9 +522,7 @@ static void emit_notany(const char *cs,
 
     B("%s:\n", alpha);
     B("    if (%s >= %s) goto %s;\n", cursor, subj_len, omega);
-    B("    if (strchr(", cursor);
-    emit_cstr(cs);
-    B(", %s[%s])) goto %s;\n", subj, cursor, omega);
+    B("    if (strchr(%s, %s[%s])) goto %s;\n", cs, subj, cursor, omega);
     B("    %s = %s;\n", saved, cursor);
     B("    %s++;\n", cursor);
     B("    goto %s;\n", gamma);
@@ -491,9 +551,7 @@ static void emit_span(const char *cs,
 
     B("%s:\n", alpha);
     B("    %s = %s;\n", start, cursor);
-    B("    while (%s < %s && strchr(", cursor, subj_len);
-    emit_cstr(cs);
-    B(", %s[%s])) %s++;\n", subj, cursor, cursor);
+    B("    while (%s < %s && strchr(%s, %s[%s])) %s++;\n", cursor, subj_len, cs, subj, cursor, cursor);
     B("    %s = %s - %s;\n", delta, cursor, start);
     B("    if (%s == 0) goto %s;\n", delta, omega);
     B("    goto %s;\n", gamma);
@@ -522,9 +580,7 @@ static void emit_break(const char *cs,
 
     B("%s:\n", alpha);
     B("    %s = %s;\n", saved, cursor);
-    B("    while (%s < %s && !strchr(", cursor, subj_len);
-    emit_cstr(cs);
-    B(", %s[%s])) %s++;\n", subj, cursor, cursor);
+    B("    while (%s < %s && !strchr(%s, %s[%s])) %s++;\n", cursor, subj_len, cs, subj, cursor, cursor);
     B("    if (%s >= %s) { %s = %s; goto %s; }\n",
       cursor, subj_len, cursor, saved, omega);
     B("    goto %s;\n", gamma);
@@ -1026,25 +1082,25 @@ static void byrd_emit(Expr *pat,
         }
         /* ANY(cs) */
         if (strcasecmp(n, "ANY") == 0 && pat->nargs >= 1) {
-            const char *cs = (pat->args[0]->kind == E_STR) ? pat->args[0]->sval : "";
+            char cs_buf[1024]; emit_charset_cexpr(pat->args[0], cs_buf, (int)sizeof cs_buf); const char *cs = cs_buf;
             emit_any(cs, alpha, beta, gamma, omega, subj, subj_len, cursor);
             return;
         }
         /* NOTANY(cs) */
         if (strcasecmp(n, "NOTANY") == 0 && pat->nargs >= 1) {
-            const char *cs = (pat->args[0]->kind == E_STR) ? pat->args[0]->sval : "";
+            char cs_buf[1024]; emit_charset_cexpr(pat->args[0], cs_buf, (int)sizeof cs_buf); const char *cs = cs_buf;
             emit_notany(cs, alpha, beta, gamma, omega, subj, subj_len, cursor);
             return;
         }
         /* SPAN(cs) */
         if (strcasecmp(n, "SPAN") == 0 && pat->nargs >= 1) {
-            const char *cs = (pat->args[0]->kind == E_STR) ? pat->args[0]->sval : "";
+            char cs_buf[1024]; emit_charset_cexpr(pat->args[0], cs_buf, (int)sizeof cs_buf); const char *cs = cs_buf;
             emit_span(cs, alpha, beta, gamma, omega, subj, subj_len, cursor);
             return;
         }
         /* BREAK(cs) */
         if (strcasecmp(n, "BREAK") == 0 && pat->nargs >= 1) {
-            const char *cs = (pat->args[0]->kind == E_STR) ? pat->args[0]->sval : "";
+            char cs_buf[1024]; emit_charset_cexpr(pat->args[0], cs_buf, (int)sizeof cs_buf); const char *cs = cs_buf;
             emit_break(cs, alpha, beta, gamma, omega, subj, subj_len, cursor);
             return;
         }
