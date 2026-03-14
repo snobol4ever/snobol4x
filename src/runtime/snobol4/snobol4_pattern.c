@@ -310,15 +310,51 @@ typedef struct {
 
 /* Forward decl */
 
-/* T_FUNC callback for SPAT_USER_CALL side-effect functions */
-typedef struct { const char *name; SnoVal *args; int nargs; } UCData;
+/* T_FUNC callback for SPAT_USER_CALL deferred functions.
+ *
+ * Used for functions that must fire at MATCH TIME not materialise time:
+ *   nInc, nPush, nPop — return SNO_PATTERN (a capture-wrapper/epsilon); also have
+ *                        stack side-effects (increment counter, push/pop frame).
+ *   Reduce            — returns SNO_NULL; pops parse stack and builds tree node.
+ *
+ * If the function returns SNO_PATTERN, we run it as a zero-width sub-match
+ * against the current subject string so its captures fire correctly.
+ * SNO_FAIL (FRETURN) => -1 => engine CONCEDE.
+ * All other returns => succeed zero-width. */
+typedef struct {
+    const char  *name;
+    SnoVal      *args;
+    int          nargs;
+    /* Set at match time by the engine dispatcher in sno_match_pattern.
+     * Points to the current subject being matched — used for SNO_PATTERN sub-match. */
+    const char  *subject;
+} UCData;
+
 static void *user_call_fn(void *userdata) {
     UCData *d = (UCData *)userdata;
+    if (getenv("SNO_PAT_DEBUG")) fprintf(stderr, "  user_call_fn: %s\n", d->name);
     SnoVal r = sno_apply(d->name, d->args, d->nargs);
-    /* FRETURN => SNO_FAIL — signal failure to engine */
     if (r.type == SNO_FAIL) return (void *)(intptr_t)-1;
-    /* NRETURN / normal return => succeed zero-width */
+    if (r.type == SNO_PATTERN && r.p) {
+        /* Run the returned pattern as a zero-width sub-match.
+         * nInc/nPush/nPop return epsilon . *Fn() wrappers — matching against ""
+         * fires the capture which records the counter/frame. */
+        const char *subj = d->subject ? d->subject : "";
+        sno_match_pattern(r, subj);
+    }
     return (void *)1;
+}
+
+/* Return 1 if this function must be deferred to match time.
+ * All others are safe to call eagerly at materialise time. */
+static int is_sideeffect_fn(const char *name) {
+    if (!name) return 0;
+    static const char *deferred[] = {
+        "nInc", "nPop", "nPush", "Reduce", NULL
+    };
+    for (int i = 0; deferred[i]; i++)
+        if (strcmp(name, deferred[i]) == 0) return 1;
+    return 0;
 }
 
 /* Deferred var name evaluation: call SNOBOL4 function at apply_captures time
@@ -597,10 +633,30 @@ static Pattern *materialise(SnoPattern *sp, MatchCtx *ctx) {
     case SPAT_USER_CALL: {
         if (getenv("SNO_PAT_DEBUG"))
             fprintf(stderr, "SPAT_USER_CALL %s\n", sp->str);
-        /* First: call eagerly to see if it returns a real pattern.
-         * If it returns SNO_PATTERN or SNO_STR, materialise statically.
-         * If it returns SNO_NULL (epsilon/.dummy via NRETURN), it's a
-         * side-effect function — wrap in T_FUNC for deferred match-time call. */
+        /* Side-effect functions (nInc, nPop, nPush, Reduce) must NEVER be called
+         * at materialise time — materialise() fires once per match AND once per
+         * ARBNO iteration via var_resolve_callback, so they would corrupt state.
+         * Wrap them in T_FUNC so user_call_fn() fires at match time only.
+         *
+         * All other functions (reduce, TZ, lwr, IDENT, etc.) are safe to call
+         * eagerly — they return SNO_PATTERN or SNO_STR which we inline into the
+         * pattern tree, exactly as before. */
+        if (is_sideeffect_fn(sp->str)) {
+            UCData *d = (UCData *)GC_MALLOC(sizeof(UCData));
+            d->name    = sp->str;
+            d->nargs   = sp->nargs;
+            d->args    = NULL;
+            d->subject = ctx->subject;   /* thread subject for SNO_PATTERN sub-match */
+            if (sp->nargs > 0) {
+                d->args = (SnoVal *)GC_MALLOC(sp->nargs * sizeof(SnoVal));
+                memcpy(d->args, sp->args, sp->nargs * sizeof(SnoVal));
+            }
+            p->type      = T_FUNC;
+            p->func      = user_call_fn;
+            p->func_data = d;
+            return p;
+        }
+        /* Eager path: call now, inline result into pattern tree */
         SnoVal result = sno_apply(sp->str, sp->args, sp->nargs);
         if (result.type == SNO_PATTERN) {
             return materialise(spat_of(result), ctx);
@@ -611,21 +667,8 @@ static Pattern *materialise(SnoPattern *sp, MatchCtx *ctx) {
             p->s_len = (int)strlen(p->s);
             return p;
         }
-        /* SNO_NULL / SNO_FAIL / epsilon — side-effect function.
-         * Build a T_FUNC node that calls this function at match time. */
-        typedef struct { const char *name; SnoVal *args; int nargs; } UCData;
-        UCData *d = (UCData *)GC_MALLOC(sizeof(UCData));
-        d->name  = sp->str;
-        d->nargs = sp->nargs;
-        d->args  = NULL;
-        if (sp->nargs > 0) {
-            d->args = (SnoVal *)GC_MALLOC(sp->nargs * sizeof(SnoVal));
-            memcpy(d->args, sp->args, sp->nargs * sizeof(SnoVal));
-        }
-        p->type      = T_FUNC;
-        p->func      = user_call_fn;
-        p->func_data = d;
-        return p;
+        /* SNO_NULL / SNO_FAIL — epsilon */
+        return make_epsilon(&ctx->pl);
     }
 
     default:
