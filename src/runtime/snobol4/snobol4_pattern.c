@@ -1231,6 +1231,16 @@ SnoVal evl(SnoVal expr) {
     if (expr.type != SSTR && expr.type != SNULL) return expr;
     const char *s = to_str(expr);
     if (!s || !*s) return pat_epsilon();
+    /* If the expression is a quoted string literal ('...' or "..."),
+     * EVAL returns the string value — not a pattern.
+     * SNOBOL4: EVAL("'Stmt'") => "Stmt" */
+    size_t sl = strlen(s);
+    if (sl >= 2 && (s[0] == '\'' || s[0] == '"') && s[sl-1] == s[0]) {
+        char *inner = GC_malloc(sl - 1);
+        memcpy(inner, s + 1, sl - 2);
+        inner[sl - 2] = '\0';
+        return STR_VAL(inner);
+    }
     SnoEvalCtx ctx = { s, 0 };
     return _ev_expr(&ctx);
 }

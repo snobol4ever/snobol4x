@@ -1031,9 +1031,14 @@ static void emit_computed_goto_inline(const char *label, const char *fn) {
         E("goto _SNO_NEXT_%d", cur_stmt_next_uid);
         return;
     }
-    E("{ const char *_cg = to_str(");
+    E("{ const char *_cg_raw = to_str(");
     emit_expr(ce);
-    E("); if(0){}");
+    E("); char _cg_buf[512]; size_t _cg_j=0;");
+    E(" if(_cg_raw) { for(size_t _cg_i=0;_cg_raw[_cg_i]&&_cg_j<sizeof(_cg_buf)-1;_cg_i++)");
+    E(" { if(_cg_raw[_cg_i]=='\\'' || _cg_raw[_cg_i]=='\"') continue; _cg_buf[_cg_j++]=_cg_raw[_cg_i]; } }");
+    E(" _cg_buf[_cg_j]='\\0'; const char *_cg=_cg_buf;");
+    E(" if(0){}");
+    E(" if(0){}");
     for (int i = 0; i < fn_count; i++) {
         if (strcasecmp(fn_table[i].name, fn) != 0) continue;
         for (int b = 0; b < fn_table[i].nbody_starts; b++) {

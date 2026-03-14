@@ -1328,13 +1328,24 @@ static void emit_abort_node(const char *alpha, const char *beta,
 static void emit_simple_val(Expr *e) {
     if (!e) { B("NULL_VAL"); return; }
     switch (e->kind) {
-    case E_STR:
+    case E_STR: {
         /* 'nTop()' as a quoted string in & context: wire directly to C-level ntop()
          * so compiled byrd box counter (npush/ninc/npop) and Reduce agree. */
         if (e->sval && strcasecmp(e->sval, "nTop()") == 0)
             { B("INT_VAL(ntop())"); return; }
-        B("STR_VAL(\"%s\")", e->sval ? e->sval : "");
+        /* Strip outer single-quote pair: sval "'Stmt'" -> emit STR_VAL("Stmt").
+         * The SNOBOL4 source writes "'Stmt'" (double-quoted with inner single quotes).
+         * The lexer strips outer double-quotes, storing "'Stmt'" as sval — but the
+         * inner single quotes are SNOBOL4 string delimiters that must also be stripped
+         * so the C string value is bare: Stmt, not 'Stmt'. */
+        const char *sv = e->sval ? e->sval : "";
+        size_t sl = strlen(sv);
+        if (sl >= 2 && sv[0] == '\'' && sv[sl-1] == '\'')
+            B("STR_VAL(\"%.*s\")", (int)(sl-2), sv+1);
+        else
+            B("STR_VAL(\"%s\")", sv);
         return;
+    }
     case E_INT:
         B("INT_VAL(%ld)", e->ival);
         return;
