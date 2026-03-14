@@ -284,7 +284,7 @@ CNode *build_pat(CArena *a, Expr *e) {
     if (!e) return cn_raw(a, "pat_epsilon()");
 
     switch (e->kind) {
-    case E_STR:  return cn_call1(a, "pat_lit", cn_call1(a, "strv", cn_cstr(a, e->sval)));
+    case E_STR:  return cn_call1(a, "pat_lit", cn_cstr(a, e->sval));
     case E_VAR:  return cn_rawf(a, "pat_var(\"%s\")", e->sval);
 
     case E_DEREF:
