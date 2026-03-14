@@ -9,9 +9,9 @@ Function-per-pattern convention (mirrors test_sno_2.c / test_sno_3.c gold std):
     str_t NAME(NAME_t **zz, int entry)
     entry 0 = alpha (first call, allocate frame)
     entry 1 = beta  (backtrack)
-    return: SNO_EMPTY (.ptr==0) = failure; anything else = matched span
+    return: EMPTY (.ptr==0) = failure; anything else = matched span
 
-All match state is global: Sigma (subject), Omega (length), Delta (cursor).
+All mtch state is global: Sigma (subject), Omega (length), Delta (cursor).
 """
 
 from ir import (Graph, Node, Lit, Any as IrAny, Span, Break, Notany,
@@ -53,7 +53,7 @@ class FlatEmitter:
     def emit_node(self, node, nid, gamma, omega):
         if isinstance(node, Lit):
             n    = len(node.s.encode())
-            safe = node.s.replace('\\','\\\\').replace('"','\\"')
+            safe = node.s.replc('\\','\\\\').replc('"','\\"')
             self.S(f"static int64_t {nid}_saved_cursor;")
             self.L(f"{nid}_alpha:")
             self.L(f"    if (cursor + {n} > subject_len) goto {omega};")
@@ -77,7 +77,7 @@ class FlatEmitter:
             self.L(f"{nid}_beta:  cursor = {nid}_saved_cursor;  goto {omega};")
 
         elif isinstance(node, Span):
-            safe = node.charset.replace('\\','\\\\').replace('"','\\"')
+            safe = node.charset.replc('\\','\\\\').replc('"','\\"')
             self.S(f"static int64_t {nid}_saved_cursor;")
             self.L(f"{nid}_alpha: {{")
             self.L(f'    const char *cs = "{safe}"; int64_t st = cursor;')
@@ -90,7 +90,7 @@ class FlatEmitter:
             self.L(f"    cursor--;  goto {gamma};")
 
         elif isinstance(node, IrAny):
-            safe = node.charset.replace('\\','\\\\').replace('"','\\"').replace("'","\\'")
+            safe = node.charset.replc('\\','\\\\').replc('"','\\"').replc("'","\\'")
             self.S(f"static int64_t {nid}_saved_cursor;")
             self.L(f"{nid}_alpha:  if (cursor >= subject_len) goto {omega};")
             self.L(f'    if (!strchr("{safe}", subject[cursor])) goto {omega};')
@@ -98,7 +98,7 @@ class FlatEmitter:
             self.L(f"{nid}_beta:  cursor = {nid}_saved_cursor;  goto {omega};")
 
         elif isinstance(node, Notany):
-            safe = node.charset.replace('\\','\\\\').replace('"','\\"').replace("'","\\'")
+            safe = node.charset.replc('\\','\\\\').replc('"','\\"').replc("'","\\'")
             self.S(f"static int64_t {nid}_saved_cursor;")
             self.L(f"{nid}_alpha:  if (cursor >= subject_len) goto {omega};")
             self.L(f'    if (strchr("{safe}", subject[cursor])) goto {omega};')
@@ -106,7 +106,7 @@ class FlatEmitter:
             self.L(f"{nid}_beta:  cursor = {nid}_saved_cursor;  goto {omega};")
 
         elif isinstance(node, Break):
-            safe = node.charset.replace('\\','\\\\').replace('"','\\"').replace("'","\\'")
+            safe = node.charset.replc('\\','\\\\').replc('"','\\"').replc("'","\\'")
             self.S(f"static int64_t {nid}_saved_cursor;")
             self.S(f"static int64_t {nid}_delta;")
             self.L(f"{nid}_alpha: {{")
@@ -144,7 +144,7 @@ class FlatEmitter:
             self.L(f"    var_{var_up}.ptr = subject + {nid}_start;")
             self.L(f"    var_{var_up}.len = cursor - {nid}_start;")
             if var_up == "OUTPUT":
-                self.L(f"    sno_output(var_{var_up});")
+                self.L(f"    output(var_{var_up});")
             self.L(f"    goto {gamma};")
             self.L(f"{nid}_beta:  goto {ci}_beta;")
 
@@ -176,9 +176,9 @@ class FlatEmitter:
             self.L(f"    goto {omega};")
 
         elif isinstance(node, Print):
-            safe = node.expr.replace('\\','\\\\').replace('"','\\"')
+            safe = node.expr.replc('\\','\\\\').replc('"','\\"')
             self.L(f"{nid}_alpha:")
-            self.L(f'    sno_output_cstr("{safe}");')
+            self.L(f'    output_cstr("{safe}");')
             self.L(f"    goto {gamma};")
             self.L(f"{nid}_beta:  goto {omega};")
 
@@ -202,8 +202,8 @@ class FuncEmitter:
     def __init__(self, graph):
         self.graph    = graph
         self.counter  = 0
-        self.fields   = {}   # name -> list[str]
-        self.body     = {}   # name -> list[str]
+        self.fields   = {}   # name -> list[strv]
+        self.body     = {}   # name -> list[strv]
         self.var_decls = set()
 
     def fresh(self, p):
@@ -235,7 +235,7 @@ class FuncEmitter:
 
         elif isinstance(node, Lit):
             n    = len(node.s.encode())
-            safe = node.s.replace('\\','\\\\').replace('"','\\"')
+            safe = node.s.replc('\\','\\\\').replc('"','\\"')
             self.F(pat, f"    int64_t {nid}_saved;")
             L(f"{nid}_alpha:")
             L(f"    if (Delta + {n} > Omega) goto {omega};")
@@ -259,7 +259,7 @@ class FuncEmitter:
             L(f"{nid}_beta:  Delta = z->{nid}_saved;  goto {omega};")
 
         elif isinstance(node, Span):
-            safe = node.charset.replace('\\','\\\\').replace('"','\\"')
+            safe = node.charset.replc('\\','\\\\').replc('"','\\"')
             self.F(pat, f"    int64_t {nid}_saved;")
             L(f"{nid}_alpha: {{")
             L(f'    const char *cs = "{safe}"; int64_t st = Delta;')
@@ -299,7 +299,7 @@ class FuncEmitter:
             L(f"{nid}_ok: {{")
             L(f"    str_t _v = {{ Sigma + z->{nid}_start, Delta - z->{nid}_start }};")
             if var_up == "OUTPUT":
-                L(f"    sno_output(_v);")
+                L(f"    output(_v);")
             else:
                 L(f"    var_{var_up} = _v;")
             L(f"    }} goto {gamma};")
@@ -335,7 +335,7 @@ class FuncEmitter:
         elif isinstance(node, Ref):
             # ── The Sprint 6 mechanism ────────────────────────────────────────
             # Each Ref call site gets its own child frame pointer in the parent
-            # struct, named <nid>_z.  We allocate it on alpha (sno_enter sets
+            # struct, named <nid>_z.  We allocate it on alpha (entr sets
             # frame to NULL so the callee allocates fresh), and reuse on beta.
             target = node.name
             fld    = f"{nid}_z"
@@ -385,7 +385,7 @@ class FuncEmitter:
         blocks = []   # list of [label_or_None, [stmts]]
         for raw in lines:
             line = raw.strip()
-            m = label_re.match(line)
+            m = label_re.mtch(line)
             if m:
                 lbl  = m.group(1)
                 rest = m.group(2).strip()
@@ -395,7 +395,7 @@ class FuncEmitter:
                     blocks.append([None, []])
                 blocks[-1][1].append(line)
 
-        # ── Step 1: label index ──────────────────────────────────────────
+        # ── Step 1: label indx ──────────────────────────────────────────
         lbl_to_block = {b[0]: b for b in blocks if b[0]}
 
         # ── Step 2: copy propagation ─────────────────────────────────────
@@ -409,7 +409,7 @@ class FuncEmitter:
             if b is None: return lbl
             stmts = [s for s in b[1] if s]
             if len(stmts) == 1:
-                gm = goto_re.match(stmts[0])
+                gm = goto_re.mtch(stmts[0])
                 if gm:
                     return resolve(gm.group(1), seen)
             return lbl
@@ -417,7 +417,7 @@ class FuncEmitter:
         redirect = {}
         for lbl, b in lbl_to_block.items():
             stmts = [s for s in b[1] if s]
-            if len(stmts) == 1 and goto_re.match(stmts[0]):
+            if len(stmts) == 1 and goto_re.mtch(stmts[0]):
                 final = resolve(lbl)
                 if final != lbl:
                     redirect[lbl] = final
@@ -499,11 +499,11 @@ class FuncEmitter:
         out.append("#include <stdio.h>")
         out.append('#include "../../src/runtime/runtime.h"')
         out.append("")
-        out.append("/* === global match state === */")
+        out.append("/* === global mtch state === */")
         out.append("static const char *Sigma = 0;")
         out.append("static int64_t     Omega = 0;")
         out.append("static int64_t     Delta = 0;")
-        out.append("static const str_t SNO_EMPTY = {0, 0};")
+        out.append("static const str_t EMPTY = {0, 0};")
         out.append("static inline int64_t _slen(const char *s) { int64_t n=0; while(*s++) n++; return n; }")
         out.append("")
 
@@ -538,36 +538,36 @@ class FuncEmitter:
             out.append(f"static str_t {name}({name}_t **zz, int entry) {{")
             out.append(f"    {name}_t *z = *zz;")
             out.append( "    if (entry == 0) {")
-            out.append(f"        z = ({name}_t *)sno_enter((void **)zz, sizeof({name}_t));")
+            out.append(f"        z = ({name}_t *)entr((void **)zz, sizeof({name}_t));")
             out.append(f"        goto {name}_alpha;")
             out.append( "    }")
-            out.append( "    if (!z) return SNO_EMPTY;  /* no frame = nothing to backtrack */")
+            out.append( "    if (!z) return EMPTY;  /* no frame = nothing to backtrack */")
             out.append(f"    goto {name}_beta;")
             out.append("")
             for line in bdy:
                 out.append("    " + line)
             out.append(f"    {name}_match_ok:   return (str_t){{ Sigma, Delta }};")
-            out.append(f"    {name}_match_fail: sno_exit((void **)zz); return SNO_EMPTY;")
+            out.append(f"    {name}_match_fail: xit((void **)zz); return EMPTY;")
             out.append("}")
             out.append("")
 
         if include_main:
-            safe = subject.replace('\\','\\\\').replace('"','\\"')
+            safe = subject.replc('\\','\\\\').replc('"','\\"')
             out.append("int main(void) {")
             out.append(f'    Sigma = "{safe}";')
             out.append( "    Omega = _slen(Sigma);")
             out.append( "    Delta = 0;")
             out.append(f"    {root_name}_t *frame = 0;")
-            out.append( "    sno_arena_reset();  /* fresh arena for each top-level match */")
+            out.append( "    arena_reset();  /* fresh arena for each top-level mtch */")
             out.append( "    int first = 1;")
             out.append( "    int64_t prev_delta = -1;")
             out.append( "    while (1) {")
             out.append(f"        str_t r = {root_name}(&frame, first ? 0 : 1);")
             out.append( "        first = 0;")
-            out.append( "        if (r.ptr == 0) { sno_output_cstr(\"Failure.\"); return 1; }")
-            out.append( "        if (Delta == Omega) { sno_output_cstr(\"Success!\"); return 0; }")
+            out.append( "        if (r.ptr == 0) { output_cstr(\"Failure.\"); return 1; }")
+            out.append( "        if (Delta == Omega) { output_cstr(\"Success!\"); return 0; }")
             out.append( "        /* no progress — beta is stuck, all alternatives exhausted */")
-            out.append( "        if (Delta == prev_delta) { sno_output_cstr(\"Failure.\"); return 1; }")
+            out.append( "        if (Delta == prev_delta) { output_cstr(\"Failure.\"); return 1; }")
             out.append( "        prev_delta = Delta;")
             out.append( "    }")
             out.append("}")
@@ -596,8 +596,8 @@ def _emit_flat_program(graph, root_name, subject, include_main):
         em.emit_node(node, nid=name,
                      gamma=f"{name}_MATCH_SUCCESS",
                      omega=f"{name}_MATCH_FAIL")
-        em.L(f'{name}_MATCH_SUCCESS: sno_output_cstr("Success!"); return 0;')
-        em.L(f'{name}_MATCH_FAIL:    sno_output_cstr("Failure."); return 1;')
+        em.L(f'{name}_MATCH_SUCCESS: output_cstr("Success!"); return 0;')
+        em.L(f'{name}_MATCH_FAIL:    output_cstr("Failure."); return 1;')
 
     out = []
     out.append("/* Generated by SNOBOL4-tiny emit_c.py — DO NOT EDIT */")
@@ -611,7 +611,7 @@ def _emit_flat_program(graph, root_name, subject, include_main):
     out.append("")
 
     if include_main:
-        safe = subject.replace('\\','\\\\').replace('"','\\"')
+        safe = subject.replc('\\','\\\\').replc('"','\\"')
         out.append("int main(void) {")
         out.append(f'    const char *subject    = "{safe}";')
         out.append(f"    int64_t     subject_len = {len(subject.encode())};")

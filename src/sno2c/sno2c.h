@@ -1,10 +1,10 @@
-#ifndef SNOC_H
-#define SNOC_H
+#ifndef SNO2C_H
+#define SNO2C_H
 /*
- * snoc.h — IR for the snoc SNOBOL4→C compiler
+ * sno2c.h — IR for the sno2c SNOBOL4→C compiler
  *
  * ONE expression type.  The emitter decides whether to call
- * sno_pat_* or sno_* based on emission context (subject vs pattern field).
+ * pat_* or * based on emission context (subject vs pattern field).
  *
  * Statement structure:
  *   [label]  subject  [pattern]  [= replacement]  [: goto]
@@ -30,7 +30,7 @@ typedef enum {
     E_NEG,
     E_ADD, E_SUB, E_MUL, E_DIV, E_POW,
     /* string / pattern composition */
-    E_CONCAT,       /* juxtaposition: value/pattern concat */
+    E_CONCAT,       /* juxtaposition: value/pattern ccat */
     E_REDUCE,       /* & operator: reduce(left, right) — OPSYN('&','reduce',2) */
     E_ALT,          /* | : pattern alternation */
     /* captures (pattern context only) */

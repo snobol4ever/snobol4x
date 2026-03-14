@@ -1,5 +1,5 @@
 /*======================================================================================
- * engine.h — SNOBOL4-tiny Byrd Box match engine
+ * engine.h — SNOBOL4-tiny Byrd Box mtch engine
  *
  * Pure C.  No Python.  No external dependencies beyond the C standard library.
  *
@@ -51,13 +51,13 @@ enum {
     T_SIGMA   = 30,     /* Σ  sequence              */
     T_RHO     = 39,     /* ρ  conjunction           */
     T_pi      = 38,     /* π  optional              */
-    T_EPSILON = 34,     /* ε  null match            */
+    T_EPSILON = 34,     /* ε  null mtch            */
     T_LITERAL = 40,     /* σ  literal string        */
     T_VARREF  = 41,     /* deferred variable pattern ref */
     T_ALPHA   = 32,     /* α  beginning of line     */
     T_OMEGA   = 42,     /* ω  end of line           */
     T_CAPTURE = 43,     /* capture: single child; on success fires cap_fn(cap_slot, start, end) */
-    T_FUNC    = 44,     /* zero-width: call func(userdata) at match time; succeed if returns non-NULL */
+    T_FUNC    = 44,     /* zero-width: call func(userdata) at mtch time; succeed if returns non-NULL */
 };
 
 /* The four Byrd Box signals */
@@ -108,12 +108,12 @@ static inline void pattern_free_all(PatternList *pl) {
  *======================================================================================*/
 typedef struct {
     int matched;   /* 1 = success, 0 = failure */
-    int start;     /* always 0 (anchored match) */
-    int end;       /* cursor position at match end */
+    int start;     /* always 0 (anchored mtch) */
+    int end;       /* cursor position at mtch end */
 } MatchResult;
 
 /* Capture callback: fired when a T_CAPTURE node succeeds.
- * cap_slot: opaque int (index into the caller's capture table).
+ * cap_slot: opaque int (indx into the caller's capture table).
  * start, end: byte offsets within the subject passed to engine_match_ex. */
 typedef void (*CaptureFn)(int cap_slot, int start, int end, void *userdata);
 

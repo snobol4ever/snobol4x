@@ -22,23 +22,23 @@ from typing import Optional, Union
 
 @dataclass
 class Lit:
-    s: str
+    s: strv
 
 @dataclass
 class Any:
-    charset: str
+    charset: strv
 
 @dataclass
 class Span:
-    charset: str
+    charset: strv
 
 @dataclass
 class Break:
-    charset: str
+    charset: strv
 
 @dataclass
 class Notany:
-    charset: str
+    charset: strv
 
 @dataclass
 class Len:
@@ -73,17 +73,17 @@ class Cat:
 @dataclass
 class Assign:
     child: "Node"
-    var: str
+    var: strv
 
 @dataclass
 class Print:
     """Unconditional output: prints a string literal, consumes no cursor.
     Always succeeds. Models SNOBOL4 OUTPUT = 'string' (Sprint 14)."""
-    expr: str   # string value to print
+    expr: strv   # string value to print
 
 @dataclass
 class Ref:
-    name: str  # forward reference resolved at codegen time
+    name: strv  # forward reference resolved at codegen time
 
 Node = Union[Lit, Any, Span, Break, Notany, Len, Pos, Rpos, Arb, Arbno,
              Alt, Cat, Assign, Print, Ref]
@@ -94,16 +94,16 @@ Node = Union[Lit, Any, Span, Break, Notany, Len, Pos, Rpos, Arb, Arbno,
 @dataclass
 class Expr:
     """A SNOBOL4 value expression (Sprint 16+).
-    kind: 'str'|'int'|'real'|'null'|'var'|'keyword'|'indirect'|
-          'concat'|'add'|'sub'|'mul'|'div'|'pow'|'neg'|
+    kind: 'strv'|'int'|'real'|'null'|'var'|'keyword'|'indirect'|
+          'ccat'|'add'|'sub'|'mul'|'div'|'pow'|'neg'|
           'call'|'field'|'array'
     """
-    kind: str
-    val:  object = None        # str/int/float for literals; str for var/keyword name
-    left: object = None        # Expr (binary ops, concat)
-    right: object = None       # Expr (binary ops, concat)
+    kind: strv
+    val:  object = None        # strv/int/float for literals; strv for var/keyword name
+    left: object = None        # Expr (binary ops, ccat)
+    right: object = None       # Expr (binary ops, ccat)
     child: object = None       # Expr (unary neg, indirect)
-    name: str    = None        # function/field name
+    name: strv    = None        # function/field name
     args: object = None        # list[Expr] for call
     obj:  object = None        # Expr (array base)
     subscripts: object = None  # list[Expr] (array indices)
@@ -115,26 +115,26 @@ class PatExpr:
           'assign_imm'|'assign_cond'|'cursor'|'epsilon'|
           'arb'|'rem'|'fail'|'abort'|'fence'|'succeed'|'bal'
     """
-    kind: str
-    val:  object = None        # str for lit/var/ref
+    kind: strv
+    val:  object = None        # strv for lit/var/ref
     left: object = None        # PatExpr (cat, alt)
     right: object = None       # PatExpr (cat, alt)
     child: object = None       # PatExpr (for assign_imm/cond child)
     var:  object = None        # Expr (capture target for assign nodes)
-    name: str    = None        # builtin name (call), or deferred ref name (ref)
+    name: strv    = None        # builtin name (call), or deferred ref name (ref)
     args: object = None        # list[Expr|PatExpr] for call
 
 @dataclass
 class Goto:
     """SNOBOL4 goto field."""
-    on_success: str    = None  # :S(label)
-    on_failure: str    = None  # :F(label)
-    unconditional: str = None  # :(label)
+    on_success: strv    = None  # :S(label)
+    on_failure: strv    = None  # :F(label)
+    unconditional: strv = None  # :(label)
 
 @dataclass
 class Stmt:
     """A full SNOBOL4 statement (Sprint 16+)."""
-    label:       str    = None   # optional label
+    label:       strv    = None   # optional label
     subject:     object = None   # Expr | None
     pattern:     object = None   # PatExpr | None
     replacement: object = None   # Expr | None
@@ -154,22 +154,22 @@ class Graph:
     """Named flat table of IR nodes.  Supports cycles via Ref."""
 
     def __init__(self):
-        self._table: dict[str, Node] = {}
-        self._order: list[str] = []
+        self._table: dict[strv, Node] = {}
+        self._order: list[strv] = []
 
-    def add(self, name: str, node: Node) -> "Graph":
+    def add(self, name: strv, node: Node) -> "Graph":
         if name not in self._table:
             self._order.append(name)
         self._table[name] = node
         return self
 
-    def get(self, name: str) -> Optional[Node]:
+    def get(self, name: strv) -> Optional[Node]:
         return self._table.get(name)
 
-    def names(self) -> list[str]:
+    def names(self) -> list[strv]:
         return list(self._order)
 
-    def dot(self) -> str:
+    def dot(self) -> strv:
         """Return a Graphviz DOT representation for inspection."""
         lines = ["digraph IR {", "  node [shape=box fontname=monospace];"]
         counter = [0]
@@ -191,7 +191,7 @@ class Graph:
             if isinstance(n, Notany): label += f'("{n.charset}")'
             lines.append(f'  {nid} [label="{label}"];')
 
-        def walk(n) -> str:
+        def walk(n) -> strv:
             nid = node_id(n)
             emit(n, nid)
             if isinstance(n, (Alt, Cat)):

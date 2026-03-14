@@ -11,7 +11,7 @@ all: sno2c
 sno2c: $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $^
 
-%.o: %.c snoc.h lex.h
+%.o: %.c sno2c.h lex.h
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 clean:

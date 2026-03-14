@@ -1,7 +1,7 @@
 /* engine_stub.c — linker stub for compiled-path binaries.
  *
- * The compiled Byrd box path (sno2c output) never calls sno_match_pattern()
- * or sno_match_and_replace(), so engine_match_ex() is never reached at
+ * The compiled Byrd box path (sno2c output) never calls match_pattern()
+ * or match_and_replace(), so engine_match_ex() is never reached at
  * runtime.  This stub satisfies the linker without pulling in engine.c.
  *
  * EVAL and dynamic patterns still require the real engine.c.  This stub

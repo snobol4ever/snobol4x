@@ -37,9 +37,9 @@ from typing import List, Optional, Union
 @dataclass(frozen=True)
 class Label:
     """A named basic-block entry point.  Corresponds to ir_Label in ir.icn."""
-    name: str
+    name: strv
 
-    def __repr__(self) -> str:
+    def __repr__(self) -> strv:
         return f"L({self.name})"
 
 
@@ -48,9 +48,9 @@ class TmpLabel:
     """A mutable label slot — holds a Label at runtime for indirect goto.
     Corresponds to ir_TmpLabel; emitted as an int local in JVM / MSIL.
     Used to wire Alt backtrack: save resume label, indirect-goto on backtrack."""
-    name: str
+    name: strv
 
-    def __repr__(self) -> str:
+    def __repr__(self) -> strv:
         return f"TL({self.name})"
 
 
@@ -116,32 +116,32 @@ class MoveLabel:
 @dataclass
 class Lit:
     """Match a literal string at the current cursor position."""
-    s: str
+    s: strv
 
 
 @dataclass
 class Span:
-    """Consume one or more chars from charset (SPAN).  Fails on empty match."""
-    charset: str
+    """Consume one or more chars from charset (SPAN).  Fails on empty mtch."""
+    charset: strv
 
 
 @dataclass
 class Break:
     """Consume zero or more chars NOT in charset, stop before first hit (BREAK).
     Succeeds at the first char in charset (or end of string)."""
-    charset: str
+    charset: strv
 
 
 @dataclass
 class Any:
     """Match exactly one char that is in charset (ANY)."""
-    charset: str
+    charset: strv
 
 
 @dataclass
 class Notany:
     """Match exactly one char that is NOT in charset (NOTANY)."""
-    charset: str
+    charset: strv
 
 
 @dataclass
@@ -162,7 +162,7 @@ class Rpos:
 
 @dataclass
 class Seq:
-    """Concatenation: match left then right.  Both must succeed.
+    """Concatenation: mtch left then right.  Both must succeed.
     Backtrack: failure in right resumes left; failure in left propagates up."""
     left: object
     right: object
@@ -178,7 +178,7 @@ class Alt:
 
 @dataclass
 class Arbno:
-    """ARBNO(child): match child zero or more times greedily.
+    """ARBNO(child): mtch child zero or more times greedily.
     Backtrack peels one repetition at a time."""
     child: object
 
@@ -193,18 +193,18 @@ class Call:
     Corresponds to a function call with α/β entry dispatch via 'entry' int arg.
     In JVM: INVOKEVIRTUAL with entry=0 (start) or entry=N (resume N).
     In MSIL: call with OpCodes.Switch dispatch at method entry."""
-    name: str
+    name: strv
 
 
 # ---------------------------------------------------------------------------
-# Top-level match node
+# Top-level mtch node
 # ---------------------------------------------------------------------------
 
 @dataclass
 class Match:
-    """Top-level: match pattern against subject string.
+    """Top-level: mtch pattern against subject string.
     The emitter wraps this in the outer try_match_at loop."""
-    subject: str   # variable name holding the subject string
+    subject: strv   # variable name holding the subject string
     pattern: object  # root pattern node
 
 
@@ -224,7 +224,7 @@ class IrPattern:
     """A single named pattern compiled to a list of Chunks.
     name → JVM class name or MSIL TypeBuilder name.
     chunks → basic blocks in topological order (α-block first)."""
-    name: str
+    name: strv
     chunks: List[Chunk] = field(default_factory=list)
     # α and φ labels — entry and failure ports for the whole pattern
     alpha: Optional[Label] = None   # start label
@@ -261,7 +261,7 @@ __all__ = [cls.__name__ for cls in SNOBOL4_IR_NODES]
 
 if __name__ == "__main__":
     # Reproduce the four-port wiring for:  BREAK(" \t\n;") . x  (capture)
-    # α → BREAK starts → on match → Succeed(β)
+    # α → BREAK starts → on mtch → Succeed(β)
     # β → BREAK resumes (backtrack) → Fail
     # φ → propagate failure up
 

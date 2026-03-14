@@ -19,258 +19,258 @@
 /* ============================================================
  * COMM — monitor telemetry (Pick Monitor / double-trace)
  *
- * When sno_monitor_fd >= 0, every statement and every variable
+ * When monitor_fd >= 0, every statement and every variable
  * assignment emits an event to that file descriptor.
  * Run with:  ./beautiful 2>/tmp/binary_trace.txt
- * (sno_monitor_fd defaults to stderr = fd 2)
+ * (monitor_fd defaults to stderr = fd 2)
  *
  * Format mirrors CSNOBOL4 &TRACE output:
  *   STNO <n>
  *   VAR <name> <quoted-value>
  * ============================================================ */
-int sno_monitor_fd = -1;   /* -1 = disabled; set to 2 for stderr */
+int monitor_fd = -1;   /* -1 = disabled; set to 2 for stderr */
 
 /* &STCOUNT — incremented every statement; checked against &STLIMIT */
-int64_t sno_kw_stcount = 0;
+int64_t kw_stcount = 0;
 
-void sno_comm_stno(int n) {
+void comm_stno(int n) {
     /* Enforce &STLIMIT (patch P001 — was declared but never checked) */
-    if (sno_kw_stlimit >= 0 && ++sno_kw_stcount > sno_kw_stlimit) {
+    if (kw_stlimit >= 0 && ++kw_stcount > kw_stlimit) {
         fprintf(stderr, "\n** &STLIMIT exceeded at statement %d"
                         " (&STCOUNT=%lld &STLIMIT=%lld)\n",
-                n, (long long)sno_kw_stcount, (long long)sno_kw_stlimit);
+                n, (long long)kw_stcount, (long long)kw_stlimit);
         exit(1);
     }
-    if (sno_monitor_fd < 0) return;
-    dprintf(sno_monitor_fd, "STNO %d\n", n);
+    if (monitor_fd < 0) return;
+    dprintf(monitor_fd, "STNO %d\n", n);
 }
 
-void sno_comm_var(const char *name, SnoVal val) {
-    if (sno_monitor_fd < 0) return;
+void comm_var(const char *name, SnoVal val) {
+    if (monitor_fd < 0) return;
     /* skip noisy internal variables */
     if (!name) return;
     if (name[0] == '_') return;          /* internal scratch vars */
-    const char *s = sno_to_str(val);
-    dprintf(sno_monitor_fd, "VAR %s \"%s\"\n", name, s ? s : "<null>");
+    const char *s = to_str(val);
+    dprintf(monitor_fd, "VAR %s \"%s\"\n", name, s ? s : "<null>");
 }
 
 /* ============================================================
  * Runtime initialization
  * ============================================================ */
 
-/* Global character constants (set by sno_runtime_init) */
-int64_t sno_kw_fullscan = 0;
-int64_t sno_kw_maxlngth = 524288;
-int64_t sno_kw_anchor   = 0;
-int64_t sno_kw_trim     = 1;
-int64_t sno_kw_stlimit  = -1;
+/* Global character constants (set by runtime_init) */
+int64_t kw_fullscan = 0;
+int64_t kw_maxlngth = 524288;
+int64_t kw_anchor   = 0;
+int64_t kw_trim     = 1;
+int64_t kw_stlimit  = -1;
 
-char sno_ucase[27]    = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-char sno_lcase[27]    = "abcdefghijklmnopqrstuvwxyz";
-char sno_digits[11]   = "0123456789";
-char sno_alphabet[257];  /* all 256 ASCII chars */
+char ucase[27]    = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+char lcase[27]    = "abcdefghijklmnopqrstuvwxyz";
+char digits[11]   = "0123456789";
+char alphabet[257];  /* all 256 ASCII chars */
 
 /* ============================================================
  * Numeric comparison builtins: GT LT GE LE EQ NE
- * SNOBOL4 semantics: succeed (return first arg) or fail (SNO_FAIL_VAL).
+ * SNOBOL4 semantics: succeed (return first arg) or fail (FAIL_VAL).
  * Also INTEGER, SIZE, REAL type/conversion builtins.
  * ============================================================ */
 
 static SnoVal _b_GT(SnoVal *a, int n) {
-    if (n < 2) return SNO_FAIL_VAL;
-    return sno_gt(a[0], a[1]) ? SNO_NULL_VAL : SNO_FAIL_VAL;
+    if (n < 2) return FAIL_VAL;
+    return gt(a[0], a[1]) ? NULL_VAL : FAIL_VAL;
 }
 static SnoVal _b_LT(SnoVal *a, int n) {
-    if (n < 2) return SNO_FAIL_VAL;
-    return sno_lt(a[0], a[1]) ? SNO_NULL_VAL : SNO_FAIL_VAL;
+    if (n < 2) return FAIL_VAL;
+    return lt(a[0], a[1]) ? NULL_VAL : FAIL_VAL;
 }
 static SnoVal _b_GE(SnoVal *a, int n) {
-    if (n < 2) return SNO_FAIL_VAL;
-    return sno_ge(a[0], a[1]) ? SNO_NULL_VAL : SNO_FAIL_VAL;
+    if (n < 2) return FAIL_VAL;
+    return ge(a[0], a[1]) ? NULL_VAL : FAIL_VAL;
 }
 static SnoVal _b_LE(SnoVal *a, int n) {
-    if (n < 2) return SNO_FAIL_VAL;
-    return sno_le(a[0], a[1]) ? SNO_NULL_VAL : SNO_FAIL_VAL;
+    if (n < 2) return FAIL_VAL;
+    return le(a[0], a[1]) ? NULL_VAL : FAIL_VAL;
 }
 static SnoVal _b_EQ(SnoVal *a, int n) {
-    if (n < 2) return SNO_FAIL_VAL;
+    if (n < 2) return FAIL_VAL;
     /* Numeric equality: equal returns first arg, else fail */
-    if (a[0].type == SNO_INT && a[1].type == SNO_INT)
-        return (a[0].i == a[1].i) ? SNO_NULL_VAL : SNO_FAIL_VAL;
-    return (sno_to_real(a[0]) == sno_to_real(a[1])) ? SNO_NULL_VAL : SNO_FAIL_VAL;
+    if (a[0].type == SINT && a[1].type == SINT)
+        return (a[0].i == a[1].i) ? NULL_VAL : FAIL_VAL;
+    return (to_real(a[0]) == to_real(a[1])) ? NULL_VAL : FAIL_VAL;
 }
 static SnoVal _b_NE(SnoVal *a, int n) {
-    if (n < 2) return SNO_FAIL_VAL;
-    if (a[0].type == SNO_INT && a[1].type == SNO_INT)
-        return (a[0].i != a[1].i) ? SNO_NULL_VAL : SNO_FAIL_VAL;
-    return (sno_to_real(a[0]) != sno_to_real(a[1])) ? SNO_NULL_VAL : SNO_FAIL_VAL;
+    if (n < 2) return FAIL_VAL;
+    if (a[0].type == SINT && a[1].type == SINT)
+        return (a[0].i != a[1].i) ? NULL_VAL : FAIL_VAL;
+    return (to_real(a[0]) != to_real(a[1])) ? NULL_VAL : FAIL_VAL;
 }
 static SnoVal _b_INTEGER(SnoVal *a, int n) {
-    if (n < 1) return SNO_FAIL_VAL;
+    if (n < 1) return FAIL_VAL;
     /* Succeed (returning int value) if arg is or converts to integer */
-    if (a[0].type == SNO_INT) return a[0];
-    if (a[0].type == SNO_STR && a[0].s) {
+    if (a[0].type == SINT) return a[0];
+    if (a[0].type == SSTR && a[0].s) {
         char *end;
         long long v = strtoll(a[0].s, &end, 10);
-        if (end != a[0].s && *end == '\0') return SNO_INT_VAL(v);
+        if (end != a[0].s && *end == '\0') return INT_VAL(v);
     }
-    return SNO_FAIL_VAL;
+    return FAIL_VAL;
 }
 static SnoVal _b_REAL(SnoVal *a, int n) {
-    if (n < 1) return SNO_FAIL_VAL;
-    if (a[0].type == SNO_REAL) return a[0];
-    if (a[0].type == SNO_INT)  return (SnoVal){ .type = SNO_REAL, .r = (double)a[0].i };
-    if (a[0].type == SNO_STR && a[0].s) {
+    if (n < 1) return FAIL_VAL;
+    if (a[0].type == SREAL) return a[0];
+    if (a[0].type == SINT)  return (SnoVal){ .type = SREAL, .r = (double)a[0].i };
+    if (a[0].type == SSTR && a[0].s) {
         char *end;
         double v = strtod(a[0].s, &end);
-        if (end != a[0].s && *end == '\0') return (SnoVal){ .type = SNO_REAL, .r = v };
+        if (end != a[0].s && *end == '\0') return (SnoVal){ .type = SREAL, .r = v };
     }
-    return SNO_FAIL_VAL;
+    return FAIL_VAL;
 }
 static SnoVal _b_SIZE(SnoVal *a, int n) {
-    if (n < 1) return SNO_INT_VAL(0);
-    const char *s = sno_to_str(a[0]);
-    return SNO_INT_VAL((int64_t)(s ? strlen(s) : 0));
+    if (n < 1) return INT_VAL(0);
+    const char *s = to_str(a[0]);
+    return INT_VAL((int64_t)(s ? strlen(s) : 0));
 }
 
 /* Sprint 23: IDENT, DIFFER, HOST, ENDFILE, APPLY + string builtins as callable */
 static SnoVal _b_IDENT(SnoVal *a, int n) {
-    SnoVal x = (n > 0) ? a[0] : SNO_NULL_VAL;
-    SnoVal y = (n > 1) ? a[1] : SNO_NULL_VAL;
-    return sno_ident(x, y) ? SNO_NULL_VAL : SNO_FAIL_VAL;
+    SnoVal x = (n > 0) ? a[0] : NULL_VAL;
+    SnoVal y = (n > 1) ? a[1] : NULL_VAL;
+    return ident(x, y) ? NULL_VAL : FAIL_VAL;
 }
 static SnoVal _b_DIFFER(SnoVal *a, int n) {
-    SnoVal x = (n > 0) ? a[0] : SNO_NULL_VAL;
-    SnoVal y = (n > 1) ? a[1] : SNO_NULL_VAL;
-    return sno_differ(x, y) ? x : SNO_FAIL_VAL;
+    SnoVal x = (n > 0) ? a[0] : NULL_VAL;
+    SnoVal y = (n > 1) ? a[1] : NULL_VAL;
+    return differ(x, y) ? x : FAIL_VAL;
 }
 static SnoVal _b_HOST(SnoVal *a, int n) {
     /* HOST(0) = command args string, HOST(1) = PID, HOST(3) = argc */
-    if (n < 1) return SNO_NULL_VAL;
-    int64_t selector = sno_to_int(a[0]);
-    if (selector == 0) return SNO_STR_VAL(GC_strdup(""));
+    if (n < 1) return NULL_VAL;
+    int64_t selector = to_int(a[0]);
+    if (selector == 0) return STR_VAL(GC_strdup(""));
     if (selector == 1) {
         char buf[32]; snprintf(buf, sizeof(buf), "%d", (int)getpid());
-        return SNO_STR_VAL(GC_strdup(buf));
+        return STR_VAL(GC_strdup(buf));
     }
-    if (selector == 3) return SNO_INT_VAL(0);
-    return SNO_NULL_VAL;
+    if (selector == 3) return INT_VAL(0);
+    return NULL_VAL;
 }
 static SnoVal _b_ENDFILE(SnoVal *a, int n) {
     (void)a; (void)n;
-    return SNO_FAIL_VAL;  /* not at EOF on any channel */
+    return FAIL_VAL;  /* not at EOF on any channel */
 }
 static SnoVal _b_APPLY(SnoVal *a, int n) {
-    if (n < 1) return SNO_NULL_VAL;
-    const char *fname = sno_to_str(a[0]);
-    return sno_apply(fname, a + 1, n - 1);
+    if (n < 1) return NULL_VAL;
+    const char *fname = to_str(a[0]);
+    return aply(fname, a + 1, n - 1);
 }
 static SnoVal _b_LPAD(SnoVal *a, int n) {
-    if (n < 2) return n > 0 ? a[0] : SNO_NULL_VAL;
-    return sno_lpad_fn(a[0], a[1], n > 2 ? a[2] : SNO_STR_VAL(" "));
+    if (n < 2) return n > 0 ? a[0] : NULL_VAL;
+    return lpad_fn(a[0], a[1], n > 2 ? a[2] : STR_VAL(" "));
 }
 static SnoVal _b_RPAD(SnoVal *a, int n) {
-    if (n < 2) return n > 0 ? a[0] : SNO_NULL_VAL;
-    return sno_rpad_fn(a[0], a[1], n > 2 ? a[2] : SNO_STR_VAL(" "));
+    if (n < 2) return n > 0 ? a[0] : NULL_VAL;
+    return rpad_fn(a[0], a[1], n > 2 ? a[2] : STR_VAL(" "));
 }
 static SnoVal _b_CHAR(SnoVal *a, int n) {
-    if (n < 1) return SNO_NULL_VAL;
-    return sno_char_fn(a[0]);
+    if (n < 1) return NULL_VAL;
+    return char_fn(a[0]);
 }
 static SnoVal _b_DUPL(SnoVal *a, int n) {
-    if (n < 2) return SNO_NULL_VAL;
-    return sno_dupl_fn(a[0], a[1]);
+    if (n < 2) return NULL_VAL;
+    return dupl_fn(a[0], a[1]);
 }
 static SnoVal _b_REPLACE(SnoVal *a, int n) {
-    if (n < 3) return SNO_NULL_VAL;
-    return sno_replace_fn(a[0], a[1], a[2]);
+    if (n < 3) return NULL_VAL;
+    return replace_fn(a[0], a[1], a[2]);
 }
 static SnoVal _b_TRIM(SnoVal *a, int n) {
-    if (n < 1) return SNO_NULL_VAL;
-    return sno_trim_fn(a[0]);
+    if (n < 1) return NULL_VAL;
+    return trim_fn(a[0]);
 }
 static SnoVal _b_SUBSTR(SnoVal *a, int n) {
-    if (n < 3) return SNO_NULL_VAL;
-    return sno_substr_fn(a[0], a[1], a[2]);
+    if (n < 3) return NULL_VAL;
+    return substr_fn(a[0], a[1], a[2]);
 }
 static SnoVal _b_REVERSE(SnoVal *a, int n) {
-    if (n < 1) return SNO_NULL_VAL;
-    return sno_reverse_fn(a[0]);
+    if (n < 1) return NULL_VAL;
+    return reverse_fn(a[0]);
 }
 static SnoVal _b_DATATYPE(SnoVal *a, int n) {
-    if (n < 1) return SNO_STR_VAL("STRING");
-    return SNO_STR_VAL((char*)sno_datatype(a[0]));
+    if (n < 1) return STR_VAL("STRING");
+    return STR_VAL((char*)datatype(a[0]));
 }
 
 /* EVAL / OPSYN / SORT wrappers — file scope required */
-extern SnoVal sno_eval(SnoVal);
-extern SnoVal sno_opsyn(SnoVal, SnoVal, SnoVal);
-extern SnoVal sno_sort_fn(SnoVal);
-static SnoVal _b_EVAL(SnoVal *a, int n)  { return sno_eval(n>0?a[0]:SNO_NULL_VAL); }
+extern SnoVal evl(SnoVal);
+extern SnoVal opsyn(SnoVal, SnoVal, SnoVal);
+extern SnoVal sort_fn(SnoVal);
+static SnoVal _b_EVAL(SnoVal *a, int n)  { return evl(n>0?a[0]:NULL_VAL); }
 static SnoVal _b_OPSYN(SnoVal *a, int n) {
-    return sno_opsyn(n>0?a[0]:SNO_NULL_VAL,n>1?a[1]:SNO_NULL_VAL,n>2?a[2]:SNO_NULL_VAL); }
-static SnoVal _b_SORT(SnoVal *a, int n)  { return sno_sort_fn(n>0?a[0]:SNO_NULL_VAL); }
-static SnoVal _b_INPUT(SnoVal *a, int n);  /* defined near sno_input_read below */
+    return opsyn(n>0?a[0]:NULL_VAL,n>1?a[1]:NULL_VAL,n>2?a[2]:NULL_VAL); }
+static SnoVal _b_SORT(SnoVal *a, int n)  { return sort_fn(n>0?a[0]:NULL_VAL); }
+static SnoVal _b_INPUT(SnoVal *a, int n);  /* defined near input_read below */
 
 /* Sprint 23: counter stack and tree field accessors as callable SnoVal functions */
 static SnoVal _b_nPush(SnoVal *a, int n) {
     (void)a; (void)n;
-    sno_npush();
-    return SNO_NULL_VAL;
+    npush();
+    return NULL_VAL;
 }
 static SnoVal _b_nInc(SnoVal *a, int n) {
     (void)a; (void)n;
-    sno_ninc();
-    return SNO_INT_VAL(sno_ntop());
+    ninc();
+    return INT_VAL(ntop());
 }
 static SnoVal _b_nDec(SnoVal *a, int n) {
     (void)a; (void)n;
-    sno_ndec();
-    return SNO_INT_VAL(sno_ntop());
+    ndec();
+    return INT_VAL(ntop());
 }
 static SnoVal _b_nTop(SnoVal *a, int n) {
     (void)a; (void)n;
-    return SNO_INT_VAL(sno_ntop());
+    return INT_VAL(ntop());
 }
 static SnoVal _b_nPop(SnoVal *a, int n) {
     (void)a; (void)n;
-    int64_t val = sno_ntop();
-    sno_npop();
-    return SNO_INT_VAL(val);
+    int64_t val = ntop();
+    npop();
+    return INT_VAL(val);
 }
 /* Tree field accessors: n(x), t(x), v(x), c(x) */
 static SnoVal _b_tree_n(SnoVal *a, int n) {
-    if (n < 1) return SNO_INT_VAL(0);
-    return sno_field_get(a[0], "n");
+    if (n < 1) return INT_VAL(0);
+    return field_get(a[0], "n");
 }
 static SnoVal _b_tree_t(SnoVal *a, int n) {
-    if (n < 1) return SNO_NULL_VAL;
-    return sno_field_get(a[0], "t");
+    if (n < 1) return NULL_VAL;
+    return field_get(a[0], "t");
 }
 static SnoVal _b_tree_v(SnoVal *a, int n) {
-    if (n < 1) return SNO_NULL_VAL;
-    return sno_field_get(a[0], "v");
+    if (n < 1) return NULL_VAL;
+    return field_get(a[0], "v");
 }
 static SnoVal _b_tree_c(SnoVal *a, int n) {
-    if (n < 1) return SNO_NULL_VAL;
-    return sno_field_get(a[0], "c");
+    if (n < 1) return NULL_VAL;
+    return field_get(a[0], "c");
 }
 /* link_counter / link_tag field accessors: value(x), next(x) */
 static SnoVal _b_field_value(SnoVal *a, int n) {
-    if (n < 1) return SNO_NULL_VAL;
-    return sno_field_get(a[0], "value");
+    if (n < 1) return NULL_VAL;
+    return field_get(a[0], "value");
 }
 static SnoVal _b_field_next(SnoVal *a, int n) {
-    if (n < 1) return SNO_NULL_VAL;
-    return sno_field_get(a[0], "next");
+    if (n < 1) return NULL_VAL;
+    return field_get(a[0], "next");
 }
 
 /* DUMP builtin — dump all variables to stderr (implementation after var table) */
-static void sno_var_dump(void);
+static void var_dump(void);
 static SnoVal _b_DUMP(SnoVal *a, int n) {
     (void)a; (void)n;
-    sno_var_dump();
-    return SNO_NULL_VAL;
+    var_dump();
+    return NULL_VAL;
 }
 
 /* Forward declarations needed by _b_DATA trampolines */
@@ -284,13 +284,13 @@ static UDefType *_udef_lookup(const char *name);
 typedef struct { char *typename; int nfields; char **fields; } DataClosure;
 typedef struct { char *typename; char *fieldname; } FieldClosure;
 
-/* Dynamic constructor: typename(v1, v2, ...) -> SNO_UDEF */
+/* Dynamic constructor: typename(v1, v2, ...) -> UDEF */
 static SnoVal _data_ctor_fn(SnoVal *args, int nargs) {
     /* Called as a registered SnoFunc; the closure is stored in a parallel table.
-     * We use sno_apply_closure which is not available, so we look up via type name. */
+     * We use apply_closure which is not available, so we look up via type name. */
     /* NOTE: This fn is never called directly — see _b_DATA registration below */
     (void)args; (void)nargs;
-    return SNO_NULL_VAL;
+    return NULL_VAL;
 }
 
 /* We need closures per-type. Use a static array of up to 64 DATA types. */
@@ -306,15 +306,15 @@ static int _data_ntypes = 0;
 /* Generic constructor: looks up typename by position in _data_types,
  * builds a UDef with the provided args. */
 static SnoVal _make_ctor(int tidx, SnoVal *args, int nargs) {
-    if (tidx < 0 || tidx >= _data_ntypes) return SNO_NULL_VAL;
+    if (tidx < 0 || tidx >= _data_ntypes) return NULL_VAL;
     UDefType *t = _udef_lookup(_data_types[tidx].typename);
-    if (!t) return SNO_NULL_VAL;
+    if (!t) return NULL_VAL;
     UDef *u = GC_malloc(sizeof(UDef));
     u->type   = t;
     u->fields = GC_malloc(t->nfields * sizeof(SnoVal));
     for (int i = 0; i < t->nfields; i++)
-        u->fields[i] = (i < nargs) ? args[i] : SNO_NULL_VAL;
-    return (SnoVal){ .type = SNO_UDEF, .u = u };
+        u->fields[i] = (i < nargs) ? args[i] : NULL_VAL;
+    return (SnoVal){ .type = UDEF, .u = u };
 }
 
 /* One constructor trampoline per slot (up to DATA_MAX_TYPES) */
@@ -363,24 +363,24 @@ static struct { int tidx; int fidx; } _facc_slots[FIELD_ACCESSOR_MAX];
 static int _facc_n = 0;
 
 static SnoVal _make_fget(int slot, SnoVal obj) {
-    if (slot < 0 || slot >= _facc_n) return SNO_NULL_VAL;
+    if (slot < 0 || slot >= _facc_n) return NULL_VAL;
     int tidx = _facc_slots[slot].tidx;
     int fidx = _facc_slots[slot].fidx;
-    if (obj.type != SNO_UDEF || !obj.u) return SNO_NULL_VAL;
-    if (fidx < 0 || fidx >= obj.u->type->nfields) return SNO_NULL_VAL;
+    if (obj.type != UDEF || !obj.u) return NULL_VAL;
+    if (fidx < 0 || fidx >= obj.u->type->nfields) return NULL_VAL;
     return obj.u->fields[fidx];
 }
 static void _make_fset(int slot, SnoVal obj, SnoVal val) {
     if (slot < 0 || slot >= _facc_n) return;
     int fidx = _facc_slots[slot].fidx;
-    if (obj.type != SNO_UDEF || !obj.u) return;
+    if (obj.type != UDEF || !obj.u) return;
     if (fidx < 0 || fidx >= obj.u->type->nfields) return;
     obj.u->fields[fidx] = val;
 }
 
 #define FACC_FN(idx) \
 static SnoVal _facc_get_##idx(SnoVal *a, int n) { \
-    return n>=1 ? _make_fget(idx, a[0]) : SNO_NULL_VAL; }
+    return n>=1 ? _make_fget(idx, a[0]) : NULL_VAL; }
 
 FACC_FN(0)   FACC_FN(1)   FACC_FN(2)   FACC_FN(3)
 FACC_FN(4)   FACC_FN(5)   FACC_FN(6)   FACC_FN(7)
@@ -451,24 +451,24 @@ static SnoVal (*_facc_fns[FIELD_ACCESSOR_MAX])(SnoVal *, int) = {
 };
 
 static SnoVal _b_DATA(SnoVal *a, int n) {
-    if (n < 1) return SNO_NULL_VAL;
-    const char *spec = sno_to_str(a[0]);
-    if (!spec || !*spec) return SNO_NULL_VAL;
+    if (n < 1) return NULL_VAL;
+    const char *spec = to_str(a[0]);
+    if (!spec || !*spec) return NULL_VAL;
 
     /* Register the type in snobol4's UDefType list */
-    sno_data_define(spec);
+    data_define(spec);
 
     /* Parse spec to get typename and fields */
     char *s = GC_strdup(spec);
     char *paren = strchr(s, '(');
-    if (!paren) return SNO_NULL_VAL;
+    if (!paren) return NULL_VAL;
     *paren = '\0';
     char *tname = s;
     char *fstr = paren + 1;
     char *close = strchr(fstr, ')');
     if (close) *close = '\0';
 
-    if (_data_ntypes >= DATA_MAX_TYPES) return SNO_NULL_VAL;
+    if (_data_ntypes >= DATA_MAX_TYPES) return NULL_VAL;
     int tidx = _data_ntypes++;
     _data_types[tidx].typename = GC_strdup(tname);
 
@@ -487,8 +487,8 @@ static SnoVal _b_DATA(SnoVal *a, int n) {
     _data_types[tidx].nfields = nf;
 
     /* Register constructor: typename(f1,f2,...) */
-    extern void sno_register_fn(const char *, SnoVal (*)(SnoVal*, int), int, int);
-    sno_register_fn(tname, _ctor_fns[tidx], 0, nf);
+    extern void register_fn(const char *, SnoVal (*)(SnoVal*, int), int, int);
+    register_fn(tname, _ctor_fns[tidx], 0, nf);
 
     /* Register field accessors: each field name as a 1-arg function */
     for (int fi = 0; fi < nf; fi++) {
@@ -498,155 +498,155 @@ static SnoVal _b_DATA(SnoVal *a, int n) {
         _facc_slots[slot].fidx = fi;
         /* Only register if not already registered (don't override next/value builtins) */
         const char *fname = _data_types[tidx].fields[fi];
-        sno_register_fn(fname, _facc_fns[slot], 1, 1);
+        register_fn(fname, _facc_fns[slot], 1, 1);
     }
 
-    return SNO_NULL_VAL;
+    return NULL_VAL;
 }
 
-/* Pattern builtins callable via sno_apply() — used when SPAN/BREAK/etc appear
+/* Pattern builtins callable via aply() — used when SPAN/BREAK/etc appear
  * inside argument lists and are tokenised as IDENT rather than PAT_BUILTIN. */
-extern SnoVal sno_pat_span(const char *);
-extern SnoVal sno_pat_break_(const char *);
-extern SnoVal sno_pat_any_cs(const char *);
-extern SnoVal sno_pat_notany(const char *);
-extern SnoVal sno_pat_len(int64_t);
-extern SnoVal sno_pat_pos(int64_t);
-extern SnoVal sno_pat_rpos(int64_t);
-extern SnoVal sno_pat_tab(int64_t);
-extern SnoVal sno_pat_rtab(int64_t);
-extern SnoVal sno_pat_arb(void);
-extern SnoVal sno_pat_rem(void);
-extern SnoVal sno_pat_fail(void);
-extern SnoVal sno_pat_abort(void);
-extern SnoVal sno_pat_succeed(void);
-extern SnoVal sno_pat_bal(void);
-extern SnoVal sno_pat_arbno(SnoVal);
-extern SnoVal sno_pat_fence(void);
-extern SnoVal sno_pat_fence_p(SnoVal);
+extern SnoVal pat_span(const char *);
+extern SnoVal pat_break_(const char *);
+extern SnoVal pat_any_cs(const char *);
+extern SnoVal pat_notany(const char *);
+extern SnoVal pat_len(int64_t);
+extern SnoVal pat_pos(int64_t);
+extern SnoVal pat_rpos(int64_t);
+extern SnoVal pat_tab(int64_t);
+extern SnoVal pat_rtab(int64_t);
+extern SnoVal pat_arb(void);
+extern SnoVal pat_rem(void);
+extern SnoVal pat_fail(void);
+extern SnoVal pat_abort(void);
+extern SnoVal pat_succeed(void);
+extern SnoVal pat_bal(void);
+extern SnoVal pat_arbno(SnoVal);
+extern SnoVal pat_fence(void);
+extern SnoVal pat_fence_p(SnoVal);
 
-static SnoVal _b_PAT_SPAN(SnoVal *a, int n)    { return n>=1 ? sno_pat_span(sno_to_str(a[0]))    : SNO_FAIL_VAL; }
-static SnoVal _b_PAT_BREAK(SnoVal *a, int n)   { return n>=1 ? sno_pat_break_(sno_to_str(a[0]))  : SNO_FAIL_VAL; }
-static SnoVal _b_PAT_ANY(SnoVal *a, int n)     { return n>=1 ? sno_pat_any_cs(sno_to_str(a[0]))  : SNO_FAIL_VAL; }
-static SnoVal _b_PAT_NOTANY(SnoVal *a, int n)  { return n>=1 ? sno_pat_notany(sno_to_str(a[0]))  : SNO_FAIL_VAL; }
-static SnoVal _b_PAT_LEN(SnoVal *a, int n)     { return n>=1 ? sno_pat_len(sno_to_int(a[0]))   : SNO_FAIL_VAL; }
-static SnoVal _b_PAT_POS(SnoVal *a, int n)     { return n>=1 ? sno_pat_pos(sno_to_int(a[0]))   : SNO_FAIL_VAL; }
-static SnoVal _b_PAT_RPOS(SnoVal *a, int n)    { return n>=1 ? sno_pat_rpos(sno_to_int(a[0]))  : SNO_FAIL_VAL; }
-static SnoVal _b_PAT_TAB(SnoVal *a, int n)     { return n>=1 ? sno_pat_tab(sno_to_int(a[0]))   : SNO_FAIL_VAL; }
-static SnoVal _b_PAT_RTAB(SnoVal *a, int n)    { return n>=1 ? sno_pat_rtab(sno_to_int(a[0]))  : SNO_FAIL_VAL; }
-static SnoVal _b_PAT_ARB(SnoVal *a, int n)     { (void)a;(void)n; return sno_pat_arb();     }
-static SnoVal _b_PAT_REM(SnoVal *a, int n)     { (void)a;(void)n; return sno_pat_rem();     }
-static SnoVal _b_PAT_FAIL(SnoVal *a, int n)    { (void)a;(void)n; return sno_pat_fail();    }
-static SnoVal _b_PAT_ABORT(SnoVal *a, int n)   { (void)a;(void)n; return sno_pat_abort();   }
-static SnoVal _b_PAT_SUCCEED(SnoVal *a, int n) { (void)a;(void)n; return sno_pat_succeed(); }
-static SnoVal _b_PAT_BAL(SnoVal *a, int n)     { (void)a;(void)n; return sno_pat_bal();     }
-static SnoVal _b_PAT_ARBNO(SnoVal *a, int n)   { return n>=1 ? sno_pat_arbno(a[0])  : SNO_FAIL_VAL; }
-static SnoVal _b_PAT_FENCE(SnoVal *a, int n)   { return n>=1 ? sno_pat_fence_p(a[0]) : sno_pat_fence(); }
+static SnoVal _b_PAT_SPAN(SnoVal *a, int n)    { return n>=1 ? pat_span(to_str(a[0]))    : FAIL_VAL; }
+static SnoVal _b_PAT_BREAK(SnoVal *a, int n)   { return n>=1 ? pat_break_(to_str(a[0]))  : FAIL_VAL; }
+static SnoVal _b_PAT_ANY(SnoVal *a, int n)     { return n>=1 ? pat_any_cs(to_str(a[0]))  : FAIL_VAL; }
+static SnoVal _b_PAT_NOTANY(SnoVal *a, int n)  { return n>=1 ? pat_notany(to_str(a[0]))  : FAIL_VAL; }
+static SnoVal _b_PAT_LEN(SnoVal *a, int n)     { return n>=1 ? pat_len(to_int(a[0]))   : FAIL_VAL; }
+static SnoVal _b_PAT_POS(SnoVal *a, int n)     { return n>=1 ? pat_pos(to_int(a[0]))   : FAIL_VAL; }
+static SnoVal _b_PAT_RPOS(SnoVal *a, int n)    { return n>=1 ? pat_rpos(to_int(a[0]))  : FAIL_VAL; }
+static SnoVal _b_PAT_TAB(SnoVal *a, int n)     { return n>=1 ? pat_tab(to_int(a[0]))   : FAIL_VAL; }
+static SnoVal _b_PAT_RTAB(SnoVal *a, int n)    { return n>=1 ? pat_rtab(to_int(a[0]))  : FAIL_VAL; }
+static SnoVal _b_PAT_ARB(SnoVal *a, int n)     { (void)a;(void)n; return pat_arb();     }
+static SnoVal _b_PAT_REM(SnoVal *a, int n)     { (void)a;(void)n; return pat_rem();     }
+static SnoVal _b_PAT_FAIL(SnoVal *a, int n)    { (void)a;(void)n; return pat_fail();    }
+static SnoVal _b_PAT_ABORT(SnoVal *a, int n)   { (void)a;(void)n; return pat_abort();   }
+static SnoVal _b_PAT_SUCCEED(SnoVal *a, int n) { (void)a;(void)n; return pat_succeed(); }
+static SnoVal _b_PAT_BAL(SnoVal *a, int n)     { (void)a;(void)n; return pat_bal();     }
+static SnoVal _b_PAT_ARBNO(SnoVal *a, int n)   { return n>=1 ? pat_arbno(a[0])  : FAIL_VAL; }
+static SnoVal _b_PAT_FENCE(SnoVal *a, int n)   { return n>=1 ? pat_fence_p(a[0]) : pat_fence(); }
 
-void sno_runtime_init(void) {
+void runtime_init(void) {
     GC_INIT();
     /* Build &ALPHABET: all 256 chars in order */
-    for (int i = 0; i < 256; i++) sno_alphabet[i] = (char)i;
-    sno_alphabet[256] = '\0';
-    /* Enable monitor if SNO_MONITOR=1 (writes to stderr) */
-    const char *mon = getenv("SNO_MONITOR");
-    if (mon && mon[0] == '1') sno_monitor_fd = 2;
+    for (int i = 0; i < 256; i++) alphabet[i] = (char)i;
+    alphabet[256] = '\0';
+    /* Enable monitor if MONITOR=1 (writes to stderr) */
+    const char *mon = getenv("MONITOR");
+    if (mon && mon[0] == '1') monitor_fd = 2;
 
     /* Register numeric comparison builtins */
-    extern void sno_register_fn(const char *, SnoVal (*)(SnoVal*, int), int, int);
-    sno_register_fn("GT",       _b_GT,       2, 2);
-    sno_register_fn("LT",       _b_LT,       2, 2);
-    sno_register_fn("GE",       _b_GE,       2, 2);
-    sno_register_fn("LE",       _b_LE,       2, 2);
-    sno_register_fn("EQ",       _b_EQ,       2, 2);
-    sno_register_fn("NE",       _b_NE,       2, 2);
-    sno_register_fn("INTEGER",  _b_INTEGER,  1, 1);
-    sno_register_fn("REAL",     _b_REAL,     1, 1);
-    sno_register_fn("SIZE",     _b_SIZE,     1, 1);
+    extern void register_fn(const char *, SnoVal (*)(SnoVal*, int), int, int);
+    register_fn("GT",       _b_GT,       2, 2);
+    register_fn("LT",       _b_LT,       2, 2);
+    register_fn("GE",       _b_GE,       2, 2);
+    register_fn("LE",       _b_LE,       2, 2);
+    register_fn("EQ",       _b_EQ,       2, 2);
+    register_fn("NE",       _b_NE,       2, 2);
+    register_fn("INTEGER",  _b_INTEGER,  1, 1);
+    register_fn("REAL",     _b_REAL,     1, 1);
+    register_fn("SIZE",     _b_SIZE,     1, 1);
     /* Sprint 23: string predicates and host interface */
-    sno_register_fn("IDENT",    _b_IDENT,    0, 2);
-    sno_register_fn("DIFFER",   _b_DIFFER,   0, 2);
-    sno_register_fn("HOST",     _b_HOST,     1, 4);
-    sno_register_fn("ENDFILE",  _b_ENDFILE,  1, 1);
-    sno_register_fn("APPLY",    _b_APPLY,    1, 9);
-    sno_register_fn("LPAD",     _b_LPAD,     2, 3);
-    sno_register_fn("RPAD",     _b_RPAD,     2, 3);
-    sno_register_fn("CHAR",     _b_CHAR,     1, 1);
-    sno_register_fn("DUPL",     _b_DUPL,     2, 2);
-    sno_register_fn("REPLACE",  _b_REPLACE,  3, 3);
-    sno_register_fn("TRIM",     _b_TRIM,     1, 1);
-    sno_register_fn("SUBSTR",   _b_SUBSTR,   3, 3);
-    sno_register_fn("REVERSE",  _b_REVERSE,  1, 1);
-    sno_register_fn("DATATYPE", _b_DATATYPE, 1, 1);
-    sno_register_fn("DATA",     _b_DATA,     1, 1);
-    sno_register_fn("EVAL",  _b_EVAL,  1, 1);
-    sno_register_fn("OPSYN", _b_OPSYN, 2, 3);
-    sno_register_fn("SORT",  _b_SORT,  1, 1);
-    sno_register_fn("INPUT", _b_INPUT, 1, 4);
-    sno_register_fn("nPush",    _b_nPush,    0, 0);
-    sno_register_fn("nInc",     _b_nInc,     0, 0);
-    sno_register_fn("nDec",     _b_nDec,     0, 0);
-    sno_register_fn("nTop",     _b_nTop,     0, 0);
-    sno_register_fn("nPop",     _b_nPop,     0, 0);
-    sno_register_fn("n",        _b_tree_n,      1, 1);
-    sno_register_fn("t",        _b_tree_t,      1, 1);
-    sno_register_fn("v",        _b_tree_v,      1, 1);
-    sno_register_fn("c",        _b_tree_c,      1, 1);
-    sno_register_fn("value",    _b_field_value, 1, 1);
-    sno_register_fn("next",     _b_field_next,  1, 1);
-    sno_register_fn("DUMP",     _b_DUMP,        0, 1);
-    /* Pattern builtins callable via sno_apply (when inside arglist parens) */
-    sno_register_fn("SPAN",    _b_PAT_SPAN,    1, 1);
-    sno_register_fn("BREAK",   _b_PAT_BREAK,   1, 1);
-    sno_register_fn("ANY",     _b_PAT_ANY,     1, 1);
-    sno_register_fn("NOTANY",  _b_PAT_NOTANY,  1, 1);
-    sno_register_fn("LEN",     _b_PAT_LEN,     1, 1);
-    sno_register_fn("POS",     _b_PAT_POS,     1, 1);
-    sno_register_fn("RPOS",    _b_PAT_RPOS,    1, 1);
-    sno_register_fn("TAB",     _b_PAT_TAB,     1, 1);
-    sno_register_fn("RTAB",    _b_PAT_RTAB,    1, 1);
-    sno_register_fn("ARB",     _b_PAT_ARB,     0, 0);
-    sno_register_fn("REM",     _b_PAT_REM,     0, 0);
-    sno_register_fn("FAIL",    _b_PAT_FAIL,    0, 0);
-    sno_register_fn("ABORT",   _b_PAT_ABORT,   0, 0);
-    sno_register_fn("SUCCEED", _b_PAT_SUCCEED, 0, 0);
-    sno_register_fn("BAL",     _b_PAT_BAL,     0, 0);
-    sno_register_fn("ARBNO",   _b_PAT_ARBNO,   1, 1);
-    sno_register_fn("FENCE",   _b_PAT_FENCE,   0, 1);
-    /* Sprint 23: pre-init &ALPHABET-derived constants from global.sno
+    register_fn("IDENT",    _b_IDENT,    0, 2);
+    register_fn("DIFFER",   _b_DIFFER,   0, 2);
+    register_fn("HOST",     _b_HOST,     1, 4);
+    register_fn("ENDFILE",  _b_ENDFILE,  1, 1);
+    register_fn("APPLY",    _b_APPLY,    1, 9);
+    register_fn("LPAD",     _b_LPAD,     2, 3);
+    register_fn("RPAD",     _b_RPAD,     2, 3);
+    register_fn("CHAR",     _b_CHAR,     1, 1);
+    register_fn("DUPL",     _b_DUPL,     2, 2);
+    register_fn("REPLACE",  _b_REPLACE,  3, 3);
+    register_fn("TRIM",     _b_TRIM,     1, 1);
+    register_fn("SUBSTR",   _b_SUBSTR,   3, 3);
+    register_fn("REVERSE",  _b_REVERSE,  1, 1);
+    register_fn("DATATYPE", _b_DATATYPE, 1, 1);
+    register_fn("DATA",     _b_DATA,     1, 1);
+    register_fn("EVAL",  _b_EVAL,  1, 1);
+    register_fn("OPSYN", _b_OPSYN, 2, 3);
+    register_fn("SORT",  _b_SORT,  1, 1);
+    register_fn("INPUT", _b_INPUT, 1, 4);
+    register_fn("nPush",    _b_nPush,    0, 0);
+    register_fn("nInc",     _b_nInc,     0, 0);
+    register_fn("nDec",     _b_nDec,     0, 0);
+    register_fn("nTop",     _b_nTop,     0, 0);
+    register_fn("nPop",     _b_nPop,     0, 0);
+    register_fn("n",        _b_tree_n,      1, 1);
+    register_fn("t",        _b_tree_t,      1, 1);
+    register_fn("v",        _b_tree_v,      1, 1);
+    register_fn("c",        _b_tree_c,      1, 1);
+    register_fn("value",    _b_field_value, 1, 1);
+    register_fn("next",     _b_field_next,  1, 1);
+    register_fn("DUMP",     _b_DUMP,        0, 1);
+    /* Pattern builtins callable via aply (when inside arglist parens) */
+    register_fn("SPAN",    _b_PAT_SPAN,    1, 1);
+    register_fn("BREAK",   _b_PAT_BREAK,   1, 1);
+    register_fn("ANY",     _b_PAT_ANY,     1, 1);
+    register_fn("NOTANY",  _b_PAT_NOTANY,  1, 1);
+    register_fn("LEN",     _b_PAT_LEN,     1, 1);
+    register_fn("POS",     _b_PAT_POS,     1, 1);
+    register_fn("RPOS",    _b_PAT_RPOS,    1, 1);
+    register_fn("TAB",     _b_PAT_TAB,     1, 1);
+    register_fn("RTAB",    _b_PAT_RTAB,    1, 1);
+    register_fn("ARB",     _b_PAT_ARB,     0, 0);
+    register_fn("REM",     _b_PAT_REM,     0, 0);
+    register_fn("FAIL",    _b_PAT_FAIL,    0, 0);
+    register_fn("ABORT",   _b_PAT_ABORT,   0, 0);
+    register_fn("SUCCEED", _b_PAT_SUCCEED, 0, 0);
+    register_fn("BAL",     _b_PAT_BAL,     0, 0);
+    register_fn("ARBNO",   _b_PAT_ARBNO,   1, 1);
+    register_fn("FENCE",   _b_PAT_FENCE,   0, 1);
+    /* Sprint 23: pre-ini &ALPHABET-derived constants from global.sno
      * &ALPHABET is a 256-char binary string; POS(n) LEN(1) . var extracts char(n).
-     * Since SNO_STR_VAL uses strlen, &ALPHABET[0]=NUL causes all matches to fail.
+     * Since STR_VAL uses strlen, &ALPHABET[0]=NUL causes all matches to fail.
      * We pre-initialize the key character constants directly. */
     {
         char *_ch = GC_malloc_atomic(2);
-        _ch[0] = (char)9;  _ch[1] = '\0'; sno_var_set("tab", SNO_STR_VAL(_ch));
+        _ch[0] = (char)9;  _ch[1] = '\0'; var_set("tab", STR_VAL(_ch));
         _ch = GC_malloc_atomic(2);
-        _ch[0] = (char)9;  _ch[1] = '\0'; sno_var_set("ht", SNO_STR_VAL(_ch));
+        _ch[0] = (char)9;  _ch[1] = '\0'; var_set("ht", STR_VAL(_ch));
         _ch = GC_malloc_atomic(2);
-        _ch[0] = (char)10; _ch[1] = '\0'; sno_var_set("nl", SNO_STR_VAL(_ch));
+        _ch[0] = (char)10; _ch[1] = '\0'; var_set("nl", STR_VAL(_ch));
         _ch = GC_malloc_atomic(2);
-        _ch[0] = (char)10; _ch[1] = '\0'; sno_var_set("lf", SNO_STR_VAL(_ch));
+        _ch[0] = (char)10; _ch[1] = '\0'; var_set("lf", STR_VAL(_ch));
         _ch = GC_malloc_atomic(2);
-        _ch[0] = (char)13; _ch[1] = '\0'; sno_var_set("cr", SNO_STR_VAL(_ch));
+        _ch[0] = (char)13; _ch[1] = '\0'; var_set("cr", STR_VAL(_ch));
         _ch = GC_malloc_atomic(2);
-        _ch[0] = (char)12; _ch[1] = '\0'; sno_var_set("ff", SNO_STR_VAL(_ch));
+        _ch[0] = (char)12; _ch[1] = '\0'; var_set("ff", STR_VAL(_ch));
         _ch = GC_malloc_atomic(2);
-        _ch[0] = (char)11; _ch[1] = '\0'; sno_var_set("vt", SNO_STR_VAL(_ch));
+        _ch[0] = (char)11; _ch[1] = '\0'; var_set("vt", STR_VAL(_ch));
         _ch = GC_malloc_atomic(2);
-        _ch[0] = (char)8;  _ch[1] = '\0'; sno_var_set("bs", SNO_STR_VAL(_ch));
-        sno_var_set("nul", SNO_STR_VAL(""));  /* char(0) = empty in string context */
-        /* epsilon = the always-succeeds zero-match pattern.
+        _ch[0] = (char)8;  _ch[1] = '\0'; var_set("bs", STR_VAL(_ch));
+        var_set("nul", STR_VAL(""));  /* char(0) = empty in string context */
+        /* epsilon = the always-succeeds zero-mtch pattern.
          * USER CONTRACT (Lon, Session 47): epsilon is NEVER assigned by user code.
          * It is the pattern equivalent of NULL (empty string).
          * NULL = empty string sentinel; epsilon = always-succeed pattern sentinel.
          * Pre-initialize here exactly like nl/tab/cr. */
-        sno_var_set("epsilon", sno_pat_epsilon());
+        var_set("epsilon", pat_epsilon());
         _ch = GC_malloc_atomic(2);
-        _ch[0] = (char)47; _ch[1] = '\0'; sno_var_set("fSlash", SNO_STR_VAL(_ch));
+        _ch[0] = (char)47; _ch[1] = '\0'; var_set("fSlash", STR_VAL(_ch));
         _ch = GC_malloc_atomic(2);
-        _ch[0] = (char)92; _ch[1] = '\0'; sno_var_set("bSlash", SNO_STR_VAL(_ch));
+        _ch[0] = (char)92; _ch[1] = '\0'; var_set("bSlash", STR_VAL(_ch));
         _ch = GC_malloc_atomic(2);
-        _ch[0] = (char)59; _ch[1] = '\0'; sno_var_set("semicolon", SNO_STR_VAL(_ch));
+        _ch[0] = (char)59; _ch[1] = '\0'; var_set("semicolon", STR_VAL(_ch));
     }
 }
 
@@ -654,12 +654,12 @@ void sno_runtime_init(void) {
  * String utilities
  * ============================================================ */
 
-char *sno_dup(const char *s) {
+char *dupl(const char *s) {
     if (!s) return GC_strdup("");
     return GC_strdup(s);
 }
 
-char *sno_concat(const char *a, const char *b) {
+char *ccat(const char *a, const char *b) {
     if (!a) a = "";
     if (!b) b = "";
     size_t la = strlen(a), lb = strlen(b);
@@ -670,20 +670,20 @@ char *sno_concat(const char *a, const char *b) {
     return r;
 }
 
-/* P003: SnoVal concat — propagates SNO_FAIL_VAL if either operand is FAIL.
+/* P003: SnoVal ccat — propagates FAIL_VAL if either operand is FAIL.
  * If either operand is a PATTERN, build a pattern concatenation instead of
  * string concatenation (blank-juxtaposition of patterns = pattern cat). */
-SnoVal sno_concat_sv(SnoVal a, SnoVal b) {
-    if (a.type == SNO_FAIL) return SNO_FAIL_VAL;
-    if (b.type == SNO_FAIL) return SNO_FAIL_VAL;
-    if (a.type == SNO_PATTERN || b.type == SNO_PATTERN)
-        return sno_pat_cat(a, b);
-    const char *sa = sno_to_str(a);
-    const char *sb = sno_to_str(b);
-    return SNO_STR_VAL(sno_concat(sa, sb));
+SnoVal concat_sv(SnoVal a, SnoVal b) {
+    if (a.type == SFAIL) return FAIL_VAL;
+    if (b.type == SFAIL) return FAIL_VAL;
+    if (a.type == SPATTERN || b.type == SPATTERN)
+        return pat_cat(a, b);
+    const char *sa = to_str(a);
+    const char *sb = to_str(b);
+    return STR_VAL(ccat(sa, sb));
 }
 
-int64_t sno_size(const char *s) {
+int64_t size(const char *s) {
     return s ? (int64_t)strlen(s) : 0;
 }
 
@@ -691,15 +691,15 @@ int64_t sno_size(const char *s) {
  * Type conversions
  * ============================================================ */
 
-char *sno_to_str(SnoVal v) {
+char *to_str(SnoVal v) {
     char buf[64];
     switch (v.type) {
-        case SNO_NULL:    return GC_strdup("");
-        case SNO_STR:     return v.s ? v.s : GC_strdup("");
-        case SNO_INT:
+        case SNULL:    return GC_strdup("");
+        case SSTR:     return v.s ? v.s : GC_strdup("");
+        case SINT:
             snprintf(buf, sizeof(buf), "%" PRId64, v.i);
             return GC_strdup(buf);
-        case SNO_REAL: {
+        case SREAL: {
             /* SNOBOL4 real format: no trailing zeros, no .0 for whole numbers */
             snprintf(buf, sizeof(buf), "%.15g", v.r);
             /* If no decimal point and no 'e', add trailing dot (SPITBOL style) */
@@ -707,7 +707,7 @@ char *sno_to_str(SnoVal v) {
                 strncat(buf, ".", sizeof(buf) - strlen(buf) - 1);
             return GC_strdup(buf);
         }
-        case SNO_TREE:
+        case STREE:
             /* Trees stringify as their tag */
             return v.t ? GC_strdup(v.t->tag) : GC_strdup("");
         default:
@@ -715,12 +715,12 @@ char *sno_to_str(SnoVal v) {
     }
 }
 
-int64_t sno_to_int(SnoVal v) {
+int64_t to_int(SnoVal v) {
     switch (v.type) {
-        case SNO_INT:  return v.i;
-        case SNO_REAL: return (int64_t)v.r;
-        case SNO_STR:
-        case SNO_NULL: {
+        case SINT:  return v.i;
+        case SREAL: return (int64_t)v.r;
+        case SSTR:
+        case SNULL: {
             const char *s = v.s ? v.s : "";
             while (*s == ' ') s++;
             if (!*s) return 0;
@@ -730,12 +730,12 @@ int64_t sno_to_int(SnoVal v) {
     }
 }
 
-double sno_to_real(SnoVal v) {
+double to_real(SnoVal v) {
     switch (v.type) {
-        case SNO_REAL: return v.r;
-        case SNO_INT:  return (double)v.i;
-        case SNO_STR:
-        case SNO_NULL: {
+        case SREAL: return v.r;
+        case SINT:  return (double)v.i;
+        case SSTR:
+        case SNULL: {
             const char *s = v.s ? v.s : "";
             return strtod(s, NULL);
         }
@@ -743,18 +743,18 @@ double sno_to_real(SnoVal v) {
     }
 }
 
-const char *sno_datatype(SnoVal v) {
+const char *datatype(SnoVal v) {
     switch (v.type) {
-        case SNO_NULL:    return "STRING";  /* NULL = empty string */
-        case SNO_STR:     return "STRING";
-        case SNO_INT:     return "INTEGER";
-        case SNO_REAL:    return "REAL";
-        case SNO_TREE:    return v.t ? v.t->tag : "TREE";
-        case SNO_PATTERN: return "PATTERN";
-        case SNO_ARRAY:   return "ARRAY";
-        case SNO_TABLE:   return "TABLE";
-        case SNO_CODE:    return "CODE";
-        case SNO_UDEF:    return v.u ? v.u->type->name : "UDEF";
+        case SNULL:    return "STRING";  /* NULL = empty string */
+        case SSTR:     return "STRING";
+        case SINT:     return "INTEGER";
+        case SREAL:    return "REAL";
+        case STREE:    return v.t ? v.t->tag : "TREE";
+        case SPATTERN: return "PATTERN";
+        case ARRAY:   return "ARRAY";
+        case STABLE:   return "TABLE";
+        case CODE:    return "CODE";
+        case UDEF:    return v.u ? v.u->type->name : "UDEF";
         default:          return "STRING";
     }
 }
@@ -763,7 +763,7 @@ const char *sno_datatype(SnoVal v) {
  * Tree operations
  * ============================================================ */
 
-Tree *sno_tree_new(const char *tag, SnoVal val) {
+Tree *tree_new(const char *tag, SnoVal val) {
     Tree *t = GC_malloc(sizeof(Tree));
     t->tag = GC_strdup(tag ? tag : "");
     t->val = val;
@@ -773,8 +773,8 @@ Tree *sno_tree_new(const char *tag, SnoVal val) {
     return t;
 }
 
-Tree *sno_tree_new0(const char *tag) {
-    return sno_tree_new(tag, SNO_NULL_VAL);
+Tree *tree_new0(const char *tag) {
+    return tree_new(tag, NULL_VAL);
 }
 
 static void _tree_ensure_cap(Tree *x, int needed) {
@@ -787,19 +787,19 @@ static void _tree_ensure_cap(Tree *x, int needed) {
     x->cap = newcap;
 }
 
-void sno_tree_append(Tree *x, Tree *y) {
+void tree_append(Tree *x, Tree *y) {
     _tree_ensure_cap(x, x->n + 1);
     x->c[x->n++] = y;
 }
 
-void sno_tree_prepend(Tree *x, Tree *y) {
+void tree_prepend(Tree *x, Tree *y) {
     _tree_ensure_cap(x, x->n + 1);
     memmove(x->c + 1, x->c, x->n * sizeof(Tree *));
     x->c[0] = y;
     x->n++;
 }
 
-void sno_tree_insert(Tree *x, Tree *y, int place) {
+void tree_insert(Tree *x, Tree *y, int place) {
     /* place is 1-based */
     if (place < 1) place = 1;
     if (place > x->n + 1) place = x->n + 1;
@@ -810,7 +810,7 @@ void sno_tree_insert(Tree *x, Tree *y, int place) {
     x->n++;
 }
 
-Tree *sno_tree_remove(Tree *x, int place) {
+Tree *tree_remove(Tree *x, int place) {
     /* place is 1-based */
     if (!x || place < 1 || place > x->n) return NULL;
     int idx = place - 1;
@@ -824,7 +824,7 @@ Tree *sno_tree_remove(Tree *x, int place) {
  * Array
  * ============================================================ */
 
-SnoArray *sno_array_new(int lo, int hi) {
+SnoArray *array_new(int lo, int hi) {
     SnoArray *a = GC_malloc(sizeof(SnoArray));
     a->lo   = lo;
     a->hi   = hi;
@@ -832,12 +832,12 @@ SnoArray *sno_array_new(int lo, int hi) {
     int sz  = hi - lo + 1;
     if (sz < 1) sz = 1;
     a->data = GC_malloc(sz * sizeof(SnoVal));
-    for (int i = 0; i < sz; i++) a->data[i] = SNO_NULL_VAL;
+    for (int i = 0; i < sz; i++) a->data[i] = NULL_VAL;
     return a;
 }
 
-SnoArray *sno_array_new2d(int lo1, int hi1, int lo2, int hi2) {
-    /* Stored as flat row-major: index = (i-lo1)*(hi2-lo2+1) + (j-lo2) */
+SnoArray *array_new2d(int lo1, int hi1, int lo2, int hi2) {
+    /* Stored as flat row-major: indx = (i-lo1)*(hi2-lo2+1) + (j-lo2) */
     SnoArray *a = GC_malloc(sizeof(SnoArray));
     a->lo   = lo1;
     a->hi   = hi1;
@@ -847,32 +847,32 @@ SnoArray *sno_array_new2d(int lo1, int hi1, int lo2, int hi2) {
     if (rows < 1) rows = 1;
     if (cols < 1) cols = 1;
     a->data = GC_malloc(rows * cols * sizeof(SnoVal));
-    for (int i = 0; i < rows * cols; i++) a->data[i] = SNO_NULL_VAL;
+    for (int i = 0; i < rows * cols; i++) a->data[i] = NULL_VAL;
     /* Store hi2/lo2 in spare fields — abuse: hi=hi2 in a second slot.
      * For simplicity, encode cols in a separate field. */
     /* Use tag trick: store cols count in a SnoVal at position -1.
-     * Simpler: always allocate +1 and store cols at index 0. */
+     * Simpler: always allocate +1 and store cols at indx 0. */
     /* Actually: store lo2/hi2 by repurposing ndim as cols */
     a->ndim = cols;  /* repurpose: ndim = cols for 2D arrays */
     return a;
 }
 
-SnoVal sno_array_get(SnoArray *a, int i) {
-    if (!a) return SNO_FAIL_VAL;
+SnoVal array_get(SnoArray *a, int i) {
+    if (!a) return FAIL_VAL;
     int idx = i - a->lo;
-    if (idx < 0 || idx >= (a->hi - a->lo + 1)) return SNO_FAIL_VAL;  /* P002 */
+    if (idx < 0 || idx >= (a->hi - a->lo + 1)) return FAIL_VAL;  /* P002 */
     return a->data[idx];
 }
 
-void sno_array_set(SnoArray *a, int i, SnoVal v) {
+void array_set(SnoArray *a, int i, SnoVal v) {
     if (!a) return;
     int idx = i - a->lo;
     if (idx < 0 || idx >= (a->hi - a->lo + 1)) return;
     a->data[idx] = v;
 }
 
-SnoVal sno_array_get2(SnoArray *a, int i, int j) {
-    if (!a) return SNO_FAIL_VAL;
+SnoVal array_get2(SnoArray *a, int i, int j) {
+    if (!a) return FAIL_VAL;
     int cols = a->ndim;  /* cols stored in ndim for 2D */
     int row  = i - a->lo;
     /* j-origin: assume lo2 = 1 (SNOBOL4 default) */
@@ -880,11 +880,11 @@ SnoVal sno_array_get2(SnoArray *a, int i, int j) {
     int idx  = row * cols + col;
     int total = (a->hi - a->lo + 1) * cols;
     if (row < 0 || row >= (a->hi - a->lo + 1) || col < 0 || col >= cols || idx < 0 || idx >= total)
-        return SNO_FAIL_VAL;
+        return FAIL_VAL;
     return a->data[idx];
 }
 
-void sno_array_set2(SnoArray *a, int i, int j, SnoVal v) {
+void array_set2(SnoArray *a, int i, int j, SnoVal v) {
     if (!a) return;
     int cols = a->ndim;
     int row  = i - a->lo;
@@ -900,25 +900,25 @@ void sno_array_set2(SnoArray *a, int i, int j, SnoVal v) {
 static unsigned _tbl_hash(const char *key) {
     unsigned h = 5381;
     while (*key) h = h * 33 ^ (unsigned char)*key++;
-    return h % SNO_TABLE_BUCKETS;
+    return h % TABLE_BUCKETS;
 }
 
-SnoTable *sno_table_new(void) {
+SnoTable *table_new(void) {
     SnoTable *t = GC_malloc(sizeof(SnoTable));
     memset(t->buckets, 0, sizeof(t->buckets));
     t->size = 0;
     return t;
 }
 
-SnoVal sno_table_get(SnoTable *tbl, const char *key) {
-    if (!tbl || !key) return SNO_NULL_VAL;
+SnoVal table_get(SnoTable *tbl, const char *key) {
+    if (!tbl || !key) return NULL_VAL;
     unsigned h = _tbl_hash(key);
     for (SnoTableEntry *e = tbl->buckets[h]; e; e = e->next)
         if (strcmp(e->key, key) == 0) return e->val;
-    return SNO_NULL_VAL;
+    return NULL_VAL;
 }
 
-void sno_table_set(SnoTable *tbl, const char *key, SnoVal val) {
+void table_set(SnoTable *tbl, const char *key, SnoVal val) {
     if (!tbl || !key) return;
     unsigned h = _tbl_hash(key);
     for (SnoTableEntry *e = tbl->buckets[h]; e; e = e->next) {
@@ -932,7 +932,7 @@ void sno_table_set(SnoTable *tbl, const char *key, SnoVal val) {
     tbl->size++;
 }
 
-int sno_table_has(SnoTable *tbl, const char *key) {
+int table_has(SnoTable *tbl, const char *key) {
     if (!tbl || !key) return 0;
     unsigned h = _tbl_hash(key);
     for (SnoTableEntry *e = tbl->buckets[h]; e; e = e->next)
@@ -947,7 +947,7 @@ int sno_table_has(SnoTable *tbl, const char *key) {
 static UDefType *_udef_types = NULL;
 
 /* Parse DATA spec: "tree(t,v,n,c)" → name="tree", fields=["t","v","n","c"] */
-void sno_data_define(const char *spec) {
+void data_define(const char *spec) {
     /* Spec format: "typename(field1,field2,...)" */
     char *s = GC_strdup(spec);
     char *paren = strchr(s, '(');
@@ -991,40 +991,40 @@ static UDefType *_udef_lookup(const char *name) {
     return NULL;
 }
 
-SnoVal sno_udef_new(const char *typename, ...) {
+SnoVal udef_new(const char *typename, ...) {
     UDefType *t = _udef_lookup(typename);
-    if (!t) return SNO_NULL_VAL;
+    if (!t) return NULL_VAL;
 
     UDef *u = GC_malloc(sizeof(UDef));
     u->type   = t;
     u->fields = GC_malloc(t->nfields * sizeof(SnoVal));
-    for (int i = 0; i < t->nfields; i++) u->fields[i] = SNO_NULL_VAL;
+    for (int i = 0; i < t->nfields; i++) u->fields[i] = NULL_VAL;
 
     /* Assign varargs fields */
     va_list ap;
     va_start(ap, typename);
     for (int i = 0; i < t->nfields; i++) {
         SnoVal v = va_arg(ap, SnoVal);
-        /* sentinel check: if type == SNO_NULL and s == NULL, stop */
-        if (v.type == SNO_NULL && v.s == NULL) break;
+        /* sentinel check: if type == SNULL and s == NULL, stop */
+        if (v.type == SNULL && v.s == NULL) break;
         u->fields[i] = v;
     }
     va_end(ap);
 
-    return (SnoVal){ .type = SNO_UDEF, .u = u };
+    return (SnoVal){ .type = UDEF, .u = u };
 }
 
-SnoVal sno_field_get(SnoVal obj, const char *field) {
-    if (obj.type != SNO_UDEF || !obj.u) return SNO_NULL_VAL;
+SnoVal field_get(SnoVal obj, const char *field) {
+    if (obj.type != UDEF || !obj.u) return NULL_VAL;
     UDefType *t = obj.u->type;
     for (int i = 0; i < t->nfields; i++)
         if (strcasecmp(t->fields[i], field) == 0)
             return obj.u->fields[i];
-    return SNO_NULL_VAL;
+    return NULL_VAL;
 }
 
-void sno_field_set(SnoVal obj, const char *field, SnoVal val) {
-    if (obj.type != SNO_UDEF || !obj.u) return;
+void field_set(SnoVal obj, const char *field, SnoVal val) {
+    if (obj.type != UDEF || !obj.u) return;
     UDefType *t = obj.u->type;
     for (int i = 0; i < t->nfields; i++)
         if (strcasecmp(t->fields[i], field) == 0) {
@@ -1048,17 +1048,17 @@ typedef struct _VarEntry {
 static VarEntry *_var_buckets[VAR_BUCKETS];
 static int _var_init_done = 0;
 
-/* Static-pointer registration: when sno_var_set(name,val) fires,
+/* Static-pointer registration: when var_set(name,val) fires,
  * also update the C-static pointer if registered. This bridges the
  * two-store gap for vars set via pattern conditional assignment (. var)
- * or pre-init in sno_runtime_init, whose C statics are never touched
- * by sno_set() because the assignment comes from the pattern engine. */
+ * or pre-ini in runtime_init, whose C statics are never touched
+ * by set() because the assignment comes from the pattern engine. */
 #define VAR_REG_MAX 1024
 typedef struct { const char *name; SnoVal *ptr; } VarReg;
 static VarReg _var_reg[VAR_REG_MAX];
 static int    _var_reg_n = 0;
 
-void sno_var_register(const char *name, SnoVal *ptr) {
+void var_register(const char *name, SnoVal *ptr) {
     if (_var_reg_n < VAR_REG_MAX) {
         _var_reg[_var_reg_n].name = name;
         _var_reg[_var_reg_n].ptr  = ptr;
@@ -1078,23 +1078,23 @@ static unsigned _var_hash(const char *name) {
     return h % VAR_BUCKETS;
 }
 
-SnoVal sno_var_get(const char *name) {
+SnoVal var_get(const char *name) {
     _var_init();
-    if (!name) return SNO_NULL_VAL;
+    if (!name) return NULL_VAL;
     /* Special I/O variables */
-    if (strcmp(name, "INPUT") == 0) return sno_input_read();
+    if (strcmp(name, "INPUT") == 0) return input_read();
     unsigned h = _var_hash(name);
     for (VarEntry *e = _var_buckets[h]; e; e = e->next)
         if (strcmp(e->name, name) == 0) return e->val;
-    return SNO_NULL_VAL;
+    return NULL_VAL;
 }
 
-void sno_var_set(const char *name, SnoVal val) {
+void var_set(const char *name, SnoVal val) {
     _var_init();
     if (!name) return;
-    sno_comm_var(name, val);
+    comm_var(name, val);
     /* Special I/O variables */
-    if (strcmp(name, "OUTPUT") == 0) { sno_output_val(val); return; }
+    if (strcmp(name, "OUTPUT") == 0) { output_val(val); return; }
     unsigned h = _var_hash(name);
     for (VarEntry *e = _var_buckets[h]; e; e = e->next) {
         if (strcmp(e->name, name) == 0) {
@@ -1115,31 +1115,31 @@ void sno_var_set(const char *name, SnoVal val) {
 }
 
 /* Sync all registered C statics FROM the hash table.
- * Call this after all sno_var_register() calls (in main) so that
- * vars pre-initialized by sno_runtime_init() propagate to their statics. */
-void sno_var_sync_registered(void) {
+ * Call this after all var_register() calls (in main) so that
+ * vars pre-initialized by runtime_init() propagate to their statics. */
+void var_sync_registered(void) {
     for (int _ri = 0; _ri < _var_reg_n; _ri++) {
-        SnoVal v = sno_var_get(_var_reg[_ri].name);
-        if (v.type != SNO_NULL && v.type != 0)
+        SnoVal v = var_get(_var_reg[_ri].name);
+        if (v.type != SNULL && v.type != 0)
             *_var_reg[_ri].ptr = v;
     }
 }
 
 /* $name — indirect variable: the variable whose name is the value of 'name' */
-SnoVal sno_indirect_get(const char *name) {
-    SnoVal indirect_name = sno_var_get(name);
-    const char *target = sno_to_str(indirect_name);
-    return sno_var_get(target);
+SnoVal indirect_get(const char *name) {
+    SnoVal indirect_name = var_get(name);
+    const char *target = to_str(indirect_name);
+    return var_get(target);
 }
 
-void sno_indirect_set(const char *name, SnoVal val) {
-    SnoVal indirect_name = sno_var_get(name);
-    const char *target = sno_to_str(indirect_name);
-    sno_var_set(target, val);
+void indirect_set(const char *name, SnoVal val) {
+    SnoVal indirect_name = var_get(name);
+    const char *target = to_str(indirect_name);
+    var_set(target, val);
 }
 
 /* DUMP implementation — used by _b_DUMP above */
-static void sno_var_dump(void) {
+static void var_dump(void) {
     fprintf(stderr, "[DUMP start]\n");
     for (int i = 0; i < VAR_BUCKETS; i++) {
         for (VarEntry *e = _var_buckets[i]; e; e = e->next) {
@@ -1156,7 +1156,7 @@ static void sno_var_dump(void) {
                 case 9: tname="FAIL"; break;
                 default: tname="OTHER"; break;
             }
-            if (e->val.type == SNO_STR) {
+            if (e->val.type == SSTR) {
                 const char *s = e->val.s ? e->val.s : "(null)";
                 int len = (int)strlen(s);
                 fprintf(stderr, "  %s = STR(%.*s)\n", e->name, len > 40 ? 40 : len, s);
@@ -1176,23 +1176,23 @@ static void sno_var_dump(void) {
 static int64_t _nstack[NSTACK_MAX];
 static int      _ntop = -1;
 
-void sno_npush(void) {
+void npush(void) {
     if (_ntop < NSTACK_MAX - 1) _nstack[++_ntop] = 0;
 }
 
-void sno_ninc(void) {
+void ninc(void) {
     if (_ntop >= 0) _nstack[_ntop]++;
 }
 
-void sno_ndec(void) {
+void ndec(void) {
     if (_ntop >= 0) _nstack[_ntop]--;
 }
 
-int64_t sno_ntop(void) {
+int64_t ntop(void) {
     return (_ntop >= 0) ? _nstack[_ntop] : 0;
 }
 
-void sno_npop(void) {
+void npop(void) {
     if (_ntop >= 0) _ntop--;
 }
 
@@ -1204,21 +1204,21 @@ void sno_npop(void) {
 static SnoVal _vstack[VSTACK_MAX];
 static int    _vstop = -1;
 
-void sno_push(SnoVal v) {
+void push(SnoVal v) {
     if (_vstop < VSTACK_MAX - 1) _vstack[++_vstop] = v;
 }
 
-SnoVal sno_pop(void) {
+SnoVal pop(void) {
     if (_vstop >= 0) return _vstack[_vstop--];
-    return SNO_NULL_VAL;
+    return NULL_VAL;
 }
 
-SnoVal sno_top(void) {
+SnoVal top(void) {
     if (_vstop >= 0) return _vstack[_vstop];
-    return SNO_NULL_VAL;
+    return NULL_VAL;
 }
 
-int sno_stack_depth(void) {
+int stack_depth(void) {
     return _vstop + 1;
 }
 
@@ -1344,7 +1344,7 @@ static FuncEntry *_parse_define_spec(const char *spec) {
     return fe;
 }
 
-void sno_define(const char *spec, SnoFunc fn) {
+void define(const char *spec, SnoFunc fn) {
     _func_init();
     FuncEntry *fe = _parse_define_spec(spec);
     fe->fn = fn;
@@ -1365,9 +1365,9 @@ void sno_define(const char *spec, SnoFunc fn) {
     _func_buckets[h] = fe;
 }
 
-SnoVal sno_apply(const char *name, SnoVal *args, int nargs) {
+SnoVal aply(const char *name, SnoVal *args, int nargs) {
     _func_init();
-    if (!name) return SNO_NULL_VAL;
+    if (!name) return NULL_VAL;
     unsigned h = _func_hash(name);
     for (FuncEntry *e = _func_buckets[h]; e; e = e->next) {
         if (strcasecmp(e->name, name) == 0) {
@@ -1375,10 +1375,10 @@ SnoVal sno_apply(const char *name, SnoVal *args, int nargs) {
             break;
         }
     }
-    return SNO_NULL_VAL;
+    return NULL_VAL;
 }
 
-int sno_func_exists(const char *name) {
+int func_exists(const char *name) {
     _func_init();
     if (!name) return 0;
     unsigned h = _func_hash(name);
@@ -1391,30 +1391,30 @@ int sno_func_exists(const char *name) {
  * Builtin string functions
  * ============================================================ */
 
-SnoVal sno_size_fn(SnoVal s) {
-    const char *str = sno_to_str(s);
-    return SNO_INT_VAL((int64_t)strlen(str));
+SnoVal size_fn(SnoVal s) {
+    const char *strv = to_str(s);
+    return INT_VAL((int64_t)strlen(strv));
 }
 
-SnoVal sno_dupl_fn(SnoVal s, SnoVal n) {
-    const char *str = sno_to_str(s);
-    int64_t times   = sno_to_int(n);
-    if (times <= 0 || !str || !*str) return SNO_STR_VAL(GC_strdup(""));
-    size_t slen = strlen(str);
+SnoVal dupl_fn(SnoVal s, SnoVal n) {
+    const char *strv = to_str(s);
+    int64_t times   = to_int(n);
+    if (times <= 0 || !strv || !*strv) return STR_VAL(GC_strdup(""));
+    size_t slen = strlen(strv);
     char *r = GC_malloc(slen * (size_t)times + 1);
     r[0] = '\0';
-    for (int64_t i = 0; i < times; i++) memcpy(r + i * slen, str, slen);
+    for (int64_t i = 0; i < times; i++) memcpy(r + i * slen, strv, slen);
     r[slen * times] = '\0';
-    return SNO_STR_VAL(r);
+    return STR_VAL(r);
 }
 
-SnoVal sno_replace_fn(SnoVal s, SnoVal from, SnoVal to) {
-    /* REPLACE(s, from, to): for each char in from, replace with corresponding
+SnoVal replace_fn(SnoVal s, SnoVal from, SnoVal to) {
+    /* REPLACE(s, from, to): for each char in from, replc with corresponding
      * char in to. Like tr command. */
-    const char *str  = sno_to_str(s);
-    const char *f    = sno_to_str(from);
-    const char *t    = sno_to_str(to);
-    size_t slen = strlen(str);
+    const char *strv  = to_str(s);
+    const char *f    = to_str(from);
+    const char *t    = to_str(to);
+    size_t slen = strlen(strv);
     char *r = GC_malloc(slen + 1);
     /* Build translation table */
     unsigned char xlat[256];
@@ -1427,120 +1427,120 @@ SnoVal sno_replace_fn(SnoVal s, SnoVal from, SnoVal to) {
     }
     size_t rlen = 0;
     for (size_t i = 0; i < slen; i++) {
-        unsigned char c = xlat[(unsigned char)str[i]];
+        unsigned char c = xlat[(unsigned char)strv[i]];
         if (c) r[rlen++] = (char)c;
     }
     r[rlen] = '\0';
-    return SNO_STR_VAL(r);
+    return STR_VAL(r);
 }
 
-SnoVal sno_substr_fn(SnoVal s, SnoVal i, SnoVal n) {
-    const char *str = sno_to_str(s);
-    int64_t start   = sno_to_int(i);  /* 1-based */
-    int64_t len_    = sno_to_int(n);
-    int64_t slen    = (int64_t)strlen(str);
+SnoVal substr_fn(SnoVal s, SnoVal i, SnoVal n) {
+    const char *strv = to_str(s);
+    int64_t start   = to_int(i);  /* 1-based */
+    int64_t len_    = to_int(n);
+    int64_t slen    = (int64_t)strlen(strv);
     if (start < 1) start = 1;
-    if (start > slen + 1) return SNO_STR_VAL(GC_strdup(""));
+    if (start > slen + 1) return STR_VAL(GC_strdup(""));
     if (len_ < 0) len_ = 0;
     if (start - 1 + len_ > slen) len_ = slen - start + 1;
     char *r = GC_malloc((size_t)len_ + 1);
-    memcpy(r, str + start - 1, (size_t)len_);
+    memcpy(r, strv + start - 1, (size_t)len_);
     r[len_] = '\0';
-    return SNO_STR_VAL(r);
+    return STR_VAL(r);
 }
 
-SnoVal sno_trim_fn(SnoVal s) {
-    const char *str = sno_to_str(s);
+SnoVal trim_fn(SnoVal s) {
+    const char *strv = to_str(s);
     /* TRIM: remove trailing blanks */
-    int len = (int)strlen(str);
-    while (len > 0 && str[len-1] == ' ') len--;
+    int len = (int)strlen(strv);
+    while (len > 0 && strv[len-1] == ' ') len--;
     char *r = GC_malloc((size_t)len + 1);
-    memcpy(r, str, (size_t)len);
+    memcpy(r, strv, (size_t)len);
     r[len] = '\0';
-    return SNO_STR_VAL(r);
+    return STR_VAL(r);
 }
 
-SnoVal sno_lpad_fn(SnoVal s, SnoVal n, SnoVal pad) {
-    const char *str = sno_to_str(s);
-    int64_t width   = sno_to_int(n);
-    const char *p   = sno_to_str(pad);
+SnoVal lpad_fn(SnoVal s, SnoVal n, SnoVal pad) {
+    const char *strv = to_str(s);
+    int64_t width   = to_int(n);
+    const char *p   = to_str(pad);
     char padch      = (p && *p) ? p[0] : ' ';
-    int64_t slen    = (int64_t)strlen(str);
-    if (width <= slen) return SNO_STR_VAL(GC_strdup(str));
+    int64_t slen    = (int64_t)strlen(strv);
+    if (width <= slen) return STR_VAL(GC_strdup(strv));
     int64_t npad = width - slen;
     char *r = GC_malloc((size_t)width + 1);
     memset(r, padch, (size_t)npad);
-    memcpy(r + npad, str, (size_t)slen);
+    memcpy(r + npad, strv, (size_t)slen);
     r[width] = '\0';
-    return SNO_STR_VAL(r);
+    return STR_VAL(r);
 }
 
-SnoVal sno_rpad_fn(SnoVal s, SnoVal n, SnoVal pad) {
-    const char *str = sno_to_str(s);
-    int64_t width   = sno_to_int(n);
-    const char *p   = sno_to_str(pad);
+SnoVal rpad_fn(SnoVal s, SnoVal n, SnoVal pad) {
+    const char *strv = to_str(s);
+    int64_t width   = to_int(n);
+    const char *p   = to_str(pad);
     char padch      = (p && *p) ? p[0] : ' ';
-    int64_t slen    = (int64_t)strlen(str);
-    if (width <= slen) return SNO_STR_VAL(GC_strdup(str));
+    int64_t slen    = (int64_t)strlen(strv);
+    if (width <= slen) return STR_VAL(GC_strdup(strv));
     char *r = GC_malloc((size_t)width + 1);
-    memcpy(r, str, (size_t)slen);
+    memcpy(r, strv, (size_t)slen);
     memset(r + slen, padch, (size_t)(width - slen));
     r[width] = '\0';
-    return SNO_STR_VAL(r);
+    return STR_VAL(r);
 }
 
-SnoVal sno_reverse_fn(SnoVal s) {
-    const char *str = sno_to_str(s);
-    int len = (int)strlen(str);
+SnoVal reverse_fn(SnoVal s) {
+    const char *strv = to_str(s);
+    int len = (int)strlen(strv);
     char *r = GC_malloc((size_t)len + 1);
-    for (int i = 0; i < len; i++) r[i] = str[len - 1 - i];
+    for (int i = 0; i < len; i++) r[i] = strv[len - 1 - i];
     r[len] = '\0';
-    return SNO_STR_VAL(r);
+    return STR_VAL(r);
 }
 
-SnoVal sno_char_fn(SnoVal n) {
-    int64_t code = sno_to_int(n);
+SnoVal char_fn(SnoVal n) {
+    int64_t code = to_int(n);
     char buf[2];
     buf[0] = (char)(code & 0xFF);
     buf[1] = '\0';
-    return SNO_STR_VAL(GC_strdup(buf));
+    return STR_VAL(GC_strdup(buf));
 }
 
-SnoVal sno_integer_fn(SnoVal v) {
+SnoVal integer_fn(SnoVal v) {
     /* INTEGER(v): convert to integer, fail if not possible */
-    if (v.type == SNO_INT) return v;
-    if (v.type == SNO_REAL) return SNO_INT_VAL((int64_t)v.r);
-    if (v.type == SNO_STR || v.type == SNO_NULL) {
+    if (v.type == SINT) return v;
+    if (v.type == SREAL) return INT_VAL((int64_t)v.r);
+    if (v.type == SSTR || v.type == SNULL) {
         const char *s = v.s ? v.s : "";
         while (*s == ' ') s++;
-        if (!*s) return SNO_NULL_VAL;  /* fail */
+        if (!*s) return NULL_VAL;  /* fail */
         char *end;
         long long iv = strtoll(s, &end, 10);
         while (*end == ' ') end++;
-        if (*end) return SNO_NULL_VAL;  /* fail — not a pure integer */
-        return SNO_INT_VAL((int64_t)iv);
+        if (*end) return NULL_VAL;  /* fail — not a pure integer */
+        return INT_VAL((int64_t)iv);
     }
-    return SNO_NULL_VAL;
+    return NULL_VAL;
 }
 
-SnoVal sno_real_fn(SnoVal v) {
-    if (v.type == SNO_REAL) return v;
-    if (v.type == SNO_INT)  return SNO_REAL_VAL((double)v.i);
-    if (v.type == SNO_STR || v.type == SNO_NULL) {
+SnoVal real_fn(SnoVal v) {
+    if (v.type == SREAL) return v;
+    if (v.type == SINT)  return REAL_VAL((double)v.i);
+    if (v.type == SSTR || v.type == SNULL) {
         const char *s = v.s ? v.s : "";
         while (*s == ' ') s++;
-        if (!*s) return SNO_NULL_VAL;
+        if (!*s) return NULL_VAL;
         char *end;
         double rv = strtod(s, &end);
         while (*end == ' ') end++;
-        if (*end) return SNO_NULL_VAL;
-        return SNO_REAL_VAL(rv);
+        if (*end) return NULL_VAL;
+        return REAL_VAL(rv);
     }
-    return SNO_NULL_VAL;
+    return NULL_VAL;
 }
 
-SnoVal sno_string_fn(SnoVal v) {
-    return SNO_STR_VAL(sno_to_str(v));
+SnoVal string_fn(SnoVal v) {
+    return STR_VAL(to_str(v));
 }
 
 /* ============================================================
@@ -1548,105 +1548,105 @@ SnoVal sno_string_fn(SnoVal v) {
  * ============================================================ */
 
 /* Arithmetic — promote int+int=int, otherwise real */
-SnoVal sno_add(SnoVal a, SnoVal b) {
-    if (a.type == SNO_FAIL || b.type == SNO_FAIL) return SNO_FAIL_VAL;
-    if (a.type == SNO_INT && b.type == SNO_INT)
-        return SNO_INT_VAL(a.i + b.i);
-    return SNO_REAL_VAL(sno_to_real(a) + sno_to_real(b));
+SnoVal add(SnoVal a, SnoVal b) {
+    if (a.type == SFAIL || b.type == SFAIL) return FAIL_VAL;
+    if (a.type == SINT && b.type == SINT)
+        return INT_VAL(a.i + b.i);
+    return REAL_VAL(to_real(a) + to_real(b));
 }
 
-SnoVal sno_sub(SnoVal a, SnoVal b) {
-    if (a.type == SNO_FAIL || b.type == SNO_FAIL) return SNO_FAIL_VAL;
-    if (a.type == SNO_INT && b.type == SNO_INT)
-        return SNO_INT_VAL(a.i - b.i);
-    return SNO_REAL_VAL(sno_to_real(a) - sno_to_real(b));
+SnoVal sub(SnoVal a, SnoVal b) {
+    if (a.type == SFAIL || b.type == SFAIL) return FAIL_VAL;
+    if (a.type == SINT && b.type == SINT)
+        return INT_VAL(a.i - b.i);
+    return REAL_VAL(to_real(a) - to_real(b));
 }
 
-SnoVal sno_mul(SnoVal a, SnoVal b) {
-    if (a.type == SNO_FAIL || b.type == SNO_FAIL) return SNO_FAIL_VAL;
-    if (a.type == SNO_INT && b.type == SNO_INT)
-        return SNO_INT_VAL(a.i * b.i);
-    return SNO_REAL_VAL(sno_to_real(a) * sno_to_real(b));
+SnoVal mul(SnoVal a, SnoVal b) {
+    if (a.type == SFAIL || b.type == SFAIL) return FAIL_VAL;
+    if (a.type == SINT && b.type == SINT)
+        return INT_VAL(a.i * b.i);
+    return REAL_VAL(to_real(a) * to_real(b));
 }
 
-SnoVal sno_div(SnoVal a, SnoVal b) {
-    if (a.type == SNO_FAIL || b.type == SNO_FAIL) return SNO_FAIL_VAL;
+SnoVal dyvide(SnoVal a, SnoVal b) {
+    if (a.type == SFAIL || b.type == SFAIL) return FAIL_VAL;
     /* SNOBOL4 / is real division; integer / integer = integer in SNOBOL4 */
-    if (a.type == SNO_INT && b.type == SNO_INT) {
-        if (b.i == 0) return SNO_NULL_VAL;  /* division error */
-        return SNO_INT_VAL(a.i / b.i);
+    if (a.type == SINT && b.type == SINT) {
+        if (b.i == 0) return NULL_VAL;  /* division error */
+        return INT_VAL(a.i / b.i);
     }
-    double denom = sno_to_real(b);
-    if (denom == 0.0) return SNO_NULL_VAL;
-    return SNO_REAL_VAL(sno_to_real(a) / denom);
+    double denom = to_real(b);
+    if (denom == 0.0) return NULL_VAL;
+    return REAL_VAL(to_real(a) / denom);
 }
 
-SnoVal sno_pow(SnoVal a, SnoVal b) {
-    if (a.type == SNO_FAIL || b.type == SNO_FAIL) return SNO_FAIL_VAL;
-    return SNO_REAL_VAL(pow(sno_to_real(a), sno_to_real(b)));
+SnoVal powr(SnoVal a, SnoVal b) {
+    if (a.type == SFAIL || b.type == SFAIL) return FAIL_VAL;
+    return REAL_VAL(pow(to_real(a), to_real(b)));
 }
 
-SnoVal sno_neg(SnoVal a) {
-    if (a.type == SNO_FAIL) return SNO_FAIL_VAL;
-    if (a.type == SNO_INT)  return SNO_INT_VAL(-a.i);
-    if (a.type == SNO_REAL) return SNO_REAL_VAL(-a.r);
-    return SNO_INT_VAL(-sno_to_int(a));
+SnoVal neg(SnoVal a) {
+    if (a.type == SFAIL) return FAIL_VAL;
+    if (a.type == SINT)  return INT_VAL(-a.i);
+    if (a.type == SREAL) return REAL_VAL(-a.r);
+    return INT_VAL(-to_int(a));
 }
 
 /* Numeric comparisons — return 1=success (true), 0=failure */
-int sno_eq(SnoVal a, SnoVal b) {
-    if (a.type == SNO_INT && b.type == SNO_INT) return a.i == b.i;
-    return sno_to_real(a) == sno_to_real(b);
+int eq(SnoVal a, SnoVal b) {
+    if (a.type == SINT && b.type == SINT) return a.i == b.i;
+    return to_real(a) == to_real(b);
 }
-int sno_ne(SnoVal a, SnoVal b) { return !sno_eq(a, b); }
-int sno_lt(SnoVal a, SnoVal b) {
-    if (a.type == SNO_INT && b.type == SNO_INT) return a.i < b.i;
-    return sno_to_real(a) < sno_to_real(b);
+int ne(SnoVal a, SnoVal b) { return !eq(a, b); }
+int lt(SnoVal a, SnoVal b) {
+    if (a.type == SINT && b.type == SINT) return a.i < b.i;
+    return to_real(a) < to_real(b);
 }
-int sno_le(SnoVal a, SnoVal b) {
-    if (a.type == SNO_INT && b.type == SNO_INT) return a.i <= b.i;
-    return sno_to_real(a) <= sno_to_real(b);
+int le(SnoVal a, SnoVal b) {
+    if (a.type == SINT && b.type == SINT) return a.i <= b.i;
+    return to_real(a) <= to_real(b);
 }
-int sno_gt(SnoVal a, SnoVal b) {
-    if (a.type == SNO_INT && b.type == SNO_INT) return a.i > b.i;
-    return sno_to_real(a) > sno_to_real(b);
+int gt(SnoVal a, SnoVal b) {
+    if (a.type == SINT && b.type == SINT) return a.i > b.i;
+    return to_real(a) > to_real(b);
 }
-int sno_ge(SnoVal a, SnoVal b) {
-    if (a.type == SNO_INT && b.type == SNO_INT) return a.i >= b.i;
-    return sno_to_real(a) >= sno_to_real(b);
+int ge(SnoVal a, SnoVal b) {
+    if (a.type == SINT && b.type == SINT) return a.i >= b.i;
+    return to_real(a) >= to_real(b);
 }
 
 /* IDENT: succeed if a and b are identical (same type and value) */
-int sno_ident(SnoVal a, SnoVal b) {
+int ident(SnoVal a, SnoVal b) {
     if (a.type != b.type) {
         /* "" and NULL are identical */
-        int a_null = (a.type == SNO_NULL || (a.type == SNO_STR && (!a.s || !*a.s)));
-        int b_null = (b.type == SNO_NULL || (b.type == SNO_STR && (!b.s || !*b.s)));
+        int a_null = (a.type == SNULL || (a.type == SSTR && (!a.s || !*a.s)));
+        int b_null = (b.type == SNULL || (b.type == SSTR && (!b.s || !*b.s)));
         if (a_null && b_null) return 1;
         return 0;
     }
     switch (a.type) {
-        case SNO_NULL: return 1;
-        case SNO_STR:  return strcmp(a.s ? a.s : "", b.s ? b.s : "") == 0;
-        case SNO_INT:  return a.i == b.i;
-        case SNO_REAL: return a.r == b.r;
-        case SNO_TREE: return a.t == b.t;  /* pointer identity */
+        case SNULL: return 1;
+        case SSTR:  return strcmp(a.s ? a.s : "", b.s ? b.s : "") == 0;
+        case SINT:  return a.i == b.i;
+        case SREAL: return a.r == b.r;
+        case STREE: return a.t == b.t;  /* pointer identity */
         default:       return a.ptr == b.ptr;
     }
 }
 
-int sno_differ(SnoVal a, SnoVal b) { return !sno_ident(a, b); }
+int differ(SnoVal a, SnoVal b) { return !ident(a, b); }
 
 /* ============================================================
  * I/O
  * ============================================================ */
 
-void sno_output_val(SnoVal v) {
-    char *s = sno_to_str(v);
+void output_val(SnoVal v) {
+    char *s = to_str(v);
     printf("%s\n", s ? s : "");
 }
 
-void sno_output_str(const char *s) {
+void output_str(const char *s) {
     printf("%s\n", s ? s : "");
 }
 
@@ -1655,37 +1655,37 @@ static FILE *_input_fp = NULL;
 static char *_input_buf = NULL;
 static size_t _input_cap = 0;
 
-SnoVal sno_input_read(void) {
+SnoVal input_read(void) {
     if (!_input_fp) _input_fp = stdin;
     ssize_t nread = getline(&_input_buf, &_input_cap, _input_fp);
-    if (nread < 0) return SNO_FAIL_VAL;  /* EOF = INPUT fails */
+    if (nread < 0) return FAIL_VAL;  /* EOF = INPUT fails */
     if (nread > 0 && _input_buf[nread-1] == '\n') _input_buf[nread-1] = '\0';
-    return SNO_STR_VAL(GC_strdup(_input_buf));
+    return STR_VAL(GC_strdup(_input_buf));
 }
 
 /* INPUT(name, channel, options, fileName) — I/O association (SPITBOL-style).
  * io.sno OPSYNs the original INPUT builtin to input__ then calls it with 4 args.
  * We support the essential case: reassign INPUT source to a named file. */
 static SnoVal _b_INPUT(SnoVal *a, int n) {
-    const char *fname = (n >= 4) ? sno_to_str(a[3]) : NULL;
+    const char *fname = (n >= 4) ? to_str(a[3]) : NULL;
     if (!fname || !fname[0]) {
         if (_input_fp && _input_fp != stdin) fclose(_input_fp);
         _input_fp = stdin;
-        return SNO_NULL_VAL;
+        return NULL_VAL;
     }
     FILE *f = fopen(fname, "r");
-    if (!f) return SNO_FAIL_VAL;
+    if (!f) return FAIL_VAL;
     if (_input_fp && _input_fp != stdin) fclose(_input_fp);
     _input_fp = f;
-    return SNO_NULL_VAL;
+    return NULL_VAL;
 }
 
 /* Indirect goto — called when :(var) computed goto is taken.
    Currently a stub: prints a warning and continues.
    Full implementation requires a label dispatch table. */
-void sno_indirect_goto(const char *varname) {
-    SnoVal v = sno_var_get(varname);
-    const char *lbl = (v.type == SNO_STR) ? v.s : "(nil)";
-    fprintf(stderr, "sno_indirect_goto: var=%s label=%s (not implemented)\n",
+void indirect_goto(const char *varname) {
+    SnoVal v = var_get(varname);
+    const char *lbl = (v.type == SSTR) ? v.s : "(nil)";
+    fprintf(stderr, "indirect_goto: var=%s label=%s (not implemented)\n",
             varname, lbl);
 }

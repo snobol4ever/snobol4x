@@ -1,12 +1,12 @@
 /*
- * lex.c - hand-rolled SNOBOL4 lexer for snoc
+ * lex.c - hand-rolled SNOBOL4 lexer for sno2c
  *
  * Pass 1 - join_file(): join continuation lines, split into SnoLine fields.
  * Pass 2 - lex_next() tokenises a single field string.
  * T_WS is the binary-vs-unary discriminator.
  */
 
-#include "snoc.h"
+#include "sno2c.h"
 #include "lex.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -390,7 +390,7 @@ int lex_at_end(Lex *lx) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
- * Public parse entry point  (called by main.c via snoc.h)
+ * Public parse entry point  (called by main.c via sno2c.h)
  * ═══════════════════════════════════════════════════════════════════════════ */
 
 /* Defined in parse.c */

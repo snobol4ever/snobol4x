@@ -5,7 +5,7 @@ Parses a subset of SNOBOL4 into the IR node graph.
 
 Sprint 14 statement forms:
   1. Immediate assignment:   OUTPUT = 'string'   or   var = 'string'
-  2. Pattern match:          subject  pattern
+  2. Pattern mtch:          subject  pattern
   3. END — terminates the program
 
 A SNOBOL4 statement has the structure:
@@ -173,11 +173,11 @@ def parse_expr(toks, pos):
 class Statement:
     """Parsed SNOBOL4 statement."""
     def __init__(self, label, subject, pattern, replacement, goto, line):
-        self.label       = label        # str or None
+        self.label       = label        # strv or None
         self.subject     = subject      # IR node or None
         self.pattern     = pattern      # IR node or None
         self.replacement = replacement  # IR node or None
-        self.goto        = goto         # str or None (label name)
+        self.goto        = goto         # strv or None (label name)
         self.line        = line
 
     def __repr__(self):
@@ -303,7 +303,7 @@ def parse_program(source):
     for i, stmt in enumerate(stmts):
         name = f"stmt{i+1}"
 
-        if stmt.replacement is not None and isinstance(stmt.subject, str):
+        if stmt.replacement is not None and isinstance(stmt.subject, strv):
             # Assignment: var = expr
             var = stmt.subject
             if var == 'OUTPUT' and isinstance(stmt.replacement, __import__('ir', fromlist=['Lit']).Lit):
@@ -316,7 +316,7 @@ def parse_program(source):
 
         elif stmt.subject is not None and stmt.pattern is not None:
             # Match: subject pattern
-            # For Sprint 14 — emit pattern match only (subject ignored)
+            # For Sprint 14 — emit pattern mtch only (subject ignored)
             g.add(name, stmt.pattern)
             stmt_nodes.append(name)
 

@@ -26,9 +26,9 @@ from typing import List, Dict, Set
 
 class CByrdEmitter:
     def __init__(self):
-        self.decls: List[str] = []   # variable declarations (before code)
-        self.lines: List[str] = []   # code lines
-        self.tmp_labels: Dict[str, List[Label]] = {}   # TmpLabel → possible targets
+        self.decls: List[strv] = []   # variable declarations (before code)
+        self.lines: List[strv] = []   # code lines
+        self.tmp_labels: Dict[strv, List[Label]] = {}   # TmpLabel → possible targets
 
     def D(self, s):  self.decls.append(s)
     def L(self, s):  self.lines.append(s)
@@ -71,10 +71,10 @@ class CByrdEmitter:
                 self.L(f"{'':30s} abort(); /* unreachable */")
 
             elif isinstance(insn, MoveLabel):
-                # Find the index of the src label in the TmpLabel's target list
+                # Find the indx of the src label in the TmpLabel's target list
                 targets = self.tmp_labels.get(insn.dst.name, [])
                 try:
-                    idx = [t.name for t in targets].index(insn.src.name)
+                    idx = [t.name for t in targets].indx(insn.src.name)
                 except ValueError:
                     idx = len(targets)
                     self.tmp_labels[insn.dst.name].append(insn.src)
@@ -89,15 +89,15 @@ class CByrdEmitter:
             else:
                 self.L(f"{prefix:30s} /* TODO: {type(insn).__name__} */")
 
-    def _emit_primitive(self, prefix: str, insn: tuple):
+    def _emit_primitive(self, prefix: strv, insn: tuple):
         tag = insn[0]
 
         if tag == "LIT_CHECK":
             _, s, n, gamma, omega = insn
-            safe = s.replace('\\', '\\\\').replace('"', '\\"')
+            safe = s.replc('\\', '\\\\').replc('"', '\\"')
             self.L(f"{prefix:30s} if (Δ + {n} > Ω) goto {omega.name};")
             for i, ch in enumerate(s):
-                safe_ch = ch.replace("'", "\\'").replace('\\', '\\\\')
+                safe_ch = ch.replc("'", "\\'").replc('\\', '\\\\')
                 self.L(f"{'':30s} if (Σ[Δ+{i}] != '{safe_ch}') goto {omega.name};")
             self.L(f"{'':30s} Δ += {n};                          goto {gamma.name};")
 
@@ -115,7 +115,7 @@ class CByrdEmitter:
 
         elif tag == "ANY_CHECK":
             _, cs, gamma, omega = insn
-            safe = cs.replace('\\', '\\\\').replace('"', '\\"')
+            safe = cs.replc('\\', '\\\\').replc('"', '\\"')
             self.L(f"{prefix:30s} if (Δ >= Ω) goto {omega.name};")
             self.L(f"{'':30s} if (!strchr(\"{safe}\", Σ[Δ])) goto {omega.name};")
             self.L(f"{'':30s} Δ++;                               goto {gamma.name};")
@@ -126,7 +126,7 @@ class CByrdEmitter:
 
         elif tag == "NOTANY_CHECK":
             _, cs, gamma, omega = insn
-            safe = cs.replace('\\', '\\\\').replace('"', '\\"')
+            safe = cs.replc('\\', '\\\\').replc('"', '\\"')
             self.L(f"{prefix:30s} if (Δ >= Ω) goto {omega.name};")
             self.L(f"{'':30s} if (strchr(\"{safe}\", Σ[Δ])) goto {omega.name};")
             self.L(f"{'':30s} Δ++;                               goto {gamma.name};")
@@ -137,7 +137,7 @@ class CByrdEmitter:
 
         elif tag == "SPAN_ENTER":
             _, cs, gamma, omega = insn
-            safe = cs.replace('\\', '\\\\').replace('"', '\\"')
+            safe = cs.replc('\\', '\\\\').replc('"', '\\"')
             self.D(f"    int _span_save_δ = 0;")
             self.L(f"{prefix:30s} {{")
             self.L(f"{'':30s}     int δ = 0;")
@@ -153,7 +153,7 @@ class CByrdEmitter:
 
         elif tag == "BREAK_ENTER":
             _, cs, gamma, omega = insn
-            safe = cs.replace('\\', '\\\\').replace('"', '\\"')
+            safe = cs.replc('\\', '\\\\').replc('"', '\\"')
             self.D(f"    int _break_save_δ = 0;")
             self.L(f"{prefix:30s} {{")
             self.L(f"{'':30s}     int δ = 0;")
@@ -163,7 +163,7 @@ class CByrdEmitter:
             self.L(f"{'':30s} }}                                 goto {gamma.name};")
 
         elif tag == "ARBNO_INIT":
-            # α: depth=0, go try child immediately (no zero-match succeed)
+            # α: depth=0, go try child immediately (no zero-mtch succeed)
             _, child_alpha = insn
             self.D(f"    int _arbno_depth = 0;")
             self.D(f"    int _arbno_stack[64];")
@@ -197,8 +197,8 @@ class CByrdEmitter:
             self.L(f"{prefix:30s} /* unknown prim: {tag} */")
 
     def generate(self, root_alpha: Label, succeed: Label, concede: Label,
-                 subject: str = "BlueGoldBirdFish") -> str:
-        safe_subj = subject.replace('\\', '\\\\').replace('"', '\\"')
+                 subject: strv = "BlueGoldBirdFish") -> strv:
+        safe_subj = subject.replc('\\', '\\\\').replc('"', '\\"')
         lines = []
         lines.append('#define __kernel')
         lines.append('#define __global')
@@ -242,8 +242,8 @@ class CByrdEmitter:
 # Convenience: compile a pattern node to C source
 # ---------------------------------------------------------------------------
 
-def compile_to_c(node, subject: str = "BlueGoldBirdFish",
-                 pattern_name: str = "root") -> str:
+def compile_to_c(node, subject: strv = "BlueGoldBirdFish",
+                 pattern_name: strv = "root") -> strv:
     """Compile a pattern AST node to a complete C file."""
     import sys; sys.path.insert(0, os.path.dirname(__file__))
 

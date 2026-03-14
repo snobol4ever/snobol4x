@@ -1,5 +1,5 @@
 /*
- * parse.c — hand-rolled SNOBOL4 recursive-descent parser for snoc
+ * parse.c — hand-rolled SNOBOL4 recursive-descent parser for sno2c
  *
  * Grammar source: beauty.sno snoExpr0–snoExpr17 + snoStmt
  *
@@ -17,7 +17,7 @@
  *   snoExpr1  → (folded into parse_expr0 as snoExpr1 is just '?')
  *   snoExpr2  → parse_expr2   &
  *   snoExpr3  → parse_expr3   | (n-ary)
- *   snoExpr4  → parse_expr4   concat (whitespace-separated, n-ary)
+ *   snoExpr4  → parse_expr4   ccat (whitespace-separated, n-ary)
  *   snoExpr5  → parse_expr5   @
  *   snoExpr6  → parse_expr6   + -
  *   snoExpr7  → parse_expr7   #
@@ -32,7 +32,7 @@
  *   snoExpr17 → parse_expr17  atom
  */
 
-#include "snoc.h"
+#include "sno2c.h"
 #include "lex.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -233,7 +233,7 @@ static Expr *parse_expr14(Lex *lx) {
     EKind uk;
     switch (t.kind) {
         case T_AT:     uk=E_AT;    break;
-        case T_TILDE:  uk=E_DEREF; break;  /* ~ is NOT in snoc.h so map to DEREF for now */
+        case T_TILDE:  uk=E_DEREF; break;  /* ~ is NOT in sno2c.h so map to DEREF for now */
         case T_QMARK:  uk=E_COND;  break;  /* unary ? = interrogation */
         case T_AMP:    uk=E_REDUCE;break;
         case T_PLUS:   lex_next(lx); return parse_expr14(lx); /* unary + is identity */
@@ -285,7 +285,7 @@ static Expr *parse_expr13(Lex *lx) {
         lex_next(lx); /* consume ~ */
         skip_ws(lx);  /* consume trailing WS of binary ~ */
         Expr *r = parse_expr13(lx);
-        l = binop(E_CONCAT, l, r);  /* ~ is CONCAT in snoc; not in snoc.h, map to E_CONCAT */
+        l = binop(E_CONCAT, l, r);  /* ~ is CONCAT in sno2c; not in sno2c.h, map to E_CONCAT */
     }
     return l;
 }
@@ -342,7 +342,7 @@ static Expr *parse_lbin(Lex *lx, ParseFn next_fn,
             TokKind k2 = lex_peek(lx).kind;
             lex_restore(lx, m2);
             if (k2 != T_WS) {
-                lex_restore(lx, m); /* restore before WS — let concat handle it */
+                lex_restore(lx, m); /* restore before WS — let ccat handle it */
                 break;
             }
         }
@@ -429,18 +429,18 @@ static Expr *parse_expr5(Lex *lx) {
  * snoX4 = nInc() snoExpr5 FENCE(snoWhite snoX4 | ε)
  *
  * After parse_expr5 returns, if the next token is T_WS and the token after
- * that is an atom (not a binary operator), it's a concat.
+ * that is an atom (not a binary operator), it's a ccat.
  *
  * "Not a binary operator" = not one of the operators that parse_expr5..12
  * consume after WS.  Those are: @ + - # / * % ^ ! ** $ . ~ (and = ? & | for
  * higher levels).  Everything else (identifier, literal, unary-prefix, '(')
- * is a concat continuation.
+ * is a ccat continuation.
  *
  * We implement this by trying parse_expr5 after WS; if the first token is a
  * binary operator, we put the WS back and stop.
  */
 
-/* Returns 1 if tok can start a new concat item (i.e., is not a binary op). */
+/* Returns 1 if tok can start a new ccat item (i.e., is not a binary op). */
 static int is_concat_start(TokKind k) {
     switch (k) {
         /* binary operators that must be surrounded by WS */
@@ -463,7 +463,7 @@ static Expr *parse_expr4(Lex *lx) {
     Expr *first = parse_expr5(lx);
     if (!first) return NULL;
 
-    /* Collect concat items */
+    /* Collect ccat items */
     int cap=4, n=1;
     Expr **items = malloc(cap * sizeof *items);
     items[0] = first;

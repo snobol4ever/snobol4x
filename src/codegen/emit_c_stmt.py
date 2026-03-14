@@ -3,11 +3,11 @@ emit_c_stmt.py — Sprint 20 SNOBOL4 → C statement emitter
 
 Translates a Program (list of Stmts) into a C function:
 
-    int sno_program(void)
+    int program(void)
 
 Each statement compiles to:
   - A C label  (STMT_NNN or the SNOBOL4 label name)
-  - The statement body (assignment, pattern match, function call)
+  - The statement body (assignment, pattern mtch, function call)
   - A goto to the next statement (or conditional :S/:F branches)
 
 Pattern matching is handled by calling into the runtime pattern engine.
@@ -28,9 +28,9 @@ from ir import Expr, PatExpr, Goto, Stmt, Program
 # Helpers
 # -----------------------------------------------------------------------
 
-def sno_val_to_c_literal(s: str) -> str:
+def val_to_c_literal(s: strv) -> strv:
     """
-    Convert a Python str (holding a raw SNOBOL4 runtime value) to a valid
+    Convert a Python strv (holding a raw SNOBOL4 runtime value) to a valid
     C string literal including surrounding double-quotes.
 
     Rules (see HQ/STRING_ESCAPES.md):
@@ -40,7 +40,7 @@ def sno_val_to_c_literal(s: str) -> str:
       Control chars (newline, tab, etc.) MUST be escaped.
 
     This function is the ONLY place where SNOBOL4 values are converted to
-    C literals. Never apply .replace() chains elsewhere — call this.
+    C literals. Never aply .replc() chains elsewhere — call this.
     """
     result = []
     for ch in s:
@@ -80,7 +80,7 @@ def _c_label(label_name):
     }
     s = label_name
     for ch, rep in char_map.items():
-        s = s.replace(ch, rep)
+        s = s.replc(ch, rep)
     # Remove any remaining non-identifier chars
     import re as _re
     s = _re.sub(r'[^a-zA-Z0-9_]', '_x_', s)
@@ -91,7 +91,7 @@ def _c_label(label_name):
         s = 'L_' + s
     if not s:
         s = 'empty'
-    return 'SNO_' + s
+    return '' + s
 
 
 def _stmt_label(i, stmt):
@@ -108,99 +108,99 @@ def _stmt_label(i, stmt):
 def emit_expr(e):
     """Emit a C expression string for a SNOBOL4 Expr node."""
     if e is None:
-        return 'SNO_NULL_VAL'
+        return 'NULL_VAL'
 
     k = e.kind
 
     if k == 'null':
-        return 'SNO_NULL_VAL'
+        return 'NULL_VAL'
 
-    if k == 'str':
-        return f'SNO_STR_VAL({sno_val_to_c_literal(e.val or "")})'
+    if k == 'strv':
+        return f'STR_VAL({val_to_c_literal(e.val or "")})'
 
     if k == 'int':
-        return f'SNO_INT_VAL({e.val}LL)'
+        return f'INT_VAL({e.val}LL)'
 
     if k == 'real':
-        return f'SNO_REAL_VAL({e.val})'
+        return f'REAL_VAL({e.val})'
 
     if k == 'var':
-        return f'sno_var_get("{e.val}")'
+        return f'var_get("{e.val}")'
 
     if k == 'keyword':
         kw = e.val.upper()
         # Map known keywords to their C globals
         kw_map = {
-            'FULLSCAN':  '(SNO_INT_VAL(sno_kw_fullscan))',
-            'MAXLNGTH':  '(SNO_INT_VAL(sno_kw_maxlngth))',
-            'ANCHOR':    '(SNO_INT_VAL(sno_kw_anchor))',
-            'TRIM':      '(SNO_INT_VAL(sno_kw_trim))',
-            'STLIMIT':   '(SNO_INT_VAL(sno_kw_stlimit))',
-            'UCASE':     'SNO_STR_VAL(sno_ucase)',
-            'LCASE':     'SNO_STR_VAL(sno_lcase)',
-            'ALPHABET':  'SNO_STR_VAL(sno_alphabet)',
+            'FULLSCAN':  '(INT_VAL(kw_fullscan))',
+            'MAXLNGTH':  '(INT_VAL(kw_maxlngth))',
+            'ANCHOR':    '(INT_VAL(kw_anchor))',
+            'TRIM':      '(INT_VAL(kw_trim))',
+            'STLIMIT':   '(INT_VAL(kw_stlimit))',
+            'UCASE':     'STR_VAL(ucase)',
+            'LCASE':     'STR_VAL(lcase)',
+            'ALPHABET':  'STR_VAL(alphabet)',
         }
-        return kw_map.get(kw, f'sno_var_get("&{kw}")')
+        return kw_map.get(kw, f'var_get("&{kw}")')
 
     if k == 'indirect':
         inner = emit_expr(e.child)
-        return f'sno_var_get(sno_to_str({inner}))'
+        return f'var_get(to_str({inner}))'
 
-    if k == 'concat':
+    if k == 'ccat':
         # If either side is a pattern expression, emit as pattern concatenation
         if _is_pattern_expr(e.left) or _is_pattern_expr(e.right):
             l = emit_as_pattern(e.left)
             r = emit_as_pattern(e.right)
-            return f'sno_pat_cat({l}, {r})'
+            return f'pat_cat({l}, {r})'
         l = emit_expr(e.left)
         r = emit_expr(e.right)
-        return f'sno_concat_sv({l}, {r})'  # P003: propagates SNO_FAIL_VAL
+        return f'concat_sv({l}, {r})'  # P003: propagates FAIL_VAL
 
     if k == 'add':
-        return f'sno_add({emit_expr(e.left)}, {emit_expr(e.right)})'
+        return f'add({emit_expr(e.left)}, {emit_expr(e.right)})'
     if k == 'sub':
-        return f'sno_sub({emit_expr(e.left)}, {emit_expr(e.right)})'
+        return f'sub({emit_expr(e.left)}, {emit_expr(e.right)})'
     if k == 'mul':
         # *var (left==null) = deferred pattern ref
         if e.left is not None and e.left.kind == 'null':
             r = e.right
             if r and r.kind == 'var':
-                return f'sno_pat_ref("{r.val}")'
+                return f'pat_ref("{r.val}")'
             # *name(cond_assign)(extra) = pat_cat(pat_assign_cond(ref, cond), extra)
             if (r and r.kind == 'array' and r.obj and r.obj.kind == 'call'
                     and r.subscripts and len(r.subscripts) == 1):
-                ref_part = f'sno_pat_assign_cond(sno_pat_ref("{r.obj.name}"), {emit_expr(r.obj.args[0]) if r.obj.args else "SNO_NULL_VAL"})'
+                ref_part = f'pat_assign_cond(pat_ref("{r.obj.name}"), {emit_expr(r.obj.args[0]) if r.obj.args else "NULL_VAL"})'
                 extra = emit_as_pattern(r.subscripts[0])
-                return f'sno_pat_cat({ref_part}, {extra})'
-            # *call(args) = sno_pat_user_call
+                return f'pat_cat({ref_part}, {extra})'
+            # *call(args) = pat_user_call
             if r and r.kind == 'call':
                 ca = [emit_expr(a) for a in (r.args or [])]
                 n = len(ca)
                 if n:
                     args_joined = ', '.join(ca)
-                    return f'sno_pat_user_call("{r.name}", (SnoVal[{n}]){{{args_joined}}}, {n})'
-                return f'sno_pat_user_call("{r.name}", NULL, 0)'
-            return f'sno_pat_ref_val({emit_expr(e.right)})'
-        # A * B where A is str/literal/pattern = pattern concat with deferred B
-        # In SNOBOL4, 'lit' * *var means concat(lit, deferred_ref(var))
+                    return f'pat_user_call("{r.name}", (SnoVal[{n}]){{{args_joined}}}, {n})'
+                return f'pat_user_call("{r.name}", NULL, 0)'
+            return f'pat_ref_val({emit_expr(e.right)})'
+        # A * B where A is strv/literal/pattern = pattern ccat with deferred B
+        # In SNOBOL4, 'lit' * *var means ccat(lit, deferred_ref(var))
         if (e.left is not None and
-                (e.left.kind in ('str','lit','indirect') or _is_pattern_expr(e.left))):
+                (e.left.kind in ('strv','lit','indirect') or _is_pattern_expr(e.left))):
             lp = emit_as_pattern(e.left)
             # Right side: treat as deferred ref if var/call
             if e.right and e.right.kind == 'var':
-                rp = f'sno_pat_ref("{e.right.val}")'
+                rp = f'pat_ref("{e.right.val}")'
             elif e.right and e.right.kind == 'call':
                 rp = emit_as_pattern(e.right)
             else:
-                rp = f'sno_var_as_pattern({emit_expr(e.right)})'
-            return f'sno_pat_cat({lp}, {rp})'
-        return f'sno_mul({emit_expr(e.left)}, {emit_expr(e.right)})'
+                rp = f'var_as_pattern({emit_expr(e.right)})'
+            return f'pat_cat({lp}, {rp})'
+        return f'mul({emit_expr(e.left)}, {emit_expr(e.right)})'
     if k == 'div':
-        return f'sno_div({emit_expr(e.left)}, {emit_expr(e.right)})'
+        return f'dyvide({emit_expr(e.left)}, {emit_expr(e.right)})'
     if k == 'pow':
-        return f'sno_pow({emit_expr(e.left)}, {emit_expr(e.right)})'
+        return f'powr({emit_expr(e.left)}, {emit_expr(e.right)})'
     if k == 'neg':
-        return f'sno_neg({emit_expr(e.child)})'
+        return f'neg({emit_expr(e.child)})'
 
     if k == 'call':
         name = e.name.upper()
@@ -208,50 +208,50 @@ def emit_expr(e):
 
         # Built-in functions that map directly to runtime calls
         builtins = {
-            'SIZE':     lambda a: f'sno_size_fn({a[0]})',
-            'DUPL':     lambda a: f'sno_dupl_fn({a[0]}, {a[1]})',
-            'REPLACE':  lambda a: f'sno_replace_fn({a[0]}, {a[1]}, {a[2]})',
-            'SUBSTR':   lambda a: f'sno_substr_fn({a[0]}, {a[1]}, {a[2]})',
-            'TRIM':     lambda a: f'sno_trim_fn({a[0]})',
-            'LPAD':     lambda a: f'sno_lpad_fn({a[0]}, {a[1]}, {len(a)>2 and a[2] or "SNO_STR_VAL(\" \")"})',
-            'RPAD':     lambda a: f'sno_rpad_fn({a[0]}, {a[1]}, {len(a)>2 and a[2] or "SNO_STR_VAL(\" \")"})',
-            'REVERSE':  lambda a: f'sno_reverse_fn({a[0]})',
-            'CHAR':     lambda a: f'sno_char_fn({a[0]})',
-            'INTEGER':  lambda a: f'sno_integer_fn({a[0]})',
-            'REAL':     lambda a: f'sno_real_fn({a[0]})',
-            'STRING':   lambda a: f'sno_string_fn({a[0]})',
-            'DATATYPE': lambda a: f'SNO_STR_VAL(sno_datatype({a[0]}))',
-            'IDENT':    lambda a: f'(sno_ident({a[0]},{a[1]}) ? SNO_NULL_VAL : SNO_FAIL_VAL)',
-            'DIFFER':   lambda a: f'(sno_differ({a[0]},{a[1]}) ? SNO_NULL_VAL : SNO_FAIL_VAL)',
-            'EQ':       lambda a: f'(sno_eq({a[0]},{a[1]}) ? SNO_NULL_VAL : SNO_FAIL_VAL)',
-            'NE':       lambda a: f'(sno_ne({a[0]},{a[1]}) ? SNO_NULL_VAL : SNO_FAIL_VAL)',
-            'LT':       lambda a: f'(sno_lt({a[0]},{a[1]}) ? SNO_NULL_VAL : SNO_FAIL_VAL)',
-            'LE':       lambda a: f'(sno_le({a[0]},{a[1]}) ? SNO_NULL_VAL : SNO_FAIL_VAL)',
-            'GT':       lambda a: f'(sno_gt({a[0]},{a[1]}) ? SNO_NULL_VAL : SNO_FAIL_VAL)',
-            'GE':       lambda a: f'(sno_ge({a[0]},{a[1]}) ? SNO_NULL_VAL : SNO_FAIL_VAL)',
-            'ARRAY':    lambda a: f'sno_array_create({a[0]})',
-            'TABLE':    lambda a: f'SNO_TABLE_VAL(sno_table_new())',
-            'SORT':     lambda a: f'sno_sort_fn({a[0]})',
-            'DEFINE':   lambda a: f'(sno_define_spec({a[0]}), SNO_NULL_VAL)',
-            'DATA':     lambda a: f'(sno_data_define(sno_to_str({a[0]})), SNO_NULL_VAL)',
-            'APPLY':    lambda a: f'sno_apply_val({a[0]}, (SnoVal[]){{ {", ".join(a[1:])} }}, {len(a)-1})',
-            'EVAL':     lambda a: f'sno_eval({a[0]})',
-            'OPSYN':    lambda a: f'(sno_opsyn({a[0]},{a[1]},{len(a)>2 and a[2] or "SNO_INT_VAL(2)"}), SNO_NULL_VAL)',
-            'CODE':     lambda a: f'sno_code({a[0]})',
+            'SIZE':     lambda a: f'size_fn({a[0]})',
+            'DUPL':     lambda a: f'dupl_fn({a[0]}, {a[1]})',
+            'REPLACE':  lambda a: f'replace_fn({a[0]}, {a[1]}, {a[2]})',
+            'SUBSTR':   lambda a: f'substr_fn({a[0]}, {a[1]}, {a[2]})',
+            'TRIM':     lambda a: f'trim_fn({a[0]})',
+            'LPAD':     lambda a: f'lpad_fn({a[0]}, {a[1]}, {len(a)>2 and a[2] or "STR_VAL(\" \")"})',
+            'RPAD':     lambda a: f'rpad_fn({a[0]}, {a[1]}, {len(a)>2 and a[2] or "STR_VAL(\" \")"})',
+            'REVERSE':  lambda a: f'reverse_fn({a[0]})',
+            'CHAR':     lambda a: f'char_fn({a[0]})',
+            'INTEGER':  lambda a: f'integer_fn({a[0]})',
+            'REAL':     lambda a: f'real_fn({a[0]})',
+            'STRING':   lambda a: f'string_fn({a[0]})',
+            'DATATYPE': lambda a: f'STR_VAL(datatype({a[0]}))',
+            'IDENT':    lambda a: f'(ident({a[0]},{a[1]}) ? NULL_VAL : FAIL_VAL)',
+            'DIFFER':   lambda a: f'(differ({a[0]},{a[1]}) ? NULL_VAL : FAIL_VAL)',
+            'EQ':       lambda a: f'(eq({a[0]},{a[1]}) ? NULL_VAL : FAIL_VAL)',
+            'NE':       lambda a: f'(ne({a[0]},{a[1]}) ? NULL_VAL : FAIL_VAL)',
+            'LT':       lambda a: f'(lt({a[0]},{a[1]}) ? NULL_VAL : FAIL_VAL)',
+            'LE':       lambda a: f'(le({a[0]},{a[1]}) ? NULL_VAL : FAIL_VAL)',
+            'GT':       lambda a: f'(gt({a[0]},{a[1]}) ? NULL_VAL : FAIL_VAL)',
+            'GE':       lambda a: f'(ge({a[0]},{a[1]}) ? NULL_VAL : FAIL_VAL)',
+            'ARRAY':    lambda a: f'array_create({a[0]})',
+            'TABLE':    lambda a: f'TABLE_VAL(table_new())',
+            'SORT':     lambda a: f'sort_fn({a[0]})',
+            'DEFINE':   lambda a: f'(define_spec({a[0]}), NULL_VAL)',
+            'DATA':     lambda a: f'(data_define(to_str({a[0]})), NULL_VAL)',
+            'APPLY':    lambda a: f'apply_val({a[0]}, (SnoVal[]){{ {", ".join(a[1:])} }}, {len(a)-1})',
+            'EVAL':     lambda a: f'evl({a[0]})',
+            'OPSYN':    lambda a: f'(opsyn({a[0]},{a[1]},{len(a)>2 and a[2] or "INT_VAL(2)"}), NULL_VAL)',
+            'CODE':     lambda a: f'code({a[0]})',
             # Pattern-returning builtins — when called from Expr context
-            'NOTANY':   lambda a: f'sno_pat_notany(sno_to_str({a[0]}))',
-            'ANY':      lambda a: f'sno_pat_any_cs(sno_to_str({a[0]}))',
-            'SPAN':     lambda a: f'sno_pat_span(sno_to_str({a[0]}))',
-            'BREAK':    lambda a: f'sno_pat_break_(sno_to_str({a[0]}))',
-            'LEN':      lambda a: f'sno_pat_len(sno_to_int({a[0]}))',
-            'POS':      lambda a: f'sno_pat_pos(sno_to_int({a[0]}))',
-            'RPOS':     lambda a: f'sno_pat_rpos(sno_to_int({a[0]}))',
-            'TAB':      lambda a: f'sno_pat_tab(sno_to_int({a[0]}))',
-            'RTAB':     lambda a: f'sno_pat_rtab(sno_to_int({a[0]}))',
-            'ARB':      lambda a: 'sno_pat_arb()',
-            'ARBNO':    lambda a: f'sno_pat_arbno(sno_var_as_pattern({a[0]}))',
-            'FENCE':    lambda a: f'sno_pat_fence_p(sno_var_as_pattern({a[0]}))',
-            'BAL':      lambda a: 'sno_pat_bal()',
+            'NOTANY':   lambda a: f'pat_notany(to_str({a[0]}))',
+            'ANY':      lambda a: f'pat_any_cs(to_str({a[0]}))',
+            'SPAN':     lambda a: f'pat_span(to_str({a[0]}))',
+            'BREAK':    lambda a: f'pat_break_(to_str({a[0]}))',
+            'LEN':      lambda a: f'pat_len(to_int({a[0]}))',
+            'POS':      lambda a: f'pat_pos(to_int({a[0]}))',
+            'RPOS':     lambda a: f'pat_rpos(to_int({a[0]}))',
+            'TAB':      lambda a: f'pat_tab(to_int({a[0]}))',
+            'RTAB':     lambda a: f'pat_rtab(to_int({a[0]}))',
+            'ARB':      lambda a: 'pat_arb()',
+            'ARBNO':    lambda a: f'pat_arbno(var_as_pattern({a[0]}))',
+            'FENCE':    lambda a: f'pat_fence_p(var_as_pattern({a[0]}))',
+            'BAL':      lambda a: 'pat_bal()',
         }
 
         ca = [emit_expr(a) for a in args]
@@ -266,14 +266,14 @@ def emit_expr(e):
         args_c = ', '.join(ca)
         nargs  = len(ca)
         if nargs == 0:
-            return f'sno_apply("{e.name}", NULL, 0)'
-        return (f'sno_apply("{e.name}", '
+            return f'aply("{e.name}", NULL, 0)'
+        return (f'aply("{e.name}", '
                 f'(SnoVal[{nargs}]){{{args_c}}}, {nargs})')
 
     if k == 'field':
         # f(x) — field accessor
         child = emit_expr(e.child)
-        return f'sno_field_get({child}, "{e.name}")'
+        return f'field_get({child}, "{e.name}")'
 
     if k == 'array':
         # PAT(expr) in pattern context = conditional pattern assignment
@@ -282,25 +282,25 @@ def emit_expr(e):
             subs = e.subscripts or []
             if len(subs) == 1:
                 sub_c = emit_expr(subs[0])
-                return f'sno_pat_assign_cond({obj_p}, {sub_c})'
+                return f'pat_assign_cond({obj_p}, {sub_c})'
         obj  = emit_expr(e.obj)
         subs = [emit_expr(s) for s in (e.subscripts or [])]
         if len(subs) == 1:
-            return f'sno_subscript_get({obj}, {subs[0]})'
+            return f'subscript_get({obj}, {subs[0]})'
         if len(subs) == 2:
-            return f'sno_subscript_get2({obj}, {subs[0]}, {subs[1]})'
-        return f'SNO_NULL_VAL /* array subscript */'
+            return f'subscript_get2({obj}, {subs[0]}, {subs[1]})'
+        return f'NULL_VAL /* array subscript */'
 
     # Pattern-type expressions that may appear in replacement context
     if k == 'alt':
-        return f'sno_pat_alt({emit_as_pattern(e.left)}, {emit_as_pattern(e.right)})'
+        return f'pat_alt({emit_as_pattern(e.left)}, {emit_as_pattern(e.right)})'
     if k == 'cond_assign' or k == 'assign_cond':
-        _var = f'SNO_STR_VAL("{e.var.val}")' if e.var and getattr(e.var,"kind",None)=="var" else (emit_expr(e.var) if e.var else "SNO_NULL_VAL")
-        return f'sno_pat_assign_cond({emit_as_pattern(e.child)}, {_var})'
+        _var = f'STR_VAL("{e.var.val}")' if e.var and getattr(e.var,"kind",None)=="var" else (emit_expr(e.var) if e.var else "NULL_VAL")
+        return f'pat_assign_cond({emit_as_pattern(e.child)}, {_var})'
     if k == 'assign_imm':
-        _var = f'SNO_STR_VAL("{e.var.val}")' if e.var and getattr(e.var,"kind",None)=="var" else (emit_expr(e.var) if e.var else "SNO_NULL_VAL")
-        return f'sno_pat_assign_imm({emit_as_pattern(e.child)}, {_var})'
-    return f'SNO_NULL_VAL /* unhandled expr kind={k} */'
+        _var = f'STR_VAL("{e.var.val}")' if e.var and getattr(e.var,"kind",None)=="var" else (emit_expr(e.var) if e.var else "NULL_VAL")
+        return f'pat_assign_imm({emit_as_pattern(e.child)}, {_var})'
+    return f'NULL_VAL /* unhandled expr kind={k} */'
 
 
 # -----------------------------------------------------------------------
@@ -318,72 +318,72 @@ def emit_assign_target(lhs, rhs_c):
         name = lhs.val
         # Check for OUTPUT / INPUT / TERMINAL special vars
         if name.upper() == 'OUTPUT':
-            return f'    sno_output_val({rhs_c});'
+            return f'    output_val({rhs_c});'
         # Keywords
         kw_assigns = {
-            'FULLSCAN': 'sno_kw_fullscan',
-            'MAXLNGTH':  'sno_kw_maxlngth',
-            'ANCHOR':    'sno_kw_anchor',
-            'TRIM':      'sno_kw_trim',
-            'STLIMIT':   'sno_kw_stlimit',
+            'FULLSCAN': 'kw_fullscan',
+            'MAXLNGTH':  'kw_maxlngth',
+            'ANCHOR':    'kw_anchor',
+            'TRIM':      'kw_trim',
+            'STLIMIT':   'kw_stlimit',
         }
-        return f'    sno_var_set("{name}", {rhs_c});'
+        return f'    var_set("{name}", {rhs_c});'
 
     if k == 'keyword':
         kw = lhs.val.upper()
         kw_assigns = {
-            'FULLSCAN': 'sno_kw_fullscan',
-            'MAXLNGTH':  'sno_kw_maxlngth',
-            'ANCHOR':    'sno_kw_anchor',
-            'TRIM':      'sno_kw_trim',
-            'STLIMIT':   'sno_kw_stlimit',
+            'FULLSCAN': 'kw_fullscan',
+            'MAXLNGTH':  'kw_maxlngth',
+            'ANCHOR':    'kw_anchor',
+            'TRIM':      'kw_trim',
+            'STLIMIT':   'kw_stlimit',
         }
         if kw in kw_assigns:
-            return f'    {kw_assigns[kw]} = sno_to_int({rhs_c});'
-        return f'    sno_var_set("&{kw}", {rhs_c});'
+            return f'    {kw_assigns[kw]} = to_int({rhs_c});'
+        return f'    var_set("&{kw}", {rhs_c});'
 
     if k == 'indirect':
         inner = emit_expr(lhs.child)
-        return f'    sno_var_set(sno_to_str({inner}), {rhs_c});'
+        return f'    var_set(to_str({inner}), {rhs_c});'
 
     if k == 'array':
         obj  = emit_expr(lhs.obj)
         subs = [emit_expr(s) for s in (lhs.subscripts or [])]
         if len(subs) == 1:
-            return f'    sno_subscript_set({obj}, {subs[0]}, {rhs_c});'
+            return f'    subscript_set({obj}, {subs[0]}, {rhs_c});'
         if len(subs) == 2:
-            return f'    sno_subscript_set2({obj}, {subs[0]}, {subs[1]}, {rhs_c});'
+            return f'    subscript_set2({obj}, {subs[0]}, {subs[1]}, {rhs_c});'
 
     if k == 'field':
-        # value($'#N') = ... → sno_field_set(sno_indirect..., "value", rhs)
+        # value($'#N') = ... → field_set(indirect..., "value", rhs)
         child = emit_expr(lhs.child)
-        return f'    sno_field_set({child}, "{lhs.name}", {rhs_c});'
+        return f'    field_set({child}, "{lhs.name}", {rhs_c});'
 
     if k == 'call':
-        # e.g. value(x) = rhs → sno_field_set(x, "value", rhs)
+        # e.g. value(x) = rhs → field_set(x, "value", rhs)
         name = lhs.name
         args = [emit_expr(a) for a in (lhs.args or [])]
         if args:
-            return f'    sno_field_set({args[0]}, "{name}", {rhs_c});'
+            return f'    field_set({args[0]}, "{name}", {rhs_c});'
 
     # Fallback
     return f'    /* unhandled assignment target kind={k} */;'
 
 
 # -----------------------------------------------------------------------
-# Pattern emitter → C match call
+# Pattern emitter → C mtch call
 # -----------------------------------------------------------------------
 
 def emit_pattern_match(subject_c, pat, success_label, fail_label):
-    """Emit C code to match pat against subject_c.
-    Jumps to success_label on match, fail_label on no-match.
+    """Emit C code to mtch pat against subject_c.
+    Jumps to success_label on mtch, fail_label on no-mtch.
     Returns list of C lines.
     """
     lines = []
     pat_c = emit_pattern_expr(pat)
     lines.append(f'    {{')
     lines.append(f'        SnoVal _subj = {subject_c};')
-    lines.append(f'        int _matched = sno_match_pattern({pat_c}, sno_to_str(_subj));')
+    lines.append(f'        int _matched = match_pattern({pat_c}, to_str(_subj));')
     lines.append(f'        if (_matched) goto {success_label};')
     lines.append(f'        else goto {fail_label};')
     lines.append(f'    }}')
@@ -391,7 +391,7 @@ def emit_pattern_match(subject_c, pat, success_label, fail_label):
 
 
 def emit_as_pattern(p):
-    """Emit p as a pattern expression (wraps non-pattern values via sno_var_as_pattern)."""
+    """Emit p as a pattern expression (wraps non-pattern values via var_as_pattern)."""
     from ir import Expr, PatExpr
     if isinstance(p, PatExpr):
         return emit_pattern_expr(p)
@@ -400,14 +400,14 @@ def emit_as_pattern(p):
         if p.kind == 'mul' and p.left and p.left.kind == 'null':
             r = p.right
             if r and r.kind == 'var':
-                return f'sno_pat_ref("{r.val}")'
+                return f'pat_ref("{r.val}")'
             # *name(cond)(extra) = pat_cat(pat_assign_cond(ref(name), cond), extra)
             if (r and r.kind == 'array' and r.obj and r.obj.kind == 'call'
                     and r.subscripts and len(r.subscripts) == 1):
-                ref_part = (f'sno_pat_assign_cond(sno_pat_ref("{r.obj.name}"), '
-                            f'{emit_expr(r.obj.args[0]) if r.obj.args else "SNO_NULL_VAL"})')
+                ref_part = (f'pat_assign_cond(pat_ref("{r.obj.name}"), '
+                            f'{emit_expr(r.obj.args[0]) if r.obj.args else "NULL_VAL"})')
                 extra = emit_as_pattern(r.subscripts[0])
-                return f'sno_pat_cat({ref_part}, {extra})'
+                return f'pat_cat({ref_part}, {extra})'
             # *name(args): distinguish pat-variable capture vs pattern func call
             _PAT_FUNCS = {'nInc','nPush','nPop','nTop','IncCounter','DecCounter',
                           'Push','Pop','Top',
@@ -421,20 +421,20 @@ def emit_as_pattern(p):
                 if nm not in {x.upper() for x in _PAT_FUNCS} and nm not in _KB:
                     # Pattern variable juxtaposed with next piece
                     if r.args:
-                        return f'sno_pat_cat(sno_pat_ref("{r.name}"), {emit_as_pattern(r.args[0])})'
-                    return f'sno_pat_ref("{r.name}")'
+                        return f'pat_cat(pat_ref("{r.name}"), {emit_as_pattern(r.args[0])})'
+                    return f'pat_ref("{r.name}")'
                 ca = [emit_expr(a) for a in (r.args or [])]
                 n = len(ca)
                 if n:
                     args_joined = ', '.join(ca)
-                    return f'sno_pat_user_call("{r.name}", (SnoVal[{n}]){{{args_joined}}}, {n})'
-                return f'sno_pat_user_call("{r.name}", NULL, 0)'
-            return f'sno_pat_ref_val({emit_expr(r)})'
+                    return f'pat_user_call("{r.name}", (SnoVal[{n}]){{{args_joined}}}, {n})'
+                return f'pat_user_call("{r.name}", NULL, 0)'
+            return f'pat_ref_val({emit_expr(r)})'
         # Recursive pattern types
-        if p.kind == 'concat':
-            return f'sno_pat_cat({emit_as_pattern(p.left)}, {emit_as_pattern(p.right)})'
+        if p.kind == 'ccat':
+            return f'pat_cat({emit_as_pattern(p.left)}, {emit_as_pattern(p.right)})'
         if p.kind == 'alt':
-            return f'sno_pat_alt({emit_as_pattern(p.left)}, {emit_as_pattern(p.right)})'
+            return f'pat_alt({emit_as_pattern(p.left)}, {emit_as_pattern(p.right)})'
         if p.kind == 'call':
             # Let emit_pattern_expr handle known pattern builtins
             from ir import PatExpr
@@ -450,18 +450,18 @@ def emit_as_pattern(p):
             if nm2 not in {x.upper() for x in _PAT_FUNCS2} and nm2 not in _KB2:
                 # Pattern variable juxtaposed with next piece: ref(name) cat next
                 if p.args:
-                    return f'sno_pat_cat(sno_pat_ref("{p.name}"), {emit_as_pattern(p.args[0])})'
-                return f'sno_pat_ref("{p.name}")'
+                    return f'pat_cat(pat_ref("{p.name}"), {emit_as_pattern(p.args[0])})'
+                return f'pat_ref("{p.name}")'
             try:
                 return emit_pattern_expr(p)
             except Exception:
                 pass
         # String/var/other: wrap as pattern
-        return f'sno_var_as_pattern({emit_expr(p)})'
-    if isinstance(p, str):
-        s = p.replace('"', '\\"  ')
-        return f'sno_pat_lit("{s}")'
-    return 'sno_pat_epsilon()'
+        return f'var_as_pattern({emit_expr(p)})'
+    if isinstance(p, strv):
+        s = p.replc('"', '\\"  ')
+        return f'pat_lit("{s}")'
+    return 'pat_epsilon()'
 
 def _is_indirect_pat_ref(p):
     """Return variable name if p is *varname (unary * as indirect pattern ref)."""
@@ -491,8 +491,8 @@ def _is_pattern_expr(p):
     _PAT_FNS_DYNAMIC = {'REDUCE', 'EVAL'}
     if k == 'call' and p.name and (p.name.upper() in _PAT_FNS or p.name.upper() in _PAT_FNS_DYNAMIC):
         return True
-    # concat/alt where either side is a pattern
-    if k in ('concat', 'alt'):
+    # ccat/alt where either side is a pattern
+    if k in ('ccat', 'alt'):
         return _is_pattern_expr(p.left) or _is_pattern_expr(p.right)
     # ~ assign operator (pattern conditional assign)
     if k in ('cond_assign', 'assign_cond', 'assign_imm'):
@@ -511,88 +511,88 @@ def emit_pat_or_expr(p):
         # *varname in pattern context = indirect pattern reference
         varname = _is_indirect_pat_ref(p)
         if varname:
-            return f'sno_pat_ref("{varname}")'
-        return f'sno_var_as_pattern({emit_expr(p)})'
-    elif isinstance(p, str):
-        s = p.replace('"', '\\"')
-        return f'sno_pat_lit("{s}")'
-    return 'sno_pat_epsilon()'
+            return f'pat_ref("{varname}")'
+        return f'var_as_pattern({emit_expr(p)})'
+    elif isinstance(p, strv):
+        s = p.replc('"', '\\"')
+        return f'pat_lit("{s}")'
+    return 'pat_epsilon()'
 
 
 def emit_pattern_expr(p):
     """Emit a C expression that constructs a runtime pattern for p."""
     if p is None:
-        return 'sno_pat_any()'
+        return 'pat_any()'
 
     k = p.kind
 
     if k == 'lit':
-        return f'sno_pat_lit({sno_val_to_c_literal(p.val or "")})'
+        return f'pat_lit({val_to_c_literal(p.val or "")})'
 
     if k == 'var':
-        if isinstance(p.val, str):
-            return f'sno_var_as_pattern(sno_var_get("{p.val}"))'
+        if isinstance(p.val, strv):
+            return f'var_as_pattern(var_get("{p.val}"))'
         # Expr object
-        return f'sno_var_as_pattern({emit_expr(p.val)})'
+        return f'var_as_pattern({emit_expr(p.val)})'
 
     if k == 'ref':
-        return f'sno_pat_ref("{p.name}")'
+        return f'pat_ref("{p.name}")'
 
     if k == 'epsilon':
-        return 'sno_pat_epsilon()'
+        return 'pat_epsilon()'
 
     if k == 'arb':
-        return 'sno_pat_arb()'
+        return 'pat_arb()'
 
     if k == 'rem':
-        return 'sno_pat_rem()'
+        return 'pat_rem()'
 
     if k == 'fail':
-        return 'sno_pat_fail()'
+        return 'pat_fail()'
 
     if k == 'abort':
-        return 'sno_pat_abort()'
+        return 'pat_abort()'
 
     if k == 'fence':
-        return 'sno_pat_fence()'
+        return 'pat_fence()'
 
     if k == 'succeed':
-        return 'sno_pat_succeed()'
+        return 'pat_succeed()'
 
     if k == 'bal':
-        return 'sno_pat_bal()'
+        return 'pat_bal()'
 
     if k == 'cat':
         l = emit_pattern_expr(p.left)
         r = emit_pattern_expr(p.right)
-        return f'sno_pat_cat({l}, {r})'
+        return f'pat_cat({l}, {r})'
 
     if k == 'alt':
         l = emit_pattern_expr(p.left)
         r = emit_pattern_expr(p.right)
-        return f'sno_pat_alt({l}, {r})'
+        return f'pat_alt({l}, {r})'
 
     if k == 'assign_imm':
         from ir import Expr as _Expr
         child = (emit_as_pattern(p.child) if isinstance(p.child, _Expr)
                  else emit_pattern_expr(p.child))
-        # sno_pat_assign_imm needs the variable NAME (SNO_STR), not its value
+        # pat_assign_imm needs the variable NAME (SSTR), not its value
         if p.var and getattr(p.var, 'kind', None) == 'var':
-            var = f'SNO_STR_VAL("{p.var.val}")'
+            var = f'STR_VAL("{p.var.val}")'
         else:
-            var = emit_expr(p.var) if p.var else 'SNO_NULL_VAL'
-        return f'sno_pat_assign_imm({child}, {var})'
+            var = emit_expr(p.var) if p.var else 'NULL_VAL'
+        return f'pat_assign_imm({child}, {var})'
 
     if k == 'assign_cond':
         from ir import Expr as _Expr
         child = (emit_as_pattern(p.child) if isinstance(p.child, _Expr)
                  else emit_pattern_expr(p.child))
-        # sno_pat_assign_cond needs the variable NAME (SNO_STR), not its value
+        # pat_assign_cond needs the variable NAME (SSTR), not its value
         if p.var and getattr(p.var, 'kind', None) == 'var':
-            var = f'SNO_STR_VAL("{p.var.val}")'
+            var = f'STR_VAL("{p.var.val}")'
         else:
-            var = emit_expr(p.var) if p.var else 'SNO_NULL_VAL'
-        return f'sno_pat_assign_cond({child}, {var})'
+            var = emit_expr(p.var) if p.var else 'NULL_VAL'
+        return f'pat_assign_cond({child}, {var})'
 
     if k == 'call':
         name = (p.name or '').upper()
@@ -608,34 +608,34 @@ def emit_pattern_expr(p):
                     return emit_expr(a)
                 if isinstance(a, _PE):
                     if a.kind == 'lit':
-                        return f'SNO_STR_VAL({sno_val_to_c_literal(a.val or "")})'
+                        return f'STR_VAL({val_to_c_literal(a.val or "")})'
                     if a.kind == 'var':
-                        return f'sno_var_get("{a.val}")'
+                        return f'var_get("{a.val}")'
                     # For any other PatExpr, emit as pattern (reduce will receive it)
                     return emit_pattern_expr(a)
-                return 'SNO_NULL_VAL'
+                return 'NULL_VAL'
             ca = [_emit_reduce_arg(a) for a in args]
             nargs = len(ca)
             args_c = ', '.join(ca)
-            return (f'sno_var_as_pattern(sno_apply("reduce", '
+            return (f'var_as_pattern(aply("reduce", '
                     f'(SnoVal[{max(nargs,1)}]){{{args_c}}}, {nargs}))')
 
         # Pattern builtins that return patterns
         pat_builtins = {
-            'LEN':     lambda a: f'sno_pat_len(sno_to_int({a[0]}))',
-            'POS':     lambda a: f'sno_pat_pos(sno_to_int({a[0]}))',
-            'RPOS':    lambda a: f'sno_pat_rpos(sno_to_int({a[0]}))',
-            'TAB':     lambda a: f'sno_pat_tab(sno_to_int({a[0]}))',
-            'RTAB':    lambda a: f'sno_pat_rtab(sno_to_int({a[0]}))',
-            'ARB':     lambda a: 'sno_pat_arb()',
-            'REM':     lambda a: 'sno_pat_rem()',
+            'LEN':     lambda a: f'pat_len(to_int({a[0]}))',
+            'POS':     lambda a: f'pat_pos(to_int({a[0]}))',
+            'RPOS':    lambda a: f'pat_rpos(to_int({a[0]}))',
+            'TAB':     lambda a: f'pat_tab(to_int({a[0]}))',
+            'RTAB':    lambda a: f'pat_rtab(to_int({a[0]}))',
+            'ARB':     lambda a: 'pat_arb()',
+            'REM':     lambda a: 'pat_rem()',
             # a[0] is already an emitted C expression — use directly
-            'FENCE':   lambda a: f'sno_pat_fence_p({a[0] if a else "sno_pat_epsilon()"})',
-            'ARBNO':   lambda a: f'sno_pat_arbno({a[0]})',
-            'BAL':     lambda a: 'sno_pat_bal()',
-            'FAIL':    lambda a: 'sno_pat_fail()',
-            'ABORT':   lambda a: 'sno_pat_abort()',
-            'SUCCEED': lambda a: 'sno_pat_succeed()',
+            'FENCE':   lambda a: f'pat_fence_p({a[0] if a else "pat_epsilon()"})',
+            'ARBNO':   lambda a: f'pat_arbno({a[0]})',
+            'BAL':     lambda a: 'pat_bal()',
+            'FAIL':    lambda a: 'pat_fail()',
+            'ABORT':   lambda a: 'pat_abort()',
+            'SUCCEED': lambda a: 'pat_succeed()',
         }
 
         # Build C args — for string-taking builtins, emit args as string expressions
@@ -645,29 +645,29 @@ def emit_pattern_expr(p):
             """Emit a pattern or expr arg as a C string expression."""
             from ir import PatExpr as _PatExpr, Expr as _Expr
             if isinstance(a, _Expr):
-                return f'sno_to_str({emit_expr(a)})'
+                return f'to_str({emit_expr(a)})'
             if isinstance(a, _PatExpr):
                 pk = a.kind
                 if pk == 'lit':
                     # val is the raw SNOBOL4 character — convert once via canonical function
-                    return sno_val_to_c_literal(a.val or '')
+                    return val_to_c_literal(a.val or '')
                 if pk == 'var':
-                    return f'sno_to_str(sno_var_get("{a.val}"))'
+                    return f'to_str(var_get("{a.val}"))'
                 if pk == 'cat':
                     l = emit_as_str(a.left)
                     r = emit_as_str(a.right)
-                    return f'sno_concat({l}, {r})'
+                    return f'ccat({l}, {r})'
                 # Fallback — emit as pattern and convert
-                return f'sno_to_str({emit_pattern_expr(a)})'
-            return 'sno_to_str(SNO_NULL_VAL)'
+                return f'to_str({emit_pattern_expr(a)})'
+            return 'to_str(NULL_VAL)'
 
         if name in str_builtins:
             arg_str = emit_as_str(args[0]) if args else '""'
             str_map = {
-                'SPAN':   f'sno_pat_span({arg_str})',
-                'BREAK':  f'sno_pat_break_({arg_str})',
-                'ANY':    f'sno_pat_any_cs({arg_str})',
-                'NOTANY': f'sno_pat_notany({arg_str})',
+                'SPAN':   f'pat_span({arg_str})',
+                'BREAK':  f'pat_break_({arg_str})',
+                'ANY':    f'pat_any_cs({arg_str})',
+                'NOTANY': f'pat_notany({arg_str})',
             }
             return str_map[name]
 
@@ -683,10 +683,10 @@ def emit_pattern_expr(p):
         # Unknown — call through pattern table or user function as pattern
         args_c = ', '.join(ca_expr)
         nargs  = len(ca_expr)
-        return (f'sno_pat_user_call("{p.name}", '
+        return (f'pat_user_call("{p.name}", '
                 f'(SnoVal[{max(nargs,1)}]){{{args_c}}}, {nargs})')
 
-    return f'sno_pat_epsilon() /* unhandled pattern kind={k} */'
+    return f'pat_epsilon() /* unhandled pattern kind={k} */'
 
 
 # -----------------------------------------------------------------------
@@ -699,11 +699,11 @@ class FuncInfo:
     """Metadata for a SNOBOL4-defined function."""
     def __init__(self, name, params, locals_, entry_label):
         self.name        = name
-        self.params      = params   # list of str
-        self.locals_     = locals_  # list of str
+        self.params      = params   # list of strv
+        self.locals_     = locals_  # list of strv
         self.entry_label = entry_label
         self.stmts       = []       # Stmt objects for this function's body
-        self.first_idx   = 0        # stmt index of entry label
+        self.first_idx   = 0        # stmt indx of entry label
 
 
 class StmtEmitter:
@@ -790,14 +790,14 @@ class StmtEmitter:
             if not args:
                 continue
             spec_val = args[0].val if hasattr(args[0], 'val') else None
-            if not isinstance(spec_val, str):
+            if not isinstance(spec_val, strv):
                 continue
             entry_val = (args[1].val if len(args) > 1 and
                          hasattr(args[1], 'val') else None)
-            if not isinstance(entry_val, str):
+            if not isinstance(entry_val, strv):
                 entry_val = None
 
-            m = _re.match(r"(\w+)\(([^)]*)\)(.*)", spec_val)
+            m = _re.mtch(r"(\w+)\(([^)]*)\)(.*)", spec_val)
             if m:
                 fname   = m.group(1)
                 params  = [p.strip() for p in m.group(2).split(',') if p.strip()]
@@ -814,7 +814,7 @@ class StmtEmitter:
                 fi.end_label = None
                 func_map[eu] = fi
 
-        # Step 3: sort function entries by stmt index
+        # Step 3: sort function entries by stmt indx
         funcs_ordered = sorted(
             func_map.values(),
             key=lambda fi: label_to_idx[fi.entry_label.upper()]
@@ -957,7 +957,7 @@ class StmtEmitter:
         # Forward-declare each user function
         for fi in funcs:
             safe = _safe_c_name(fi.name)
-            self._w(f'static SnoVal sno_uf_{safe}(SnoVal *_args, int _nargs);')
+            self._w(f'static SnoVal uf_{safe}(SnoVal *_args, int _nargs);')
         self._w('')
 
     # ------------------------------------------------------------------
@@ -967,7 +967,7 @@ class StmtEmitter:
     def _emit_main_body_segments(self, segments):
         """Emit main program: interleaved segments (main stmts + residuals)."""
         self._func_suffix = '_MAIN'
-        self._w('int sno_program(void) {')
+        self._w('int program(void) {')
         self._w('    /* Jump to first statement */')
         # Find first stmt across all segments
         for offset, stmts in segments:
@@ -982,21 +982,21 @@ class StmtEmitter:
     def _emit_main_footer(self):
         self._emit_indirect_goto_stubs()
         self._w('/* --- program exit labels --- */')
-        self._w('_SNO_PROG_END:')
+        self._w('_PROG_END:')
         self._w('    return 0;')
-        self._w('SNO_RETURN_LABEL_MAIN:')
+        self._w('RETURN_LABEL_MAIN:')
         self._w('    return 0;')
-        self._w('SNO_FRETURN_LABEL_MAIN:')
+        self._w('FRETURN_LABEL_MAIN:')
         self._w('    return 1;')
-        self._w('SNO_NRETURN_LABEL_MAIN:')
+        self._w('NRETURN_LABEL_MAIN:')
         self._w('    return 0;')
-        self._w('SNO_CONTINUE_LABEL_MAIN:')
+        self._w('CONTINUE_LABEL_MAIN:')
         self._w('    return 0;')
-        self._w('SNO_error:')
-        self._w('SNO_ERROR_LABEL_MAIN:')
+        self._w('error:')
+        self._w('ERROR_LABEL_MAIN:')
         self._w('    fprintf(stderr, "error label reached\\n");')
         self._w('    return 2;')
-        self._w('SNO_err:')
+        self._w('err:')
         self._w('    fprintf(stderr, "err label reached\\n");')
         self._w('    return 2;')
         self._w('}')
@@ -1011,17 +1011,17 @@ class StmtEmitter:
         self._func_suffix = f'_{safe}'
         all_vars = fi.params + fi.locals_
         self._w(f'/* SNOBOL4 function: {fi.name}({", ".join(fi.params)}) locals={fi.locals_} */')
-        self._w(f'static SnoVal sno_uf_{safe}(SnoVal *_args, int _nargs) {{')
+        self._w(f'static SnoVal uf_{safe}(SnoVal *_args, int _nargs) {{')
         # Save existing values of params+locals, bind params from args
         if all_vars:
             self._w(f'    /* Save and bind params/locals */')
             for v in all_vars:
                 sv = _safe_c_name(v)
-                self._w(f'    SnoVal _save_{sv} = sno_var_get("{v}");')
+                self._w(f'    SnoVal _save_{sv} = var_get("{v}");')
             for i, p in enumerate(fi.params):
-                self._w(f'    sno_var_set("{p}", (_nargs > {i}) ? _args[{i}] : SNO_NULL_VAL);')
+                self._w(f'    var_set("{p}", (_nargs > {i}) ? _args[{i}] : NULL_VAL);')
             for l in fi.locals_:
-                self._w(f'    sno_var_set("{l}", SNO_NULL_VAL);')
+                self._w(f'    var_set("{l}", NULL_VAL);')
             self._w('')
 
         # Jump to entry label
@@ -1034,47 +1034,47 @@ class StmtEmitter:
         self._emit_stmts(fi.stmts, fi.first_idx, is_main=False)
 
         # Return labels — per function
-        ret_lbl  = f'SNO_RETURN_LABEL_{safe}'
-        fret_lbl = f'SNO_FRETURN_LABEL_{safe}'
-        nret_lbl = f'SNO_NRETURN_LABEL_{safe}'
-        cont_lbl = f'SNO_CONTINUE_LABEL_{safe}'
+        ret_lbl  = f'RETURN_LABEL_{safe}'
+        fret_lbl = f'FRETURN_LABEL_{safe}'
+        nret_lbl = f'NRETURN_LABEL_{safe}'
+        cont_lbl = f'CONTINUE_LABEL_{safe}'
         self._w(f'{ret_lbl}:')
         # RETURN: capture the function-name variable (the return value) BEFORE
         # restoring params/locals, then restore, then return it.
         # In SNOBOL4, :(RETURN) returns the current value of the function-name var.
         self._w(f'    {{')
-        self._w(f'        SnoVal _retval = sno_var_get("{fi.name}");')
+        self._w(f'        SnoVal _retval = var_get("{fi.name}");')
         if all_vars:
             for v in all_vars:
                 sv = _safe_c_name(v)
-                self._w(f'        sno_var_set("{v}", _save_{sv});')
+                self._w(f'        var_set("{v}", _save_{sv});')
         self._w(f'        return _retval;')
         self._w(f'    }}')
         self._w(f'{fret_lbl}:')
         if all_vars:
             for v in all_vars:
                 sv = _safe_c_name(v)
-                self._w(f'    sno_var_set("{v}", _save_{sv});')
-        self._w(f'    return SNO_FAIL_VAL;')
+                self._w(f'    var_set("{v}", _save_{sv});')
+        self._w(f'    return FAIL_VAL;')
         self._w(f'{nret_lbl}:')
         if all_vars:
             for v in all_vars:
                 sv = _safe_c_name(v)
-                self._w(f'    sno_var_set("{v}", _save_{sv});')
-        self._w(f'    return SNO_NULL_VAL;  /* NRETURN */')
+                self._w(f'    var_set("{v}", _save_{sv});')
+        self._w(f'    return NULL_VAL;  /* NRETURN */')
         self._w(f'{cont_lbl}:')
         if all_vars:
             for v in all_vars:
                 sv = _safe_c_name(v)
-                self._w(f'    sno_var_set("{v}", _save_{sv});')
-        self._w(f'    return SNO_NULL_VAL;  /* CONTINUE */')
-        self._w(f'SNO_ERROR_LABEL_{safe}:')
+                self._w(f'    var_set("{v}", _save_{sv});')
+        self._w(f'    return NULL_VAL;  /* CONTINUE */')
+        self._w(f'ERROR_LABEL_{safe}:')
         self._w(f'    fprintf(stderr, "** error in {fi.name}\\n");')
         if all_vars:
             for v in all_vars:
                 sv = _safe_c_name(v)
-                self._w(f'    sno_var_set("{v}", _save_{sv});')
-        self._w(f'    return SNO_FAIL_VAL;')
+                self._w(f'    var_set("{v}", _save_{sv});')
+        self._w(f'    return FAIL_VAL;')
         self._emit_indirect_goto_stubs()
         self._w(f'}}')
         self._w('')
@@ -1085,13 +1085,13 @@ class StmtEmitter:
 
     def _emit_main_c(self, funcs):
         self._w('int main(void) {')
-        self._w('    sno_runtime_init();')
-        self._w('    sno_inc_init();')
+        self._w('    runtime_init();')
+        self._w('    inc_init();')
         for fi in funcs:
             safe = _safe_c_name(fi.name)
             spec = f'{fi.name}({",".join(fi.params)}){",".join(fi.locals_)}'
-            self._w(f'    sno_define("{spec}", sno_uf_{safe});')
-        self._w('    return sno_program();')
+            self._w(f'    define("{spec}", uf_{safe});')
+        self._w('    return program();')
         self._w('}')
 
     # ------------------------------------------------------------------
@@ -1104,11 +1104,11 @@ class StmtEmitter:
             abs_i = offset + i
             lbl = self._stmt_label(abs_i, stmt)
             next_lbl = (self._stmt_label(offset + i + 1, stmts[i+1])
-                        if i+1 < n else ('_SNO_PROG_END' if is_main else
-                                         f'SNO_RETURN_LABEL{self._func_suffix}'))
+                        if i+1 < n else ('_PROG_END' if is_main else
+                                         f'RETURN_LABEL{self._func_suffix}'))
 
             self._w(f'{lbl}: {{  /* L{stmt.lineno} */')
-            self._w(f'    sno_comm_stno({stmt.lineno});')
+            self._w(f'    comm_stno({stmt.lineno});')
 
             succ_lbl = next_lbl
             fail_lbl = next_lbl
@@ -1134,7 +1134,7 @@ class StmtEmitter:
         cl = _c_label(target)
         cl = self._map_special_label(cl, target)
         # If the target is not a defined label, it's an indirect (variable) goto.
-        # Emit a stub C label that calls sno_indirect_goto at runtime.
+        # Emit a stub C label that calls indirect_goto at runtime.
         if target.upper() not in self._defined_labels:
             stub = f'_sno_ind_{_safe_c_name(target)}'
             self._indirect_goto_stubs.add((stub, target))
@@ -1146,11 +1146,11 @@ class StmtEmitter:
         if not self._indirect_goto_stubs:
             return
         is_main = (self._func_suffix == '_MAIN')
-        ret_stmt = 'return 0;' if is_main else 'return SNO_NULL_VAL;'
+        ret_stmt = 'return 0;' if is_main else 'return NULL_VAL;'
         self._w('/* --- indirect goto stubs --- */')
         for stub, varname in sorted(self._indirect_goto_stubs):
             self._w(f'{stub}:')
-            self._w(f'    sno_indirect_goto("{varname}");')
+            self._w(f'    indirect_goto("{varname}");')
             self._w(f'    {ret_stmt}')
         self._indirect_goto_stubs.clear()
 
@@ -1158,8 +1158,8 @@ class StmtEmitter:
         """Emit a C goto, handling indirect (variable) gotos."""
         if label.startswith('_INDIRECT_GOTO_'):
             varname = label[len('_INDIRECT_GOTO_'):]
-            self._w(f'        sno_indirect_goto("{varname}"); /* indirect goto :(varname) */')
-            self._w(f'        return SNO_NULL_VAL; /* not reached */')
+            self._w(f'        indirect_goto("{varname}"); /* indirect goto :(varname) */')
+            self._w(f'        return NULL_VAL; /* not reached */')
         else:
             self._w(f'        goto {label};')
 
@@ -1173,28 +1173,28 @@ class StmtEmitter:
             name = subj.name.upper() if subj.name else ''
             ca = [emit_expr(a) for a in (subj.args or [])]
             if name == 'DEFINE':
-                self._w(f'    sno_define_spec({ca[0] if ca else "SNO_NULL_VAL"});')
+                self._w(f'    define_spec({ca[0] if ca else "NULL_VAL"});')
             elif name == 'DATA':
-                self._w(f'    sno_data_define(sno_to_str({ca[0] if ca else "SNO_NULL_VAL"}));')
+                self._w(f'    data_define(to_str({ca[0] if ca else "NULL_VAL"}));')
             elif name == 'OPSYN':
                 if len(ca) >= 3:
-                    self._w(f'    sno_opsyn({", ".join(ca)});')
+                    self._w(f'    opsyn({", ".join(ca)});')
                 else:
-                    self._w(f'    sno_opsyn2({", ".join(ca)});')
+                    self._w(f'    opsyn2({", ".join(ca)});')
             else:
                 args_c = ', '.join(ca)
                 n_args = len(ca)
                 if n_args:
                     self._w(f'    {{')
-                    self._w(f'        SnoVal _ret = sno_apply("{subj.name}", (SnoVal[{n_args}]){{{args_c}}}, {n_args});')
-                    self._w(f'        if (sno_is_fail(_ret)) goto {fail_lbl};')
+                    self._w(f'        SnoVal _ret = aply("{subj.name}", (SnoVal[{n_args}]){{{args_c}}}, {n_args});')
+                    self._w(f'        if (is_fail(_ret)) goto {fail_lbl};')
                     self._w(f'        goto {succ_lbl};')
                     self._w(f'    }}')
                     return
                 else:
                     self._w(f'    {{')
-                    self._w(f'        SnoVal _ret = sno_apply("{subj.name}", NULL, 0);')
-                    self._w(f'        if (sno_is_fail(_ret)) goto {fail_lbl};')
+                    self._w(f'        SnoVal _ret = aply("{subj.name}", NULL, 0);')
+                    self._w(f'        if (is_fail(_ret)) goto {fail_lbl};')
                     self._w(f'        goto {succ_lbl};')
                     self._w(f'    }}')
                     return
@@ -1205,12 +1205,12 @@ class StmtEmitter:
             rhs_c = emit_expr(repl)
             self._w(f'    {{')
             self._w(f'        SnoVal _rhs = {rhs_c};')
-            self._w(f'        if (sno_is_fail(_rhs)) goto {fail_lbl};')
+            self._w(f'        if (is_fail(_rhs)) goto {fail_lbl};')
             self._w(f'        {emit_assign_target(subj, "_rhs")[4:]}')
             self._w(f'        goto {succ_lbl};')
             self._w(f'    }}')
 
-        # Case 3: subject pattern = replacement (pattern match + optional replacement)
+        # Case 3: subject pattern = replacement (pattern mtch + optional replacement)
         elif subj is not None and pat is not None:
             subj_c  = emit_expr(subj)
             pat_c   = emit_pattern_expr(pat)
@@ -1219,7 +1219,7 @@ class StmtEmitter:
             if repl_c:
                 self._w(f'    {{')
                 self._w(f'        SnoVal _subj = {subj_c};')
-                self._w(f'        int _ok = sno_match_and_replace(&_subj, {pat_c}, {repl_c});')
+                self._w(f'        int _ok = match_and_replace(&_subj, {pat_c}, {repl_c});')
                 self._w(f'        {emit_assign_target(subj, "_subj")[4:]}')
                 self._w(f'        if (_ok) goto {succ_lbl};')
                 self._w(f'        else goto {fail_lbl};')
@@ -1227,18 +1227,18 @@ class StmtEmitter:
             else:
                 self._w(f'    {{')
                 self._w(f'        SnoVal _subj = {subj_c};')
-                self._w(f'        int _ok = sno_match_pattern({pat_c}, sno_to_str(_subj));')
+                self._w(f'        int _ok = match_pattern({pat_c}, to_str(_subj));')
                 self._w(f'        if (_ok) goto {succ_lbl};')
                 self._w(f'        else goto {fail_lbl};')
                 self._w(f'    }}')
 
         # Case 3c: no subject but has pattern (predicate call sequence)
-        # In SNOBOL4, "LT(i,n) Gen(nl)" with empty subject = match "" against the pattern
+        # In SNOBOL4, "LT(i,n) Gen(nl)" with empty subject = mtch "" against the pattern
         # Predicate patterns (LT, GT, EQ etc.) succeed/fail purely on their predicate logic.
         elif subj is None and pat is not None and repl is None:
             pat_c = emit_pattern_expr(pat)
             self._w(f'    {{')
-            self._w(f'        int _ok = sno_match_pattern({pat_c}, "");')
+            self._w(f'        int _ok = match_pattern({pat_c}, "");')
             self._w(f'        if (_ok) goto {succ_lbl};')
             self._w(f'        else goto {fail_lbl};')
             self._w(f'    }}')
@@ -1249,7 +1249,7 @@ class StmtEmitter:
             subj_c = emit_expr(subj)
             self._w(f'    {{')
             self._w(f'        SnoVal _sv = {subj_c};')
-            self._w(f'        if (sno_is_fail(_sv)) goto {fail_lbl};')
+            self._w(f'        if (is_fail(_sv)) goto {fail_lbl};')
             self._w(f'        goto {succ_lbl};')
             self._w(f'    }}')
 
@@ -1262,8 +1262,8 @@ class StmtEmitter:
             rhs_c = emit_expr(repl)
             self._w(f'    {{')
             self._w(f'        SnoVal _rhs = {rhs_c};')
-            self._w(f'        if (sno_is_fail(_rhs)) goto {fail_lbl};')
-            self._w(f'        sno_output_val(_rhs);')
+            self._w(f'        if (is_fail(_rhs)) goto {fail_lbl};')
+            self._w(f'        output_val(_rhs);')
             self._w(f'        goto {succ_lbl};')
             self._w(f'    }}')
 
@@ -1279,23 +1279,23 @@ class StmtEmitter:
         upper = orig.upper()
         sfx = self._func_suffix  # e.g. '_findRefs' or '_MAIN'
         if upper == 'END':
-            return '_SNO_PROG_END'
+            return '_PROG_END'
         if upper == 'RETURN':
-            return f'SNO_RETURN_LABEL{sfx}'
+            return f'RETURN_LABEL{sfx}'
         if upper == 'FRETURN':
-            return f'SNO_FRETURN_LABEL{sfx}'
+            return f'FRETURN_LABEL{sfx}'
         if upper == 'NRETURN':
-            return f'SNO_NRETURN_LABEL{sfx}'
+            return f'NRETURN_LABEL{sfx}'
         if upper == 'CONTINUE':
-            return f'SNO_CONTINUE_LABEL{sfx}'
+            return f'CONTINUE_LABEL{sfx}'
         # error/err — global error handler (goes to main program error label)
         if upper in ('ERROR', 'ERR'):
-            return f'SNO_ERROR_LABEL{sfx}'
+            return f'ERROR_LABEL{sfx}'
         return cl
 
     def _emit_error_label(self, sfx):
         """Emit a per-function error label that prints and fails."""
-        self._w(f'SNO_ERROR_LABEL{sfx}:')
+        self._w(f'ERROR_LABEL{sfx}:')
         self._w(f'    fprintf(stderr, "** program error\\n");')
 
     # Known builtin function names — these are real calls, not mislabeled stmts
@@ -1350,7 +1350,7 @@ def _safe_c_name(s):
     return r or 'anon'
 
 
-def emit_program(prog: Program) -> str:
+def emit_program(prog: Program) -> strv:
     """Emit a complete C source file from a parsed SNOBOL4 program."""
     return StmtEmitter(prog).emit()
 
@@ -1362,7 +1362,7 @@ def emit_program(prog: Program) -> str:
 if __name__ == '__main__':
     import sys
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'parser'))
-    from sno_parser import parse_file
+    from parser import parse_file
 
     import argparse
     ap = argparse.ArgumentParser()

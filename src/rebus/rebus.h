@@ -8,9 +8,9 @@
  *     if/else, while, until, repeat, for, case, exit, next,
  *     fail, return, function declarations, record declarations.
  *   - The P-component (pattern matching) is SNOBOL4's:
- *     subject ? pattern  (match)
- *     subject ? pattern <- replacement  (replace)
- *     subject ?- pattern  (shorthand replace-with-empty)
+ *     subject ? pattern  (mtch)
+ *     subject ? pattern <- replacement  (replc)
+ *     subject ?- pattern  (shorthand replc-with-empty)
  *
  * Programs consist of a sequence of declarations (record and function).
  * Execution begins with a call to main().
@@ -141,9 +141,9 @@ typedef enum {
     RS_RETURN,      /* return [expr] */
     RS_STOP,        /* stop */
 
-    RS_MATCH,       /* expr ? expr  (pattern match, no replacement) */
-    RS_REPLACE,     /* expr ? expr <- expr  (pattern replace) */
-    RS_REPLN,       /* expr ?- expr  (replace with empty, shorthand) */
+    RS_MATCH,       /* expr ? expr  (pattern mtch, no replacement) */
+    RS_REPLACE,     /* expr ? expr <- expr  (pattern replc) */
+    RS_REPLN,       /* expr ?- expr  (replc with empty, shorthand) */
 
     RS_COMPOUND,    /* { stmt ; stmt ; … } */
 } RSKind;
@@ -257,7 +257,7 @@ static inline RCase *rcase_new(int lineno) {
 }
 
 /* ================================================================
- * String helpers (same pattern as snoc.h)
+ * String helpers (same pattern as sno2c.h)
  * ================================================================ */
 static inline char *rebus_intern(const char *s) {
     return s ? strdup(s) : NULL;

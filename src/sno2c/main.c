@@ -1,8 +1,8 @@
 /*
- * main.c — snoc driver
+ * main.c — sno2c driver
  * Usage: sno2c [-I dir] [-o out.c] input.sno
  */
-#include "snoc.h"
+#include "sno2c.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

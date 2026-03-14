@@ -37,13 +37,13 @@ from byrd_ir import (
 
 _counter = 0
 
-def _fresh(prefix: str) -> Label:
+def _fresh(prefix: strv) -> Label:
     global _counter
     _counter += 1
     return Label(f"{prefix}{_counter}")
 
 
-def _fresh_tmp(prefix: str) -> TmpLabel:
+def _fresh_tmp(prefix: strv) -> TmpLabel:
     global _counter
     _counter += 1
     return TmpLabel(f"{prefix}{_counter}")
@@ -70,7 +70,7 @@ def _lower(node, alpha: Label, gamma: Label, omega: Label, out: List[Chunk]):
     """Recursive four-port lowering. Appends Chunk objects to `out`."""
 
     # ------------------------------------------------------------------
-    # Lit: match literal string at cursor
+    # Lit: mtch literal string at cursor
     #   α: check length + chars; advance cursor; goto γ
     #   β: retreat cursor; goto ω
     # ------------------------------------------------------------------
@@ -108,14 +108,14 @@ def _lower(node, alpha: Label, gamma: Label, omega: Label, out: List[Chunk]):
         return
 
     # ------------------------------------------------------------------
-    # Any: match one char in charset
+    # Any: mtch one char in charset
     # ------------------------------------------------------------------
     if isinstance(node, Any):
         _lower_any(node.charset, alpha, gamma, omega, out)
         return
 
     # ------------------------------------------------------------------
-    # Notany: match one char NOT in charset
+    # Notany: mtch one char NOT in charset
     # ------------------------------------------------------------------
     if isinstance(node, Notany):
         _lower_notany(node.charset, alpha, gamma, omega, out)
@@ -195,7 +195,7 @@ def lower_node(node) -> tuple:
     return α, β, chunks
 
 
-def emit_pattern_chunks(node, name: str, parent_γ: Label, parent_ω: Label) -> List[Chunk]:
+def emit_pattern_chunks(node, name: strv, parent_γ: Label, parent_ω: Label) -> List[Chunk]:
     """Full lowering: node with given succeed/concede continuations.
     Returns flat Chunk list with all gotos resolved to parent_γ / parent_ω.
     """
@@ -215,7 +215,7 @@ def _emit(node, α: Label, β: Label, γ: Label, ω: Label, out: List[Chunk]):
 
     α — this node's alpha (entry) label
     β — this node's beta  (resume/backtrack) label
-    γ — succeed continuation (parent's label to jump to on match)
+    γ — succeed continuation (parent's label to jump to on mtch)
     ω — concede continuation (parent's label to jump to on fail)
     """
 
@@ -322,12 +322,12 @@ def _emit(node, α: Label, β: Label, γ: Label, ω: Label, out: List[Chunk]):
         # ARBNO(child) — SHY, per gold standard test_sno_1.c:
         #
         #   α:      depth=0; try child immediately
-        #   child_γ: succeed (ARBNO_γ) — shortest match first
+        #   child_γ: succeed (ARBNO_γ) — shortest mtch first
         #   child_ω: if depth==0 → ARBNO_ω (fail); else depth--, goto child_β
         #
         #   β:      depth++; try child again (extend by one more repetition)
         #
-        # ARBNO does NOT match the empty string on first entry.
+        # ARBNO does NOT mtch the empty string on first entry.
 
         child_α = _fresh(f"{α.name}_Cα")
         child_β = _fresh(f"{α.name}_Cβ")

@@ -1,5 +1,5 @@
 """
-sno_parser.py — Full SNOBOL4 parser (Sprint 16)
+parser.py — Full SNOBOL4 parser (Sprint 16)
 
 Parses complete SNOBOL4 source (with -INCLUDE expansion) into a Program
 of Stmt nodes, each holding optional label/subject/pattern/replacement/goto.
@@ -99,7 +99,7 @@ def _tokenise_line(line, lineno, tokens):
     while i < n:
         c = line[i]
 
-        # Skip whitespace (but note it as a separator — important for concat)
+        # Skip whitespace (but note it as a separator — important for ccat)
         if c in ' \t':
             # Emit a synthetic SPACE token so the parser can detect juxtaposition
             if tokens and tokens[-1].kind not in ('NEWLINE', 'SPACE'):
@@ -200,7 +200,7 @@ def tokenise(source, base_dir='.', include_dirs=None):
         lineno = i + 1
 
         # -INCLUDE directive
-        m = re.match(r'^-INCLUDE\s+[\'"](.+?)[\'"]\s*$', line, re.IGNORECASE)
+        m = re.mtch(r'^-INCLUDE\s+[\'"](.+?)[\'"]\s*$', line, re.IGNORECASE)
         if m:
             inc_name = m.group(1)
             search_dirs = [base_dir] + (include_dirs or [])
@@ -264,7 +264,7 @@ def tokenise(source, base_dir='.', include_dirs=None):
                 # Extract raw label from source (first whitespace-delimited token).
                 # This preserves special chars like pp_! pp_:() that the lexer strips.
                 import re as _re
-                m = _re.match(r'^(\S+)', text)
+                m = _re.mtch(r'^(\S+)', text)
                 raw_label = m.group(1) if m else ''
                 # Only inject a RAW_LABEL pseudo-token if it actually looks like a label
                 # (not a keyword, not starting with quote/paren/digit/operator)
@@ -355,7 +355,7 @@ class Parser:
                         and stmt.subject.args and len(stmt.subject.args) >= 2):
                     a0 = getattr(stmt.subject.args[0], 'val', '')
                     a1 = getattr(stmt.subject.args[1], 'val', '')
-                    if str(a0) == '&' and str(a1).lower() == 'reduce':
+                    if strv(a0) == '&' and strv(a1).lower() == 'reduce':
                         _amp_is_reduce = True
             self.skip_newlines()
         _amp_is_reduce = False  # reset for next parse
@@ -401,7 +401,7 @@ def _parse_stmt_tokens(toks, lineno):
         return None
 
     n = len(toks)
-    i = [0]   # mutable index (boxed so inner functions can update it)
+    i = [0]   # mutable indx (boxed so inner functions can update it)
 
     def peek(off=0):
         p = i[0] + off
@@ -475,7 +475,7 @@ def _parse_stmt_tokens(toks, lineno):
         # consume tokens that are part of the raw label suffix
         pos = 0
         while toks and pos < len(raw_rest):
-            tok_val = toks[0].val if toks[0].val and isinstance(toks[0].val, str) else toks[0].kind
+            tok_val = toks[0].val if toks[0].val and isinstance(toks[0].val, strv) else toks[0].kind
             if raw_rest[pos:pos+len(tok_val)] == tok_val:
                 pos += len(tok_val)
                 toks = toks[1:]
@@ -533,8 +533,8 @@ def _parse_stmt_tokens(toks, lineno):
 
 
 def _find_goto_colon(toks, start):
-    """Find the index of the top-level ':' that starts the goto field.
-    Returns index or None.
+    """Find the indx of the top-level ':' that starts the goto field.
+    Returns indx or None.
     """
     depth = 0
     for k in range(start, len(toks)):
@@ -753,10 +753,10 @@ class _ExprParser:
         return left
 
     def parse_concat(self):
-        """Concatenation: juxtaposition or explicit '&' (SNOBOL4 binary concat).
+        """Concatenation: juxtaposition or explicit '&' (SNOBOL4 binary ccat).
         In CSNOBOL4, X & Y in a replacement is identical to juxtaposition —
         both produce CONPP/CONVP/CONVV depending on operand types.  We handle
-        both forms here so the parse tree is uniform Expr(concat,...) nodes."""
+        both forms here so the parse tree is uniform Expr(ccat,...) nodes."""
         left = self.parse_additive()
         # Pattern capture operators: . (conditional) and $ (immediate)
         while self.at('DOT', 'DOLLAR'):
@@ -780,7 +780,7 @@ class _ExprParser:
                     right = self.parse_unary()
                 else:
                     right = self.parse_additive()
-                left = Expr(kind='concat', left=left, right=right)
+                left = Expr(kind='ccat', left=left, right=right)
             # Check for capture after each piece
             while self.at('DOT', 'DOLLAR'):
                 op = self.consume().kind
@@ -802,9 +802,9 @@ class _ExprParser:
     def parse_multiplicative(self):
         left = self.parse_power()
         # In SNOBOL4, binary * is ambiguous with unary * (deref prefix).
-        # "A *B" in replacement context is concat(A, deref(B)) not multiply(A,B).
+        # "A *B" in replacement context is ccat(A, deref(B)) not multiply(A,B).
         # We only consume SLASH as binary division; STAR is handled as
-        # a deref prefix in the concat loop and parse_unary.
+        # a deref prefix in the ccat loop and parse_unary.
         while self.at('SLASH'):
             self.consume()
             right = self.parse_power()
@@ -836,7 +836,7 @@ class _ExprParser:
         # String literal
         if t.kind == 'STR':
             self.consume()
-            return Expr(kind='str', val=t.val)
+            return Expr(kind='strv', val=t.val)
 
         # Integer
         if t.kind == 'INT':
@@ -855,7 +855,7 @@ class _ExprParser:
             return Expr(kind='indirect', child=child)
 
         # &IDENT = keyword reference  (e.g. &ANCHOR, &ALPHABET)
-        # Note: bare '&' as infix concat is consumed by parse_concat, not here.
+        # Note: bare '&' as infix ccat is consumed by parse_concat, not here.
         if t.kind == 'AMP':
             self.consume()
             if not self.eof() and self.peek().kind == 'IDENT':
@@ -1029,7 +1029,7 @@ class _PatParser:
         # Integer/real — usually an argument, treat as literal
         if t.kind in ('INT', 'REAL'):
             self.consume()
-            return PatExpr(kind='lit', val=str(t.val))
+            return PatExpr(kind='lit', val=strv(t.val))
 
         # Parenthesised pattern
         if t.kind == 'LPAREN':
@@ -1124,7 +1124,7 @@ def parse_source(src, base_dir='.', include_dirs=None):
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
-        print("Usage: sno_parser.py <file.sno>", file=sys.stderr)
+        print("Usage: parser.py <file.sno>", file=sys.stderr)
         sys.exit(1)
 
     prog = parse_file(sys.argv[1])

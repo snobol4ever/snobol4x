@@ -1,15 +1,15 @@
 /*
- * emit.c — SNOBOL4→C emitter for snoc
+ * emit.c — SNOBOL4→C emitter for sno2c
  *
  * One Expr type.  emit_expr() and emit_pat() both walk Expr nodes,
- * but emit_pat() routes E_CALL to sno_pat_* and E_CONCAT to sno_pat_cat().
+ * but emit_pat() routes E_CALL to pat_* and E_CONCAT to pat_cat().
  *
  * Generated C uses the snobol4.c runtime API:
- *   SnoVal, sno_var_get/set, sno_apply, sno_concat, sno_add, …
- *   SnoPattern*, sno_pat_lit, sno_pat_len, sno_pat_cat, sno_match, …
+ *   SnoVal, var_get/set, aply, ccat, add, …
+ *   SnoPattern*, pat_lit, pat_len, pat_cat, mtch, …
  */
 
-#include "snoc.h"
+#include "sno2c.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -116,25 +116,25 @@ static void emit_pat(Expr *e);
 static int  expr_contains_pattern(Expr *e);
 
 static void emit_expr(Expr *e) {
-    if (!e) { E("SNO_NULL_VAL"); return; }
+    if (!e) { E("NULL_VAL"); return; }
     switch (e->kind) {
-    case E_NULL:    E("SNO_NULL_VAL"); break;
-    case E_STR:     E("sno_str("); emit_cstr(e->sval); E(")"); break;
-    case E_INT:     E("sno_int(%ld)", e->ival); break;
-    case E_REAL:    E("sno_real(%g)", e->dval); break;
+    case E_NULL:    E("NULL_VAL"); break;
+    case E_STR:     E("strv("); emit_cstr(e->sval); E(")"); break;
+    case E_INT:     E("vint(%ld)", e->ival); break;
+    case E_REAL:    E("real(%g)", e->dval); break;
     case E_VAR:
-        if (is_io_name(e->sval)) E("sno_var_get(\"%s\")", e->sval);
-        else E("sno_get(%s)", cs(e->sval));
+        if (is_io_name(e->sval)) E("var_get(\"%s\")", e->sval);
+        else E("get(%s)", cs(e->sval));
         break;
-    case E_KEYWORD: E("sno_kw(\"%s\")", e->sval); break;
+    case E_KEYWORD: E("kw(\"%s\")", e->sval); break;
 
     case E_DEREF:
         if (!e->left) {
             /* $expr — indirect lookup */
-            E("sno_deref("); emit_expr(e->right); E(")");
+            E("deref("); emit_expr(e->right); E(")");
         } else if (e->left->kind == E_VAR) {
-            /* *varname — deferred pattern reference (resolved at match time) */
-            E("sno_var_as_pattern(sno_pat_ref(\"%s\"))", e->left->sval);
+            /* *varname — deferred pattern reference (resolved at mtch time) */
+            E("var_as_pattern(pat_ref(\"%s\"))", e->left->sval);
         } else if (e->left->kind == E_CALL && e->left->nargs >= 1
                    && !is_defined_function(e->left->sval)) {
 
@@ -142,33 +142,33 @@ static void emit_expr(Expr *e) {
              * SNOBOL4 continuation lines cause the parser to greedily consume the
              * next '(' as a function-call argument to varname.  The correct
              * semantics are: deferred-ref(*varname) cat arg. */
-            E("sno_concat_sv(sno_var_as_pattern(sno_pat_ref(\"%s\")),", e->left->sval);
+            E("concat_sv(var_as_pattern(pat_ref(\"%s\")),", e->left->sval);
             emit_expr(e->left->args[0]);
             E(")");
         } else {
             /* *(expr) — deref of compound expression */
-            E("sno_deref("); emit_expr(e->left); E(")");
+            E("deref("); emit_expr(e->left); E(")");
         }
         break;
 
-    case E_NEG: E("sno_neg("); emit_expr(e->right); E(")"); break;
+    case E_NEG: E("neg("); emit_expr(e->right); E(")"); break;
 
     case E_CONCAT:
-        E("sno_concat_sv("); emit_expr(e->left); E(","); emit_expr(e->right); E(")");
+        E("concat_sv("); emit_expr(e->left); E(","); emit_expr(e->right); E(")");
         break;
 
-    case E_REDUCE: E("sno_apply(\"reduce\",(SnoVal[]){"); emit_expr(e->left); E(","); emit_expr(e->right); E("},2)"); break;
-    case E_ADD:    E("sno_add(");    emit_expr(e->left); E(","); emit_expr(e->right); E(")"); break;
-    case E_SUB:    E("sno_sub(");    emit_expr(e->left); E(","); emit_expr(e->right); E(")"); break;
-    case E_MUL:    E("sno_mul(");    emit_expr(e->left); E(","); emit_expr(e->right); E(")"); break;
-    case E_DIV:    E("sno_div(");    emit_expr(e->left); E(","); emit_expr(e->right); E(")"); break;
-    case E_POW:    E("sno_pow(");    emit_expr(e->left); E(","); emit_expr(e->right); E(")"); break;
+    case E_REDUCE: E("aply(\"reduce\",(SnoVal[]){"); emit_expr(e->left); E(","); emit_expr(e->right); E("},2)"); break;
+    case E_ADD:    E("add(");    emit_expr(e->left); E(","); emit_expr(e->right); E(")"); break;
+    case E_SUB:    E("sub(");    emit_expr(e->left); E(","); emit_expr(e->right); E(")"); break;
+    case E_MUL:    E("mul(");    emit_expr(e->left); E(","); emit_expr(e->right); E(")"); break;
+    case E_DIV:    E("dyvide(");    emit_expr(e->left); E(","); emit_expr(e->right); E(")"); break;
+    case E_POW:    E("powr(");    emit_expr(e->left); E(","); emit_expr(e->right); E(")"); break;
     case E_ALT:
-        /* Same: if either side is pattern-valued, use sno_pat_alt */
+        /* Same: if either side is pattern-valued, use pat_alt */
         if (expr_contains_pattern(e->left) || expr_contains_pattern(e->right)) {
-            E("sno_pat_alt("); emit_pat(e->left); E(","); emit_pat(e->right); E(")");
+            E("pat_alt("); emit_pat(e->left); E(","); emit_pat(e->right); E(")");
         } else {
-            E("sno_alt("); emit_expr(e->left); E(","); emit_expr(e->right); E(")");
+            E("alt("); emit_expr(e->left); E(","); emit_expr(e->right); E(")");
         }
         break;
 
@@ -178,9 +178,9 @@ static void emit_expr(Expr *e) {
 
     case E_CALL:
         if (e->nargs == 0) {
-            E("sno_apply(\"%s\",NULL,0)", e->sval);
+            E("aply(\"%s\",NULL,0)", e->sval);
         } else {
-            E("sno_apply(\"%s\",(SnoVal[]){", e->sval);
+            E("aply(\"%s\",(SnoVal[]){", e->sval);
             for (int i=0; i<e->nargs; i++) {
                 if (i) E(","); emit_expr(e->args[i]);
             }
@@ -189,7 +189,7 @@ static void emit_expr(Expr *e) {
         break;
 
     case E_ARRAY:
-        E("sno_aref(%s,(SnoVal[]){", cs(e->sval));
+        E("aref(%s,(SnoVal[]){", cs(e->sval));
         for (int i=0; i<e->nargs; i++) {
             if (i) E(","); emit_expr(e->args[i]);
         }
@@ -198,7 +198,7 @@ static void emit_expr(Expr *e) {
 
     case E_INDEX:
         /* postfix subscript: expr[i] — e.g. c(x)[i] */
-        E("sno_index("); emit_expr(e->left); E(",(SnoVal[]){");
+        E("indx("); emit_expr(e->left); E(",(SnoVal[]){");
         for (int i=0; i<e->nargs; i++) {
             if (i) E(","); emit_expr(e->args[i]);
         }
@@ -207,12 +207,12 @@ static void emit_expr(Expr *e) {
 
     case E_AT:
         /* @var — cursor position capture: evaluates to cursor int */
-        E("sno_cursor_get(\"%s\")", e->sval);
+        E("cursor_get(\"%s\")", e->sval);
         break;
 
     case E_ASSIGN:
         /* var = expr inside expression context */
-        E("sno_assign_expr(%s,", cs(e->left->sval)); emit_expr(e->right); E(")");
+        E("assign_expr(%s,", cs(e->left->sval)); emit_expr(e->right); E(")");
         break;
     }
 }
@@ -221,124 +221,124 @@ static void emit_expr(Expr *e) {
  * Pattern expression emission → SnoPattern*
  *
  * Same Expr nodes, different routing:
- *   E_CALL  → sno_pat_builtin or sno_pat_call
- *   E_CONCAT → sno_pat_cat
- *   E_ALT   → sno_pat_alt
- *   E_COND  → sno_pat_cond(child_pat, varname)
- *   E_IMM   → sno_pat_imm(child_pat, varname)
- *   E_DEREF → sno_pat_ref(varname)   (deferred pattern reference *X)
- *   E_STR   → sno_pat_lit(str)
- *   E_VAR   → sno_pat_var(varname)   (pattern variable)
+ *   E_CALL  → pat_builtin or pat_call
+ *   E_CONCAT → pat_cat
+ *   E_ALT   → pat_alt
+ *   E_COND  → pat_cond(child_pat, varname)
+ *   E_IMM   → pat_imm(child_pat, varname)
+ *   E_DEREF → pat_ref(varname)   (deferred pattern reference *X)
+ *   E_STR   → pat_lit(strv)
+ *   E_VAR   → pat_var(varname)   (pattern variable)
  * ============================================================ */
 static void emit_pat(Expr *e);
 
 static void emit_pat(Expr *e) {
-    if (!e) { E("sno_pat_epsilon()"); return; }
+    if (!e) { E("pat_epsilon()"); return; }
     switch (e->kind) {
     case E_STR:
-        E("sno_pat_lit("); emit_cstr(e->sval); E(")"); break;
+        E("pat_lit("); emit_cstr(e->sval); E(")"); break;
 
     case E_VAR:
-        E("sno_pat_var(\"%s\")", e->sval); break;
+        E("pat_var(\"%s\")", e->sval); break;
 
     case E_DEREF:
         /* *X — deferred pattern reference */
         if (e->left && e->left->kind == E_VAR)
-            E("sno_pat_ref(\"%s\")", e->left->sval);
+            E("pat_ref(\"%s\")", e->left->sval);
         else if (e->left && e->left->kind == E_CALL && e->left->nargs >= 1
                  && !is_defined_function(e->left->sval)) {
             /* *varname(arg...) — continuation-line misparse: deref-ref cat arg
              * Only applies when varname is NOT a known function (it's a pat var). */
-            E("sno_pat_cat(sno_pat_ref(\"%s\"),", e->left->sval);
+            E("pat_cat(pat_ref(\"%s\"),", e->left->sval);
             emit_pat(e->left->args[0]);
             E(")");
         } else {
-            E("sno_pat_deref("); emit_expr(e->right ? e->right : e->left); E(")");
+            E("pat_deref("); emit_expr(e->right ? e->right : e->left); E(")");
         }
         break;
 
     case E_CONCAT:
-        E("sno_pat_cat("); emit_pat(e->left); E(","); emit_pat(e->right); E(")"); break;
+        E("pat_cat("); emit_pat(e->left); E(","); emit_pat(e->right); E(")"); break;
 
     case E_MUL:
         /* pat * x — parsed as arithmetic multiply, but in pattern context
-         * this is: left_pattern concat *right (deferred ref to right) */
-        E("sno_pat_cat("); emit_pat(e->left); E(",");
+         * this is: left_pattern ccat *right (deferred ref to right) */
+        E("pat_cat("); emit_pat(e->left); E(",");
         if (e->right && e->right->kind == E_VAR)
-            E("sno_pat_ref(\"%s\")", e->right->sval);
-        else { E("sno_pat_deref("); emit_expr(e->right); E(")"); }
+            E("pat_ref(\"%s\")", e->right->sval);
+        else { E("pat_deref("); emit_expr(e->right); E(")"); }
         E(")"); break;
 
     case E_REDUCE:
         /* & in pattern context: reduce(left, right) — must fire at MATCH TIME.
          * reduce() calls EVAL("epsilon . *Reduce(t, n)") where n may contain
-         * nTop() — which must be evaluated at match time, not build time.
-         * Use sno_pat_user_call to defer the call until the engine executes
+         * nTop() — which must be evaluated at mtch time, not build time.
+         * Use pat_user_call to defer the call until the engine executes
          * this node during pattern matching. */
-        E("sno_pat_user_call(\"reduce\",(SnoVal[]){"); emit_expr(e->left); E(","); emit_expr(e->right); E("},2)"); break;
+        E("pat_user_call(\"reduce\",(SnoVal[]){"); emit_expr(e->left); E(","); emit_expr(e->right); E("},2)"); break;
 
     case E_ALT:
-        E("sno_pat_alt("); emit_pat(e->left); E(","); emit_pat(e->right); E(")"); break;
+        E("pat_alt("); emit_pat(e->left); E(","); emit_pat(e->right); E(")"); break;
 
     case E_COND: {
         /* pat . var */
         const char *varname = (e->right && e->right->kind==E_VAR)
                               ? e->right->sval : "?";
-        E("sno_pat_cond("); emit_pat(e->left); E(",\"%s\")", varname); break;
+        E("pat_cond("); emit_pat(e->left); E(",\"%s\")", varname); break;
     }
     case E_IMM: {
         /* pat $ var */
         const char *varname = (e->right && e->right->kind==E_VAR)
                               ? e->right->sval : "?";
-        E("sno_pat_imm("); emit_pat(e->left); E(",\"%s\")", varname); break;
+        E("pat_imm("); emit_pat(e->left); E(",\"%s\")", varname); break;
     }
 
     case E_CALL: {
-        /* Route known builtins to sno_pat_* */
+        /* Route known builtins to pat_* */
         const char *n = e->sval;
         /* B0: zero-arg pattern; B1i: one int64_t arg; B1s: one string arg; B1v: one SnoVal arg */
         #define B0(nm,fn)  if(strcasecmp(n,nm)==0){E(fn"()");break;}
-        #define B1i(nm,fn) if(strcasecmp(n,nm)==0&&e->nargs>=1){E(fn"(sno_to_int(");emit_expr(e->args[0]);E("))");break;}
-        #define B1s(nm,fn) if(strcasecmp(n,nm)==0&&e->nargs>=1){E(fn"(sno_to_str(");emit_expr(e->args[0]);E("))");break;}
+        #define B1i(nm,fn) if(strcasecmp(n,nm)==0&&e->nargs>=1){E(fn"(to_int(");emit_expr(e->args[0]);E("))");break;}
+        #define B1s(nm,fn) if(strcasecmp(n,nm)==0&&e->nargs>=1){E(fn"(to_str(");emit_expr(e->args[0]);E("))");break;}
         #define B1v(nm,fn) if(strcasecmp(n,nm)==0&&e->nargs>=1){E(fn"(");emit_expr(e->args[0]);E(")");break;}
-        B0("ARB","sno_pat_arb")  B0("REM","sno_pat_rem")
-        B0("FAIL","sno_pat_fail") B0("ABORT","sno_pat_abort")
+        B0("ARB","pat_arb")  B0("REM","pat_rem")
+        B0("FAIL","pat_fail") B0("ABORT","pat_abort")
         /* FENCE() = bare fence; FENCE(p) = fence with sub-pattern */
         if(strcasecmp(n,"FENCE")==0){
-            if(e->nargs>=1){E("sno_pat_fence_p(");emit_pat(e->args[0]);E(")");}
-            else{E("sno_pat_fence()");}
+            if(e->nargs>=1){E("pat_fence_p(");emit_pat(e->args[0]);E(")");}
+            else{E("pat_fence()");}
             break;
         }
-        B0("SUCCEED","sno_pat_succeed")
-        B0("BAL","sno_pat_bal")
-        B1i("LEN","sno_pat_len")   B1i("POS","sno_pat_pos")
-        B1i("RPOS","sno_pat_rpos") B1i("TAB","sno_pat_tab")
-        B1i("RTAB","sno_pat_rtab")
-        B1s("SPAN","sno_pat_span") B1s("BREAK","sno_pat_break")
-        B1s("NOTANY","sno_pat_notany") B1s("ANY","sno_pat_any")
-        B1v("ARBNO","sno_pat_arbno")
+        B0("SUCCEED","pat_succeed")
+        B0("BAL","pat_bal")
+        B1i("LEN","pat_len")   B1i("POS","pat_pos")
+        B1i("RPOS","pat_rpos") B1i("TAB","pat_tab")
+        B1i("RTAB","pat_rtab")
+        B1s("SPAN","pat_span") B1s("BREAK","pat_break")
+        B1s("NOTANY","pat_notany") B1s("ANY","pat_any")
+        B1v("ARBNO","pat_arbno")
         #undef B0
         #undef B1i
         #undef B1s
         #undef B1v
-        /* user-defined pattern function — use sno_pat_user_call so the function
+        /* user-defined pattern function — use pat_user_call so the function
          * fires at MATCH TIME (SPAT_USER_CALL materialisation), not at build time.
-         * This correctly handles nPush()/nPop() side effects per match attempt,
+         * This correctly handles nPush()/nPop() side effects per mtch attempt,
          * and reduce()/shift() which return pattern objects at materialisation time.
          *
          * EXCEPTION: if name is NOT a known/defined function AND has args, the
          * parser has misinterpreted  var(pat)  as a function call.  In SNOBOL4,
          * a variable followed by a parenthesised expression is CONCATENATION, not
-         * a call.  Emit: sno_pat_cat(sno_pat_var(n), emit_pat(args[0])) instead. */
+         * a call.  Emit: pat_cat(pat_var(n), emit_pat(args[0])) instead. */
         if (e->nargs > 0 && !is_defined_function(n)) {
             /* variable(args) → CONCAT(var, grouped_pat) */
-            E("sno_pat_cat(sno_pat_var(\"%s\"),", n);
+            E("pat_cat(pat_var(\"%s\"),", n);
             if (e->nargs == 1) {
                 emit_pat(e->args[0]);
             } else {
                 /* Multiple args: emit as successive concatenations */
                 for (int i = 0; i < e->nargs; i++) {
-                    if (i < e->nargs - 1) E("sno_pat_cat(");
+                    if (i < e->nargs - 1) E("pat_cat(");
                 }
                 emit_pat(e->args[0]);
                 for (int i = 1; i < e->nargs; i++) { E(","); emit_pat(e->args[i]); E(")"); }
@@ -347,13 +347,13 @@ static void emit_pat(Expr *e) {
             break;
         }
         if (e->nargs == 0) {
-            E("sno_pat_user_call(\"%s\",NULL,0)", n);
+            E("pat_user_call(\"%s\",NULL,0)", n);
         } else {
             /* Pattern-constructor functions are called eagerly at BUILD TIME.
-             * They return a SnoVal of type PATTERN — wrap with sno_var_as_pattern.
-             * reduce(t,n), shift(p,t), EVAL(s) → build-time call → sno_apply.
+             * They return a SnoVal of type PATTERN — wrap with var_as_pattern.
+             * reduce(t,n), shift(p,t), EVAL(s) → build-time call → aply.
              * Side-effect functions (nPush, nPop, nInc, Reduce, Shift, TZ, etc.)
-             * must fire at MATCH TIME → stay as sno_pat_user_call. */
+             * must fire at MATCH TIME → stay as pat_user_call. */
             static const char *_build_time_fns[] = {
                 "reduce", "shift", "EVAL", NULL
             };
@@ -362,11 +362,11 @@ static void emit_pat(Expr *e) {
                 if (strcasecmp(n, _build_time_fns[_ci]) == 0) { _is_build = 1; break; }
             }
             if (_is_build) {
-                E("sno_var_as_pattern(sno_apply(\"%s\",(SnoVal[]){", n);
+                E("var_as_pattern(aply(\"%s\",(SnoVal[]){", n);
                 for (int i=0; i<e->nargs; i++) { if(i) E(","); emit_expr(e->args[i]); }
                 E("},%d))", e->nargs);
             } else {
-                E("sno_pat_user_call(\"%s\",(SnoVal[]){", n);
+                E("pat_user_call(\"%s\",(SnoVal[]){", n);
                 for (int i=0; i<e->nargs; i++) { if(i) E(","); emit_expr(e->args[i]); }
                 E("},%d)", e->nargs);
             }
@@ -379,7 +379,7 @@ static void emit_pat(Expr *e) {
     case E_AT:
     case E_ASSIGN:
     default:
-        E("sno_pat_val("); emit_expr(e); E(")"); break;
+        E("pat_val("); emit_expr(e); E(")"); break;
     }
 }
 
@@ -393,24 +393,24 @@ static int is_fn_local(const char *varname);
 static void emit_assign_target(Expr *lhs, const char *rhs_str) {
     if (!lhs) return;
     if (lhs->kind == E_VAR) {
-        E("sno_set(%s, %s);\n", cs(lhs->sval), rhs_str);
-        E("sno_var_set(\"%s\", %s);\n", lhs->sval, cs(lhs->sval)); /* all vars are natural/hashed */
+        E("set(%s, %s);\n", cs(lhs->sval), rhs_str);
+        E("var_set(\"%s\", %s);\n", lhs->sval, cs(lhs->sval)); /* all vars are natural/hashed */
     } else if (lhs->kind == E_ARRAY) {
-        E("sno_aset(%s,(SnoVal[]){", cs(lhs->sval));
+        E("aset(%s,(SnoVal[]){", cs(lhs->sval));
         for (int i=0; i<lhs->nargs; i++) {
             if (i) E(","); emit_expr(lhs->args[i]);
         }
         E("},%d,%s);\n", lhs->nargs, rhs_str);
     } else if (lhs->kind == E_KEYWORD) {
-        E("sno_kw_set(\"%s\",%s);\n", lhs->sval, rhs_str);
+        E("kw_set(\"%s\",%s);\n", lhs->sval, rhs_str);
     } else if (lhs->kind == E_DEREF) {
-        E("sno_iset("); emit_expr(lhs->right); E(",%s);\n", rhs_str);
+        E("iset("); emit_expr(lhs->right); E(",%s);\n", rhs_str);
     } else if (lhs->kind == E_CALL && lhs->nargs == 1) {
-        /* field accessor lvalue: val(n) = x  →  sno_field_set(n, "val", x) */
-        E("sno_field_set("); emit_expr(lhs->args[0]); E(", \"%s\", %s);\n", lhs->sval, rhs_str);
+        /* field accessor lvalue: val(n) = x  →  field_set(n, "val", x) */
+        E("field_set("); emit_expr(lhs->args[0]); E(", \"%s\", %s);\n", lhs->sval, rhs_str);
     } else {
         /* complex lvalue: evaluate and assign indirectly */
-        E("sno_iset("); emit_expr(lhs); E(",%s);\n", rhs_str);
+        E("iset("); emit_expr(lhs); E(",%s);\n", rhs_str);
     }
 }
 
@@ -498,7 +498,7 @@ static void emit_goto(SnoGoto *g, const char *fn, int result_ok) {
  * Post-parse pattern-statement repair
  *
  * The grammar is LALR(1) and cannot always distinguish:
- *   subject pattern = replacement    (pattern match)
+ *   subject pattern = replacement    (pattern mtch)
  *   subject_expr = replacement       (pure assignment)
  * when pattern primitives (LEN, POS, etc.) appear inside the subject_expr.
  * The lexer returns PAT_BUILTIN only at bstack_top==0, but PAT_BUILTIN IS
@@ -531,7 +531,7 @@ static int is_pat_node(Expr *e) {
     if (e->kind == E_ALT)    return 1;  /* | alternation */
     if (e->kind == E_REDUCE) return 1;  /* & reduce() call — always pattern context */
     /* E_MUL(pat_node, x) — parsed from "pat *x" where * is multiplication token
-     * but semantically is pattern-concat with deferred ref *x */
+     * but semantically is pattern-ccat with deferred ref *x */
     if (e->kind == E_MUL && is_pat_node(e->left)) return 1;
     return 0;
 }
@@ -543,8 +543,8 @@ static int is_pat_node(Expr *e) {
  * any pattern builtin including ARBNO/FENCE/etc. */
 /* Returns 1 if the expression subtree rooted at e contains ANY pattern-valued
  * node.  Used by emit_expr to decide whether E_CONCAT / E_ALT should be routed
- * through emit_pat (sno_pat_cat / sno_pat_alt) instead of the string path
- * (sno_concat_sv / sno_alt).
+ * through emit_pat (pat_cat / pat_alt) instead of the string path
+ * (concat_sv / alt).
  *
  * Key cases that are pattern-valued but NOT caught by is_pat_node:
  *   - E_DEREF whose left child is E_VAR — "*varname" deferred pattern ref
@@ -555,15 +555,15 @@ static int expr_contains_pattern(Expr *e) {
     if (is_pat_node(e)) return 1;
     /* *varname — deferred pattern ref */
     if (e->kind == E_DEREF && e->left && e->left->kind == E_VAR) return 1;
-    /* *varname(arg) — parser misparse deref+concat */
+    /* *varname(arg) — parser misparse deref+ccat */
     if (e->kind == E_DEREF && e->left && e->left->kind == E_CALL) return 1;
     /* recurse into children */
     if (e->kind == E_CONCAT || e->kind == E_ALT || e->kind == E_MUL)
         return expr_contains_pattern(e->left) || expr_contains_pattern(e->right);
     if (e->kind == E_CALL) {
         /* ARBNO, FENCE, etc. already caught by is_pat_builtin_call above.
-         * Also treat reduce/eval calls as pattern-valued when inside concat. */
-        if (e->sval && (strcasecmp(e->sval,"reduce")==0 || strcasecmp(e->sval,"eval")==0))
+         * Also treat reduce/evl calls as pattern-valued when inside ccat. */
+        if (e->sval && (strcasecmp(e->sval,"reduce")==0 || strcasecmp(e->sval,"evl")==0))
             return 1;
         for (int i = 0; i < e->nargs; i++)
             if (expr_contains_pattern(e->args[i])) return 1;
@@ -577,10 +577,10 @@ static int expr_contains_pattern(Expr *e) {
  * *subj_out is set to the remaining subject (may be the original expr if
  * no split needed).
  *
- * The tree is LEFT-ASSOCIATIVE concat:
- *   (((str, POS(0)), ANY('abc')), E_COND(letter))
+ * The tree is LEFT-ASSOCIATIVE ccat:
+ *   (((strv, POS(0)), ANY('abc')), E_COND(letter))
  * We walk the left spine, looking for the first right child that is a pat node.
- * When found at depth D, the pattern is: right_at_D concat right_at_D-1 concat ... concat right_at_0
+ * When found at depth D, the pattern is: right_at_D ccat right_at_D-1 ccat ... ccat right_at_0
  * assembled left-to-right.
  */
 typedef struct { Expr *subj; Expr *pat; } SplitResult;
@@ -594,7 +594,7 @@ static Expr *make_concat(Expr *left, Expr *right) {
 }
 
 static SplitResult split_spine(Expr *e) {
-    /* Null or non-concat node that's a pure value: subject only */
+    /* Null or non-ccat node that's a pure value: subject only */
     if (!e) { SplitResult r = {NULL, NULL}; return r; }
 
     if (e->kind != E_CONCAT) {
@@ -614,7 +614,7 @@ static SplitResult split_spine(Expr *e) {
          * recursed and left's right IS the current pat... */
         /* Actually: the split is between left and right.
          * Subject = inner.subj (what was pure subject in e->left)
-         * Pattern = inner.pat (any pattern found in e->left's right chain) concat e->right */
+         * Pattern = inner.pat (any pattern found in e->left's right chain) ccat e->right */
         SplitResult r;
         r.subj = inner.subj;
         r.pat  = make_concat(inner.pat, e->right);
@@ -642,15 +642,15 @@ static Expr *split_subject_pattern(Expr *e, Expr **subj_out) {
     return r.pat;
 }
 
-/* Repair a misparsed pattern-match stmt.
+/* Repair a misparsed pattern-mtch stmt.
  * Called when s->pattern==NULL and s->replacement is E_NULL (bare '=').
- * Also repairs pattern-match stmts with no replacement (s->replacement==NULL)
+ * Also repairs pattern-mtch stmts with no replacement (s->replacement==NULL)
  * where the subject absorbed the pattern (no '=' present).
  * Returns 1 if the stmt was repaired. */
 static int maybe_fix_pattern_stmt(Stmt *s) {
     if (!s->subject) return 0;  /* no subject */
     /* Heuristic: if replacement is non-null non-E_NULL, this is a plain assignment,
-     * not a pattern match. Skip. */
+     * not a pattern mtch. Skip. */
     if (s->replacement && s->replacement->kind != E_NULL) return 0;
 
     Expr *new_subj = NULL;
@@ -688,7 +688,7 @@ static int pat_is_anchored(Expr *e) {
  * Emit one statement
  * ============================================================ */
 static void emit_stmt(Stmt *s, const char *fn) {
-    /* Repair misparsed pattern-match stmts (grammar absorbs pattern into subject) */
+    /* Repair misparsed pattern-mtch stmts (grammar absorbs pattern into subject) */
     maybe_fix_pattern_stmt(s);
 
     E("/* line %d */\n", s->lineno);
@@ -705,14 +705,14 @@ static void emit_stmt(Stmt *s, const char *fn) {
         int u=uid();
         /* If the RHS contains deferred refs (*var), reduce() calls (&), or
          * pattern builtins (ARBNO/FENCE/etc.), emit in pattern context so
-         * E_CONCAT becomes sno_pat_cat and *var becomes sno_pat_ref.
+         * E_CONCAT becomes pat_cat and *var becomes pat_ref.
          * This handles: snoParse = nPush() ARBNO(*snoCommand) ... nPop() */
         if (expr_contains_pattern(s->replacement)) {
             E("SnoVal _v%d = ", u); emit_pat(s->replacement); E(";\n");
         } else {
             E("SnoVal _v%d = ", u); emit_expr(s->replacement); E(";\n");
         }
-        E("int _ok%d = !SNO_IS_FAIL(_v%d);\n", u, u);
+        E("int _ok%d = !IS_FAIL(_v%d);\n", u, u);
         E("if(_ok%d) {\n", u);
         char rhs[32]; snprintf(rhs,sizeof rhs,"_v%d",u);
         emit_assign_target_io(s->subject, rhs);
@@ -728,16 +728,16 @@ static void emit_stmt(Stmt *s, const char *fn) {
         return;
     }
 
-    /* ---- pattern match: subject pattern [= replacement] ---- */
-    /* Compiled Byrd box path — replaces sno_pat_* / engine.c stopgap. */
+    /* ---- pattern mtch: subject pattern [= replacement] ---- */
+    /* Compiled Byrd box path — replaces pat_* / engine.c stopgap. */
     if (s->pattern) {
         int u = uid();
-        E("/* byrd match u%d */\n", u);
+        E("/* byrd mtch u%d */\n", u);
         E("SnoVal _s%d = ", u); emit_expr(s->subject); E(";\n");
-        E("const char *_subj%d = sno_to_str(_s%d);\n", u, u);
+        E("const char *_subj%d = to_str(_s%d);\n", u, u);
         E("int64_t _slen%d = _subj%d ? (int64_t)strlen(_subj%d) : 0;\n", u, u, u);
         E("int64_t _cur%d  = 0;\n", u);
-        E("int64_t _mstart%d = 0;\n", u);  /* cursor before match — for replacement */
+        E("int64_t _mstart%d = 0;\n", u);  /* cursor before mtch — for replacement */
 
         char root_lbl[64], ok_lbl[64], fail_lbl[64], done_lbl[64];
         snprintf(root_lbl, sizeof root_lbl, "_byrd_%d",      u);
@@ -768,14 +768,14 @@ static void emit_stmt(Stmt *s, const char *fn) {
         }
         byrd_emit_pattern(scan_pat, out, root_lbl, sv, sl, cv, ok_lbl, fail_lbl);
 
-        /* gamma: match succeeded */
+        /* gamma: mtch succeeded */
         E("%s:;\n", ok_lbl);
         E("_ok%d = 1;\n", u);
         if (s->replacement) {
             /* Replace matched region [_mstart%d .. _cur%d) with replacement */
             E("{\n");
             E("    SnoVal _r%d = ", u); emit_expr(s->replacement); E(";\n");
-            E("    const char *_rs%d = sno_to_str(_r%d);\n", u, u);
+            E("    const char *_rs%d = to_str(_r%d);\n", u, u);
             E("    int64_t _rlen%d = _rs%d ? (int64_t)strlen(_rs%d) : 0;\n", u, u, u);
             E("    int64_t _tail%d = _slen%d - _cur%d;\n", u, u, u);
             E("    int64_t _newlen%d = _mstart%d + _rlen%d + _tail%d;\n", u, u, u, u);
@@ -784,21 +784,21 @@ static void emit_stmt(Stmt *s, const char *fn) {
             E("    if (_rlen%d  > 0) memcpy(_nb%d + _mstart%d, _rs%d, (size_t)_rlen%d);\n", u, u, u, u, u);
             E("    if (_tail%d  > 0) memcpy(_nb%d + _mstart%d + _rlen%d, _subj%d + _cur%d, (size_t)_tail%d);\n", u, u, u, u, u, u, u);
             E("    _nb%d[_newlen%d] = '\\0';\n", u, u);
-            E("    _s%d = SNO_STR_VAL(_nb%d);\n", u, u);
+            E("    _s%d = STR_VAL(_nb%d);\n", u, u);
             /* write back to subject variable */
             if (s->subject && s->subject->kind == E_VAR) {
                 if (is_io_name(s->subject->sval))
-                    E("    sno_var_set(\"%s\", _s%d);\n", s->subject->sval, u);
+                    E("    var_set(\"%s\", _s%d);\n", s->subject->sval, u);
                 else {
-                    E("    sno_set(%s, _s%d);\n", cs(s->subject->sval), u);
-                    E("    sno_var_set(\"%s\", %s);\n", s->subject->sval, cs(s->subject->sval));
+                    E("    set(%s, _s%d);\n", cs(s->subject->sval), u);
+                    E("    var_set(\"%s\", %s);\n", s->subject->sval, cs(s->subject->sval));
                 }
             }
             E("}\n");
         }
         E("goto %s;\n", done_lbl);
 
-        /* omega: match failed */
+        /* omega: mtch failed */
         E("%s:;\n", fail_lbl);
         E("_ok%d = 0;\n", u);
 
@@ -819,7 +819,7 @@ static void emit_stmt(Stmt *s, const char *fn) {
     {
         int u=uid();
         E("SnoVal _v%d = ", u); emit_expr(s->subject); E(";\n");
-        E("int _ok%d = !SNO_IS_FAIL(_v%d);\n", u, u);
+        E("int _ok%d = !IS_FAIL(_v%d);\n", u, u);
         /* emit goto using _ok%d */
         if (!s->go) { E("    goto _SNO_NEXT_%d;\n", cur_stmt_next_uid); }
         else if (s->go->uncond) { emit_goto(s->go, fn, 0); }
@@ -889,7 +889,7 @@ static void collect_symbols(Program *prog) {
 
 static void emit_assign_target_io(Expr *lhs, const char *rhs_str) {
     if (lhs && lhs->kind == E_VAR && is_io_name(lhs->sval)) {
-        E("sno_var_set(\"%s\", %s);\n", lhs->sval, rhs_str);
+        E("var_set(\"%s\", %s);\n", lhs->sval, rhs_str);
         return;
     }
     emit_assign_target(lhs, rhs_str);
@@ -967,7 +967,7 @@ static int is_fn_local(const char *varname) {
     return 0;
 }
 
-/* Return fn index if label matches a known function entry, else -1 */
+/* Return fn indx if label matches a known function entry, else -1 */
 static int fn_by_label(const char *label) {
     if (!label) return -1;
     for (int i=0; i<fn_count; i++) {
@@ -1007,7 +1007,7 @@ static void build_boundary_labels(void) {
     }
 }
 
-/* Return fn index if stmt is the DEFINE(...) call for it, else -1 */
+/* Return fn indx if stmt is the DEFINE(...) call for it, else -1 */
 static int fn_by_define_stmt(Stmt *s) {
     for (int i=0; i<fn_count; i++)
         if (fn_table[i].define_stmt == s) return i;
@@ -1128,7 +1128,7 @@ static void collect_functions(Program *prog) {
         for (int i=0; i<fn_count; i++)
             if (strcmp(fn_table[i].name, fn->name)==0) { found=i; break; }
         if (found >= 0) {
-            /* Free old name/args/locals, replace with new definition */
+            /* Free old name/args/locals, replc with new definition */
             fn_table[found] = *fn;
         } else {
             fn_count++;
@@ -1211,7 +1211,7 @@ static int label_is_in_fn_body(const char *label, const char *fn_name) {
  * ============================================================ */
 static void emit_header(void) {
     E("/* generated by sno2c */\n");
-    E("#include \"snoc_runtime.h\"\n\n");
+    E("#include \"runtime_shim.h\"\n\n");
 }
 
 /* ============================================================
@@ -1243,16 +1243,16 @@ static void emit_fn(FnDef *fn, Program *prog) {
 
     /* --- Save declarations (must come before setjmp to be in scope at restore labels) --- */
     for (int i = 0; i < fn->nargs; i++)
-        E("    SnoVal _saved_%s = sno_var_get(\"%s\"); /* save caller's hash value */\n",
+        E("    SnoVal _saved_%s = var_get(\"%s\"); /* save caller's hash value */\n",
           cs(fn->args[i]), fn->args[i]);
     for (int i = 0; i < fn->nlocals; i++)
-        E("    SnoVal _saved_%s = sno_var_get(\"%s\"); /* save caller's hash value */\n",
+        E("    SnoVal _saved_%s = var_get(\"%s\"); /* save caller's hash value */\n",
           cs(fn->locals[i]), fn->locals[i]);
     E("\n");
 
     E("    jmp_buf _fn_abort_jmp;\n");
     E("    if (setjmp(_fn_abort_jmp) != 0) goto _SNO_ABORT_%s;\n", fn->name);
-    E("    sno_push_abort_handler(&_fn_abort_jmp);\n\n");
+    E("    push_abort_handler(&_fn_abort_jmp);\n\n");
 
     /* Return-value variable — skip if an arg has the same name */
     {
@@ -1264,15 +1264,15 @@ static void emit_fn(FnDef *fn, Program *prog) {
     }
     /* Declare C stack locals and install args into hash (DEFF8: save+assign) */
     for (int i = 0; i < fn->nargs; i++) {
-        E("    SnoVal %s = (_nargs>%d)?_args[%d]:SNO_NULL_VAL;\n",
+        E("    SnoVal %s = (_nargs>%d)?_args[%d]:NULL_VAL;\n",
           cs(fn->args[i]), i, i);
-        E("    sno_var_set(\"%s\", %s); /* install arg in hash */\n",
+        E("    var_set(\"%s\", %s); /* install arg in hash */\n",
           fn->args[i], cs(fn->args[i]));
     }
     /* Declare C stack locals and install as NULL into hash (DEFF10: save+null) */
     for (int i = 0; i < fn->nlocals; i++) {
         E("    SnoVal %s = {0};\n", cs(fn->locals[i]));
-        E("    sno_var_set(\"%s\", SNO_NULL_VAL); /* install local as null in hash */\n",
+        E("    var_set(\"%s\", NULL_VAL); /* install local as null in hash */\n",
           fn->locals[i]);
     }
     E("\n");
@@ -1293,35 +1293,35 @@ static void emit_fn(FnDef *fn, Program *prog) {
 
     /* --- RETURN path: restore caller's hash values (DEFF6: restore in reverse) --- */
     E("\n_SNO_RETURN_%s:\n", fn->name);
-    E("    sno_pop_abort_handler();\n");
+    E("    pop_abort_handler();\n");
     for (int i = fn->nlocals - 1; i >= 0; i--)
-        E("    sno_var_set(\"%s\", _saved_%s); /* restore caller's value */\n",
+        E("    var_set(\"%s\", _saved_%s); /* restore caller's value */\n",
           fn->locals[i], cs(fn->locals[i]));
     for (int i = fn->nargs - 1; i >= 0; i--)
-        E("    sno_var_set(\"%s\", _saved_%s); /* restore caller's value */\n",
+        E("    var_set(\"%s\", _saved_%s); /* restore caller's value */\n",
           fn->args[i], cs(fn->args[i]));
-    E("    return sno_get(%s);\n", cs(fn->name));
+    E("    return get(%s);\n", cs(fn->name));
 
     /* --- FRETURN path: restore caller's hash values --- */
     E("_SNO_FRETURN_%s:\n", fn->name);
-    E("    sno_pop_abort_handler();\n");
+    E("    pop_abort_handler();\n");
     for (int i = fn->nlocals - 1; i >= 0; i--)
-        E("    sno_var_set(\"%s\", _saved_%s); /* restore caller's value */\n",
+        E("    var_set(\"%s\", _saved_%s); /* restore caller's value */\n",
           fn->locals[i], cs(fn->locals[i]));
     for (int i = fn->nargs - 1; i >= 0; i--)
-        E("    sno_var_set(\"%s\", _saved_%s); /* restore caller's value */\n",
+        E("    var_set(\"%s\", _saved_%s); /* restore caller's value */\n",
           fn->args[i], cs(fn->args[i]));
-    E("    return SNO_FAIL_VAL;\n");
+    E("    return FAIL_VAL;\n");
 
     /* --- ABORT path (setjmp fired): restore then return FAIL --- */
     E("_SNO_ABORT_%s:\n", fn->name);
     for (int i = fn->nlocals - 1; i >= 0; i--)
-        E("    sno_var_set(\"%s\", _saved_%s); /* restore caller's value */\n",
+        E("    var_set(\"%s\", _saved_%s); /* restore caller's value */\n",
           fn->locals[i], cs(fn->locals[i]));
     for (int i = fn->nargs - 1; i >= 0; i--)
-        E("    sno_var_set(\"%s\", _saved_%s); /* restore caller's value */\n",
+        E("    var_set(\"%s\", _saved_%s); /* restore caller's value */\n",
           fn->args[i], cs(fn->args[i]));
-    E("    return SNO_FAIL_VAL;\n");
+    E("    return FAIL_VAL;\n");
 
     E("}\n\n");
 }
@@ -1357,21 +1357,21 @@ static void emit_main(Program *prog) {
     cur_fn_name = "main";
     cur_fn_def  = NULL;   /* NULL = global scope; is_fn_local returns 0 for all vars */
     E("int main(void) {\n");
-    E("    sno_init();\n");
-    /* Register all global C statics so sno_var_set() can sync them back.
+    E("    ini();\n");
+    /* Register all global C statics so var_set() can sync them back.
      * This bridges the two-store gap: vars set via pattern conditional
-     * assignment (. varname) or pre-init write to the hash table only;
+     * assignment (. varname) or pre-ini write to the hash table only;
      * registration lets those writes also update the C statics. */
     for (int i = 0; i < sym_count; i++)
-        E("    sno_var_register(\"%s\", &%s);\n", sym_table[i], cs(sym_table[i]));
-    E("    sno_var_sync_registered(); /* pull pre-inited vars (nl,tab,etc) into C statics */\n");
+        E("    var_register(\"%s\", &%s);\n", sym_table[i], cs(sym_table[i]));
+    E("    var_sync_registered(); /* pull pre-inited vars (nl,tab,etc) into C statics */\n");
     E("\n");
 
     /* Register all DEFINE'd functions (skip phantoms — runtime-owned) */
     for (int i=0; i<fn_count; i++) {
         if (!fn_table[i].define_stmt) continue;  /* phantom — skip */
         /* Reconstruct the proto spec string: "name(a,b)loc1,loc2" */
-        E("    sno_define(\"");
+        E("    define(\"");
         E("%s(", fn_table[i].name);
         for (int j=0; j<fn_table[i].nargs; j++) {
             if (j) E(",");
@@ -1391,7 +1391,7 @@ static void emit_main(Program *prog) {
         /* END stmt — emit the end label and stop */
         if (s->is_end) {
             E("\n_SNO_END:;\n");
-            E("    sno_finish();\n");
+            E("    finish();\n");
             E("    return 0;\n");
             E("}\n");
             return;
@@ -1439,9 +1439,9 @@ void snoc_emit(Program *prog, FILE *f) {
      * They exist SOLELY so is_body_boundary() recognises their entry/end labels
      * as boundaries and stops body-absorption into the wrong C function.
      * emit_fn() skips phantoms (define_stmt == NULL → no C function emitted).
-     * emit_main() skips phantoms (define_stmt == NULL → no sno_define() call).
+     * emit_main() skips phantoms (define_stmt == NULL → no define() call).
      *
-     * Source: snobol4_inc.c sno_inc_init() + sno_inc_init_extra() registrations
+     * Source: snobol4_inc.c inc_init() + inc_init_extra() registrations
      * whose bodies appear in: ShiftReduce.sno, stack.sno, counter.sno, semantic.sno
      */
     static const struct { const char *name; const char *end_label; } phantoms[] = {

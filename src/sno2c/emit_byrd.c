@@ -6,7 +6,7 @@
  *   src/codegen/emit_c_byrd.py  (labeled-goto C emission)
  *
  * This replaces emit_pat() for the compiled path.  The stopgap
- * sno_pat_* / engine.c interpreter is NOT used here.
+ * pat_* / engine.c interpreter is NOT used here.
  *
  * API (called from emit.c):
  *   void byrd_emit_pattern(Expr *pat, FILE *out,
@@ -17,10 +17,10 @@
  *                          const char *gamma_label,   // on success
  *                          const char *omega_label);  // on failure
  *
- * The caller (emit.c, emit_stmt pattern-match case) is responsible for:
+ * The caller (emit.c, emit_stmt pattern-mtch case) is responsible for:
  *   - emitting subject/cursor/subject_len setup
  *   - jumping to root_alpha
- *   - handling gamma_label (match succeeded) and omega_label (match failed)
+ *   - handling gamma_label (mtch succeeded) and omega_label (mtch failed)
  *
  * Byrd four-port model per node:
  *   α (alpha) — entry / start
@@ -43,7 +43,7 @@
  *   src/ir/lower.py              — lowering ground truth
  */
 
-#include "snoc.h"
+#include "sno2c.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -169,8 +169,8 @@ static void emit_cstr(const char *s) {
  * at runtime to a `const char *` charset string, given an Expr* AST node.
  *
  * E_STR  → "literal"          (compile-time constant)
- * E_VAR  → sno_to_str(sno_var_get("name"))
- * E_CONCAT → sno_concat(lhs, rhs)   (both sides recursed)
+ * E_VAR  → to_str(var_get("name"))
+ * E_CONCAT → ccat(lhs, rhs)   (both sides recursed)
  * fallback → ""
  * ----------------------------------------------------------------------- */
 static void emit_charset_cexpr(Expr *arg, char *buf, int bufsz);
@@ -194,29 +194,29 @@ static void emit_charset_cexpr(Expr *arg, char *buf, int bufsz) {
         return;
     }
     case E_VAR:
-        snprintf(buf, bufsz, "sno_to_str(sno_var_get(\"%s\"))",
+        snprintf(buf, bufsz, "to_str(var_get(\"%s\"))",
                  arg->sval ? arg->sval : "");
         return;
     case E_CONCAT: {
         char lbuf[512], rbuf[512];
         emit_charset_cexpr(arg->left,  lbuf, (int)sizeof lbuf);
         emit_charset_cexpr(arg->right, rbuf, (int)sizeof rbuf);
-        /* sno_concat is #define'd as sno_concat_sv(SnoVal,SnoVal) in snoc_runtime.h,
-         * so we must wrap char* sides in SNO_STR_VAL and extract result with sno_to_str. */
+        /* ccat is #define'd as concat_sv(SnoVal,SnoVal) in snoc_runtime.h,
+         * so we must wrap char* sides in STR_VAL and extract result with to_str. */
         snprintf(buf, bufsz,
-                 "sno_to_str(sno_concat_sv(SNO_STR_VAL(%s), SNO_STR_VAL(%s)))",
+                 "to_str(concat_sv(STR_VAL(%s), STR_VAL(%s)))",
                  lbuf, rbuf);
         return;
     }
     case E_KEYWORD:
-        /* &UCASE, &LCASE etc — sno_kw(name) = sno_var_get(name) → SnoVal */
-        snprintf(buf, bufsz, "sno_to_str(sno_var_get(\"%s\"))",
+        /* &UCASE, &LCASE etc — kw(name) = var_get(name) → SnoVal */
+        snprintf(buf, bufsz, "to_str(var_get(\"%s\"))",
                  arg->sval ? arg->sval : "");
         return;
     case E_DEREF:
         /* $varname — indirect: left child holds the var name node */
         if (arg->left && arg->left->sval)
-            snprintf(buf, bufsz, "sno_to_str(sno_var_get(\"%s\"))", arg->left->sval);
+            snprintf(buf, bufsz, "to_str(var_get(\"%s\"))", arg->left->sval);
         else
             snprintf(buf, bufsz, "\"\"");
         return;
@@ -483,7 +483,7 @@ static void emit_rtab(long n,
 }
 
 /* -----------------------------------------------------------------------
- * ANY node — match one char in charset
+ * ANY node — mtch one char in charset
  * ----------------------------------------------------------------------- */
 
 static void emit_any(const char *cs,
@@ -508,7 +508,7 @@ static void emit_any(const char *cs,
 }
 
 /* -----------------------------------------------------------------------
- * NOTANY node — match one char NOT in charset
+ * NOTANY node — mtch one char NOT in charset
  * ----------------------------------------------------------------------- */
 
 static void emit_notany(const char *cs,
@@ -533,7 +533,7 @@ static void emit_notany(const char *cs,
 }
 
 /* -----------------------------------------------------------------------
- * SPAN node — match one or more chars in charset
+ * SPAN node — mtch one or more chars in charset
  *
  * On beta: retreat one char at a time (backtrackable).
  * ----------------------------------------------------------------------- */
@@ -564,7 +564,7 @@ static void emit_span(const char *cs,
 }
 
 /* -----------------------------------------------------------------------
- * BREAK node — match zero or more chars NOT in charset, stopping before hit
+ * BREAK node — mtch zero or more chars NOT in charset, stopping before hit
  *
  * Deterministic: no backtrack (beta → omega).
  * ----------------------------------------------------------------------- */
@@ -591,7 +591,7 @@ static void emit_break(const char *cs,
 }
 
 /* -----------------------------------------------------------------------
- * ARB node — match any number of characters (greedy, backtrackable)
+ * ARB node — mtch any number of characters (greedy, backtrackable)
  *
  * On alpha: succeed at current position (zero chars), offering to extend.
  * On beta:  advance one more char and try again.
@@ -616,7 +616,7 @@ static void emit_arb(const char *alpha, const char *beta,
 }
 
 /* -----------------------------------------------------------------------
- * REM node — match the rest of the subject
+ * REM node — mtch the rest of the subject
  * ----------------------------------------------------------------------- */
 
 static void emit_rem(const char *alpha, const char *beta,
@@ -670,7 +670,7 @@ static void emit_seq(Expr *left, Expr *right,
     label_fmt(right_beta,  "cat_r", uid, "beta");
 
     /* α → left_α */
-    B("%s: /* CAT — enter left */\n", alpha);
+    B("%s: /* CAT — entr left */\n", alpha);
     B("    goto %s;\n", left_alpha);
 
     /* β → right_β (resume right first) */
@@ -775,7 +775,7 @@ static void emit_alt(Expr *left, Expr *right,
  * The key insight from the oracle:
  *   - ARBNO starts by succeeding with ZERO matches (depth=-1, goto gamma)
  *   - beta extends: save cursor, try child
- *   - child_ok → gamma (ARBNO succeeds again with one more match)
+ *   - child_ok → gamma (ARBNO succeeds again with one more mtch)
  *   - child_fail → restore cursor, depth--, omega (ARBNO gives up)
  * ----------------------------------------------------------------------- */
 
@@ -842,7 +842,7 @@ static void emit_arbno(Expr *child,
  *   cat_l5_do_assign:
  *       var_OUTPUT.ptr = subject + cat_l5_start;
  *       var_OUTPUT.len = cursor - cat_l5_start;
- *       sno_output(var_OUTPUT);
+ *       output(var_OUTPUT);
  *       goto cat_r6_alpha;
  *   cat_l5_beta:
  *       goto assign_c7_beta;
@@ -865,7 +865,7 @@ static void emit_imm(Expr *child, const char *varname,
 
     decl_add("int64_t %s", start_var);
 
-    /* alpha: record start, enter child */
+    /* alpha: record start, entr child */
     B("%s:\n", alpha);
     B("    %s = %s;\n", start_var, cursor);
     B("    goto %s;\n", child_alpha);
@@ -879,11 +879,11 @@ static void emit_imm(Expr *child, const char *varname,
     /* do_assign: write span into variable */
     B("%s:\n", do_assign);
     if (strcasecmp(varname, "OUTPUT") == 0) {
-        /* OUTPUT is a special IO stream — use sno_output_str */
+        /* OUTPUT is a special IO stream — use output_str */
         B("    { int64_t _len = %s - %s;\n", cursor, start_var);
         B("      char *_os = malloc(_len + 1); memcpy(_os, %s + %s, _len); _os[_len] = 0;\n",
           subj, start_var);
-        B("      sno_output_str(_os); free(_os); }\n");
+        B("      output_str(_os); free(_os); }\n");
     } else {
         /* Regular variable: declare str_t and assign */
         char var_decl[LBUF];
@@ -903,7 +903,7 @@ static void emit_imm(Expr *child, const char *varname,
  * E_COND (. capture) node
  *
  * Like E_IMM but the assignment is CONDITIONAL — it fires when we reach
- * the gamma of the enclosing match.  For the static compiled path we treat
+ * the gamma of the enclosing mtch.  For the static compiled path we treat
  * it identically to E_IMM (assign on child success, readable by outer code).
  * ----------------------------------------------------------------------- */
 
@@ -961,7 +961,7 @@ static void emit_fail_node(const char *alpha, const char *beta,
 /* -----------------------------------------------------------------------
  * ABORT node
  *
- * Terminates the entire match (not just backtrack).
+ * Terminates the entire mtch (not just backtrack).
  * In the static path we jump to omega for now; callers handle abort
  * at the top level.
  * ----------------------------------------------------------------------- */
@@ -977,34 +977,34 @@ static void emit_abort_node(const char *alpha, const char *beta,
  * emit_simple_val — emit a SnoVal C expression for a simple Expr node.
  * Used by E_REDUCE to pass left/right as runtime values.
  * Handles: E_STR, E_INT, E_VAR, E_CALL(nTop), E_NULL/NULL.
- * Falls back to SNO_NULL_VAL for anything complex.
+ * Falls back to NULL_VAL for anything complex.
  * ----------------------------------------------------------------------- */
 
 static void emit_simple_val(Expr *e) {
-    if (!e) { B("SNO_NULL_VAL"); return; }
+    if (!e) { B("NULL_VAL"); return; }
     switch (e->kind) {
     case E_STR:
         /* strip surrounding quotes if present — sval is already unquoted */
-        B("SNO_STR_VAL(\"%s\")", e->sval ? e->sval : "");
+        B("STR_VAL(\"%s\")", e->sval ? e->sval : "");
         return;
     case E_INT:
-        B("SNO_INT_VAL(%ld)", e->ival);
+        B("INT_VAL(%ld)", e->ival);
         return;
     case E_VAR:
-        B("sno_var_get(\"%s\")", e->sval ? e->sval : "");
+        B("var_get(\"%s\")", e->sval ? e->sval : "");
         return;
     case E_CALL:
         if (e->sval && strcasecmp(e->sval, "nTop") == 0)
-            { B("SNO_INT_VAL(sno_ntop())"); return; }
+            { B("INT_VAL(ntop())"); return; }
         if (e->sval && strcasecmp(e->sval, "nInc") == 0)
-            { B("SNO_INT_VAL((sno_ninc(), sno_ntop()))"); return; }
+            { B("INT_VAL((ninc(), ntop()))"); return; }
         if (e->sval && strcasecmp(e->sval, "nPop") == 0)
-            { B("SNO_INT_VAL((sno_npop(), 0))"); return; }
-        /* generic: fall through to sno_apply */
-        B("sno_apply(\"%s\", NULL, 0)", e->sval ? e->sval : "");
+            { B("INT_VAL((npop(), 0))"); return; }
+        /* generic: fall through to aply */
+        B("aply(\"%s\", NULL, 0)", e->sval ? e->sval : "");
         return;
     default:
-        B("SNO_NULL_VAL /* unhandled emit_simple_val kind %d */", (int)e->kind);
+        B("NULL_VAL /* unhandled emit_simple_val kind %d */", (int)e->kind);
         return;
     }
 }
@@ -1125,14 +1125,14 @@ static void byrd_emit(Expr *pat,
             emit_fence(alpha, beta, gamma, omega);
             return;
         }
-        /* FENCE(pat) — with argument: match pat, then fence */
+        /* FENCE(pat) — with argument: mtch pat, then fence */
         if (strcasecmp(n, "FENCE") == 0 && pat->nargs >= 1) {
-            /* FENCE(p): match p then prevent backtrack into it */
+            /* FENCE(p): mtch p then prevent backtrack into it */
             int uid = byrd_uid();
             Label ca, cb;
             label_fmt(ca, "fence_p", uid, "alpha");
             label_fmt(cb, "fence_p", uid, "beta");
-            /* alpha: enter child */
+            /* alpha: entr child */
             B("%s: /* FENCE(p) */\n", alpha);
             B("    goto %s;\n", ca);
             /* lower child: on success → fence_after (can't backtrack) */
@@ -1168,31 +1168,31 @@ static void byrd_emit(Expr *pat,
 
         /* nPush() — push counter stack, always succeed (side-effect only) */
         if (strcasecmp(n, "nPush") == 0) {
-            B("%s: sno_npush(); goto %s;\n", alpha, gamma);
+            B("%s: npush(); goto %s;\n", alpha, gamma);
             B("%s: goto %s;\n", beta, omega);
             return;
         }
         /* nInc() — increment top counter, always succeed */
         if (strcasecmp(n, "nInc") == 0) {
-            B("%s: sno_ninc(); goto %s;\n", alpha, gamma);
+            B("%s: ninc(); goto %s;\n", alpha, gamma);
             B("%s: goto %s;\n", beta, omega);
             return;
         }
         /* nDec() — decrement top counter, always succeed */
         if (strcasecmp(n, "nDec") == 0) {
-            B("%s: sno_ndec(); goto %s;\n", alpha, gamma);
+            B("%s: ndec(); goto %s;\n", alpha, gamma);
             B("%s: goto %s;\n", beta, omega);
             return;
         }
         /* nPop() — pop counter stack, always succeed */
         if (strcasecmp(n, "nPop") == 0) {
-            B("%s: sno_npop(); goto %s;\n", alpha, gamma);
+            B("%s: npop(); goto %s;\n", alpha, gamma);
             B("%s: goto %s;\n", beta, omega);
             return;
         }
-        /* nTop() — read top counter, always succeed (value available via sno_ntop()) */
+        /* nTop() — read top counter, always succeed (value available via ntop()) */
         if (strcasecmp(n, "nTop") == 0) {
-            B("%s: (void)sno_ntop(); goto %s;\n", alpha, gamma);
+            B("%s: (void)ntop(); goto %s;\n", alpha, gamma);
             B("%s: goto %s;\n", beta, omega);
             return;
         }
@@ -1252,12 +1252,12 @@ static void byrd_emit(Expr *pat,
     case E_DEREF: {
         /* *varname — indirect pattern reference.
          * At runtime: get the value of 'varname', treat it as a pattern,
-         * match it anchored at the current cursor position.
-         * On success: advance cursor to the end of match → gamma.
+         * mtch it anchored at the current cursor position.
+         * On success: advance cursor to the end of mtch → gamma.
          * On failure: restore cursor → omega.
          *
          * Byrd ports:
-         *   alpha: attempt the match
+         *   alpha: attempt the mtch
          *   beta:  resume → restore cursor and fail (no backtracking into the sub-pattern)
          *   gamma: inherited success continuation
          *   omega: inherited failure continuation
@@ -1275,8 +1275,8 @@ static void byrd_emit(Expr *pat,
         if (!varname) varname = "";
 
         B("%s: {\n", alpha);
-        B("    SnoVal _deref_pat = sno_var_get(%s%s%s);\n", "\"", varname, "\"");
-        B("    int _deref_new_cur = sno_match_pattern_at(_deref_pat, %s, (int)%s, (int)%s);\n",
+        B("    SnoVal _deref_pat = var_get(%s%s%s);\n", "\"", varname, "\"");
+        B("    int _deref_new_cur = match_pattern_at(_deref_pat, %s, (int)%s, (int)%s);\n",
           subj, subj_len, cursor);
         B("    if (_deref_new_cur < 0) goto %s;\n", omega);
         B("    %s = %s;\n", saved, cursor);
@@ -1292,7 +1292,7 @@ static void byrd_emit(Expr *pat,
 
     /* --------------------------------------------------------------- E_REDUCE (& operator) */
     case E_REDUCE: {
-        /* "type & count" — calls Reduce(type, count) at match time.
+        /* "type & count" — calls Reduce(type, count) at mtch time.
          * Reduce() pops `count` trees from the linked-list stack ($'@S')
          * and pushes one combined tree of `type`.  Always succeeds as a
          * side-effect node (like nPush/nPop).
@@ -1304,7 +1304,7 @@ static void byrd_emit(Expr *pat,
         B(", ");
         emit_simple_val(pat->right);
         B("};\n");
-        B("      sno_apply(\"Reduce\", _reduce_args, 2); }\n");
+        B("      aply(\"Reduce\", _reduce_args, 2); }\n");
         B("    goto %s;\n", gamma);
         B("%s: goto %s;\n", beta, omega);
         return;
@@ -1323,15 +1323,15 @@ static void byrd_emit(Expr *pat,
 /* =======================================================================
  * Public API
  *
- * byrd_emit_pattern — emit a complete standalone match block:
+ * byrd_emit_pattern — emit a complete standalone mtch block:
  *
  *   goto <root>_alpha;
  *   [declarations]
  *   [Byrd box labeled-goto C]
- *   <gamma_label>:   (match succeeded)
- *   <omega_label>:   (match failed)
+ *   <gamma_label>:   (mtch succeeded)
+ *   <omega_label>:   (mtch failed)
  *
- * Called from emit.c in the pattern-match statement case.
+ * Called from emit.c in the pattern-mtch statement case.
  *
  * Parameters:
  *   pat          — the pattern Expr* (subject pattern field)
@@ -1340,8 +1340,8 @@ static void byrd_emit(Expr *pat,
  *   subject_var  — C expression for the subject string pointer
  *   subj_len_var — C expression for subject length (int64_t)
  *   cursor_var   — C lvalue for the cursor (int64_t, modified in place)
- *   gamma_label  — C label to jump to on match success
- *   omega_label  — C label to jump to on match failure
+ *   gamma_label  — C label to jump to on mtch success
+ *   omega_label  — C label to jump to on mtch failure
  * ======================================================================= */
 
 void byrd_emit_pattern(Expr *pat, FILE *out_file,

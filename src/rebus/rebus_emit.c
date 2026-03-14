@@ -24,7 +24,7 @@
  *   E1 +:= E2                  → E1 = E1 + E2
  *   E1 -:= E2                  → E1 = E1 - E2
  *   E1 ||:= E2                 → E1 = E1 E2
- *   E1 || E2  /  E1 & E2       → E1 E2        (blank concat)
+ *   E1 || E2  /  E1 & E2       → E1 E2        (blank ccat)
  *   E1 | E2                    → (E1 | E2)
  *   E1 ? E2                    → E1 ? E2
  *   E1 ? E2 <- E3              → E1 ? E2 = E3
@@ -120,7 +120,7 @@ static void emit_expr(RExpr *e, FILE *out) {
             fprintf(out,"REMDR("); emit_expr(e->left,out); fprintf(out,",");
             emit_expr(e->right,out); fprintf(out,")"); break;
 
-        /* Concatenation: both || and & → blank concat in SNOBOL4 */
+        /* Concatenation: both || and & → blank ccat in SNOBOL4 */
         case RE_STRCAT:
         case RE_PATCAT:
             emit_expr_atom(e->left,out); fprintf(out," "); emit_expr_atom(e->right,out); break;
@@ -260,7 +260,7 @@ static void emit_stmt(RStmt *s, FILE *out) {
     switch (s->kind) {
 
         case RS_EXPR:
-            /* void function call needs dummy LHS to avoid pattern-match semantics */
+            /* void function call needs dummy LHS to avoid pattern-mtch semantics */
             if (s->expr && s->expr->kind == RE_CALL)
                 fprintf(out,"        RB_ = ");
             else

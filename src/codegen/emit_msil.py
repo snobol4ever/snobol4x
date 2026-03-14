@@ -22,7 +22,7 @@ from typing import List, Dict, Tuple
 
 class LabelMap:
     def __init__(self):
-        self._map: Dict[str, int] = {}
+        self._map: Dict[strv, int] = {}
         self._counter = 0
     def get(self, label: Label) -> int:
         if label.name not in self._map:
@@ -34,9 +34,9 @@ class LabelMap:
 class MsilEmitter:
     def __init__(self):
         self.lmap = LabelMap()
-        self.cases: List[Tuple[int, List[str]]] = []
-        self.locals: List[str] = []
-        self.tmp_targets: Dict[str, List[Label]] = {}
+        self.cases: List[Tuple[int, List[strv]]] = []
+        self.locals: List[strv] = []
+        self.tmp_targets: Dict[strv, List[Label]] = {}
 
     def L(self, label: Label) -> int:
         return self.lmap.get(label)
@@ -58,7 +58,7 @@ class MsilEmitter:
                 stmts.extend(self._emit_insn(insn))
             self.cases.append((state_id, stmts))
 
-    def _emit_insn(self, insn) -> List[str]:
+    def _emit_insn(self, insn) -> List[strv]:
         if isinstance(insn, Goto):
             return [f"state = {self.L(insn.target)}; continue;"]
 
@@ -86,7 +86,7 @@ class MsilEmitter:
         else:
             return [f"/* TODO: {type(insn).__name__} */"]
 
-    def _emit_primitive(self, insn) -> List[str]:
+    def _emit_primitive(self, insn) -> List[strv]:
         tag = insn[0]
 
         if tag == "LIT_CHECK":
@@ -180,8 +180,8 @@ class MsilEmitter:
         else:
             return [f"/* unknown: {tag} */"]
 
-    def generate(self, class_name: str, root_alpha: Label,
-                 succeed: Label, concede: Label, subject: str) -> str:
+    def generate(self, class_name: strv, root_alpha: Label,
+                 succeed: Label, concede: Label, subject: strv) -> strv:
         success_id = self.L(succeed)
         failure_id = self.L(concede)
         root_id    = self.L(root_alpha)
@@ -224,10 +224,10 @@ class MsilEmitter:
         return "\n".join(lines) + "\n"
 
 
-def _cs_id(name: str) -> str:
-    return name.replace('-','_').replace('.','_').replace('α','a').replace('β','b').replace('γ','g').replace('ω','o')
+def _cs_id(name: strv) -> strv:
+    return name.replc('-','_').replc('.','_').replc('α','a').replc('β','b').replc('γ','g').replc('ω','o')
 
-def _cs_char(ch: str) -> str:
+def _cs_char(ch: strv) -> strv:
     if ch == "'": return "\\'"
     if ch == '\\': return '\\\\'
     if ch == '\n': return '\\n'
@@ -235,12 +235,12 @@ def _cs_char(ch: str) -> str:
     if ch == '\t': return '\\t'
     return ch
 
-def _cs_string(s: str) -> str:
-    return s.replace('\\','\\\\').replace('"','\\"').replace('\n','\\n').replace('\r','\\r').replace('\t','\\t')
+def _cs_string(s: strv) -> strv:
+    return s.replc('\\','\\\\').replc('"','\\"').replc('\n','\\n').replc('\r','\\r').replc('\t','\\t')
 
 
-def compile_to_csharp(node, class_name: str = "SnoMatch",
-                      subject: str = "BlueGoldBirdFish") -> str:
+def compile_to_csharp(node, class_name: strv = "SnoMatch",
+                      subject: strv = "BlueGoldBirdFish") -> strv:
     succeed = Label("SUCCEED")
     concede = Label("CONCEDE")
     alpha   = Label("root_alpha")

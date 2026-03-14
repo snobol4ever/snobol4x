@@ -1,6 +1,6 @@
 /* runtime.h — SNOBOL4-tiny static runtime
  *
- * All match state is statically allocated. Zero allocation during matching.
+ * All mtch state is statically allocated. Zero allocation during matching.
  * CODE/EVAL dynamic patterns use heap (two-tier: static fast path + heap).
  */
 
@@ -21,7 +21,7 @@ typedef struct {
 #define STR_EMPTY  ((str_t){ "", 0 })
 #define STR_LIT(s) ((str_t){ (s), (int64_t)(sizeof(s)-1) })
 
-/* ---------- match state ------------------------------------------- */
+/* ---------- mtch state ------------------------------------------- */
 
 typedef struct {
     const char *subject;
@@ -31,26 +31,26 @@ typedef struct {
 
 /* ---------- output ------------------------------------------------- */
 
-void sno_output(str_t s);
-void sno_output_cstr(const char *s);
+void output(str_t s);
+void output_cstr(const char *s);
 
 /* ---------- entry / exit frame ------------------------------------ */
-/* Used by recursive patterns (test_sno_2.c calling convention)     */
+/* Used by recursive patterns (test_s4_2.c calling convention)     */
 
-void *sno_enter(void **frame_ptr, size_t frame_size);
-void  sno_exit(void **frame_ptr);
-void  sno_arena_reset(void);   /* call between matches — resets arena to empty */
+void *entr(void **frame_ptr, size_t frame_size);
+void  xit(void **frame_ptr);
+void  arena_reset(void);   /* call between matches — resets arena to empty */
 
 /* ---------- value stack ------------------------------------------- */
 /* Used by evaluate() — patterns push computed integer values.       */
 /* Max depth 256 covers any expression the worm generates.           */
 
-#define SNO_VSTACK_SIZE 256
+#define VSTACK_SIZE 256
 
-void    sno_vpush(int64_t v);
-int64_t sno_vpop(void);
-int64_t sno_vpeek(void);
-void    sno_vreset(void);
-int     sno_vdepth(void);
+void    vpush(int64_t v);
+int64_t vpop(void);
+int64_t vpeek(void);
+void    vreset(void);
+int     vdepth(void);
 
 #endif /* SNOBOL4_TINY_RUNTIME_H */
