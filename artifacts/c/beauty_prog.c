@@ -222,64 +222,63 @@ static SnoVal _ppKey = {0};
 static SnoVal _ppJ1 = {0};
 static SnoVal _ppP90i = {0};
 static SnoVal _ppP90 = {0};
-static SnoVal _snoInteger = {0};
-static SnoVal _snoDQ = {0};
-static SnoVal _snoSQ = {0};
-static SnoVal _snoString = {0};
-static SnoVal _snoReal = {0};
-static SnoVal _snoId = {0};
-static SnoVal _snoFunction = {0};
+static SnoVal _Integer = {0};
+static SnoVal _DQ = {0};
+static SnoVal _SQ = {0};
+static SnoVal _String = {0};
+static SnoVal _Real = {0};
+static SnoVal _Id = {0};
+static SnoVal _Function = {0};
 static SnoVal _tx = {0};
-static SnoVal _snoFunctions = {0};
-static SnoVal _snoTxInList = {0};
-static SnoVal _snoBuiltinVar = {0};
-static SnoVal _snoBuiltinVars = {0};
-static SnoVal _snoSpecialNm = {0};
-static SnoVal _snoSpecialNms = {0};
-static SnoVal _snoProtKwd = {0};
-static SnoVal _snoProtKwds = {0};
-static SnoVal _snoUnprotKwd = {0};
-static SnoVal _snoUnprotKwds = {0};
-static SnoVal _snoGray = {0};
-static SnoVal _snoWhite = {0};
-static SnoVal _snoExprList = {0};
-static SnoVal _snoXList = {0};
-static SnoVal _snoExpr = {0};
-static SnoVal _snoExpr0 = {0};
-static SnoVal _snoExpr1 = {0};
-static SnoVal _snoExpr2 = {0};
-static SnoVal _snoExpr3 = {0};
-static SnoVal _snoX3 = {0};
-static SnoVal _snoExpr4 = {0};
-static SnoVal _snoX4 = {0};
-static SnoVal _snoExpr5 = {0};
-static SnoVal _snoExpr6 = {0};
-static SnoVal _snoExpr7 = {0};
-static SnoVal _snoExpr8 = {0};
-static SnoVal _snoExpr9 = {0};
-static SnoVal _snoExpr10 = {0};
-static SnoVal _snoExpr11 = {0};
-static SnoVal _snoExpr12 = {0};
-static SnoVal _snoExpr13 = {0};
-static SnoVal _snoExpr14 = {0};
-static SnoVal _snoExpr15 = {0};
-static SnoVal _snoExpr17 = {0};
-static SnoVal _snoExpr16 = {0};
-static SnoVal _snoSGoto = {0};
+static SnoVal _Functions = {0};
+static SnoVal _TxInList = {0};
+static SnoVal _BuiltinVar = {0};
+static SnoVal _BuiltinVars = {0};
+static SnoVal _SpecialNm = {0};
+static SnoVal _SpecialNms = {0};
+static SnoVal _ProtKwd = {0};
+static SnoVal _ProtKwds = {0};
+static SnoVal _UnprotKwd = {0};
+static SnoVal _UnprotKwds = {0};
+static SnoVal _Gray = {0};
+static SnoVal _White = {0};
+static SnoVal _ExprList = {0};
+static SnoVal _XList = {0};
+static SnoVal _Expr = {0};
+static SnoVal _Expr0 = {0};
+static SnoVal _Expr1 = {0};
+static SnoVal _Expr2 = {0};
+static SnoVal _Expr3 = {0};
+static SnoVal _X3 = {0};
+static SnoVal _Expr4 = {0};
+static SnoVal _X4 = {0};
+static SnoVal _Expr5 = {0};
+static SnoVal _Expr6 = {0};
+static SnoVal _Expr7 = {0};
+static SnoVal _Expr8 = {0};
+static SnoVal _Expr9 = {0};
+static SnoVal _Expr10 = {0};
+static SnoVal _Expr11 = {0};
+static SnoVal _Expr12 = {0};
+static SnoVal _Expr13 = {0};
+static SnoVal _Expr14 = {0};
+static SnoVal _Expr15 = {0};
+static SnoVal _Expr17 = {0};
+static SnoVal _Expr16 = {0};
+static SnoVal _SGoto = {0};
 static SnoVal _SorF = {0};
-static SnoVal _snoFGoto = {0};
-static SnoVal _snoSorF = {0};
-static SnoVal _snoTarget = {0};
-static SnoVal _snoBrackets = {0};
-static SnoVal _snoGoto = {0};
-static SnoVal _snoControl = {0};
-static SnoVal _snoComment = {0};
-static SnoVal _snoLabel = {0};
-static SnoVal _snoStmt = {0};
-static SnoVal _snoCommands = {0};
-static SnoVal _snoCommand = {0};
-static SnoVal _snoParse = {0};
-static SnoVal _snoCompiland = {0};
+static SnoVal _FGoto = {0};
+static SnoVal _Target = {0};
+static SnoVal _Brackets = {0};
+static SnoVal _Goto = {0};
+static SnoVal _Control = {0};
+static SnoVal _Comment = {0};
+static SnoVal _Label = {0};
+static SnoVal _Stmt = {0};
+static SnoVal _Commands = {0};
+static SnoVal _Command = {0};
+static SnoVal _Parse = {0};
+static SnoVal _Compiland = {0};
 static SnoVal _ppWidth = {0};
 static SnoVal _ppLbl = {0};
 static SnoVal _ppSubj = {0};
@@ -289,13 +288,13 @@ static SnoVal _ppRepl = {0};
 static SnoVal _ppGo1 = {0};
 static SnoVal _ppGo2 = {0};
 static SnoVal _ss = {0};
-static SnoVal _snoRefs = {0};
+static SnoVal _Refs = {0};
 static SnoVal _findRefs = {0};
 static SnoVal _p = {0};
 static SnoVal _subj = {0};
-static SnoVal _snoSpace = {0};
-static SnoVal _snoLine = {0};
-static SnoVal _snoSrc = {0};
+static SnoVal _Space = {0};
+static SnoVal _Line = {0};
+static SnoVal _Src = {0};
 static SnoVal _sno = {0};
 
 /* --- block forward declarations --- */
@@ -529,19 +528,19 @@ static void *block__ppAs1(void);
 static void *block__ppAutoMsg(void);
 static void *block__ppAutoSkip(void);
 static void *block__pp(void);
-static void *block__pp_snoParse(void);
+static void *block__pp_Parse(void);
 static void *block__pp_0(void);
 static void *block__pp_1(void);
-static void *block__pp_snoBuiltinVar(void);
-static void *block__pp_snoFunction(void);
-static void *block__pp_snoId(void);
-static void *block__pp_snoInteger(void);
-static void *block__pp_snoLabel(void);
-static void *block__pp_snoProtKwd(void);
-static void *block__pp_snoReal(void);
-static void *block__pp_snoSpecialNm(void);
-static void *block__pp_snoString(void);
-static void *block__pp_snoUnprotKwd(void);
+static void *block__pp_BuiltinVar(void);
+static void *block__pp_Function(void);
+static void *block__pp_Id(void);
+static void *block__pp_Integer(void);
+static void *block__pp_Label(void);
+static void *block__pp_ProtKwd(void);
+static void *block__pp_Real(void);
+static void *block__pp_SpecialNm(void);
+static void *block__pp_String(void);
+static void *block__pp_UnprotKwd(void);
 static void *block__pp____(void);
 static void *block__pp_____2(void);
 static void *block__pp__S__(void);
@@ -565,14 +564,14 @@ static void *block__pp___12(void);
 static void *block__pp___13(void);
 static void *block__pp___14(void);
 static void *block__pp___15(void);
-static void *block__pp_snoComment(void);
-static void *block__pp_snoControl(void);
-static void *block__pp_snoStmt(void);
-static void *block__pp_snoStmt5(void);
-static void *block__pp_snoStmt7(void);
-static void *block__pp_snoStmt9(void);
-static void *block__pp_snoExprList(void);
-static void *block__pp_snoExprList0(void);
+static void *block__pp_Comment(void);
+static void *block__pp_Control(void);
+static void *block__pp_Stmt(void);
+static void *block__pp_Stmt5(void);
+static void *block__pp_Stmt7(void);
+static void *block__pp_Stmt9(void);
+static void *block__pp_ExprList(void);
+static void *block__pp_ExprList0(void);
 static void *block__pp___16(void);
 static void *block__pp__0(void);
 static void *block__pp__1(void);
@@ -583,21 +582,21 @@ static void *block__pp___0(void);
 static void *block__pp____2(void);
 static void *block__pp___0_2(void);
 static void *block__pp____3(void);
-static void *block__pp_snoCall(void);
+static void *block__pp_Call(void);
 static void *block__ppEnd(void);
 static void *block__ss(void);
-static void *block__ss_snoBuiltinVar(void);
-static void *block__ss_snoFunction(void);
-static void *block__ss_snoId(void);
-static void *block__ss_snoInteger(void);
-static void *block__ss_snoLabel(void);
-static void *block__ss_snoLabel0(void);
-static void *block__ss_snoLabel1(void);
-static void *block__ss_snoProtKwd(void);
-static void *block__ss_snoReal(void);
-static void *block__ss_snoSpecialNm(void);
-static void *block__ss_snoString(void);
-static void *block__ss_snoUnprotKwd(void);
+static void *block__ss_BuiltinVar(void);
+static void *block__ss_Function(void);
+static void *block__ss_Id(void);
+static void *block__ss_Integer(void);
+static void *block__ss_Label(void);
+static void *block__ss_Label0(void);
+static void *block__ss_Label1(void);
+static void *block__ss_ProtKwd(void);
+static void *block__ss_Real(void);
+static void *block__ss_SpecialNm(void);
+static void *block__ss_String(void);
+static void *block__ss_UnprotKwd(void);
 static void *block__ss_atomic(void);
 static void *block__ss____(void);
 static void *block__ss_____2(void);
@@ -622,8 +621,8 @@ static void *block__ss___12(void);
 static void *block__ss___13(void);
 static void *block__ss___14(void);
 static void *block__ss___15(void);
-static void *block__ss_snoExprList(void);
-static void *block__ss_snoExprList0(void);
+static void *block__ss_ExprList(void);
+static void *block__ss_ExprList0(void);
 static void *block__ss___16(void);
 static void *block__ss__0(void);
 static void *block__ss__1(void);
@@ -634,7 +633,7 @@ static void *block__ss___0(void);
 static void *block__ss____2(void);
 static void *block__ss___0_2(void);
 static void *block__ss____3(void);
-static void *block__ss_snoCall(void);
+static void *block__ss_Call(void);
 static void *block__ssEnd(void);
 static void *block__bVisit_(void);
 static void *block__bVisit_1(void);
@@ -9532,7 +9531,7 @@ int _ok807 = !IS_FAIL(_v807);
     goto _SNO_NEXT_806;
 _SNO_NEXT_806:;
 /* line 435 */
-_L_pp_snoParse:;
+_L_pp_Parse:;
 SnoVal _v809 = indx(get(_ppStop),(SnoVal[]){vint(4)},1);
 int _ok809 = !IS_FAIL(_v809);
 if(_ok809) {
@@ -9568,7 +9567,7 @@ int _ok815 = !IS_FAIL(_v815);
     goto _L_pp_1;
 _SNO_NEXT_814:;
 /* line 440 */
-_L_pp_snoBuiltinVar:;
+_L_pp_BuiltinVar:;
 SnoVal _v817 = aply("Gen",(SnoVal[]){aply("ss",(SnoVal[]){get(_x)},1)},1);
 int _ok817 = !IS_FAIL(_v817);
     if(_ok817) goto _SNO_RETURN_pp;
@@ -9576,7 +9575,7 @@ int _ok817 = !IS_FAIL(_v817);
     goto _SNO_NEXT_816;
 _SNO_NEXT_816:;
 /* line 441 */
-_L_pp_snoFunction:;
+_L_pp_Function:;
 SnoVal _v819 = aply("Gen",(SnoVal[]){aply("ss",(SnoVal[]){get(_x)},1)},1);
 int _ok819 = !IS_FAIL(_v819);
     if(_ok819) goto _SNO_RETURN_pp;
@@ -9584,7 +9583,7 @@ int _ok819 = !IS_FAIL(_v819);
     goto _SNO_NEXT_818;
 _SNO_NEXT_818:;
 /* line 442 */
-_L_pp_snoId:;
+_L_pp_Id:;
 SnoVal _v821 = aply("Gen",(SnoVal[]){aply("ss",(SnoVal[]){get(_x)},1)},1);
 int _ok821 = !IS_FAIL(_v821);
     if(_ok821) goto _SNO_RETURN_pp;
@@ -9592,7 +9591,7 @@ int _ok821 = !IS_FAIL(_v821);
     goto _SNO_NEXT_820;
 _SNO_NEXT_820:;
 /* line 443 */
-_L_pp_snoInteger:;
+_L_pp_Integer:;
 SnoVal _v823 = aply("Gen",(SnoVal[]){aply("ss",(SnoVal[]){get(_x)},1)},1);
 int _ok823 = !IS_FAIL(_v823);
     if(_ok823) goto _SNO_RETURN_pp;
@@ -9600,7 +9599,7 @@ int _ok823 = !IS_FAIL(_v823);
     goto _SNO_NEXT_822;
 _SNO_NEXT_822:;
 /* line 444 */
-_L_pp_snoLabel:;
+_L_pp_Label:;
 SnoVal _v825 = aply("Gen",(SnoVal[]){aply("ss",(SnoVal[]){get(_x)},1)},1);
 int _ok825 = !IS_FAIL(_v825);
     if(_ok825) goto _SNO_RETURN_pp;
@@ -9608,7 +9607,7 @@ int _ok825 = !IS_FAIL(_v825);
     goto _SNO_NEXT_824;
 _SNO_NEXT_824:;
 /* line 445 */
-_L_pp_snoProtKwd:;
+_L_pp_ProtKwd:;
 SnoVal _v827 = aply("Gen",(SnoVal[]){aply("ss",(SnoVal[]){get(_x)},1)},1);
 int _ok827 = !IS_FAIL(_v827);
     if(_ok827) goto _SNO_RETURN_pp;
@@ -9616,7 +9615,7 @@ int _ok827 = !IS_FAIL(_v827);
     goto _SNO_NEXT_826;
 _SNO_NEXT_826:;
 /* line 446 */
-_L_pp_snoReal:;
+_L_pp_Real:;
 SnoVal _v829 = aply("Gen",(SnoVal[]){aply("ss",(SnoVal[]){get(_x)},1)},1);
 int _ok829 = !IS_FAIL(_v829);
     if(_ok829) goto _SNO_RETURN_pp;
@@ -9624,7 +9623,7 @@ int _ok829 = !IS_FAIL(_v829);
     goto _SNO_NEXT_828;
 _SNO_NEXT_828:;
 /* line 447 */
-_L_pp_snoSpecialNm:;
+_L_pp_SpecialNm:;
 SnoVal _v831 = aply("Gen",(SnoVal[]){aply("ss",(SnoVal[]){get(_x)},1)},1);
 int _ok831 = !IS_FAIL(_v831);
     if(_ok831) goto _SNO_RETURN_pp;
@@ -9632,7 +9631,7 @@ int _ok831 = !IS_FAIL(_v831);
     goto _SNO_NEXT_830;
 _SNO_NEXT_830:;
 /* line 448 */
-_L_pp_snoString:;
+_L_pp_String:;
 SnoVal _v833 = aply("Gen",(SnoVal[]){aply("ss",(SnoVal[]){get(_x)},1)},1);
 int _ok833 = !IS_FAIL(_v833);
     if(_ok833) goto _SNO_RETURN_pp;
@@ -9640,7 +9639,7 @@ int _ok833 = !IS_FAIL(_v833);
     goto _SNO_NEXT_832;
 _SNO_NEXT_832:;
 /* line 449 */
-_L_pp_snoUnprotKwd:;
+_L_pp_UnprotKwd:;
 SnoVal _v835 = aply("Gen",(SnoVal[]){aply("ss",(SnoVal[]){get(_x)},1)},1);
 int _ok835 = !IS_FAIL(_v835);
     if(_ok835) goto _SNO_RETURN_pp;
@@ -9952,7 +9951,7 @@ int _ok925 = !IS_FAIL(_v925);
     goto _SNO_NEXT_924;
 _SNO_NEXT_924:;
 /* line 499 */
-_L_pp_snoComment:;
+_L_pp_Comment:;
 SnoVal _v927 = aply("SetLevel",(SnoVal[]){vint(0)},1);
 int _ok927 = !IS_FAIL(_v927);
     goto _SNO_NEXT_926;
@@ -9968,7 +9967,7 @@ int _ok931 = !IS_FAIL(_v931);
     goto _SNO_RETURN_pp;
 _SNO_NEXT_930:;
 /* line 503 */
-_L_pp_snoControl:;
+_L_pp_Control:;
 SnoVal _v933 = aply("SetLevel",(SnoVal[]){vint(0)},1);
 int _ok933 = !IS_FAIL(_v933);
     goto _SNO_NEXT_932;
@@ -9984,7 +9983,7 @@ int _ok937 = !IS_FAIL(_v937);
     goto _SNO_RETURN_pp;
 _SNO_NEXT_936:;
 /* line 507 */
-_L_pp_snoStmt:;
+_L_pp_Stmt:;
 SnoVal _v939 = aply("SetLevel",(SnoVal[]){vint(0)},1);
 int _ok939 = !IS_FAIL(_v939);
     goto _SNO_NEXT_938;
@@ -10074,7 +10073,7 @@ _SNO_NEXT_958:;
 /* line 518 */
 SnoVal _v961 = aply("DIFFER",(SnoVal[]){aply("t",(SnoVal[]){get(_ppSubj)},1)},1);
 int _ok961 = !IS_FAIL(_v961);
-    if(!_ok961) goto _L_pp_snoStmt7;
+    if(!_ok961) goto _L_pp_Stmt7;
     goto _SNO_NEXT_960;
 _SNO_NEXT_960:;
 /* line 519 */
@@ -10109,7 +10108,7 @@ _SNO_NEXT_970:;
 /* line 524 */
 SnoVal _v973 = aply("DIFFER",(SnoVal[]){aply("t",(SnoVal[]){get(_ppPatrn)},1)},1);
 int _ok973 = !IS_FAIL(_v973);
-    if(!_ok973) goto _L_pp_snoStmt5;
+    if(!_ok973) goto _L_pp_Stmt5;
     goto _SNO_NEXT_972;
 _SNO_NEXT_972:;
 /* line 525 */
@@ -10144,7 +10143,7 @@ _SNO_NEXT_982:;
 /* line 530 */
 SnoVal _v985 = aply("DIFFER",(SnoVal[]){get(_ppAsgn)},1);
 int _ok985 = !IS_FAIL(_v985);
-    if(!_ok985) goto _L_pp_snoStmt7;
+    if(!_ok985) goto _L_pp_Stmt7;
     goto _SNO_NEXT_984;
 _SNO_NEXT_984:;
 /* line 531 */
@@ -10155,7 +10154,7 @@ _SNO_NEXT_986:;
 /* line 532 */
 SnoVal _v989 = aply("DIFFER",(SnoVal[]){aply("t",(SnoVal[]){get(_ppRepl)},1)},1);
 int _ok989 = !IS_FAIL(_v989);
-    if(!_ok989) goto _L_pp_snoStmt7;
+    if(!_ok989) goto _L_pp_Stmt7;
     goto _SNO_NEXT_988;
 _SNO_NEXT_988:;
 /* line 533 */
@@ -10166,13 +10165,13 @@ _SNO_NEXT_990:;
 /* line 534 */
 SnoVal _v993 = aply("pp",(SnoVal[]){get(_ppRepl)},1);
 int _ok993 = !IS_FAIL(_v993);
-    goto _L_pp_snoStmt7;
+    goto _L_pp_Stmt7;
 _SNO_NEXT_992:;
 /* line 535 */
-_L_pp_snoStmt5:;
+_L_pp_Stmt5:;
 SnoVal _v995 = aply("DIFFER",(SnoVal[]){get(_ppAsgn)},1);
 int _ok995 = !IS_FAIL(_v995);
-    if(!_ok995) goto _L_pp_snoStmt7;
+    if(!_ok995) goto _L_pp_Stmt7;
     goto _SNO_NEXT_994;
 _SNO_NEXT_994:;
 /* line 536 */
@@ -10198,7 +10197,7 @@ _SNO_NEXT_1002:;
 /* line 540 */
 SnoVal _v1005 = aply("DIFFER",(SnoVal[]){aply("t",(SnoVal[]){get(_ppRepl)},1)},1);
 int _ok1005 = !IS_FAIL(_v1005);
-    if(!_ok1005) goto _L_pp_snoStmt7;
+    if(!_ok1005) goto _L_pp_Stmt7;
     goto _SNO_NEXT_1004;
 _SNO_NEXT_1004:;
 /* line 541 */
@@ -10228,13 +10227,13 @@ _SNO_NEXT_1012:;
 /* line 545 */
 SnoVal _v1015 = aply("pp",(SnoVal[]){get(_ppRepl)},1);
 int _ok1015 = !IS_FAIL(_v1015);
-    goto _L_pp_snoStmt7;
+    goto _L_pp_Stmt7;
 _SNO_NEXT_1014:;
 /* line 546 */
-_L_pp_snoStmt7:;
+_L_pp_Stmt7:;
 SnoVal _v1017 = aply("DIFFER",(SnoVal[]){aply("t",(SnoVal[]){get(_ppGo1)},1)},1);
 int _ok1017 = !IS_FAIL(_v1017);
-    if(!_ok1017) goto _L_pp_snoStmt9;
+    if(!_ok1017) goto _L_pp_Stmt9;
     goto _SNO_NEXT_1016;
 _SNO_NEXT_1016:;
 /* line 547 */
@@ -10274,22 +10273,22 @@ _SNO_NEXT_1028:;
 /* line 553 */
 SnoVal _v1031 = aply("DIFFER",(SnoVal[]){aply("t",(SnoVal[]){get(_ppGo2)},1)},1);
 int _ok1031 = !IS_FAIL(_v1031);
-    if(!_ok1031) goto _L_pp_snoStmt9;
+    if(!_ok1031) goto _L_pp_Stmt9;
     goto _SNO_NEXT_1030;
 _SNO_NEXT_1030:;
 /* line 554 */
 SnoVal _v1033 = aply("pp",(SnoVal[]){get(_ppGo2)},1);
 int _ok1033 = !IS_FAIL(_v1033);
-    goto _L_pp_snoStmt9;
+    goto _L_pp_Stmt9;
 _SNO_NEXT_1032:;
 /* line 555 */
-_L_pp_snoStmt9:;
+_L_pp_Stmt9:;
 SnoVal _v1035 = aply("Gen",(SnoVal[]){get(_nl)},1);
 int _ok1035 = !IS_FAIL(_v1035);
     goto _SNO_RETURN_pp;
 _SNO_NEXT_1034:;
 /* line 557 */
-_L_pp_snoExprList:;
+_L_pp_ExprList:;
 SnoVal _v1037 = aply("Gen",(SnoVal[]){aply("ss",(SnoVal[]){get(_x),sub(get(_ppWidth),aply("GetLevel",NULL,0))},2)},1);
 int _ok1037 = !IS_FAIL(_v1037);
     if(_ok1037) goto _SNO_RETURN_pp;
@@ -10310,7 +10309,7 @@ var_set("i", _i);
     goto _SNO_NEXT_1040;
 _SNO_NEXT_1040:;
 /* line 560 */
-_L_pp_snoExprList0:;
+_L_pp_ExprList0:;
 SnoVal _v1043 = concat_sv(aply("LT",(SnoVal[]){get(_i),get(_n)},2),add(get(_i),vint(1)));
 int _ok1043 = !IS_FAIL(_v1043);
 if(_ok1043) {
@@ -10348,7 +10347,7 @@ _SNO_NEXT_1052:;
 /* line 566 */
 SnoVal _v1055 = aply("pp",(SnoVal[]){indx(get(_c),(SnoVal[]){get(_i)},1)},1);
 int _ok1055 = !IS_FAIL(_v1055);
-    goto _L_pp_snoExprList0;
+    goto _L_pp_ExprList0;
 _SNO_NEXT_1054:;
 /* line 568 */
 _L_pp___16:;
@@ -10663,7 +10662,7 @@ int _ok1159 = !IS_FAIL(_v1159);
     goto _SNO_RETURN_pp;
 _SNO_NEXT_1158:;
 /* line 625 */
-_L_pp_snoCall:;
+_L_pp_Call:;
 SnoVal _v1161 = aply("Gen",(SnoVal[]){aply("ss",(SnoVal[]){get(_x),sub(get(_ppWidth),aply("GetLevel",NULL,0))},2)},1);
 int _ok1161 = !IS_FAIL(_v1161);
     if(_ok1161) goto _SNO_RETURN_pp;
@@ -10854,7 +10853,7 @@ int _ok1195 = !IS_FAIL(_v1195);
     goto _SNO_NEXT_1194;
 _SNO_NEXT_1194:;
 /* line 651 */
-_L_ss_snoBuiltinVar:;
+_L_ss_BuiltinVar:;
 SnoVal _v1197 = aply("upr",(SnoVal[]){get(_v)},1);
 int _ok1197 = !IS_FAIL(_v1197);
 if(_ok1197) {
@@ -10864,7 +10863,7 @@ var_set("ss", _ss);
     goto _L_ss_atomic;
 _SNO_NEXT_1196:;
 /* line 652 */
-_L_ss_snoFunction:;
+_L_ss_Function:;
 SnoVal _v1199 = aply("upr",(SnoVal[]){get(_v)},1);
 int _ok1199 = !IS_FAIL(_v1199);
 if(_ok1199) {
@@ -10874,7 +10873,7 @@ var_set("ss", _ss);
     goto _L_ss_atomic;
 _SNO_NEXT_1198:;
 /* line 653 */
-_L_ss_snoId:;
+_L_ss_Id:;
 SnoVal _v1201 = get(_v);
 int _ok1201 = !IS_FAIL(_v1201);
 if(_ok1201) {
@@ -10884,7 +10883,7 @@ var_set("ss", _ss);
     goto _L_ss_atomic;
 _SNO_NEXT_1200:;
 /* line 654 */
-_L_ss_snoInteger:;
+_L_ss_Integer:;
 SnoVal _v1203 = get(_v);
 int _ok1203 = !IS_FAIL(_v1203);
 if(_ok1203) {
@@ -10894,7 +10893,7 @@ var_set("ss", _ss);
     goto _L_ss_atomic;
 _SNO_NEXT_1202:;
 /* line 655 */
-_L_ss_snoLabel:;
+_L_ss_Label:;
 /* byrd mtch u1205 */
 SnoVal _s1205 = get(_v);
 const char *_subj1205 = to_str(_s1205);
@@ -10923,7 +10922,7 @@ cat_l_159_alpha:
 cat_l_159_beta:
     goto _byrd_1205_fail;
 cat_r_159_alpha: {
-    SnoVal _deref_pat = var_get("snoSpecialNm");
+    SnoVal _deref_pat = var_get("SpecialNm");
     int _deref_new_cur = match_pattern_at(_deref_pat, _subj1205, (int)_slen1205, (int)_cur1205);
     if (_deref_new_cur < 0) goto cat_l_159_beta;
     deref_160_saved_cursor = _cur1205;
@@ -10944,12 +10943,12 @@ goto _byrd_1205_done;
 _byrd_1205_fail:;
 _ok1205 = 0;
 _byrd_1205_done:;
-    if(_ok1205) goto _L_ss_snoLabel0;
-    if(!_ok1205) goto _L_ss_snoLabel1;
+    if(_ok1205) goto _L_ss_Label0;
+    if(!_ok1205) goto _L_ss_Label1;
     goto _SNO_NEXT_1204;
 _SNO_NEXT_1204:;
 /* line 656 */
-_L_ss_snoLabel0:;
+_L_ss_Label0:;
 SnoVal _v1207 = aply("upr",(SnoVal[]){get(_v)},1);
 int _ok1207 = !IS_FAIL(_v1207);
 if(_ok1207) {
@@ -10959,7 +10958,7 @@ var_set("ss", _ss);
     goto _L_ss_atomic;
 _SNO_NEXT_1206:;
 /* line 657 */
-_L_ss_snoLabel1:;
+_L_ss_Label1:;
 SnoVal _v1209 = get(_v);
 int _ok1209 = !IS_FAIL(_v1209);
 if(_ok1209) {
@@ -10969,7 +10968,7 @@ var_set("ss", _ss);
     goto _L_ss_atomic;
 _SNO_NEXT_1208:;
 /* line 658 */
-_L_ss_snoProtKwd:;
+_L_ss_ProtKwd:;
 SnoVal _v1211 = aply("upr",(SnoVal[]){get(_v)},1);
 int _ok1211 = !IS_FAIL(_v1211);
 if(_ok1211) {
@@ -10979,7 +10978,7 @@ var_set("ss", _ss);
     goto _L_ss_atomic;
 _SNO_NEXT_1210:;
 /* line 659 */
-_L_ss_snoReal:;
+_L_ss_Real:;
 SnoVal _v1213 = get(_v);
 int _ok1213 = !IS_FAIL(_v1213);
 if(_ok1213) {
@@ -10989,7 +10988,7 @@ var_set("ss", _ss);
     goto _L_ss_atomic;
 _SNO_NEXT_1212:;
 /* line 660 */
-_L_ss_snoSpecialNm:;
+_L_ss_SpecialNm:;
 SnoVal _v1215 = aply("upr",(SnoVal[]){get(_v)},1);
 int _ok1215 = !IS_FAIL(_v1215);
 if(_ok1215) {
@@ -10999,7 +10998,7 @@ var_set("ss", _ss);
     goto _L_ss_atomic;
 _SNO_NEXT_1214:;
 /* line 661 */
-_L_ss_snoString:;
+_L_ss_String:;
 SnoVal _v1217 = get(_v);
 int _ok1217 = !IS_FAIL(_v1217);
 if(_ok1217) {
@@ -11009,7 +11008,7 @@ var_set("ss", _ss);
     goto _L_ss_atomic;
 _SNO_NEXT_1216:;
 /* line 662 */
-_L_ss_snoUnprotKwd:;
+_L_ss_UnprotKwd:;
 SnoVal _v1219 = aply("upr",(SnoVal[]){get(_v)},1);
 int _ok1219 = !IS_FAIL(_v1219);
 if(_ok1219) {
@@ -11330,7 +11329,7 @@ int _ok1295 = !IS_FAIL(_v1295);
     goto _SNO_NEXT_1294;
 _SNO_NEXT_1294:;
 /* line 705 */
-_L_ss_snoExprList:;
+_L_ss_ExprList:;
 SnoVal _v1297 = aply("ss",(SnoVal[]){indx(get(_c),(SnoVal[]){vint(1)},1),get(_len)},2);
 int _ok1297 = !IS_FAIL(_v1297);
 if(_ok1297) {
@@ -11350,7 +11349,7 @@ var_set("i", _i);
     goto _SNO_NEXT_1298;
 _SNO_NEXT_1298:;
 /* line 707 */
-_L_ss_snoExprList0:;
+_L_ss_ExprList0:;
 SnoVal _v1301 = concat_sv(aply("LT",(SnoVal[]){get(_i),get(_n)},2),add(get(_i),vint(1)));
 int _ok1301 = !IS_FAIL(_v1301);
 if(_ok1301) {
@@ -11367,7 +11366,7 @@ if(_ok1303) {
 set(_ss, _v1303);
 var_set("ss", _ss);
 }
-    if(_ok1303) goto _L_ss_snoExprList0;
+    if(_ok1303) goto _L_ss_ExprList0;
     if(!_ok1303) goto _SNO_FRETURN_ss;
     goto _SNO_NEXT_1302;
 _SNO_NEXT_1302:;
@@ -11568,7 +11567,7 @@ var_set("ss", _ss);
     goto _SNO_NEXT_1340;
 _SNO_NEXT_1340:;
 /* line 734 */
-_L_ss_snoCall:;
+_L_ss_Call:;
 SnoVal _v1343 = concat_sv(concat_sv(concat_sv(aply("ss",(SnoVal[]){indx(get(_c),(SnoVal[]){vint(1)},1)},1),strv("(")),aply("ss",(SnoVal[]){indx(get(_c),(SnoVal[]){vint(2)},1),sub(sub(get(_len),aply("SIZE",(SnoVal[]){get(_v)},1)),vint(2))},2)),strv(")"));
 int _ok1343 = !IS_FAIL(_v1343);
 if(_ok1343) {
@@ -11716,7 +11715,7 @@ int _ok1353 = !IS_FAIL(_v1353);
     goto _SNO_NEXT_1352;
 _SNO_NEXT_1352:;
 /* line 747 */
-SnoVal _v1355 = aply("IDENT",(SnoVal[]){aply("t",(SnoVal[]){get(_x)},1),strv("snoCall")},2);
+SnoVal _v1355 = aply("IDENT",(SnoVal[]){aply("t",(SnoVal[]){get(_x)},1),strv("Call")},2);
 int _ok1355 = !IS_FAIL(_v1355);
     if(!_ok1355) goto _L_findRefs_1;
     goto _SNO_NEXT_1354;
@@ -11764,7 +11763,7 @@ var_set("v", _v);
 _SNO_NEXT_1364:;
 /* line 753 */
 _L_findRefs_2:;
-SnoVal _v1367 = aply("IDENT",(SnoVal[]){aply("t",(SnoVal[]){get(_x)},1),strv("snoId")},2);
+SnoVal _v1367 = aply("IDENT",(SnoVal[]){aply("t",(SnoVal[]){get(_x)},1),strv("Id")},2);
 int _ok1367 = !IS_FAIL(_v1367);
     if(!_ok1367) goto _SNO_RETURN_findRefs;
     goto _SNO_NEXT_1366;
@@ -11833,21 +11832,21 @@ _byrd_1371_done:;
     goto _SNO_NEXT_1370;
 _SNO_NEXT_1370:;
 /* line 756 */
-SnoVal _v1373 = concat_sv(concat_sv(concat_sv(aply("DIFFER",(SnoVal[]){get(_snoRefs)},1),get(_snoRefs)),strv(" ")),get(_v));
+SnoVal _v1373 = concat_sv(concat_sv(concat_sv(aply("DIFFER",(SnoVal[]){get(_Refs)},1),get(_Refs)),strv(" ")),get(_v));
 int _ok1373 = !IS_FAIL(_v1373);
 if(_ok1373) {
-set(_snoRefs, _v1373);
-var_set("snoRefs", _snoRefs);
+set(_Refs, _v1373);
+var_set("Refs", _Refs);
 }
     if(_ok1373) goto _SNO_FRETURN_findRefs;
     goto _SNO_NEXT_1372;
 _SNO_NEXT_1372:;
 /* line 757 */
-SnoVal _v1375 = concat_sv(aply("IDENT",(SnoVal[]){get(_snoRefs)},1),get(_v));
+SnoVal _v1375 = concat_sv(aply("IDENT",(SnoVal[]){get(_Refs)},1),get(_v));
 int _ok1375 = !IS_FAIL(_v1375);
 if(_ok1375) {
-set(_snoRefs, _v1375);
-var_set("snoRefs", _snoRefs);
+set(_Refs, _v1375);
+var_set("Refs", _Refs);
 }
     goto _SNO_FRETURN_findRefs;
 _SNO_NEXT_1374:;
@@ -11935,7 +11934,7 @@ var_set("n", _n);
     goto _SNO_NEXT_1383;
 _SNO_NEXT_1383:;
 /* line 764 */
-SnoVal _v1386 = aply("IDENT",(SnoVal[]){aply("t",(SnoVal[]){indx(get(_c),(SnoVal[]){get(_n)},1)},1),strv("snoStmt")},2);
+SnoVal _v1386 = aply("IDENT",(SnoVal[]){aply("t",(SnoVal[]){indx(get(_c),(SnoVal[]){get(_n)},1)},1),strv("Stmt")},2);
 int _ok1386 = !IS_FAIL(_v1386);
     if(!_ok1386) goto _L_refs_0;
     goto _SNO_NEXT_1385;
@@ -11962,7 +11961,7 @@ int _ok1392 = !IS_FAIL(_v1392);
     goto _SNO_NEXT_1391;
 _SNO_NEXT_1391:;
 /* line 768 */
-SnoVal _v1394 = aply("IDENT",(SnoVal[]){aply("t",(SnoVal[]){indx(aply("c",(SnoVal[]){indx(get(_c),(SnoVal[]){get(_n)},1)},1),(SnoVal[]){vint(2)},1)},1),strv("snoId")},2);
+SnoVal _v1394 = aply("IDENT",(SnoVal[]){aply("t",(SnoVal[]){indx(aply("c",(SnoVal[]){indx(get(_c),(SnoVal[]){get(_n)},1)},1),(SnoVal[]){vint(2)},1)},1),strv("Id")},2);
 int _ok1394 = !IS_FAIL(_v1394);
     if(_ok1394) goto _L_refs_1;
     goto _SNO_NEXT_1393;
@@ -11985,7 +11984,7 @@ var_set("subj", _subj);
     goto _SNO_NEXT_1397;
 _SNO_NEXT_1397:;
 /* line 771 */
-SnoVal _v1400 = get(_snoRefs);
+SnoVal _v1400 = get(_Refs);
 int _ok1400 = !IS_FAIL(_v1400);
     goto _SNO_NEXT_1399;
 _SNO_NEXT_1399:;
@@ -11995,7 +11994,7 @@ int _ok1402 = !IS_FAIL(_v1402);
     goto _SNO_NEXT_1401;
 _SNO_NEXT_1401:;
 /* line 773 */
-SnoVal _v1404 = concat_sv(concat_sv(concat_sv(concat_sv(aply("LPAD",(SnoVal[]){get(_s),vint(3),vint(0)},3),strv(": ")),aply("RPAD",(SnoVal[]){get(_subj),vint(38)},2)),strv(" ")),get(_snoRefs));
+SnoVal _v1404 = concat_sv(concat_sv(concat_sv(concat_sv(aply("LPAD",(SnoVal[]){get(_s),vint(3),vint(0)},3),strv(": ")),aply("RPAD",(SnoVal[]){get(_subj),vint(38)},2)),strv(" ")),get(_Refs));
 int _ok1404 = !IS_FAIL(_v1404);
 if(_ok1404) {
 var_set("OUTPUT", _v1404);
@@ -12031,78 +12030,150 @@ _SNO_ABORT_refs:
 
 
 /* --- compiled named pattern functions --- */
-static SnoVal pat_ioFileOptDash(const char *, int64_t, int64_t *, int);
-static SnoVal pat_ioFileOptList(const char *, int64_t, int64_t *, int);
-static SnoVal pat_ioFileOptPat(const char *, int64_t, int64_t *, int);
-static SnoVal pat_ioFileOptPat0(const char *, int64_t, int64_t *, int);
-static SnoVal pat_ioCmdDlmtPat1(const char *, int64_t, int64_t *, int);
-static SnoVal pat_ioCmdDlmtPat2(const char *, int64_t, int64_t *, int);
-static SnoVal pat_ppTokPat(const char *, int64_t, int64_t *, int);
-static SnoVal pat_ppGSfx(const char *, int64_t, int64_t *, int);
-static SnoVal pat_ppGPat(const char *, int64_t, int64_t *, int);
-static SnoVal pat_ppTrimPat(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoInteger(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoDQ(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoSQ(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoString(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoReal(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoId(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoGray(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoWhite(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoTxInList(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoExprList(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoXList(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoExpr(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoExpr0(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoExpr1(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoExpr2(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoExpr3(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoX3(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoExpr4(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoX4(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoExpr5(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoExpr6(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoExpr7(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoExpr8(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoExpr9(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoExpr10(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoExpr11(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoExpr12(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoExpr13(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoExpr14(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoExpr15(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoExpr16(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoExpr17(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoSGoto(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoFGoto(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoSorF(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoTarget(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoGoto(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoControl(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoComment(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoLabel(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoStmt(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoCommands(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoCommand(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoParse(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoCompiland(const char *, int64_t, int64_t *, int);
-static SnoVal pat_snoSpace(const char *, int64_t, int64_t *, int);
+typedef struct pat_ioFileOptDash_t pat_ioFileOptDash_t;
+typedef struct pat_ioFileOptList_t pat_ioFileOptList_t;
+typedef struct pat_ioFileOptPat_t pat_ioFileOptPat_t;
+typedef struct pat_ioFileOptPat0_t pat_ioFileOptPat0_t;
+typedef struct pat_ioCmdDlmtPat1_t pat_ioCmdDlmtPat1_t;
+typedef struct pat_ioCmdDlmtPat2_t pat_ioCmdDlmtPat2_t;
+typedef struct pat_ppTokPat_t pat_ppTokPat_t;
+typedef struct pat_ppGSfx_t pat_ppGSfx_t;
+typedef struct pat_ppGPat_t pat_ppGPat_t;
+typedef struct pat_ppTrimPat_t pat_ppTrimPat_t;
+typedef struct pat_Integer_t pat_Integer_t;
+typedef struct pat_DQ_t pat_DQ_t;
+typedef struct pat_SQ_t pat_SQ_t;
+typedef struct pat_String_t pat_String_t;
+typedef struct pat_Real_t pat_Real_t;
+typedef struct pat_Id_t pat_Id_t;
+typedef struct pat_Gray_t pat_Gray_t;
+typedef struct pat_White_t pat_White_t;
+typedef struct pat_TxInList_t pat_TxInList_t;
+typedef struct pat_ExprList_t pat_ExprList_t;
+typedef struct pat_XList_t pat_XList_t;
+typedef struct pat_Expr_t pat_Expr_t;
+typedef struct pat_Expr0_t pat_Expr0_t;
+typedef struct pat_Expr1_t pat_Expr1_t;
+typedef struct pat_Expr2_t pat_Expr2_t;
+typedef struct pat_Expr3_t pat_Expr3_t;
+typedef struct pat_X3_t pat_X3_t;
+typedef struct pat_Expr4_t pat_Expr4_t;
+typedef struct pat_X4_t pat_X4_t;
+typedef struct pat_Expr5_t pat_Expr5_t;
+typedef struct pat_Expr6_t pat_Expr6_t;
+typedef struct pat_Expr7_t pat_Expr7_t;
+typedef struct pat_Expr8_t pat_Expr8_t;
+typedef struct pat_Expr9_t pat_Expr9_t;
+typedef struct pat_Expr10_t pat_Expr10_t;
+typedef struct pat_Expr11_t pat_Expr11_t;
+typedef struct pat_Expr12_t pat_Expr12_t;
+typedef struct pat_Expr13_t pat_Expr13_t;
+typedef struct pat_Expr14_t pat_Expr14_t;
+typedef struct pat_Expr15_t pat_Expr15_t;
+typedef struct pat_Expr16_t pat_Expr16_t;
+typedef struct pat_Expr17_t pat_Expr17_t;
+typedef struct pat_SGoto_t pat_SGoto_t;
+typedef struct pat_FGoto_t pat_FGoto_t;
+typedef struct pat_SorF_t pat_SorF_t;
+typedef struct pat_Target_t pat_Target_t;
+typedef struct pat_Goto_t pat_Goto_t;
+typedef struct pat_Control_t pat_Control_t;
+typedef struct pat_Comment_t pat_Comment_t;
+typedef struct pat_Label_t pat_Label_t;
+typedef struct pat_Stmt_t pat_Stmt_t;
+typedef struct pat_Commands_t pat_Commands_t;
+typedef struct pat_Command_t pat_Command_t;
+typedef struct pat_Parse_t pat_Parse_t;
+typedef struct pat_Compiland_t pat_Compiland_t;
+typedef struct pat_Space_t pat_Space_t;
+
+static SnoVal pat_ioFileOptDash(const char *, int64_t, int64_t *, pat_ioFileOptDash_t **, int);
+static SnoVal pat_ioFileOptList(const char *, int64_t, int64_t *, pat_ioFileOptList_t **, int);
+static SnoVal pat_ioFileOptPat(const char *, int64_t, int64_t *, pat_ioFileOptPat_t **, int);
+static SnoVal pat_ioFileOptPat0(const char *, int64_t, int64_t *, pat_ioFileOptPat0_t **, int);
+static SnoVal pat_ioCmdDlmtPat1(const char *, int64_t, int64_t *, pat_ioCmdDlmtPat1_t **, int);
+static SnoVal pat_ioCmdDlmtPat2(const char *, int64_t, int64_t *, pat_ioCmdDlmtPat2_t **, int);
+static SnoVal pat_ppTokPat(const char *, int64_t, int64_t *, pat_ppTokPat_t **, int);
+static SnoVal pat_ppGSfx(const char *, int64_t, int64_t *, pat_ppGSfx_t **, int);
+static SnoVal pat_ppGPat(const char *, int64_t, int64_t *, pat_ppGPat_t **, int);
+static SnoVal pat_ppTrimPat(const char *, int64_t, int64_t *, pat_ppTrimPat_t **, int);
+static SnoVal pat_Integer(const char *, int64_t, int64_t *, pat_Integer_t **, int);
+static SnoVal pat_DQ(const char *, int64_t, int64_t *, pat_DQ_t **, int);
+static SnoVal pat_SQ(const char *, int64_t, int64_t *, pat_SQ_t **, int);
+static SnoVal pat_String(const char *, int64_t, int64_t *, pat_String_t **, int);
+static SnoVal pat_Real(const char *, int64_t, int64_t *, pat_Real_t **, int);
+static SnoVal pat_Id(const char *, int64_t, int64_t *, pat_Id_t **, int);
+static SnoVal pat_Gray(const char *, int64_t, int64_t *, pat_Gray_t **, int);
+static SnoVal pat_White(const char *, int64_t, int64_t *, pat_White_t **, int);
+static SnoVal pat_TxInList(const char *, int64_t, int64_t *, pat_TxInList_t **, int);
+static SnoVal pat_ExprList(const char *, int64_t, int64_t *, pat_ExprList_t **, int);
+static SnoVal pat_XList(const char *, int64_t, int64_t *, pat_XList_t **, int);
+static SnoVal pat_Expr(const char *, int64_t, int64_t *, pat_Expr_t **, int);
+static SnoVal pat_Expr0(const char *, int64_t, int64_t *, pat_Expr0_t **, int);
+static SnoVal pat_Expr1(const char *, int64_t, int64_t *, pat_Expr1_t **, int);
+static SnoVal pat_Expr2(const char *, int64_t, int64_t *, pat_Expr2_t **, int);
+static SnoVal pat_Expr3(const char *, int64_t, int64_t *, pat_Expr3_t **, int);
+static SnoVal pat_X3(const char *, int64_t, int64_t *, pat_X3_t **, int);
+static SnoVal pat_Expr4(const char *, int64_t, int64_t *, pat_Expr4_t **, int);
+static SnoVal pat_X4(const char *, int64_t, int64_t *, pat_X4_t **, int);
+static SnoVal pat_Expr5(const char *, int64_t, int64_t *, pat_Expr5_t **, int);
+static SnoVal pat_Expr6(const char *, int64_t, int64_t *, pat_Expr6_t **, int);
+static SnoVal pat_Expr7(const char *, int64_t, int64_t *, pat_Expr7_t **, int);
+static SnoVal pat_Expr8(const char *, int64_t, int64_t *, pat_Expr8_t **, int);
+static SnoVal pat_Expr9(const char *, int64_t, int64_t *, pat_Expr9_t **, int);
+static SnoVal pat_Expr10(const char *, int64_t, int64_t *, pat_Expr10_t **, int);
+static SnoVal pat_Expr11(const char *, int64_t, int64_t *, pat_Expr11_t **, int);
+static SnoVal pat_Expr12(const char *, int64_t, int64_t *, pat_Expr12_t **, int);
+static SnoVal pat_Expr13(const char *, int64_t, int64_t *, pat_Expr13_t **, int);
+static SnoVal pat_Expr14(const char *, int64_t, int64_t *, pat_Expr14_t **, int);
+static SnoVal pat_Expr15(const char *, int64_t, int64_t *, pat_Expr15_t **, int);
+static SnoVal pat_Expr16(const char *, int64_t, int64_t *, pat_Expr16_t **, int);
+static SnoVal pat_Expr17(const char *, int64_t, int64_t *, pat_Expr17_t **, int);
+static SnoVal pat_SGoto(const char *, int64_t, int64_t *, pat_SGoto_t **, int);
+static SnoVal pat_FGoto(const char *, int64_t, int64_t *, pat_FGoto_t **, int);
+static SnoVal pat_SorF(const char *, int64_t, int64_t *, pat_SorF_t **, int);
+static SnoVal pat_Target(const char *, int64_t, int64_t *, pat_Target_t **, int);
+static SnoVal pat_Goto(const char *, int64_t, int64_t *, pat_Goto_t **, int);
+static SnoVal pat_Control(const char *, int64_t, int64_t *, pat_Control_t **, int);
+static SnoVal pat_Comment(const char *, int64_t, int64_t *, pat_Comment_t **, int);
+static SnoVal pat_Label(const char *, int64_t, int64_t *, pat_Label_t **, int);
+static SnoVal pat_Stmt(const char *, int64_t, int64_t *, pat_Stmt_t **, int);
+static SnoVal pat_Commands(const char *, int64_t, int64_t *, pat_Commands_t **, int);
+static SnoVal pat_Command(const char *, int64_t, int64_t *, pat_Command_t **, int);
+static SnoVal pat_Parse(const char *, int64_t, int64_t *, pat_Parse_t **, int);
+static SnoVal pat_Compiland(const char *, int64_t, int64_t *, pat_Compiland_t **, int);
+static SnoVal pat_Space(const char *, int64_t, int64_t *, pat_Space_t **, int);
+
+typedef struct pat_ioFileOptDash_t {
+    int64_t cat_l_166_alpha_saved_cursor;
+    int64_t cat_r_166_alpha_start;
+    int64_t assign_c_167_alpha_delta;
+    int64_t assign_c_167_alpha_start;
+    int64_t cat_l_168_alpha_saved_cursor;
+    int64_t cat_r_168_alpha_delta;
+    int64_t cat_r_168_alpha_start;
+    int64_t alt_r_164_alpha_start;
+    int64_t assign_c_169_alpha_saved_cursor;
+    int64_t alt_r_163_alpha_start;
+    int64_t assign_c_170_alpha_saved_cursor;
+} pat_ioFileOptDash_t;
 
 static SnoVal pat_ioFileOptDash(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
+                  int64_t *_cur_ptr_np, pat_ioFileOptDash_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_ioFileOptDash_t)); }
+    pat_ioFileOptDash_t *z = *_zz_np;
     int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t cat_l_166_alpha_saved_cursor;
-static int64_t cat_r_166_alpha_start;
-static int64_t assign_c_167_alpha_delta;
-static int64_t assign_c_167_alpha_start;
-static int64_t cat_l_168_alpha_saved_cursor;
-static int64_t cat_r_168_alpha_delta;
-static int64_t cat_r_168_alpha_start;
-static int64_t alt_r_164_alpha_start;
-static int64_t assign_c_169_alpha_saved_cursor;
-static int64_t alt_r_163_alpha_start;
-static int64_t assign_c_170_alpha_saved_cursor;
+#define cat_l_166_alpha_saved_cursor z->cat_l_166_alpha_saved_cursor
+#define cat_r_166_alpha_start z->cat_r_166_alpha_start
+#define assign_c_167_alpha_delta z->assign_c_167_alpha_delta
+#define assign_c_167_alpha_start z->assign_c_167_alpha_start
+#define cat_l_168_alpha_saved_cursor z->cat_l_168_alpha_saved_cursor
+#define cat_r_168_alpha_delta z->cat_r_168_alpha_delta
+#define cat_r_168_alpha_start z->cat_r_168_alpha_start
+#define alt_r_164_alpha_start z->alt_r_164_alpha_start
+#define assign_c_169_alpha_saved_cursor z->assign_c_169_alpha_saved_cursor
+#define alt_r_163_alpha_start z->alt_r_163_alpha_start
+#define assign_c_170_alpha_saved_cursor z->assign_c_170_alpha_saved_cursor
 
     if (_entry_np == 0) goto _ioFileOptDash_alpha;
     if (_entry_np == 1) goto _ioFileOptDash_beta;
@@ -12218,16 +12289,40 @@ alt_r_163_beta:
         return STR_VAL("");
     _ioFileOptDash_fail:;
         return FAIL_VAL;
+#undef cat_l_166_alpha_saved_cursor
+#undef cat_r_166_alpha_start
+#undef assign_c_167_alpha_delta
+#undef assign_c_167_alpha_start
+#undef cat_l_168_alpha_saved_cursor
+#undef cat_r_168_alpha_delta
+#undef cat_r_168_alpha_start
+#undef alt_r_164_alpha_start
+#undef assign_c_169_alpha_saved_cursor
+#undef alt_r_163_alpha_start
+#undef assign_c_170_alpha_saved_cursor
+
 }
 
+typedef struct pat_ioFileOptList_t {
+    int64_t deref_172_saved_cur;
+    int64_t cat_l_174_alpha_delta;
+    int64_t cat_l_174_alpha_start;
+    int64_t deref_175_saved_cur;
+    pat_ioFileOptDash_t *deref_172_z;
+    pat_ioFileOptList_t *deref_175_z;
+} pat_ioFileOptList_t;
+
 static SnoVal pat_ioFileOptList(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
+                  int64_t *_cur_ptr_np, pat_ioFileOptList_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_ioFileOptList_t)); }
+    pat_ioFileOptList_t *z = *_zz_np;
     int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t deref_172_saved_cur;
-static int64_t cat_l_174_alpha_delta;
-static int64_t cat_l_174_alpha_start;
-static int64_t deref_175_saved_cur;
+#define deref_172_saved_cur z->deref_172_saved_cur
+#define cat_l_174_alpha_delta z->cat_l_174_alpha_delta
+#define cat_l_174_alpha_start z->cat_l_174_alpha_start
+#define deref_175_saved_cur z->deref_175_saved_cur
+#define deref_172_z z->deref_172_z
+#define deref_175_z z->deref_175_z
 
     if (_entry_np == 0) goto _ioFileOptList_alpha;
     if (_entry_np == 1) goto _ioFileOptList_beta;
@@ -12238,14 +12333,14 @@ _ioFileOptList_beta:
     goto cat_r_171_beta;
 cat_l_171_alpha: {
     deref_172_saved_cur = _cur_np;
-    SnoVal _r_ioFileOptDash = pat_ioFileOptDash(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_ioFileOptDash)) { _cur_np = deref_172_saved_cur; goto _ioFileOptList_fail; }
+    SnoVal _r_172 = pat_ioFileOptDash(_subj_np, _slen_np, &_cur_np, &deref_172_z, 0);
+    if (is_fail(_r_172)) { _cur_np = deref_172_saved_cur; goto _ioFileOptList_fail; }
     goto cat_r_171_alpha;
 }
 cat_l_171_beta: {
     _cur_np = deref_172_saved_cur;
-    SnoVal _r_ioFileOptDash = pat_ioFileOptDash(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_ioFileOptDash)) { _cur_np = deref_172_saved_cur; goto _ioFileOptList_fail; }
+    SnoVal _r_172_b = pat_ioFileOptDash(_subj_np, _slen_np, &_cur_np, &deref_172_z, 1);
+    if (is_fail(_r_172_b)) { _cur_np = deref_172_saved_cur; goto _ioFileOptList_fail; }
     goto cat_r_171_alpha;
 }
 cat_r_171_alpha: /* ALT — try left */
@@ -12268,14 +12363,14 @@ cat_l_174_beta:
     goto cat_r_174_alpha;
 cat_r_174_alpha: {
     deref_175_saved_cur = _cur_np;
-    SnoVal _r_ioFileOptList = pat_ioFileOptList(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_ioFileOptList)) { _cur_np = deref_175_saved_cur; goto cat_l_174_beta; }
+    SnoVal _r_175 = pat_ioFileOptList(_subj_np, _slen_np, &_cur_np, &deref_175_z, 0);
+    if (is_fail(_r_175)) { _cur_np = deref_175_saved_cur; goto cat_l_174_beta; }
     goto _ioFileOptList_ok;
 }
 cat_r_174_beta: {
     _cur_np = deref_175_saved_cur;
-    SnoVal _r_ioFileOptList = pat_ioFileOptList(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_ioFileOptList)) { _cur_np = deref_175_saved_cur; goto cat_l_174_beta; }
+    SnoVal _r_175_b = pat_ioFileOptList(_subj_np, _slen_np, &_cur_np, &deref_175_z, 1);
+    if (is_fail(_r_175_b)) { _cur_np = deref_175_saved_cur; goto cat_l_174_beta; }
     goto _ioFileOptList_ok;
 }
 alt_r_173_alpha: /* pat var epsilon — epsilon */
@@ -12287,15 +12382,31 @@ alt_r_173_beta:
         return STR_VAL("");
     _ioFileOptList_fail:;
         return FAIL_VAL;
+#undef deref_172_saved_cur
+#undef cat_l_174_alpha_delta
+#undef cat_l_174_alpha_start
+#undef deref_175_saved_cur
+#undef deref_172_z
+#undef deref_175_z
+
 }
 
+typedef struct pat_ioFileOptPat_t {
+    int64_t cat_l_177_alpha_saved_cursor;
+    int64_t deref_178_saved_cur;
+    int64_t cat_r_176_alpha_saved_cursor;
+    pat_ioFileOptList_t *deref_178_z;
+} pat_ioFileOptPat_t;
+
 static SnoVal pat_ioFileOptPat(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
+                  int64_t *_cur_ptr_np, pat_ioFileOptPat_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_ioFileOptPat_t)); }
+    pat_ioFileOptPat_t *z = *_zz_np;
     int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t cat_l_177_alpha_saved_cursor;
-static int64_t deref_178_saved_cur;
-static int64_t cat_r_176_alpha_saved_cursor;
+#define cat_l_177_alpha_saved_cursor z->cat_l_177_alpha_saved_cursor
+#define deref_178_saved_cur z->deref_178_saved_cur
+#define cat_r_176_alpha_saved_cursor z->cat_r_176_alpha_saved_cursor
+#define deref_178_z z->deref_178_z
 
     if (_entry_np == 0) goto _ioFileOptPat_alpha;
     if (_entry_np == 1) goto _ioFileOptPat_beta;
@@ -12319,14 +12430,14 @@ cat_l_177_beta:
     goto _ioFileOptPat_fail;
 cat_r_177_alpha: {
     deref_178_saved_cur = _cur_np;
-    SnoVal _r_ioFileOptList = pat_ioFileOptList(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_ioFileOptList)) { _cur_np = deref_178_saved_cur; goto cat_l_177_beta; }
+    SnoVal _r_178 = pat_ioFileOptList(_subj_np, _slen_np, &_cur_np, &deref_178_z, 0);
+    if (is_fail(_r_178)) { _cur_np = deref_178_saved_cur; goto cat_l_177_beta; }
     goto cat_r_176_alpha;
 }
 cat_r_177_beta: {
     _cur_np = deref_178_saved_cur;
-    SnoVal _r_ioFileOptList = pat_ioFileOptList(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_ioFileOptList)) { _cur_np = deref_178_saved_cur; goto cat_l_177_beta; }
+    SnoVal _r_178_b = pat_ioFileOptList(_subj_np, _slen_np, &_cur_np, &deref_178_z, 1);
+    if (is_fail(_r_178_b)) { _cur_np = deref_178_saved_cur; goto cat_l_177_beta; }
     goto cat_r_176_alpha;
 }
 cat_r_176_alpha:
@@ -12343,13 +12454,25 @@ cat_r_176_beta:
         return STR_VAL("");
     _ioFileOptPat_fail:;
         return FAIL_VAL;
+#undef cat_l_177_alpha_saved_cursor
+#undef deref_178_saved_cur
+#undef cat_r_176_alpha_saved_cursor
+#undef deref_178_z
+
 }
 
+typedef struct pat_ioFileOptPat0_t {
+    int64_t deref_180_saved_cur;
+    pat_ioFileOptPat_t *deref_180_z;
+} pat_ioFileOptPat0_t;
+
 static SnoVal pat_ioFileOptPat0(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
+                  int64_t *_cur_ptr_np, pat_ioFileOptPat0_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_ioFileOptPat0_t)); }
+    pat_ioFileOptPat0_t *z = *_zz_np;
     int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t deref_180_saved_cur;
+#define deref_180_saved_cur z->deref_180_saved_cur
+#define deref_180_z z->deref_180_z
 
     if (_entry_np == 0) goto _ioFileOptPat0_alpha;
     if (_entry_np == 1) goto _ioFileOptPat0_beta;
@@ -12360,14 +12483,14 @@ _ioFileOptPat0_beta:
     goto alt_r_179_beta;
 alt_l_179_alpha: {
     deref_180_saved_cur = _cur_np;
-    SnoVal _r_ioFileOptPat = pat_ioFileOptPat(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_ioFileOptPat)) { _cur_np = deref_180_saved_cur; goto alt_r_179_alpha; }
+    SnoVal _r_180 = pat_ioFileOptPat(_subj_np, _slen_np, &_cur_np, &deref_180_z, 0);
+    if (is_fail(_r_180)) { _cur_np = deref_180_saved_cur; goto alt_r_179_alpha; }
     goto _ioFileOptPat0_ok;
 }
 alt_l_179_beta: {
     _cur_np = deref_180_saved_cur;
-    SnoVal _r_ioFileOptPat = pat_ioFileOptPat(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_ioFileOptPat)) { _cur_np = deref_180_saved_cur; goto alt_r_179_alpha; }
+    SnoVal _r_180_b = pat_ioFileOptPat(_subj_np, _slen_np, &_cur_np, &deref_180_z, 1);
+    if (is_fail(_r_180_b)) { _cur_np = deref_180_saved_cur; goto alt_r_179_alpha; }
     goto _ioFileOptPat0_ok;
 }
 alt_r_179_alpha: /* pat var epsilon — epsilon */
@@ -12379,19 +12502,33 @@ alt_r_179_beta:
         return STR_VAL("");
     _ioFileOptPat0_fail:;
         return FAIL_VAL;
+#undef deref_180_saved_cur
+#undef deref_180_z
+
 }
 
+typedef struct pat_ioCmdDlmtPat1_t {
+    int64_t cat_l_182_alpha_start;
+    int64_t assign_c_183_alpha_saved_cursor;
+    str_t var_bch;
+    int64_t cat_r_182_alpha_start;
+    int64_t assign_c_184_alpha_saved_cursor;
+    str_t var_cmd;
+    int64_t deref_185_saved_cursor;
+} pat_ioCmdDlmtPat1_t;
+
 static SnoVal pat_ioCmdDlmtPat1(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
+                  int64_t *_cur_ptr_np, pat_ioCmdDlmtPat1_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_ioCmdDlmtPat1_t)); }
+    pat_ioCmdDlmtPat1_t *z = *_zz_np;
     int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t cat_l_182_alpha_start;
-static int64_t assign_c_183_alpha_saved_cursor;
-static str_t var_bch;
-static int64_t cat_r_182_alpha_start;
-static int64_t assign_c_184_alpha_saved_cursor;
-static str_t var_cmd;
-static int64_t deref_185_saved_cursor;
+#define cat_l_182_alpha_start z->cat_l_182_alpha_start
+#define assign_c_183_alpha_saved_cursor z->assign_c_183_alpha_saved_cursor
+#define var_bch z->var_bch
+#define cat_r_182_alpha_start z->cat_r_182_alpha_start
+#define assign_c_184_alpha_saved_cursor z->assign_c_184_alpha_saved_cursor
+#define var_cmd z->var_cmd
+#define deref_185_saved_cursor z->deref_185_saved_cursor
 
     if (_entry_np == 0) goto _ioCmdDlmtPat1_alpha;
     if (_entry_np == 1) goto _ioCmdDlmtPat1_beta;
@@ -12454,15 +12591,30 @@ cat_r_181_beta:
         return STR_VAL("");
     _ioCmdDlmtPat1_fail:;
         return FAIL_VAL;
+#undef cat_l_182_alpha_start
+#undef assign_c_183_alpha_saved_cursor
+#undef var_bch
+#undef cat_r_182_alpha_start
+#undef assign_c_184_alpha_saved_cursor
+#undef var_cmd
+#undef deref_185_saved_cursor
+
 }
 
+typedef struct pat_ioCmdDlmtPat2_t {
+    int64_t cat_l_186_alpha_saved_cursor;
+    int64_t cat_r_186_alpha_start;
+    str_t var_cmd;
+} pat_ioCmdDlmtPat2_t;
+
 static SnoVal pat_ioCmdDlmtPat2(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
+                  int64_t *_cur_ptr_np, pat_ioCmdDlmtPat2_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_ioCmdDlmtPat2_t)); }
+    pat_ioCmdDlmtPat2_t *z = *_zz_np;
     int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t cat_l_186_alpha_saved_cursor;
-static int64_t cat_r_186_alpha_start;
-static str_t var_cmd;
+#define cat_l_186_alpha_saved_cursor z->cat_l_186_alpha_saved_cursor
+#define cat_r_186_alpha_start z->cat_r_186_alpha_start
+#define var_cmd z->var_cmd
 
     if (_entry_np == 0) goto _ioCmdDlmtPat2_alpha;
     if (_entry_np == 1) goto _ioCmdDlmtPat2_beta;
@@ -12497,22 +12649,40 @@ cat_r_186_beta:
         return STR_VAL("");
     _ioCmdDlmtPat2_fail:;
         return FAIL_VAL;
+#undef cat_l_186_alpha_saved_cursor
+#undef cat_r_186_alpha_start
+#undef var_cmd
+
 }
 
+typedef struct pat_ppTokPat_t {
+    int64_t cat_l_189_alpha_saved_cursor;
+    int64_t cat_r_189_alpha_start;
+    int64_t alt_l_191_alpha_saved_cursor;
+    str_t var_ppTokName;
+    int64_t cat_l_193_alpha_saved_cursor;
+    int64_t cat_r_193_alpha_start;
+    int64_t alt_l_195_alpha_saved_cursor;
+    str_t var_ppTokVal;
+    int64_t alt_r_192_alpha_start;
+    int64_t assign_c_196_alpha_saved_cursor;
+} pat_ppTokPat_t;
+
 static SnoVal pat_ppTokPat(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
+                  int64_t *_cur_ptr_np, pat_ppTokPat_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_ppTokPat_t)); }
+    pat_ppTokPat_t *z = *_zz_np;
     int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t cat_l_189_alpha_saved_cursor;
-static int64_t cat_r_189_alpha_start;
-static int64_t alt_l_191_alpha_saved_cursor;
-static str_t var_ppTokName;
-static int64_t cat_l_193_alpha_saved_cursor;
-static int64_t cat_r_193_alpha_start;
-static int64_t alt_l_195_alpha_saved_cursor;
-static str_t var_ppTokVal;
-static int64_t alt_r_192_alpha_start;
-static int64_t assign_c_196_alpha_saved_cursor;
+#define cat_l_189_alpha_saved_cursor z->cat_l_189_alpha_saved_cursor
+#define cat_r_189_alpha_start z->cat_r_189_alpha_start
+#define alt_l_191_alpha_saved_cursor z->alt_l_191_alpha_saved_cursor
+#define var_ppTokName z->var_ppTokName
+#define cat_l_193_alpha_saved_cursor z->cat_l_193_alpha_saved_cursor
+#define cat_r_193_alpha_start z->cat_r_193_alpha_start
+#define alt_l_195_alpha_saved_cursor z->alt_l_195_alpha_saved_cursor
+#define var_ppTokVal z->var_ppTokVal
+#define alt_r_192_alpha_start z->alt_r_192_alpha_start
+#define assign_c_196_alpha_saved_cursor z->assign_c_196_alpha_saved_cursor
 
     if (_entry_np == 0) goto _ppTokPat_alpha;
     if (_entry_np == 1) goto _ppTokPat_beta;
@@ -12624,20 +12794,43 @@ alt_r_192_beta:
         return STR_VAL("");
     _ppTokPat_fail:;
         return FAIL_VAL;
+#undef cat_l_189_alpha_saved_cursor
+#undef cat_r_189_alpha_start
+#undef alt_l_191_alpha_saved_cursor
+#undef var_ppTokName
+#undef cat_l_193_alpha_saved_cursor
+#undef cat_r_193_alpha_start
+#undef alt_l_195_alpha_saved_cursor
+#undef var_ppTokVal
+#undef alt_r_192_alpha_start
+#undef assign_c_196_alpha_saved_cursor
+
 }
 
+typedef struct pat_ppGSfx_t {
+    int64_t alt_l_201_alpha_delta;
+    int64_t alt_l_201_alpha_start;
+    int64_t alt_r_201_alpha_saved_cursor;
+    int64_t cat_r_200_alpha_saved_cursor;
+    int64_t alt_l_202_alpha_saved_cursor;
+    int64_t alt_r_202_alpha_saved_cursor;
+    int64_t alt_l_203_alpha_saved_cursor;
+    int64_t alt_r_203_alpha_saved_cursor;
+} pat_ppGSfx_t;
+
 static SnoVal pat_ppGSfx(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
+                  int64_t *_cur_ptr_np, pat_ppGSfx_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_ppGSfx_t)); }
+    pat_ppGSfx_t *z = *_zz_np;
     int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t alt_l_201_alpha_delta;
-static int64_t alt_l_201_alpha_start;
-static int64_t alt_r_201_alpha_saved_cursor;
-static int64_t cat_r_200_alpha_saved_cursor;
-static int64_t alt_l_202_alpha_saved_cursor;
-static int64_t alt_r_202_alpha_saved_cursor;
-static int64_t alt_l_203_alpha_saved_cursor;
-static int64_t alt_r_203_alpha_saved_cursor;
+#define alt_l_201_alpha_delta z->alt_l_201_alpha_delta
+#define alt_l_201_alpha_start z->alt_l_201_alpha_start
+#define alt_r_201_alpha_saved_cursor z->alt_r_201_alpha_saved_cursor
+#define cat_r_200_alpha_saved_cursor z->cat_r_200_alpha_saved_cursor
+#define alt_l_202_alpha_saved_cursor z->alt_l_202_alpha_saved_cursor
+#define alt_r_202_alpha_saved_cursor z->alt_r_202_alpha_saved_cursor
+#define alt_l_203_alpha_saved_cursor z->alt_l_203_alpha_saved_cursor
+#define alt_r_203_alpha_saved_cursor z->alt_r_203_alpha_saved_cursor
 
     if (_entry_np == 0) goto _ppGSfx_alpha;
     if (_entry_np == 1) goto _ppGSfx_beta;
@@ -12743,15 +12936,31 @@ cat_r_197_beta:
         return STR_VAL("");
     _ppGSfx_fail:;
         return FAIL_VAL;
+#undef alt_l_201_alpha_delta
+#undef alt_l_201_alpha_start
+#undef alt_r_201_alpha_saved_cursor
+#undef cat_r_200_alpha_saved_cursor
+#undef alt_l_202_alpha_saved_cursor
+#undef alt_r_202_alpha_saved_cursor
+#undef alt_l_203_alpha_saved_cursor
+#undef alt_r_203_alpha_saved_cursor
+
 }
 
+typedef struct pat_ppGPat_t {
+    int64_t cat_l_204_alpha_start;
+    int64_t assign_c_205_alpha_saved_cursor;
+    str_t var_ppGCon;
+} pat_ppGPat_t;
+
 static SnoVal pat_ppGPat(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
+                  int64_t *_cur_ptr_np, pat_ppGPat_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_ppGPat_t)); }
+    pat_ppGPat_t *z = *_zz_np;
     int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t cat_l_204_alpha_start;
-static int64_t assign_c_205_alpha_saved_cursor;
-static str_t var_ppGCon;
+#define cat_l_204_alpha_start z->cat_l_204_alpha_start
+#define assign_c_205_alpha_saved_cursor z->assign_c_205_alpha_saved_cursor
+#define var_ppGCon z->var_ppGCon
 
     if (_entry_np == 0) goto _ppGPat_alpha;
     if (_entry_np == 1) goto _ppGPat_beta;
@@ -12786,16 +12995,28 @@ cat_r_204_beta:
         return STR_VAL("");
     _ppGPat_fail:;
         return FAIL_VAL;
+#undef cat_l_204_alpha_start
+#undef assign_c_205_alpha_saved_cursor
+#undef var_ppGCon
+
 }
 
+typedef struct pat_ppTrimPat_t {
+    int64_t _ppTrimPat_alpha_start;
+    int64_t cat_l_207_alpha_delta;
+    int64_t cat_l_207_alpha_start;
+    str_t var_ppDrop;
+} pat_ppTrimPat_t;
+
 static SnoVal pat_ppTrimPat(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
+                  int64_t *_cur_ptr_np, pat_ppTrimPat_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_ppTrimPat_t)); }
+    pat_ppTrimPat_t *z = *_zz_np;
     int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t _ppTrimPat_alpha_start;
-static int64_t cat_l_207_alpha_delta;
-static int64_t cat_l_207_alpha_start;
-static str_t var_ppDrop;
+#define _ppTrimPat_alpha_start z->_ppTrimPat_alpha_start
+#define cat_l_207_alpha_delta z->cat_l_207_alpha_delta
+#define cat_l_207_alpha_start z->cat_l_207_alpha_start
+#define var_ppDrop z->var_ppDrop
 
     if (_entry_np == 0) goto _ppTrimPat_alpha;
     if (_entry_np == 1) goto _ppTrimPat_beta;
@@ -12833,63 +13054,84 @@ _ppTrimPat_beta:
         return STR_VAL("");
     _ppTrimPat_fail:;
         return FAIL_VAL;
+#undef _ppTrimPat_alpha_start
+#undef cat_l_207_alpha_delta
+#undef cat_l_207_alpha_start
+#undef var_ppDrop
+
 }
 
-static SnoVal pat_snoInteger(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t _snoInteger_alpha_delta;
-static int64_t _snoInteger_alpha_start;
+typedef struct pat_Integer_t {
+    int64_t _Integer_alpha_delta;
+    int64_t _Integer_alpha_start;
+} pat_Integer_t;
 
-    if (_entry_np == 0) goto _snoInteger_alpha;
-    if (_entry_np == 1) goto _snoInteger_beta;
-    goto _snoInteger_fail;
-_snoInteger_alpha:
-    _snoInteger_alpha_start = _cur_np;
+static SnoVal pat_Integer(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_Integer_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_Integer_t)); }
+    pat_Integer_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define _Integer_alpha_delta z->_Integer_alpha_delta
+#define _Integer_alpha_start z->_Integer_alpha_start
+
+    if (_entry_np == 0) goto _Integer_alpha;
+    if (_entry_np == 1) goto _Integer_beta;
+    goto _Integer_fail;
+_Integer_alpha:
+    _Integer_alpha_start = _cur_np;
     while (_cur_np < _slen_np && strchr(to_str(var_get("digits")), _subj_np[_cur_np])) _cur_np++;
-    _snoInteger_alpha_delta = _cur_np - _snoInteger_alpha_start;
-    if (_snoInteger_alpha_delta == 0) goto _snoInteger_fail;
-    goto _snoInteger_ok;
-_snoInteger_beta:
-    if (_snoInteger_alpha_delta <= 1) { _cur_np = _snoInteger_alpha_start; goto _snoInteger_fail; }
-    _snoInteger_alpha_delta--; _cur_np--;
-    goto _snoInteger_ok;
-    _snoInteger_ok:;
+    _Integer_alpha_delta = _cur_np - _Integer_alpha_start;
+    if (_Integer_alpha_delta == 0) goto _Integer_fail;
+    goto _Integer_ok;
+_Integer_beta:
+    if (_Integer_alpha_delta <= 1) { _cur_np = _Integer_alpha_start; goto _Integer_fail; }
+    _Integer_alpha_delta--; _cur_np--;
+    goto _Integer_ok;
+    _Integer_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoInteger_fail:;
+    _Integer_fail:;
         return FAIL_VAL;
+#undef _Integer_alpha_delta
+#undef _Integer_alpha_start
+
 }
 
-static SnoVal pat_snoDQ(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t cat_l_209_alpha_saved_cursor;
-static int64_t cat_r_209_alpha_saved_cursor;
-static int64_t cat_r_208_alpha_saved_cursor;
+typedef struct pat_DQ_t {
+    int64_t cat_l_209_alpha_saved_cursor;
+    int64_t cat_r_209_alpha_saved_cursor;
+    int64_t cat_r_208_alpha_saved_cursor;
+} pat_DQ_t;
 
-    if (_entry_np == 0) goto _snoDQ_alpha;
-    if (_entry_np == 1) goto _snoDQ_beta;
-    goto _snoDQ_fail;
-_snoDQ_alpha: /* CAT — entr left */
+static SnoVal pat_DQ(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_DQ_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_DQ_t)); }
+    pat_DQ_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define cat_l_209_alpha_saved_cursor z->cat_l_209_alpha_saved_cursor
+#define cat_r_209_alpha_saved_cursor z->cat_r_209_alpha_saved_cursor
+#define cat_r_208_alpha_saved_cursor z->cat_r_208_alpha_saved_cursor
+
+    if (_entry_np == 0) goto _DQ_alpha;
+    if (_entry_np == 1) goto _DQ_beta;
+    goto _DQ_fail;
+_DQ_alpha: /* CAT — entr left */
     goto cat_l_208_alpha;
-_snoDQ_beta:
+_DQ_beta:
     goto cat_r_208_beta;
 cat_l_208_alpha: /* CAT — entr left */
     goto cat_l_209_alpha;
 cat_l_208_beta:
     goto cat_r_209_beta;
 cat_l_209_alpha:
-    if (_cur_np + 1 > _slen_np) goto _snoDQ_fail;
-    if (_subj_np[_cur_np] != '"') goto _snoDQ_fail;
+    if (_cur_np + 1 > _slen_np) goto _DQ_fail;
+    if (_subj_np[_cur_np] != '"') goto _DQ_fail;
     cat_l_209_alpha_saved_cursor = _cur_np;
     _cur_np += 1;
     goto cat_r_209_alpha;
 cat_l_209_beta:
     _cur_np = cat_l_209_alpha_saved_cursor;
-    goto _snoDQ_fail;
+    goto _DQ_fail;
 cat_r_209_alpha:
     cat_r_209_alpha_saved_cursor = _cur_np;
     while (_cur_np < _slen_np && !strchr(to_str(concat_sv(STR_VAL("\""), STR_VAL(to_str(var_get("nl"))))), _subj_np[_cur_np])) _cur_np++;
@@ -12903,45 +13145,56 @@ cat_r_208_alpha:
     if (_subj_np[_cur_np] != '"') goto cat_l_208_beta;
     cat_r_208_alpha_saved_cursor = _cur_np;
     _cur_np += 1;
-    goto _snoDQ_ok;
+    goto _DQ_ok;
 cat_r_208_beta:
     _cur_np = cat_r_208_alpha_saved_cursor;
     goto cat_l_208_beta;
-    _snoDQ_ok:;
+    _DQ_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoDQ_fail:;
+    _DQ_fail:;
         return FAIL_VAL;
+#undef cat_l_209_alpha_saved_cursor
+#undef cat_r_209_alpha_saved_cursor
+#undef cat_r_208_alpha_saved_cursor
+
 }
 
-static SnoVal pat_snoSQ(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t cat_l_211_alpha_saved_cursor;
-static int64_t cat_r_211_alpha_saved_cursor;
-static int64_t cat_r_210_alpha_saved_cursor;
+typedef struct pat_SQ_t {
+    int64_t cat_l_211_alpha_saved_cursor;
+    int64_t cat_r_211_alpha_saved_cursor;
+    int64_t cat_r_210_alpha_saved_cursor;
+} pat_SQ_t;
 
-    if (_entry_np == 0) goto _snoSQ_alpha;
-    if (_entry_np == 1) goto _snoSQ_beta;
-    goto _snoSQ_fail;
-_snoSQ_alpha: /* CAT — entr left */
+static SnoVal pat_SQ(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_SQ_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_SQ_t)); }
+    pat_SQ_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define cat_l_211_alpha_saved_cursor z->cat_l_211_alpha_saved_cursor
+#define cat_r_211_alpha_saved_cursor z->cat_r_211_alpha_saved_cursor
+#define cat_r_210_alpha_saved_cursor z->cat_r_210_alpha_saved_cursor
+
+    if (_entry_np == 0) goto _SQ_alpha;
+    if (_entry_np == 1) goto _SQ_beta;
+    goto _SQ_fail;
+_SQ_alpha: /* CAT — entr left */
     goto cat_l_210_alpha;
-_snoSQ_beta:
+_SQ_beta:
     goto cat_r_210_beta;
 cat_l_210_alpha: /* CAT — entr left */
     goto cat_l_211_alpha;
 cat_l_210_beta:
     goto cat_r_211_beta;
 cat_l_211_alpha:
-    if (_cur_np + 1 > _slen_np) goto _snoSQ_fail;
-    if (_subj_np[_cur_np] != '\'') goto _snoSQ_fail;
+    if (_cur_np + 1 > _slen_np) goto _SQ_fail;
+    if (_subj_np[_cur_np] != '\'') goto _SQ_fail;
     cat_l_211_alpha_saved_cursor = _cur_np;
     _cur_np += 1;
     goto cat_r_211_alpha;
 cat_l_211_beta:
     _cur_np = cat_l_211_alpha_saved_cursor;
-    goto _snoSQ_fail;
+    goto _SQ_fail;
 cat_r_211_alpha:
     cat_r_211_alpha_saved_cursor = _cur_np;
     while (_cur_np < _slen_np && !strchr(to_str(concat_sv(STR_VAL("'"), STR_VAL(to_str(var_get("nl"))))), _subj_np[_cur_np])) _cur_np++;
@@ -12955,89 +13208,128 @@ cat_r_210_alpha:
     if (_subj_np[_cur_np] != '\'') goto cat_l_210_beta;
     cat_r_210_alpha_saved_cursor = _cur_np;
     _cur_np += 1;
-    goto _snoSQ_ok;
+    goto _SQ_ok;
 cat_r_210_beta:
     _cur_np = cat_r_210_alpha_saved_cursor;
     goto cat_l_210_beta;
-    _snoSQ_ok:;
+    _SQ_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoSQ_fail:;
+    _SQ_fail:;
         return FAIL_VAL;
+#undef cat_l_211_alpha_saved_cursor
+#undef cat_r_211_alpha_saved_cursor
+#undef cat_r_210_alpha_saved_cursor
+
 }
 
-static SnoVal pat_snoString(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t deref_213_saved_cur;
-static int64_t deref_214_saved_cur;
+typedef struct pat_String_t {
+    int64_t deref_213_saved_cur;
+    int64_t deref_214_saved_cur;
+    pat_SQ_t *deref_213_z;
+    pat_DQ_t *deref_214_z;
+} pat_String_t;
 
-    if (_entry_np == 0) goto _snoString_alpha;
-    if (_entry_np == 1) goto _snoString_beta;
-    goto _snoString_fail;
-_snoString_alpha: /* ALT — try left */
+static SnoVal pat_String(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_String_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_String_t)); }
+    pat_String_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define deref_213_saved_cur z->deref_213_saved_cur
+#define deref_214_saved_cur z->deref_214_saved_cur
+#define deref_213_z z->deref_213_z
+#define deref_214_z z->deref_214_z
+
+    if (_entry_np == 0) goto _String_alpha;
+    if (_entry_np == 1) goto _String_beta;
+    goto _String_fail;
+_String_alpha: /* ALT — try left */
     goto alt_l_212_alpha;
-_snoString_beta:
+_String_beta:
     goto alt_r_212_beta;
 alt_l_212_alpha: {
     deref_213_saved_cur = _cur_np;
-    SnoVal _r_snoSQ = pat_snoSQ(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoSQ)) { _cur_np = deref_213_saved_cur; goto alt_r_212_alpha; }
-    goto _snoString_ok;
+    SnoVal _r_213 = pat_SQ(_subj_np, _slen_np, &_cur_np, &deref_213_z, 0);
+    if (is_fail(_r_213)) { _cur_np = deref_213_saved_cur; goto alt_r_212_alpha; }
+    goto _String_ok;
 }
 alt_l_212_beta: {
     _cur_np = deref_213_saved_cur;
-    SnoVal _r_snoSQ = pat_snoSQ(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoSQ)) { _cur_np = deref_213_saved_cur; goto alt_r_212_alpha; }
-    goto _snoString_ok;
+    SnoVal _r_213_b = pat_SQ(_subj_np, _slen_np, &_cur_np, &deref_213_z, 1);
+    if (is_fail(_r_213_b)) { _cur_np = deref_213_saved_cur; goto alt_r_212_alpha; }
+    goto _String_ok;
 }
 alt_r_212_alpha: {
     deref_214_saved_cur = _cur_np;
-    SnoVal _r_snoDQ = pat_snoDQ(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoDQ)) { _cur_np = deref_214_saved_cur; goto _snoString_fail; }
-    goto _snoString_ok;
+    SnoVal _r_214 = pat_DQ(_subj_np, _slen_np, &_cur_np, &deref_214_z, 0);
+    if (is_fail(_r_214)) { _cur_np = deref_214_saved_cur; goto _String_fail; }
+    goto _String_ok;
 }
 alt_r_212_beta: {
     _cur_np = deref_214_saved_cur;
-    SnoVal _r_snoDQ = pat_snoDQ(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoDQ)) { _cur_np = deref_214_saved_cur; goto _snoString_fail; }
-    goto _snoString_ok;
+    SnoVal _r_214_b = pat_DQ(_subj_np, _slen_np, &_cur_np, &deref_214_z, 1);
+    if (is_fail(_r_214_b)) { _cur_np = deref_214_saved_cur; goto _String_fail; }
+    goto _String_ok;
 }
-    _snoString_ok:;
+    _String_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoString_fail:;
+    _String_fail:;
         return FAIL_VAL;
+#undef deref_213_saved_cur
+#undef deref_214_saved_cur
+#undef deref_213_z
+#undef deref_214_z
+
 }
 
-static SnoVal pat_snoReal(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t cat_l_219_alpha_delta;
-static int64_t cat_l_219_alpha_start;
-static int64_t cat_l_221_alpha_saved_cursor;
-static int64_t alt_l_223_alpha_delta;
-static int64_t alt_l_223_alpha_start;
-static int64_t alt_l_224_alpha_saved_cursor;
-static int64_t alt_r_224_alpha_saved_cursor;
-static int64_t alt_l_226_alpha_saved_cursor;
-static int64_t alt_r_226_alpha_saved_cursor;
-static int64_t cat_r_216_alpha_delta;
-static int64_t cat_r_216_alpha_start;
-static int64_t cat_l_228_alpha_delta;
-static int64_t cat_l_228_alpha_start;
-static int64_t cat_r_228_alpha_saved_cursor;
-static int64_t alt_l_230_alpha_delta;
-static int64_t alt_l_230_alpha_start;
+typedef struct pat_Real_t {
+    int64_t cat_l_219_alpha_delta;
+    int64_t cat_l_219_alpha_start;
+    int64_t cat_l_221_alpha_saved_cursor;
+    int64_t alt_l_223_alpha_delta;
+    int64_t alt_l_223_alpha_start;
+    int64_t alt_l_224_alpha_saved_cursor;
+    int64_t alt_r_224_alpha_saved_cursor;
+    int64_t alt_l_226_alpha_saved_cursor;
+    int64_t alt_r_226_alpha_saved_cursor;
+    int64_t cat_r_216_alpha_delta;
+    int64_t cat_r_216_alpha_start;
+    int64_t cat_l_228_alpha_delta;
+    int64_t cat_l_228_alpha_start;
+    int64_t cat_r_228_alpha_saved_cursor;
+    int64_t alt_l_230_alpha_delta;
+    int64_t alt_l_230_alpha_start;
+} pat_Real_t;
 
-    if (_entry_np == 0) goto _snoReal_alpha;
-    if (_entry_np == 1) goto _snoReal_beta;
-    goto _snoReal_fail;
-_snoReal_alpha: /* ALT — try left */
+static SnoVal pat_Real(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_Real_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_Real_t)); }
+    pat_Real_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define cat_l_219_alpha_delta z->cat_l_219_alpha_delta
+#define cat_l_219_alpha_start z->cat_l_219_alpha_start
+#define cat_l_221_alpha_saved_cursor z->cat_l_221_alpha_saved_cursor
+#define alt_l_223_alpha_delta z->alt_l_223_alpha_delta
+#define alt_l_223_alpha_start z->alt_l_223_alpha_start
+#define alt_l_224_alpha_saved_cursor z->alt_l_224_alpha_saved_cursor
+#define alt_r_224_alpha_saved_cursor z->alt_r_224_alpha_saved_cursor
+#define alt_l_226_alpha_saved_cursor z->alt_l_226_alpha_saved_cursor
+#define alt_r_226_alpha_saved_cursor z->alt_r_226_alpha_saved_cursor
+#define cat_r_216_alpha_delta z->cat_r_216_alpha_delta
+#define cat_r_216_alpha_start z->cat_r_216_alpha_start
+#define cat_l_228_alpha_delta z->cat_l_228_alpha_delta
+#define cat_l_228_alpha_start z->cat_l_228_alpha_start
+#define cat_r_228_alpha_saved_cursor z->cat_r_228_alpha_saved_cursor
+#define alt_l_230_alpha_delta z->alt_l_230_alpha_delta
+#define alt_l_230_alpha_start z->alt_l_230_alpha_start
+
+    if (_entry_np == 0) goto _Real_alpha;
+    if (_entry_np == 1) goto _Real_beta;
+    goto _Real_fail;
+_Real_alpha: /* ALT — try left */
     goto alt_l_215_alpha;
-_snoReal_beta:
+_Real_beta:
     goto alt_r_215_beta;
 alt_l_215_alpha: /* CAT — entr left */
     goto cat_l_216_alpha;
@@ -13167,11 +13459,11 @@ cat_r_216_alpha:
     while (_cur_np < _slen_np && strchr(to_str(var_get("digits")), _subj_np[_cur_np])) _cur_np++;
     cat_r_216_alpha_delta = _cur_np - cat_r_216_alpha_start;
     if (cat_r_216_alpha_delta == 0) goto cat_l_216_beta;
-    goto _snoReal_ok;
+    goto _Real_ok;
 cat_r_216_beta:
     if (cat_r_216_alpha_delta <= 1) { _cur_np = cat_r_216_alpha_start; goto cat_l_216_beta; }
     cat_r_216_alpha_delta--; _cur_np--;
-    goto _snoReal_ok;
+    goto _Real_ok;
 alt_r_215_alpha: /* CAT — entr left */
     goto cat_l_227_alpha;
 alt_r_215_beta:
@@ -13184,10 +13476,10 @@ cat_l_228_alpha:
     cat_l_228_alpha_start = _cur_np;
     while (_cur_np < _slen_np && strchr(to_str(var_get("digits")), _subj_np[_cur_np])) _cur_np++;
     cat_l_228_alpha_delta = _cur_np - cat_l_228_alpha_start;
-    if (cat_l_228_alpha_delta == 0) goto _snoReal_fail;
+    if (cat_l_228_alpha_delta == 0) goto _Real_fail;
     goto cat_r_228_alpha;
 cat_l_228_beta:
-    if (cat_l_228_alpha_delta <= 1) { _cur_np = cat_l_228_alpha_start; goto _snoReal_fail; }
+    if (cat_l_228_alpha_delta <= 1) { _cur_np = cat_l_228_alpha_start; goto _Real_fail; }
     cat_l_228_alpha_delta--; _cur_np--;
     goto cat_r_228_alpha;
 cat_r_228_alpha:
@@ -13220,40 +13512,64 @@ alt_r_230_alpha: /* pat var epsilon — epsilon */
 alt_r_230_beta:
     goto cat_l_227_beta;
 fence_after_229:
-    goto _snoReal_ok;
+    goto _Real_ok;
 cat_r_227_beta:
     goto cat_l_227_beta;
-    _snoReal_ok:;
+    _Real_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoReal_fail:;
+    _Real_fail:;
         return FAIL_VAL;
+#undef cat_l_219_alpha_delta
+#undef cat_l_219_alpha_start
+#undef cat_l_221_alpha_saved_cursor
+#undef alt_l_223_alpha_delta
+#undef alt_l_223_alpha_start
+#undef alt_l_224_alpha_saved_cursor
+#undef alt_r_224_alpha_saved_cursor
+#undef alt_l_226_alpha_saved_cursor
+#undef alt_r_226_alpha_saved_cursor
+#undef cat_r_216_alpha_delta
+#undef cat_r_216_alpha_start
+#undef cat_l_228_alpha_delta
+#undef cat_l_228_alpha_start
+#undef cat_r_228_alpha_saved_cursor
+#undef alt_l_230_alpha_delta
+#undef alt_l_230_alpha_start
+
 }
 
-static SnoVal pat_snoId(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t cat_l_231_alpha_saved_cursor;
-static int64_t alt_l_233_alpha_delta;
-static int64_t alt_l_233_alpha_start;
+typedef struct pat_Id_t {
+    int64_t cat_l_231_alpha_saved_cursor;
+    int64_t alt_l_233_alpha_delta;
+    int64_t alt_l_233_alpha_start;
+} pat_Id_t;
 
-    if (_entry_np == 0) goto _snoId_alpha;
-    if (_entry_np == 1) goto _snoId_beta;
-    goto _snoId_fail;
-_snoId_alpha: /* CAT — entr left */
+static SnoVal pat_Id(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_Id_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_Id_t)); }
+    pat_Id_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define cat_l_231_alpha_saved_cursor z->cat_l_231_alpha_saved_cursor
+#define alt_l_233_alpha_delta z->alt_l_233_alpha_delta
+#define alt_l_233_alpha_start z->alt_l_233_alpha_start
+
+    if (_entry_np == 0) goto _Id_alpha;
+    if (_entry_np == 1) goto _Id_beta;
+    goto _Id_fail;
+_Id_alpha: /* CAT — entr left */
     goto cat_l_231_alpha;
-_snoId_beta:
+_Id_beta:
     goto cat_r_231_beta;
 cat_l_231_alpha:
-    if (_cur_np >= _slen_np) goto _snoId_fail;
-    if (!strchr(to_str(concat_sv(STR_VAL(to_str(var_get("UCASE"))), STR_VAL(to_str(var_get("LCASE"))))), _subj_np[_cur_np])) goto _snoId_fail;
+    if (_cur_np >= _slen_np) goto _Id_fail;
+    if (!strchr(to_str(concat_sv(STR_VAL(to_str(var_get("UCASE"))), STR_VAL(to_str(var_get("LCASE"))))), _subj_np[_cur_np])) goto _Id_fail;
     cat_l_231_alpha_saved_cursor = _cur_np;
     _cur_np++;
     goto cat_r_231_alpha;
 cat_l_231_beta:
     _cur_np = cat_l_231_alpha_saved_cursor;
-    goto _snoId_fail;
+    goto _Id_fail;
 cat_r_231_alpha: /* FENCE(p) */
     goto fence_p_232_alpha;
 fence_p_232_alpha: /* ALT — try left */
@@ -13275,73 +13591,101 @@ alt_r_233_alpha: /* pat var epsilon — epsilon */
 alt_r_233_beta:
     goto cat_l_231_beta;
 fence_after_232:
-    goto _snoId_ok;
+    goto _Id_ok;
 cat_r_231_beta:
     goto cat_l_231_beta;
-    _snoId_ok:;
+    _Id_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoId_fail:;
+    _Id_fail:;
         return FAIL_VAL;
+#undef cat_l_231_alpha_saved_cursor
+#undef alt_l_233_alpha_delta
+#undef alt_l_233_alpha_start
+
 }
 
-static SnoVal pat_snoGray(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t deref_235_saved_cur;
+typedef struct pat_Gray_t {
+    int64_t deref_235_saved_cur;
+    pat_White_t *deref_235_z;
+} pat_Gray_t;
 
-    if (_entry_np == 0) goto _snoGray_alpha;
-    if (_entry_np == 1) goto _snoGray_beta;
-    goto _snoGray_fail;
-_snoGray_alpha: /* ALT — try left */
+static SnoVal pat_Gray(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_Gray_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_Gray_t)); }
+    pat_Gray_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define deref_235_saved_cur z->deref_235_saved_cur
+#define deref_235_z z->deref_235_z
+
+    if (_entry_np == 0) goto _Gray_alpha;
+    if (_entry_np == 1) goto _Gray_beta;
+    goto _Gray_fail;
+_Gray_alpha: /* ALT — try left */
     goto alt_l_234_alpha;
-_snoGray_beta:
+_Gray_beta:
     goto alt_r_234_beta;
 alt_l_234_alpha: {
     deref_235_saved_cur = _cur_np;
-    SnoVal _r_snoWhite = pat_snoWhite(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoWhite)) { _cur_np = deref_235_saved_cur; goto alt_r_234_alpha; }
-    goto _snoGray_ok;
+    SnoVal _r_235 = pat_White(_subj_np, _slen_np, &_cur_np, &deref_235_z, 0);
+    if (is_fail(_r_235)) { _cur_np = deref_235_saved_cur; goto alt_r_234_alpha; }
+    goto _Gray_ok;
 }
 alt_l_234_beta: {
     _cur_np = deref_235_saved_cur;
-    SnoVal _r_snoWhite = pat_snoWhite(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoWhite)) { _cur_np = deref_235_saved_cur; goto alt_r_234_alpha; }
-    goto _snoGray_ok;
+    SnoVal _r_235_b = pat_White(_subj_np, _slen_np, &_cur_np, &deref_235_z, 1);
+    if (is_fail(_r_235_b)) { _cur_np = deref_235_saved_cur; goto alt_r_234_alpha; }
+    goto _Gray_ok;
 }
 alt_r_234_alpha: /* pat var epsilon — epsilon */
-    goto _snoGray_ok;
+    goto _Gray_ok;
 alt_r_234_beta:
-    goto _snoGray_fail;
-    _snoGray_ok:;
+    goto _Gray_fail;
+    _Gray_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoGray_fail:;
+    _Gray_fail:;
         return FAIL_VAL;
+#undef deref_235_saved_cur
+#undef deref_235_z
+
 }
 
-static SnoVal pat_snoWhite(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t cat_l_237_alpha_delta;
-static int64_t cat_l_237_alpha_start;
-static int64_t alt_l_242_alpha_saved_cursor;
-static int64_t alt_r_242_alpha_saved_cursor;
-static int64_t alt_l_244_alpha_delta;
-static int64_t alt_l_244_alpha_start;
-static int64_t alt_l_247_alpha_saved_cursor;
-static int64_t alt_r_247_alpha_saved_cursor;
-static int64_t alt_l_249_alpha_delta;
-static int64_t alt_l_249_alpha_start;
+typedef struct pat_White_t {
+    int64_t cat_l_237_alpha_delta;
+    int64_t cat_l_237_alpha_start;
+    int64_t alt_l_242_alpha_saved_cursor;
+    int64_t alt_r_242_alpha_saved_cursor;
+    int64_t alt_l_244_alpha_delta;
+    int64_t alt_l_244_alpha_start;
+    int64_t alt_l_247_alpha_saved_cursor;
+    int64_t alt_r_247_alpha_saved_cursor;
+    int64_t alt_l_249_alpha_delta;
+    int64_t alt_l_249_alpha_start;
+} pat_White_t;
 
-    if (_entry_np == 0) goto _snoWhite_alpha;
-    if (_entry_np == 1) goto _snoWhite_beta;
-    goto _snoWhite_fail;
-_snoWhite_alpha: /* ALT — try left */
+static SnoVal pat_White(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_White_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_White_t)); }
+    pat_White_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define cat_l_237_alpha_delta z->cat_l_237_alpha_delta
+#define cat_l_237_alpha_start z->cat_l_237_alpha_start
+#define alt_l_242_alpha_saved_cursor z->alt_l_242_alpha_saved_cursor
+#define alt_r_242_alpha_saved_cursor z->alt_r_242_alpha_saved_cursor
+#define alt_l_244_alpha_delta z->alt_l_244_alpha_delta
+#define alt_l_244_alpha_start z->alt_l_244_alpha_start
+#define alt_l_247_alpha_saved_cursor z->alt_l_247_alpha_saved_cursor
+#define alt_r_247_alpha_saved_cursor z->alt_r_247_alpha_saved_cursor
+#define alt_l_249_alpha_delta z->alt_l_249_alpha_delta
+#define alt_l_249_alpha_start z->alt_l_249_alpha_start
+
+    if (_entry_np == 0) goto _White_alpha;
+    if (_entry_np == 1) goto _White_beta;
+    goto _White_fail;
+_White_alpha: /* ALT — try left */
     goto alt_l_236_alpha;
-_snoWhite_beta:
+_White_beta:
     goto alt_r_236_beta;
 alt_l_236_alpha: /* CAT — entr left */
     goto cat_l_237_alpha;
@@ -13426,7 +13770,7 @@ alt_r_239_alpha: /* pat var epsilon — epsilon */
 alt_r_239_beta:
     goto cat_l_237_beta;
 fence_after_238:
-    goto _snoWhite_ok;
+    goto _White_ok;
 cat_r_237_beta:
     goto cat_l_237_beta;
 alt_r_236_alpha: /* CAT — entr left */
@@ -13440,7 +13784,7 @@ cat_l_245_beta:
 cat_l_246_alpha: /* pat var nl — epsilon */
     goto cat_r_246_alpha;
 cat_l_246_beta:
-    goto _snoWhite_fail;
+    goto _White_fail;
 cat_r_246_alpha: /* ALT — try left */
     goto alt_l_247_alpha;
 cat_r_246_beta:
@@ -13484,30 +13828,48 @@ alt_r_249_alpha: /* pat var epsilon — epsilon */
 alt_r_249_beta:
     goto cat_l_245_beta;
 fence_after_248:
-    goto _snoWhite_ok;
+    goto _White_ok;
 cat_r_245_beta:
     goto cat_l_245_beta;
-    _snoWhite_ok:;
+    _White_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoWhite_fail:;
+    _White_fail:;
         return FAIL_VAL;
+#undef cat_l_237_alpha_delta
+#undef cat_l_237_alpha_start
+#undef alt_l_242_alpha_saved_cursor
+#undef alt_r_242_alpha_saved_cursor
+#undef alt_l_244_alpha_delta
+#undef alt_l_244_alpha_start
+#undef alt_l_247_alpha_saved_cursor
+#undef alt_r_247_alpha_saved_cursor
+#undef alt_l_249_alpha_delta
+#undef alt_l_249_alpha_start
+
 }
 
-static SnoVal pat_snoTxInList(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t alt_r_252_alpha_saved_cursor;
-static int64_t deref_253_saved_cursor;
-static int64_t alt_l_254_alpha_saved_cursor;
+typedef struct pat_TxInList_t {
+    int64_t alt_r_252_alpha_saved_cursor;
+    int64_t deref_253_saved_cursor;
+    int64_t alt_l_254_alpha_saved_cursor;
+} pat_TxInList_t;
 
-    if (_entry_np == 0) goto _snoTxInList_alpha;
-    if (_entry_np == 1) goto _snoTxInList_beta;
-    goto _snoTxInList_fail;
-_snoTxInList_alpha: /* CAT — entr left */
+static SnoVal pat_TxInList(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_TxInList_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_TxInList_t)); }
+    pat_TxInList_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define alt_r_252_alpha_saved_cursor z->alt_r_252_alpha_saved_cursor
+#define deref_253_saved_cursor z->deref_253_saved_cursor
+#define alt_l_254_alpha_saved_cursor z->alt_l_254_alpha_saved_cursor
+
+    if (_entry_np == 0) goto _TxInList_alpha;
+    if (_entry_np == 1) goto _TxInList_beta;
+    goto _TxInList_fail;
+_TxInList_alpha: /* CAT — entr left */
     goto cat_l_250_alpha;
-_snoTxInList_beta:
+_TxInList_beta:
     goto cat_r_250_beta;
 cat_l_250_alpha: /* CAT — entr left */
     goto cat_l_251_alpha;
@@ -13523,14 +13885,14 @@ alt_l_252_alpha:
 alt_l_252_beta:
     goto alt_r_252_alpha;
 alt_r_252_alpha:
-    if (_cur_np + 1 > _slen_np) goto _snoTxInList_fail;
-    if (_subj_np[_cur_np] != ' ') goto _snoTxInList_fail;
+    if (_cur_np + 1 > _slen_np) goto _TxInList_fail;
+    if (_subj_np[_cur_np] != ' ') goto _TxInList_fail;
     alt_r_252_alpha_saved_cursor = _cur_np;
     _cur_np += 1;
     goto cat_r_251_alpha;
 alt_r_252_beta:
     _cur_np = alt_r_252_alpha_saved_cursor;
-    goto _snoTxInList_fail;
+    goto _TxInList_fail;
 cat_r_251_alpha: {
     SnoVal _deref_pat = var_get("");
     int _deref_new_cur = match_pattern_at(_deref_pat, _subj_np, (int)_slen_np, (int)_cur_np);
@@ -13551,34 +13913,45 @@ alt_l_254_alpha:
     if (_subj_np[_cur_np] != ' ') goto alt_r_254_alpha;
     alt_l_254_alpha_saved_cursor = _cur_np;
     _cur_np += 1;
-    goto _snoTxInList_ok;
+    goto _TxInList_ok;
 alt_l_254_beta:
     _cur_np = alt_l_254_alpha_saved_cursor;
     goto alt_r_254_alpha;
 alt_r_254_alpha:
     if (_cur_np != _slen_np - 0) goto cat_l_250_beta;
-    goto _snoTxInList_ok;
+    goto _TxInList_ok;
 alt_r_254_beta:
     goto cat_l_250_beta;
-    _snoTxInList_ok:;
+    _TxInList_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoTxInList_fail:;
+    _TxInList_fail:;
         return FAIL_VAL;
+#undef alt_r_252_alpha_saved_cursor
+#undef deref_253_saved_cursor
+#undef alt_l_254_alpha_saved_cursor
+
 }
 
-static SnoVal pat_snoExprList(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t deref_258_saved_cur;
+typedef struct pat_ExprList_t {
+    int64_t deref_258_saved_cur;
+    pat_XList_t *deref_258_z;
+} pat_ExprList_t;
 
-    if (_entry_np == 0) goto _snoExprList_alpha;
-    if (_entry_np == 1) goto _snoExprList_beta;
-    goto _snoExprList_fail;
-_snoExprList_alpha: /* CAT — entr left */
+static SnoVal pat_ExprList(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_ExprList_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_ExprList_t)); }
+    pat_ExprList_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define deref_258_saved_cur z->deref_258_saved_cur
+#define deref_258_z z->deref_258_z
+
+    if (_entry_np == 0) goto _ExprList_alpha;
+    if (_entry_np == 1) goto _ExprList_beta;
+    goto _ExprList_fail;
+_ExprList_alpha: /* CAT — entr left */
     goto cat_l_255_alpha;
-_snoExprList_beta:
+_ExprList_beta:
     goto cat_r_255_beta;
 cat_l_255_alpha: /* CAT — entr left */
     goto cat_l_256_alpha;
@@ -13589,69 +13962,84 @@ cat_l_256_alpha: /* CAT — entr left */
 cat_l_256_beta:
     goto cat_r_257_beta;
 cat_l_257_alpha: npush(); goto cat_r_257_alpha;
-cat_l_257_beta: goto _snoExprList_fail;
+cat_l_257_beta: goto _ExprList_fail;
 cat_r_257_alpha: {
     deref_258_saved_cur = _cur_np;
-    SnoVal _r_snoXList = pat_snoXList(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoXList)) { _cur_np = deref_258_saved_cur; goto cat_l_257_beta; }
+    SnoVal _r_258 = pat_XList(_subj_np, _slen_np, &_cur_np, &deref_258_z, 0);
+    if (is_fail(_r_258)) { _cur_np = deref_258_saved_cur; goto cat_l_257_beta; }
     goto cat_r_256_alpha;
 }
 cat_r_257_beta: {
     _cur_np = deref_258_saved_cur;
-    SnoVal _r_snoXList = pat_snoXList(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoXList)) { _cur_np = deref_258_saved_cur; goto cat_l_257_beta; }
+    SnoVal _r_258_b = pat_XList(_subj_np, _slen_np, &_cur_np, &deref_258_z, 1);
+    if (is_fail(_r_258_b)) { _cur_np = deref_258_saved_cur; goto cat_l_257_beta; }
     goto cat_r_256_alpha;
 }
 cat_r_256_alpha: /* E_REDUCE & */
-    { SnoVal _reduce_args[2] = {STR_VAL("'snoExprList'"), STR_VAL("*(GT(nTop(), 1) nTop())")};
+    { SnoVal _reduce_args[2] = {STR_VAL("'ExprList'"), STR_VAL("*(GT(nTop(), 1) nTop())")};
       aply("Reduce", _reduce_args, 2); }
     goto cat_r_255_alpha;
 cat_r_256_beta: goto cat_l_256_beta;
-cat_r_255_alpha: npop(); goto _snoExprList_ok;
+cat_r_255_alpha: npop(); goto _ExprList_ok;
 cat_r_255_beta: goto cat_l_255_beta;
-    _snoExprList_ok:;
+    _ExprList_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoExprList_fail:;
+    _ExprList_fail:;
         return FAIL_VAL;
+#undef deref_258_saved_cur
+#undef deref_258_z
+
 }
 
-static SnoVal pat_snoXList(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t deref_262_saved_cur;
-static int64_t cat_r_263_alpha_saved_cursor;
-static int64_t deref_267_saved_cursor;
-static int64_t deref_268_saved_cur;
+typedef struct pat_XList_t {
+    int64_t deref_262_saved_cur;
+    int64_t cat_r_263_alpha_saved_cursor;
+    int64_t deref_267_saved_cursor;
+    int64_t deref_268_saved_cur;
+    pat_Expr_t *deref_262_z;
+    pat_XList_t *deref_268_z;
+} pat_XList_t;
 
-    if (_entry_np == 0) goto _snoXList_alpha;
-    if (_entry_np == 1) goto _snoXList_beta;
-    goto _snoXList_fail;
-_snoXList_alpha: /* CAT — entr left */
+static SnoVal pat_XList(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_XList_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_XList_t)); }
+    pat_XList_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define deref_262_saved_cur z->deref_262_saved_cur
+#define cat_r_263_alpha_saved_cursor z->cat_r_263_alpha_saved_cursor
+#define deref_267_saved_cursor z->deref_267_saved_cursor
+#define deref_268_saved_cur z->deref_268_saved_cur
+#define deref_262_z z->deref_262_z
+#define deref_268_z z->deref_268_z
+
+    if (_entry_np == 0) goto _XList_alpha;
+    if (_entry_np == 1) goto _XList_beta;
+    goto _XList_fail;
+_XList_alpha: /* CAT — entr left */
     goto cat_l_259_alpha;
-_snoXList_beta:
+_XList_beta:
     goto cat_r_259_beta;
 cat_l_259_alpha: /* CAT — entr left */
     goto cat_l_260_alpha;
 cat_l_259_beta:
     goto cat_r_260_beta;
 cat_l_260_alpha: ninc(); goto cat_r_260_alpha;
-cat_l_260_beta: goto _snoXList_fail;
+cat_l_260_beta: goto _XList_fail;
 cat_r_260_alpha: /* ALT — try left */
     goto alt_l_261_alpha;
 cat_r_260_beta:
     goto alt_r_261_beta;
 alt_l_261_alpha: {
     deref_262_saved_cur = _cur_np;
-    SnoVal _r_snoExpr = pat_snoExpr(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr)) { _cur_np = deref_262_saved_cur; goto alt_r_261_alpha; }
+    SnoVal _r_262 = pat_Expr(_subj_np, _slen_np, &_cur_np, &deref_262_z, 0);
+    if (is_fail(_r_262)) { _cur_np = deref_262_saved_cur; goto alt_r_261_alpha; }
     goto cat_r_259_alpha;
 }
 alt_l_261_beta: {
     _cur_np = deref_262_saved_cur;
-    SnoVal _r_snoExpr = pat_snoExpr(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr)) { _cur_np = deref_262_saved_cur; goto alt_r_261_alpha; }
+    SnoVal _r_262_b = pat_Expr(_subj_np, _slen_np, &_cur_np, &deref_262_z, 1);
+    if (is_fail(_r_262_b)) { _cur_np = deref_262_saved_cur; goto alt_r_261_alpha; }
     goto cat_r_259_alpha;
 }
 alt_r_261_alpha: /* CAT — entr left */
@@ -13694,14 +14082,14 @@ cat_l_266_beta:
     goto alt_r_265_alpha;
 cat_r_266_alpha: {
     deref_268_saved_cur = _cur_np;
-    SnoVal _r_snoXList = pat_snoXList(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoXList)) { _cur_np = deref_268_saved_cur; goto cat_l_266_beta; }
+    SnoVal _r_268 = pat_XList(_subj_np, _slen_np, &_cur_np, &deref_268_z, 0);
+    if (is_fail(_r_268)) { _cur_np = deref_268_saved_cur; goto cat_l_266_beta; }
     goto fence_after_264;
 }
 cat_r_266_beta: {
     _cur_np = deref_268_saved_cur;
-    SnoVal _r_snoXList = pat_snoXList(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoXList)) { _cur_np = deref_268_saved_cur; goto cat_l_266_beta; }
+    SnoVal _r_268_b = pat_XList(_subj_np, _slen_np, &_cur_np, &deref_268_z, 1);
+    if (is_fail(_r_268_b)) { _cur_np = deref_268_saved_cur; goto cat_l_266_beta; }
     goto fence_after_264;
 }
 alt_r_265_alpha: /* pat var epsilon — epsilon */
@@ -13709,69 +14097,97 @@ alt_r_265_alpha: /* pat var epsilon — epsilon */
 alt_r_265_beta:
     goto cat_l_259_beta;
 fence_after_264:
-    goto _snoXList_ok;
+    goto _XList_ok;
 cat_r_259_beta:
     goto cat_l_259_beta;
-    _snoXList_ok:;
+    _XList_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoXList_fail:;
+    _XList_fail:;
         return FAIL_VAL;
+#undef deref_262_saved_cur
+#undef cat_r_263_alpha_saved_cursor
+#undef deref_267_saved_cursor
+#undef deref_268_saved_cur
+#undef deref_262_z
+#undef deref_268_z
+
 }
 
-static SnoVal pat_snoExpr(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t deref_269_saved_cur;
+typedef struct pat_Expr_t {
+    int64_t deref_269_saved_cur;
+    pat_Expr0_t *deref_269_z;
+} pat_Expr_t;
 
-    if (_entry_np == 0) goto _snoExpr_alpha;
-    if (_entry_np == 1) goto _snoExpr_beta;
-    goto _snoExpr_fail;
-_snoExpr_alpha: {
+static SnoVal pat_Expr(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_Expr_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_Expr_t)); }
+    pat_Expr_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define deref_269_saved_cur z->deref_269_saved_cur
+#define deref_269_z z->deref_269_z
+
+    if (_entry_np == 0) goto _Expr_alpha;
+    if (_entry_np == 1) goto _Expr_beta;
+    goto _Expr_fail;
+_Expr_alpha: {
     deref_269_saved_cur = _cur_np;
-    SnoVal _r_snoExpr0 = pat_snoExpr0(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr0)) { _cur_np = deref_269_saved_cur; goto _snoExpr_fail; }
-    goto _snoExpr_ok;
+    SnoVal _r_269 = pat_Expr0(_subj_np, _slen_np, &_cur_np, &deref_269_z, 0);
+    if (is_fail(_r_269)) { _cur_np = deref_269_saved_cur; goto _Expr_fail; }
+    goto _Expr_ok;
 }
-_snoExpr_beta: {
+_Expr_beta: {
     _cur_np = deref_269_saved_cur;
-    SnoVal _r_snoExpr0 = pat_snoExpr0(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr0)) { _cur_np = deref_269_saved_cur; goto _snoExpr_fail; }
-    goto _snoExpr_ok;
+    SnoVal _r_269_b = pat_Expr0(_subj_np, _slen_np, &_cur_np, &deref_269_z, 1);
+    if (is_fail(_r_269_b)) { _cur_np = deref_269_saved_cur; goto _Expr_fail; }
+    goto _Expr_ok;
 }
-    _snoExpr_ok:;
+    _Expr_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoExpr_fail:;
+    _Expr_fail:;
         return FAIL_VAL;
+#undef deref_269_saved_cur
+#undef deref_269_z
+
 }
 
-static SnoVal pat_snoExpr0(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t deref_271_saved_cur;
-static int64_t deref_276_saved_cursor;
-static int64_t deref_277_saved_cur;
+typedef struct pat_Expr0_t {
+    int64_t deref_271_saved_cur;
+    int64_t deref_276_saved_cursor;
+    int64_t deref_277_saved_cur;
+    pat_Expr1_t *deref_271_z;
+    pat_Expr0_t *deref_277_z;
+} pat_Expr0_t;
 
-    if (_entry_np == 0) goto _snoExpr0_alpha;
-    if (_entry_np == 1) goto _snoExpr0_beta;
-    goto _snoExpr0_fail;
-_snoExpr0_alpha: /* CAT — entr left */
+static SnoVal pat_Expr0(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_Expr0_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_Expr0_t)); }
+    pat_Expr0_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define deref_271_saved_cur z->deref_271_saved_cur
+#define deref_276_saved_cursor z->deref_276_saved_cursor
+#define deref_277_saved_cur z->deref_277_saved_cur
+#define deref_271_z z->deref_271_z
+#define deref_277_z z->deref_277_z
+
+    if (_entry_np == 0) goto _Expr0_alpha;
+    if (_entry_np == 1) goto _Expr0_beta;
+    goto _Expr0_fail;
+_Expr0_alpha: /* CAT — entr left */
     goto cat_l_270_alpha;
-_snoExpr0_beta:
+_Expr0_beta:
     goto cat_r_270_beta;
 cat_l_270_alpha: {
     deref_271_saved_cur = _cur_np;
-    SnoVal _r_snoExpr1 = pat_snoExpr1(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr1)) { _cur_np = deref_271_saved_cur; goto _snoExpr0_fail; }
+    SnoVal _r_271 = pat_Expr1(_subj_np, _slen_np, &_cur_np, &deref_271_z, 0);
+    if (is_fail(_r_271)) { _cur_np = deref_271_saved_cur; goto _Expr0_fail; }
     goto cat_r_270_alpha;
 }
 cat_l_270_beta: {
     _cur_np = deref_271_saved_cur;
-    SnoVal _r_snoExpr1 = pat_snoExpr1(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr1)) { _cur_np = deref_271_saved_cur; goto _snoExpr0_fail; }
+    SnoVal _r_271_b = pat_Expr1(_subj_np, _slen_np, &_cur_np, &deref_271_z, 1);
+    if (is_fail(_r_271_b)) { _cur_np = deref_271_saved_cur; goto _Expr0_fail; }
     goto cat_r_270_alpha;
 }
 cat_r_270_alpha: /* FENCE(p) */
@@ -13801,14 +14217,14 @@ cat_l_275_beta:
     goto alt_r_273_alpha;
 cat_r_275_alpha: {
     deref_277_saved_cur = _cur_np;
-    SnoVal _r_snoExpr0 = pat_snoExpr0(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr0)) { _cur_np = deref_277_saved_cur; goto cat_l_275_beta; }
+    SnoVal _r_277 = pat_Expr0(_subj_np, _slen_np, &_cur_np, &deref_277_z, 0);
+    if (is_fail(_r_277)) { _cur_np = deref_277_saved_cur; goto cat_l_275_beta; }
     goto cat_r_274_alpha;
 }
 cat_r_275_beta: {
     _cur_np = deref_277_saved_cur;
-    SnoVal _r_snoExpr0 = pat_snoExpr0(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr0)) { _cur_np = deref_277_saved_cur; goto cat_l_275_beta; }
+    SnoVal _r_277_b = pat_Expr0(_subj_np, _slen_np, &_cur_np, &deref_277_z, 1);
+    if (is_fail(_r_277_b)) { _cur_np = deref_277_saved_cur; goto cat_l_275_beta; }
     goto cat_r_274_alpha;
 }
 cat_r_274_alpha: /* E_REDUCE & */
@@ -13821,41 +14237,58 @@ alt_r_273_alpha: /* pat var epsilon — epsilon */
 alt_r_273_beta:
     goto cat_l_270_beta;
 fence_after_272:
-    goto _snoExpr0_ok;
+    goto _Expr0_ok;
 cat_r_270_beta:
     goto cat_l_270_beta;
-    _snoExpr0_ok:;
+    _Expr0_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoExpr0_fail:;
+    _Expr0_fail:;
         return FAIL_VAL;
+#undef deref_271_saved_cur
+#undef deref_276_saved_cursor
+#undef deref_277_saved_cur
+#undef deref_271_z
+#undef deref_277_z
+
 }
 
-static SnoVal pat_snoExpr1(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t deref_279_saved_cur;
-static int64_t deref_284_saved_cursor;
-static int64_t deref_285_saved_cur;
+typedef struct pat_Expr1_t {
+    int64_t deref_279_saved_cur;
+    int64_t deref_284_saved_cursor;
+    int64_t deref_285_saved_cur;
+    pat_Expr2_t *deref_279_z;
+    pat_Expr1_t *deref_285_z;
+} pat_Expr1_t;
 
-    if (_entry_np == 0) goto _snoExpr1_alpha;
-    if (_entry_np == 1) goto _snoExpr1_beta;
-    goto _snoExpr1_fail;
-_snoExpr1_alpha: /* CAT — entr left */
+static SnoVal pat_Expr1(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_Expr1_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_Expr1_t)); }
+    pat_Expr1_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define deref_279_saved_cur z->deref_279_saved_cur
+#define deref_284_saved_cursor z->deref_284_saved_cursor
+#define deref_285_saved_cur z->deref_285_saved_cur
+#define deref_279_z z->deref_279_z
+#define deref_285_z z->deref_285_z
+
+    if (_entry_np == 0) goto _Expr1_alpha;
+    if (_entry_np == 1) goto _Expr1_beta;
+    goto _Expr1_fail;
+_Expr1_alpha: /* CAT — entr left */
     goto cat_l_278_alpha;
-_snoExpr1_beta:
+_Expr1_beta:
     goto cat_r_278_beta;
 cat_l_278_alpha: {
     deref_279_saved_cur = _cur_np;
-    SnoVal _r_snoExpr2 = pat_snoExpr2(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr2)) { _cur_np = deref_279_saved_cur; goto _snoExpr1_fail; }
+    SnoVal _r_279 = pat_Expr2(_subj_np, _slen_np, &_cur_np, &deref_279_z, 0);
+    if (is_fail(_r_279)) { _cur_np = deref_279_saved_cur; goto _Expr1_fail; }
     goto cat_r_278_alpha;
 }
 cat_l_278_beta: {
     _cur_np = deref_279_saved_cur;
-    SnoVal _r_snoExpr2 = pat_snoExpr2(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr2)) { _cur_np = deref_279_saved_cur; goto _snoExpr1_fail; }
+    SnoVal _r_279_b = pat_Expr2(_subj_np, _slen_np, &_cur_np, &deref_279_z, 1);
+    if (is_fail(_r_279_b)) { _cur_np = deref_279_saved_cur; goto _Expr1_fail; }
     goto cat_r_278_alpha;
 }
 cat_r_278_alpha: /* FENCE(p) */
@@ -13885,14 +14318,14 @@ cat_l_283_beta:
     goto alt_r_281_alpha;
 cat_r_283_alpha: {
     deref_285_saved_cur = _cur_np;
-    SnoVal _r_snoExpr1 = pat_snoExpr1(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr1)) { _cur_np = deref_285_saved_cur; goto cat_l_283_beta; }
+    SnoVal _r_285 = pat_Expr1(_subj_np, _slen_np, &_cur_np, &deref_285_z, 0);
+    if (is_fail(_r_285)) { _cur_np = deref_285_saved_cur; goto cat_l_283_beta; }
     goto cat_r_282_alpha;
 }
 cat_r_283_beta: {
     _cur_np = deref_285_saved_cur;
-    SnoVal _r_snoExpr1 = pat_snoExpr1(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr1)) { _cur_np = deref_285_saved_cur; goto cat_l_283_beta; }
+    SnoVal _r_285_b = pat_Expr1(_subj_np, _slen_np, &_cur_np, &deref_285_z, 1);
+    if (is_fail(_r_285_b)) { _cur_np = deref_285_saved_cur; goto cat_l_283_beta; }
     goto cat_r_282_alpha;
 }
 cat_r_282_alpha: /* E_REDUCE & */
@@ -13905,41 +14338,58 @@ alt_r_281_alpha: /* pat var epsilon — epsilon */
 alt_r_281_beta:
     goto cat_l_278_beta;
 fence_after_280:
-    goto _snoExpr1_ok;
+    goto _Expr1_ok;
 cat_r_278_beta:
     goto cat_l_278_beta;
-    _snoExpr1_ok:;
+    _Expr1_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoExpr1_fail:;
+    _Expr1_fail:;
         return FAIL_VAL;
+#undef deref_279_saved_cur
+#undef deref_284_saved_cursor
+#undef deref_285_saved_cur
+#undef deref_279_z
+#undef deref_285_z
+
 }
 
-static SnoVal pat_snoExpr2(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t deref_287_saved_cur;
-static int64_t deref_292_saved_cursor;
-static int64_t deref_293_saved_cur;
+typedef struct pat_Expr2_t {
+    int64_t deref_287_saved_cur;
+    int64_t deref_292_saved_cursor;
+    int64_t deref_293_saved_cur;
+    pat_Expr3_t *deref_287_z;
+    pat_Expr2_t *deref_293_z;
+} pat_Expr2_t;
 
-    if (_entry_np == 0) goto _snoExpr2_alpha;
-    if (_entry_np == 1) goto _snoExpr2_beta;
-    goto _snoExpr2_fail;
-_snoExpr2_alpha: /* CAT — entr left */
+static SnoVal pat_Expr2(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_Expr2_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_Expr2_t)); }
+    pat_Expr2_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define deref_287_saved_cur z->deref_287_saved_cur
+#define deref_292_saved_cursor z->deref_292_saved_cursor
+#define deref_293_saved_cur z->deref_293_saved_cur
+#define deref_287_z z->deref_287_z
+#define deref_293_z z->deref_293_z
+
+    if (_entry_np == 0) goto _Expr2_alpha;
+    if (_entry_np == 1) goto _Expr2_beta;
+    goto _Expr2_fail;
+_Expr2_alpha: /* CAT — entr left */
     goto cat_l_286_alpha;
-_snoExpr2_beta:
+_Expr2_beta:
     goto cat_r_286_beta;
 cat_l_286_alpha: {
     deref_287_saved_cur = _cur_np;
-    SnoVal _r_snoExpr3 = pat_snoExpr3(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr3)) { _cur_np = deref_287_saved_cur; goto _snoExpr2_fail; }
+    SnoVal _r_287 = pat_Expr3(_subj_np, _slen_np, &_cur_np, &deref_287_z, 0);
+    if (is_fail(_r_287)) { _cur_np = deref_287_saved_cur; goto _Expr2_fail; }
     goto cat_r_286_alpha;
 }
 cat_l_286_beta: {
     _cur_np = deref_287_saved_cur;
-    SnoVal _r_snoExpr3 = pat_snoExpr3(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr3)) { _cur_np = deref_287_saved_cur; goto _snoExpr2_fail; }
+    SnoVal _r_287_b = pat_Expr3(_subj_np, _slen_np, &_cur_np, &deref_287_z, 1);
+    if (is_fail(_r_287_b)) { _cur_np = deref_287_saved_cur; goto _Expr2_fail; }
     goto cat_r_286_alpha;
 }
 cat_r_286_alpha: /* FENCE(p) */
@@ -13969,14 +14419,14 @@ cat_l_291_beta:
     goto alt_r_289_alpha;
 cat_r_291_alpha: {
     deref_293_saved_cur = _cur_np;
-    SnoVal _r_snoExpr2 = pat_snoExpr2(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr2)) { _cur_np = deref_293_saved_cur; goto cat_l_291_beta; }
+    SnoVal _r_293 = pat_Expr2(_subj_np, _slen_np, &_cur_np, &deref_293_z, 0);
+    if (is_fail(_r_293)) { _cur_np = deref_293_saved_cur; goto cat_l_291_beta; }
     goto cat_r_290_alpha;
 }
 cat_r_291_beta: {
     _cur_np = deref_293_saved_cur;
-    SnoVal _r_snoExpr2 = pat_snoExpr2(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr2)) { _cur_np = deref_293_saved_cur; goto cat_l_291_beta; }
+    SnoVal _r_293_b = pat_Expr2(_subj_np, _slen_np, &_cur_np, &deref_293_z, 1);
+    if (is_fail(_r_293_b)) { _cur_np = deref_293_saved_cur; goto cat_l_291_beta; }
     goto cat_r_290_alpha;
 }
 cat_r_290_alpha: /* E_REDUCE & */
@@ -13989,28 +14439,41 @@ alt_r_289_alpha: /* pat var epsilon — epsilon */
 alt_r_289_beta:
     goto cat_l_286_beta;
 fence_after_288:
-    goto _snoExpr2_ok;
+    goto _Expr2_ok;
 cat_r_286_beta:
     goto cat_l_286_beta;
-    _snoExpr2_ok:;
+    _Expr2_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoExpr2_fail:;
+    _Expr2_fail:;
         return FAIL_VAL;
+#undef deref_287_saved_cur
+#undef deref_292_saved_cursor
+#undef deref_293_saved_cur
+#undef deref_287_z
+#undef deref_293_z
+
 }
 
-static SnoVal pat_snoExpr3(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t deref_297_saved_cur;
+typedef struct pat_Expr3_t {
+    int64_t deref_297_saved_cur;
+    pat_X3_t *deref_297_z;
+} pat_Expr3_t;
 
-    if (_entry_np == 0) goto _snoExpr3_alpha;
-    if (_entry_np == 1) goto _snoExpr3_beta;
-    goto _snoExpr3_fail;
-_snoExpr3_alpha: /* CAT — entr left */
+static SnoVal pat_Expr3(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_Expr3_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_Expr3_t)); }
+    pat_Expr3_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define deref_297_saved_cur z->deref_297_saved_cur
+#define deref_297_z z->deref_297_z
+
+    if (_entry_np == 0) goto _Expr3_alpha;
+    if (_entry_np == 1) goto _Expr3_beta;
+    goto _Expr3_fail;
+_Expr3_alpha: /* CAT — entr left */
     goto cat_l_294_alpha;
-_snoExpr3_beta:
+_Expr3_beta:
     goto cat_r_294_beta;
 cat_l_294_alpha: /* CAT — entr left */
     goto cat_l_295_alpha;
@@ -14021,17 +14484,17 @@ cat_l_295_alpha: /* CAT — entr left */
 cat_l_295_beta:
     goto cat_r_296_beta;
 cat_l_296_alpha: npush(); goto cat_r_296_alpha;
-cat_l_296_beta: goto _snoExpr3_fail;
+cat_l_296_beta: goto _Expr3_fail;
 cat_r_296_alpha: {
     deref_297_saved_cur = _cur_np;
-    SnoVal _r_snoX3 = pat_snoX3(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoX3)) { _cur_np = deref_297_saved_cur; goto cat_l_296_beta; }
+    SnoVal _r_297 = pat_X3(_subj_np, _slen_np, &_cur_np, &deref_297_z, 0);
+    if (is_fail(_r_297)) { _cur_np = deref_297_saved_cur; goto cat_l_296_beta; }
     goto cat_r_295_alpha;
 }
 cat_r_296_beta: {
     _cur_np = deref_297_saved_cur;
-    SnoVal _r_snoX3 = pat_snoX3(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoX3)) { _cur_np = deref_297_saved_cur; goto cat_l_296_beta; }
+    SnoVal _r_297_b = pat_X3(_subj_np, _slen_np, &_cur_np, &deref_297_z, 1);
+    if (is_fail(_r_297_b)) { _cur_np = deref_297_saved_cur; goto cat_l_296_beta; }
     goto cat_r_295_alpha;
 }
 cat_r_295_alpha: /* E_REDUCE & */
@@ -14039,46 +14502,60 @@ cat_r_295_alpha: /* E_REDUCE & */
       aply("Reduce", _reduce_args, 2); }
     goto cat_r_294_alpha;
 cat_r_295_beta: goto cat_l_295_beta;
-cat_r_294_alpha: npop(); goto _snoExpr3_ok;
+cat_r_294_alpha: npop(); goto _Expr3_ok;
 cat_r_294_beta: goto cat_l_294_beta;
-    _snoExpr3_ok:;
+    _Expr3_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoExpr3_fail:;
+    _Expr3_fail:;
         return FAIL_VAL;
+#undef deref_297_saved_cur
+#undef deref_297_z
+
 }
 
-static SnoVal pat_snoX3(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t deref_300_saved_cur;
-static int64_t deref_304_saved_cursor;
-static int64_t deref_305_saved_cur;
+typedef struct pat_X3_t {
+    int64_t deref_300_saved_cur;
+    int64_t deref_304_saved_cursor;
+    int64_t deref_305_saved_cur;
+    pat_Expr4_t *deref_300_z;
+    pat_X3_t *deref_305_z;
+} pat_X3_t;
 
-    if (_entry_np == 0) goto _snoX3_alpha;
-    if (_entry_np == 1) goto _snoX3_beta;
-    goto _snoX3_fail;
-_snoX3_alpha: /* CAT — entr left */
+static SnoVal pat_X3(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_X3_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_X3_t)); }
+    pat_X3_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define deref_300_saved_cur z->deref_300_saved_cur
+#define deref_304_saved_cursor z->deref_304_saved_cursor
+#define deref_305_saved_cur z->deref_305_saved_cur
+#define deref_300_z z->deref_300_z
+#define deref_305_z z->deref_305_z
+
+    if (_entry_np == 0) goto _X3_alpha;
+    if (_entry_np == 1) goto _X3_beta;
+    goto _X3_fail;
+_X3_alpha: /* CAT — entr left */
     goto cat_l_298_alpha;
-_snoX3_beta:
+_X3_beta:
     goto cat_r_298_beta;
 cat_l_298_alpha: /* CAT — entr left */
     goto cat_l_299_alpha;
 cat_l_298_beta:
     goto cat_r_299_beta;
 cat_l_299_alpha: ninc(); goto cat_r_299_alpha;
-cat_l_299_beta: goto _snoX3_fail;
+cat_l_299_beta: goto _X3_fail;
 cat_r_299_alpha: {
     deref_300_saved_cur = _cur_np;
-    SnoVal _r_snoExpr4 = pat_snoExpr4(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr4)) { _cur_np = deref_300_saved_cur; goto cat_l_299_beta; }
+    SnoVal _r_300 = pat_Expr4(_subj_np, _slen_np, &_cur_np, &deref_300_z, 0);
+    if (is_fail(_r_300)) { _cur_np = deref_300_saved_cur; goto cat_l_299_beta; }
     goto cat_r_298_alpha;
 }
 cat_r_299_beta: {
     _cur_np = deref_300_saved_cur;
-    SnoVal _r_snoExpr4 = pat_snoExpr4(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr4)) { _cur_np = deref_300_saved_cur; goto cat_l_299_beta; }
+    SnoVal _r_300_b = pat_Expr4(_subj_np, _slen_np, &_cur_np, &deref_300_z, 1);
+    if (is_fail(_r_300_b)) { _cur_np = deref_300_saved_cur; goto cat_l_299_beta; }
     goto cat_r_298_alpha;
 }
 cat_r_298_alpha: /* FENCE(p) */
@@ -14104,14 +14581,14 @@ cat_l_303_beta:
     goto alt_r_302_alpha;
 cat_r_303_alpha: {
     deref_305_saved_cur = _cur_np;
-    SnoVal _r_snoX3 = pat_snoX3(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoX3)) { _cur_np = deref_305_saved_cur; goto cat_l_303_beta; }
+    SnoVal _r_305 = pat_X3(_subj_np, _slen_np, &_cur_np, &deref_305_z, 0);
+    if (is_fail(_r_305)) { _cur_np = deref_305_saved_cur; goto cat_l_303_beta; }
     goto fence_after_301;
 }
 cat_r_303_beta: {
     _cur_np = deref_305_saved_cur;
-    SnoVal _r_snoX3 = pat_snoX3(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoX3)) { _cur_np = deref_305_saved_cur; goto cat_l_303_beta; }
+    SnoVal _r_305_b = pat_X3(_subj_np, _slen_np, &_cur_np, &deref_305_z, 1);
+    if (is_fail(_r_305_b)) { _cur_np = deref_305_saved_cur; goto cat_l_303_beta; }
     goto fence_after_301;
 }
 alt_r_302_alpha: /* pat var epsilon — epsilon */
@@ -14119,28 +14596,41 @@ alt_r_302_alpha: /* pat var epsilon — epsilon */
 alt_r_302_beta:
     goto cat_l_298_beta;
 fence_after_301:
-    goto _snoX3_ok;
+    goto _X3_ok;
 cat_r_298_beta:
     goto cat_l_298_beta;
-    _snoX3_ok:;
+    _X3_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoX3_fail:;
+    _X3_fail:;
         return FAIL_VAL;
+#undef deref_300_saved_cur
+#undef deref_304_saved_cursor
+#undef deref_305_saved_cur
+#undef deref_300_z
+#undef deref_305_z
+
 }
 
-static SnoVal pat_snoExpr4(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t deref_309_saved_cur;
+typedef struct pat_Expr4_t {
+    int64_t deref_309_saved_cur;
+    pat_X4_t *deref_309_z;
+} pat_Expr4_t;
 
-    if (_entry_np == 0) goto _snoExpr4_alpha;
-    if (_entry_np == 1) goto _snoExpr4_beta;
-    goto _snoExpr4_fail;
-_snoExpr4_alpha: /* CAT — entr left */
+static SnoVal pat_Expr4(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_Expr4_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_Expr4_t)); }
+    pat_Expr4_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define deref_309_saved_cur z->deref_309_saved_cur
+#define deref_309_z z->deref_309_z
+
+    if (_entry_np == 0) goto _Expr4_alpha;
+    if (_entry_np == 1) goto _Expr4_beta;
+    goto _Expr4_fail;
+_Expr4_alpha: /* CAT — entr left */
     goto cat_l_306_alpha;
-_snoExpr4_beta:
+_Expr4_beta:
     goto cat_r_306_beta;
 cat_l_306_alpha: /* CAT — entr left */
     goto cat_l_307_alpha;
@@ -14151,17 +14641,17 @@ cat_l_307_alpha: /* CAT — entr left */
 cat_l_307_beta:
     goto cat_r_308_beta;
 cat_l_308_alpha: npush(); goto cat_r_308_alpha;
-cat_l_308_beta: goto _snoExpr4_fail;
+cat_l_308_beta: goto _Expr4_fail;
 cat_r_308_alpha: {
     deref_309_saved_cur = _cur_np;
-    SnoVal _r_snoX4 = pat_snoX4(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoX4)) { _cur_np = deref_309_saved_cur; goto cat_l_308_beta; }
+    SnoVal _r_309 = pat_X4(_subj_np, _slen_np, &_cur_np, &deref_309_z, 0);
+    if (is_fail(_r_309)) { _cur_np = deref_309_saved_cur; goto cat_l_308_beta; }
     goto cat_r_307_alpha;
 }
 cat_r_308_beta: {
     _cur_np = deref_309_saved_cur;
-    SnoVal _r_snoX4 = pat_snoX4(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoX4)) { _cur_np = deref_309_saved_cur; goto cat_l_308_beta; }
+    SnoVal _r_309_b = pat_X4(_subj_np, _slen_np, &_cur_np, &deref_309_z, 1);
+    if (is_fail(_r_309_b)) { _cur_np = deref_309_saved_cur; goto cat_l_308_beta; }
     goto cat_r_307_alpha;
 }
 cat_r_307_alpha: /* E_REDUCE & */
@@ -14169,46 +14659,62 @@ cat_r_307_alpha: /* E_REDUCE & */
       aply("Reduce", _reduce_args, 2); }
     goto cat_r_306_alpha;
 cat_r_307_beta: goto cat_l_307_beta;
-cat_r_306_alpha: npop(); goto _snoExpr4_ok;
+cat_r_306_alpha: npop(); goto _Expr4_ok;
 cat_r_306_beta: goto cat_l_306_beta;
-    _snoExpr4_ok:;
+    _Expr4_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoExpr4_fail:;
+    _Expr4_fail:;
         return FAIL_VAL;
+#undef deref_309_saved_cur
+#undef deref_309_z
+
 }
 
-static SnoVal pat_snoX4(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t deref_312_saved_cur;
-static int64_t deref_316_saved_cur;
-static int64_t deref_317_saved_cur;
+typedef struct pat_X4_t {
+    int64_t deref_312_saved_cur;
+    int64_t deref_316_saved_cur;
+    int64_t deref_317_saved_cur;
+    pat_Expr5_t *deref_312_z;
+    pat_White_t *deref_316_z;
+    pat_X4_t *deref_317_z;
+} pat_X4_t;
 
-    if (_entry_np == 0) goto _snoX4_alpha;
-    if (_entry_np == 1) goto _snoX4_beta;
-    goto _snoX4_fail;
-_snoX4_alpha: /* CAT — entr left */
+static SnoVal pat_X4(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_X4_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_X4_t)); }
+    pat_X4_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define deref_312_saved_cur z->deref_312_saved_cur
+#define deref_316_saved_cur z->deref_316_saved_cur
+#define deref_317_saved_cur z->deref_317_saved_cur
+#define deref_312_z z->deref_312_z
+#define deref_316_z z->deref_316_z
+#define deref_317_z z->deref_317_z
+
+    if (_entry_np == 0) goto _X4_alpha;
+    if (_entry_np == 1) goto _X4_beta;
+    goto _X4_fail;
+_X4_alpha: /* CAT — entr left */
     goto cat_l_310_alpha;
-_snoX4_beta:
+_X4_beta:
     goto cat_r_310_beta;
 cat_l_310_alpha: /* CAT — entr left */
     goto cat_l_311_alpha;
 cat_l_310_beta:
     goto cat_r_311_beta;
 cat_l_311_alpha: ninc(); goto cat_r_311_alpha;
-cat_l_311_beta: goto _snoX4_fail;
+cat_l_311_beta: goto _X4_fail;
 cat_r_311_alpha: {
     deref_312_saved_cur = _cur_np;
-    SnoVal _r_snoExpr5 = pat_snoExpr5(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr5)) { _cur_np = deref_312_saved_cur; goto cat_l_311_beta; }
+    SnoVal _r_312 = pat_Expr5(_subj_np, _slen_np, &_cur_np, &deref_312_z, 0);
+    if (is_fail(_r_312)) { _cur_np = deref_312_saved_cur; goto cat_l_311_beta; }
     goto cat_r_310_alpha;
 }
 cat_r_311_beta: {
     _cur_np = deref_312_saved_cur;
-    SnoVal _r_snoExpr5 = pat_snoExpr5(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr5)) { _cur_np = deref_312_saved_cur; goto cat_l_311_beta; }
+    SnoVal _r_312_b = pat_Expr5(_subj_np, _slen_np, &_cur_np, &deref_312_z, 1);
+    if (is_fail(_r_312_b)) { _cur_np = deref_312_saved_cur; goto cat_l_311_beta; }
     goto cat_r_310_alpha;
 }
 cat_r_310_alpha: /* FENCE(p) */
@@ -14223,26 +14729,26 @@ alt_l_314_beta:
     goto cat_r_315_beta;
 cat_l_315_alpha: {
     deref_316_saved_cur = _cur_np;
-    SnoVal _r_snoWhite = pat_snoWhite(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoWhite)) { _cur_np = deref_316_saved_cur; goto alt_r_314_alpha; }
+    SnoVal _r_316 = pat_White(_subj_np, _slen_np, &_cur_np, &deref_316_z, 0);
+    if (is_fail(_r_316)) { _cur_np = deref_316_saved_cur; goto alt_r_314_alpha; }
     goto cat_r_315_alpha;
 }
 cat_l_315_beta: {
     _cur_np = deref_316_saved_cur;
-    SnoVal _r_snoWhite = pat_snoWhite(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoWhite)) { _cur_np = deref_316_saved_cur; goto alt_r_314_alpha; }
+    SnoVal _r_316_b = pat_White(_subj_np, _slen_np, &_cur_np, &deref_316_z, 1);
+    if (is_fail(_r_316_b)) { _cur_np = deref_316_saved_cur; goto alt_r_314_alpha; }
     goto cat_r_315_alpha;
 }
 cat_r_315_alpha: {
     deref_317_saved_cur = _cur_np;
-    SnoVal _r_snoX4 = pat_snoX4(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoX4)) { _cur_np = deref_317_saved_cur; goto cat_l_315_beta; }
+    SnoVal _r_317 = pat_X4(_subj_np, _slen_np, &_cur_np, &deref_317_z, 0);
+    if (is_fail(_r_317)) { _cur_np = deref_317_saved_cur; goto cat_l_315_beta; }
     goto fence_after_313;
 }
 cat_r_315_beta: {
     _cur_np = deref_317_saved_cur;
-    SnoVal _r_snoX4 = pat_snoX4(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoX4)) { _cur_np = deref_317_saved_cur; goto cat_l_315_beta; }
+    SnoVal _r_317_b = pat_X4(_subj_np, _slen_np, &_cur_np, &deref_317_z, 1);
+    if (is_fail(_r_317_b)) { _cur_np = deref_317_saved_cur; goto cat_l_315_beta; }
     goto fence_after_313;
 }
 alt_r_314_alpha: /* pat var epsilon — epsilon */
@@ -14250,41 +14756,59 @@ alt_r_314_alpha: /* pat var epsilon — epsilon */
 alt_r_314_beta:
     goto cat_l_310_beta;
 fence_after_313:
-    goto _snoX4_ok;
+    goto _X4_ok;
 cat_r_310_beta:
     goto cat_l_310_beta;
-    _snoX4_ok:;
+    _X4_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoX4_fail:;
+    _X4_fail:;
         return FAIL_VAL;
+#undef deref_312_saved_cur
+#undef deref_316_saved_cur
+#undef deref_317_saved_cur
+#undef deref_312_z
+#undef deref_316_z
+#undef deref_317_z
+
 }
 
-static SnoVal pat_snoExpr5(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t deref_319_saved_cur;
-static int64_t deref_324_saved_cursor;
-static int64_t deref_325_saved_cur;
+typedef struct pat_Expr5_t {
+    int64_t deref_319_saved_cur;
+    int64_t deref_324_saved_cursor;
+    int64_t deref_325_saved_cur;
+    pat_Expr6_t *deref_319_z;
+    pat_Expr5_t *deref_325_z;
+} pat_Expr5_t;
 
-    if (_entry_np == 0) goto _snoExpr5_alpha;
-    if (_entry_np == 1) goto _snoExpr5_beta;
-    goto _snoExpr5_fail;
-_snoExpr5_alpha: /* CAT — entr left */
+static SnoVal pat_Expr5(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_Expr5_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_Expr5_t)); }
+    pat_Expr5_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define deref_319_saved_cur z->deref_319_saved_cur
+#define deref_324_saved_cursor z->deref_324_saved_cursor
+#define deref_325_saved_cur z->deref_325_saved_cur
+#define deref_319_z z->deref_319_z
+#define deref_325_z z->deref_325_z
+
+    if (_entry_np == 0) goto _Expr5_alpha;
+    if (_entry_np == 1) goto _Expr5_beta;
+    goto _Expr5_fail;
+_Expr5_alpha: /* CAT — entr left */
     goto cat_l_318_alpha;
-_snoExpr5_beta:
+_Expr5_beta:
     goto cat_r_318_beta;
 cat_l_318_alpha: {
     deref_319_saved_cur = _cur_np;
-    SnoVal _r_snoExpr6 = pat_snoExpr6(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr6)) { _cur_np = deref_319_saved_cur; goto _snoExpr5_fail; }
+    SnoVal _r_319 = pat_Expr6(_subj_np, _slen_np, &_cur_np, &deref_319_z, 0);
+    if (is_fail(_r_319)) { _cur_np = deref_319_saved_cur; goto _Expr5_fail; }
     goto cat_r_318_alpha;
 }
 cat_l_318_beta: {
     _cur_np = deref_319_saved_cur;
-    SnoVal _r_snoExpr6 = pat_snoExpr6(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr6)) { _cur_np = deref_319_saved_cur; goto _snoExpr5_fail; }
+    SnoVal _r_319_b = pat_Expr6(_subj_np, _slen_np, &_cur_np, &deref_319_z, 1);
+    if (is_fail(_r_319_b)) { _cur_np = deref_319_saved_cur; goto _Expr5_fail; }
     goto cat_r_318_alpha;
 }
 cat_r_318_alpha: /* FENCE(p) */
@@ -14314,14 +14838,14 @@ cat_l_323_beta:
     goto alt_r_321_alpha;
 cat_r_323_alpha: {
     deref_325_saved_cur = _cur_np;
-    SnoVal _r_snoExpr5 = pat_snoExpr5(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr5)) { _cur_np = deref_325_saved_cur; goto cat_l_323_beta; }
+    SnoVal _r_325 = pat_Expr5(_subj_np, _slen_np, &_cur_np, &deref_325_z, 0);
+    if (is_fail(_r_325)) { _cur_np = deref_325_saved_cur; goto cat_l_323_beta; }
     goto cat_r_322_alpha;
 }
 cat_r_323_beta: {
     _cur_np = deref_325_saved_cur;
-    SnoVal _r_snoExpr5 = pat_snoExpr5(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr5)) { _cur_np = deref_325_saved_cur; goto cat_l_323_beta; }
+    SnoVal _r_325_b = pat_Expr5(_subj_np, _slen_np, &_cur_np, &deref_325_z, 1);
+    if (is_fail(_r_325_b)) { _cur_np = deref_325_saved_cur; goto cat_l_323_beta; }
     goto cat_r_322_alpha;
 }
 cat_r_322_alpha: /* E_REDUCE & */
@@ -14334,43 +14858,64 @@ alt_r_321_alpha: /* pat var epsilon — epsilon */
 alt_r_321_beta:
     goto cat_l_318_beta;
 fence_after_320:
-    goto _snoExpr5_ok;
+    goto _Expr5_ok;
 cat_r_318_beta:
     goto cat_l_318_beta;
-    _snoExpr5_ok:;
+    _Expr5_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoExpr5_fail:;
+    _Expr5_fail:;
         return FAIL_VAL;
+#undef deref_319_saved_cur
+#undef deref_324_saved_cursor
+#undef deref_325_saved_cur
+#undef deref_319_z
+#undef deref_325_z
+
 }
 
-static SnoVal pat_snoExpr6(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t deref_327_saved_cur;
-static int64_t deref_333_saved_cursor;
-static int64_t deref_334_saved_cur;
-static int64_t deref_337_saved_cursor;
-static int64_t deref_338_saved_cur;
+typedef struct pat_Expr6_t {
+    int64_t deref_327_saved_cur;
+    int64_t deref_333_saved_cursor;
+    int64_t deref_334_saved_cur;
+    int64_t deref_337_saved_cursor;
+    int64_t deref_338_saved_cur;
+    pat_Expr7_t *deref_327_z;
+    pat_Expr6_t *deref_334_z;
+    pat_Expr6_t *deref_338_z;
+} pat_Expr6_t;
 
-    if (_entry_np == 0) goto _snoExpr6_alpha;
-    if (_entry_np == 1) goto _snoExpr6_beta;
-    goto _snoExpr6_fail;
-_snoExpr6_alpha: /* CAT — entr left */
+static SnoVal pat_Expr6(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_Expr6_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_Expr6_t)); }
+    pat_Expr6_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define deref_327_saved_cur z->deref_327_saved_cur
+#define deref_333_saved_cursor z->deref_333_saved_cursor
+#define deref_334_saved_cur z->deref_334_saved_cur
+#define deref_337_saved_cursor z->deref_337_saved_cursor
+#define deref_338_saved_cur z->deref_338_saved_cur
+#define deref_327_z z->deref_327_z
+#define deref_334_z z->deref_334_z
+#define deref_338_z z->deref_338_z
+
+    if (_entry_np == 0) goto _Expr6_alpha;
+    if (_entry_np == 1) goto _Expr6_beta;
+    goto _Expr6_fail;
+_Expr6_alpha: /* CAT — entr left */
     goto cat_l_326_alpha;
-_snoExpr6_beta:
+_Expr6_beta:
     goto cat_r_326_beta;
 cat_l_326_alpha: {
     deref_327_saved_cur = _cur_np;
-    SnoVal _r_snoExpr7 = pat_snoExpr7(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr7)) { _cur_np = deref_327_saved_cur; goto _snoExpr6_fail; }
+    SnoVal _r_327 = pat_Expr7(_subj_np, _slen_np, &_cur_np, &deref_327_z, 0);
+    if (is_fail(_r_327)) { _cur_np = deref_327_saved_cur; goto _Expr6_fail; }
     goto cat_r_326_alpha;
 }
 cat_l_326_beta: {
     _cur_np = deref_327_saved_cur;
-    SnoVal _r_snoExpr7 = pat_snoExpr7(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr7)) { _cur_np = deref_327_saved_cur; goto _snoExpr6_fail; }
+    SnoVal _r_327_b = pat_Expr7(_subj_np, _slen_np, &_cur_np, &deref_327_z, 1);
+    if (is_fail(_r_327_b)) { _cur_np = deref_327_saved_cur; goto _Expr6_fail; }
     goto cat_r_326_alpha;
 }
 cat_r_326_alpha: /* FENCE(p) */
@@ -14404,14 +14949,14 @@ cat_l_332_beta:
     goto alt_r_330_alpha;
 cat_r_332_alpha: {
     deref_334_saved_cur = _cur_np;
-    SnoVal _r_snoExpr6 = pat_snoExpr6(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr6)) { _cur_np = deref_334_saved_cur; goto cat_l_332_beta; }
+    SnoVal _r_334 = pat_Expr6(_subj_np, _slen_np, &_cur_np, &deref_334_z, 0);
+    if (is_fail(_r_334)) { _cur_np = deref_334_saved_cur; goto cat_l_332_beta; }
     goto cat_r_331_alpha;
 }
 cat_r_332_beta: {
     _cur_np = deref_334_saved_cur;
-    SnoVal _r_snoExpr6 = pat_snoExpr6(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr6)) { _cur_np = deref_334_saved_cur; goto cat_l_332_beta; }
+    SnoVal _r_334_b = pat_Expr6(_subj_np, _slen_np, &_cur_np, &deref_334_z, 1);
+    if (is_fail(_r_334_b)) { _cur_np = deref_334_saved_cur; goto cat_l_332_beta; }
     goto cat_r_331_alpha;
 }
 cat_r_331_alpha: /* E_REDUCE & */
@@ -14440,14 +14985,14 @@ cat_l_336_beta:
     goto alt_r_329_alpha;
 cat_r_336_alpha: {
     deref_338_saved_cur = _cur_np;
-    SnoVal _r_snoExpr6 = pat_snoExpr6(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr6)) { _cur_np = deref_338_saved_cur; goto cat_l_336_beta; }
+    SnoVal _r_338 = pat_Expr6(_subj_np, _slen_np, &_cur_np, &deref_338_z, 0);
+    if (is_fail(_r_338)) { _cur_np = deref_338_saved_cur; goto cat_l_336_beta; }
     goto cat_r_335_alpha;
 }
 cat_r_336_beta: {
     _cur_np = deref_338_saved_cur;
-    SnoVal _r_snoExpr6 = pat_snoExpr6(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr6)) { _cur_np = deref_338_saved_cur; goto cat_l_336_beta; }
+    SnoVal _r_338_b = pat_Expr6(_subj_np, _slen_np, &_cur_np, &deref_338_z, 1);
+    if (is_fail(_r_338_b)) { _cur_np = deref_338_saved_cur; goto cat_l_336_beta; }
     goto cat_r_335_alpha;
 }
 cat_r_335_alpha: /* E_REDUCE & */
@@ -14460,41 +15005,61 @@ alt_r_329_alpha: /* pat var epsilon — epsilon */
 alt_r_329_beta:
     goto cat_l_326_beta;
 fence_after_328:
-    goto _snoExpr6_ok;
+    goto _Expr6_ok;
 cat_r_326_beta:
     goto cat_l_326_beta;
-    _snoExpr6_ok:;
+    _Expr6_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoExpr6_fail:;
+    _Expr6_fail:;
         return FAIL_VAL;
+#undef deref_327_saved_cur
+#undef deref_333_saved_cursor
+#undef deref_334_saved_cur
+#undef deref_337_saved_cursor
+#undef deref_338_saved_cur
+#undef deref_327_z
+#undef deref_334_z
+#undef deref_338_z
+
 }
 
-static SnoVal pat_snoExpr7(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t deref_340_saved_cur;
-static int64_t deref_345_saved_cursor;
-static int64_t deref_346_saved_cur;
+typedef struct pat_Expr7_t {
+    int64_t deref_340_saved_cur;
+    int64_t deref_345_saved_cursor;
+    int64_t deref_346_saved_cur;
+    pat_Expr8_t *deref_340_z;
+    pat_Expr7_t *deref_346_z;
+} pat_Expr7_t;
 
-    if (_entry_np == 0) goto _snoExpr7_alpha;
-    if (_entry_np == 1) goto _snoExpr7_beta;
-    goto _snoExpr7_fail;
-_snoExpr7_alpha: /* CAT — entr left */
+static SnoVal pat_Expr7(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_Expr7_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_Expr7_t)); }
+    pat_Expr7_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define deref_340_saved_cur z->deref_340_saved_cur
+#define deref_345_saved_cursor z->deref_345_saved_cursor
+#define deref_346_saved_cur z->deref_346_saved_cur
+#define deref_340_z z->deref_340_z
+#define deref_346_z z->deref_346_z
+
+    if (_entry_np == 0) goto _Expr7_alpha;
+    if (_entry_np == 1) goto _Expr7_beta;
+    goto _Expr7_fail;
+_Expr7_alpha: /* CAT — entr left */
     goto cat_l_339_alpha;
-_snoExpr7_beta:
+_Expr7_beta:
     goto cat_r_339_beta;
 cat_l_339_alpha: {
     deref_340_saved_cur = _cur_np;
-    SnoVal _r_snoExpr8 = pat_snoExpr8(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr8)) { _cur_np = deref_340_saved_cur; goto _snoExpr7_fail; }
+    SnoVal _r_340 = pat_Expr8(_subj_np, _slen_np, &_cur_np, &deref_340_z, 0);
+    if (is_fail(_r_340)) { _cur_np = deref_340_saved_cur; goto _Expr7_fail; }
     goto cat_r_339_alpha;
 }
 cat_l_339_beta: {
     _cur_np = deref_340_saved_cur;
-    SnoVal _r_snoExpr8 = pat_snoExpr8(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr8)) { _cur_np = deref_340_saved_cur; goto _snoExpr7_fail; }
+    SnoVal _r_340_b = pat_Expr8(_subj_np, _slen_np, &_cur_np, &deref_340_z, 1);
+    if (is_fail(_r_340_b)) { _cur_np = deref_340_saved_cur; goto _Expr7_fail; }
     goto cat_r_339_alpha;
 }
 cat_r_339_alpha: /* FENCE(p) */
@@ -14524,14 +15089,14 @@ cat_l_344_beta:
     goto alt_r_342_alpha;
 cat_r_344_alpha: {
     deref_346_saved_cur = _cur_np;
-    SnoVal _r_snoExpr7 = pat_snoExpr7(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr7)) { _cur_np = deref_346_saved_cur; goto cat_l_344_beta; }
+    SnoVal _r_346 = pat_Expr7(_subj_np, _slen_np, &_cur_np, &deref_346_z, 0);
+    if (is_fail(_r_346)) { _cur_np = deref_346_saved_cur; goto cat_l_344_beta; }
     goto cat_r_343_alpha;
 }
 cat_r_344_beta: {
     _cur_np = deref_346_saved_cur;
-    SnoVal _r_snoExpr7 = pat_snoExpr7(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr7)) { _cur_np = deref_346_saved_cur; goto cat_l_344_beta; }
+    SnoVal _r_346_b = pat_Expr7(_subj_np, _slen_np, &_cur_np, &deref_346_z, 1);
+    if (is_fail(_r_346_b)) { _cur_np = deref_346_saved_cur; goto cat_l_344_beta; }
     goto cat_r_343_alpha;
 }
 cat_r_343_alpha: /* E_REDUCE & */
@@ -14544,41 +15109,58 @@ alt_r_342_alpha: /* pat var epsilon — epsilon */
 alt_r_342_beta:
     goto cat_l_339_beta;
 fence_after_341:
-    goto _snoExpr7_ok;
+    goto _Expr7_ok;
 cat_r_339_beta:
     goto cat_l_339_beta;
-    _snoExpr7_ok:;
+    _Expr7_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoExpr7_fail:;
+    _Expr7_fail:;
         return FAIL_VAL;
+#undef deref_340_saved_cur
+#undef deref_345_saved_cursor
+#undef deref_346_saved_cur
+#undef deref_340_z
+#undef deref_346_z
+
 }
 
-static SnoVal pat_snoExpr8(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t deref_348_saved_cur;
-static int64_t deref_353_saved_cursor;
-static int64_t deref_354_saved_cur;
+typedef struct pat_Expr8_t {
+    int64_t deref_348_saved_cur;
+    int64_t deref_353_saved_cursor;
+    int64_t deref_354_saved_cur;
+    pat_Expr9_t *deref_348_z;
+    pat_Expr8_t *deref_354_z;
+} pat_Expr8_t;
 
-    if (_entry_np == 0) goto _snoExpr8_alpha;
-    if (_entry_np == 1) goto _snoExpr8_beta;
-    goto _snoExpr8_fail;
-_snoExpr8_alpha: /* CAT — entr left */
+static SnoVal pat_Expr8(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_Expr8_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_Expr8_t)); }
+    pat_Expr8_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define deref_348_saved_cur z->deref_348_saved_cur
+#define deref_353_saved_cursor z->deref_353_saved_cursor
+#define deref_354_saved_cur z->deref_354_saved_cur
+#define deref_348_z z->deref_348_z
+#define deref_354_z z->deref_354_z
+
+    if (_entry_np == 0) goto _Expr8_alpha;
+    if (_entry_np == 1) goto _Expr8_beta;
+    goto _Expr8_fail;
+_Expr8_alpha: /* CAT — entr left */
     goto cat_l_347_alpha;
-_snoExpr8_beta:
+_Expr8_beta:
     goto cat_r_347_beta;
 cat_l_347_alpha: {
     deref_348_saved_cur = _cur_np;
-    SnoVal _r_snoExpr9 = pat_snoExpr9(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr9)) { _cur_np = deref_348_saved_cur; goto _snoExpr8_fail; }
+    SnoVal _r_348 = pat_Expr9(_subj_np, _slen_np, &_cur_np, &deref_348_z, 0);
+    if (is_fail(_r_348)) { _cur_np = deref_348_saved_cur; goto _Expr8_fail; }
     goto cat_r_347_alpha;
 }
 cat_l_347_beta: {
     _cur_np = deref_348_saved_cur;
-    SnoVal _r_snoExpr9 = pat_snoExpr9(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr9)) { _cur_np = deref_348_saved_cur; goto _snoExpr8_fail; }
+    SnoVal _r_348_b = pat_Expr9(_subj_np, _slen_np, &_cur_np, &deref_348_z, 1);
+    if (is_fail(_r_348_b)) { _cur_np = deref_348_saved_cur; goto _Expr8_fail; }
     goto cat_r_347_alpha;
 }
 cat_r_347_alpha: /* FENCE(p) */
@@ -14608,14 +15190,14 @@ cat_l_352_beta:
     goto alt_r_350_alpha;
 cat_r_352_alpha: {
     deref_354_saved_cur = _cur_np;
-    SnoVal _r_snoExpr8 = pat_snoExpr8(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr8)) { _cur_np = deref_354_saved_cur; goto cat_l_352_beta; }
+    SnoVal _r_354 = pat_Expr8(_subj_np, _slen_np, &_cur_np, &deref_354_z, 0);
+    if (is_fail(_r_354)) { _cur_np = deref_354_saved_cur; goto cat_l_352_beta; }
     goto cat_r_351_alpha;
 }
 cat_r_352_beta: {
     _cur_np = deref_354_saved_cur;
-    SnoVal _r_snoExpr8 = pat_snoExpr8(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr8)) { _cur_np = deref_354_saved_cur; goto cat_l_352_beta; }
+    SnoVal _r_354_b = pat_Expr8(_subj_np, _slen_np, &_cur_np, &deref_354_z, 1);
+    if (is_fail(_r_354_b)) { _cur_np = deref_354_saved_cur; goto cat_l_352_beta; }
     goto cat_r_351_alpha;
 }
 cat_r_351_alpha: /* E_REDUCE & */
@@ -14628,41 +15210,58 @@ alt_r_350_alpha: /* pat var epsilon — epsilon */
 alt_r_350_beta:
     goto cat_l_347_beta;
 fence_after_349:
-    goto _snoExpr8_ok;
+    goto _Expr8_ok;
 cat_r_347_beta:
     goto cat_l_347_beta;
-    _snoExpr8_ok:;
+    _Expr8_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoExpr8_fail:;
+    _Expr8_fail:;
         return FAIL_VAL;
+#undef deref_348_saved_cur
+#undef deref_353_saved_cursor
+#undef deref_354_saved_cur
+#undef deref_348_z
+#undef deref_354_z
+
 }
 
-static SnoVal pat_snoExpr9(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t deref_356_saved_cur;
-static int64_t deref_361_saved_cursor;
-static int64_t deref_362_saved_cur;
+typedef struct pat_Expr9_t {
+    int64_t deref_356_saved_cur;
+    int64_t deref_361_saved_cursor;
+    int64_t deref_362_saved_cur;
+    pat_Expr10_t *deref_356_z;
+    pat_Expr9_t *deref_362_z;
+} pat_Expr9_t;
 
-    if (_entry_np == 0) goto _snoExpr9_alpha;
-    if (_entry_np == 1) goto _snoExpr9_beta;
-    goto _snoExpr9_fail;
-_snoExpr9_alpha: /* CAT — entr left */
+static SnoVal pat_Expr9(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_Expr9_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_Expr9_t)); }
+    pat_Expr9_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define deref_356_saved_cur z->deref_356_saved_cur
+#define deref_361_saved_cursor z->deref_361_saved_cursor
+#define deref_362_saved_cur z->deref_362_saved_cur
+#define deref_356_z z->deref_356_z
+#define deref_362_z z->deref_362_z
+
+    if (_entry_np == 0) goto _Expr9_alpha;
+    if (_entry_np == 1) goto _Expr9_beta;
+    goto _Expr9_fail;
+_Expr9_alpha: /* CAT — entr left */
     goto cat_l_355_alpha;
-_snoExpr9_beta:
+_Expr9_beta:
     goto cat_r_355_beta;
 cat_l_355_alpha: {
     deref_356_saved_cur = _cur_np;
-    SnoVal _r_snoExpr10 = pat_snoExpr10(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr10)) { _cur_np = deref_356_saved_cur; goto _snoExpr9_fail; }
+    SnoVal _r_356 = pat_Expr10(_subj_np, _slen_np, &_cur_np, &deref_356_z, 0);
+    if (is_fail(_r_356)) { _cur_np = deref_356_saved_cur; goto _Expr9_fail; }
     goto cat_r_355_alpha;
 }
 cat_l_355_beta: {
     _cur_np = deref_356_saved_cur;
-    SnoVal _r_snoExpr10 = pat_snoExpr10(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr10)) { _cur_np = deref_356_saved_cur; goto _snoExpr9_fail; }
+    SnoVal _r_356_b = pat_Expr10(_subj_np, _slen_np, &_cur_np, &deref_356_z, 1);
+    if (is_fail(_r_356_b)) { _cur_np = deref_356_saved_cur; goto _Expr9_fail; }
     goto cat_r_355_alpha;
 }
 cat_r_355_alpha: /* FENCE(p) */
@@ -14692,14 +15291,14 @@ cat_l_360_beta:
     goto alt_r_358_alpha;
 cat_r_360_alpha: {
     deref_362_saved_cur = _cur_np;
-    SnoVal _r_snoExpr9 = pat_snoExpr9(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr9)) { _cur_np = deref_362_saved_cur; goto cat_l_360_beta; }
+    SnoVal _r_362 = pat_Expr9(_subj_np, _slen_np, &_cur_np, &deref_362_z, 0);
+    if (is_fail(_r_362)) { _cur_np = deref_362_saved_cur; goto cat_l_360_beta; }
     goto cat_r_359_alpha;
 }
 cat_r_360_beta: {
     _cur_np = deref_362_saved_cur;
-    SnoVal _r_snoExpr9 = pat_snoExpr9(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr9)) { _cur_np = deref_362_saved_cur; goto cat_l_360_beta; }
+    SnoVal _r_362_b = pat_Expr9(_subj_np, _slen_np, &_cur_np, &deref_362_z, 1);
+    if (is_fail(_r_362_b)) { _cur_np = deref_362_saved_cur; goto cat_l_360_beta; }
     goto cat_r_359_alpha;
 }
 cat_r_359_alpha: /* E_REDUCE & */
@@ -14712,41 +15311,58 @@ alt_r_358_alpha: /* pat var epsilon — epsilon */
 alt_r_358_beta:
     goto cat_l_355_beta;
 fence_after_357:
-    goto _snoExpr9_ok;
+    goto _Expr9_ok;
 cat_r_355_beta:
     goto cat_l_355_beta;
-    _snoExpr9_ok:;
+    _Expr9_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoExpr9_fail:;
+    _Expr9_fail:;
         return FAIL_VAL;
+#undef deref_356_saved_cur
+#undef deref_361_saved_cursor
+#undef deref_362_saved_cur
+#undef deref_356_z
+#undef deref_362_z
+
 }
 
-static SnoVal pat_snoExpr10(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t deref_364_saved_cur;
-static int64_t deref_369_saved_cursor;
-static int64_t deref_370_saved_cur;
+typedef struct pat_Expr10_t {
+    int64_t deref_364_saved_cur;
+    int64_t deref_369_saved_cursor;
+    int64_t deref_370_saved_cur;
+    pat_Expr11_t *deref_364_z;
+    pat_Expr10_t *deref_370_z;
+} pat_Expr10_t;
 
-    if (_entry_np == 0) goto _snoExpr10_alpha;
-    if (_entry_np == 1) goto _snoExpr10_beta;
-    goto _snoExpr10_fail;
-_snoExpr10_alpha: /* CAT — entr left */
+static SnoVal pat_Expr10(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_Expr10_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_Expr10_t)); }
+    pat_Expr10_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define deref_364_saved_cur z->deref_364_saved_cur
+#define deref_369_saved_cursor z->deref_369_saved_cursor
+#define deref_370_saved_cur z->deref_370_saved_cur
+#define deref_364_z z->deref_364_z
+#define deref_370_z z->deref_370_z
+
+    if (_entry_np == 0) goto _Expr10_alpha;
+    if (_entry_np == 1) goto _Expr10_beta;
+    goto _Expr10_fail;
+_Expr10_alpha: /* CAT — entr left */
     goto cat_l_363_alpha;
-_snoExpr10_beta:
+_Expr10_beta:
     goto cat_r_363_beta;
 cat_l_363_alpha: {
     deref_364_saved_cur = _cur_np;
-    SnoVal _r_snoExpr11 = pat_snoExpr11(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr11)) { _cur_np = deref_364_saved_cur; goto _snoExpr10_fail; }
+    SnoVal _r_364 = pat_Expr11(_subj_np, _slen_np, &_cur_np, &deref_364_z, 0);
+    if (is_fail(_r_364)) { _cur_np = deref_364_saved_cur; goto _Expr10_fail; }
     goto cat_r_363_alpha;
 }
 cat_l_363_beta: {
     _cur_np = deref_364_saved_cur;
-    SnoVal _r_snoExpr11 = pat_snoExpr11(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr11)) { _cur_np = deref_364_saved_cur; goto _snoExpr10_fail; }
+    SnoVal _r_364_b = pat_Expr11(_subj_np, _slen_np, &_cur_np, &deref_364_z, 1);
+    if (is_fail(_r_364_b)) { _cur_np = deref_364_saved_cur; goto _Expr10_fail; }
     goto cat_r_363_alpha;
 }
 cat_r_363_alpha: /* FENCE(p) */
@@ -14776,14 +15392,14 @@ cat_l_368_beta:
     goto alt_r_366_alpha;
 cat_r_368_alpha: {
     deref_370_saved_cur = _cur_np;
-    SnoVal _r_snoExpr10 = pat_snoExpr10(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr10)) { _cur_np = deref_370_saved_cur; goto cat_l_368_beta; }
+    SnoVal _r_370 = pat_Expr10(_subj_np, _slen_np, &_cur_np, &deref_370_z, 0);
+    if (is_fail(_r_370)) { _cur_np = deref_370_saved_cur; goto cat_l_368_beta; }
     goto cat_r_367_alpha;
 }
 cat_r_368_beta: {
     _cur_np = deref_370_saved_cur;
-    SnoVal _r_snoExpr10 = pat_snoExpr10(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr10)) { _cur_np = deref_370_saved_cur; goto cat_l_368_beta; }
+    SnoVal _r_370_b = pat_Expr10(_subj_np, _slen_np, &_cur_np, &deref_370_z, 1);
+    if (is_fail(_r_370_b)) { _cur_np = deref_370_saved_cur; goto cat_l_368_beta; }
     goto cat_r_367_alpha;
 }
 cat_r_367_alpha: /* E_REDUCE & */
@@ -14796,43 +15412,62 @@ alt_r_366_alpha: /* pat var epsilon — epsilon */
 alt_r_366_beta:
     goto cat_l_363_beta;
 fence_after_365:
-    goto _snoExpr10_ok;
+    goto _Expr10_ok;
 cat_r_363_beta:
     goto cat_l_363_beta;
-    _snoExpr10_ok:;
+    _Expr10_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoExpr10_fail:;
+    _Expr10_fail:;
         return FAIL_VAL;
+#undef deref_364_saved_cur
+#undef deref_369_saved_cursor
+#undef deref_370_saved_cur
+#undef deref_364_z
+#undef deref_370_z
+
 }
 
-static SnoVal pat_snoExpr11(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t deref_372_saved_cur;
-static int64_t deref_379_saved_cursor;
-static int64_t deref_380_saved_cursor;
-static int64_t deref_381_saved_cursor;
-static int64_t deref_382_saved_cur;
+typedef struct pat_Expr11_t {
+    int64_t deref_372_saved_cur;
+    int64_t deref_379_saved_cursor;
+    int64_t deref_380_saved_cursor;
+    int64_t deref_381_saved_cursor;
+    int64_t deref_382_saved_cur;
+    pat_Expr12_t *deref_372_z;
+    pat_Expr11_t *deref_382_z;
+} pat_Expr11_t;
 
-    if (_entry_np == 0) goto _snoExpr11_alpha;
-    if (_entry_np == 1) goto _snoExpr11_beta;
-    goto _snoExpr11_fail;
-_snoExpr11_alpha: /* CAT — entr left */
+static SnoVal pat_Expr11(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_Expr11_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_Expr11_t)); }
+    pat_Expr11_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define deref_372_saved_cur z->deref_372_saved_cur
+#define deref_379_saved_cursor z->deref_379_saved_cursor
+#define deref_380_saved_cursor z->deref_380_saved_cursor
+#define deref_381_saved_cursor z->deref_381_saved_cursor
+#define deref_382_saved_cur z->deref_382_saved_cur
+#define deref_372_z z->deref_372_z
+#define deref_382_z z->deref_382_z
+
+    if (_entry_np == 0) goto _Expr11_alpha;
+    if (_entry_np == 1) goto _Expr11_beta;
+    goto _Expr11_fail;
+_Expr11_alpha: /* CAT — entr left */
     goto cat_l_371_alpha;
-_snoExpr11_beta:
+_Expr11_beta:
     goto cat_r_371_beta;
 cat_l_371_alpha: {
     deref_372_saved_cur = _cur_np;
-    SnoVal _r_snoExpr12 = pat_snoExpr12(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr12)) { _cur_np = deref_372_saved_cur; goto _snoExpr11_fail; }
+    SnoVal _r_372 = pat_Expr12(_subj_np, _slen_np, &_cur_np, &deref_372_z, 0);
+    if (is_fail(_r_372)) { _cur_np = deref_372_saved_cur; goto _Expr11_fail; }
     goto cat_r_371_alpha;
 }
 cat_l_371_beta: {
     _cur_np = deref_372_saved_cur;
-    SnoVal _r_snoExpr12 = pat_snoExpr12(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr12)) { _cur_np = deref_372_saved_cur; goto _snoExpr11_fail; }
+    SnoVal _r_372_b = pat_Expr12(_subj_np, _slen_np, &_cur_np, &deref_372_z, 1);
+    if (is_fail(_r_372_b)) { _cur_np = deref_372_saved_cur; goto _Expr11_fail; }
     goto cat_r_371_alpha;
 }
 cat_r_371_alpha: /* FENCE(p) */
@@ -14892,14 +15527,14 @@ alt_r_377_beta:
     goto alt_r_374_alpha;
 cat_r_376_alpha: {
     deref_382_saved_cur = _cur_np;
-    SnoVal _r_snoExpr11 = pat_snoExpr11(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr11)) { _cur_np = deref_382_saved_cur; goto cat_l_376_beta; }
+    SnoVal _r_382 = pat_Expr11(_subj_np, _slen_np, &_cur_np, &deref_382_z, 0);
+    if (is_fail(_r_382)) { _cur_np = deref_382_saved_cur; goto cat_l_376_beta; }
     goto cat_r_375_alpha;
 }
 cat_r_376_beta: {
     _cur_np = deref_382_saved_cur;
-    SnoVal _r_snoExpr11 = pat_snoExpr11(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr11)) { _cur_np = deref_382_saved_cur; goto cat_l_376_beta; }
+    SnoVal _r_382_b = pat_Expr11(_subj_np, _slen_np, &_cur_np, &deref_382_z, 1);
+    if (is_fail(_r_382_b)) { _cur_np = deref_382_saved_cur; goto cat_l_376_beta; }
     goto cat_r_375_alpha;
 }
 cat_r_375_alpha: /* E_REDUCE & */
@@ -14912,43 +15547,66 @@ alt_r_374_alpha: /* pat var epsilon — epsilon */
 alt_r_374_beta:
     goto cat_l_371_beta;
 fence_after_373:
-    goto _snoExpr11_ok;
+    goto _Expr11_ok;
 cat_r_371_beta:
     goto cat_l_371_beta;
-    _snoExpr11_ok:;
+    _Expr11_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoExpr11_fail:;
+    _Expr11_fail:;
         return FAIL_VAL;
+#undef deref_372_saved_cur
+#undef deref_379_saved_cursor
+#undef deref_380_saved_cursor
+#undef deref_381_saved_cursor
+#undef deref_382_saved_cur
+#undef deref_372_z
+#undef deref_382_z
+
 }
 
-static SnoVal pat_snoExpr12(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t deref_384_saved_cur;
-static int64_t deref_390_saved_cursor;
-static int64_t deref_391_saved_cur;
-static int64_t deref_394_saved_cursor;
-static int64_t deref_395_saved_cur;
+typedef struct pat_Expr12_t {
+    int64_t deref_384_saved_cur;
+    int64_t deref_390_saved_cursor;
+    int64_t deref_391_saved_cur;
+    int64_t deref_394_saved_cursor;
+    int64_t deref_395_saved_cur;
+    pat_Expr13_t *deref_384_z;
+    pat_Expr12_t *deref_391_z;
+    pat_Expr12_t *deref_395_z;
+} pat_Expr12_t;
 
-    if (_entry_np == 0) goto _snoExpr12_alpha;
-    if (_entry_np == 1) goto _snoExpr12_beta;
-    goto _snoExpr12_fail;
-_snoExpr12_alpha: /* CAT — entr left */
+static SnoVal pat_Expr12(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_Expr12_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_Expr12_t)); }
+    pat_Expr12_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define deref_384_saved_cur z->deref_384_saved_cur
+#define deref_390_saved_cursor z->deref_390_saved_cursor
+#define deref_391_saved_cur z->deref_391_saved_cur
+#define deref_394_saved_cursor z->deref_394_saved_cursor
+#define deref_395_saved_cur z->deref_395_saved_cur
+#define deref_384_z z->deref_384_z
+#define deref_391_z z->deref_391_z
+#define deref_395_z z->deref_395_z
+
+    if (_entry_np == 0) goto _Expr12_alpha;
+    if (_entry_np == 1) goto _Expr12_beta;
+    goto _Expr12_fail;
+_Expr12_alpha: /* CAT — entr left */
     goto cat_l_383_alpha;
-_snoExpr12_beta:
+_Expr12_beta:
     goto cat_r_383_beta;
 cat_l_383_alpha: {
     deref_384_saved_cur = _cur_np;
-    SnoVal _r_snoExpr13 = pat_snoExpr13(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr13)) { _cur_np = deref_384_saved_cur; goto _snoExpr12_fail; }
+    SnoVal _r_384 = pat_Expr13(_subj_np, _slen_np, &_cur_np, &deref_384_z, 0);
+    if (is_fail(_r_384)) { _cur_np = deref_384_saved_cur; goto _Expr12_fail; }
     goto cat_r_383_alpha;
 }
 cat_l_383_beta: {
     _cur_np = deref_384_saved_cur;
-    SnoVal _r_snoExpr13 = pat_snoExpr13(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr13)) { _cur_np = deref_384_saved_cur; goto _snoExpr12_fail; }
+    SnoVal _r_384_b = pat_Expr13(_subj_np, _slen_np, &_cur_np, &deref_384_z, 1);
+    if (is_fail(_r_384_b)) { _cur_np = deref_384_saved_cur; goto _Expr12_fail; }
     goto cat_r_383_alpha;
 }
 cat_r_383_alpha: /* FENCE(p) */
@@ -14982,14 +15640,14 @@ cat_l_389_beta:
     goto alt_r_387_alpha;
 cat_r_389_alpha: {
     deref_391_saved_cur = _cur_np;
-    SnoVal _r_snoExpr12 = pat_snoExpr12(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr12)) { _cur_np = deref_391_saved_cur; goto cat_l_389_beta; }
+    SnoVal _r_391 = pat_Expr12(_subj_np, _slen_np, &_cur_np, &deref_391_z, 0);
+    if (is_fail(_r_391)) { _cur_np = deref_391_saved_cur; goto cat_l_389_beta; }
     goto cat_r_388_alpha;
 }
 cat_r_389_beta: {
     _cur_np = deref_391_saved_cur;
-    SnoVal _r_snoExpr12 = pat_snoExpr12(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr12)) { _cur_np = deref_391_saved_cur; goto cat_l_389_beta; }
+    SnoVal _r_391_b = pat_Expr12(_subj_np, _slen_np, &_cur_np, &deref_391_z, 1);
+    if (is_fail(_r_391_b)) { _cur_np = deref_391_saved_cur; goto cat_l_389_beta; }
     goto cat_r_388_alpha;
 }
 cat_r_388_alpha: /* E_REDUCE & */
@@ -15018,14 +15676,14 @@ cat_l_393_beta:
     goto alt_r_386_alpha;
 cat_r_393_alpha: {
     deref_395_saved_cur = _cur_np;
-    SnoVal _r_snoExpr12 = pat_snoExpr12(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr12)) { _cur_np = deref_395_saved_cur; goto cat_l_393_beta; }
+    SnoVal _r_395 = pat_Expr12(_subj_np, _slen_np, &_cur_np, &deref_395_z, 0);
+    if (is_fail(_r_395)) { _cur_np = deref_395_saved_cur; goto cat_l_393_beta; }
     goto cat_r_392_alpha;
 }
 cat_r_393_beta: {
     _cur_np = deref_395_saved_cur;
-    SnoVal _r_snoExpr12 = pat_snoExpr12(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr12)) { _cur_np = deref_395_saved_cur; goto cat_l_393_beta; }
+    SnoVal _r_395_b = pat_Expr12(_subj_np, _slen_np, &_cur_np, &deref_395_z, 1);
+    if (is_fail(_r_395_b)) { _cur_np = deref_395_saved_cur; goto cat_l_393_beta; }
     goto cat_r_392_alpha;
 }
 cat_r_392_alpha: /* E_REDUCE & */
@@ -15038,41 +15696,61 @@ alt_r_386_alpha: /* pat var epsilon — epsilon */
 alt_r_386_beta:
     goto cat_l_383_beta;
 fence_after_385:
-    goto _snoExpr12_ok;
+    goto _Expr12_ok;
 cat_r_383_beta:
     goto cat_l_383_beta;
-    _snoExpr12_ok:;
+    _Expr12_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoExpr12_fail:;
+    _Expr12_fail:;
         return FAIL_VAL;
+#undef deref_384_saved_cur
+#undef deref_390_saved_cursor
+#undef deref_391_saved_cur
+#undef deref_394_saved_cursor
+#undef deref_395_saved_cur
+#undef deref_384_z
+#undef deref_391_z
+#undef deref_395_z
+
 }
 
-static SnoVal pat_snoExpr13(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t deref_397_saved_cur;
-static int64_t deref_402_saved_cursor;
-static int64_t deref_403_saved_cur;
+typedef struct pat_Expr13_t {
+    int64_t deref_397_saved_cur;
+    int64_t deref_402_saved_cursor;
+    int64_t deref_403_saved_cur;
+    pat_Expr14_t *deref_397_z;
+    pat_Expr13_t *deref_403_z;
+} pat_Expr13_t;
 
-    if (_entry_np == 0) goto _snoExpr13_alpha;
-    if (_entry_np == 1) goto _snoExpr13_beta;
-    goto _snoExpr13_fail;
-_snoExpr13_alpha: /* CAT — entr left */
+static SnoVal pat_Expr13(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_Expr13_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_Expr13_t)); }
+    pat_Expr13_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define deref_397_saved_cur z->deref_397_saved_cur
+#define deref_402_saved_cursor z->deref_402_saved_cursor
+#define deref_403_saved_cur z->deref_403_saved_cur
+#define deref_397_z z->deref_397_z
+#define deref_403_z z->deref_403_z
+
+    if (_entry_np == 0) goto _Expr13_alpha;
+    if (_entry_np == 1) goto _Expr13_beta;
+    goto _Expr13_fail;
+_Expr13_alpha: /* CAT — entr left */
     goto cat_l_396_alpha;
-_snoExpr13_beta:
+_Expr13_beta:
     goto cat_r_396_beta;
 cat_l_396_alpha: {
     deref_397_saved_cur = _cur_np;
-    SnoVal _r_snoExpr14 = pat_snoExpr14(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr14)) { _cur_np = deref_397_saved_cur; goto _snoExpr13_fail; }
+    SnoVal _r_397 = pat_Expr14(_subj_np, _slen_np, &_cur_np, &deref_397_z, 0);
+    if (is_fail(_r_397)) { _cur_np = deref_397_saved_cur; goto _Expr13_fail; }
     goto cat_r_396_alpha;
 }
 cat_l_396_beta: {
     _cur_np = deref_397_saved_cur;
-    SnoVal _r_snoExpr14 = pat_snoExpr14(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr14)) { _cur_np = deref_397_saved_cur; goto _snoExpr13_fail; }
+    SnoVal _r_397_b = pat_Expr14(_subj_np, _slen_np, &_cur_np, &deref_397_z, 1);
+    if (is_fail(_r_397_b)) { _cur_np = deref_397_saved_cur; goto _Expr13_fail; }
     goto cat_r_396_alpha;
 }
 cat_r_396_alpha: /* FENCE(p) */
@@ -15102,14 +15780,14 @@ cat_l_401_beta:
     goto alt_r_399_alpha;
 cat_r_401_alpha: {
     deref_403_saved_cur = _cur_np;
-    SnoVal _r_snoExpr13 = pat_snoExpr13(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr13)) { _cur_np = deref_403_saved_cur; goto cat_l_401_beta; }
+    SnoVal _r_403 = pat_Expr13(_subj_np, _slen_np, &_cur_np, &deref_403_z, 0);
+    if (is_fail(_r_403)) { _cur_np = deref_403_saved_cur; goto cat_l_401_beta; }
     goto cat_r_400_alpha;
 }
 cat_r_401_beta: {
     _cur_np = deref_403_saved_cur;
-    SnoVal _r_snoExpr13 = pat_snoExpr13(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr13)) { _cur_np = deref_403_saved_cur; goto cat_l_401_beta; }
+    SnoVal _r_403_b = pat_Expr13(_subj_np, _slen_np, &_cur_np, &deref_403_z, 1);
+    if (is_fail(_r_403_b)) { _cur_np = deref_403_saved_cur; goto cat_l_401_beta; }
     goto cat_r_400_alpha;
 }
 cat_r_400_alpha: /* E_REDUCE & */
@@ -15122,62 +15800,139 @@ alt_r_399_alpha: /* pat var epsilon — epsilon */
 alt_r_399_beta:
     goto cat_l_396_beta;
 fence_after_398:
-    goto _snoExpr13_ok;
+    goto _Expr13_ok;
 cat_r_396_beta:
     goto cat_l_396_beta;
-    _snoExpr13_ok:;
+    _Expr13_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoExpr13_fail:;
+    _Expr13_fail:;
         return FAIL_VAL;
+#undef deref_397_saved_cur
+#undef deref_402_saved_cursor
+#undef deref_403_saved_cur
+#undef deref_397_z
+#undef deref_403_z
+
 }
 
-static SnoVal pat_snoExpr14(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t cat_l_422_alpha_saved_cursor;
-static int64_t deref_423_saved_cur;
-static int64_t cat_l_425_alpha_saved_cursor;
-static int64_t deref_426_saved_cur;
-static int64_t cat_l_428_alpha_saved_cursor;
-static int64_t deref_429_saved_cur;
-static int64_t deref_431_saved_cursor;
-static int64_t cat_r_430_alpha_saved_cursor;
-static int64_t deref_433_saved_cursor;
-static int64_t cat_r_432_alpha_saved_cursor;
-static int64_t cat_l_435_alpha_saved_cursor;
-static int64_t deref_436_saved_cur;
-static int64_t cat_l_438_alpha_saved_cursor;
-static int64_t deref_439_saved_cur;
-static int64_t cat_l_441_alpha_saved_cursor;
-static int64_t deref_442_saved_cur;
-static int64_t cat_l_444_alpha_saved_cursor;
-static int64_t deref_445_saved_cur;
-static int64_t cat_l_447_alpha_saved_cursor;
-static int64_t deref_448_saved_cur;
-static int64_t cat_l_450_alpha_saved_cursor;
-static int64_t deref_451_saved_cur;
-static int64_t cat_l_453_alpha_saved_cursor;
-static int64_t deref_454_saved_cur;
-static int64_t cat_l_456_alpha_saved_cursor;
-static int64_t deref_457_saved_cur;
-static int64_t cat_l_459_alpha_saved_cursor;
-static int64_t deref_460_saved_cur;
-static int64_t cat_l_462_alpha_saved_cursor;
-static int64_t deref_463_saved_cur;
-static int64_t cat_l_465_alpha_saved_cursor;
-static int64_t deref_466_saved_cur;
-static int64_t cat_l_468_alpha_saved_cursor;
-static int64_t deref_469_saved_cur;
-static int64_t deref_470_saved_cur;
+typedef struct pat_Expr14_t {
+    int64_t cat_l_422_alpha_saved_cursor;
+    int64_t deref_423_saved_cur;
+    int64_t cat_l_425_alpha_saved_cursor;
+    int64_t deref_426_saved_cur;
+    int64_t cat_l_428_alpha_saved_cursor;
+    int64_t deref_429_saved_cur;
+    int64_t deref_431_saved_cursor;
+    int64_t cat_r_430_alpha_saved_cursor;
+    int64_t deref_433_saved_cursor;
+    int64_t cat_r_432_alpha_saved_cursor;
+    int64_t cat_l_435_alpha_saved_cursor;
+    int64_t deref_436_saved_cur;
+    int64_t cat_l_438_alpha_saved_cursor;
+    int64_t deref_439_saved_cur;
+    int64_t cat_l_441_alpha_saved_cursor;
+    int64_t deref_442_saved_cur;
+    int64_t cat_l_444_alpha_saved_cursor;
+    int64_t deref_445_saved_cur;
+    int64_t cat_l_447_alpha_saved_cursor;
+    int64_t deref_448_saved_cur;
+    int64_t cat_l_450_alpha_saved_cursor;
+    int64_t deref_451_saved_cur;
+    int64_t cat_l_453_alpha_saved_cursor;
+    int64_t deref_454_saved_cur;
+    int64_t cat_l_456_alpha_saved_cursor;
+    int64_t deref_457_saved_cur;
+    int64_t cat_l_459_alpha_saved_cursor;
+    int64_t deref_460_saved_cur;
+    int64_t cat_l_462_alpha_saved_cursor;
+    int64_t deref_463_saved_cur;
+    int64_t cat_l_465_alpha_saved_cursor;
+    int64_t deref_466_saved_cur;
+    int64_t cat_l_468_alpha_saved_cursor;
+    int64_t deref_469_saved_cur;
+    int64_t deref_470_saved_cur;
+    pat_Expr14_t *deref_423_z;
+    pat_Expr14_t *deref_426_z;
+    pat_Expr14_t *deref_429_z;
+    pat_Expr14_t *deref_436_z;
+    pat_Expr14_t *deref_439_z;
+    pat_Expr14_t *deref_442_z;
+    pat_Expr14_t *deref_445_z;
+    pat_Expr14_t *deref_448_z;
+    pat_Expr14_t *deref_451_z;
+    pat_Expr14_t *deref_454_z;
+    pat_Expr14_t *deref_457_z;
+    pat_Expr14_t *deref_460_z;
+    pat_Expr14_t *deref_463_z;
+    pat_Expr14_t *deref_466_z;
+    pat_Expr14_t *deref_469_z;
+    pat_Expr15_t *deref_470_z;
+} pat_Expr14_t;
 
-    if (_entry_np == 0) goto _snoExpr14_alpha;
-    if (_entry_np == 1) goto _snoExpr14_beta;
-    goto _snoExpr14_fail;
-_snoExpr14_alpha: /* ALT — try left */
+static SnoVal pat_Expr14(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_Expr14_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_Expr14_t)); }
+    pat_Expr14_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define cat_l_422_alpha_saved_cursor z->cat_l_422_alpha_saved_cursor
+#define deref_423_saved_cur z->deref_423_saved_cur
+#define cat_l_425_alpha_saved_cursor z->cat_l_425_alpha_saved_cursor
+#define deref_426_saved_cur z->deref_426_saved_cur
+#define cat_l_428_alpha_saved_cursor z->cat_l_428_alpha_saved_cursor
+#define deref_429_saved_cur z->deref_429_saved_cur
+#define deref_431_saved_cursor z->deref_431_saved_cursor
+#define cat_r_430_alpha_saved_cursor z->cat_r_430_alpha_saved_cursor
+#define deref_433_saved_cursor z->deref_433_saved_cursor
+#define cat_r_432_alpha_saved_cursor z->cat_r_432_alpha_saved_cursor
+#define cat_l_435_alpha_saved_cursor z->cat_l_435_alpha_saved_cursor
+#define deref_436_saved_cur z->deref_436_saved_cur
+#define cat_l_438_alpha_saved_cursor z->cat_l_438_alpha_saved_cursor
+#define deref_439_saved_cur z->deref_439_saved_cur
+#define cat_l_441_alpha_saved_cursor z->cat_l_441_alpha_saved_cursor
+#define deref_442_saved_cur z->deref_442_saved_cur
+#define cat_l_444_alpha_saved_cursor z->cat_l_444_alpha_saved_cursor
+#define deref_445_saved_cur z->deref_445_saved_cur
+#define cat_l_447_alpha_saved_cursor z->cat_l_447_alpha_saved_cursor
+#define deref_448_saved_cur z->deref_448_saved_cur
+#define cat_l_450_alpha_saved_cursor z->cat_l_450_alpha_saved_cursor
+#define deref_451_saved_cur z->deref_451_saved_cur
+#define cat_l_453_alpha_saved_cursor z->cat_l_453_alpha_saved_cursor
+#define deref_454_saved_cur z->deref_454_saved_cur
+#define cat_l_456_alpha_saved_cursor z->cat_l_456_alpha_saved_cursor
+#define deref_457_saved_cur z->deref_457_saved_cur
+#define cat_l_459_alpha_saved_cursor z->cat_l_459_alpha_saved_cursor
+#define deref_460_saved_cur z->deref_460_saved_cur
+#define cat_l_462_alpha_saved_cursor z->cat_l_462_alpha_saved_cursor
+#define deref_463_saved_cur z->deref_463_saved_cur
+#define cat_l_465_alpha_saved_cursor z->cat_l_465_alpha_saved_cursor
+#define deref_466_saved_cur z->deref_466_saved_cur
+#define cat_l_468_alpha_saved_cursor z->cat_l_468_alpha_saved_cursor
+#define deref_469_saved_cur z->deref_469_saved_cur
+#define deref_470_saved_cur z->deref_470_saved_cur
+#define deref_423_z z->deref_423_z
+#define deref_426_z z->deref_426_z
+#define deref_429_z z->deref_429_z
+#define deref_436_z z->deref_436_z
+#define deref_439_z z->deref_439_z
+#define deref_442_z z->deref_442_z
+#define deref_445_z z->deref_445_z
+#define deref_448_z z->deref_448_z
+#define deref_451_z z->deref_451_z
+#define deref_454_z z->deref_454_z
+#define deref_457_z z->deref_457_z
+#define deref_460_z z->deref_460_z
+#define deref_463_z z->deref_463_z
+#define deref_466_z z->deref_466_z
+#define deref_469_z z->deref_469_z
+#define deref_470_z z->deref_470_z
+
+    if (_entry_np == 0) goto _Expr14_alpha;
+    if (_entry_np == 1) goto _Expr14_beta;
+    goto _Expr14_fail;
+_Expr14_alpha: /* ALT — try left */
     goto alt_l_404_alpha;
-_snoExpr14_beta:
+_Expr14_beta:
     goto alt_r_404_beta;
 alt_l_404_alpha: /* ALT — try left */
     goto alt_l_405_alpha;
@@ -15262,20 +16017,20 @@ cat_l_422_beta:
     goto alt_r_420_alpha;
 cat_r_422_alpha: {
     deref_423_saved_cur = _cur_np;
-    SnoVal _r_snoExpr14 = pat_snoExpr14(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr14)) { _cur_np = deref_423_saved_cur; goto cat_l_422_beta; }
+    SnoVal _r_423 = pat_Expr14(_subj_np, _slen_np, &_cur_np, &deref_423_z, 0);
+    if (is_fail(_r_423)) { _cur_np = deref_423_saved_cur; goto cat_l_422_beta; }
     goto cat_r_421_alpha;
 }
 cat_r_422_beta: {
     _cur_np = deref_423_saved_cur;
-    SnoVal _r_snoExpr14 = pat_snoExpr14(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr14)) { _cur_np = deref_423_saved_cur; goto cat_l_422_beta; }
+    SnoVal _r_423_b = pat_Expr14(_subj_np, _slen_np, &_cur_np, &deref_423_z, 1);
+    if (is_fail(_r_423_b)) { _cur_np = deref_423_saved_cur; goto cat_l_422_beta; }
     goto cat_r_421_alpha;
 }
 cat_r_421_alpha: /* E_REDUCE & */
     { SnoVal _reduce_args[2] = {STR_VAL("'@'"), INT_VAL(1)};
       aply("Reduce", _reduce_args, 2); }
-    goto _snoExpr14_ok;
+    goto _Expr14_ok;
 cat_r_421_beta: goto cat_l_421_beta;
 alt_r_420_alpha: /* CAT — entr left */
     goto cat_l_424_alpha;
@@ -15296,20 +16051,20 @@ cat_l_425_beta:
     goto alt_r_419_alpha;
 cat_r_425_alpha: {
     deref_426_saved_cur = _cur_np;
-    SnoVal _r_snoExpr14 = pat_snoExpr14(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr14)) { _cur_np = deref_426_saved_cur; goto cat_l_425_beta; }
+    SnoVal _r_426 = pat_Expr14(_subj_np, _slen_np, &_cur_np, &deref_426_z, 0);
+    if (is_fail(_r_426)) { _cur_np = deref_426_saved_cur; goto cat_l_425_beta; }
     goto cat_r_424_alpha;
 }
 cat_r_425_beta: {
     _cur_np = deref_426_saved_cur;
-    SnoVal _r_snoExpr14 = pat_snoExpr14(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr14)) { _cur_np = deref_426_saved_cur; goto cat_l_425_beta; }
+    SnoVal _r_426_b = pat_Expr14(_subj_np, _slen_np, &_cur_np, &deref_426_z, 1);
+    if (is_fail(_r_426_b)) { _cur_np = deref_426_saved_cur; goto cat_l_425_beta; }
     goto cat_r_424_alpha;
 }
 cat_r_424_alpha: /* E_REDUCE & */
     { SnoVal _reduce_args[2] = {STR_VAL("'~'"), INT_VAL(1)};
       aply("Reduce", _reduce_args, 2); }
-    goto _snoExpr14_ok;
+    goto _Expr14_ok;
 cat_r_424_beta: goto cat_l_424_beta;
 alt_r_419_alpha: /* CAT — entr left */
     goto cat_l_427_alpha;
@@ -15330,27 +16085,27 @@ cat_l_428_beta:
     goto alt_r_418_alpha;
 cat_r_428_alpha: {
     deref_429_saved_cur = _cur_np;
-    SnoVal _r_snoExpr14 = pat_snoExpr14(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr14)) { _cur_np = deref_429_saved_cur; goto cat_l_428_beta; }
+    SnoVal _r_429 = pat_Expr14(_subj_np, _slen_np, &_cur_np, &deref_429_z, 0);
+    if (is_fail(_r_429)) { _cur_np = deref_429_saved_cur; goto cat_l_428_beta; }
     goto cat_r_427_alpha;
 }
 cat_r_428_beta: {
     _cur_np = deref_429_saved_cur;
-    SnoVal _r_snoExpr14 = pat_snoExpr14(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr14)) { _cur_np = deref_429_saved_cur; goto cat_l_428_beta; }
+    SnoVal _r_429_b = pat_Expr14(_subj_np, _slen_np, &_cur_np, &deref_429_z, 1);
+    if (is_fail(_r_429_b)) { _cur_np = deref_429_saved_cur; goto cat_l_428_beta; }
     goto cat_r_427_alpha;
 }
 cat_r_427_alpha: /* E_REDUCE & */
     { SnoVal _reduce_args[2] = {STR_VAL("'?'"), INT_VAL(1)};
       aply("Reduce", _reduce_args, 2); }
-    goto _snoExpr14_ok;
+    goto _Expr14_ok;
 cat_r_427_beta: goto cat_l_427_beta;
 alt_r_418_alpha: /* CAT — entr left */
     goto cat_l_430_alpha;
 alt_r_418_beta:
     goto cat_r_430_beta;
 cat_l_430_alpha: {
-    SnoVal _deref_pat = var_get("snoProtKwd");
+    SnoVal _deref_pat = var_get("ProtKwd");
     int _deref_new_cur = match_pattern_at(_deref_pat, _subj_np, (int)_slen_np, (int)_cur_np);
     if (_deref_new_cur < 0) goto alt_r_417_alpha;
     deref_431_saved_cursor = _cur_np;
@@ -15361,11 +16116,11 @@ cat_l_430_beta:
     _cur_np = deref_431_saved_cursor;
     goto alt_r_417_alpha;
 cat_r_430_alpha:
-    if (_cur_np + 10 > _slen_np) goto cat_l_430_beta;
-    if (memcmp(_subj_np + _cur_np, "snoProtKwd", 10) != 0) goto cat_l_430_beta;
+    if (_cur_np + 7 > _slen_np) goto cat_l_430_beta;
+    if (memcmp(_subj_np + _cur_np, "ProtKwd", 7) != 0) goto cat_l_430_beta;
     cat_r_430_alpha_saved_cursor = _cur_np;
-    _cur_np += 10;
-    goto _snoExpr14_ok;
+    _cur_np += 7;
+    goto _Expr14_ok;
 cat_r_430_beta:
     _cur_np = cat_r_430_alpha_saved_cursor;
     goto cat_l_430_beta;
@@ -15374,7 +16129,7 @@ alt_r_417_alpha: /* CAT — entr left */
 alt_r_417_beta:
     goto cat_r_432_beta;
 cat_l_432_alpha: {
-    SnoVal _deref_pat = var_get("snoUnprotKwd");
+    SnoVal _deref_pat = var_get("UnprotKwd");
     int _deref_new_cur = match_pattern_at(_deref_pat, _subj_np, (int)_slen_np, (int)_cur_np);
     if (_deref_new_cur < 0) goto alt_r_416_alpha;
     deref_433_saved_cursor = _cur_np;
@@ -15385,11 +16140,11 @@ cat_l_432_beta:
     _cur_np = deref_433_saved_cursor;
     goto alt_r_416_alpha;
 cat_r_432_alpha:
-    if (_cur_np + 12 > _slen_np) goto cat_l_432_beta;
-    if (memcmp(_subj_np + _cur_np, "snoUnprotKwd", 12) != 0) goto cat_l_432_beta;
+    if (_cur_np + 9 > _slen_np) goto cat_l_432_beta;
+    if (memcmp(_subj_np + _cur_np, "UnprotKwd", 9) != 0) goto cat_l_432_beta;
     cat_r_432_alpha_saved_cursor = _cur_np;
-    _cur_np += 12;
-    goto _snoExpr14_ok;
+    _cur_np += 9;
+    goto _Expr14_ok;
 cat_r_432_beta:
     _cur_np = cat_r_432_alpha_saved_cursor;
     goto cat_l_432_beta;
@@ -15412,20 +16167,20 @@ cat_l_435_beta:
     goto alt_r_415_alpha;
 cat_r_435_alpha: {
     deref_436_saved_cur = _cur_np;
-    SnoVal _r_snoExpr14 = pat_snoExpr14(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr14)) { _cur_np = deref_436_saved_cur; goto cat_l_435_beta; }
+    SnoVal _r_436 = pat_Expr14(_subj_np, _slen_np, &_cur_np, &deref_436_z, 0);
+    if (is_fail(_r_436)) { _cur_np = deref_436_saved_cur; goto cat_l_435_beta; }
     goto cat_r_434_alpha;
 }
 cat_r_435_beta: {
     _cur_np = deref_436_saved_cur;
-    SnoVal _r_snoExpr14 = pat_snoExpr14(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr14)) { _cur_np = deref_436_saved_cur; goto cat_l_435_beta; }
+    SnoVal _r_436_b = pat_Expr14(_subj_np, _slen_np, &_cur_np, &deref_436_z, 1);
+    if (is_fail(_r_436_b)) { _cur_np = deref_436_saved_cur; goto cat_l_435_beta; }
     goto cat_r_434_alpha;
 }
 cat_r_434_alpha: /* E_REDUCE & */
     { SnoVal _reduce_args[2] = {STR_VAL("'&'"), INT_VAL(1)};
       aply("Reduce", _reduce_args, 2); }
-    goto _snoExpr14_ok;
+    goto _Expr14_ok;
 cat_r_434_beta: goto cat_l_434_beta;
 alt_r_415_alpha: /* CAT — entr left */
     goto cat_l_437_alpha;
@@ -15446,20 +16201,20 @@ cat_l_438_beta:
     goto alt_r_414_alpha;
 cat_r_438_alpha: {
     deref_439_saved_cur = _cur_np;
-    SnoVal _r_snoExpr14 = pat_snoExpr14(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr14)) { _cur_np = deref_439_saved_cur; goto cat_l_438_beta; }
+    SnoVal _r_439 = pat_Expr14(_subj_np, _slen_np, &_cur_np, &deref_439_z, 0);
+    if (is_fail(_r_439)) { _cur_np = deref_439_saved_cur; goto cat_l_438_beta; }
     goto cat_r_437_alpha;
 }
 cat_r_438_beta: {
     _cur_np = deref_439_saved_cur;
-    SnoVal _r_snoExpr14 = pat_snoExpr14(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr14)) { _cur_np = deref_439_saved_cur; goto cat_l_438_beta; }
+    SnoVal _r_439_b = pat_Expr14(_subj_np, _slen_np, &_cur_np, &deref_439_z, 1);
+    if (is_fail(_r_439_b)) { _cur_np = deref_439_saved_cur; goto cat_l_438_beta; }
     goto cat_r_437_alpha;
 }
 cat_r_437_alpha: /* E_REDUCE & */
     { SnoVal _reduce_args[2] = {STR_VAL("'+'"), INT_VAL(1)};
       aply("Reduce", _reduce_args, 2); }
-    goto _snoExpr14_ok;
+    goto _Expr14_ok;
 cat_r_437_beta: goto cat_l_437_beta;
 alt_r_414_alpha: /* CAT — entr left */
     goto cat_l_440_alpha;
@@ -15480,20 +16235,20 @@ cat_l_441_beta:
     goto alt_r_413_alpha;
 cat_r_441_alpha: {
     deref_442_saved_cur = _cur_np;
-    SnoVal _r_snoExpr14 = pat_snoExpr14(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr14)) { _cur_np = deref_442_saved_cur; goto cat_l_441_beta; }
+    SnoVal _r_442 = pat_Expr14(_subj_np, _slen_np, &_cur_np, &deref_442_z, 0);
+    if (is_fail(_r_442)) { _cur_np = deref_442_saved_cur; goto cat_l_441_beta; }
     goto cat_r_440_alpha;
 }
 cat_r_441_beta: {
     _cur_np = deref_442_saved_cur;
-    SnoVal _r_snoExpr14 = pat_snoExpr14(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr14)) { _cur_np = deref_442_saved_cur; goto cat_l_441_beta; }
+    SnoVal _r_442_b = pat_Expr14(_subj_np, _slen_np, &_cur_np, &deref_442_z, 1);
+    if (is_fail(_r_442_b)) { _cur_np = deref_442_saved_cur; goto cat_l_441_beta; }
     goto cat_r_440_alpha;
 }
 cat_r_440_alpha: /* E_REDUCE & */
     { SnoVal _reduce_args[2] = {STR_VAL("'-'"), INT_VAL(1)};
       aply("Reduce", _reduce_args, 2); }
-    goto _snoExpr14_ok;
+    goto _Expr14_ok;
 cat_r_440_beta: goto cat_l_440_beta;
 alt_r_413_alpha: /* CAT — entr left */
     goto cat_l_443_alpha;
@@ -15514,20 +16269,20 @@ cat_l_444_beta:
     goto alt_r_412_alpha;
 cat_r_444_alpha: {
     deref_445_saved_cur = _cur_np;
-    SnoVal _r_snoExpr14 = pat_snoExpr14(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr14)) { _cur_np = deref_445_saved_cur; goto cat_l_444_beta; }
+    SnoVal _r_445 = pat_Expr14(_subj_np, _slen_np, &_cur_np, &deref_445_z, 0);
+    if (is_fail(_r_445)) { _cur_np = deref_445_saved_cur; goto cat_l_444_beta; }
     goto cat_r_443_alpha;
 }
 cat_r_444_beta: {
     _cur_np = deref_445_saved_cur;
-    SnoVal _r_snoExpr14 = pat_snoExpr14(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr14)) { _cur_np = deref_445_saved_cur; goto cat_l_444_beta; }
+    SnoVal _r_445_b = pat_Expr14(_subj_np, _slen_np, &_cur_np, &deref_445_z, 1);
+    if (is_fail(_r_445_b)) { _cur_np = deref_445_saved_cur; goto cat_l_444_beta; }
     goto cat_r_443_alpha;
 }
 cat_r_443_alpha: /* E_REDUCE & */
     { SnoVal _reduce_args[2] = {STR_VAL("'*'"), INT_VAL(1)};
       aply("Reduce", _reduce_args, 2); }
-    goto _snoExpr14_ok;
+    goto _Expr14_ok;
 cat_r_443_beta: goto cat_l_443_beta;
 alt_r_412_alpha: /* CAT — entr left */
     goto cat_l_446_alpha;
@@ -15548,20 +16303,20 @@ cat_l_447_beta:
     goto alt_r_411_alpha;
 cat_r_447_alpha: {
     deref_448_saved_cur = _cur_np;
-    SnoVal _r_snoExpr14 = pat_snoExpr14(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr14)) { _cur_np = deref_448_saved_cur; goto cat_l_447_beta; }
+    SnoVal _r_448 = pat_Expr14(_subj_np, _slen_np, &_cur_np, &deref_448_z, 0);
+    if (is_fail(_r_448)) { _cur_np = deref_448_saved_cur; goto cat_l_447_beta; }
     goto cat_r_446_alpha;
 }
 cat_r_447_beta: {
     _cur_np = deref_448_saved_cur;
-    SnoVal _r_snoExpr14 = pat_snoExpr14(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr14)) { _cur_np = deref_448_saved_cur; goto cat_l_447_beta; }
+    SnoVal _r_448_b = pat_Expr14(_subj_np, _slen_np, &_cur_np, &deref_448_z, 1);
+    if (is_fail(_r_448_b)) { _cur_np = deref_448_saved_cur; goto cat_l_447_beta; }
     goto cat_r_446_alpha;
 }
 cat_r_446_alpha: /* E_REDUCE & */
     { SnoVal _reduce_args[2] = {STR_VAL("'$'"), INT_VAL(1)};
       aply("Reduce", _reduce_args, 2); }
-    goto _snoExpr14_ok;
+    goto _Expr14_ok;
 cat_r_446_beta: goto cat_l_446_beta;
 alt_r_411_alpha: /* CAT — entr left */
     goto cat_l_449_alpha;
@@ -15582,20 +16337,20 @@ cat_l_450_beta:
     goto alt_r_410_alpha;
 cat_r_450_alpha: {
     deref_451_saved_cur = _cur_np;
-    SnoVal _r_snoExpr14 = pat_snoExpr14(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr14)) { _cur_np = deref_451_saved_cur; goto cat_l_450_beta; }
+    SnoVal _r_451 = pat_Expr14(_subj_np, _slen_np, &_cur_np, &deref_451_z, 0);
+    if (is_fail(_r_451)) { _cur_np = deref_451_saved_cur; goto cat_l_450_beta; }
     goto cat_r_449_alpha;
 }
 cat_r_450_beta: {
     _cur_np = deref_451_saved_cur;
-    SnoVal _r_snoExpr14 = pat_snoExpr14(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr14)) { _cur_np = deref_451_saved_cur; goto cat_l_450_beta; }
+    SnoVal _r_451_b = pat_Expr14(_subj_np, _slen_np, &_cur_np, &deref_451_z, 1);
+    if (is_fail(_r_451_b)) { _cur_np = deref_451_saved_cur; goto cat_l_450_beta; }
     goto cat_r_449_alpha;
 }
 cat_r_449_alpha: /* E_REDUCE & */
     { SnoVal _reduce_args[2] = {STR_VAL("'.'"), INT_VAL(1)};
       aply("Reduce", _reduce_args, 2); }
-    goto _snoExpr14_ok;
+    goto _Expr14_ok;
 cat_r_449_beta: goto cat_l_449_beta;
 alt_r_410_alpha: /* CAT — entr left */
     goto cat_l_452_alpha;
@@ -15616,20 +16371,20 @@ cat_l_453_beta:
     goto alt_r_409_alpha;
 cat_r_453_alpha: {
     deref_454_saved_cur = _cur_np;
-    SnoVal _r_snoExpr14 = pat_snoExpr14(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr14)) { _cur_np = deref_454_saved_cur; goto cat_l_453_beta; }
+    SnoVal _r_454 = pat_Expr14(_subj_np, _slen_np, &_cur_np, &deref_454_z, 0);
+    if (is_fail(_r_454)) { _cur_np = deref_454_saved_cur; goto cat_l_453_beta; }
     goto cat_r_452_alpha;
 }
 cat_r_453_beta: {
     _cur_np = deref_454_saved_cur;
-    SnoVal _r_snoExpr14 = pat_snoExpr14(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr14)) { _cur_np = deref_454_saved_cur; goto cat_l_453_beta; }
+    SnoVal _r_454_b = pat_Expr14(_subj_np, _slen_np, &_cur_np, &deref_454_z, 1);
+    if (is_fail(_r_454_b)) { _cur_np = deref_454_saved_cur; goto cat_l_453_beta; }
     goto cat_r_452_alpha;
 }
 cat_r_452_alpha: /* E_REDUCE & */
     { SnoVal _reduce_args[2] = {STR_VAL("'!'"), INT_VAL(1)};
       aply("Reduce", _reduce_args, 2); }
-    goto _snoExpr14_ok;
+    goto _Expr14_ok;
 cat_r_452_beta: goto cat_l_452_beta;
 alt_r_409_alpha: /* CAT — entr left */
     goto cat_l_455_alpha;
@@ -15650,20 +16405,20 @@ cat_l_456_beta:
     goto alt_r_408_alpha;
 cat_r_456_alpha: {
     deref_457_saved_cur = _cur_np;
-    SnoVal _r_snoExpr14 = pat_snoExpr14(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr14)) { _cur_np = deref_457_saved_cur; goto cat_l_456_beta; }
+    SnoVal _r_457 = pat_Expr14(_subj_np, _slen_np, &_cur_np, &deref_457_z, 0);
+    if (is_fail(_r_457)) { _cur_np = deref_457_saved_cur; goto cat_l_456_beta; }
     goto cat_r_455_alpha;
 }
 cat_r_456_beta: {
     _cur_np = deref_457_saved_cur;
-    SnoVal _r_snoExpr14 = pat_snoExpr14(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr14)) { _cur_np = deref_457_saved_cur; goto cat_l_456_beta; }
+    SnoVal _r_457_b = pat_Expr14(_subj_np, _slen_np, &_cur_np, &deref_457_z, 1);
+    if (is_fail(_r_457_b)) { _cur_np = deref_457_saved_cur; goto cat_l_456_beta; }
     goto cat_r_455_alpha;
 }
 cat_r_455_alpha: /* E_REDUCE & */
     { SnoVal _reduce_args[2] = {STR_VAL("'%'"), INT_VAL(1)};
       aply("Reduce", _reduce_args, 2); }
-    goto _snoExpr14_ok;
+    goto _Expr14_ok;
 cat_r_455_beta: goto cat_l_455_beta;
 alt_r_408_alpha: /* CAT — entr left */
     goto cat_l_458_alpha;
@@ -15684,20 +16439,20 @@ cat_l_459_beta:
     goto alt_r_407_alpha;
 cat_r_459_alpha: {
     deref_460_saved_cur = _cur_np;
-    SnoVal _r_snoExpr14 = pat_snoExpr14(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr14)) { _cur_np = deref_460_saved_cur; goto cat_l_459_beta; }
+    SnoVal _r_460 = pat_Expr14(_subj_np, _slen_np, &_cur_np, &deref_460_z, 0);
+    if (is_fail(_r_460)) { _cur_np = deref_460_saved_cur; goto cat_l_459_beta; }
     goto cat_r_458_alpha;
 }
 cat_r_459_beta: {
     _cur_np = deref_460_saved_cur;
-    SnoVal _r_snoExpr14 = pat_snoExpr14(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr14)) { _cur_np = deref_460_saved_cur; goto cat_l_459_beta; }
+    SnoVal _r_460_b = pat_Expr14(_subj_np, _slen_np, &_cur_np, &deref_460_z, 1);
+    if (is_fail(_r_460_b)) { _cur_np = deref_460_saved_cur; goto cat_l_459_beta; }
     goto cat_r_458_alpha;
 }
 cat_r_458_alpha: /* E_REDUCE & */
     { SnoVal _reduce_args[2] = {STR_VAL("'/'"), INT_VAL(1)};
       aply("Reduce", _reduce_args, 2); }
-    goto _snoExpr14_ok;
+    goto _Expr14_ok;
 cat_r_458_beta: goto cat_l_458_beta;
 alt_r_407_alpha: /* CAT — entr left */
     goto cat_l_461_alpha;
@@ -15718,20 +16473,20 @@ cat_l_462_beta:
     goto alt_r_406_alpha;
 cat_r_462_alpha: {
     deref_463_saved_cur = _cur_np;
-    SnoVal _r_snoExpr14 = pat_snoExpr14(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr14)) { _cur_np = deref_463_saved_cur; goto cat_l_462_beta; }
+    SnoVal _r_463 = pat_Expr14(_subj_np, _slen_np, &_cur_np, &deref_463_z, 0);
+    if (is_fail(_r_463)) { _cur_np = deref_463_saved_cur; goto cat_l_462_beta; }
     goto cat_r_461_alpha;
 }
 cat_r_462_beta: {
     _cur_np = deref_463_saved_cur;
-    SnoVal _r_snoExpr14 = pat_snoExpr14(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr14)) { _cur_np = deref_463_saved_cur; goto cat_l_462_beta; }
+    SnoVal _r_463_b = pat_Expr14(_subj_np, _slen_np, &_cur_np, &deref_463_z, 1);
+    if (is_fail(_r_463_b)) { _cur_np = deref_463_saved_cur; goto cat_l_462_beta; }
     goto cat_r_461_alpha;
 }
 cat_r_461_alpha: /* E_REDUCE & */
     { SnoVal _reduce_args[2] = {STR_VAL("'#'"), INT_VAL(1)};
       aply("Reduce", _reduce_args, 2); }
-    goto _snoExpr14_ok;
+    goto _Expr14_ok;
 cat_r_461_beta: goto cat_l_461_beta;
 alt_r_406_alpha: /* CAT — entr left */
     goto cat_l_464_alpha;
@@ -15752,20 +16507,20 @@ cat_l_465_beta:
     goto alt_r_405_alpha;
 cat_r_465_alpha: {
     deref_466_saved_cur = _cur_np;
-    SnoVal _r_snoExpr14 = pat_snoExpr14(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr14)) { _cur_np = deref_466_saved_cur; goto cat_l_465_beta; }
+    SnoVal _r_466 = pat_Expr14(_subj_np, _slen_np, &_cur_np, &deref_466_z, 0);
+    if (is_fail(_r_466)) { _cur_np = deref_466_saved_cur; goto cat_l_465_beta; }
     goto cat_r_464_alpha;
 }
 cat_r_465_beta: {
     _cur_np = deref_466_saved_cur;
-    SnoVal _r_snoExpr14 = pat_snoExpr14(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr14)) { _cur_np = deref_466_saved_cur; goto cat_l_465_beta; }
+    SnoVal _r_466_b = pat_Expr14(_subj_np, _slen_np, &_cur_np, &deref_466_z, 1);
+    if (is_fail(_r_466_b)) { _cur_np = deref_466_saved_cur; goto cat_l_465_beta; }
     goto cat_r_464_alpha;
 }
 cat_r_464_alpha: /* E_REDUCE & */
     { SnoVal _reduce_args[2] = {STR_VAL("'='"), INT_VAL(1)};
       aply("Reduce", _reduce_args, 2); }
-    goto _snoExpr14_ok;
+    goto _Expr14_ok;
 cat_r_464_beta: goto cat_l_464_beta;
 alt_r_405_alpha: /* CAT — entr left */
     goto cat_l_467_alpha;
@@ -15786,64 +16541,126 @@ cat_l_468_beta:
     goto alt_r_404_alpha;
 cat_r_468_alpha: {
     deref_469_saved_cur = _cur_np;
-    SnoVal _r_snoExpr14 = pat_snoExpr14(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr14)) { _cur_np = deref_469_saved_cur; goto cat_l_468_beta; }
+    SnoVal _r_469 = pat_Expr14(_subj_np, _slen_np, &_cur_np, &deref_469_z, 0);
+    if (is_fail(_r_469)) { _cur_np = deref_469_saved_cur; goto cat_l_468_beta; }
     goto cat_r_467_alpha;
 }
 cat_r_468_beta: {
     _cur_np = deref_469_saved_cur;
-    SnoVal _r_snoExpr14 = pat_snoExpr14(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr14)) { _cur_np = deref_469_saved_cur; goto cat_l_468_beta; }
+    SnoVal _r_469_b = pat_Expr14(_subj_np, _slen_np, &_cur_np, &deref_469_z, 1);
+    if (is_fail(_r_469_b)) { _cur_np = deref_469_saved_cur; goto cat_l_468_beta; }
     goto cat_r_467_alpha;
 }
 cat_r_467_alpha: /* E_REDUCE & */
     { SnoVal _reduce_args[2] = {STR_VAL("'|'"), INT_VAL(1)};
       aply("Reduce", _reduce_args, 2); }
-    goto _snoExpr14_ok;
+    goto _Expr14_ok;
 cat_r_467_beta: goto cat_l_467_beta;
 alt_r_404_alpha: {
     deref_470_saved_cur = _cur_np;
-    SnoVal _r_snoExpr15 = pat_snoExpr15(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr15)) { _cur_np = deref_470_saved_cur; goto _snoExpr14_fail; }
-    goto _snoExpr14_ok;
+    SnoVal _r_470 = pat_Expr15(_subj_np, _slen_np, &_cur_np, &deref_470_z, 0);
+    if (is_fail(_r_470)) { _cur_np = deref_470_saved_cur; goto _Expr14_fail; }
+    goto _Expr14_ok;
 }
 alt_r_404_beta: {
     _cur_np = deref_470_saved_cur;
-    SnoVal _r_snoExpr15 = pat_snoExpr15(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr15)) { _cur_np = deref_470_saved_cur; goto _snoExpr14_fail; }
-    goto _snoExpr14_ok;
+    SnoVal _r_470_b = pat_Expr15(_subj_np, _slen_np, &_cur_np, &deref_470_z, 1);
+    if (is_fail(_r_470_b)) { _cur_np = deref_470_saved_cur; goto _Expr14_fail; }
+    goto _Expr14_ok;
 }
-    _snoExpr14_ok:;
+    _Expr14_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoExpr14_fail:;
+    _Expr14_fail:;
         return FAIL_VAL;
+#undef cat_l_422_alpha_saved_cursor
+#undef deref_423_saved_cur
+#undef cat_l_425_alpha_saved_cursor
+#undef deref_426_saved_cur
+#undef cat_l_428_alpha_saved_cursor
+#undef deref_429_saved_cur
+#undef deref_431_saved_cursor
+#undef cat_r_430_alpha_saved_cursor
+#undef deref_433_saved_cursor
+#undef cat_r_432_alpha_saved_cursor
+#undef cat_l_435_alpha_saved_cursor
+#undef deref_436_saved_cur
+#undef cat_l_438_alpha_saved_cursor
+#undef deref_439_saved_cur
+#undef cat_l_441_alpha_saved_cursor
+#undef deref_442_saved_cur
+#undef cat_l_444_alpha_saved_cursor
+#undef deref_445_saved_cur
+#undef cat_l_447_alpha_saved_cursor
+#undef deref_448_saved_cur
+#undef cat_l_450_alpha_saved_cursor
+#undef deref_451_saved_cur
+#undef cat_l_453_alpha_saved_cursor
+#undef deref_454_saved_cur
+#undef cat_l_456_alpha_saved_cursor
+#undef deref_457_saved_cur
+#undef cat_l_459_alpha_saved_cursor
+#undef deref_460_saved_cur
+#undef cat_l_462_alpha_saved_cursor
+#undef deref_463_saved_cur
+#undef cat_l_465_alpha_saved_cursor
+#undef deref_466_saved_cur
+#undef cat_l_468_alpha_saved_cursor
+#undef deref_469_saved_cur
+#undef deref_470_saved_cur
+#undef deref_423_z
+#undef deref_426_z
+#undef deref_429_z
+#undef deref_436_z
+#undef deref_439_z
+#undef deref_442_z
+#undef deref_445_z
+#undef deref_448_z
+#undef deref_451_z
+#undef deref_454_z
+#undef deref_457_z
+#undef deref_460_z
+#undef deref_463_z
+#undef deref_466_z
+#undef deref_469_z
+#undef deref_470_z
+
 }
 
-static SnoVal pat_snoExpr15(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t deref_472_saved_cur;
-static int64_t deref_478_saved_cur;
+typedef struct pat_Expr15_t {
+    int64_t deref_472_saved_cur;
+    int64_t deref_478_saved_cur;
+    pat_Expr17_t *deref_472_z;
+    pat_Expr16_t *deref_478_z;
+} pat_Expr15_t;
 
-    if (_entry_np == 0) goto _snoExpr15_alpha;
-    if (_entry_np == 1) goto _snoExpr15_beta;
-    goto _snoExpr15_fail;
-_snoExpr15_alpha: /* CAT — entr left */
+static SnoVal pat_Expr15(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_Expr15_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_Expr15_t)); }
+    pat_Expr15_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define deref_472_saved_cur z->deref_472_saved_cur
+#define deref_478_saved_cur z->deref_478_saved_cur
+#define deref_472_z z->deref_472_z
+#define deref_478_z z->deref_478_z
+
+    if (_entry_np == 0) goto _Expr15_alpha;
+    if (_entry_np == 1) goto _Expr15_beta;
+    goto _Expr15_fail;
+_Expr15_alpha: /* CAT — entr left */
     goto cat_l_471_alpha;
-_snoExpr15_beta:
+_Expr15_beta:
     goto cat_r_471_beta;
 cat_l_471_alpha: {
     deref_472_saved_cur = _cur_np;
-    SnoVal _r_snoExpr17 = pat_snoExpr17(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr17)) { _cur_np = deref_472_saved_cur; goto _snoExpr15_fail; }
+    SnoVal _r_472 = pat_Expr17(_subj_np, _slen_np, &_cur_np, &deref_472_z, 0);
+    if (is_fail(_r_472)) { _cur_np = deref_472_saved_cur; goto _Expr15_fail; }
     goto cat_r_471_alpha;
 }
 cat_l_471_beta: {
     _cur_np = deref_472_saved_cur;
-    SnoVal _r_snoExpr17 = pat_snoExpr17(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr17)) { _cur_np = deref_472_saved_cur; goto _snoExpr15_fail; }
+    SnoVal _r_472_b = pat_Expr17(_subj_np, _slen_np, &_cur_np, &deref_472_z, 1);
+    if (is_fail(_r_472_b)) { _cur_np = deref_472_saved_cur; goto _Expr15_fail; }
     goto cat_r_471_alpha;
 }
 cat_r_471_alpha: /* FENCE(p) */
@@ -15868,14 +16685,14 @@ cat_l_477_alpha: npush(); goto cat_r_477_alpha;
 cat_l_477_beta: goto alt_r_474_alpha;
 cat_r_477_alpha: {
     deref_478_saved_cur = _cur_np;
-    SnoVal _r_snoExpr16 = pat_snoExpr16(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr16)) { _cur_np = deref_478_saved_cur; goto cat_l_477_beta; }
+    SnoVal _r_478 = pat_Expr16(_subj_np, _slen_np, &_cur_np, &deref_478_z, 0);
+    if (is_fail(_r_478)) { _cur_np = deref_478_saved_cur; goto cat_l_477_beta; }
     goto cat_r_476_alpha;
 }
 cat_r_477_beta: {
     _cur_np = deref_478_saved_cur;
-    SnoVal _r_snoExpr16 = pat_snoExpr16(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr16)) { _cur_np = deref_478_saved_cur; goto cat_l_477_beta; }
+    SnoVal _r_478_b = pat_Expr16(_subj_np, _slen_np, &_cur_np, &deref_478_z, 1);
+    if (is_fail(_r_478_b)) { _cur_np = deref_478_saved_cur; goto cat_l_477_beta; }
     goto cat_r_476_alpha;
 }
 cat_r_476_alpha: /* E_REDUCE & */
@@ -15890,41 +16707,65 @@ alt_r_474_alpha: /* pat var epsilon — epsilon */
 alt_r_474_beta:
     goto cat_l_471_beta;
 fence_after_473:
-    goto _snoExpr15_ok;
+    goto _Expr15_ok;
 cat_r_471_beta:
     goto cat_l_471_beta;
-    _snoExpr15_ok:;
+    _Expr15_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoExpr15_fail:;
+    _Expr15_fail:;
         return FAIL_VAL;
+#undef deref_472_saved_cur
+#undef deref_478_saved_cur
+#undef deref_472_z
+#undef deref_478_z
+
 }
 
-static SnoVal pat_snoExpr16(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t deref_483_saved_cursor;
-static int64_t cat_r_482_alpha_start;
-static int64_t deref_485_saved_cur;
-static int64_t deref_487_saved_cursor;
-static int64_t cat_r_486_alpha_start;
-static int64_t deref_489_saved_cur;
-static int64_t deref_492_saved_cur;
+typedef struct pat_Expr16_t {
+    int64_t deref_483_saved_cursor;
+    int64_t cat_r_482_alpha_start;
+    int64_t deref_485_saved_cur;
+    str_t var__;
+    int64_t deref_487_saved_cursor;
+    int64_t cat_r_486_alpha_start;
+    int64_t deref_489_saved_cur;
+    int64_t deref_492_saved_cur;
+    pat_ExprList_t *deref_485_z;
+    pat_ExprList_t *deref_489_z;
+    pat_Expr16_t *deref_492_z;
+} pat_Expr16_t;
 
-    if (_entry_np == 0) goto _snoExpr16_alpha;
-    if (_entry_np == 1) goto _snoExpr16_beta;
-    goto _snoExpr16_fail;
-_snoExpr16_alpha: /* CAT — entr left */
+static SnoVal pat_Expr16(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_Expr16_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_Expr16_t)); }
+    pat_Expr16_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define deref_483_saved_cursor z->deref_483_saved_cursor
+#define cat_r_482_alpha_start z->cat_r_482_alpha_start
+#define deref_485_saved_cur z->deref_485_saved_cur
+#define var__ z->var__
+#define deref_487_saved_cursor z->deref_487_saved_cursor
+#define cat_r_486_alpha_start z->cat_r_486_alpha_start
+#define deref_489_saved_cur z->deref_489_saved_cur
+#define deref_492_saved_cur z->deref_492_saved_cur
+#define deref_485_z z->deref_485_z
+#define deref_489_z z->deref_489_z
+#define deref_492_z z->deref_492_z
+
+    if (_entry_np == 0) goto _Expr16_alpha;
+    if (_entry_np == 1) goto _Expr16_beta;
+    goto _Expr16_fail;
+_Expr16_alpha: /* CAT — entr left */
     goto cat_l_479_alpha;
-_snoExpr16_beta:
+_Expr16_beta:
     goto cat_r_479_beta;
 cat_l_479_alpha: /* CAT — entr left */
     goto cat_l_480_alpha;
 cat_l_479_beta:
     goto cat_r_480_beta;
 cat_l_480_alpha: ninc(); goto cat_r_480_alpha;
-cat_l_480_beta: goto _snoExpr16_fail;
+cat_l_480_beta: goto _Expr16_fail;
 cat_r_480_alpha: /* ALT — try left */
     goto alt_l_481_alpha;
 cat_r_480_beta:
@@ -15949,20 +16790,19 @@ cat_r_482_alpha:
     goto assign_c_484_alpha;
 assign_c_484_alpha: {
     deref_485_saved_cur = _cur_np;
-    SnoVal _r_snoExprList = pat_snoExprList(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExprList)) { _cur_np = deref_485_saved_cur; goto cat_l_482_beta; }
+    SnoVal _r_485 = pat_ExprList(_subj_np, _slen_np, &_cur_np, &deref_485_z, 0);
+    if (is_fail(_r_485)) { _cur_np = deref_485_saved_cur; goto cat_l_482_beta; }
     goto cat_r_482_alpha_do_assign;
 }
 assign_c_484_beta: {
     _cur_np = deref_485_saved_cur;
-    SnoVal _r_snoExprList = pat_snoExprList(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExprList)) { _cur_np = deref_485_saved_cur; goto cat_l_482_beta; }
+    SnoVal _r_485_b = pat_ExprList(_subj_np, _slen_np, &_cur_np, &deref_485_z, 1);
+    if (is_fail(_r_485_b)) { _cur_np = deref_485_saved_cur; goto cat_l_482_beta; }
     goto cat_r_482_alpha_do_assign;
 }
 cat_r_482_alpha_do_assign:
-    { int64_t _len = _cur_np - cat_r_482_alpha_start;
-      char *_os = malloc(_len + 1); memcpy(_os, _subj_np + cat_r_482_alpha_start, _len); _os[_len] = 0;
-      output_str(_os); free(_os); }
+    var__.ptr = _subj_np + cat_r_482_alpha_start;
+    var__.len = _cur_np - cat_r_482_alpha_start;
     goto cat_r_479_alpha;
 cat_r_482_beta:
     goto assign_c_484_beta;
@@ -15986,20 +16826,19 @@ cat_r_486_alpha:
     goto assign_c_488_alpha;
 assign_c_488_alpha: {
     deref_489_saved_cur = _cur_np;
-    SnoVal _r_snoExprList = pat_snoExprList(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExprList)) { _cur_np = deref_489_saved_cur; goto cat_l_486_beta; }
+    SnoVal _r_489 = pat_ExprList(_subj_np, _slen_np, &_cur_np, &deref_489_z, 0);
+    if (is_fail(_r_489)) { _cur_np = deref_489_saved_cur; goto cat_l_486_beta; }
     goto cat_r_486_alpha_do_assign;
 }
 assign_c_488_beta: {
     _cur_np = deref_489_saved_cur;
-    SnoVal _r_snoExprList = pat_snoExprList(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExprList)) { _cur_np = deref_489_saved_cur; goto cat_l_486_beta; }
+    SnoVal _r_489_b = pat_ExprList(_subj_np, _slen_np, &_cur_np, &deref_489_z, 1);
+    if (is_fail(_r_489_b)) { _cur_np = deref_489_saved_cur; goto cat_l_486_beta; }
     goto cat_r_486_alpha_do_assign;
 }
 cat_r_486_alpha_do_assign:
-    { int64_t _len = _cur_np - cat_r_486_alpha_start;
-      char *_os = malloc(_len + 1); memcpy(_os, _subj_np + cat_r_486_alpha_start, _len); _os[_len] = 0;
-      output_str(_os); free(_os); }
+    var__.ptr = _subj_np + cat_r_486_alpha_start;
+    var__.len = _cur_np - cat_r_486_alpha_start;
     goto cat_r_479_alpha;
 cat_r_486_beta:
     goto assign_c_488_beta;
@@ -16011,14 +16850,14 @@ fence_p_490_beta:
     goto alt_r_491_beta;
 alt_l_491_alpha: {
     deref_492_saved_cur = _cur_np;
-    SnoVal _r_snoExpr16 = pat_snoExpr16(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr16)) { _cur_np = deref_492_saved_cur; goto alt_r_491_alpha; }
+    SnoVal _r_492 = pat_Expr16(_subj_np, _slen_np, &_cur_np, &deref_492_z, 0);
+    if (is_fail(_r_492)) { _cur_np = deref_492_saved_cur; goto alt_r_491_alpha; }
     goto fence_after_490;
 }
 alt_l_491_beta: {
     _cur_np = deref_492_saved_cur;
-    SnoVal _r_snoExpr16 = pat_snoExpr16(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr16)) { _cur_np = deref_492_saved_cur; goto alt_r_491_alpha; }
+    SnoVal _r_492_b = pat_Expr16(_subj_np, _slen_np, &_cur_np, &deref_492_z, 1);
+    if (is_fail(_r_492_b)) { _cur_np = deref_492_saved_cur; goto alt_r_491_alpha; }
     goto fence_after_490;
 }
 alt_r_491_alpha: /* pat var epsilon — epsilon */
@@ -16026,52 +16865,115 @@ alt_r_491_alpha: /* pat var epsilon — epsilon */
 alt_r_491_beta:
     goto cat_l_479_beta;
 fence_after_490:
-    goto _snoExpr16_ok;
+    goto _Expr16_ok;
 cat_r_479_beta:
     goto cat_l_479_beta;
-    _snoExpr16_ok:;
+    _Expr16_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoExpr16_fail:;
+    _Expr16_fail:;
         return FAIL_VAL;
+#undef deref_483_saved_cursor
+#undef cat_r_482_alpha_start
+#undef deref_485_saved_cur
+#undef var__
+#undef deref_487_saved_cursor
+#undef cat_r_486_alpha_start
+#undef deref_489_saved_cur
+#undef deref_492_saved_cur
+#undef deref_485_z
+#undef deref_489_z
+#undef deref_492_z
+
 }
 
-static SnoVal pat_snoExpr17(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t cat_l_504_alpha_start;
-static int64_t deref_506_saved_cur;
-static int64_t cat_r_503_alpha_start;
-static int64_t deref_511_saved_cursor;
-static int64_t deref_512_saved_cur;
-static int64_t cat_l_515_alpha_start;
-static int64_t deref_518_saved_cursor;
-static int64_t cat_r_517_alpha_saved_cursor;
-static int64_t cat_r_515_alpha_start;
-static int64_t deref_520_saved_cur;
-static int64_t cat_l_522_alpha_start;
-static int64_t deref_525_saved_cur;
-static int64_t cat_r_524_alpha_saved_cursor;
-static int64_t cat_r_522_alpha_start;
-static int64_t deref_527_saved_cur;
-static int64_t deref_529_saved_cursor;
-static int64_t cat_r_528_alpha_saved_cursor;
-static int64_t deref_531_saved_cursor;
-static int64_t cat_r_530_alpha_saved_cursor;
-static int64_t deref_533_saved_cur;
-static int64_t cat_r_532_alpha_saved_cursor;
-static int64_t deref_535_saved_cur;
-static int64_t cat_r_534_alpha_saved_cursor;
-static int64_t deref_537_saved_cur;
-static int64_t cat_r_536_alpha_saved_cursor;
-static int64_t deref_539_saved_cur;
-static int64_t cat_r_538_alpha_saved_cursor;
+typedef struct pat_Expr17_t {
+    int64_t cat_l_504_alpha_start;
+    str_t var__;
+    int64_t deref_506_saved_cur;
+    int64_t cat_r_503_alpha_start;
+    int64_t deref_511_saved_cursor;
+    int64_t deref_512_saved_cur;
+    int64_t cat_l_515_alpha_start;
+    int64_t deref_518_saved_cursor;
+    int64_t cat_r_517_alpha_saved_cursor;
+    int64_t cat_r_515_alpha_start;
+    int64_t deref_520_saved_cur;
+    int64_t cat_l_522_alpha_start;
+    int64_t deref_525_saved_cur;
+    int64_t cat_r_524_alpha_saved_cursor;
+    int64_t cat_r_522_alpha_start;
+    int64_t deref_527_saved_cur;
+    int64_t deref_529_saved_cursor;
+    int64_t cat_r_528_alpha_saved_cursor;
+    int64_t deref_531_saved_cursor;
+    int64_t cat_r_530_alpha_saved_cursor;
+    int64_t deref_533_saved_cur;
+    int64_t cat_r_532_alpha_saved_cursor;
+    int64_t deref_535_saved_cur;
+    int64_t cat_r_534_alpha_saved_cursor;
+    int64_t deref_537_saved_cur;
+    int64_t cat_r_536_alpha_saved_cursor;
+    int64_t deref_539_saved_cur;
+    int64_t cat_r_538_alpha_saved_cursor;
+    pat_Expr_t *deref_506_z;
+    pat_XList_t *deref_512_z;
+    pat_ExprList_t *deref_520_z;
+    pat_Id_t *deref_525_z;
+    pat_ExprList_t *deref_527_z;
+    pat_Id_t *deref_533_z;
+    pat_String_t *deref_535_z;
+    pat_Real_t *deref_537_z;
+    pat_Integer_t *deref_539_z;
+} pat_Expr17_t;
 
-    if (_entry_np == 0) goto _snoExpr17_alpha;
-    if (_entry_np == 1) goto _snoExpr17_beta;
-    goto _snoExpr17_fail;
-_snoExpr17_alpha: /* FENCE(p) */
+static SnoVal pat_Expr17(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_Expr17_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_Expr17_t)); }
+    pat_Expr17_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define cat_l_504_alpha_start z->cat_l_504_alpha_start
+#define var__ z->var__
+#define deref_506_saved_cur z->deref_506_saved_cur
+#define cat_r_503_alpha_start z->cat_r_503_alpha_start
+#define deref_511_saved_cursor z->deref_511_saved_cursor
+#define deref_512_saved_cur z->deref_512_saved_cur
+#define cat_l_515_alpha_start z->cat_l_515_alpha_start
+#define deref_518_saved_cursor z->deref_518_saved_cursor
+#define cat_r_517_alpha_saved_cursor z->cat_r_517_alpha_saved_cursor
+#define cat_r_515_alpha_start z->cat_r_515_alpha_start
+#define deref_520_saved_cur z->deref_520_saved_cur
+#define cat_l_522_alpha_start z->cat_l_522_alpha_start
+#define deref_525_saved_cur z->deref_525_saved_cur
+#define cat_r_524_alpha_saved_cursor z->cat_r_524_alpha_saved_cursor
+#define cat_r_522_alpha_start z->cat_r_522_alpha_start
+#define deref_527_saved_cur z->deref_527_saved_cur
+#define deref_529_saved_cursor z->deref_529_saved_cursor
+#define cat_r_528_alpha_saved_cursor z->cat_r_528_alpha_saved_cursor
+#define deref_531_saved_cursor z->deref_531_saved_cursor
+#define cat_r_530_alpha_saved_cursor z->cat_r_530_alpha_saved_cursor
+#define deref_533_saved_cur z->deref_533_saved_cur
+#define cat_r_532_alpha_saved_cursor z->cat_r_532_alpha_saved_cursor
+#define deref_535_saved_cur z->deref_535_saved_cur
+#define cat_r_534_alpha_saved_cursor z->cat_r_534_alpha_saved_cursor
+#define deref_537_saved_cur z->deref_537_saved_cur
+#define cat_r_536_alpha_saved_cursor z->cat_r_536_alpha_saved_cursor
+#define deref_539_saved_cur z->deref_539_saved_cur
+#define cat_r_538_alpha_saved_cursor z->cat_r_538_alpha_saved_cursor
+#define deref_506_z z->deref_506_z
+#define deref_512_z z->deref_512_z
+#define deref_520_z z->deref_520_z
+#define deref_525_z z->deref_525_z
+#define deref_527_z z->deref_527_z
+#define deref_533_z z->deref_533_z
+#define deref_535_z z->deref_535_z
+#define deref_537_z z->deref_537_z
+#define deref_539_z z->deref_539_z
+
+    if (_entry_np == 0) goto _Expr17_alpha;
+    if (_entry_np == 1) goto _Expr17_beta;
+    goto _Expr17_fail;
+_Expr17_alpha: /* FENCE(p) */
     goto fence_p_493_alpha;
 fence_p_493_alpha: /* ALT — try left */
     goto alt_l_494_alpha;
@@ -16123,22 +17025,21 @@ cat_l_504_alpha:
 assign_c_505_alpha: npush(); goto cat_l_504_alpha_do_assign;
 assign_c_505_beta: goto alt_r_501_alpha;
 cat_l_504_alpha_do_assign:
-    { int64_t _len = _cur_np - cat_l_504_alpha_start;
-      char *_os = malloc(_len + 1); memcpy(_os, _subj_np + cat_l_504_alpha_start, _len); _os[_len] = 0;
-      output_str(_os); free(_os); }
+    var__.ptr = _subj_np + cat_l_504_alpha_start;
+    var__.len = _cur_np - cat_l_504_alpha_start;
     goto cat_r_504_alpha;
 cat_l_504_beta:
     goto assign_c_505_beta;
 cat_r_504_alpha: {
     deref_506_saved_cur = _cur_np;
-    SnoVal _r_snoExpr = pat_snoExpr(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr)) { _cur_np = deref_506_saved_cur; goto cat_l_504_beta; }
+    SnoVal _r_506 = pat_Expr(_subj_np, _slen_np, &_cur_np, &deref_506_z, 0);
+    if (is_fail(_r_506)) { _cur_np = deref_506_saved_cur; goto cat_l_504_beta; }
     goto cat_r_503_alpha;
 }
 cat_r_504_beta: {
     _cur_np = deref_506_saved_cur;
-    SnoVal _r_snoExpr = pat_snoExpr(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr)) { _cur_np = deref_506_saved_cur; goto cat_l_504_beta; }
+    SnoVal _r_506_b = pat_Expr(_subj_np, _slen_np, &_cur_np, &deref_506_z, 1);
+    if (is_fail(_r_506_b)) { _cur_np = deref_506_saved_cur; goto cat_l_504_beta; }
     goto cat_r_503_alpha;
 }
 cat_r_503_alpha:
@@ -16169,14 +17070,14 @@ cat_l_510_beta:
     goto alt_r_508_alpha;
 cat_r_510_alpha: {
     deref_512_saved_cur = _cur_np;
-    SnoVal _r_snoXList = pat_snoXList(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoXList)) { _cur_np = deref_512_saved_cur; goto cat_l_510_beta; }
+    SnoVal _r_512 = pat_XList(_subj_np, _slen_np, &_cur_np, &deref_512_z, 0);
+    if (is_fail(_r_512)) { _cur_np = deref_512_saved_cur; goto cat_l_510_beta; }
     goto cat_r_509_alpha;
 }
 cat_r_510_beta: {
     _cur_np = deref_512_saved_cur;
-    SnoVal _r_snoXList = pat_snoXList(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoXList)) { _cur_np = deref_512_saved_cur; goto cat_l_510_beta; }
+    SnoVal _r_512_b = pat_XList(_subj_np, _slen_np, &_cur_np, &deref_512_z, 1);
+    if (is_fail(_r_512_b)) { _cur_np = deref_512_saved_cur; goto cat_l_510_beta; }
     goto cat_r_509_alpha;
 }
 cat_r_509_alpha: /* E_REDUCE & */
@@ -16198,9 +17099,8 @@ cat_r_513_alpha: /* E_REDUCE & */
     goto cat_r_503_alpha_do_assign;
 cat_r_513_beta: goto cat_l_513_beta;
 cat_r_503_alpha_do_assign:
-    { int64_t _len = _cur_np - cat_r_503_alpha_start;
-      char *_os = malloc(_len + 1); memcpy(_os, _subj_np + cat_r_503_alpha_start, _len); _os[_len] = 0;
-      output_str(_os); free(_os); }
+    var__.ptr = _subj_np + cat_r_503_alpha_start;
+    var__.len = _cur_np - cat_r_503_alpha_start;
     goto cat_r_502_alpha;
 cat_r_503_beta:
     goto assign_c_507_beta;
@@ -16222,7 +17122,7 @@ assign_c_516_alpha: /* CAT — entr left */
 assign_c_516_beta:
     goto cat_r_517_beta;
 cat_l_517_alpha: {
-    SnoVal _deref_pat = var_get("snoFunction");
+    SnoVal _deref_pat = var_get("Function");
     int _deref_new_cur = match_pattern_at(_deref_pat, _subj_np, (int)_slen_np, (int)_cur_np);
     if (_deref_new_cur < 0) goto alt_r_500_alpha;
     deref_518_saved_cursor = _cur_np;
@@ -16233,18 +17133,17 @@ cat_l_517_beta:
     _cur_np = deref_518_saved_cursor;
     goto alt_r_500_alpha;
 cat_r_517_alpha:
-    if (_cur_np + 11 > _slen_np) goto cat_l_517_beta;
-    if (memcmp(_subj_np + _cur_np, "snoFunction", 11) != 0) goto cat_l_517_beta;
+    if (_cur_np + 8 > _slen_np) goto cat_l_517_beta;
+    if (memcmp(_subj_np + _cur_np, "Function", 8) != 0) goto cat_l_517_beta;
     cat_r_517_alpha_saved_cursor = _cur_np;
-    _cur_np += 11;
+    _cur_np += 8;
     goto cat_l_515_alpha_do_assign;
 cat_r_517_beta:
     _cur_np = cat_r_517_alpha_saved_cursor;
     goto cat_l_517_beta;
 cat_l_515_alpha_do_assign:
-    { int64_t _len = _cur_np - cat_l_515_alpha_start;
-      char *_os = malloc(_len + 1); memcpy(_os, _subj_np + cat_l_515_alpha_start, _len); _os[_len] = 0;
-      output_str(_os); free(_os); }
+    var__.ptr = _subj_np + cat_l_515_alpha_start;
+    var__.len = _cur_np - cat_l_515_alpha_start;
     goto cat_r_515_alpha;
 cat_l_515_beta:
     goto assign_c_516_beta;
@@ -16253,25 +17152,24 @@ cat_r_515_alpha:
     goto assign_c_519_alpha;
 assign_c_519_alpha: {
     deref_520_saved_cur = _cur_np;
-    SnoVal _r_snoExprList = pat_snoExprList(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExprList)) { _cur_np = deref_520_saved_cur; goto cat_l_515_beta; }
+    SnoVal _r_520 = pat_ExprList(_subj_np, _slen_np, &_cur_np, &deref_520_z, 0);
+    if (is_fail(_r_520)) { _cur_np = deref_520_saved_cur; goto cat_l_515_beta; }
     goto cat_r_515_alpha_do_assign;
 }
 assign_c_519_beta: {
     _cur_np = deref_520_saved_cur;
-    SnoVal _r_snoExprList = pat_snoExprList(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExprList)) { _cur_np = deref_520_saved_cur; goto cat_l_515_beta; }
+    SnoVal _r_520_b = pat_ExprList(_subj_np, _slen_np, &_cur_np, &deref_520_z, 1);
+    if (is_fail(_r_520_b)) { _cur_np = deref_520_saved_cur; goto cat_l_515_beta; }
     goto cat_r_515_alpha_do_assign;
 }
 cat_r_515_alpha_do_assign:
-    { int64_t _len = _cur_np - cat_r_515_alpha_start;
-      char *_os = malloc(_len + 1); memcpy(_os, _subj_np + cat_r_515_alpha_start, _len); _os[_len] = 0;
-      output_str(_os); free(_os); }
+    var__.ptr = _subj_np + cat_r_515_alpha_start;
+    var__.len = _cur_np - cat_r_515_alpha_start;
     goto cat_r_514_alpha;
 cat_r_515_beta:
     goto assign_c_519_beta;
 cat_r_514_alpha: /* E_REDUCE & */
-    { SnoVal _reduce_args[2] = {STR_VAL("'snoCall'"), INT_VAL(2)};
+    { SnoVal _reduce_args[2] = {STR_VAL("'Call'"), INT_VAL(2)};
       aply("Reduce", _reduce_args, 2); }
     goto fence_after_493;
 cat_r_514_beta: goto cat_l_514_beta;
@@ -16292,29 +17190,28 @@ assign_c_523_beta:
     goto cat_r_524_beta;
 cat_l_524_alpha: {
     deref_525_saved_cur = _cur_np;
-    SnoVal _r_snoId = pat_snoId(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoId)) { _cur_np = deref_525_saved_cur; goto alt_r_499_alpha; }
+    SnoVal _r_525 = pat_Id(_subj_np, _slen_np, &_cur_np, &deref_525_z, 0);
+    if (is_fail(_r_525)) { _cur_np = deref_525_saved_cur; goto alt_r_499_alpha; }
     goto cat_r_524_alpha;
 }
 cat_l_524_beta: {
     _cur_np = deref_525_saved_cur;
-    SnoVal _r_snoId = pat_snoId(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoId)) { _cur_np = deref_525_saved_cur; goto alt_r_499_alpha; }
+    SnoVal _r_525_b = pat_Id(_subj_np, _slen_np, &_cur_np, &deref_525_z, 1);
+    if (is_fail(_r_525_b)) { _cur_np = deref_525_saved_cur; goto alt_r_499_alpha; }
     goto cat_r_524_alpha;
 }
 cat_r_524_alpha:
-    if (_cur_np + 5 > _slen_np) goto cat_l_524_beta;
-    if (memcmp(_subj_np + _cur_np, "snoId", 5) != 0) goto cat_l_524_beta;
+    if (_cur_np + 2 > _slen_np) goto cat_l_524_beta;
+    if (memcmp(_subj_np + _cur_np, "Id", 2) != 0) goto cat_l_524_beta;
     cat_r_524_alpha_saved_cursor = _cur_np;
-    _cur_np += 5;
+    _cur_np += 2;
     goto cat_l_522_alpha_do_assign;
 cat_r_524_beta:
     _cur_np = cat_r_524_alpha_saved_cursor;
     goto cat_l_524_beta;
 cat_l_522_alpha_do_assign:
-    { int64_t _len = _cur_np - cat_l_522_alpha_start;
-      char *_os = malloc(_len + 1); memcpy(_os, _subj_np + cat_l_522_alpha_start, _len); _os[_len] = 0;
-      output_str(_os); free(_os); }
+    var__.ptr = _subj_np + cat_l_522_alpha_start;
+    var__.len = _cur_np - cat_l_522_alpha_start;
     goto cat_r_522_alpha;
 cat_l_522_beta:
     goto assign_c_523_beta;
@@ -16323,25 +17220,24 @@ cat_r_522_alpha:
     goto assign_c_526_alpha;
 assign_c_526_alpha: {
     deref_527_saved_cur = _cur_np;
-    SnoVal _r_snoExprList = pat_snoExprList(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExprList)) { _cur_np = deref_527_saved_cur; goto cat_l_522_beta; }
+    SnoVal _r_527 = pat_ExprList(_subj_np, _slen_np, &_cur_np, &deref_527_z, 0);
+    if (is_fail(_r_527)) { _cur_np = deref_527_saved_cur; goto cat_l_522_beta; }
     goto cat_r_522_alpha_do_assign;
 }
 assign_c_526_beta: {
     _cur_np = deref_527_saved_cur;
-    SnoVal _r_snoExprList = pat_snoExprList(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExprList)) { _cur_np = deref_527_saved_cur; goto cat_l_522_beta; }
+    SnoVal _r_527_b = pat_ExprList(_subj_np, _slen_np, &_cur_np, &deref_527_z, 1);
+    if (is_fail(_r_527_b)) { _cur_np = deref_527_saved_cur; goto cat_l_522_beta; }
     goto cat_r_522_alpha_do_assign;
 }
 cat_r_522_alpha_do_assign:
-    { int64_t _len = _cur_np - cat_r_522_alpha_start;
-      char *_os = malloc(_len + 1); memcpy(_os, _subj_np + cat_r_522_alpha_start, _len); _os[_len] = 0;
-      output_str(_os); free(_os); }
+    var__.ptr = _subj_np + cat_r_522_alpha_start;
+    var__.len = _cur_np - cat_r_522_alpha_start;
     goto cat_r_521_alpha;
 cat_r_522_beta:
     goto assign_c_526_beta;
 cat_r_521_alpha: /* E_REDUCE & */
-    { SnoVal _reduce_args[2] = {STR_VAL("'snoCall'"), INT_VAL(2)};
+    { SnoVal _reduce_args[2] = {STR_VAL("'Call'"), INT_VAL(2)};
       aply("Reduce", _reduce_args, 2); }
     goto fence_after_493;
 cat_r_521_beta: goto cat_l_521_beta;
@@ -16350,7 +17246,7 @@ alt_r_499_alpha: /* CAT — entr left */
 alt_r_499_beta:
     goto cat_r_528_beta;
 cat_l_528_alpha: {
-    SnoVal _deref_pat = var_get("snoBuiltinVar");
+    SnoVal _deref_pat = var_get("BuiltinVar");
     int _deref_new_cur = match_pattern_at(_deref_pat, _subj_np, (int)_slen_np, (int)_cur_np);
     if (_deref_new_cur < 0) goto alt_r_498_alpha;
     deref_529_saved_cursor = _cur_np;
@@ -16361,10 +17257,10 @@ cat_l_528_beta:
     _cur_np = deref_529_saved_cursor;
     goto alt_r_498_alpha;
 cat_r_528_alpha:
-    if (_cur_np + 13 > _slen_np) goto cat_l_528_beta;
-    if (memcmp(_subj_np + _cur_np, "snoBuiltinVar", 13) != 0) goto cat_l_528_beta;
+    if (_cur_np + 10 > _slen_np) goto cat_l_528_beta;
+    if (memcmp(_subj_np + _cur_np, "BuiltinVar", 10) != 0) goto cat_l_528_beta;
     cat_r_528_alpha_saved_cursor = _cur_np;
-    _cur_np += 13;
+    _cur_np += 10;
     goto fence_after_493;
 cat_r_528_beta:
     _cur_np = cat_r_528_alpha_saved_cursor;
@@ -16374,7 +17270,7 @@ alt_r_498_alpha: /* CAT — entr left */
 alt_r_498_beta:
     goto cat_r_530_beta;
 cat_l_530_alpha: {
-    SnoVal _deref_pat = var_get("snoSpecialNm");
+    SnoVal _deref_pat = var_get("SpecialNm");
     int _deref_new_cur = match_pattern_at(_deref_pat, _subj_np, (int)_slen_np, (int)_cur_np);
     if (_deref_new_cur < 0) goto alt_r_497_alpha;
     deref_531_saved_cursor = _cur_np;
@@ -16385,10 +17281,10 @@ cat_l_530_beta:
     _cur_np = deref_531_saved_cursor;
     goto alt_r_497_alpha;
 cat_r_530_alpha:
-    if (_cur_np + 12 > _slen_np) goto cat_l_530_beta;
-    if (memcmp(_subj_np + _cur_np, "snoSpecialNm", 12) != 0) goto cat_l_530_beta;
+    if (_cur_np + 9 > _slen_np) goto cat_l_530_beta;
+    if (memcmp(_subj_np + _cur_np, "SpecialNm", 9) != 0) goto cat_l_530_beta;
     cat_r_530_alpha_saved_cursor = _cur_np;
-    _cur_np += 12;
+    _cur_np += 9;
     goto fence_after_493;
 cat_r_530_beta:
     _cur_np = cat_r_530_alpha_saved_cursor;
@@ -16399,21 +17295,21 @@ alt_r_497_beta:
     goto cat_r_532_beta;
 cat_l_532_alpha: {
     deref_533_saved_cur = _cur_np;
-    SnoVal _r_snoId = pat_snoId(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoId)) { _cur_np = deref_533_saved_cur; goto alt_r_496_alpha; }
+    SnoVal _r_533 = pat_Id(_subj_np, _slen_np, &_cur_np, &deref_533_z, 0);
+    if (is_fail(_r_533)) { _cur_np = deref_533_saved_cur; goto alt_r_496_alpha; }
     goto cat_r_532_alpha;
 }
 cat_l_532_beta: {
     _cur_np = deref_533_saved_cur;
-    SnoVal _r_snoId = pat_snoId(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoId)) { _cur_np = deref_533_saved_cur; goto alt_r_496_alpha; }
+    SnoVal _r_533_b = pat_Id(_subj_np, _slen_np, &_cur_np, &deref_533_z, 1);
+    if (is_fail(_r_533_b)) { _cur_np = deref_533_saved_cur; goto alt_r_496_alpha; }
     goto cat_r_532_alpha;
 }
 cat_r_532_alpha:
-    if (_cur_np + 5 > _slen_np) goto cat_l_532_beta;
-    if (memcmp(_subj_np + _cur_np, "snoId", 5) != 0) goto cat_l_532_beta;
+    if (_cur_np + 2 > _slen_np) goto cat_l_532_beta;
+    if (memcmp(_subj_np + _cur_np, "Id", 2) != 0) goto cat_l_532_beta;
     cat_r_532_alpha_saved_cursor = _cur_np;
-    _cur_np += 5;
+    _cur_np += 2;
     goto fence_after_493;
 cat_r_532_beta:
     _cur_np = cat_r_532_alpha_saved_cursor;
@@ -16424,21 +17320,21 @@ alt_r_496_beta:
     goto cat_r_534_beta;
 cat_l_534_alpha: {
     deref_535_saved_cur = _cur_np;
-    SnoVal _r_snoString = pat_snoString(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoString)) { _cur_np = deref_535_saved_cur; goto alt_r_495_alpha; }
+    SnoVal _r_535 = pat_String(_subj_np, _slen_np, &_cur_np, &deref_535_z, 0);
+    if (is_fail(_r_535)) { _cur_np = deref_535_saved_cur; goto alt_r_495_alpha; }
     goto cat_r_534_alpha;
 }
 cat_l_534_beta: {
     _cur_np = deref_535_saved_cur;
-    SnoVal _r_snoString = pat_snoString(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoString)) { _cur_np = deref_535_saved_cur; goto alt_r_495_alpha; }
+    SnoVal _r_535_b = pat_String(_subj_np, _slen_np, &_cur_np, &deref_535_z, 1);
+    if (is_fail(_r_535_b)) { _cur_np = deref_535_saved_cur; goto alt_r_495_alpha; }
     goto cat_r_534_alpha;
 }
 cat_r_534_alpha:
-    if (_cur_np + 9 > _slen_np) goto cat_l_534_beta;
-    if (memcmp(_subj_np + _cur_np, "snoString", 9) != 0) goto cat_l_534_beta;
+    if (_cur_np + 6 > _slen_np) goto cat_l_534_beta;
+    if (memcmp(_subj_np + _cur_np, "String", 6) != 0) goto cat_l_534_beta;
     cat_r_534_alpha_saved_cursor = _cur_np;
-    _cur_np += 9;
+    _cur_np += 6;
     goto fence_after_493;
 cat_r_534_beta:
     _cur_np = cat_r_534_alpha_saved_cursor;
@@ -16449,21 +17345,21 @@ alt_r_495_beta:
     goto cat_r_536_beta;
 cat_l_536_alpha: {
     deref_537_saved_cur = _cur_np;
-    SnoVal _r_snoReal = pat_snoReal(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoReal)) { _cur_np = deref_537_saved_cur; goto alt_r_494_alpha; }
+    SnoVal _r_537 = pat_Real(_subj_np, _slen_np, &_cur_np, &deref_537_z, 0);
+    if (is_fail(_r_537)) { _cur_np = deref_537_saved_cur; goto alt_r_494_alpha; }
     goto cat_r_536_alpha;
 }
 cat_l_536_beta: {
     _cur_np = deref_537_saved_cur;
-    SnoVal _r_snoReal = pat_snoReal(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoReal)) { _cur_np = deref_537_saved_cur; goto alt_r_494_alpha; }
+    SnoVal _r_537_b = pat_Real(_subj_np, _slen_np, &_cur_np, &deref_537_z, 1);
+    if (is_fail(_r_537_b)) { _cur_np = deref_537_saved_cur; goto alt_r_494_alpha; }
     goto cat_r_536_alpha;
 }
 cat_r_536_alpha:
-    if (_cur_np + 7 > _slen_np) goto cat_l_536_beta;
-    if (memcmp(_subj_np + _cur_np, "snoReal", 7) != 0) goto cat_l_536_beta;
+    if (_cur_np + 4 > _slen_np) goto cat_l_536_beta;
+    if (memcmp(_subj_np + _cur_np, "Real", 4) != 0) goto cat_l_536_beta;
     cat_r_536_alpha_saved_cursor = _cur_np;
-    _cur_np += 7;
+    _cur_np += 4;
     goto fence_after_493;
 cat_r_536_beta:
     _cur_np = cat_r_536_alpha_saved_cursor;
@@ -16474,49 +17370,94 @@ alt_r_494_beta:
     goto cat_r_538_beta;
 cat_l_538_alpha: {
     deref_539_saved_cur = _cur_np;
-    SnoVal _r_snoInteger = pat_snoInteger(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoInteger)) { _cur_np = deref_539_saved_cur; goto _snoExpr17_fail; }
+    SnoVal _r_539 = pat_Integer(_subj_np, _slen_np, &_cur_np, &deref_539_z, 0);
+    if (is_fail(_r_539)) { _cur_np = deref_539_saved_cur; goto _Expr17_fail; }
     goto cat_r_538_alpha;
 }
 cat_l_538_beta: {
     _cur_np = deref_539_saved_cur;
-    SnoVal _r_snoInteger = pat_snoInteger(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoInteger)) { _cur_np = deref_539_saved_cur; goto _snoExpr17_fail; }
+    SnoVal _r_539_b = pat_Integer(_subj_np, _slen_np, &_cur_np, &deref_539_z, 1);
+    if (is_fail(_r_539_b)) { _cur_np = deref_539_saved_cur; goto _Expr17_fail; }
     goto cat_r_538_alpha;
 }
 cat_r_538_alpha:
-    if (_cur_np + 10 > _slen_np) goto cat_l_538_beta;
-    if (memcmp(_subj_np + _cur_np, "snoInteger", 10) != 0) goto cat_l_538_beta;
+    if (_cur_np + 7 > _slen_np) goto cat_l_538_beta;
+    if (memcmp(_subj_np + _cur_np, "Integer", 7) != 0) goto cat_l_538_beta;
     cat_r_538_alpha_saved_cursor = _cur_np;
-    _cur_np += 10;
+    _cur_np += 7;
     goto fence_after_493;
 cat_r_538_beta:
     _cur_np = cat_r_538_alpha_saved_cursor;
     goto cat_l_538_beta;
 fence_after_493:
-    goto _snoExpr17_ok;
-_snoExpr17_beta:
-    goto _snoExpr17_fail;
-    _snoExpr17_ok:;
+    goto _Expr17_ok;
+_Expr17_beta:
+    goto _Expr17_fail;
+    _Expr17_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoExpr17_fail:;
+    _Expr17_fail:;
         return FAIL_VAL;
+#undef cat_l_504_alpha_start
+#undef var__
+#undef deref_506_saved_cur
+#undef cat_r_503_alpha_start
+#undef deref_511_saved_cursor
+#undef deref_512_saved_cur
+#undef cat_l_515_alpha_start
+#undef deref_518_saved_cursor
+#undef cat_r_517_alpha_saved_cursor
+#undef cat_r_515_alpha_start
+#undef deref_520_saved_cur
+#undef cat_l_522_alpha_start
+#undef deref_525_saved_cur
+#undef cat_r_524_alpha_saved_cursor
+#undef cat_r_522_alpha_start
+#undef deref_527_saved_cur
+#undef deref_529_saved_cursor
+#undef cat_r_528_alpha_saved_cursor
+#undef deref_531_saved_cursor
+#undef cat_r_530_alpha_saved_cursor
+#undef deref_533_saved_cur
+#undef cat_r_532_alpha_saved_cursor
+#undef deref_535_saved_cur
+#undef cat_r_534_alpha_saved_cursor
+#undef deref_537_saved_cur
+#undef cat_r_536_alpha_saved_cursor
+#undef deref_539_saved_cur
+#undef cat_r_538_alpha_saved_cursor
+#undef deref_506_z
+#undef deref_512_z
+#undef deref_520_z
+#undef deref_525_z
+#undef deref_527_z
+#undef deref_533_z
+#undef deref_535_z
+#undef deref_537_z
+#undef deref_539_z
+
 }
 
-static SnoVal pat_snoSGoto(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t _snoSGoto_alpha_start;
-static int64_t alt_l_541_alpha_saved_cursor;
-static int64_t alt_r_541_alpha_saved_cursor;
+typedef struct pat_SGoto_t {
+    int64_t _SGoto_alpha_start;
+    int64_t alt_l_541_alpha_saved_cursor;
+    int64_t alt_r_541_alpha_saved_cursor;
+} pat_SGoto_t;
 
-    if (_entry_np == 0) goto _snoSGoto_alpha;
-    if (_entry_np == 1) goto _snoSGoto_beta;
-    goto _snoSGoto_fail;
-_snoSGoto_alpha:
-    _snoSGoto_alpha_start = _cur_np;
+static SnoVal pat_SGoto(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_SGoto_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_SGoto_t)); }
+    pat_SGoto_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define _SGoto_alpha_start z->_SGoto_alpha_start
+#define alt_l_541_alpha_saved_cursor z->alt_l_541_alpha_saved_cursor
+#define alt_r_541_alpha_saved_cursor z->alt_r_541_alpha_saved_cursor
+
+    if (_entry_np == 0) goto _SGoto_alpha;
+    if (_entry_np == 1) goto _SGoto_beta;
+    goto _SGoto_fail;
+_SGoto_alpha:
+    _SGoto_alpha_start = _cur_np;
     goto assign_c_540_alpha;
 assign_c_540_alpha: /* ALT — try left */
     goto alt_l_541_alpha;
@@ -16527,46 +17468,57 @@ alt_l_541_alpha:
     if (_subj_np[_cur_np] != 'S') goto alt_r_541_alpha;
     alt_l_541_alpha_saved_cursor = _cur_np;
     _cur_np += 1;
-    goto _snoSGoto_alpha_do_assign;
+    goto _SGoto_alpha_do_assign;
 alt_l_541_beta:
     _cur_np = alt_l_541_alpha_saved_cursor;
     goto alt_r_541_alpha;
 alt_r_541_alpha:
-    if (_cur_np + 1 > _slen_np) goto _snoSGoto_fail;
-    if (_subj_np[_cur_np] != 's') goto _snoSGoto_fail;
+    if (_cur_np + 1 > _slen_np) goto _SGoto_fail;
+    if (_subj_np[_cur_np] != 's') goto _SGoto_fail;
     alt_r_541_alpha_saved_cursor = _cur_np;
     _cur_np += 1;
-    goto _snoSGoto_alpha_do_assign;
+    goto _SGoto_alpha_do_assign;
 alt_r_541_beta:
     _cur_np = alt_r_541_alpha_saved_cursor;
-    goto _snoSGoto_fail;
-_snoSGoto_alpha_do_assign:
-    { int64_t _len = _cur_np - _snoSGoto_alpha_start;
-      char *_os = malloc(_len + 1); memcpy(_os, _subj_np + _snoSGoto_alpha_start, _len); _os[_len] = 0;
+    goto _SGoto_fail;
+_SGoto_alpha_do_assign:
+    { int64_t _len = _cur_np - _SGoto_alpha_start;
+      char *_os = malloc(_len + 1); memcpy(_os, _subj_np + _SGoto_alpha_start, _len); _os[_len] = 0;
       output_str(_os); free(_os); }
-    goto _snoSGoto_ok;
-_snoSGoto_beta:
+    goto _SGoto_ok;
+_SGoto_beta:
     goto assign_c_540_beta;
-    _snoSGoto_ok:;
+    _SGoto_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoSGoto_fail:;
+    _SGoto_fail:;
         return FAIL_VAL;
+#undef _SGoto_alpha_start
+#undef alt_l_541_alpha_saved_cursor
+#undef alt_r_541_alpha_saved_cursor
+
 }
 
-static SnoVal pat_snoFGoto(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t _snoFGoto_alpha_start;
-static int64_t alt_l_543_alpha_saved_cursor;
-static int64_t alt_r_543_alpha_saved_cursor;
+typedef struct pat_FGoto_t {
+    int64_t _FGoto_alpha_start;
+    int64_t alt_l_543_alpha_saved_cursor;
+    int64_t alt_r_543_alpha_saved_cursor;
+} pat_FGoto_t;
 
-    if (_entry_np == 0) goto _snoFGoto_alpha;
-    if (_entry_np == 1) goto _snoFGoto_beta;
-    goto _snoFGoto_fail;
-_snoFGoto_alpha:
-    _snoFGoto_alpha_start = _cur_np;
+static SnoVal pat_FGoto(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_FGoto_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_FGoto_t)); }
+    pat_FGoto_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define _FGoto_alpha_start z->_FGoto_alpha_start
+#define alt_l_543_alpha_saved_cursor z->alt_l_543_alpha_saved_cursor
+#define alt_r_543_alpha_saved_cursor z->alt_r_543_alpha_saved_cursor
+
+    if (_entry_np == 0) goto _FGoto_alpha;
+    if (_entry_np == 1) goto _FGoto_beta;
+    goto _FGoto_fail;
+_FGoto_alpha:
+    _FGoto_alpha_start = _cur_np;
     goto assign_c_542_alpha;
 assign_c_542_alpha: /* ALT — try left */
     goto alt_l_543_alpha;
@@ -16577,97 +17529,134 @@ alt_l_543_alpha:
     if (_subj_np[_cur_np] != 'F') goto alt_r_543_alpha;
     alt_l_543_alpha_saved_cursor = _cur_np;
     _cur_np += 1;
-    goto _snoFGoto_alpha_do_assign;
+    goto _FGoto_alpha_do_assign;
 alt_l_543_beta:
     _cur_np = alt_l_543_alpha_saved_cursor;
     goto alt_r_543_alpha;
 alt_r_543_alpha:
-    if (_cur_np + 1 > _slen_np) goto _snoFGoto_fail;
-    if (_subj_np[_cur_np] != 'f') goto _snoFGoto_fail;
+    if (_cur_np + 1 > _slen_np) goto _FGoto_fail;
+    if (_subj_np[_cur_np] != 'f') goto _FGoto_fail;
     alt_r_543_alpha_saved_cursor = _cur_np;
     _cur_np += 1;
-    goto _snoFGoto_alpha_do_assign;
+    goto _FGoto_alpha_do_assign;
 alt_r_543_beta:
     _cur_np = alt_r_543_alpha_saved_cursor;
-    goto _snoFGoto_fail;
-_snoFGoto_alpha_do_assign:
-    { int64_t _len = _cur_np - _snoFGoto_alpha_start;
-      char *_os = malloc(_len + 1); memcpy(_os, _subj_np + _snoFGoto_alpha_start, _len); _os[_len] = 0;
+    goto _FGoto_fail;
+_FGoto_alpha_do_assign:
+    { int64_t _len = _cur_np - _FGoto_alpha_start;
+      char *_os = malloc(_len + 1); memcpy(_os, _subj_np + _FGoto_alpha_start, _len); _os[_len] = 0;
       output_str(_os); free(_os); }
-    goto _snoFGoto_ok;
-_snoFGoto_beta:
+    goto _FGoto_ok;
+_FGoto_beta:
     goto assign_c_542_beta;
-    _snoFGoto_ok:;
+    _FGoto_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoFGoto_fail:;
+    _FGoto_fail:;
         return FAIL_VAL;
+#undef _FGoto_alpha_start
+#undef alt_l_543_alpha_saved_cursor
+#undef alt_r_543_alpha_saved_cursor
+
 }
 
-static SnoVal pat_snoSorF(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t deref_545_saved_cur;
-static int64_t deref_546_saved_cur;
+typedef struct pat_SorF_t {
+    int64_t deref_545_saved_cur;
+    int64_t deref_546_saved_cur;
+    pat_SGoto_t *deref_545_z;
+    pat_FGoto_t *deref_546_z;
+} pat_SorF_t;
 
-    if (_entry_np == 0) goto _snoSorF_alpha;
-    if (_entry_np == 1) goto _snoSorF_beta;
-    goto _snoSorF_fail;
-_snoSorF_alpha: /* ALT — try left */
+static SnoVal pat_SorF(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_SorF_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_SorF_t)); }
+    pat_SorF_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define deref_545_saved_cur z->deref_545_saved_cur
+#define deref_546_saved_cur z->deref_546_saved_cur
+#define deref_545_z z->deref_545_z
+#define deref_546_z z->deref_546_z
+
+    if (_entry_np == 0) goto _SorF_alpha;
+    if (_entry_np == 1) goto _SorF_beta;
+    goto _SorF_fail;
+_SorF_alpha: /* ALT — try left */
     goto alt_l_544_alpha;
-_snoSorF_beta:
+_SorF_beta:
     goto alt_r_544_beta;
 alt_l_544_alpha: {
     deref_545_saved_cur = _cur_np;
-    SnoVal _r_snoSGoto = pat_snoSGoto(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoSGoto)) { _cur_np = deref_545_saved_cur; goto alt_r_544_alpha; }
-    goto _snoSorF_ok;
+    SnoVal _r_545 = pat_SGoto(_subj_np, _slen_np, &_cur_np, &deref_545_z, 0);
+    if (is_fail(_r_545)) { _cur_np = deref_545_saved_cur; goto alt_r_544_alpha; }
+    goto _SorF_ok;
 }
 alt_l_544_beta: {
     _cur_np = deref_545_saved_cur;
-    SnoVal _r_snoSGoto = pat_snoSGoto(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoSGoto)) { _cur_np = deref_545_saved_cur; goto alt_r_544_alpha; }
-    goto _snoSorF_ok;
+    SnoVal _r_545_b = pat_SGoto(_subj_np, _slen_np, &_cur_np, &deref_545_z, 1);
+    if (is_fail(_r_545_b)) { _cur_np = deref_545_saved_cur; goto alt_r_544_alpha; }
+    goto _SorF_ok;
 }
 alt_r_544_alpha: {
     deref_546_saved_cur = _cur_np;
-    SnoVal _r_snoFGoto = pat_snoFGoto(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoFGoto)) { _cur_np = deref_546_saved_cur; goto _snoSorF_fail; }
-    goto _snoSorF_ok;
+    SnoVal _r_546 = pat_FGoto(_subj_np, _slen_np, &_cur_np, &deref_546_z, 0);
+    if (is_fail(_r_546)) { _cur_np = deref_546_saved_cur; goto _SorF_fail; }
+    goto _SorF_ok;
 }
 alt_r_544_beta: {
     _cur_np = deref_546_saved_cur;
-    SnoVal _r_snoFGoto = pat_snoFGoto(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoFGoto)) { _cur_np = deref_546_saved_cur; goto _snoSorF_fail; }
-    goto _snoSorF_ok;
+    SnoVal _r_546_b = pat_FGoto(_subj_np, _slen_np, &_cur_np, &deref_546_z, 1);
+    if (is_fail(_r_546_b)) { _cur_np = deref_546_saved_cur; goto _SorF_fail; }
+    goto _SorF_ok;
 }
-    _snoSorF_ok:;
+    _SorF_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoSorF_fail:;
+    _SorF_fail:;
         return FAIL_VAL;
+#undef deref_545_saved_cur
+#undef deref_546_saved_cur
+#undef deref_545_z
+#undef deref_546_z
+
 }
 
-static SnoVal pat_snoTarget(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t cat_l_548_alpha_start;
-static int64_t deref_550_saved_cursor;
-static int64_t cat_r_548_alpha_start;
-static int64_t deref_552_saved_cur;
-static int64_t cat_l_553_alpha_start;
-static int64_t deref_555_saved_cursor;
-static int64_t cat_r_553_alpha_start;
-static int64_t deref_557_saved_cur;
+typedef struct pat_Target_t {
+    int64_t cat_l_548_alpha_start;
+    int64_t deref_550_saved_cursor;
+    int64_t cat_r_548_alpha_start;
+    int64_t deref_552_saved_cur;
+    str_t var__;
+    int64_t cat_l_553_alpha_start;
+    int64_t deref_555_saved_cursor;
+    int64_t cat_r_553_alpha_start;
+    int64_t deref_557_saved_cur;
+    pat_Expr_t *deref_552_z;
+    pat_Expr_t *deref_557_z;
+} pat_Target_t;
 
-    if (_entry_np == 0) goto _snoTarget_alpha;
-    if (_entry_np == 1) goto _snoTarget_beta;
-    goto _snoTarget_fail;
-_snoTarget_alpha: /* ALT — try left */
+static SnoVal pat_Target(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_Target_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_Target_t)); }
+    pat_Target_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define cat_l_548_alpha_start z->cat_l_548_alpha_start
+#define deref_550_saved_cursor z->deref_550_saved_cursor
+#define cat_r_548_alpha_start z->cat_r_548_alpha_start
+#define deref_552_saved_cur z->deref_552_saved_cur
+#define var__ z->var__
+#define cat_l_553_alpha_start z->cat_l_553_alpha_start
+#define deref_555_saved_cursor z->deref_555_saved_cursor
+#define cat_r_553_alpha_start z->cat_r_553_alpha_start
+#define deref_557_saved_cur z->deref_557_saved_cur
+#define deref_552_z z->deref_552_z
+#define deref_557_z z->deref_557_z
+
+    if (_entry_np == 0) goto _Target_alpha;
+    if (_entry_np == 1) goto _Target_beta;
+    goto _Target_fail;
+_Target_alpha: /* ALT — try left */
     goto alt_l_547_alpha;
-_snoTarget_beta:
+_Target_beta:
     goto alt_r_547_beta;
 alt_l_547_alpha: /* CAT — entr left */
     goto cat_l_548_alpha;
@@ -16699,21 +17688,20 @@ cat_r_548_alpha:
     goto assign_c_551_alpha;
 assign_c_551_alpha: {
     deref_552_saved_cur = _cur_np;
-    SnoVal _r_snoExpr = pat_snoExpr(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr)) { _cur_np = deref_552_saved_cur; goto cat_l_548_beta; }
+    SnoVal _r_552 = pat_Expr(_subj_np, _slen_np, &_cur_np, &deref_552_z, 0);
+    if (is_fail(_r_552)) { _cur_np = deref_552_saved_cur; goto cat_l_548_beta; }
     goto cat_r_548_alpha_do_assign;
 }
 assign_c_551_beta: {
     _cur_np = deref_552_saved_cur;
-    SnoVal _r_snoExpr = pat_snoExpr(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr)) { _cur_np = deref_552_saved_cur; goto cat_l_548_beta; }
+    SnoVal _r_552_b = pat_Expr(_subj_np, _slen_np, &_cur_np, &deref_552_z, 1);
+    if (is_fail(_r_552_b)) { _cur_np = deref_552_saved_cur; goto cat_l_548_beta; }
     goto cat_r_548_alpha_do_assign;
 }
 cat_r_548_alpha_do_assign:
-    { int64_t _len = _cur_np - cat_r_548_alpha_start;
-      char *_os = malloc(_len + 1); memcpy(_os, _subj_np + cat_r_548_alpha_start, _len); _os[_len] = 0;
-      output_str(_os); free(_os); }
-    goto _snoTarget_ok;
+    var__.ptr = _subj_np + cat_r_548_alpha_start;
+    var__.len = _cur_np - cat_r_548_alpha_start;
+    goto _Target_ok;
 cat_r_548_beta:
     goto assign_c_551_beta;
 alt_r_547_alpha: /* CAT — entr left */
@@ -16726,14 +17714,14 @@ cat_l_553_alpha:
 assign_c_554_alpha: {
     SnoVal _deref_pat = var_get("");
     int _deref_new_cur = match_pattern_at(_deref_pat, _subj_np, (int)_slen_np, (int)_cur_np);
-    if (_deref_new_cur < 0) goto _snoTarget_fail;
+    if (_deref_new_cur < 0) goto _Target_fail;
     deref_555_saved_cursor = _cur_np;
     _cur_np = (int64_t)_deref_new_cur;
     goto cat_l_553_alpha_do_assign;
 }
 assign_c_554_beta:
     _cur_np = deref_555_saved_cursor;
-    goto _snoTarget_fail;
+    goto _Target_fail;
 cat_l_553_alpha_do_assign:
     { int64_t _len = _cur_np - cat_l_553_alpha_start;
       char *_os = malloc(_len + 1); memcpy(_os, _subj_np + cat_l_553_alpha_start, _len); _os[_len] = 0;
@@ -16746,52 +17734,94 @@ cat_r_553_alpha:
     goto assign_c_556_alpha;
 assign_c_556_alpha: {
     deref_557_saved_cur = _cur_np;
-    SnoVal _r_snoExpr = pat_snoExpr(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr)) { _cur_np = deref_557_saved_cur; goto cat_l_553_beta; }
+    SnoVal _r_557 = pat_Expr(_subj_np, _slen_np, &_cur_np, &deref_557_z, 0);
+    if (is_fail(_r_557)) { _cur_np = deref_557_saved_cur; goto cat_l_553_beta; }
     goto cat_r_553_alpha_do_assign;
 }
 assign_c_556_beta: {
     _cur_np = deref_557_saved_cur;
-    SnoVal _r_snoExpr = pat_snoExpr(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr)) { _cur_np = deref_557_saved_cur; goto cat_l_553_beta; }
+    SnoVal _r_557_b = pat_Expr(_subj_np, _slen_np, &_cur_np, &deref_557_z, 1);
+    if (is_fail(_r_557_b)) { _cur_np = deref_557_saved_cur; goto cat_l_553_beta; }
     goto cat_r_553_alpha_do_assign;
 }
 cat_r_553_alpha_do_assign:
-    { int64_t _len = _cur_np - cat_r_553_alpha_start;
-      char *_os = malloc(_len + 1); memcpy(_os, _subj_np + cat_r_553_alpha_start, _len); _os[_len] = 0;
-      output_str(_os); free(_os); }
-    goto _snoTarget_ok;
+    var__.ptr = _subj_np + cat_r_553_alpha_start;
+    var__.len = _cur_np - cat_r_553_alpha_start;
+    goto _Target_ok;
 cat_r_553_beta:
     goto assign_c_556_beta;
-    _snoTarget_ok:;
+    _Target_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoTarget_fail:;
+    _Target_fail:;
         return FAIL_VAL;
+#undef cat_l_548_alpha_start
+#undef deref_550_saved_cursor
+#undef cat_r_548_alpha_start
+#undef deref_552_saved_cur
+#undef var__
+#undef cat_l_553_alpha_start
+#undef deref_555_saved_cursor
+#undef cat_r_553_alpha_start
+#undef deref_557_saved_cur
+#undef deref_552_z
+#undef deref_557_z
+
 }
 
-static SnoVal pat_snoGoto(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t deref_561_saved_cur;
-static int64_t cat_r_560_alpha_saved_cursor;
-static int64_t deref_562_saved_cur;
-static int64_t deref_567_saved_cur;
-static int64_t cat_r_568_alpha_saved_cursor;
-static int64_t deref_572_saved_cur;
-static int64_t deref_573_saved_cur;
-static int64_t deref_579_saved_cur;
-static int64_t deref_580_saved_cur;
-static int64_t deref_581_saved_cur;
-static int64_t cat_r_582_alpha_saved_cursor;
+typedef struct pat_Goto_t {
+    int64_t deref_561_saved_cur;
+    int64_t cat_r_560_alpha_saved_cursor;
+    int64_t deref_562_saved_cur;
+    int64_t deref_567_saved_cur;
+    int64_t cat_r_568_alpha_saved_cursor;
+    int64_t deref_572_saved_cur;
+    int64_t deref_573_saved_cur;
+    int64_t deref_579_saved_cur;
+    int64_t deref_580_saved_cur;
+    int64_t deref_581_saved_cur;
+    int64_t cat_r_582_alpha_saved_cursor;
+    pat_Gray_t *deref_561_z;
+    pat_Gray_t *deref_562_z;
+    pat_Target_t *deref_567_z;
+    pat_SorF_t *deref_572_z;
+    pat_Target_t *deref_573_z;
+    pat_Gray_t *deref_579_z;
+    pat_SorF_t *deref_580_z;
+    pat_Target_t *deref_581_z;
+} pat_Goto_t;
 
-    if (_entry_np == 0) goto _snoGoto_alpha;
-    if (_entry_np == 1) goto _snoGoto_beta;
-    goto _snoGoto_fail;
-_snoGoto_alpha: /* CAT — entr left */
+static SnoVal pat_Goto(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_Goto_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_Goto_t)); }
+    pat_Goto_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define deref_561_saved_cur z->deref_561_saved_cur
+#define cat_r_560_alpha_saved_cursor z->cat_r_560_alpha_saved_cursor
+#define deref_562_saved_cur z->deref_562_saved_cur
+#define deref_567_saved_cur z->deref_567_saved_cur
+#define cat_r_568_alpha_saved_cursor z->cat_r_568_alpha_saved_cursor
+#define deref_572_saved_cur z->deref_572_saved_cur
+#define deref_573_saved_cur z->deref_573_saved_cur
+#define deref_579_saved_cur z->deref_579_saved_cur
+#define deref_580_saved_cur z->deref_580_saved_cur
+#define deref_581_saved_cur z->deref_581_saved_cur
+#define cat_r_582_alpha_saved_cursor z->cat_r_582_alpha_saved_cursor
+#define deref_561_z z->deref_561_z
+#define deref_562_z z->deref_562_z
+#define deref_567_z z->deref_567_z
+#define deref_572_z z->deref_572_z
+#define deref_573_z z->deref_573_z
+#define deref_579_z z->deref_579_z
+#define deref_580_z z->deref_580_z
+#define deref_581_z z->deref_581_z
+
+    if (_entry_np == 0) goto _Goto_alpha;
+    if (_entry_np == 1) goto _Goto_beta;
+    goto _Goto_fail;
+_Goto_alpha: /* CAT — entr left */
     goto cat_l_558_alpha;
-_snoGoto_beta:
+_Goto_beta:
     goto cat_r_558_beta;
 cat_l_558_alpha: /* CAT — entr left */
     goto cat_l_559_alpha;
@@ -16803,14 +17833,14 @@ cat_l_559_beta:
     goto cat_r_560_beta;
 cat_l_560_alpha: {
     deref_561_saved_cur = _cur_np;
-    SnoVal _r_snoGray = pat_snoGray(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoGray)) { _cur_np = deref_561_saved_cur; goto _snoGoto_fail; }
+    SnoVal _r_561 = pat_Gray(_subj_np, _slen_np, &_cur_np, &deref_561_z, 0);
+    if (is_fail(_r_561)) { _cur_np = deref_561_saved_cur; goto _Goto_fail; }
     goto cat_r_560_alpha;
 }
 cat_l_560_beta: {
     _cur_np = deref_561_saved_cur;
-    SnoVal _r_snoGray = pat_snoGray(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoGray)) { _cur_np = deref_561_saved_cur; goto _snoGoto_fail; }
+    SnoVal _r_561_b = pat_Gray(_subj_np, _slen_np, &_cur_np, &deref_561_z, 1);
+    if (is_fail(_r_561_b)) { _cur_np = deref_561_saved_cur; goto _Goto_fail; }
     goto cat_r_560_alpha;
 }
 cat_r_560_alpha:
@@ -16824,14 +17854,14 @@ cat_r_560_beta:
     goto cat_l_560_beta;
 cat_r_559_alpha: {
     deref_562_saved_cur = _cur_np;
-    SnoVal _r_snoGray = pat_snoGray(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoGray)) { _cur_np = deref_562_saved_cur; goto cat_l_559_beta; }
+    SnoVal _r_562 = pat_Gray(_subj_np, _slen_np, &_cur_np, &deref_562_z, 0);
+    if (is_fail(_r_562)) { _cur_np = deref_562_saved_cur; goto cat_l_559_beta; }
     goto cat_r_558_alpha;
 }
 cat_r_559_beta: {
     _cur_np = deref_562_saved_cur;
-    SnoVal _r_snoGray = pat_snoGray(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoGray)) { _cur_np = deref_562_saved_cur; goto cat_l_559_beta; }
+    SnoVal _r_562_b = pat_Gray(_subj_np, _slen_np, &_cur_np, &deref_562_z, 1);
+    if (is_fail(_r_562_b)) { _cur_np = deref_562_saved_cur; goto cat_l_559_beta; }
     goto cat_r_558_alpha;
 }
 cat_r_558_alpha: /* FENCE(p) */
@@ -16850,18 +17880,18 @@ cat_l_565_beta:
     goto cat_r_566_beta;
 cat_l_566_alpha: {
     deref_567_saved_cur = _cur_np;
-    SnoVal _r_snoTarget = pat_snoTarget(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoTarget)) { _cur_np = deref_567_saved_cur; goto alt_r_564_alpha; }
+    SnoVal _r_567 = pat_Target(_subj_np, _slen_np, &_cur_np, &deref_567_z, 0);
+    if (is_fail(_r_567)) { _cur_np = deref_567_saved_cur; goto alt_r_564_alpha; }
     goto cat_r_566_alpha;
 }
 cat_l_566_beta: {
     _cur_np = deref_567_saved_cur;
-    SnoVal _r_snoTarget = pat_snoTarget(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoTarget)) { _cur_np = deref_567_saved_cur; goto alt_r_564_alpha; }
+    SnoVal _r_567_b = pat_Target(_subj_np, _slen_np, &_cur_np, &deref_567_z, 1);
+    if (is_fail(_r_567_b)) { _cur_np = deref_567_saved_cur; goto alt_r_564_alpha; }
     goto cat_r_566_alpha;
 }
 cat_r_566_alpha: /* E_REDUCE & */
-    { SnoVal _reduce_args[2] = {STR_VAL("*(':' snoBrackets)"), INT_VAL(1)};
+    { SnoVal _reduce_args[2] = {STR_VAL("*(':' Brackets)"), INT_VAL(1)};
       aply("Reduce", _reduce_args, 2); }
     goto cat_r_565_alpha;
 cat_r_566_beta: goto cat_l_566_beta;
@@ -16896,30 +17926,30 @@ cat_l_570_beta:
     goto cat_r_571_beta;
 cat_l_571_alpha: {
     deref_572_saved_cur = _cur_np;
-    SnoVal _r_snoSorF = pat_snoSorF(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoSorF)) { _cur_np = deref_572_saved_cur; goto cat_l_558_beta; }
+    SnoVal _r_572 = pat_SorF(_subj_np, _slen_np, &_cur_np, &deref_572_z, 0);
+    if (is_fail(_r_572)) { _cur_np = deref_572_saved_cur; goto cat_l_558_beta; }
     goto cat_r_571_alpha;
 }
 cat_l_571_beta: {
     _cur_np = deref_572_saved_cur;
-    SnoVal _r_snoSorF = pat_snoSorF(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoSorF)) { _cur_np = deref_572_saved_cur; goto cat_l_558_beta; }
+    SnoVal _r_572_b = pat_SorF(_subj_np, _slen_np, &_cur_np, &deref_572_z, 1);
+    if (is_fail(_r_572_b)) { _cur_np = deref_572_saved_cur; goto cat_l_558_beta; }
     goto cat_r_571_alpha;
 }
 cat_r_571_alpha: {
     deref_573_saved_cur = _cur_np;
-    SnoVal _r_snoTarget = pat_snoTarget(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoTarget)) { _cur_np = deref_573_saved_cur; goto cat_l_571_beta; }
+    SnoVal _r_573 = pat_Target(_subj_np, _slen_np, &_cur_np, &deref_573_z, 0);
+    if (is_fail(_r_573)) { _cur_np = deref_573_saved_cur; goto cat_l_571_beta; }
     goto cat_r_570_alpha;
 }
 cat_r_571_beta: {
     _cur_np = deref_573_saved_cur;
-    SnoVal _r_snoTarget = pat_snoTarget(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoTarget)) { _cur_np = deref_573_saved_cur; goto cat_l_571_beta; }
+    SnoVal _r_573_b = pat_Target(_subj_np, _slen_np, &_cur_np, &deref_573_z, 1);
+    if (is_fail(_r_573_b)) { _cur_np = deref_573_saved_cur; goto cat_l_571_beta; }
     goto cat_r_570_alpha;
 }
 cat_r_570_alpha: /* E_REDUCE & */
-    { SnoVal _reduce_args[2] = {STR_VAL("*(':' SorF snoBrackets)"), INT_VAL(1)};
+    { SnoVal _reduce_args[2] = {STR_VAL("*(':' SorF Brackets)"), INT_VAL(1)};
       aply("Reduce", _reduce_args, 2); }
     goto cat_r_569_alpha;
 cat_r_570_beta: goto cat_l_570_beta;
@@ -16943,42 +17973,42 @@ cat_l_577_beta:
     goto cat_r_578_beta;
 cat_l_578_alpha: {
     deref_579_saved_cur = _cur_np;
-    SnoVal _r_snoGray = pat_snoGray(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoGray)) { _cur_np = deref_579_saved_cur; goto alt_r_575_alpha; }
+    SnoVal _r_579 = pat_Gray(_subj_np, _slen_np, &_cur_np, &deref_579_z, 0);
+    if (is_fail(_r_579)) { _cur_np = deref_579_saved_cur; goto alt_r_575_alpha; }
     goto cat_r_578_alpha;
 }
 cat_l_578_beta: {
     _cur_np = deref_579_saved_cur;
-    SnoVal _r_snoGray = pat_snoGray(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoGray)) { _cur_np = deref_579_saved_cur; goto alt_r_575_alpha; }
+    SnoVal _r_579_b = pat_Gray(_subj_np, _slen_np, &_cur_np, &deref_579_z, 1);
+    if (is_fail(_r_579_b)) { _cur_np = deref_579_saved_cur; goto alt_r_575_alpha; }
     goto cat_r_578_alpha;
 }
 cat_r_578_alpha: {
     deref_580_saved_cur = _cur_np;
-    SnoVal _r_snoSorF = pat_snoSorF(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoSorF)) { _cur_np = deref_580_saved_cur; goto cat_l_578_beta; }
+    SnoVal _r_580 = pat_SorF(_subj_np, _slen_np, &_cur_np, &deref_580_z, 0);
+    if (is_fail(_r_580)) { _cur_np = deref_580_saved_cur; goto cat_l_578_beta; }
     goto cat_r_577_alpha;
 }
 cat_r_578_beta: {
     _cur_np = deref_580_saved_cur;
-    SnoVal _r_snoSorF = pat_snoSorF(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoSorF)) { _cur_np = deref_580_saved_cur; goto cat_l_578_beta; }
+    SnoVal _r_580_b = pat_SorF(_subj_np, _slen_np, &_cur_np, &deref_580_z, 1);
+    if (is_fail(_r_580_b)) { _cur_np = deref_580_saved_cur; goto cat_l_578_beta; }
     goto cat_r_577_alpha;
 }
 cat_r_577_alpha: {
     deref_581_saved_cur = _cur_np;
-    SnoVal _r_snoTarget = pat_snoTarget(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoTarget)) { _cur_np = deref_581_saved_cur; goto cat_l_577_beta; }
+    SnoVal _r_581 = pat_Target(_subj_np, _slen_np, &_cur_np, &deref_581_z, 0);
+    if (is_fail(_r_581)) { _cur_np = deref_581_saved_cur; goto cat_l_577_beta; }
     goto cat_r_576_alpha;
 }
 cat_r_577_beta: {
     _cur_np = deref_581_saved_cur;
-    SnoVal _r_snoTarget = pat_snoTarget(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoTarget)) { _cur_np = deref_581_saved_cur; goto cat_l_577_beta; }
+    SnoVal _r_581_b = pat_Target(_subj_np, _slen_np, &_cur_np, &deref_581_z, 1);
+    if (is_fail(_r_581_b)) { _cur_np = deref_581_saved_cur; goto cat_l_577_beta; }
     goto cat_r_576_alpha;
 }
 cat_r_576_alpha: /* E_REDUCE & */
-    { SnoVal _reduce_args[2] = {STR_VAL("*(':' SorF snoBrackets)"), INT_VAL(1)};
+    { SnoVal _reduce_args[2] = {STR_VAL("*(':' SorF Brackets)"), INT_VAL(1)};
       aply("Reduce", _reduce_args, 2); }
     goto fence_after_574;
 cat_r_576_beta: goto cat_l_576_beta;
@@ -17004,177 +18034,290 @@ fence_after_574:
 cat_r_569_beta:
     goto cat_l_569_beta;
 fence_after_563:
-    goto _snoGoto_ok;
+    goto _Goto_ok;
 cat_r_558_beta:
     goto cat_l_558_beta;
-    _snoGoto_ok:;
+    _Goto_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoGoto_fail:;
+    _Goto_fail:;
         return FAIL_VAL;
+#undef deref_561_saved_cur
+#undef cat_r_560_alpha_saved_cursor
+#undef deref_562_saved_cur
+#undef deref_567_saved_cur
+#undef cat_r_568_alpha_saved_cursor
+#undef deref_572_saved_cur
+#undef deref_573_saved_cur
+#undef deref_579_saved_cur
+#undef deref_580_saved_cur
+#undef deref_581_saved_cur
+#undef cat_r_582_alpha_saved_cursor
+#undef deref_561_z
+#undef deref_562_z
+#undef deref_567_z
+#undef deref_572_z
+#undef deref_573_z
+#undef deref_579_z
+#undef deref_580_z
+#undef deref_581_z
+
 }
 
-static SnoVal pat_snoControl(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t cat_l_583_alpha_saved_cursor;
-static int64_t cat_r_583_alpha_saved_cursor;
+typedef struct pat_Control_t {
+    int64_t cat_l_583_alpha_saved_cursor;
+    int64_t cat_r_583_alpha_saved_cursor;
+} pat_Control_t;
 
-    if (_entry_np == 0) goto _snoControl_alpha;
-    if (_entry_np == 1) goto _snoControl_beta;
-    goto _snoControl_fail;
-_snoControl_alpha: /* CAT — entr left */
+static SnoVal pat_Control(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_Control_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_Control_t)); }
+    pat_Control_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define cat_l_583_alpha_saved_cursor z->cat_l_583_alpha_saved_cursor
+#define cat_r_583_alpha_saved_cursor z->cat_r_583_alpha_saved_cursor
+
+    if (_entry_np == 0) goto _Control_alpha;
+    if (_entry_np == 1) goto _Control_beta;
+    goto _Control_fail;
+_Control_alpha: /* CAT — entr left */
     goto cat_l_583_alpha;
-_snoControl_beta:
+_Control_beta:
     goto cat_r_583_beta;
 cat_l_583_alpha:
-    if (_cur_np + 1 > _slen_np) goto _snoControl_fail;
-    if (_subj_np[_cur_np] != '-') goto _snoControl_fail;
+    if (_cur_np + 1 > _slen_np) goto _Control_fail;
+    if (_subj_np[_cur_np] != '-') goto _Control_fail;
     cat_l_583_alpha_saved_cursor = _cur_np;
     _cur_np += 1;
     goto cat_r_583_alpha;
 cat_l_583_beta:
     _cur_np = cat_l_583_alpha_saved_cursor;
-    goto _snoControl_fail;
+    goto _Control_fail;
 cat_r_583_alpha:
     cat_r_583_alpha_saved_cursor = _cur_np;
     while (_cur_np < _slen_np && !strchr(to_str(concat_sv(STR_VAL(to_str(var_get("nl"))), STR_VAL(";"))), _subj_np[_cur_np])) _cur_np++;
     if (_cur_np >= _slen_np) { _cur_np = cat_r_583_alpha_saved_cursor; goto cat_l_583_beta; }
-    goto _snoControl_ok;
+    goto _Control_ok;
 cat_r_583_beta:
     _cur_np = cat_r_583_alpha_saved_cursor;
     goto cat_l_583_beta;
-    _snoControl_ok:;
+    _Control_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoControl_fail:;
+    _Control_fail:;
         return FAIL_VAL;
+#undef cat_l_583_alpha_saved_cursor
+#undef cat_r_583_alpha_saved_cursor
+
 }
 
-static SnoVal pat_snoComment(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t cat_l_584_alpha_saved_cursor;
-static int64_t cat_r_584_alpha_saved_cursor;
+typedef struct pat_Comment_t {
+    int64_t cat_l_584_alpha_saved_cursor;
+    int64_t cat_r_584_alpha_saved_cursor;
+} pat_Comment_t;
 
-    if (_entry_np == 0) goto _snoComment_alpha;
-    if (_entry_np == 1) goto _snoComment_beta;
-    goto _snoComment_fail;
-_snoComment_alpha: /* CAT — entr left */
+static SnoVal pat_Comment(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_Comment_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_Comment_t)); }
+    pat_Comment_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define cat_l_584_alpha_saved_cursor z->cat_l_584_alpha_saved_cursor
+#define cat_r_584_alpha_saved_cursor z->cat_r_584_alpha_saved_cursor
+
+    if (_entry_np == 0) goto _Comment_alpha;
+    if (_entry_np == 1) goto _Comment_beta;
+    goto _Comment_fail;
+_Comment_alpha: /* CAT — entr left */
     goto cat_l_584_alpha;
-_snoComment_beta:
+_Comment_beta:
     goto cat_r_584_beta;
 cat_l_584_alpha:
-    if (_cur_np + 1 > _slen_np) goto _snoComment_fail;
-    if (_subj_np[_cur_np] != '*') goto _snoComment_fail;
+    if (_cur_np + 1 > _slen_np) goto _Comment_fail;
+    if (_subj_np[_cur_np] != '*') goto _Comment_fail;
     cat_l_584_alpha_saved_cursor = _cur_np;
     _cur_np += 1;
     goto cat_r_584_alpha;
 cat_l_584_beta:
     _cur_np = cat_l_584_alpha_saved_cursor;
-    goto _snoComment_fail;
+    goto _Comment_fail;
 cat_r_584_alpha:
     cat_r_584_alpha_saved_cursor = _cur_np;
     while (_cur_np < _slen_np && !strchr(to_str(var_get("nl")), _subj_np[_cur_np])) _cur_np++;
     if (_cur_np >= _slen_np) { _cur_np = cat_r_584_alpha_saved_cursor; goto cat_l_584_beta; }
-    goto _snoComment_ok;
+    goto _Comment_ok;
 cat_r_584_beta:
     _cur_np = cat_r_584_alpha_saved_cursor;
     goto cat_l_584_beta;
-    _snoComment_ok:;
+    _Comment_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoComment_fail:;
+    _Comment_fail:;
         return FAIL_VAL;
+#undef cat_l_584_alpha_saved_cursor
+#undef cat_r_584_alpha_saved_cursor
+
 }
 
-static SnoVal pat_snoLabel(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t cat_l_585_alpha_saved_cursor;
-static int64_t cat_r_585_alpha_saved_cursor;
+typedef struct pat_Label_t {
+    int64_t cat_l_585_alpha_saved_cursor;
+    int64_t cat_r_585_alpha_saved_cursor;
+} pat_Label_t;
 
-    if (_entry_np == 0) goto _snoLabel_alpha;
-    if (_entry_np == 1) goto _snoLabel_beta;
-    goto _snoLabel_fail;
-_snoLabel_alpha: /* CAT — entr left */
+static SnoVal pat_Label(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_Label_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_Label_t)); }
+    pat_Label_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define cat_l_585_alpha_saved_cursor z->cat_l_585_alpha_saved_cursor
+#define cat_r_585_alpha_saved_cursor z->cat_r_585_alpha_saved_cursor
+
+    if (_entry_np == 0) goto _Label_alpha;
+    if (_entry_np == 1) goto _Label_beta;
+    goto _Label_fail;
+_Label_alpha: /* CAT — entr left */
     goto cat_l_585_alpha;
-_snoLabel_beta:
+_Label_beta:
     goto cat_r_585_beta;
 cat_l_585_alpha:
     cat_l_585_alpha_saved_cursor = _cur_np;
     while (_cur_np < _slen_np && !strchr(to_str(concat_sv(STR_VAL(to_str(concat_sv(STR_VAL(to_str(concat_sv(STR_VAL(" "), STR_VAL(to_str(var_get("tab")))))), STR_VAL(to_str(var_get("nl")))))), STR_VAL(";"))), _subj_np[_cur_np])) _cur_np++;
-    if (_cur_np >= _slen_np) { _cur_np = cat_l_585_alpha_saved_cursor; goto _snoLabel_fail; }
+    if (_cur_np >= _slen_np) { _cur_np = cat_l_585_alpha_saved_cursor; goto _Label_fail; }
     goto cat_r_585_alpha;
 cat_l_585_beta:
     _cur_np = cat_l_585_alpha_saved_cursor;
-    goto _snoLabel_fail;
+    goto _Label_fail;
 cat_r_585_alpha:
-    if (_cur_np + 8 > _slen_np) goto cat_l_585_beta;
-    if (memcmp(_subj_np + _cur_np, "snoLabel", 8) != 0) goto cat_l_585_beta;
+    if (_cur_np + 5 > _slen_np) goto cat_l_585_beta;
+    if (memcmp(_subj_np + _cur_np, "Label", 5) != 0) goto cat_l_585_beta;
     cat_r_585_alpha_saved_cursor = _cur_np;
-    _cur_np += 8;
-    goto _snoLabel_ok;
+    _cur_np += 5;
+    goto _Label_ok;
 cat_r_585_beta:
     _cur_np = cat_r_585_alpha_saved_cursor;
     goto cat_l_585_beta;
-    _snoLabel_ok:;
+    _Label_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoLabel_fail:;
+    _Label_fail:;
         return FAIL_VAL;
+#undef cat_l_585_alpha_saved_cursor
+#undef cat_r_585_alpha_saved_cursor
+
 }
 
-static SnoVal pat_snoStmt(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t deref_589_saved_cur;
-static int64_t deref_593_saved_cur;
-static int64_t deref_594_saved_cur;
-static int64_t cat_r_600_alpha_saved_cursor;
-static int64_t deref_601_saved_cur;
-static int64_t cat_l_605_alpha_saved_cursor;
-static int64_t cat_r_605_alpha_saved_cursor;
-static int64_t deref_606_saved_cur;
-static int64_t deref_607_saved_cur;
-static int64_t cat_l_609_alpha_saved_cursor;
-static int64_t cat_r_609_alpha_saved_cursor;
-static int64_t cat_r_610_alpha_saved_cursor;
-static int64_t deref_614_saved_cursor;
-static int64_t deref_615_saved_cur;
-static int64_t deref_616_saved_cur;
-static int64_t deref_620_saved_cur;
-static int64_t cat_l_624_alpha_saved_cursor;
-static int64_t cat_r_624_alpha_saved_cursor;
-static int64_t deref_625_saved_cur;
-static int64_t deref_626_saved_cur;
-static int64_t cat_l_628_alpha_saved_cursor;
-static int64_t cat_r_628_alpha_saved_cursor;
-static int64_t cat_r_629_alpha_saved_cursor;
-static int64_t cat_r_631_alpha_saved_cursor;
-static int64_t cat_r_632_alpha_saved_cursor;
-static int64_t cat_r_635_alpha_saved_cursor;
-static int64_t cat_r_636_alpha_saved_cursor;
-static int64_t cat_r_637_alpha_saved_cursor;
-static int64_t cat_r_641_alpha_saved_cursor;
-static int64_t cat_r_642_alpha_saved_cursor;
-static int64_t cat_r_643_alpha_saved_cursor;
-static int64_t cat_r_644_alpha_saved_cursor;
-static int64_t deref_647_saved_cur;
-static int64_t cat_r_649_alpha_saved_cursor;
-static int64_t cat_r_650_alpha_saved_cursor;
-static int64_t deref_651_saved_cur;
+typedef struct pat_Stmt_t {
+    int64_t deref_589_saved_cur;
+    int64_t deref_593_saved_cur;
+    int64_t deref_594_saved_cur;
+    int64_t cat_r_600_alpha_saved_cursor;
+    int64_t deref_601_saved_cur;
+    int64_t cat_l_605_alpha_saved_cursor;
+    int64_t cat_r_605_alpha_saved_cursor;
+    int64_t deref_606_saved_cur;
+    int64_t deref_607_saved_cur;
+    int64_t cat_l_609_alpha_saved_cursor;
+    int64_t cat_r_609_alpha_saved_cursor;
+    int64_t cat_r_610_alpha_saved_cursor;
+    int64_t deref_614_saved_cursor;
+    int64_t deref_615_saved_cur;
+    int64_t deref_616_saved_cur;
+    int64_t deref_620_saved_cur;
+    int64_t cat_l_624_alpha_saved_cursor;
+    int64_t cat_r_624_alpha_saved_cursor;
+    int64_t deref_625_saved_cur;
+    int64_t deref_626_saved_cur;
+    int64_t cat_l_628_alpha_saved_cursor;
+    int64_t cat_r_628_alpha_saved_cursor;
+    int64_t cat_r_629_alpha_saved_cursor;
+    int64_t cat_r_631_alpha_saved_cursor;
+    int64_t cat_r_632_alpha_saved_cursor;
+    int64_t cat_r_635_alpha_saved_cursor;
+    int64_t cat_r_636_alpha_saved_cursor;
+    int64_t cat_r_637_alpha_saved_cursor;
+    int64_t cat_r_641_alpha_saved_cursor;
+    int64_t cat_r_642_alpha_saved_cursor;
+    int64_t cat_r_643_alpha_saved_cursor;
+    int64_t cat_r_644_alpha_saved_cursor;
+    int64_t deref_647_saved_cur;
+    int64_t cat_r_649_alpha_saved_cursor;
+    int64_t cat_r_650_alpha_saved_cursor;
+    int64_t deref_651_saved_cur;
+    pat_Label_t *deref_589_z;
+    pat_White_t *deref_593_z;
+    pat_Expr14_t *deref_594_z;
+    pat_White_t *deref_601_z;
+    pat_White_t *deref_606_z;
+    pat_Expr_t *deref_607_z;
+    pat_White_t *deref_615_z;
+    pat_Expr1_t *deref_616_z;
+    pat_White_t *deref_620_z;
+    pat_White_t *deref_625_z;
+    pat_Expr_t *deref_626_z;
+    pat_Goto_t *deref_647_z;
+    pat_Gray_t *deref_651_z;
+} pat_Stmt_t;
 
-    if (_entry_np == 0) goto _snoStmt_alpha;
-    if (_entry_np == 1) goto _snoStmt_beta;
-    goto _snoStmt_fail;
-_snoStmt_alpha: /* CAT — entr left */
+static SnoVal pat_Stmt(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_Stmt_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_Stmt_t)); }
+    pat_Stmt_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define deref_589_saved_cur z->deref_589_saved_cur
+#define deref_593_saved_cur z->deref_593_saved_cur
+#define deref_594_saved_cur z->deref_594_saved_cur
+#define cat_r_600_alpha_saved_cursor z->cat_r_600_alpha_saved_cursor
+#define deref_601_saved_cur z->deref_601_saved_cur
+#define cat_l_605_alpha_saved_cursor z->cat_l_605_alpha_saved_cursor
+#define cat_r_605_alpha_saved_cursor z->cat_r_605_alpha_saved_cursor
+#define deref_606_saved_cur z->deref_606_saved_cur
+#define deref_607_saved_cur z->deref_607_saved_cur
+#define cat_l_609_alpha_saved_cursor z->cat_l_609_alpha_saved_cursor
+#define cat_r_609_alpha_saved_cursor z->cat_r_609_alpha_saved_cursor
+#define cat_r_610_alpha_saved_cursor z->cat_r_610_alpha_saved_cursor
+#define deref_614_saved_cursor z->deref_614_saved_cursor
+#define deref_615_saved_cur z->deref_615_saved_cur
+#define deref_616_saved_cur z->deref_616_saved_cur
+#define deref_620_saved_cur z->deref_620_saved_cur
+#define cat_l_624_alpha_saved_cursor z->cat_l_624_alpha_saved_cursor
+#define cat_r_624_alpha_saved_cursor z->cat_r_624_alpha_saved_cursor
+#define deref_625_saved_cur z->deref_625_saved_cur
+#define deref_626_saved_cur z->deref_626_saved_cur
+#define cat_l_628_alpha_saved_cursor z->cat_l_628_alpha_saved_cursor
+#define cat_r_628_alpha_saved_cursor z->cat_r_628_alpha_saved_cursor
+#define cat_r_629_alpha_saved_cursor z->cat_r_629_alpha_saved_cursor
+#define cat_r_631_alpha_saved_cursor z->cat_r_631_alpha_saved_cursor
+#define cat_r_632_alpha_saved_cursor z->cat_r_632_alpha_saved_cursor
+#define cat_r_635_alpha_saved_cursor z->cat_r_635_alpha_saved_cursor
+#define cat_r_636_alpha_saved_cursor z->cat_r_636_alpha_saved_cursor
+#define cat_r_637_alpha_saved_cursor z->cat_r_637_alpha_saved_cursor
+#define cat_r_641_alpha_saved_cursor z->cat_r_641_alpha_saved_cursor
+#define cat_r_642_alpha_saved_cursor z->cat_r_642_alpha_saved_cursor
+#define cat_r_643_alpha_saved_cursor z->cat_r_643_alpha_saved_cursor
+#define cat_r_644_alpha_saved_cursor z->cat_r_644_alpha_saved_cursor
+#define deref_647_saved_cur z->deref_647_saved_cur
+#define cat_r_649_alpha_saved_cursor z->cat_r_649_alpha_saved_cursor
+#define cat_r_650_alpha_saved_cursor z->cat_r_650_alpha_saved_cursor
+#define deref_651_saved_cur z->deref_651_saved_cur
+#define deref_589_z z->deref_589_z
+#define deref_593_z z->deref_593_z
+#define deref_594_z z->deref_594_z
+#define deref_601_z z->deref_601_z
+#define deref_606_z z->deref_606_z
+#define deref_607_z z->deref_607_z
+#define deref_615_z z->deref_615_z
+#define deref_616_z z->deref_616_z
+#define deref_620_z z->deref_620_z
+#define deref_625_z z->deref_625_z
+#define deref_626_z z->deref_626_z
+#define deref_647_z z->deref_647_z
+#define deref_651_z z->deref_651_z
+
+    if (_entry_np == 0) goto _Stmt_alpha;
+    if (_entry_np == 1) goto _Stmt_beta;
+    goto _Stmt_fail;
+_Stmt_alpha: /* CAT — entr left */
     goto cat_l_586_alpha;
-_snoStmt_beta:
+_Stmt_beta:
     goto cat_r_586_beta;
 cat_l_586_alpha: /* CAT — entr left */
     goto cat_l_587_alpha;
@@ -17186,14 +18329,14 @@ cat_l_587_beta:
     goto cat_r_588_beta;
 cat_l_588_alpha: {
     deref_589_saved_cur = _cur_np;
-    SnoVal _r_snoLabel = pat_snoLabel(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoLabel)) { _cur_np = deref_589_saved_cur; goto _snoStmt_fail; }
+    SnoVal _r_589 = pat_Label(_subj_np, _slen_np, &_cur_np, &deref_589_z, 0);
+    if (is_fail(_r_589)) { _cur_np = deref_589_saved_cur; goto _Stmt_fail; }
     goto cat_r_588_alpha;
 }
 cat_l_588_beta: {
     _cur_np = deref_589_saved_cur;
-    SnoVal _r_snoLabel = pat_snoLabel(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoLabel)) { _cur_np = deref_589_saved_cur; goto _snoStmt_fail; }
+    SnoVal _r_589_b = pat_Label(_subj_np, _slen_np, &_cur_np, &deref_589_z, 1);
+    if (is_fail(_r_589_b)) { _cur_np = deref_589_saved_cur; goto _Stmt_fail; }
     goto cat_r_588_alpha;
 }
 cat_r_588_alpha: /* ALT — try left */
@@ -17210,26 +18353,26 @@ cat_l_591_beta:
     goto cat_r_592_beta;
 cat_l_592_alpha: {
     deref_593_saved_cur = _cur_np;
-    SnoVal _r_snoWhite = pat_snoWhite(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoWhite)) { _cur_np = deref_593_saved_cur; goto alt_r_590_alpha; }
+    SnoVal _r_593 = pat_White(_subj_np, _slen_np, &_cur_np, &deref_593_z, 0);
+    if (is_fail(_r_593)) { _cur_np = deref_593_saved_cur; goto alt_r_590_alpha; }
     goto cat_r_592_alpha;
 }
 cat_l_592_beta: {
     _cur_np = deref_593_saved_cur;
-    SnoVal _r_snoWhite = pat_snoWhite(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoWhite)) { _cur_np = deref_593_saved_cur; goto alt_r_590_alpha; }
+    SnoVal _r_593_b = pat_White(_subj_np, _slen_np, &_cur_np, &deref_593_z, 1);
+    if (is_fail(_r_593_b)) { _cur_np = deref_593_saved_cur; goto alt_r_590_alpha; }
     goto cat_r_592_alpha;
 }
 cat_r_592_alpha: {
     deref_594_saved_cur = _cur_np;
-    SnoVal _r_snoExpr14 = pat_snoExpr14(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr14)) { _cur_np = deref_594_saved_cur; goto cat_l_592_beta; }
+    SnoVal _r_594 = pat_Expr14(_subj_np, _slen_np, &_cur_np, &deref_594_z, 0);
+    if (is_fail(_r_594)) { _cur_np = deref_594_saved_cur; goto cat_l_592_beta; }
     goto cat_r_591_alpha;
 }
 cat_r_592_beta: {
     _cur_np = deref_594_saved_cur;
-    SnoVal _r_snoExpr14 = pat_snoExpr14(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr14)) { _cur_np = deref_594_saved_cur; goto cat_l_592_beta; }
+    SnoVal _r_594_b = pat_Expr14(_subj_np, _slen_np, &_cur_np, &deref_594_z, 1);
+    if (is_fail(_r_594_b)) { _cur_np = deref_594_saved_cur; goto cat_l_592_beta; }
     goto cat_r_591_alpha;
 }
 cat_r_591_alpha: /* FENCE(p) */
@@ -17269,14 +18412,14 @@ cat_r_600_beta:
     goto cat_l_600_beta;
 cat_r_599_alpha: {
     deref_601_saved_cur = _cur_np;
-    SnoVal _r_snoWhite = pat_snoWhite(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoWhite)) { _cur_np = deref_601_saved_cur; goto cat_l_599_beta; }
+    SnoVal _r_601 = pat_White(_subj_np, _slen_np, &_cur_np, &deref_601_z, 0);
+    if (is_fail(_r_601)) { _cur_np = deref_601_saved_cur; goto cat_l_599_beta; }
     goto cat_r_598_alpha;
 }
 cat_r_599_beta: {
     _cur_np = deref_601_saved_cur;
-    SnoVal _r_snoWhite = pat_snoWhite(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoWhite)) { _cur_np = deref_601_saved_cur; goto cat_l_599_beta; }
+    SnoVal _r_601_b = pat_White(_subj_np, _slen_np, &_cur_np, &deref_601_z, 1);
+    if (is_fail(_r_601_b)) { _cur_np = deref_601_saved_cur; goto cat_l_599_beta; }
     goto cat_r_598_alpha;
 }
 cat_r_598_alpha: /* ALT — try left */
@@ -17315,26 +18458,26 @@ cat_r_605_beta:
     goto cat_l_605_beta;
 cat_r_604_alpha: {
     deref_606_saved_cur = _cur_np;
-    SnoVal _r_snoWhite = pat_snoWhite(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoWhite)) { _cur_np = deref_606_saved_cur; goto cat_l_604_beta; }
+    SnoVal _r_606 = pat_White(_subj_np, _slen_np, &_cur_np, &deref_606_z, 0);
+    if (is_fail(_r_606)) { _cur_np = deref_606_saved_cur; goto cat_l_604_beta; }
     goto cat_r_603_alpha;
 }
 cat_r_604_beta: {
     _cur_np = deref_606_saved_cur;
-    SnoVal _r_snoWhite = pat_snoWhite(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoWhite)) { _cur_np = deref_606_saved_cur; goto cat_l_604_beta; }
+    SnoVal _r_606_b = pat_White(_subj_np, _slen_np, &_cur_np, &deref_606_z, 1);
+    if (is_fail(_r_606_b)) { _cur_np = deref_606_saved_cur; goto cat_l_604_beta; }
     goto cat_r_603_alpha;
 }
 cat_r_603_alpha: {
     deref_607_saved_cur = _cur_np;
-    SnoVal _r_snoExpr = pat_snoExpr(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr)) { _cur_np = deref_607_saved_cur; goto cat_l_603_beta; }
+    SnoVal _r_607 = pat_Expr(_subj_np, _slen_np, &_cur_np, &deref_607_z, 0);
+    if (is_fail(_r_607)) { _cur_np = deref_607_saved_cur; goto cat_l_603_beta; }
     goto fence_after_595;
 }
 cat_r_603_beta: {
     _cur_np = deref_607_saved_cur;
-    SnoVal _r_snoExpr = pat_snoExpr(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr)) { _cur_np = deref_607_saved_cur; goto cat_l_603_beta; }
+    SnoVal _r_607_b = pat_Expr(_subj_np, _slen_np, &_cur_np, &deref_607_z, 1);
+    if (is_fail(_r_607_b)) { _cur_np = deref_607_saved_cur; goto cat_l_603_beta; }
     goto fence_after_595;
 }
 alt_r_602_alpha: /* CAT — entr left */
@@ -17405,26 +18548,26 @@ alt_l_613_beta:
     goto alt_r_613_alpha;
 alt_r_613_alpha: {
     deref_615_saved_cur = _cur_np;
-    SnoVal _r_snoWhite = pat_snoWhite(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoWhite)) { _cur_np = deref_615_saved_cur; goto alt_r_596_alpha; }
+    SnoVal _r_615 = pat_White(_subj_np, _slen_np, &_cur_np, &deref_615_z, 0);
+    if (is_fail(_r_615)) { _cur_np = deref_615_saved_cur; goto alt_r_596_alpha; }
     goto cat_r_612_alpha;
 }
 alt_r_613_beta: {
     _cur_np = deref_615_saved_cur;
-    SnoVal _r_snoWhite = pat_snoWhite(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoWhite)) { _cur_np = deref_615_saved_cur; goto alt_r_596_alpha; }
+    SnoVal _r_615_b = pat_White(_subj_np, _slen_np, &_cur_np, &deref_615_z, 1);
+    if (is_fail(_r_615_b)) { _cur_np = deref_615_saved_cur; goto alt_r_596_alpha; }
     goto cat_r_612_alpha;
 }
 cat_r_612_alpha: {
     deref_616_saved_cur = _cur_np;
-    SnoVal _r_snoExpr1 = pat_snoExpr1(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr1)) { _cur_np = deref_616_saved_cur; goto cat_l_612_beta; }
+    SnoVal _r_616 = pat_Expr1(_subj_np, _slen_np, &_cur_np, &deref_616_z, 0);
+    if (is_fail(_r_616)) { _cur_np = deref_616_saved_cur; goto cat_l_612_beta; }
     goto cat_r_611_alpha;
 }
 cat_r_612_beta: {
     _cur_np = deref_616_saved_cur;
-    SnoVal _r_snoExpr1 = pat_snoExpr1(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr1)) { _cur_np = deref_616_saved_cur; goto cat_l_612_beta; }
+    SnoVal _r_616_b = pat_Expr1(_subj_np, _slen_np, &_cur_np, &deref_616_z, 1);
+    if (is_fail(_r_616_b)) { _cur_np = deref_616_saved_cur; goto cat_l_612_beta; }
     goto cat_r_611_alpha;
 }
 cat_r_611_alpha: /* FENCE(p) */
@@ -17439,14 +18582,14 @@ alt_l_618_beta:
     goto cat_r_619_beta;
 cat_l_619_alpha: {
     deref_620_saved_cur = _cur_np;
-    SnoVal _r_snoWhite = pat_snoWhite(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoWhite)) { _cur_np = deref_620_saved_cur; goto alt_r_618_alpha; }
+    SnoVal _r_620 = pat_White(_subj_np, _slen_np, &_cur_np, &deref_620_z, 0);
+    if (is_fail(_r_620)) { _cur_np = deref_620_saved_cur; goto alt_r_618_alpha; }
     goto cat_r_619_alpha;
 }
 cat_l_619_beta: {
     _cur_np = deref_620_saved_cur;
-    SnoVal _r_snoWhite = pat_snoWhite(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoWhite)) { _cur_np = deref_620_saved_cur; goto alt_r_618_alpha; }
+    SnoVal _r_620_b = pat_White(_subj_np, _slen_np, &_cur_np, &deref_620_z, 1);
+    if (is_fail(_r_620_b)) { _cur_np = deref_620_saved_cur; goto alt_r_618_alpha; }
     goto cat_r_619_alpha;
 }
 cat_r_619_alpha: /* ALT — try left */
@@ -17485,26 +18628,26 @@ cat_r_624_beta:
     goto cat_l_624_beta;
 cat_r_623_alpha: {
     deref_625_saved_cur = _cur_np;
-    SnoVal _r_snoWhite = pat_snoWhite(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoWhite)) { _cur_np = deref_625_saved_cur; goto cat_l_623_beta; }
+    SnoVal _r_625 = pat_White(_subj_np, _slen_np, &_cur_np, &deref_625_z, 0);
+    if (is_fail(_r_625)) { _cur_np = deref_625_saved_cur; goto cat_l_623_beta; }
     goto cat_r_622_alpha;
 }
 cat_r_623_beta: {
     _cur_np = deref_625_saved_cur;
-    SnoVal _r_snoWhite = pat_snoWhite(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoWhite)) { _cur_np = deref_625_saved_cur; goto cat_l_623_beta; }
+    SnoVal _r_625_b = pat_White(_subj_np, _slen_np, &_cur_np, &deref_625_z, 1);
+    if (is_fail(_r_625_b)) { _cur_np = deref_625_saved_cur; goto cat_l_623_beta; }
     goto cat_r_622_alpha;
 }
 cat_r_622_alpha: {
     deref_626_saved_cur = _cur_np;
-    SnoVal _r_snoExpr = pat_snoExpr(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoExpr)) { _cur_np = deref_626_saved_cur; goto cat_l_622_beta; }
+    SnoVal _r_626 = pat_Expr(_subj_np, _slen_np, &_cur_np, &deref_626_z, 0);
+    if (is_fail(_r_626)) { _cur_np = deref_626_saved_cur; goto cat_l_622_beta; }
     goto fence_after_617;
 }
 cat_r_622_beta: {
     _cur_np = deref_626_saved_cur;
-    SnoVal _r_snoExpr = pat_snoExpr(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoExpr)) { _cur_np = deref_626_saved_cur; goto cat_l_622_beta; }
+    SnoVal _r_626_b = pat_Expr(_subj_np, _slen_np, &_cur_np, &deref_626_z, 1);
+    if (is_fail(_r_626_b)) { _cur_np = deref_626_saved_cur; goto cat_l_622_beta; }
     goto fence_after_617;
 }
 alt_r_621_alpha: /* CAT — entr left */
@@ -17743,14 +18886,14 @@ fence_p_645_beta:
     goto alt_r_646_beta;
 alt_l_646_alpha: {
     deref_647_saved_cur = _cur_np;
-    SnoVal _r_snoGoto = pat_snoGoto(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoGoto)) { _cur_np = deref_647_saved_cur; goto alt_r_646_alpha; }
+    SnoVal _r_647 = pat_Goto(_subj_np, _slen_np, &_cur_np, &deref_647_z, 0);
+    if (is_fail(_r_647)) { _cur_np = deref_647_saved_cur; goto alt_r_646_alpha; }
     goto fence_after_645;
 }
 alt_l_646_beta: {
     _cur_np = deref_647_saved_cur;
-    SnoVal _r_snoGoto = pat_snoGoto(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoGoto)) { _cur_np = deref_647_saved_cur; goto alt_r_646_alpha; }
+    SnoVal _r_647_b = pat_Goto(_subj_np, _slen_np, &_cur_np, &deref_647_z, 1);
+    if (is_fail(_r_647_b)) { _cur_np = deref_647_saved_cur; goto alt_r_646_alpha; }
     goto fence_after_645;
 }
 alt_r_646_alpha: /* CAT — entr left */
@@ -17797,47 +18940,107 @@ cat_r_587_beta:
     goto cat_l_587_beta;
 cat_r_586_alpha: {
     deref_651_saved_cur = _cur_np;
-    SnoVal _r_snoGray = pat_snoGray(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoGray)) { _cur_np = deref_651_saved_cur; goto cat_l_586_beta; }
-    goto _snoStmt_ok;
+    SnoVal _r_651 = pat_Gray(_subj_np, _slen_np, &_cur_np, &deref_651_z, 0);
+    if (is_fail(_r_651)) { _cur_np = deref_651_saved_cur; goto cat_l_586_beta; }
+    goto _Stmt_ok;
 }
 cat_r_586_beta: {
     _cur_np = deref_651_saved_cur;
-    SnoVal _r_snoGray = pat_snoGray(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoGray)) { _cur_np = deref_651_saved_cur; goto cat_l_586_beta; }
-    goto _snoStmt_ok;
+    SnoVal _r_651_b = pat_Gray(_subj_np, _slen_np, &_cur_np, &deref_651_z, 1);
+    if (is_fail(_r_651_b)) { _cur_np = deref_651_saved_cur; goto cat_l_586_beta; }
+    goto _Stmt_ok;
 }
-    _snoStmt_ok:;
+    _Stmt_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoStmt_fail:;
+    _Stmt_fail:;
         return FAIL_VAL;
+#undef deref_589_saved_cur
+#undef deref_593_saved_cur
+#undef deref_594_saved_cur
+#undef cat_r_600_alpha_saved_cursor
+#undef deref_601_saved_cur
+#undef cat_l_605_alpha_saved_cursor
+#undef cat_r_605_alpha_saved_cursor
+#undef deref_606_saved_cur
+#undef deref_607_saved_cur
+#undef cat_l_609_alpha_saved_cursor
+#undef cat_r_609_alpha_saved_cursor
+#undef cat_r_610_alpha_saved_cursor
+#undef deref_614_saved_cursor
+#undef deref_615_saved_cur
+#undef deref_616_saved_cur
+#undef deref_620_saved_cur
+#undef cat_l_624_alpha_saved_cursor
+#undef cat_r_624_alpha_saved_cursor
+#undef deref_625_saved_cur
+#undef deref_626_saved_cur
+#undef cat_l_628_alpha_saved_cursor
+#undef cat_r_628_alpha_saved_cursor
+#undef cat_r_629_alpha_saved_cursor
+#undef cat_r_631_alpha_saved_cursor
+#undef cat_r_632_alpha_saved_cursor
+#undef cat_r_635_alpha_saved_cursor
+#undef cat_r_636_alpha_saved_cursor
+#undef cat_r_637_alpha_saved_cursor
+#undef cat_r_641_alpha_saved_cursor
+#undef cat_r_642_alpha_saved_cursor
+#undef cat_r_643_alpha_saved_cursor
+#undef cat_r_644_alpha_saved_cursor
+#undef deref_647_saved_cur
+#undef cat_r_649_alpha_saved_cursor
+#undef cat_r_650_alpha_saved_cursor
+#undef deref_651_saved_cur
+#undef deref_589_z
+#undef deref_593_z
+#undef deref_594_z
+#undef deref_601_z
+#undef deref_606_z
+#undef deref_607_z
+#undef deref_615_z
+#undef deref_616_z
+#undef deref_620_z
+#undef deref_625_z
+#undef deref_626_z
+#undef deref_647_z
+#undef deref_651_z
+
 }
 
-static SnoVal pat_snoCommands(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t deref_653_saved_cur;
-static int64_t deref_656_saved_cur;
+typedef struct pat_Commands_t {
+    int64_t deref_653_saved_cur;
+    int64_t deref_656_saved_cur;
+    pat_Command_t *deref_653_z;
+    pat_Commands_t *deref_656_z;
+} pat_Commands_t;
 
-    if (_entry_np == 0) goto _snoCommands_alpha;
-    if (_entry_np == 1) goto _snoCommands_beta;
-    goto _snoCommands_fail;
-_snoCommands_alpha: /* CAT — entr left */
+static SnoVal pat_Commands(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_Commands_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_Commands_t)); }
+    pat_Commands_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define deref_653_saved_cur z->deref_653_saved_cur
+#define deref_656_saved_cur z->deref_656_saved_cur
+#define deref_653_z z->deref_653_z
+#define deref_656_z z->deref_656_z
+
+    if (_entry_np == 0) goto _Commands_alpha;
+    if (_entry_np == 1) goto _Commands_beta;
+    goto _Commands_fail;
+_Commands_alpha: /* CAT — entr left */
     goto cat_l_652_alpha;
-_snoCommands_beta:
+_Commands_beta:
     goto cat_r_652_beta;
 cat_l_652_alpha: {
     deref_653_saved_cur = _cur_np;
-    SnoVal _r_snoCommand = pat_snoCommand(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoCommand)) { _cur_np = deref_653_saved_cur; goto _snoCommands_fail; }
+    SnoVal _r_653 = pat_Command(_subj_np, _slen_np, &_cur_np, &deref_653_z, 0);
+    if (is_fail(_r_653)) { _cur_np = deref_653_saved_cur; goto _Commands_fail; }
     goto cat_r_652_alpha;
 }
 cat_l_652_beta: {
     _cur_np = deref_653_saved_cur;
-    SnoVal _r_snoCommand = pat_snoCommand(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoCommand)) { _cur_np = deref_653_saved_cur; goto _snoCommands_fail; }
+    SnoVal _r_653_b = pat_Command(_subj_np, _slen_np, &_cur_np, &deref_653_z, 1);
+    if (is_fail(_r_653_b)) { _cur_np = deref_653_saved_cur; goto _Commands_fail; }
     goto cat_r_652_alpha;
 }
 cat_r_652_alpha: /* FENCE(p) */
@@ -17848,14 +19051,14 @@ fence_p_654_beta:
     goto alt_r_655_beta;
 alt_l_655_alpha: {
     deref_656_saved_cur = _cur_np;
-    SnoVal _r_snoCommands = pat_snoCommands(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoCommands)) { _cur_np = deref_656_saved_cur; goto alt_r_655_alpha; }
+    SnoVal _r_656 = pat_Commands(_subj_np, _slen_np, &_cur_np, &deref_656_z, 0);
+    if (is_fail(_r_656)) { _cur_np = deref_656_saved_cur; goto alt_r_655_alpha; }
     goto fence_after_654;
 }
 alt_l_655_beta: {
     _cur_np = deref_656_saved_cur;
-    SnoVal _r_snoCommands = pat_snoCommands(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoCommands)) { _cur_np = deref_656_saved_cur; goto alt_r_655_alpha; }
+    SnoVal _r_656_b = pat_Commands(_subj_np, _slen_np, &_cur_np, &deref_656_z, 1);
+    if (is_fail(_r_656_b)) { _cur_np = deref_656_saved_cur; goto alt_r_655_alpha; }
     goto fence_after_654;
 }
 alt_r_655_alpha: /* pat var epsilon — epsilon */
@@ -17863,37 +19066,59 @@ alt_r_655_alpha: /* pat var epsilon — epsilon */
 alt_r_655_beta:
     goto cat_l_652_beta;
 fence_after_654:
-    goto _snoCommands_ok;
+    goto _Commands_ok;
 cat_r_652_beta:
     goto cat_l_652_beta;
-    _snoCommands_ok:;
+    _Commands_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoCommands_fail:;
+    _Commands_fail:;
         return FAIL_VAL;
+#undef deref_653_saved_cur
+#undef deref_656_saved_cur
+#undef deref_653_z
+#undef deref_656_z
+
 }
 
-static SnoVal pat_snoCommand(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t deref_664_saved_cur;
-static int64_t cat_r_663_alpha_saved_cursor;
-static int64_t deref_668_saved_cur;
-static int64_t cat_r_667_alpha_saved_cursor;
-static int64_t alt_r_669_alpha_saved_cursor;
-static int64_t deref_672_saved_cur;
-static int64_t alt_r_673_alpha_saved_cursor;
+typedef struct pat_Command_t {
+    int64_t deref_664_saved_cur;
+    int64_t cat_r_663_alpha_saved_cursor;
+    int64_t deref_668_saved_cur;
+    int64_t cat_r_667_alpha_saved_cursor;
+    int64_t alt_r_669_alpha_saved_cursor;
+    int64_t deref_672_saved_cur;
+    int64_t alt_r_673_alpha_saved_cursor;
+    pat_Comment_t *deref_664_z;
+    pat_Control_t *deref_668_z;
+    pat_Stmt_t *deref_672_z;
+} pat_Command_t;
 
-    if (_entry_np == 0) goto _snoCommand_alpha;
-    if (_entry_np == 1) goto _snoCommand_beta;
-    goto _snoCommand_fail;
-_snoCommand_alpha: /* CAT — entr left */
+static SnoVal pat_Command(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_Command_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_Command_t)); }
+    pat_Command_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define deref_664_saved_cur z->deref_664_saved_cur
+#define cat_r_663_alpha_saved_cursor z->cat_r_663_alpha_saved_cursor
+#define deref_668_saved_cur z->deref_668_saved_cur
+#define cat_r_667_alpha_saved_cursor z->cat_r_667_alpha_saved_cursor
+#define alt_r_669_alpha_saved_cursor z->alt_r_669_alpha_saved_cursor
+#define deref_672_saved_cur z->deref_672_saved_cur
+#define alt_r_673_alpha_saved_cursor z->alt_r_673_alpha_saved_cursor
+#define deref_664_z z->deref_664_z
+#define deref_668_z z->deref_668_z
+#define deref_672_z z->deref_672_z
+
+    if (_entry_np == 0) goto _Command_alpha;
+    if (_entry_np == 1) goto _Command_beta;
+    goto _Command_fail;
+_Command_alpha: /* CAT — entr left */
     goto cat_l_657_alpha;
-_snoCommand_beta:
+_Command_beta:
     goto cat_r_657_beta;
 cat_l_657_alpha: ninc(); goto cat_r_657_alpha;
-cat_l_657_beta: goto _snoCommand_fail;
+cat_l_657_beta: goto _Command_fail;
 cat_r_657_alpha: /* FENCE(p) */
     goto fence_p_658_alpha;
 fence_p_658_alpha: /* ALT — try left */
@@ -17918,14 +19143,14 @@ cat_l_662_beta:
     goto cat_r_663_beta;
 cat_l_663_alpha: {
     deref_664_saved_cur = _cur_np;
-    SnoVal _r_snoComment = pat_snoComment(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoComment)) { _cur_np = deref_664_saved_cur; goto alt_r_660_alpha; }
+    SnoVal _r_664 = pat_Comment(_subj_np, _slen_np, &_cur_np, &deref_664_z, 0);
+    if (is_fail(_r_664)) { _cur_np = deref_664_saved_cur; goto alt_r_660_alpha; }
     goto cat_r_663_alpha;
 }
 cat_l_663_beta: {
     _cur_np = deref_664_saved_cur;
-    SnoVal _r_snoComment = pat_snoComment(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoComment)) { _cur_np = deref_664_saved_cur; goto alt_r_660_alpha; }
+    SnoVal _r_664_b = pat_Comment(_subj_np, _slen_np, &_cur_np, &deref_664_z, 1);
+    if (is_fail(_r_664_b)) { _cur_np = deref_664_saved_cur; goto alt_r_660_alpha; }
     goto cat_r_663_alpha;
 }
 cat_r_663_alpha:
@@ -17938,7 +19163,7 @@ cat_r_663_beta:
     _cur_np = cat_r_663_alpha_saved_cursor;
     goto cat_l_663_beta;
 cat_r_662_alpha: /* E_REDUCE & */
-    { SnoVal _reduce_args[2] = {STR_VAL("'snoComment'"), INT_VAL(1)};
+    { SnoVal _reduce_args[2] = {STR_VAL("'Comment'"), INT_VAL(1)};
       aply("Reduce", _reduce_args, 2); }
     goto cat_r_661_alpha;
 cat_r_662_beta: goto cat_l_662_beta;
@@ -17960,14 +19185,14 @@ cat_l_666_beta:
     goto cat_r_667_beta;
 cat_l_667_alpha: {
     deref_668_saved_cur = _cur_np;
-    SnoVal _r_snoControl = pat_snoControl(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoControl)) { _cur_np = deref_668_saved_cur; goto alt_r_659_alpha; }
+    SnoVal _r_668 = pat_Control(_subj_np, _slen_np, &_cur_np, &deref_668_z, 0);
+    if (is_fail(_r_668)) { _cur_np = deref_668_saved_cur; goto alt_r_659_alpha; }
     goto cat_r_667_alpha;
 }
 cat_l_667_beta: {
     _cur_np = deref_668_saved_cur;
-    SnoVal _r_snoControl = pat_snoControl(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoControl)) { _cur_np = deref_668_saved_cur; goto alt_r_659_alpha; }
+    SnoVal _r_668_b = pat_Control(_subj_np, _slen_np, &_cur_np, &deref_668_z, 1);
+    if (is_fail(_r_668_b)) { _cur_np = deref_668_saved_cur; goto alt_r_659_alpha; }
     goto cat_r_667_alpha;
 }
 cat_r_667_alpha:
@@ -17980,7 +19205,7 @@ cat_r_667_beta:
     _cur_np = cat_r_667_alpha_saved_cursor;
     goto cat_l_667_beta;
 cat_r_666_alpha: /* E_REDUCE & */
-    { SnoVal _reduce_args[2] = {STR_VAL("'snoControl'"), INT_VAL(1)};
+    { SnoVal _reduce_args[2] = {STR_VAL("'Control'"), INT_VAL(1)};
       aply("Reduce", _reduce_args, 2); }
     goto cat_r_665_alpha;
 cat_r_666_beta: goto cat_l_666_beta;
@@ -18011,18 +19236,18 @@ cat_l_670_beta:
     goto cat_r_671_beta;
 cat_l_671_alpha: {
     deref_672_saved_cur = _cur_np;
-    SnoVal _r_snoStmt = pat_snoStmt(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoStmt)) { _cur_np = deref_672_saved_cur; goto cat_l_657_beta; }
+    SnoVal _r_672 = pat_Stmt(_subj_np, _slen_np, &_cur_np, &deref_672_z, 0);
+    if (is_fail(_r_672)) { _cur_np = deref_672_saved_cur; goto cat_l_657_beta; }
     goto cat_r_671_alpha;
 }
 cat_l_671_beta: {
     _cur_np = deref_672_saved_cur;
-    SnoVal _r_snoStmt = pat_snoStmt(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoStmt)) { _cur_np = deref_672_saved_cur; goto cat_l_657_beta; }
+    SnoVal _r_672_b = pat_Stmt(_subj_np, _slen_np, &_cur_np, &deref_672_z, 1);
+    if (is_fail(_r_672_b)) { _cur_np = deref_672_saved_cur; goto cat_l_657_beta; }
     goto cat_r_671_alpha;
 }
 cat_r_671_alpha: /* E_REDUCE & */
-    { SnoVal _reduce_args[2] = {STR_VAL("'snoStmt'"), INT_VAL(7)};
+    { SnoVal _reduce_args[2] = {STR_VAL("'Stmt'"), INT_VAL(7)};
       aply("Reduce", _reduce_args, 2); }
     goto cat_r_670_alpha;
 cat_r_671_beta: goto cat_l_671_beta;
@@ -18044,30 +19269,50 @@ alt_r_673_beta:
     _cur_np = alt_r_673_alpha_saved_cursor;
     goto cat_l_670_beta;
 fence_after_658:
-    goto _snoCommand_ok;
+    goto _Command_ok;
 cat_r_657_beta:
     goto cat_l_657_beta;
-    _snoCommand_ok:;
+    _Command_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoCommand_fail:;
+    _Command_fail:;
         return FAIL_VAL;
+#undef deref_664_saved_cur
+#undef cat_r_663_alpha_saved_cursor
+#undef deref_668_saved_cur
+#undef cat_r_667_alpha_saved_cursor
+#undef alt_r_669_alpha_saved_cursor
+#undef deref_672_saved_cur
+#undef alt_r_673_alpha_saved_cursor
+#undef deref_664_z
+#undef deref_668_z
+#undef deref_672_z
+
 }
 
-static SnoVal pat_snoParse(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int cat_r_676_alpha_depth;
-static int64_t cat_r_676_alpha_cursors[64];
-static int64_t deref_678_saved_cur;
+typedef struct pat_Parse_t {
+    int cat_r_676_alpha_depth;
+    int64_t cat_r_676_alpha_cursors[64];
+    int64_t deref_678_saved_cur;
+    pat_Command_t *deref_678_z;
+} pat_Parse_t;
 
-    if (_entry_np == 0) goto _snoParse_alpha;
-    if (_entry_np == 1) goto _snoParse_beta;
-    goto _snoParse_fail;
-_snoParse_alpha: /* CAT — entr left */
+static SnoVal pat_Parse(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_Parse_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_Parse_t)); }
+    pat_Parse_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define cat_r_676_alpha_depth z->cat_r_676_alpha_depth
+#define cat_r_676_alpha_cursors z->cat_r_676_alpha_cursors
+#define deref_678_saved_cur z->deref_678_saved_cur
+#define deref_678_z z->deref_678_z
+
+    if (_entry_np == 0) goto _Parse_alpha;
+    if (_entry_np == 1) goto _Parse_beta;
+    goto _Parse_fail;
+_Parse_alpha: /* CAT — entr left */
     goto cat_l_674_alpha;
-_snoParse_beta:
+_Parse_beta:
     goto cat_r_674_beta;
 cat_l_674_alpha: /* CAT — entr left */
     goto cat_l_675_alpha;
@@ -18078,7 +19323,7 @@ cat_l_675_alpha: /* CAT — entr left */
 cat_l_675_beta:
     goto cat_r_676_beta;
 cat_l_676_alpha: npush(); goto cat_r_676_alpha;
-cat_l_676_beta: goto _snoParse_fail;
+cat_l_676_beta: goto _Parse_fail;
 cat_r_676_alpha:
     cat_r_676_alpha_depth = -1;
     goto cat_r_675_alpha;              /* ARBNO: zero matches -> succeed */
@@ -18095,49 +19340,68 @@ cat_r_676_alpha_child_fail:
     goto cat_l_676_beta;              /* child failed -> ARBNO fails */
 arbno_c_677_alpha: {
     deref_678_saved_cur = _cur_np;
-    SnoVal _r_snoCommand = pat_snoCommand(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoCommand)) { _cur_np = deref_678_saved_cur; goto cat_r_676_alpha_child_fail; }
+    SnoVal _r_678 = pat_Command(_subj_np, _slen_np, &_cur_np, &deref_678_z, 0);
+    if (is_fail(_r_678)) { _cur_np = deref_678_saved_cur; goto cat_r_676_alpha_child_fail; }
     goto cat_r_676_alpha_child_ok;
 }
 arbno_c_677_beta: {
     _cur_np = deref_678_saved_cur;
-    SnoVal _r_snoCommand = pat_snoCommand(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoCommand)) { _cur_np = deref_678_saved_cur; goto cat_r_676_alpha_child_fail; }
+    SnoVal _r_678_b = pat_Command(_subj_np, _slen_np, &_cur_np, &deref_678_z, 1);
+    if (is_fail(_r_678_b)) { _cur_np = deref_678_saved_cur; goto cat_r_676_alpha_child_fail; }
     goto cat_r_676_alpha_child_ok;
 }
 cat_r_675_alpha: /* E_REDUCE & */
-    { SnoVal _reduce_args[2] = {STR_VAL("'snoParse'"), STR_VAL("nTop()")};
+    { SnoVal _reduce_args[2] = {STR_VAL("'Parse'"), STR_VAL("nTop()")};
       aply("Reduce", _reduce_args, 2); }
     goto cat_r_674_alpha;
 cat_r_675_beta: goto cat_l_675_beta;
-cat_r_674_alpha: npop(); goto _snoParse_ok;
+cat_r_674_alpha: npop(); goto _Parse_ok;
 cat_r_674_beta: goto cat_l_674_beta;
-    _snoParse_ok:;
+    _Parse_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoParse_fail:;
+    _Parse_fail:;
         return FAIL_VAL;
+#undef cat_r_676_alpha_depth
+#undef cat_r_676_alpha_cursors
+#undef deref_678_saved_cur
+#undef deref_678_z
+
 }
 
-static SnoVal pat_snoCompiland(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int cat_r_682_alpha_depth;
-static int64_t cat_r_682_alpha_cursors[64];
-static int64_t deref_684_saved_cur;
-static int64_t cat_l_690_alpha_saved_cursor;
-static int64_t cat_r_690_alpha_saved_cursor;
-static int cat_r_686_alpha_depth;
-static int64_t cat_r_686_alpha_cursors[64];
-static int64_t cat_l_692_alpha_saved_cursor;
+typedef struct pat_Compiland_t {
+    int cat_r_682_alpha_depth;
+    int64_t cat_r_682_alpha_cursors[64];
+    int64_t deref_684_saved_cur;
+    int64_t cat_l_690_alpha_saved_cursor;
+    int64_t cat_r_690_alpha_saved_cursor;
+    int cat_r_686_alpha_depth;
+    int64_t cat_r_686_alpha_cursors[64];
+    int64_t cat_l_692_alpha_saved_cursor;
+    pat_Command_t *deref_684_z;
+} pat_Compiland_t;
 
-    if (_entry_np == 0) goto _snoCompiland_alpha;
-    if (_entry_np == 1) goto _snoCompiland_beta;
-    goto _snoCompiland_fail;
-_snoCompiland_alpha: /* CAT — entr left */
+static SnoVal pat_Compiland(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_Compiland_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_Compiland_t)); }
+    pat_Compiland_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define cat_r_682_alpha_depth z->cat_r_682_alpha_depth
+#define cat_r_682_alpha_cursors z->cat_r_682_alpha_cursors
+#define deref_684_saved_cur z->deref_684_saved_cur
+#define cat_l_690_alpha_saved_cursor z->cat_l_690_alpha_saved_cursor
+#define cat_r_690_alpha_saved_cursor z->cat_r_690_alpha_saved_cursor
+#define cat_r_686_alpha_depth z->cat_r_686_alpha_depth
+#define cat_r_686_alpha_cursors z->cat_r_686_alpha_cursors
+#define cat_l_692_alpha_saved_cursor z->cat_l_692_alpha_saved_cursor
+#define deref_684_z z->deref_684_z
+
+    if (_entry_np == 0) goto _Compiland_alpha;
+    if (_entry_np == 1) goto _Compiland_beta;
+    goto _Compiland_fail;
+_Compiland_alpha: /* CAT — entr left */
     goto cat_l_679_alpha;
-_snoCompiland_beta:
+_Compiland_beta:
     goto cat_r_679_beta;
 cat_l_679_alpha: /* CAT — entr left */
     goto cat_l_680_alpha;
@@ -18152,7 +19416,7 @@ cat_l_681_alpha: /* CAT — entr left */
 cat_l_681_beta:
     goto cat_r_682_beta;
 cat_l_682_alpha: npush(); goto cat_r_682_alpha;
-cat_l_682_beta: goto _snoCompiland_fail;
+cat_l_682_beta: goto _Compiland_fail;
 cat_r_682_alpha:
     cat_r_682_alpha_depth = -1;
     goto cat_r_681_alpha;              /* ARBNO: zero matches -> succeed */
@@ -18169,18 +19433,18 @@ cat_r_682_alpha_child_fail:
     goto cat_l_682_beta;              /* child failed -> ARBNO fails */
 arbno_c_683_alpha: {
     deref_684_saved_cur = _cur_np;
-    SnoVal _r_snoCommand = pat_snoCommand(_subj_np, _slen_np, &_cur_np, 0);
-    if (is_fail(_r_snoCommand)) { _cur_np = deref_684_saved_cur; goto cat_r_682_alpha_child_fail; }
+    SnoVal _r_684 = pat_Command(_subj_np, _slen_np, &_cur_np, &deref_684_z, 0);
+    if (is_fail(_r_684)) { _cur_np = deref_684_saved_cur; goto cat_r_682_alpha_child_fail; }
     goto cat_r_682_alpha_child_ok;
 }
 arbno_c_683_beta: {
     _cur_np = deref_684_saved_cur;
-    SnoVal _r_snoCommand = pat_snoCommand(_subj_np, _slen_np, &_cur_np, 1);
-    if (is_fail(_r_snoCommand)) { _cur_np = deref_684_saved_cur; goto cat_r_682_alpha_child_fail; }
+    SnoVal _r_684_b = pat_Command(_subj_np, _slen_np, &_cur_np, &deref_684_z, 1);
+    if (is_fail(_r_684_b)) { _cur_np = deref_684_saved_cur; goto cat_r_682_alpha_child_fail; }
     goto cat_r_682_alpha_child_ok;
 }
 cat_r_681_alpha: /* E_REDUCE & */
-    { SnoVal _reduce_args[2] = {STR_VAL("'snoParse'"), STR_VAL("nTop()")};
+    { SnoVal _reduce_args[2] = {STR_VAL("'Parse'"), STR_VAL("nTop()")};
       aply("Reduce", _reduce_args, 2); }
     goto cat_r_680_alpha;
 cat_r_681_beta: goto cat_l_681_beta;
@@ -18271,48 +19535,67 @@ alt_r_685_alpha: /* pat var epsilon — epsilon */
     goto cat_r_679_alpha;
 alt_r_685_beta:
     goto cat_l_680_beta;
-cat_r_679_alpha: npop(); goto _snoCompiland_ok;
+cat_r_679_alpha: npop(); goto _Compiland_ok;
 cat_r_679_beta: goto cat_l_679_beta;
-    _snoCompiland_ok:;
+    _Compiland_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoCompiland_fail:;
+    _Compiland_fail:;
         return FAIL_VAL;
+#undef cat_r_682_alpha_depth
+#undef cat_r_682_alpha_cursors
+#undef deref_684_saved_cur
+#undef cat_l_690_alpha_saved_cursor
+#undef cat_r_690_alpha_saved_cursor
+#undef cat_r_686_alpha_depth
+#undef cat_r_686_alpha_cursors
+#undef cat_l_692_alpha_saved_cursor
+#undef deref_684_z
+
 }
 
-static SnoVal pat_snoSpace(const char *_subj_np, int64_t _slen_np,
-                  int64_t *_cur_ptr_np, int _entry_np) {
-    int64_t _cur_np = *_cur_ptr_np;
-    /* === static storage === */
-static int64_t alt_l_693_alpha_delta;
-static int64_t alt_l_693_alpha_start;
+typedef struct pat_Space_t {
+    int64_t alt_l_693_alpha_delta;
+    int64_t alt_l_693_alpha_start;
+} pat_Space_t;
 
-    if (_entry_np == 0) goto _snoSpace_alpha;
-    if (_entry_np == 1) goto _snoSpace_beta;
-    goto _snoSpace_fail;
-_snoSpace_alpha: /* ALT — try left */
+static SnoVal pat_Space(const char *_subj_np, int64_t _slen_np,
+                  int64_t *_cur_ptr_np, pat_Space_t **_zz_np, int _entry_np) {
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_Space_t)); }
+    pat_Space_t *z = *_zz_np;
+    int64_t _cur_np = *_cur_ptr_np;
+#define alt_l_693_alpha_delta z->alt_l_693_alpha_delta
+#define alt_l_693_alpha_start z->alt_l_693_alpha_start
+
+    if (_entry_np == 0) goto _Space_alpha;
+    if (_entry_np == 1) goto _Space_beta;
+    goto _Space_fail;
+_Space_alpha: /* ALT — try left */
     goto alt_l_693_alpha;
-_snoSpace_beta:
+_Space_beta:
     goto alt_r_693_beta;
 alt_l_693_alpha:
     alt_l_693_alpha_start = _cur_np;
     while (_cur_np < _slen_np && strchr(to_str(concat_sv(STR_VAL(" "), STR_VAL(to_str(var_get("tab"))))), _subj_np[_cur_np])) _cur_np++;
     alt_l_693_alpha_delta = _cur_np - alt_l_693_alpha_start;
     if (alt_l_693_alpha_delta == 0) goto alt_r_693_alpha;
-    goto _snoSpace_ok;
+    goto _Space_ok;
 alt_l_693_beta:
     if (alt_l_693_alpha_delta <= 1) { _cur_np = alt_l_693_alpha_start; goto alt_r_693_alpha; }
     alt_l_693_alpha_delta--; _cur_np--;
-    goto _snoSpace_ok;
+    goto _Space_ok;
 alt_r_693_alpha: /* pat var epsilon — epsilon */
-    goto _snoSpace_ok;
+    goto _Space_ok;
 alt_r_693_beta:
-    goto _snoSpace_fail;
-    _snoSpace_ok:;
+    goto _Space_fail;
+    _Space_ok:;
         *_cur_ptr_np = _cur_np;
         return STR_VAL("");
-    _snoSpace_fail:;
+    _Space_fail:;
         return FAIL_VAL;
+#undef alt_l_693_alpha_delta
+#undef alt_l_693_alpha_start
+
 }
 
 
@@ -23155,8 +24438,8 @@ static void *stmt_334(void) { /* line 221 */
 SnoVal _v2027 = pat_span(to_str(get(_digits)));
 int _ok2027 = !IS_FAIL(_v2027);
 if(_ok2027) {
-set(_snoInteger, _v2027);
-var_set("snoInteger", _snoInteger);
+set(_Integer, _v2027);
+var_set("Integer", _Integer);
 }
     return (void*)_tramp_next_2026;
 }
@@ -23168,8 +24451,8 @@ static void *stmt_335(void) { /* line 222 */
 SnoVal _v2029 = pat_cat(pat_cat(pat_lit("\""),pat_break(to_str(concat_sv(strv("\""),get(_nl))))),pat_lit("\""));
 int _ok2029 = !IS_FAIL(_v2029);
 if(_ok2029) {
-set(_snoDQ, _v2029);
-var_set("snoDQ", _snoDQ);
+set(_DQ, _v2029);
+var_set("DQ", _DQ);
 }
     return (void*)_tramp_next_2028;
 }
@@ -23181,8 +24464,8 @@ static void *stmt_336(void) { /* line 223 */
 SnoVal _v2031 = pat_cat(pat_cat(pat_lit("'"),pat_break(to_str(concat_sv(strv("'"),get(_nl))))),pat_lit("'"));
 int _ok2031 = !IS_FAIL(_v2031);
 if(_ok2031) {
-set(_snoSQ, _v2031);
-var_set("snoSQ", _snoSQ);
+set(_SQ, _v2031);
+var_set("SQ", _SQ);
 }
     return (void*)_tramp_next_2030;
 }
@@ -23191,11 +24474,11 @@ static char _tramp_sentinel_2032;
 #define _tramp_next_2032 ((void*)&_tramp_sentinel_2032)
 static void *stmt_337(void) { /* line 224 */
 /* line 224 */
-SnoVal _v2033 = pat_alt(pat_ref("snoSQ"),pat_ref("snoDQ"));
+SnoVal _v2033 = pat_alt(pat_ref("SQ"),pat_ref("DQ"));
 int _ok2033 = !IS_FAIL(_v2033);
 if(_ok2033) {
-set(_snoString, _v2033);
-var_set("snoString", _snoString);
+set(_String, _v2033);
+var_set("String", _String);
 }
     return (void*)_tramp_next_2032;
 }
@@ -23207,8 +24490,8 @@ static void *stmt_338(void) { /* line 225 */
 SnoVal _v2035 = pat_alt(pat_cat(pat_cat(pat_cat(pat_cat(pat_span(to_str(get(_digits))),pat_alt(pat_cat(pat_lit("."),pat_fence_p(pat_alt(pat_span(to_str(get(_digits))),pat_var("epsilon")))),pat_var("epsilon"))),pat_alt(pat_lit("E"),pat_lit("e"))),pat_alt(pat_alt(pat_lit("+"),pat_lit("-")),pat_var("epsilon"))),pat_span(to_str(get(_digits)))),pat_cat(pat_cat(pat_span(to_str(get(_digits))),pat_lit(".")),pat_fence_p(pat_alt(pat_span(to_str(get(_digits))),pat_var("epsilon")))));
 int _ok2035 = !IS_FAIL(_v2035);
 if(_ok2035) {
-set(_snoReal, _v2035);
-var_set("snoReal", _snoReal);
+set(_Real, _v2035);
+var_set("Real", _Real);
 }
     return (void*)_tramp_next_2034;
 }
@@ -23220,8 +24503,8 @@ static void *stmt_339(void) { /* line 232 */
 SnoVal _v2037 = pat_cat(pat_any(to_str(concat_sv(kw("UCASE"),kw("LCASE")))),pat_fence_p(pat_alt(pat_span(to_str(concat_sv(concat_sv(concat_sv(concat_sv(strv("."),get(_digits)),kw("UCASE")),strv("_")),kw("LCASE")))),pat_var("epsilon"))));
 int _ok2037 = !IS_FAIL(_v2037);
 if(_ok2037) {
-set(_snoId, _v2037);
-var_set("snoId", _snoId);
+set(_Id, _v2037);
+var_set("Id", _Id);
 }
     return (void*)_tramp_next_2036;
 }
@@ -23233,8 +24516,8 @@ static void *stmt_340(void) { /* line 234 */
 SnoVal _v2039 = aply("SPAN",(SnoVal[]){concat_sv(concat_sv(concat_sv(concat_sv(strv("."),get(_digits)),kw("UCASE")),strv("_")),kw("LCASE"))},1);
 int _ok2039 = !IS_FAIL(_v2039);
 if(_ok2039) {
-set(_snoFunction, _v2039);
-var_set("snoFunction", _snoFunction);
+set(_Function, _v2039);
+var_set("Function", _Function);
 }
     return (void*)_tramp_next_2038;
 }
@@ -23246,8 +24529,8 @@ static void *stmt_341(void) { /* line 236 */
 SnoVal _v2041 = aply("SPAN",(SnoVal[]){concat_sv(concat_sv(concat_sv(concat_sv(strv("."),get(_digits)),kw("UCASE")),strv("_")),kw("LCASE"))},1);
 int _ok2041 = !IS_FAIL(_v2041);
 if(_ok2041) {
-set(_snoBuiltinVar, _v2041);
-var_set("snoBuiltinVar", _snoBuiltinVar);
+set(_BuiltinVar, _v2041);
+var_set("BuiltinVar", _BuiltinVar);
 }
     return (void*)_tramp_next_2040;
 }
@@ -23259,8 +24542,8 @@ static void *stmt_342(void) { /* line 238 */
 SnoVal _v2043 = aply("SPAN",(SnoVal[]){concat_sv(concat_sv(concat_sv(concat_sv(strv("."),get(_digits)),kw("UCASE")),strv("_")),kw("LCASE"))},1);
 int _ok2043 = !IS_FAIL(_v2043);
 if(_ok2043) {
-set(_snoSpecialNm, _v2043);
-var_set("snoSpecialNm", _snoSpecialNm);
+set(_SpecialNm, _v2043);
+var_set("SpecialNm", _SpecialNm);
 }
     return (void*)_tramp_next_2042;
 }
@@ -23272,8 +24555,8 @@ static void *stmt_343(void) { /* line 240 */
 SnoVal _v2045 = concat_sv(strv("&"),aply("SPAN",(SnoVal[]){concat_sv(kw("UCASE"),kw("LCASE"))},1));
 int _ok2045 = !IS_FAIL(_v2045);
 if(_ok2045) {
-set(_snoProtKwd, _v2045);
-var_set("snoProtKwd", _snoProtKwd);
+set(_ProtKwd, _v2045);
+var_set("ProtKwd", _ProtKwd);
 }
     return (void*)_tramp_next_2044;
 }
@@ -23285,8 +24568,8 @@ static void *stmt_344(void) { /* line 241 */
 SnoVal _v2047 = concat_sv(strv("&"),aply("SPAN",(SnoVal[]){concat_sv(kw("UCASE"),kw("LCASE"))},1));
 int _ok2047 = !IS_FAIL(_v2047);
 if(_ok2047) {
-set(_snoUnprotKwd, _v2047);
-var_set("snoUnprotKwd", _snoUnprotKwd);
+set(_UnprotKwd, _v2047);
+var_set("UnprotKwd", _UnprotKwd);
 }
     return (void*)_tramp_next_2046;
 }
@@ -23295,11 +24578,11 @@ static char _tramp_sentinel_2048;
 #define _tramp_next_2048 ((void*)&_tramp_sentinel_2048)
 static void *stmt_345(void) { /* line 243 */
 /* line 243 */
-SnoVal _v2049 = pat_alt(pat_ref("snoWhite"),pat_var("epsilon"));
+SnoVal _v2049 = pat_alt(pat_ref("White"),pat_var("epsilon"));
 int _ok2049 = !IS_FAIL(_v2049);
 if(_ok2049) {
-set(_snoGray, _v2049);
-var_set("snoGray", _snoGray);
+set(_Gray, _v2049);
+var_set("Gray", _Gray);
 }
     return (void*)_tramp_next_2048;
 }
@@ -23311,8 +24594,8 @@ static void *stmt_346(void) { /* line 244 */
 SnoVal _v2051 = pat_alt(pat_cat(pat_span(to_str(concat_sv(strv(" "),get(_tab)))),pat_fence_p(pat_alt(pat_cat(pat_cat(pat_var("nl"),pat_alt(pat_lit("+"),pat_lit("."))),pat_fence_p(pat_alt(pat_span(to_str(concat_sv(strv(" "),get(_tab)))),pat_var("epsilon")))),pat_var("epsilon")))),pat_cat(pat_cat(pat_var("nl"),pat_alt(pat_lit("+"),pat_lit("."))),pat_fence_p(pat_alt(pat_span(to_str(concat_sv(strv(" "),get(_tab)))),pat_var("epsilon")))));
 int _ok2051 = !IS_FAIL(_v2051);
 if(_ok2051) {
-set(_snoWhite, _v2051);
-var_set("snoWhite", _snoWhite);
+set(_White, _v2051);
+var_set("White", _White);
 }
     return (void*)_tramp_next_2050;
 }
@@ -23324,8 +24607,8 @@ static void *stmt_347(void) { /* line 249 */
 SnoVal _v2053 = pat_cat(pat_cat(pat_alt(pat_pos(to_int(vint(0))),pat_lit(" ")),pat_deref(aply("upr",(SnoVal[]){get(_tx)},1))),pat_alt(pat_lit(" "),pat_rpos(to_int(vint(0)))));
 int _ok2053 = !IS_FAIL(_v2053);
 if(_ok2053) {
-set(_snoTxInList, _v2053);
-var_set("snoTxInList", _snoTxInList);
+set(_TxInList, _v2053);
+var_set("TxInList", _TxInList);
 }
     return (void*)_tramp_next_2052;
 }
@@ -23337,8 +24620,8 @@ static void *stmt_348(void) { /* line 250 */
 SnoVal _v2055 = strv("ABORT CONTINUE END FRETURN NRETURN RETURN SCONTINUE START");
 int _ok2055 = !IS_FAIL(_v2055);
 if(_ok2055) {
-set(_snoSpecialNms, _v2055);
-var_set("snoSpecialNms", _snoSpecialNms);
+set(_SpecialNms, _v2055);
+var_set("SpecialNms", _SpecialNms);
 }
     return (void*)_tramp_next_2054;
 }
@@ -23350,8 +24633,8 @@ static void *stmt_349(void) { /* line 251 */
 SnoVal _v2057 = strv("ABORT ARB BAL FAIL FENCE INPUT OUTPUT REM TERMINAL");
 int _ok2057 = !IS_FAIL(_v2057);
 if(_ok2057) {
-set(_snoBuiltinVars, _v2057);
-var_set("snoBuiltinVars", _snoBuiltinVars);
+set(_BuiltinVars, _v2057);
+var_set("BuiltinVars", _BuiltinVars);
 }
     return (void*)_tramp_next_2056;
 }
@@ -23363,8 +24646,8 @@ static void *stmt_350(void) { /* line 252 */
 SnoVal _v2059 = concat_sv(concat_sv(strv("ABORT ALPHABET ARB BAL FAIL FENCE FILE FNCLEVEL "),strv("LASTFILE LASTLINE LASTNO LCASE LINE REM RTNTYPE ")),strv("STCOUNT STNO SUCCEED UCASE"));
 int _ok2059 = !IS_FAIL(_v2059);
 if(_ok2059) {
-set(_snoProtKwds, _v2059);
-var_set("snoProtKwds", _snoProtKwds);
+set(_ProtKwds, _v2059);
+var_set("ProtKwds", _ProtKwds);
 }
     return (void*)_tramp_next_2058;
 }
@@ -23376,8 +24659,8 @@ static void *stmt_351(void) { /* line 255 */
 SnoVal _v2061 = concat_sv(concat_sv(strv("ABEND ANCHOR CASE CODE COMPARE DUMP ERRLIMIT "),strv("ERRTEXT ERRTYPE FTRACE INPUT MAXLNGTH OUTPUT ")),strv("PROFILE STLIMIT TRACE TRIM FULLSCAN"));
 int _ok2061 = !IS_FAIL(_v2061);
 if(_ok2061) {
-set(_snoUnprotKwds, _v2061);
-var_set("snoUnprotKwds", _snoUnprotKwds);
+set(_UnprotKwds, _v2061);
+var_set("UnprotKwds", _UnprotKwds);
 }
     return (void*)_tramp_next_2060;
 }
@@ -23389,8 +24672,8 @@ static void *stmt_352(void) { /* line 258 */
 SnoVal _v2063 = concat_sv(concat_sv(concat_sv(concat_sv(concat_sv(concat_sv(concat_sv(concat_sv(strv("ANY APPLY ARBNO ARG ARRAY ATAN BACKSPACE BREAK BREAKX "),strv("CHAR CHOP CLEAR CODE COLLECT CONVERT COPY COS DATA ")),strv("DATATYPE DATE DEFINE DETACH DIFFER DUMP DUPL EJECT ")),strv("ENDFILE EQ EVAL EXIT EXP FENCE FIELD GE GT HOST ")),strv("IDENT INPUT INTEGER ITEM LE LEN LEQ LGE LGT LLE ")),strv("LLT LN LNE LOAD LOCAL LPAD LT NE NOTANY OPSYN OUTPUT ")),strv("POS PROTOTYPE REMDR REPLACE REVERSE REWIND RPAD RPOS ")),strv("RSORT RTAB SET SETEXIT SIN SIZE SORT SPAN SQRT STOPTR ")),strv("SUBSTR TAB TABLE TAN TIME TRACE TRIM UNLOAD"));
 int _ok2063 = !IS_FAIL(_v2063);
 if(_ok2063) {
-set(_snoFunctions, _v2063);
-var_set("snoFunctions", _snoFunctions);
+set(_Functions, _v2063);
+var_set("Functions", _Functions);
 }
     return (void*)_tramp_next_2062;
 }
@@ -23399,7 +24682,7 @@ static char _tramp_sentinel_2064;
 #define _tramp_next_2064 ((void*)&_tramp_sentinel_2064)
 static void *stmt_353(void) { /* line 268 */
 /* line 268 */
-SnoVal _v2065 = pat_cat(pat_cat(pat_ref("snoWhite"),pat_lit("=")),pat_ref("snoWhite"));
+SnoVal _v2065 = pat_cat(pat_cat(pat_ref("White"),pat_lit("=")),pat_ref("White"));
 int _ok2065 = !IS_FAIL(_v2065);
 if(_ok2065) {
 iset(strv("="),_v2065);
@@ -23411,7 +24694,7 @@ static char _tramp_sentinel_2066;
 #define _tramp_next_2066 ((void*)&_tramp_sentinel_2066)
 static void *stmt_354(void) { /* line 269 */
 /* line 269 */
-SnoVal _v2067 = pat_cat(pat_cat(pat_ref("snoWhite"),pat_lit("?")),pat_ref("snoWhite"));
+SnoVal _v2067 = pat_cat(pat_cat(pat_ref("White"),pat_lit("?")),pat_ref("White"));
 int _ok2067 = !IS_FAIL(_v2067);
 if(_ok2067) {
 iset(strv("?"),_v2067);
@@ -23423,7 +24706,7 @@ static char _tramp_sentinel_2068;
 #define _tramp_next_2068 ((void*)&_tramp_sentinel_2068)
 static void *stmt_355(void) { /* line 270 */
 /* line 270 */
-SnoVal _v2069 = pat_cat(pat_cat(pat_ref("snoWhite"),pat_lit("|")),pat_ref("snoWhite"));
+SnoVal _v2069 = pat_cat(pat_cat(pat_ref("White"),pat_lit("|")),pat_ref("White"));
 int _ok2069 = !IS_FAIL(_v2069);
 if(_ok2069) {
 iset(strv("|"),_v2069);
@@ -23435,7 +24718,7 @@ static char _tramp_sentinel_2070;
 #define _tramp_next_2070 ((void*)&_tramp_sentinel_2070)
 static void *stmt_356(void) { /* line 271 */
 /* line 271 */
-SnoVal _v2071 = pat_cat(pat_cat(pat_ref("snoWhite"),pat_lit("+")),pat_ref("snoWhite"));
+SnoVal _v2071 = pat_cat(pat_cat(pat_ref("White"),pat_lit("+")),pat_ref("White"));
 int _ok2071 = !IS_FAIL(_v2071);
 if(_ok2071) {
 iset(strv("+"),_v2071);
@@ -23447,7 +24730,7 @@ static char _tramp_sentinel_2072;
 #define _tramp_next_2072 ((void*)&_tramp_sentinel_2072)
 static void *stmt_357(void) { /* line 272 */
 /* line 272 */
-SnoVal _v2073 = pat_cat(pat_cat(pat_ref("snoWhite"),pat_lit("-")),pat_ref("snoWhite"));
+SnoVal _v2073 = pat_cat(pat_cat(pat_ref("White"),pat_lit("-")),pat_ref("White"));
 int _ok2073 = !IS_FAIL(_v2073);
 if(_ok2073) {
 iset(strv("-"),_v2073);
@@ -23459,7 +24742,7 @@ static char _tramp_sentinel_2074;
 #define _tramp_next_2074 ((void*)&_tramp_sentinel_2074)
 static void *stmt_358(void) { /* line 273 */
 /* line 273 */
-SnoVal _v2075 = pat_cat(pat_cat(pat_ref("snoWhite"),pat_lit("/")),pat_ref("snoWhite"));
+SnoVal _v2075 = pat_cat(pat_cat(pat_ref("White"),pat_lit("/")),pat_ref("White"));
 int _ok2075 = !IS_FAIL(_v2075);
 if(_ok2075) {
 iset(strv("/"),_v2075);
@@ -23471,7 +24754,7 @@ static char _tramp_sentinel_2076;
 #define _tramp_next_2076 ((void*)&_tramp_sentinel_2076)
 static void *stmt_359(void) { /* line 274 */
 /* line 274 */
-SnoVal _v2077 = pat_cat(pat_cat(pat_ref("snoWhite"),pat_lit("*")),pat_ref("snoWhite"));
+SnoVal _v2077 = pat_cat(pat_cat(pat_ref("White"),pat_lit("*")),pat_ref("White"));
 int _ok2077 = !IS_FAIL(_v2077);
 if(_ok2077) {
 iset(strv("*"),_v2077);
@@ -23483,7 +24766,7 @@ static char _tramp_sentinel_2078;
 #define _tramp_next_2078 ((void*)&_tramp_sentinel_2078)
 static void *stmt_360(void) { /* line 275 */
 /* line 275 */
-SnoVal _v2079 = pat_cat(pat_cat(pat_ref("snoWhite"),pat_lit("^")),pat_ref("snoWhite"));
+SnoVal _v2079 = pat_cat(pat_cat(pat_ref("White"),pat_lit("^")),pat_ref("White"));
 int _ok2079 = !IS_FAIL(_v2079);
 if(_ok2079) {
 iset(strv("^"),_v2079);
@@ -23495,7 +24778,7 @@ static char _tramp_sentinel_2080;
 #define _tramp_next_2080 ((void*)&_tramp_sentinel_2080)
 static void *stmt_361(void) { /* line 276 */
 /* line 276 */
-SnoVal _v2081 = pat_cat(pat_cat(pat_ref("snoWhite"),pat_lit("!")),pat_ref("snoWhite"));
+SnoVal _v2081 = pat_cat(pat_cat(pat_ref("White"),pat_lit("!")),pat_ref("White"));
 int _ok2081 = !IS_FAIL(_v2081);
 if(_ok2081) {
 iset(strv("!"),_v2081);
@@ -23507,7 +24790,7 @@ static char _tramp_sentinel_2082;
 #define _tramp_next_2082 ((void*)&_tramp_sentinel_2082)
 static void *stmt_362(void) { /* line 277 */
 /* line 277 */
-SnoVal _v2083 = pat_cat(pat_cat(pat_ref("snoWhite"),pat_lit("**")),pat_ref("snoWhite"));
+SnoVal _v2083 = pat_cat(pat_cat(pat_ref("White"),pat_lit("**")),pat_ref("White"));
 int _ok2083 = !IS_FAIL(_v2083);
 if(_ok2083) {
 iset(strv("**"),_v2083);
@@ -23519,7 +24802,7 @@ static char _tramp_sentinel_2084;
 #define _tramp_next_2084 ((void*)&_tramp_sentinel_2084)
 static void *stmt_363(void) { /* line 278 */
 /* line 278 */
-SnoVal _v2085 = pat_cat(pat_cat(pat_ref("snoWhite"),pat_lit("$")),pat_ref("snoWhite"));
+SnoVal _v2085 = pat_cat(pat_cat(pat_ref("White"),pat_lit("$")),pat_ref("White"));
 int _ok2085 = !IS_FAIL(_v2085);
 if(_ok2085) {
 iset(strv("$"),_v2085);
@@ -23531,7 +24814,7 @@ static char _tramp_sentinel_2086;
 #define _tramp_next_2086 ((void*)&_tramp_sentinel_2086)
 static void *stmt_364(void) { /* line 279 */
 /* line 279 */
-SnoVal _v2087 = pat_cat(pat_cat(pat_ref("snoWhite"),pat_lit(".")),pat_ref("snoWhite"));
+SnoVal _v2087 = pat_cat(pat_cat(pat_ref("White"),pat_lit(".")),pat_ref("White"));
 int _ok2087 = !IS_FAIL(_v2087);
 if(_ok2087) {
 iset(strv("."),_v2087);
@@ -23543,7 +24826,7 @@ static char _tramp_sentinel_2088;
 #define _tramp_next_2088 ((void*)&_tramp_sentinel_2088)
 static void *stmt_365(void) { /* line 280 */
 /* line 280 */
-SnoVal _v2089 = pat_cat(pat_cat(pat_ref("snoWhite"),pat_lit("&")),pat_ref("snoWhite"));
+SnoVal _v2089 = pat_cat(pat_cat(pat_ref("White"),pat_lit("&")),pat_ref("White"));
 int _ok2089 = !IS_FAIL(_v2089);
 if(_ok2089) {
 iset(strv("&"),_v2089);
@@ -23555,7 +24838,7 @@ static char _tramp_sentinel_2090;
 #define _tramp_next_2090 ((void*)&_tramp_sentinel_2090)
 static void *stmt_366(void) { /* line 281 */
 /* line 281 */
-SnoVal _v2091 = pat_cat(pat_cat(pat_ref("snoWhite"),pat_lit("@")),pat_ref("snoWhite"));
+SnoVal _v2091 = pat_cat(pat_cat(pat_ref("White"),pat_lit("@")),pat_ref("White"));
 int _ok2091 = !IS_FAIL(_v2091);
 if(_ok2091) {
 iset(strv("@"),_v2091);
@@ -23567,7 +24850,7 @@ static char _tramp_sentinel_2092;
 #define _tramp_next_2092 ((void*)&_tramp_sentinel_2092)
 static void *stmt_367(void) { /* line 282 */
 /* line 282 */
-SnoVal _v2093 = pat_cat(pat_cat(pat_ref("snoWhite"),pat_lit("#")),pat_ref("snoWhite"));
+SnoVal _v2093 = pat_cat(pat_cat(pat_ref("White"),pat_lit("#")),pat_ref("White"));
 int _ok2093 = !IS_FAIL(_v2093);
 if(_ok2093) {
 iset(strv("#"),_v2093);
@@ -23579,7 +24862,7 @@ static char _tramp_sentinel_2094;
 #define _tramp_next_2094 ((void*)&_tramp_sentinel_2094)
 static void *stmt_368(void) { /* line 283 */
 /* line 283 */
-SnoVal _v2095 = pat_cat(pat_cat(pat_ref("snoWhite"),pat_lit("%")),pat_ref("snoWhite"));
+SnoVal _v2095 = pat_cat(pat_cat(pat_ref("White"),pat_lit("%")),pat_ref("White"));
 int _ok2095 = !IS_FAIL(_v2095);
 if(_ok2095) {
 iset(strv("%"),_v2095);
@@ -23591,7 +24874,7 @@ static char _tramp_sentinel_2096;
 #define _tramp_next_2096 ((void*)&_tramp_sentinel_2096)
 static void *stmt_369(void) { /* line 284 */
 /* line 284 */
-SnoVal _v2097 = pat_cat(pat_cat(pat_ref("snoWhite"),pat_lit("~")),pat_ref("snoWhite"));
+SnoVal _v2097 = pat_cat(pat_cat(pat_ref("White"),pat_lit("~")),pat_ref("White"));
 int _ok2097 = !IS_FAIL(_v2097);
 if(_ok2097) {
 iset(strv("~"),_v2097);
@@ -23603,7 +24886,7 @@ static char _tramp_sentinel_2098;
 #define _tramp_next_2098 ((void*)&_tramp_sentinel_2098)
 static void *stmt_370(void) { /* line 285 */
 /* line 285 */
-SnoVal _v2099 = pat_cat(pat_cat(pat_ref("snoGray"),pat_lit(",")),pat_ref("snoGray"));
+SnoVal _v2099 = pat_cat(pat_cat(pat_ref("Gray"),pat_lit(",")),pat_ref("Gray"));
 int _ok2099 = !IS_FAIL(_v2099);
 if(_ok2099) {
 iset(strv(","),_v2099);
@@ -23615,7 +24898,7 @@ static char _tramp_sentinel_2100;
 #define _tramp_next_2100 ((void*)&_tramp_sentinel_2100)
 static void *stmt_371(void) { /* line 286 */
 /* line 286 */
-SnoVal _v2101 = pat_cat(pat_lit("("),pat_ref("snoGray"));
+SnoVal _v2101 = pat_cat(pat_lit("("),pat_ref("Gray"));
 int _ok2101 = !IS_FAIL(_v2101);
 if(_ok2101) {
 iset(strv("("),_v2101);
@@ -23627,7 +24910,7 @@ static char _tramp_sentinel_2102;
 #define _tramp_next_2102 ((void*)&_tramp_sentinel_2102)
 static void *stmt_372(void) { /* line 287 */
 /* line 287 */
-SnoVal _v2103 = pat_cat(pat_lit("["),pat_ref("snoGray"));
+SnoVal _v2103 = pat_cat(pat_lit("["),pat_ref("Gray"));
 int _ok2103 = !IS_FAIL(_v2103);
 if(_ok2103) {
 iset(strv("["),_v2103);
@@ -23639,7 +24922,7 @@ static char _tramp_sentinel_2104;
 #define _tramp_next_2104 ((void*)&_tramp_sentinel_2104)
 static void *stmt_373(void) { /* line 288 */
 /* line 288 */
-SnoVal _v2105 = pat_cat(pat_lit("<"),pat_ref("snoGray"));
+SnoVal _v2105 = pat_cat(pat_lit("<"),pat_ref("Gray"));
 int _ok2105 = !IS_FAIL(_v2105);
 if(_ok2105) {
 iset(strv("<"),_v2105);
@@ -23651,7 +24934,7 @@ static char _tramp_sentinel_2106;
 #define _tramp_next_2106 ((void*)&_tramp_sentinel_2106)
 static void *stmt_374(void) { /* line 289 */
 /* line 289 */
-SnoVal _v2107 = pat_cat(pat_ref("snoGray"),pat_lit(")"));
+SnoVal _v2107 = pat_cat(pat_ref("Gray"),pat_lit(")"));
 int _ok2107 = !IS_FAIL(_v2107);
 if(_ok2107) {
 iset(strv(")"),_v2107);
@@ -23663,7 +24946,7 @@ static char _tramp_sentinel_2108;
 #define _tramp_next_2108 ((void*)&_tramp_sentinel_2108)
 static void *stmt_375(void) { /* line 290 */
 /* line 290 */
-SnoVal _v2109 = pat_cat(pat_ref("snoGray"),pat_lit("]"));
+SnoVal _v2109 = pat_cat(pat_ref("Gray"),pat_lit("]"));
 int _ok2109 = !IS_FAIL(_v2109);
 if(_ok2109) {
 iset(strv("]"),_v2109);
@@ -23675,7 +24958,7 @@ static char _tramp_sentinel_2110;
 #define _tramp_next_2110 ((void*)&_tramp_sentinel_2110)
 static void *stmt_376(void) { /* line 291 */
 /* line 291 */
-SnoVal _v2111 = pat_cat(pat_ref("snoGray"),pat_lit(">"));
+SnoVal _v2111 = pat_cat(pat_ref("Gray"),pat_lit(">"));
 int _ok2111 = !IS_FAIL(_v2111);
 if(_ok2111) {
 iset(strv(">"),_v2111);
@@ -23687,11 +24970,11 @@ static char _tramp_sentinel_2112;
 #define _tramp_next_2112 ((void*)&_tramp_sentinel_2112)
 static void *stmt_377(void) { /* line 293 */
 /* line 293 */
-SnoVal _v2113 = pat_cat(pat_cat(pat_cat(pat_user_call("nPush",NULL,0),pat_ref("snoXList")),pat_user_call("reduce",(SnoVal[]){strv("'snoExprList'"),strv("*(GT(nTop(), 1) nTop())")},2)),pat_user_call("nPop",NULL,0));
+SnoVal _v2113 = pat_cat(pat_cat(pat_cat(pat_user_call("nPush",NULL,0),pat_ref("XList")),pat_user_call("reduce",(SnoVal[]){strv("'ExprList'"),strv("*(GT(nTop(), 1) nTop())")},2)),pat_user_call("nPop",NULL,0));
 int _ok2113 = !IS_FAIL(_v2113);
 if(_ok2113) {
-set(_snoExprList, _v2113);
-var_set("snoExprList", _snoExprList);
+set(_ExprList, _v2113);
+var_set("ExprList", _ExprList);
 }
     return (void*)_tramp_next_2112;
 }
@@ -23700,11 +24983,11 @@ static char _tramp_sentinel_2114;
 #define _tramp_next_2114 ((void*)&_tramp_sentinel_2114)
 static void *stmt_378(void) { /* line 297 */
 /* line 297 */
-SnoVal _v2115 = pat_cat(pat_cat(pat_user_call("nInc",NULL,0),pat_alt(pat_ref("snoExpr"),pat_cat(pat_var("epsilon"),pat_lit("")))),pat_fence_p(pat_alt(pat_cat(pat_deref(strv(",")),pat_ref("snoXList")),pat_var("epsilon"))));
+SnoVal _v2115 = pat_cat(pat_cat(pat_user_call("nInc",NULL,0),pat_alt(pat_ref("Expr"),pat_cat(pat_var("epsilon"),pat_lit("")))),pat_fence_p(pat_alt(pat_cat(pat_deref(strv(",")),pat_ref("XList")),pat_var("epsilon"))));
 int _ok2115 = !IS_FAIL(_v2115);
 if(_ok2115) {
-set(_snoXList, _v2115);
-var_set("snoXList", _snoXList);
+set(_XList, _v2115);
+var_set("XList", _XList);
 }
     return (void*)_tramp_next_2114;
 }
@@ -23713,11 +24996,11 @@ static char _tramp_sentinel_2116;
 #define _tramp_next_2116 ((void*)&_tramp_sentinel_2116)
 static void *stmt_379(void) { /* line 298 */
 /* line 298 */
-SnoVal _v2117 = pat_ref("snoExpr0");
+SnoVal _v2117 = pat_ref("Expr0");
 int _ok2117 = !IS_FAIL(_v2117);
 if(_ok2117) {
-set(_snoExpr, _v2117);
-var_set("snoExpr", _snoExpr);
+set(_Expr, _v2117);
+var_set("Expr", _Expr);
 }
     return (void*)_tramp_next_2116;
 }
@@ -23726,11 +25009,11 @@ static char _tramp_sentinel_2118;
 #define _tramp_next_2118 ((void*)&_tramp_sentinel_2118)
 static void *stmt_380(void) { /* line 299 */
 /* line 299 */
-SnoVal _v2119 = pat_cat(pat_ref("snoExpr1"),pat_fence_p(pat_alt(pat_cat(pat_cat(pat_deref(strv("=")),pat_ref("snoExpr0")),pat_user_call("reduce",(SnoVal[]){strv("'='"),vint(2)},2)),pat_var("epsilon"))));
+SnoVal _v2119 = pat_cat(pat_ref("Expr1"),pat_fence_p(pat_alt(pat_cat(pat_cat(pat_deref(strv("=")),pat_ref("Expr0")),pat_user_call("reduce",(SnoVal[]){strv("'='"),vint(2)},2)),pat_var("epsilon"))));
 int _ok2119 = !IS_FAIL(_v2119);
 if(_ok2119) {
-set(_snoExpr0, _v2119);
-var_set("snoExpr0", _snoExpr0);
+set(_Expr0, _v2119);
+var_set("Expr0", _Expr0);
 }
     return (void*)_tramp_next_2118;
 }
@@ -23739,11 +25022,11 @@ static char _tramp_sentinel_2120;
 #define _tramp_next_2120 ((void*)&_tramp_sentinel_2120)
 static void *stmt_381(void) { /* line 300 */
 /* line 300 */
-SnoVal _v2121 = pat_cat(pat_ref("snoExpr2"),pat_fence_p(pat_alt(pat_cat(pat_cat(pat_deref(strv("?")),pat_ref("snoExpr1")),pat_user_call("reduce",(SnoVal[]){strv("'?'"),vint(2)},2)),pat_var("epsilon"))));
+SnoVal _v2121 = pat_cat(pat_ref("Expr2"),pat_fence_p(pat_alt(pat_cat(pat_cat(pat_deref(strv("?")),pat_ref("Expr1")),pat_user_call("reduce",(SnoVal[]){strv("'?'"),vint(2)},2)),pat_var("epsilon"))));
 int _ok2121 = !IS_FAIL(_v2121);
 if(_ok2121) {
-set(_snoExpr1, _v2121);
-var_set("snoExpr1", _snoExpr1);
+set(_Expr1, _v2121);
+var_set("Expr1", _Expr1);
 }
     return (void*)_tramp_next_2120;
 }
@@ -23752,11 +25035,11 @@ static char _tramp_sentinel_2122;
 #define _tramp_next_2122 ((void*)&_tramp_sentinel_2122)
 static void *stmt_382(void) { /* line 301 */
 /* line 301 */
-SnoVal _v2123 = pat_cat(pat_ref("snoExpr3"),pat_fence_p(pat_alt(pat_cat(pat_cat(pat_deref(strv("&")),pat_ref("snoExpr2")),pat_user_call("reduce",(SnoVal[]){strv("'&'"),vint(2)},2)),pat_var("epsilon"))));
+SnoVal _v2123 = pat_cat(pat_ref("Expr3"),pat_fence_p(pat_alt(pat_cat(pat_cat(pat_deref(strv("&")),pat_ref("Expr2")),pat_user_call("reduce",(SnoVal[]){strv("'&'"),vint(2)},2)),pat_var("epsilon"))));
 int _ok2123 = !IS_FAIL(_v2123);
 if(_ok2123) {
-set(_snoExpr2, _v2123);
-var_set("snoExpr2", _snoExpr2);
+set(_Expr2, _v2123);
+var_set("Expr2", _Expr2);
 }
     return (void*)_tramp_next_2122;
 }
@@ -23765,11 +25048,11 @@ static char _tramp_sentinel_2124;
 #define _tramp_next_2124 ((void*)&_tramp_sentinel_2124)
 static void *stmt_383(void) { /* line 302 */
 /* line 302 */
-SnoVal _v2125 = pat_cat(pat_cat(pat_cat(pat_user_call("nPush",NULL,0),pat_ref("snoX3")),pat_user_call("reduce",(SnoVal[]){strv("'|'"),strv("*(GT(nTop(), 1) nTop())")},2)),pat_user_call("nPop",NULL,0));
+SnoVal _v2125 = pat_cat(pat_cat(pat_cat(pat_user_call("nPush",NULL,0),pat_ref("X3")),pat_user_call("reduce",(SnoVal[]){strv("'|'"),strv("*(GT(nTop(), 1) nTop())")},2)),pat_user_call("nPop",NULL,0));
 int _ok2125 = !IS_FAIL(_v2125);
 if(_ok2125) {
-set(_snoExpr3, _v2125);
-var_set("snoExpr3", _snoExpr3);
+set(_Expr3, _v2125);
+var_set("Expr3", _Expr3);
 }
     return (void*)_tramp_next_2124;
 }
@@ -23778,11 +25061,11 @@ static char _tramp_sentinel_2126;
 #define _tramp_next_2126 ((void*)&_tramp_sentinel_2126)
 static void *stmt_384(void) { /* line 303 */
 /* line 303 */
-SnoVal _v2127 = pat_cat(pat_cat(pat_user_call("nInc",NULL,0),pat_ref("snoExpr4")),pat_fence_p(pat_alt(pat_cat(pat_deref(strv("|")),pat_ref("snoX3")),pat_var("epsilon"))));
+SnoVal _v2127 = pat_cat(pat_cat(pat_user_call("nInc",NULL,0),pat_ref("Expr4")),pat_fence_p(pat_alt(pat_cat(pat_deref(strv("|")),pat_ref("X3")),pat_var("epsilon"))));
 int _ok2127 = !IS_FAIL(_v2127);
 if(_ok2127) {
-set(_snoX3, _v2127);
-var_set("snoX3", _snoX3);
+set(_X3, _v2127);
+var_set("X3", _X3);
 }
     return (void*)_tramp_next_2126;
 }
@@ -23791,11 +25074,11 @@ static char _tramp_sentinel_2128;
 #define _tramp_next_2128 ((void*)&_tramp_sentinel_2128)
 static void *stmt_385(void) { /* line 304 */
 /* line 304 */
-SnoVal _v2129 = pat_cat(pat_cat(pat_cat(pat_user_call("nPush",NULL,0),pat_ref("snoX4")),pat_user_call("reduce",(SnoVal[]){strv("'..'"),strv("*(GT(nTop(), 1) nTop())")},2)),pat_user_call("nPop",NULL,0));
+SnoVal _v2129 = pat_cat(pat_cat(pat_cat(pat_user_call("nPush",NULL,0),pat_ref("X4")),pat_user_call("reduce",(SnoVal[]){strv("'..'"),strv("*(GT(nTop(), 1) nTop())")},2)),pat_user_call("nPop",NULL,0));
 int _ok2129 = !IS_FAIL(_v2129);
 if(_ok2129) {
-set(_snoExpr4, _v2129);
-var_set("snoExpr4", _snoExpr4);
+set(_Expr4, _v2129);
+var_set("Expr4", _Expr4);
 }
     return (void*)_tramp_next_2128;
 }
@@ -23804,11 +25087,11 @@ static char _tramp_sentinel_2130;
 #define _tramp_next_2130 ((void*)&_tramp_sentinel_2130)
 static void *stmt_386(void) { /* line 305 */
 /* line 305 */
-SnoVal _v2131 = pat_cat(pat_cat(pat_user_call("nInc",NULL,0),pat_ref("snoExpr5")),pat_fence_p(pat_alt(pat_cat(pat_ref("snoWhite"),pat_ref("snoX4")),pat_var("epsilon"))));
+SnoVal _v2131 = pat_cat(pat_cat(pat_user_call("nInc",NULL,0),pat_ref("Expr5")),pat_fence_p(pat_alt(pat_cat(pat_ref("White"),pat_ref("X4")),pat_var("epsilon"))));
 int _ok2131 = !IS_FAIL(_v2131);
 if(_ok2131) {
-set(_snoX4, _v2131);
-var_set("snoX4", _snoX4);
+set(_X4, _v2131);
+var_set("X4", _X4);
 }
     return (void*)_tramp_next_2130;
 }
@@ -23817,11 +25100,11 @@ static char _tramp_sentinel_2132;
 #define _tramp_next_2132 ((void*)&_tramp_sentinel_2132)
 static void *stmt_387(void) { /* line 306 */
 /* line 306 */
-SnoVal _v2133 = pat_cat(pat_ref("snoExpr6"),pat_fence_p(pat_alt(pat_cat(pat_cat(pat_deref(strv("@")),pat_ref("snoExpr5")),pat_user_call("reduce",(SnoVal[]){strv("'@'"),vint(2)},2)),pat_var("epsilon"))));
+SnoVal _v2133 = pat_cat(pat_ref("Expr6"),pat_fence_p(pat_alt(pat_cat(pat_cat(pat_deref(strv("@")),pat_ref("Expr5")),pat_user_call("reduce",(SnoVal[]){strv("'@'"),vint(2)},2)),pat_var("epsilon"))));
 int _ok2133 = !IS_FAIL(_v2133);
 if(_ok2133) {
-set(_snoExpr5, _v2133);
-var_set("snoExpr5", _snoExpr5);
+set(_Expr5, _v2133);
+var_set("Expr5", _Expr5);
 }
     return (void*)_tramp_next_2132;
 }
@@ -23830,11 +25113,11 @@ static char _tramp_sentinel_2134;
 #define _tramp_next_2134 ((void*)&_tramp_sentinel_2134)
 static void *stmt_388(void) { /* line 307 */
 /* line 307 */
-SnoVal _v2135 = pat_cat(pat_ref("snoExpr7"),pat_fence_p(pat_alt(pat_alt(pat_cat(pat_cat(pat_deref(strv("+")),pat_ref("snoExpr6")),pat_user_call("reduce",(SnoVal[]){strv("'+'"),vint(2)},2)),pat_cat(pat_cat(pat_deref(strv("-")),pat_ref("snoExpr6")),pat_user_call("reduce",(SnoVal[]){strv("'-'"),vint(2)},2))),pat_var("epsilon"))));
+SnoVal _v2135 = pat_cat(pat_ref("Expr7"),pat_fence_p(pat_alt(pat_alt(pat_cat(pat_cat(pat_deref(strv("+")),pat_ref("Expr6")),pat_user_call("reduce",(SnoVal[]){strv("'+'"),vint(2)},2)),pat_cat(pat_cat(pat_deref(strv("-")),pat_ref("Expr6")),pat_user_call("reduce",(SnoVal[]){strv("'-'"),vint(2)},2))),pat_var("epsilon"))));
 int _ok2135 = !IS_FAIL(_v2135);
 if(_ok2135) {
-set(_snoExpr6, _v2135);
-var_set("snoExpr6", _snoExpr6);
+set(_Expr6, _v2135);
+var_set("Expr6", _Expr6);
 }
     return (void*)_tramp_next_2134;
 }
@@ -23843,11 +25126,11 @@ static char _tramp_sentinel_2136;
 #define _tramp_next_2136 ((void*)&_tramp_sentinel_2136)
 static void *stmt_389(void) { /* line 311 */
 /* line 311 */
-SnoVal _v2137 = pat_cat(pat_ref("snoExpr8"),pat_fence_p(pat_alt(pat_cat(pat_cat(pat_deref(strv("#")),pat_ref("snoExpr7")),pat_user_call("reduce",(SnoVal[]){strv("'#'"),vint(2)},2)),pat_var("epsilon"))));
+SnoVal _v2137 = pat_cat(pat_ref("Expr8"),pat_fence_p(pat_alt(pat_cat(pat_cat(pat_deref(strv("#")),pat_ref("Expr7")),pat_user_call("reduce",(SnoVal[]){strv("'#'"),vint(2)},2)),pat_var("epsilon"))));
 int _ok2137 = !IS_FAIL(_v2137);
 if(_ok2137) {
-set(_snoExpr7, _v2137);
-var_set("snoExpr7", _snoExpr7);
+set(_Expr7, _v2137);
+var_set("Expr7", _Expr7);
 }
     return (void*)_tramp_next_2136;
 }
@@ -23856,11 +25139,11 @@ static char _tramp_sentinel_2138;
 #define _tramp_next_2138 ((void*)&_tramp_sentinel_2138)
 static void *stmt_390(void) { /* line 312 */
 /* line 312 */
-SnoVal _v2139 = pat_cat(pat_ref("snoExpr9"),pat_fence_p(pat_alt(pat_cat(pat_cat(pat_deref(strv("/")),pat_ref("snoExpr8")),pat_user_call("reduce",(SnoVal[]){strv("'/'"),vint(2)},2)),pat_var("epsilon"))));
+SnoVal _v2139 = pat_cat(pat_ref("Expr9"),pat_fence_p(pat_alt(pat_cat(pat_cat(pat_deref(strv("/")),pat_ref("Expr8")),pat_user_call("reduce",(SnoVal[]){strv("'/'"),vint(2)},2)),pat_var("epsilon"))));
 int _ok2139 = !IS_FAIL(_v2139);
 if(_ok2139) {
-set(_snoExpr8, _v2139);
-var_set("snoExpr8", _snoExpr8);
+set(_Expr8, _v2139);
+var_set("Expr8", _Expr8);
 }
     return (void*)_tramp_next_2138;
 }
@@ -23869,11 +25152,11 @@ static char _tramp_sentinel_2140;
 #define _tramp_next_2140 ((void*)&_tramp_sentinel_2140)
 static void *stmt_391(void) { /* line 313 */
 /* line 313 */
-SnoVal _v2141 = pat_cat(pat_ref("snoExpr10"),pat_fence_p(pat_alt(pat_cat(pat_cat(pat_deref(strv("*")),pat_ref("snoExpr9")),pat_user_call("reduce",(SnoVal[]){strv("'*'"),vint(2)},2)),pat_var("epsilon"))));
+SnoVal _v2141 = pat_cat(pat_ref("Expr10"),pat_fence_p(pat_alt(pat_cat(pat_cat(pat_deref(strv("*")),pat_ref("Expr9")),pat_user_call("reduce",(SnoVal[]){strv("'*'"),vint(2)},2)),pat_var("epsilon"))));
 int _ok2141 = !IS_FAIL(_v2141);
 if(_ok2141) {
-set(_snoExpr9, _v2141);
-var_set("snoExpr9", _snoExpr9);
+set(_Expr9, _v2141);
+var_set("Expr9", _Expr9);
 }
     return (void*)_tramp_next_2140;
 }
@@ -23882,11 +25165,11 @@ static char _tramp_sentinel_2142;
 #define _tramp_next_2142 ((void*)&_tramp_sentinel_2142)
 static void *stmt_392(void) { /* line 314 */
 /* line 314 */
-SnoVal _v2143 = pat_cat(pat_ref("snoExpr11"),pat_fence_p(pat_alt(pat_cat(pat_cat(pat_deref(strv("%")),pat_ref("snoExpr10")),pat_user_call("reduce",(SnoVal[]){strv("'%'"),vint(2)},2)),pat_var("epsilon"))));
+SnoVal _v2143 = pat_cat(pat_ref("Expr11"),pat_fence_p(pat_alt(pat_cat(pat_cat(pat_deref(strv("%")),pat_ref("Expr10")),pat_user_call("reduce",(SnoVal[]){strv("'%'"),vint(2)},2)),pat_var("epsilon"))));
 int _ok2143 = !IS_FAIL(_v2143);
 if(_ok2143) {
-set(_snoExpr10, _v2143);
-var_set("snoExpr10", _snoExpr10);
+set(_Expr10, _v2143);
+var_set("Expr10", _Expr10);
 }
     return (void*)_tramp_next_2142;
 }
@@ -23895,11 +25178,11 @@ static char _tramp_sentinel_2144;
 #define _tramp_next_2144 ((void*)&_tramp_sentinel_2144)
 static void *stmt_393(void) { /* line 315 */
 /* line 315 */
-SnoVal _v2145 = pat_cat(pat_ref("snoExpr12"),pat_fence_p(pat_alt(pat_cat(pat_cat(pat_alt(pat_alt(pat_deref(strv("^")),pat_deref(strv("!"))),pat_deref(strv("**"))),pat_ref("snoExpr11")),pat_user_call("reduce",(SnoVal[]){strv("'^'"),vint(2)},2)),pat_var("epsilon"))));
+SnoVal _v2145 = pat_cat(pat_ref("Expr12"),pat_fence_p(pat_alt(pat_cat(pat_cat(pat_alt(pat_alt(pat_deref(strv("^")),pat_deref(strv("!"))),pat_deref(strv("**"))),pat_ref("Expr11")),pat_user_call("reduce",(SnoVal[]){strv("'^'"),vint(2)},2)),pat_var("epsilon"))));
 int _ok2145 = !IS_FAIL(_v2145);
 if(_ok2145) {
-set(_snoExpr11, _v2145);
-var_set("snoExpr11", _snoExpr11);
+set(_Expr11, _v2145);
+var_set("Expr11", _Expr11);
 }
     return (void*)_tramp_next_2144;
 }
@@ -23908,11 +25191,11 @@ static char _tramp_sentinel_2146;
 #define _tramp_next_2146 ((void*)&_tramp_sentinel_2146)
 static void *stmt_394(void) { /* line 317 */
 /* line 317 */
-SnoVal _v2147 = pat_cat(pat_ref("snoExpr13"),pat_fence_p(pat_alt(pat_alt(pat_cat(pat_cat(pat_deref(strv("$")),pat_ref("snoExpr12")),pat_user_call("reduce",(SnoVal[]){strv("'$'"),vint(2)},2)),pat_cat(pat_cat(pat_deref(strv(".")),pat_ref("snoExpr12")),pat_user_call("reduce",(SnoVal[]){strv("'.'"),vint(2)},2))),pat_var("epsilon"))));
+SnoVal _v2147 = pat_cat(pat_ref("Expr13"),pat_fence_p(pat_alt(pat_alt(pat_cat(pat_cat(pat_deref(strv("$")),pat_ref("Expr12")),pat_user_call("reduce",(SnoVal[]){strv("'$'"),vint(2)},2)),pat_cat(pat_cat(pat_deref(strv(".")),pat_ref("Expr12")),pat_user_call("reduce",(SnoVal[]){strv("'.'"),vint(2)},2))),pat_var("epsilon"))));
 int _ok2147 = !IS_FAIL(_v2147);
 if(_ok2147) {
-set(_snoExpr12, _v2147);
-var_set("snoExpr12", _snoExpr12);
+set(_Expr12, _v2147);
+var_set("Expr12", _Expr12);
 }
     return (void*)_tramp_next_2146;
 }
@@ -23921,11 +25204,11 @@ static char _tramp_sentinel_2148;
 #define _tramp_next_2148 ((void*)&_tramp_sentinel_2148)
 static void *stmt_395(void) { /* line 323 */
 /* line 323 */
-SnoVal _v2149 = pat_cat(pat_ref("snoExpr14"),pat_fence_p(pat_alt(pat_cat(pat_cat(pat_deref(strv("~")),pat_ref("snoExpr13")),pat_user_call("reduce",(SnoVal[]){strv("'~'"),vint(2)},2)),pat_var("epsilon"))));
+SnoVal _v2149 = pat_cat(pat_ref("Expr14"),pat_fence_p(pat_alt(pat_cat(pat_cat(pat_deref(strv("~")),pat_ref("Expr13")),pat_user_call("reduce",(SnoVal[]){strv("'~'"),vint(2)},2)),pat_var("epsilon"))));
 int _ok2149 = !IS_FAIL(_v2149);
 if(_ok2149) {
-set(_snoExpr13, _v2149);
-var_set("snoExpr13", _snoExpr13);
+set(_Expr13, _v2149);
+var_set("Expr13", _Expr13);
 }
     return (void*)_tramp_next_2148;
 }
@@ -23934,11 +25217,11 @@ static char _tramp_sentinel_2150;
 #define _tramp_next_2150 ((void*)&_tramp_sentinel_2150)
 static void *stmt_396(void) { /* line 324 */
 /* line 324 */
-SnoVal _v2151 = pat_alt(pat_alt(pat_alt(pat_alt(pat_alt(pat_alt(pat_alt(pat_alt(pat_alt(pat_alt(pat_alt(pat_alt(pat_alt(pat_alt(pat_alt(pat_alt(pat_alt(pat_cat(pat_cat(pat_lit("@"),pat_ref("snoExpr14")),pat_user_call("reduce",(SnoVal[]){strv("'@'"),vint(1)},2)),pat_cat(pat_cat(pat_lit("~"),pat_ref("snoExpr14")),pat_user_call("reduce",(SnoVal[]){strv("'~'"),vint(1)},2))),pat_cat(pat_cat(pat_lit("?"),pat_ref("snoExpr14")),pat_user_call("reduce",(SnoVal[]){strv("'?'"),vint(1)},2))),pat_cat(pat_ref("snoProtKwd"),pat_lit("snoProtKwd"))),pat_cat(pat_ref("snoUnprotKwd"),pat_lit("snoUnprotKwd"))),pat_cat(pat_cat(pat_lit("&"),pat_ref("snoExpr14")),pat_user_call("reduce",(SnoVal[]){strv("'&'"),vint(1)},2))),pat_cat(pat_cat(pat_lit("+"),pat_ref("snoExpr14")),pat_user_call("reduce",(SnoVal[]){strv("'+'"),vint(1)},2))),pat_cat(pat_cat(pat_lit("-"),pat_ref("snoExpr14")),pat_user_call("reduce",(SnoVal[]){strv("'-'"),vint(1)},2))),pat_cat(pat_cat(pat_lit("*"),pat_ref("snoExpr14")),pat_user_call("reduce",(SnoVal[]){strv("'*'"),vint(1)},2))),pat_cat(pat_cat(pat_lit("$"),pat_ref("snoExpr14")),pat_user_call("reduce",(SnoVal[]){strv("'$'"),vint(1)},2))),pat_cat(pat_cat(pat_lit("."),pat_ref("snoExpr14")),pat_user_call("reduce",(SnoVal[]){strv("'.'"),vint(1)},2))),pat_cat(pat_cat(pat_lit("!"),pat_ref("snoExpr14")),pat_user_call("reduce",(SnoVal[]){strv("'!'"),vint(1)},2))),pat_cat(pat_cat(pat_lit("%"),pat_ref("snoExpr14")),pat_user_call("reduce",(SnoVal[]){strv("'%'"),vint(1)},2))),pat_cat(pat_cat(pat_lit("/"),pat_ref("snoExpr14")),pat_user_call("reduce",(SnoVal[]){strv("'/'"),vint(1)},2))),pat_cat(pat_cat(pat_lit("#"),pat_ref("snoExpr14")),pat_user_call("reduce",(SnoVal[]){strv("'#'"),vint(1)},2))),pat_cat(pat_cat(pat_lit("="),pat_ref("snoExpr14")),pat_user_call("reduce",(SnoVal[]){strv("'='"),vint(1)},2))),pat_cat(pat_cat(pat_lit("|"),pat_ref("snoExpr14")),pat_user_call("reduce",(SnoVal[]){strv("'|'"),vint(1)},2))),pat_ref("snoExpr15"));
+SnoVal _v2151 = pat_alt(pat_alt(pat_alt(pat_alt(pat_alt(pat_alt(pat_alt(pat_alt(pat_alt(pat_alt(pat_alt(pat_alt(pat_alt(pat_alt(pat_alt(pat_alt(pat_alt(pat_cat(pat_cat(pat_lit("@"),pat_ref("Expr14")),pat_user_call("reduce",(SnoVal[]){strv("'@'"),vint(1)},2)),pat_cat(pat_cat(pat_lit("~"),pat_ref("Expr14")),pat_user_call("reduce",(SnoVal[]){strv("'~'"),vint(1)},2))),pat_cat(pat_cat(pat_lit("?"),pat_ref("Expr14")),pat_user_call("reduce",(SnoVal[]){strv("'?'"),vint(1)},2))),pat_cat(pat_ref("ProtKwd"),pat_lit("ProtKwd"))),pat_cat(pat_ref("UnprotKwd"),pat_lit("UnprotKwd"))),pat_cat(pat_cat(pat_lit("&"),pat_ref("Expr14")),pat_user_call("reduce",(SnoVal[]){strv("'&'"),vint(1)},2))),pat_cat(pat_cat(pat_lit("+"),pat_ref("Expr14")),pat_user_call("reduce",(SnoVal[]){strv("'+'"),vint(1)},2))),pat_cat(pat_cat(pat_lit("-"),pat_ref("Expr14")),pat_user_call("reduce",(SnoVal[]){strv("'-'"),vint(1)},2))),pat_cat(pat_cat(pat_lit("*"),pat_ref("Expr14")),pat_user_call("reduce",(SnoVal[]){strv("'*'"),vint(1)},2))),pat_cat(pat_cat(pat_lit("$"),pat_ref("Expr14")),pat_user_call("reduce",(SnoVal[]){strv("'$'"),vint(1)},2))),pat_cat(pat_cat(pat_lit("."),pat_ref("Expr14")),pat_user_call("reduce",(SnoVal[]){strv("'.'"),vint(1)},2))),pat_cat(pat_cat(pat_lit("!"),pat_ref("Expr14")),pat_user_call("reduce",(SnoVal[]){strv("'!'"),vint(1)},2))),pat_cat(pat_cat(pat_lit("%"),pat_ref("Expr14")),pat_user_call("reduce",(SnoVal[]){strv("'%'"),vint(1)},2))),pat_cat(pat_cat(pat_lit("/"),pat_ref("Expr14")),pat_user_call("reduce",(SnoVal[]){strv("'/'"),vint(1)},2))),pat_cat(pat_cat(pat_lit("#"),pat_ref("Expr14")),pat_user_call("reduce",(SnoVal[]){strv("'#'"),vint(1)},2))),pat_cat(pat_cat(pat_lit("="),pat_ref("Expr14")),pat_user_call("reduce",(SnoVal[]){strv("'='"),vint(1)},2))),pat_cat(pat_cat(pat_lit("|"),pat_ref("Expr14")),pat_user_call("reduce",(SnoVal[]){strv("'|'"),vint(1)},2))),pat_ref("Expr15"));
 int _ok2151 = !IS_FAIL(_v2151);
 if(_ok2151) {
-set(_snoExpr14, _v2151);
-var_set("snoExpr14", _snoExpr14);
+set(_Expr14, _v2151);
+var_set("Expr14", _Expr14);
 }
     return (void*)_tramp_next_2150;
 }
@@ -23947,11 +25230,11 @@ static char _tramp_sentinel_2152;
 #define _tramp_next_2152 ((void*)&_tramp_sentinel_2152)
 static void *stmt_397(void) { /* line 342 */
 /* line 342 */
-SnoVal _v2153 = pat_cat(pat_ref("snoExpr17"),pat_fence_p(pat_alt(pat_cat(pat_cat(pat_cat(pat_user_call("nPush",NULL,0),pat_ref("snoExpr16")),pat_user_call("reduce",(SnoVal[]){strv("'[]'"),strv("nTop() + 1")},2)),pat_user_call("nPop",NULL,0)),pat_var("epsilon"))));
+SnoVal _v2153 = pat_cat(pat_ref("Expr17"),pat_fence_p(pat_alt(pat_cat(pat_cat(pat_cat(pat_user_call("nPush",NULL,0),pat_ref("Expr16")),pat_user_call("reduce",(SnoVal[]){strv("'[]'"),strv("nTop() + 1")},2)),pat_user_call("nPop",NULL,0)),pat_var("epsilon"))));
 int _ok2153 = !IS_FAIL(_v2153);
 if(_ok2153) {
-set(_snoExpr15, _v2153);
-var_set("snoExpr15", _snoExpr15);
+set(_Expr15, _v2153);
+var_set("Expr15", _Expr15);
 }
     return (void*)_tramp_next_2152;
 }
@@ -23960,11 +25243,11 @@ static char _tramp_sentinel_2154;
 #define _tramp_next_2154 ((void*)&_tramp_sentinel_2154)
 static void *stmt_398(void) { /* line 344 */
 /* line 344 */
-SnoVal _v2155 = pat_cat(pat_cat(pat_user_call("nInc",NULL,0),pat_alt(pat_cat(pat_deref(strv("[")),pat_imm(pat_ref("snoExprList"),"?")),pat_cat(pat_deref(strv("<")),pat_imm(pat_ref("snoExprList"),"?")))),pat_fence_p(pat_alt(pat_ref("snoExpr16"),pat_var("epsilon"))));
+SnoVal _v2155 = pat_cat(pat_cat(pat_user_call("nInc",NULL,0),pat_alt(pat_cat(pat_deref(strv("[")),pat_imm(pat_ref("ExprList"),"?")),pat_cat(pat_deref(strv("<")),pat_imm(pat_ref("ExprList"),"?")))),pat_fence_p(pat_alt(pat_ref("Expr16"),pat_var("epsilon"))));
 int _ok2155 = !IS_FAIL(_v2155);
 if(_ok2155) {
-set(_snoExpr16, _v2155);
-var_set("snoExpr16", _snoExpr16);
+set(_Expr16, _v2155);
+var_set("Expr16", _Expr16);
 }
     return (void*)_tramp_next_2154;
 }
@@ -23973,11 +25256,11 @@ static char _tramp_sentinel_2156;
 #define _tramp_next_2156 ((void*)&_tramp_sentinel_2156)
 static void *stmt_399(void) { /* line 347 */
 /* line 347 */
-SnoVal _v2157 = pat_fence_p(pat_alt(pat_alt(pat_alt(pat_alt(pat_alt(pat_alt(pat_alt(pat_alt(pat_cat(pat_cat(pat_cat(pat_imm(pat_user_call("nPush",NULL,0),"?"),pat_ref("snoExpr")),pat_imm(pat_alt(pat_cat(pat_cat(pat_deref(strv(",")),pat_ref("snoXList")),pat_user_call("reduce",(SnoVal[]){strv("','"),strv("nTop() + 1")},2)),pat_cat(pat_var("epsilon"),pat_user_call("reduce",(SnoVal[]){strv("'()'"),vint(1)},2))),"?")),pat_user_call("nPop",NULL,0)),pat_cat(pat_cat(pat_imm(pat_cat(pat_ref("snoFunction"),pat_lit("snoFunction")),"?"),pat_imm(pat_ref("snoExprList"),"?")),pat_user_call("reduce",(SnoVal[]){strv("'snoCall'"),vint(2)},2))),pat_cat(pat_cat(pat_imm(pat_cat(pat_ref("snoId"),pat_lit("snoId")),"?"),pat_imm(pat_ref("snoExprList"),"?")),pat_user_call("reduce",(SnoVal[]){strv("'snoCall'"),vint(2)},2))),pat_cat(pat_ref("snoBuiltinVar"),pat_lit("snoBuiltinVar"))),pat_cat(pat_ref("snoSpecialNm"),pat_lit("snoSpecialNm"))),pat_cat(pat_ref("snoId"),pat_lit("snoId"))),pat_cat(pat_ref("snoString"),pat_lit("snoString"))),pat_cat(pat_ref("snoReal"),pat_lit("snoReal"))),pat_cat(pat_ref("snoInteger"),pat_lit("snoInteger"))));
+SnoVal _v2157 = pat_fence_p(pat_alt(pat_alt(pat_alt(pat_alt(pat_alt(pat_alt(pat_alt(pat_alt(pat_cat(pat_cat(pat_cat(pat_imm(pat_user_call("nPush",NULL,0),"?"),pat_ref("Expr")),pat_imm(pat_alt(pat_cat(pat_cat(pat_deref(strv(",")),pat_ref("XList")),pat_user_call("reduce",(SnoVal[]){strv("','"),strv("nTop() + 1")},2)),pat_cat(pat_var("epsilon"),pat_user_call("reduce",(SnoVal[]){strv("'()'"),vint(1)},2))),"?")),pat_user_call("nPop",NULL,0)),pat_cat(pat_cat(pat_imm(pat_cat(pat_ref("Function"),pat_lit("Function")),"?"),pat_imm(pat_ref("ExprList"),"?")),pat_user_call("reduce",(SnoVal[]){strv("'Call'"),vint(2)},2))),pat_cat(pat_cat(pat_imm(pat_cat(pat_ref("Id"),pat_lit("Id")),"?"),pat_imm(pat_ref("ExprList"),"?")),pat_user_call("reduce",(SnoVal[]){strv("'Call'"),vint(2)},2))),pat_cat(pat_ref("BuiltinVar"),pat_lit("BuiltinVar"))),pat_cat(pat_ref("SpecialNm"),pat_lit("SpecialNm"))),pat_cat(pat_ref("Id"),pat_lit("Id"))),pat_cat(pat_ref("String"),pat_lit("String"))),pat_cat(pat_ref("Real"),pat_lit("Real"))),pat_cat(pat_ref("Integer"),pat_lit("Integer"))));
 int _ok2157 = !IS_FAIL(_v2157);
 if(_ok2157) {
-set(_snoExpr17, _v2157);
-var_set("snoExpr17", _snoExpr17);
+set(_Expr17, _v2157);
+var_set("Expr17", _Expr17);
 }
     return (void*)_tramp_next_2156;
 }
@@ -23989,8 +25272,8 @@ static void *stmt_400(void) { /* line 366 */
 SnoVal _v2159 = pat_cond(pat_alt(pat_lit("S"),pat_lit("s")),"?");
 int _ok2159 = !IS_FAIL(_v2159);
 if(_ok2159) {
-set(_snoSGoto, _v2159);
-var_set("snoSGoto", _snoSGoto);
+set(_SGoto, _v2159);
+var_set("SGoto", _SGoto);
 }
     return (void*)_tramp_next_2158;
 }
@@ -24002,8 +25285,8 @@ static void *stmt_401(void) { /* line 367 */
 SnoVal _v2161 = pat_cond(pat_alt(pat_lit("F"),pat_lit("f")),"?");
 int _ok2161 = !IS_FAIL(_v2161);
 if(_ok2161) {
-set(_snoFGoto, _v2161);
-var_set("snoFGoto", _snoFGoto);
+set(_FGoto, _v2161);
+var_set("FGoto", _FGoto);
 }
     return (void*)_tramp_next_2160;
 }
@@ -24012,11 +25295,11 @@ static char _tramp_sentinel_2162;
 #define _tramp_next_2162 ((void*)&_tramp_sentinel_2162)
 static void *stmt_402(void) { /* line 368 */
 /* line 368 */
-SnoVal _v2163 = pat_alt(pat_ref("snoSGoto"),pat_ref("snoFGoto"));
+SnoVal _v2163 = pat_alt(pat_ref("SGoto"),pat_ref("FGoto"));
 int _ok2163 = !IS_FAIL(_v2163);
 if(_ok2163) {
-set(_snoSorF, _v2163);
-var_set("snoSorF", _snoSorF);
+set(_SorF, _v2163);
+var_set("SorF", _SorF);
 }
     return (void*)_tramp_next_2162;
 }
@@ -24025,11 +25308,11 @@ static char _tramp_sentinel_2164;
 #define _tramp_next_2164 ((void*)&_tramp_sentinel_2164)
 static void *stmt_403(void) { /* line 369 */
 /* line 369 */
-SnoVal _v2165 = pat_alt(pat_cat(pat_cond(pat_deref(strv("(")),"?"),pat_imm(pat_ref("snoExpr"),"?")),pat_cat(pat_cond(pat_deref(strv("<")),"?"),pat_imm(pat_ref("snoExpr"),"?")));
+SnoVal _v2165 = pat_alt(pat_cat(pat_cond(pat_deref(strv("(")),"?"),pat_imm(pat_ref("Expr"),"?")),pat_cat(pat_cond(pat_deref(strv("<")),"?"),pat_imm(pat_ref("Expr"),"?")));
 int _ok2165 = !IS_FAIL(_v2165);
 if(_ok2165) {
-set(_snoTarget, _v2165);
-var_set("snoTarget", _snoTarget);
+set(_Target, _v2165);
+var_set("Target", _Target);
 }
     return (void*)_tramp_next_2164;
 }
@@ -24038,11 +25321,11 @@ static char _tramp_sentinel_2166;
 #define _tramp_next_2166 ((void*)&_tramp_sentinel_2166)
 static void *stmt_404(void) { /* line 371 */
 /* line 371 */
-SnoVal _v2167 = pat_cat(pat_cat(pat_cat(pat_ref("snoGray"),pat_lit(":")),pat_ref("snoGray")),pat_fence_p(pat_alt(pat_cat(pat_cat(pat_ref("snoTarget"),pat_user_call("reduce",(SnoVal[]){strv("*(':' snoBrackets)"),vint(1)},2)),pat_cat(pat_var("epsilon"),pat_lit(""))),pat_cat(pat_cat(pat_cat(pat_ref("snoSorF"),pat_ref("snoTarget")),pat_user_call("reduce",(SnoVal[]){strv("*(':' SorF snoBrackets)"),vint(1)},2)),pat_fence_p(pat_alt(pat_cat(pat_cat(pat_cat(pat_ref("snoGray"),pat_ref("snoSorF")),pat_ref("snoTarget")),pat_user_call("reduce",(SnoVal[]){strv("*(':' SorF snoBrackets)"),vint(1)},2)),pat_cat(pat_var("epsilon"),pat_lit(""))))))));
+SnoVal _v2167 = pat_cat(pat_cat(pat_cat(pat_ref("Gray"),pat_lit(":")),pat_ref("Gray")),pat_fence_p(pat_alt(pat_cat(pat_cat(pat_ref("Target"),pat_user_call("reduce",(SnoVal[]){strv("*(':' Brackets)"),vint(1)},2)),pat_cat(pat_var("epsilon"),pat_lit(""))),pat_cat(pat_cat(pat_cat(pat_ref("SorF"),pat_ref("Target")),pat_user_call("reduce",(SnoVal[]){strv("*(':' SorF Brackets)"),vint(1)},2)),pat_fence_p(pat_alt(pat_cat(pat_cat(pat_cat(pat_ref("Gray"),pat_ref("SorF")),pat_ref("Target")),pat_user_call("reduce",(SnoVal[]){strv("*(':' SorF Brackets)"),vint(1)},2)),pat_cat(pat_var("epsilon"),pat_lit(""))))))));
 int _ok2167 = !IS_FAIL(_v2167);
 if(_ok2167) {
-set(_snoGoto, _v2167);
-var_set("snoGoto", _snoGoto);
+set(_Goto, _v2167);
+var_set("Goto", _Goto);
 }
     return (void*)_tramp_next_2166;
 }
@@ -24054,8 +25337,8 @@ static void *stmt_405(void) { /* line 378 */
 SnoVal _v2169 = pat_cat(pat_lit("-"),pat_break(to_str(concat_sv(get(_nl),strv(";")))));
 int _ok2169 = !IS_FAIL(_v2169);
 if(_ok2169) {
-set(_snoControl, _v2169);
-var_set("snoControl", _snoControl);
+set(_Control, _v2169);
+var_set("Control", _Control);
 }
     return (void*)_tramp_next_2168;
 }
@@ -24067,8 +25350,8 @@ static void *stmt_406(void) { /* line 379 */
 SnoVal _v2171 = pat_cat(pat_lit("*"),pat_break(to_str(get(_nl))));
 int _ok2171 = !IS_FAIL(_v2171);
 if(_ok2171) {
-set(_snoComment, _v2171);
-var_set("snoComment", _snoComment);
+set(_Comment, _v2171);
+var_set("Comment", _Comment);
 }
     return (void*)_tramp_next_2170;
 }
@@ -24077,11 +25360,11 @@ static char _tramp_sentinel_2172;
 #define _tramp_next_2172 ((void*)&_tramp_sentinel_2172)
 static void *stmt_407(void) { /* line 380 */
 /* line 380 */
-SnoVal _v2173 = pat_cat(pat_break(to_str(concat_sv(concat_sv(concat_sv(strv(" "),get(_tab)),get(_nl)),strv(";")))),pat_lit("snoLabel"));
+SnoVal _v2173 = pat_cat(pat_break(to_str(concat_sv(concat_sv(concat_sv(strv(" "),get(_tab)),get(_nl)),strv(";")))),pat_lit("Label"));
 int _ok2173 = !IS_FAIL(_v2173);
 if(_ok2173) {
-set(_snoLabel, _v2173);
-var_set("snoLabel", _snoLabel);
+set(_Label, _v2173);
+var_set("Label", _Label);
 }
     return (void*)_tramp_next_2172;
 }
@@ -24090,11 +25373,11 @@ static char _tramp_sentinel_2174;
 #define _tramp_next_2174 ((void*)&_tramp_sentinel_2174)
 static void *stmt_408(void) { /* line 381 */
 /* line 381 */
-SnoVal _v2175 = pat_cat(pat_cat(pat_cat(pat_ref("snoLabel"),pat_alt(pat_cat(pat_cat(pat_ref("snoWhite"),pat_ref("snoExpr14")),pat_fence_p(pat_alt(pat_alt(pat_cat(pat_cat(pat_cat(pat_var("epsilon"),pat_lit("")),pat_ref("snoWhite")),pat_alt(pat_cat(pat_cat(pat_cat(pat_lit("="),pat_lit("=")),pat_ref("snoWhite")),pat_ref("snoExpr")),pat_cat(pat_cat(pat_lit("="),pat_lit("=")),pat_cat(pat_var("epsilon"),pat_lit(""))))),pat_cat(pat_cat(pat_alt(pat_deref(strv("?")),pat_ref("snoWhite")),pat_ref("snoExpr1")),pat_fence_p(pat_alt(pat_cat(pat_ref("snoWhite"),pat_alt(pat_cat(pat_cat(pat_cat(pat_lit("="),pat_lit("=")),pat_ref("snoWhite")),pat_ref("snoExpr")),pat_cat(pat_cat(pat_lit("="),pat_lit("=")),pat_cat(pat_var("epsilon"),pat_lit(""))))),pat_cat(pat_cat(pat_var("epsilon"),pat_lit("")),pat_cat(pat_var("epsilon"),pat_lit(""))))))),pat_cat(pat_cat(pat_cat(pat_var("epsilon"),pat_lit("")),pat_cat(pat_var("epsilon"),pat_lit(""))),pat_cat(pat_var("epsilon"),pat_lit("")))))),pat_cat(pat_cat(pat_cat(pat_cat(pat_var("epsilon"),pat_lit("")),pat_cat(pat_var("epsilon"),pat_lit(""))),pat_cat(pat_var("epsilon"),pat_lit(""))),pat_cat(pat_var("epsilon"),pat_lit(""))))),pat_fence_p(pat_alt(pat_ref("snoGoto"),pat_cat(pat_cat(pat_var("epsilon"),pat_lit("")),pat_cat(pat_var("epsilon"),pat_lit("")))))),pat_ref("snoGray"));
+SnoVal _v2175 = pat_cat(pat_cat(pat_cat(pat_ref("Label"),pat_alt(pat_cat(pat_cat(pat_ref("White"),pat_ref("Expr14")),pat_fence_p(pat_alt(pat_alt(pat_cat(pat_cat(pat_cat(pat_var("epsilon"),pat_lit("")),pat_ref("White")),pat_alt(pat_cat(pat_cat(pat_cat(pat_lit("="),pat_lit("=")),pat_ref("White")),pat_ref("Expr")),pat_cat(pat_cat(pat_lit("="),pat_lit("=")),pat_cat(pat_var("epsilon"),pat_lit(""))))),pat_cat(pat_cat(pat_alt(pat_deref(strv("?")),pat_ref("White")),pat_ref("Expr1")),pat_fence_p(pat_alt(pat_cat(pat_ref("White"),pat_alt(pat_cat(pat_cat(pat_cat(pat_lit("="),pat_lit("=")),pat_ref("White")),pat_ref("Expr")),pat_cat(pat_cat(pat_lit("="),pat_lit("=")),pat_cat(pat_var("epsilon"),pat_lit(""))))),pat_cat(pat_cat(pat_var("epsilon"),pat_lit("")),pat_cat(pat_var("epsilon"),pat_lit(""))))))),pat_cat(pat_cat(pat_cat(pat_var("epsilon"),pat_lit("")),pat_cat(pat_var("epsilon"),pat_lit(""))),pat_cat(pat_var("epsilon"),pat_lit("")))))),pat_cat(pat_cat(pat_cat(pat_cat(pat_var("epsilon"),pat_lit("")),pat_cat(pat_var("epsilon"),pat_lit(""))),pat_cat(pat_var("epsilon"),pat_lit(""))),pat_cat(pat_var("epsilon"),pat_lit(""))))),pat_fence_p(pat_alt(pat_ref("Goto"),pat_cat(pat_cat(pat_var("epsilon"),pat_lit("")),pat_cat(pat_var("epsilon"),pat_lit("")))))),pat_ref("Gray"));
 int _ok2175 = !IS_FAIL(_v2175);
 if(_ok2175) {
-set(_snoStmt, _v2175);
-var_set("snoStmt", _snoStmt);
+set(_Stmt, _v2175);
+var_set("Stmt", _Stmt);
 }
     return (void*)_tramp_next_2174;
 }
@@ -24103,11 +25386,11 @@ static char _tramp_sentinel_2176;
 #define _tramp_next_2176 ((void*)&_tramp_sentinel_2176)
 static void *stmt_409(void) { /* line 402 */
 /* line 402 */
-SnoVal _v2177 = pat_cat(pat_ref("snoCommand"),pat_fence_p(pat_alt(pat_ref("snoCommands"),pat_var("epsilon"))));
+SnoVal _v2177 = pat_cat(pat_ref("Command"),pat_fence_p(pat_alt(pat_ref("Commands"),pat_var("epsilon"))));
 int _ok2177 = !IS_FAIL(_v2177);
 if(_ok2177) {
-set(_snoCommands, _v2177);
-var_set("snoCommands", _snoCommands);
+set(_Commands, _v2177);
+var_set("Commands", _Commands);
 }
     return (void*)_tramp_next_2176;
 }
@@ -24116,11 +25399,11 @@ static char _tramp_sentinel_2178;
 #define _tramp_next_2178 ((void*)&_tramp_sentinel_2178)
 static void *stmt_410(void) { /* line 403 */
 /* line 403 */
-SnoVal _v2179 = pat_cat(pat_user_call("nInc",NULL,0),pat_fence_p(pat_alt(pat_alt(pat_cat(pat_cat(pat_cat(pat_ref("snoComment"),pat_lit("comment")),pat_user_call("reduce",(SnoVal[]){strv("'snoComment'"),vint(1)},2)),pat_var("nl")),pat_cat(pat_cat(pat_cat(pat_ref("snoControl"),pat_lit("control")),pat_user_call("reduce",(SnoVal[]){strv("'snoControl'"),vint(1)},2)),pat_alt(pat_var("nl"),pat_lit(";")))),pat_cat(pat_cat(pat_ref("snoStmt"),pat_user_call("reduce",(SnoVal[]){strv("'snoStmt'"),vint(7)},2)),pat_alt(pat_var("nl"),pat_lit(";"))))));
+SnoVal _v2179 = pat_cat(pat_user_call("nInc",NULL,0),pat_fence_p(pat_alt(pat_alt(pat_cat(pat_cat(pat_cat(pat_ref("Comment"),pat_lit("comment")),pat_user_call("reduce",(SnoVal[]){strv("'Comment'"),vint(1)},2)),pat_var("nl")),pat_cat(pat_cat(pat_cat(pat_ref("Control"),pat_lit("control")),pat_user_call("reduce",(SnoVal[]){strv("'Control'"),vint(1)},2)),pat_alt(pat_var("nl"),pat_lit(";")))),pat_cat(pat_cat(pat_ref("Stmt"),pat_user_call("reduce",(SnoVal[]){strv("'Stmt'"),vint(7)},2)),pat_alt(pat_var("nl"),pat_lit(";"))))));
 int _ok2179 = !IS_FAIL(_v2179);
 if(_ok2179) {
-set(_snoCommand, _v2179);
-var_set("snoCommand", _snoCommand);
+set(_Command, _v2179);
+var_set("Command", _Command);
 }
     return (void*)_tramp_next_2178;
 }
@@ -24129,11 +25412,11 @@ static char _tramp_sentinel_2180;
 #define _tramp_next_2180 ((void*)&_tramp_sentinel_2180)
 static void *stmt_411(void) { /* line 410 */
 /* line 410 */
-SnoVal _v2181 = pat_cat(pat_cat(pat_cat(pat_user_call("nPush",NULL,0),pat_arbno(var_as_pattern(pat_ref("snoCommand")))),pat_user_call("reduce",(SnoVal[]){strv("'snoParse'"),strv("nTop()")},2)),pat_user_call("nPop",NULL,0));
+SnoVal _v2181 = pat_cat(pat_cat(pat_cat(pat_user_call("nPush",NULL,0),pat_arbno(var_as_pattern(pat_ref("Command")))),pat_user_call("reduce",(SnoVal[]){strv("'Parse'"),strv("nTop()")},2)),pat_user_call("nPop",NULL,0));
 int _ok2181 = !IS_FAIL(_v2181);
 if(_ok2181) {
-set(_snoParse, _v2181);
-var_set("snoParse", _snoParse);
+set(_Parse, _v2181);
+var_set("Parse", _Parse);
 }
     return (void*)_tramp_next_2180;
 }
@@ -24142,11 +25425,11 @@ static char _tramp_sentinel_2182;
 #define _tramp_next_2182 ((void*)&_tramp_sentinel_2182)
 static void *stmt_412(void) { /* line 415 */
 /* line 415 */
-SnoVal _v2183 = pat_cat(pat_cat(pat_cat(pat_cat(pat_user_call("nPush",NULL,0),pat_arbno(var_as_pattern(pat_ref("snoCommand")))),pat_user_call("reduce",(SnoVal[]){strv("'snoParse'"),strv("nTop()")},2)),pat_alt(pat_cat(pat_cat(pat_user_call("icase",(SnoVal[]){strv("END")},1),pat_alt(pat_cat(pat_cat(pat_lit(" "),pat_break(to_str(get(_nl)))),pat_var("nl")),pat_var("nl"))),pat_arbno(concat_sv(aply("BREAK",(SnoVal[]){get(_nl)},1),get(_nl)))),pat_var("epsilon"))),pat_user_call("nPop",NULL,0));
+SnoVal _v2183 = pat_cat(pat_cat(pat_cat(pat_cat(pat_user_call("nPush",NULL,0),pat_arbno(var_as_pattern(pat_ref("Command")))),pat_user_call("reduce",(SnoVal[]){strv("'Parse'"),strv("nTop()")},2)),pat_alt(pat_cat(pat_cat(pat_user_call("icase",(SnoVal[]){strv("END")},1),pat_alt(pat_cat(pat_cat(pat_lit(" "),pat_break(to_str(get(_nl)))),pat_var("nl")),pat_var("nl"))),pat_arbno(concat_sv(aply("BREAK",(SnoVal[]){get(_nl)},1),get(_nl)))),pat_var("epsilon"))),pat_user_call("nPop",NULL,0));
 int _ok2183 = !IS_FAIL(_v2183);
 if(_ok2183) {
-set(_snoCompiland, _v2183);
-var_set("snoCompiland", _snoCompiland);
+set(_Compiland, _v2183);
+var_set("Compiland", _Compiland);
 }
     return (void*)_tramp_next_2182;
 }
@@ -24179,7 +25462,7 @@ static char _tramp_sentinel_2187;
 #define _tramp_next_2187 ((void*)&_tramp_sentinel_2187)
 static void *stmt_416(void) { /* line 745 */
 /* line 745 */
-SnoVal _v2188 = get(_snoRefs);
+SnoVal _v2188 = get(_Refs);
 int _ok2188 = !IS_FAIL(_v2188);
     return (void*)_tramp_next_2187;
 }
@@ -24212,8 +25495,8 @@ static void *stmt_419(void) { /* line 782 */
 SnoVal _v2193 = pat_alt(pat_span(to_str(concat_sv(strv(" "),get(_tab)))),pat_var("epsilon"));
 int _ok2193 = !IS_FAIL(_v2193);
 if(_ok2193) {
-set(_snoSpace, _v2193);
-var_set("snoSpace", _snoSpace);
+set(_Space, _v2193);
+var_set("Space", _Space);
 }
     return (void*)_tramp_next_2192;
 }
@@ -24226,8 +25509,8 @@ _L_main00:;
 SnoVal _v2195 = var_get("INPUT");
 int _ok2195 = !IS_FAIL(_v2195);
 if(_ok2195) {
-set(_snoLine, _v2195);
-var_set("snoLine", _snoLine);
+set(_Line, _v2195);
+var_set("Line", _Line);
 }
     if(!_ok2195) return NULL;
     return (void*)_tramp_next_2194;
@@ -24238,7 +25521,7 @@ static char _tramp_sentinel_2196;
 static void *stmt_421(void) { /* line 784 label:main01 */
 /* line 784 */
 _L_main01:;
-SnoVal _v2197 = get(_snoSrc);
+SnoVal _v2197 = get(_Src);
 int _ok2197 = !IS_FAIL(_v2197);
     return (void*)_tramp_next_2196;
 }
@@ -24248,7 +25531,7 @@ static char _tramp_sentinel_2198;
 static void *stmt_422(void) { /* line 785 */
 /* line 785 */
 /* byrd mtch u2199 */
-SnoVal _s2199 = get(_snoLine);
+SnoVal _s2199 = get(_Line);
 const char *_subj2199 = to_str(_s2199);
 int64_t _slen2199 = _subj2199 ? (int64_t)strlen(_subj2199) : 0;
 int64_t _cur2199  = 0;
@@ -24293,7 +25576,7 @@ static char _tramp_sentinel_2200;
 #define _tramp_next_2200 ((void*)&_tramp_sentinel_2200)
 static void *stmt_423(void) { /* line 786 */
 /* line 786 */
-SnoVal _v2201 = get(_snoLine);
+SnoVal _v2201 = get(_Line);
 int _ok2201 = !IS_FAIL(_v2201);
 if(_ok2201) {
 var_set("OUTPUT", _v2201);
@@ -24306,11 +25589,11 @@ static char _tramp_sentinel_2202;
 static void *stmt_424(void) { /* line 787 label:main02 */
 /* line 787 */
 _L_main02:;
-SnoVal _v2203 = concat_sv(concat_sv(get(_snoSrc),get(_snoLine)),get(_nl));
+SnoVal _v2203 = concat_sv(concat_sv(get(_Src),get(_Line)),get(_nl));
 int _ok2203 = !IS_FAIL(_v2203);
 if(_ok2203) {
-set(_snoSrc, _v2203);
-var_set("snoSrc", _snoSrc);
+set(_Src, _v2203);
+var_set("Src", _Src);
 }
     return (void*)_tramp_next_2202;
 }
@@ -24322,8 +25605,8 @@ static void *stmt_425(void) { /* line 788 */
 SnoVal _v2205 = var_get("INPUT");
 int _ok2205 = !IS_FAIL(_v2205);
 if(_ok2205) {
-set(_snoLine, _v2205);
-var_set("snoLine", _snoLine);
+set(_Line, _v2205);
+var_set("Line", _Line);
 }
     if(!_ok2205) return (void*)block__main05;
     return (void*)_tramp_next_2204;
@@ -24334,7 +25617,7 @@ static char _tramp_sentinel_2206;
 static void *stmt_426(void) { /* line 789 */
 /* line 789 */
 /* byrd mtch u2207 */
-SnoVal _s2207 = get(_snoLine);
+SnoVal _s2207 = get(_Line);
 const char *_subj2207 = to_str(_s2207);
 int64_t _slen2207 = _subj2207 ? (int64_t)strlen(_subj2207) : 0;
 int64_t _cur2207  = 0;
@@ -24380,7 +25663,7 @@ static char _tramp_sentinel_2208;
 static void *stmt_427(void) { /* line 790 */
 /* line 790 */
 /* byrd mtch u2209 */
-SnoVal _s2209 = get(_snoSrc);
+SnoVal _s2209 = get(_Src);
 const char *_subj2209 = to_str(_s2209);
 int64_t _slen2209 = _subj2209 ? (int64_t)strlen(_subj2209) : 0;
 int64_t _cur2209  = 0;
@@ -24389,7 +25672,9 @@ int _ok2209 = 0;
 _mstart2209 = _cur2209;
     /* === static storage === */
 static int64_t deref_743_saved_cur;
+static pat_Parse_t *deref_743_z;
 static int64_t deref_744_saved_cur;
+static pat_Space_t *deref_744_z;
 
     goto _byrd_2209_alpha;
 
@@ -24413,26 +25698,26 @@ cat_l_742_beta:
     goto _byrd_2209_fail;
 cat_r_742_alpha: {
     deref_743_saved_cur = _cur2209;
-    SnoVal _r_snoParse = pat_snoParse(_subj2209, _slen2209, &_cur2209, 0);
-    if (is_fail(_r_snoParse)) { _cur2209 = deref_743_saved_cur; goto cat_l_742_beta; }
+    SnoVal _r_743 = pat_Parse(_subj2209, _slen2209, &_cur2209, &deref_743_z, 0);
+    if (is_fail(_r_743)) { _cur2209 = deref_743_saved_cur; goto cat_l_742_beta; }
     goto cat_r_741_alpha;
 }
 cat_r_742_beta: {
     _cur2209 = deref_743_saved_cur;
-    SnoVal _r_snoParse = pat_snoParse(_subj2209, _slen2209, &_cur2209, 1);
-    if (is_fail(_r_snoParse)) { _cur2209 = deref_743_saved_cur; goto cat_l_742_beta; }
+    SnoVal _r_743_b = pat_Parse(_subj2209, _slen2209, &_cur2209, &deref_743_z, 1);
+    if (is_fail(_r_743_b)) { _cur2209 = deref_743_saved_cur; goto cat_l_742_beta; }
     goto cat_r_741_alpha;
 }
 cat_r_741_alpha: {
     deref_744_saved_cur = _cur2209;
-    SnoVal _r_snoSpace = pat_snoSpace(_subj2209, _slen2209, &_cur2209, 0);
-    if (is_fail(_r_snoSpace)) { _cur2209 = deref_744_saved_cur; goto cat_l_741_beta; }
+    SnoVal _r_744 = pat_Space(_subj2209, _slen2209, &_cur2209, &deref_744_z, 0);
+    if (is_fail(_r_744)) { _cur2209 = deref_744_saved_cur; goto cat_l_741_beta; }
     goto cat_r_740_alpha;
 }
 cat_r_741_beta: {
     _cur2209 = deref_744_saved_cur;
-    SnoVal _r_snoSpace = pat_snoSpace(_subj2209, _slen2209, &_cur2209, 1);
-    if (is_fail(_r_snoSpace)) { _cur2209 = deref_744_saved_cur; goto cat_l_741_beta; }
+    SnoVal _r_744_b = pat_Space(_subj2209, _slen2209, &_cur2209, &deref_744_z, 1);
+    if (is_fail(_r_744_b)) { _cur2209 = deref_744_saved_cur; goto cat_l_741_beta; }
     goto cat_r_740_alpha;
 }
 cat_r_740_alpha:
@@ -24475,7 +25760,7 @@ static void *stmt_430(void) { /* line 793 label:main05 */
 /* line 793 */
 _L_main05:;
 /* byrd mtch u2215 */
-SnoVal _s2215 = get(_snoSrc);
+SnoVal _s2215 = get(_Src);
 const char *_subj2215 = to_str(_s2215);
 int64_t _slen2215 = _subj2215 ? (int64_t)strlen(_subj2215) : 0;
 int64_t _cur2215  = 0;
@@ -24484,7 +25769,9 @@ int _ok2215 = 0;
 _mstart2215 = _cur2215;
     /* === static storage === */
 static int64_t deref_748_saved_cur;
+static pat_Parse_t *deref_748_z;
 static int64_t deref_749_saved_cur;
+static pat_Space_t *deref_749_z;
 
     goto _byrd_2215_alpha;
 
@@ -24508,26 +25795,26 @@ cat_l_747_beta:
     goto _byrd_2215_fail;
 cat_r_747_alpha: {
     deref_748_saved_cur = _cur2215;
-    SnoVal _r_snoParse = pat_snoParse(_subj2215, _slen2215, &_cur2215, 0);
-    if (is_fail(_r_snoParse)) { _cur2215 = deref_748_saved_cur; goto cat_l_747_beta; }
+    SnoVal _r_748 = pat_Parse(_subj2215, _slen2215, &_cur2215, &deref_748_z, 0);
+    if (is_fail(_r_748)) { _cur2215 = deref_748_saved_cur; goto cat_l_747_beta; }
     goto cat_r_746_alpha;
 }
 cat_r_747_beta: {
     _cur2215 = deref_748_saved_cur;
-    SnoVal _r_snoParse = pat_snoParse(_subj2215, _slen2215, &_cur2215, 1);
-    if (is_fail(_r_snoParse)) { _cur2215 = deref_748_saved_cur; goto cat_l_747_beta; }
+    SnoVal _r_748_b = pat_Parse(_subj2215, _slen2215, &_cur2215, &deref_748_z, 1);
+    if (is_fail(_r_748_b)) { _cur2215 = deref_748_saved_cur; goto cat_l_747_beta; }
     goto cat_r_746_alpha;
 }
 cat_r_746_alpha: {
     deref_749_saved_cur = _cur2215;
-    SnoVal _r_snoSpace = pat_snoSpace(_subj2215, _slen2215, &_cur2215, 0);
-    if (is_fail(_r_snoSpace)) { _cur2215 = deref_749_saved_cur; goto cat_l_746_beta; }
+    SnoVal _r_749 = pat_Space(_subj2215, _slen2215, &_cur2215, &deref_749_z, 0);
+    if (is_fail(_r_749)) { _cur2215 = deref_749_saved_cur; goto cat_l_746_beta; }
     goto cat_r_745_alpha;
 }
 cat_r_746_beta: {
     _cur2215 = deref_749_saved_cur;
-    SnoVal _r_snoSpace = pat_snoSpace(_subj2215, _slen2215, &_cur2215, 1);
-    if (is_fail(_r_snoSpace)) { _cur2215 = deref_749_saved_cur; goto cat_l_746_beta; }
+    SnoVal _r_749_b = pat_Space(_subj2215, _slen2215, &_cur2215, &deref_749_z, 1);
+    if (is_fail(_r_749_b)) { _cur2215 = deref_749_saved_cur; goto cat_l_746_beta; }
     goto cat_r_745_alpha;
 }
 cat_r_745_alpha:
@@ -24581,7 +25868,7 @@ static char _tramp_sentinel_2222;
 #define _tramp_next_2222 ((void*)&_tramp_sentinel_2222)
 static void *stmt_434(void) { /* line 797 */
 /* line 797 */
-SnoVal _v2223 = get(_snoSrc);
+SnoVal _v2223 = get(_Src);
 int _ok2223 = !IS_FAIL(_v2223);
 if(_ok2223) {
 var_set("OUTPUT", _v2223);
@@ -24606,7 +25893,7 @@ static char _tramp_sentinel_2226;
 #define _tramp_next_2226 ((void*)&_tramp_sentinel_2226)
 static void *stmt_436(void) { /* line 799 */
 /* line 799 */
-SnoVal _v2227 = get(_snoSrc);
+SnoVal _v2227 = get(_Src);
 int _ok2227 = !IS_FAIL(_v2227);
 if(_ok2227) {
 var_set("OUTPUT", _v2227);
@@ -26030,64 +27317,63 @@ int main(void) {
     var_register("ppJ1", &_ppJ1);
     var_register("ppP90i", &_ppP90i);
     var_register("ppP90", &_ppP90);
-    var_register("snoInteger", &_snoInteger);
-    var_register("snoDQ", &_snoDQ);
-    var_register("snoSQ", &_snoSQ);
-    var_register("snoString", &_snoString);
-    var_register("snoReal", &_snoReal);
-    var_register("snoId", &_snoId);
-    var_register("snoFunction", &_snoFunction);
+    var_register("Integer", &_Integer);
+    var_register("DQ", &_DQ);
+    var_register("SQ", &_SQ);
+    var_register("String", &_String);
+    var_register("Real", &_Real);
+    var_register("Id", &_Id);
+    var_register("Function", &_Function);
     var_register("tx", &_tx);
-    var_register("snoFunctions", &_snoFunctions);
-    var_register("snoTxInList", &_snoTxInList);
-    var_register("snoBuiltinVar", &_snoBuiltinVar);
-    var_register("snoBuiltinVars", &_snoBuiltinVars);
-    var_register("snoSpecialNm", &_snoSpecialNm);
-    var_register("snoSpecialNms", &_snoSpecialNms);
-    var_register("snoProtKwd", &_snoProtKwd);
-    var_register("snoProtKwds", &_snoProtKwds);
-    var_register("snoUnprotKwd", &_snoUnprotKwd);
-    var_register("snoUnprotKwds", &_snoUnprotKwds);
-    var_register("snoGray", &_snoGray);
-    var_register("snoWhite", &_snoWhite);
-    var_register("snoExprList", &_snoExprList);
-    var_register("snoXList", &_snoXList);
-    var_register("snoExpr", &_snoExpr);
-    var_register("snoExpr0", &_snoExpr0);
-    var_register("snoExpr1", &_snoExpr1);
-    var_register("snoExpr2", &_snoExpr2);
-    var_register("snoExpr3", &_snoExpr3);
-    var_register("snoX3", &_snoX3);
-    var_register("snoExpr4", &_snoExpr4);
-    var_register("snoX4", &_snoX4);
-    var_register("snoExpr5", &_snoExpr5);
-    var_register("snoExpr6", &_snoExpr6);
-    var_register("snoExpr7", &_snoExpr7);
-    var_register("snoExpr8", &_snoExpr8);
-    var_register("snoExpr9", &_snoExpr9);
-    var_register("snoExpr10", &_snoExpr10);
-    var_register("snoExpr11", &_snoExpr11);
-    var_register("snoExpr12", &_snoExpr12);
-    var_register("snoExpr13", &_snoExpr13);
-    var_register("snoExpr14", &_snoExpr14);
-    var_register("snoExpr15", &_snoExpr15);
-    var_register("snoExpr17", &_snoExpr17);
-    var_register("snoExpr16", &_snoExpr16);
-    var_register("snoSGoto", &_snoSGoto);
+    var_register("Functions", &_Functions);
+    var_register("TxInList", &_TxInList);
+    var_register("BuiltinVar", &_BuiltinVar);
+    var_register("BuiltinVars", &_BuiltinVars);
+    var_register("SpecialNm", &_SpecialNm);
+    var_register("SpecialNms", &_SpecialNms);
+    var_register("ProtKwd", &_ProtKwd);
+    var_register("ProtKwds", &_ProtKwds);
+    var_register("UnprotKwd", &_UnprotKwd);
+    var_register("UnprotKwds", &_UnprotKwds);
+    var_register("Gray", &_Gray);
+    var_register("White", &_White);
+    var_register("ExprList", &_ExprList);
+    var_register("XList", &_XList);
+    var_register("Expr", &_Expr);
+    var_register("Expr0", &_Expr0);
+    var_register("Expr1", &_Expr1);
+    var_register("Expr2", &_Expr2);
+    var_register("Expr3", &_Expr3);
+    var_register("X3", &_X3);
+    var_register("Expr4", &_Expr4);
+    var_register("X4", &_X4);
+    var_register("Expr5", &_Expr5);
+    var_register("Expr6", &_Expr6);
+    var_register("Expr7", &_Expr7);
+    var_register("Expr8", &_Expr8);
+    var_register("Expr9", &_Expr9);
+    var_register("Expr10", &_Expr10);
+    var_register("Expr11", &_Expr11);
+    var_register("Expr12", &_Expr12);
+    var_register("Expr13", &_Expr13);
+    var_register("Expr14", &_Expr14);
+    var_register("Expr15", &_Expr15);
+    var_register("Expr17", &_Expr17);
+    var_register("Expr16", &_Expr16);
+    var_register("SGoto", &_SGoto);
     var_register("SorF", &_SorF);
-    var_register("snoFGoto", &_snoFGoto);
-    var_register("snoSorF", &_snoSorF);
-    var_register("snoTarget", &_snoTarget);
-    var_register("snoBrackets", &_snoBrackets);
-    var_register("snoGoto", &_snoGoto);
-    var_register("snoControl", &_snoControl);
-    var_register("snoComment", &_snoComment);
-    var_register("snoLabel", &_snoLabel);
-    var_register("snoStmt", &_snoStmt);
-    var_register("snoCommands", &_snoCommands);
-    var_register("snoCommand", &_snoCommand);
-    var_register("snoParse", &_snoParse);
-    var_register("snoCompiland", &_snoCompiland);
+    var_register("FGoto", &_FGoto);
+    var_register("Target", &_Target);
+    var_register("Brackets", &_Brackets);
+    var_register("Goto", &_Goto);
+    var_register("Control", &_Control);
+    var_register("Comment", &_Comment);
+    var_register("Label", &_Label);
+    var_register("Stmt", &_Stmt);
+    var_register("Commands", &_Commands);
+    var_register("Command", &_Command);
+    var_register("Parse", &_Parse);
+    var_register("Compiland", &_Compiland);
     var_register("ppWidth", &_ppWidth);
     var_register("ppLbl", &_ppLbl);
     var_register("ppSubj", &_ppSubj);
@@ -26097,13 +27383,13 @@ int main(void) {
     var_register("ppGo1", &_ppGo1);
     var_register("ppGo2", &_ppGo2);
     var_register("ss", &_ss);
-    var_register("snoRefs", &_snoRefs);
+    var_register("Refs", &_Refs);
     var_register("findRefs", &_findRefs);
     var_register("p", &_p);
     var_register("subj", &_subj);
-    var_register("snoSpace", &_snoSpace);
-    var_register("snoLine", &_snoLine);
-    var_register("snoSrc", &_snoSrc);
+    var_register("Space", &_Space);
+    var_register("Line", &_Line);
+    var_register("Src", &_Src);
     var_register("sno", &_sno);
     var_sync_registered();
 
