@@ -95,6 +95,54 @@ static void byrd_emit(Expr *pat,
                       int depth);
 
 /* -----------------------------------------------------------------------
+ * Named pattern registry
+ *
+ * Tracks which pattern variable names have been compiled to C functions
+ * by byrd_emit_named_pattern().  E_DEREF (*varname) checks here: if the
+ * name is registered, emit a direct function call instead of going through
+ * match_pattern_at().
+ *
+ * Registry entries:
+ *   varname  — the SNOBOL4 variable name (e.g. "snoParse")
+ *   typename — the C struct typedef name  (e.g. "pat_snoParse_t")
+ *   fnname   — the C function name        (e.g. "pat_snoParse")
+ * ----------------------------------------------------------------------- */
+
+#define NAMED_PAT_MAX 128
+#define NAMED_PAT_NAMELEN 128
+
+typedef struct {
+    char varname[NAMED_PAT_NAMELEN];
+    char typename[NAMED_PAT_NAMELEN];
+    char fnname[NAMED_PAT_NAMELEN];
+} NamedPat;
+
+static NamedPat named_pat_registry[NAMED_PAT_MAX];
+static int      named_pat_count = 0;
+
+void byrd_named_pat_reset(void) { named_pat_count = 0; }
+
+static void named_pat_register(const char *varname,
+                                const char *typename,
+                                const char *fnname) {
+    /* Deduplicate */
+    for (int i = 0; i < named_pat_count; i++)
+        if (strcmp(named_pat_registry[i].varname, varname) == 0) return;
+    if (named_pat_count >= NAMED_PAT_MAX) return;
+    NamedPat *e = &named_pat_registry[named_pat_count++];
+    snprintf(e->varname,  NAMED_PAT_NAMELEN, "%s", varname);
+    snprintf(e->typename, NAMED_PAT_NAMELEN, "%s", typename);
+    snprintf(e->fnname,   NAMED_PAT_NAMELEN, "%s", fnname);
+}
+
+static const NamedPat *named_pat_lookup(const char *varname) {
+    for (int i = 0; i < named_pat_count; i++)
+        if (strcmp(named_pat_registry[i].varname, varname) == 0)
+            return &named_pat_registry[i];
+    return NULL;
+}
+
+/* -----------------------------------------------------------------------
  * Static storage declarations
  *
  * The oracle files use static storage for saved cursors, ARBNO stacks, etc.
@@ -1251,28 +1299,51 @@ static void byrd_emit(Expr *pat,
     /* ---------------------------------------------------------------- E_DEREF (deferred ref) */
     case E_DEREF: {
         /* *varname — indirect pattern reference.
-         * At runtime: get the value of 'varname', treat it as a pattern,
-         * mtch it anchored at the current cursor position.
-         * On success: advance cursor to the end of mtch → gamma.
-         * On failure: restore cursor → omega.
          *
-         * Byrd ports:
-         *   alpha: attempt the mtch
-         *   beta:  resume → restore cursor and fail (no backtracking into the sub-pattern)
-         *   gamma: inherited success continuation
-         *   omega: inherited failure continuation
+         * If varname is in the named pattern registry (compiled by
+         * byrd_emit_named_pattern), emit a direct call:
+         *   pat_X(&_z_X, 0)  on alpha
+         *   pat_X(&_z_X, 1)  on beta
+         * This is Technique 1 from PLAN.md — no engine.c, no match_pattern_at.
+         *
+         * If not registered, fall back to the interpreter path (match_pattern_at)
+         * for dynamic/EVAL patterns.
          */
-        char saved[LBUF];
-        snprintf(saved, LBUF, "deref_%d_saved_cursor", byrd_uid());
-        decl_add("int64_t %s", saved);
-
-        /* E_DEREF node: operand is in pat->left (created by unop()).
-         * For *varname, pat->left->kind == E_VAR, pat->left->sval is the name.
-         * For *$expr or other complex deref, fall back to empty. */
         const char *varname = NULL;
         if (pat->left && pat->left->kind == E_VAR)
             varname = pat->left->sval;
         if (!varname) varname = "";
+
+        const NamedPat *np = named_pat_lookup(varname);
+
+        if (np) {
+            /* Compiled path: direct function call — no engine.c */
+            /* Child frame pointer field: _z_<varname>  (type: pat_<varname>_t *) */
+            char zfield[LBUF];
+            snprintf(zfield, LBUF, "_z_%s", varname);
+            /* Declare as static pointer (NULL = unallocated) */
+            decl_add("%s *%s", np->typename, zfield);
+
+            /* alpha: first call — entry 0 */
+            B("%s: {\n", alpha);
+            B("    SnoVal _r_%s = %s(&%s, 0);\n", varname, np->fnname, zfield);
+            B("    if (IS_FAIL(_r_%s)) goto %s;\n", varname, omega);
+            B("    goto %s;\n", gamma);
+            B("}\n");
+
+            /* beta: backtrack — entry 1 */
+            B("%s: {\n", beta);
+            B("    SnoVal _r_%s = %s(&%s, 1);\n", varname, np->fnname, zfield);
+            B("    if (IS_FAIL(_r_%s)) goto %s;\n", varname, omega);
+            B("    goto %s;\n", gamma);
+            B("}\n");
+            return;
+        }
+
+        /* Interpreter fallback for unregistered vars (dynamic/EVAL patterns) */
+        char saved[LBUF];
+        snprintf(saved, LBUF, "deref_%d_saved_cursor", byrd_uid());
+        decl_add("int64_t %s", saved);
 
         B("%s: {\n", alpha);
         B("    SnoVal _deref_pat = var_get(%s%s%s);\n", "\"", varname, "\"");
