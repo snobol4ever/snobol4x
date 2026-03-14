@@ -930,6 +930,14 @@ static void emit_imm(Expr *child, const char *varname,
                      const char *cursor, int depth) {
     int uid = byrd_uid();
 
+    /* Sanitize varname: non-alnum/underscore chars → '_' for use as C identifier */
+    char safe_varname[NAMED_PAT_NAMELEN];
+    { int i = 0; const char *s = varname;
+      for (; *s && i < (int)(sizeof safe_varname)-1; s++, i++)
+          safe_varname[i] = (isalnum((unsigned char)*s) || *s=='_') ? *s : '_';
+      safe_varname[i] = '\0'; }
+    varname = safe_varname;
+
     Label child_alpha, child_beta;
     label_fmt(child_alpha, "assign_c", uid, "alpha");
     label_fmt(child_beta,  "assign_c", uid, "beta");
@@ -1296,8 +1304,9 @@ static void byrd_emit(Expr *pat,
 
     /* ---------------------------------------------------------------- E_IMM ($ assign) */
     case E_IMM: {
-        const char *varname = (pat->right && pat->right->kind == E_VAR)
-                              ? pat->right->sval : "OUTPUT";
+        const char *varname = "OUTPUT";
+        if (pat->right && (pat->right->kind == E_VAR || pat->right->kind == E_STR))
+            varname = pat->right->sval;
         emit_imm(pat->left, varname,
                  alpha, beta, gamma, omega,
                  subj, subj_len, cursor, depth);
@@ -1306,8 +1315,9 @@ static void byrd_emit(Expr *pat,
 
     /* --------------------------------------------------------------- E_COND (. assign) */
     case E_COND: {
-        const char *varname = (pat->right && pat->right->kind == E_VAR)
-                              ? pat->right->sval : "OUTPUT";
+        const char *varname = "OUTPUT";
+        if (pat->right && (pat->right->kind == E_VAR || pat->right->kind == E_STR))
+            varname = pat->right->sval;
         emit_cond(pat->left, varname,
                   alpha, beta, gamma, omega,
                   subj, subj_len, cursor, depth);
