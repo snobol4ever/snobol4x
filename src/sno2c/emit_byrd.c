@@ -64,10 +64,116 @@ static void B(const char *fmt, ...) {
 }
 
 /* -----------------------------------------------------------------------
+ * Three-column pretty printer for emitted Byrd box code
+ *
+ * Generated C is laid out as three display columns:
+ *
+ *   Col 1  Label   display  0..17   (18 display chars: 4-space indent + label + ":" + pad)
+ *   Col 2  Stmt    display 18..59   (42 display chars: C statement body)
+ *   Col 3  Goto    display 60+      (goto target, always last on line)
+ *
+ * Example (Lon's watermark layout):
+ *   str_t         NOTANY7;
+ *   NOTANY7_α:    if (Σ[Δ] == '(')                          goto NOTANY7_αω;
+ *                 if (Σ[Δ] == ' ')                          goto NOTANY7_αω;
+ *                 NOTANY7 = str(Σ+Δ,1); Δ+=1;               goto NOTANY7_γ;
+ *   NOTANY7_αω:                                             goto NOTANY7_ω;
+ *   NOTANY7_β:    Δ-=1;                                     goto NOTANY7_ω;
+ *
+ * Wrap rule: if stmt > COL_STMT_W display chars AND a goto follows,
+ *            emit stmt on its own line, then goto on the next line in col 3.
+ *
+ * API:
+ *   PLG(label, goto)               — label colon + goto (no stmt)
+ *   PL(label, goto, fmt, ...)      — label + stmt + goto
+ *   PS(goto, fmt, ...)             — blank label + stmt + goto
+ *   PG(goto)                       — blank label + blank stmt + goto only
+ * ----------------------------------------------------------------------- */
+
+#define COL_LABEL_W   18   /* display width of label column (includes 4-space indent) */
+#define COL_STMT_W    42   /* display width of stmt  column */
+#define COL_GOTO_COL  60   /* display column where goto field starts */
+
+/* Count display width of a UTF-8 string: each Unicode codepoint = 1 display char.
+ * Greek port letters (α β γ ω, 2-byte UTF-8) each count as 1 display char. */
+static int disp_width(const char *s) {
+    int w = 0;
+    const unsigned char *p = (const unsigned char *)s;
+    while (*p) {
+        if (*p < 0x80 || *p >= 0xC0) w++;
+        p++;
+    }
+    return w;
+}
+
+/* Emit (target - cur) spaces; at least 1. */
+static void pad_to(int cur, int target) {
+    int n = target - cur;
+    if (n < 1) n = 1;
+    for (int i = 0; i < n; i++) fputc(' ', byrd_out);
+}
+
+/* Core formatter.
+ *   label — C label (without colon), or NULL/"" for blank col 1
+ *   stmt  — C statement body (including semicolon if needed), or NULL/"" for blank col 2
+ *   gt    — goto target label (without "goto " prefix), or NULL/"" for no goto
+ */
+static void pretty_line(const char *label, const char *stmt, const char *gt) {
+    int cur = 0;
+    int has_label = label && label[0];
+    int has_stmt  = stmt  && stmt[0];
+    int has_goto  = gt    && gt[0];
+
+    if (has_label) {
+        fprintf(byrd_out, "    %s:", label);
+        cur = 4 + disp_width(label) + 1;
+    }
+
+    if (has_stmt) {
+        pad_to(cur, COL_LABEL_W);
+        cur = COL_LABEL_W;
+        int sw = disp_width(stmt);
+        fputs(stmt, byrd_out);
+        cur += sw;
+        if (has_goto) {
+            if (sw > COL_STMT_W) {
+                /* Stmt overflows col 2 — wrap goto to next line */
+                fputc('\n', byrd_out);
+                cur = 0;
+                pad_to(cur, COL_GOTO_COL);
+            } else {
+                pad_to(cur, COL_GOTO_COL);
+            }
+            fprintf(byrd_out, "goto %s;", gt);
+        }
+    } else if (has_goto) {
+        pad_to(cur, COL_GOTO_COL);
+        fprintf(byrd_out, "goto %s;", gt);
+    }
+
+    fputc('\n', byrd_out);
+}
+
+/* label + stmt + goto */
+#define PL(lbl, gt, ...) do { \
+    char _s[512]; snprintf(_s, sizeof(_s), __VA_ARGS__); \
+    pretty_line((lbl), _s, (gt)); \
+} while(0)
+
+/* blank label + stmt + goto */
+#define PS(gt, ...) PL("", (gt), __VA_ARGS__)
+
+/* blank label + blank stmt + goto only */
+#define PG(gt) pretty_line("", "", (gt))
+
+/* label + blank stmt + goto (label-colon line) */
+#define PLG(lbl, gt) pretty_line((lbl), "", (gt))
+
+/* -----------------------------------------------------------------------
  * Label / UID generation
  *
  * Labels: <role>_<uid>_<port>
- * e.g.  lit_7_alpha   cat_12_beta   arbno_3_child_fail
+ * e.g.  lit_7_α   cat_12_β   arbno_3_child_fail
  * ----------------------------------------------------------------------- */
 
 static int byrd_uid_ctr = 0;
@@ -529,27 +635,32 @@ static void emit_lit(const char *s,
     snprintf(saved, LBUF, "%s_saved_cursor", alpha);
     decl_add("int64_t %s", saved);
 
-    B("%s:\n", alpha);
-    B("    if (%s + %d > %s) goto %s;\n", cursor, n, subj_len, omega);
+    /* α: bounds check, match, advance */
+    PLG(alpha, NULL);
+    PS(omega,   "if (%s + %d > %s)", cursor, n, subj_len);
     if (n == 1) {
-        /* single char: direct comparison */
         char ch = s[0];
         if (ch == '\'' || ch == '\\')
-            B("    if (%s[%s] != '\\%c') goto %s;\n", subj, cursor, ch, omega);
+            PS(omega, "if (%s[%s] != '\\%c')", subj, cursor, ch);
         else
-            B("    if (%s[%s] != '%c') goto %s;\n", subj, cursor, ch, omega);
+            PS(omega, "if (%s[%s] != '%c')", subj, cursor, ch);
     } else {
-        B("    if (memcmp(%s + %s, ", subj, cursor);
-        emit_cstr(s);
-        B(", %d) != 0) goto %s;\n", n, omega);
+        /* memcmp: build stmt string with embedded string literal */
+        char cstr[LBUF*2]; int ci = 0;
+        cstr[ci++] = '"';
+        for (int i = 0; i < n && ci < (int)sizeof(cstr)-4; i++) {
+            unsigned char c = (unsigned char)s[i];
+            if (c == '"' || c == '\\') { cstr[ci++] = '\\'; cstr[ci++] = c; }
+            else if (c < 32)           { ci += snprintf(cstr+ci, 8, "\\x%02x", c); }
+            else                       { cstr[ci++] = c; }
+        }
+        cstr[ci++] = '"'; cstr[ci] = '\0';
+        PS(omega, "if (memcmp(%s + %s, %s, %d) != 0)", subj, cursor, cstr, n);
     }
-    B("    %s = %s;\n", saved, cursor);
-    B("    %s += %d;\n", cursor, n);
-    B("    goto %s;\n", gamma);
+    PS(gamma, "%s = %s; %s += %d;", saved, cursor, cursor, n);
 
-    B("%s:\n", beta);
-    B("    %s = %s;\n", cursor, saved);
-    B("    goto %s;\n", omega);
+    /* β: restore cursor */
+    PL(beta, omega, "%s = %s;", cursor, saved);
 }
 
 /* -----------------------------------------------------------------------
@@ -568,12 +679,10 @@ static void emit_pos(long n,
                      const char *alpha, const char *beta,
                      const char *gamma, const char *omega,
                      const char *cursor) {
-    B("%s:\n", alpha);
-    B("    if (%s != %ld) goto %s;\n", cursor, n, omega);
-    B("    goto %s;\n", gamma);
-
-    B("%s:\n", beta);
-    B("    goto %s;\n", omega);
+    PLG(alpha, NULL);
+    PS(omega,  "if (%s != %ld)", cursor, n);
+    PG(gamma);
+    PLG(beta, omega);
 }
 
 /* -----------------------------------------------------------------------
@@ -591,12 +700,10 @@ static void emit_rpos(long n,
                       const char *alpha, const char *beta,
                       const char *gamma, const char *omega,
                       const char *subj_len, const char *cursor) {
-    B("%s:\n", alpha);
-    B("    if (%s != %s - %ld) goto %s;\n", cursor, subj_len, n, omega);
-    B("    goto %s;\n", gamma);
-
-    B("%s:\n", beta);
-    B("    goto %s;\n", omega);
+    PLG(alpha, NULL);
+    PS(omega,  "if (%s != %s - %ld)", cursor, subj_len, n);
+    PG(gamma);
+    PLG(beta, omega);
 }
 
 /* -----------------------------------------------------------------------
@@ -613,21 +720,14 @@ static void emit_len(long n,
     snprintf(saved, LBUF, "%s_saved_cursor", alpha);
     decl_add("int64_t %s", saved);
 
-    B("%s:\n", alpha);
-    B("    if (%s + %ld > %s) goto %s;\n", cursor, n, subj_len, omega);
-    B("    %s = %s;\n", saved, cursor);
-    B("    %s += %ld;\n", cursor, n);
-    B("    goto %s;\n", gamma);
-
-    B("%s:\n", beta);
-    B("    %s = %s;\n", cursor, saved);
-    B("    goto %s;\n", omega);
+    PLG(alpha, NULL);
+    PS(omega,  "if (%s + %ld > %s)", cursor, n, subj_len);
+    PS(gamma,  "%s = %s; %s += %ld;", saved, cursor, cursor, n);
+    PL(beta, omega, "%s = %s;", cursor, saved);
 }
 
 /* -----------------------------------------------------------------------
- * TAB node
- *
- * Advance cursor to absolute position n.  Fails if cursor already past n.
+ * TAB node — advance cursor to absolute position n
  * ----------------------------------------------------------------------- */
 
 static void emit_tab(long n,
@@ -638,21 +738,14 @@ static void emit_tab(long n,
     snprintf(saved, LBUF, "%s_saved_cursor", alpha);
     decl_add("int64_t %s", saved);
 
-    B("%s:\n", alpha);
-    B("    if (%s > %ld) goto %s;\n", cursor, n, omega);
-    B("    %s = %s;\n", saved, cursor);
-    B("    %s = %ld;\n", cursor, n);
-    B("    goto %s;\n", gamma);
-
-    B("%s:\n", beta);
-    B("    %s = %s;\n", cursor, saved);
-    B("    goto %s;\n", omega);
+    PLG(alpha, NULL);
+    PS(omega,  "if (%s > %ld)", cursor, n);
+    PS(gamma,  "%s = %s; %s = %ld;", saved, cursor, cursor, n);
+    PL(beta, omega, "%s = %s;", cursor, saved);
 }
 
 /* -----------------------------------------------------------------------
- * RTAB node
- *
- * Advance cursor to len - n.  Fails if cursor already past that.
+ * RTAB node — advance cursor to len - n
  * ----------------------------------------------------------------------- */
 
 static void emit_rtab(long n,
@@ -663,19 +756,14 @@ static void emit_rtab(long n,
     snprintf(saved, LBUF, "%s_saved_cursor", alpha);
     decl_add("int64_t %s", saved);
 
-    B("%s:\n", alpha);
-    B("    if (%s > %s - %ld) goto %s;\n", cursor, subj_len, n, omega);
-    B("    %s = %s;\n", saved, cursor);
-    B("    %s = %s - %ld;\n", cursor, subj_len, n);
-    B("    goto %s;\n", gamma);
-
-    B("%s:\n", beta);
-    B("    %s = %s;\n", cursor, saved);
-    B("    goto %s;\n", omega);
+    PLG(alpha, NULL);
+    PS(omega,  "if (%s > %s - %ld)", cursor, subj_len, n);
+    PS(gamma,  "%s = %s; %s = %s - %ld;", saved, cursor, cursor, subj_len, n);
+    PL(beta, omega, "%s = %s;", cursor, saved);
 }
 
 /* -----------------------------------------------------------------------
- * ANY node — mtch one char in charset
+ * ANY node — match one char in charset
  * ----------------------------------------------------------------------- */
 
 static void emit_any(const char *cs,
@@ -687,20 +775,15 @@ static void emit_any(const char *cs,
     snprintf(saved, LBUF, "%s_saved_cursor", alpha);
     decl_add("int64_t %s", saved);
 
-    B("%s:\n", alpha);
-    B("    if (%s >= %s) goto %s;\n", cursor, subj_len, omega);
-    B("    if (!strchr(%s, %s[%s])) goto %s;\n", cs, subj, cursor, omega);
-    B("    %s = %s;\n", saved, cursor);
-    B("    %s++;\n", cursor);
-    B("    goto %s;\n", gamma);
-
-    B("%s:\n", beta);
-    B("    %s = %s;\n", cursor, saved);
-    B("    goto %s;\n", omega);
+    PLG(alpha, NULL);
+    PS(omega,  "if (%s >= %s)", cursor, subj_len);
+    PS(omega,  "if (!strchr(%s, %s[%s]))", cs, subj, cursor);
+    PS(gamma,  "%s = %s; %s++;", saved, cursor, cursor);
+    PL(beta, omega, "%s = %s;", cursor, saved);
 }
 
 /* -----------------------------------------------------------------------
- * NOTANY node — mtch one char NOT in charset
+ * NOTANY node — match one char NOT in charset
  * ----------------------------------------------------------------------- */
 
 static void emit_notany(const char *cs,
@@ -712,16 +795,11 @@ static void emit_notany(const char *cs,
     snprintf(saved, LBUF, "%s_saved_cursor", alpha);
     decl_add("int64_t %s", saved);
 
-    B("%s:\n", alpha);
-    B("    if (%s >= %s) goto %s;\n", cursor, subj_len, omega);
-    B("    if (strchr(%s, %s[%s])) goto %s;\n", cs, subj, cursor, omega);
-    B("    %s = %s;\n", saved, cursor);
-    B("    %s++;\n", cursor);
-    B("    goto %s;\n", gamma);
-
-    B("%s:\n", beta);
-    B("    %s = %s;\n", cursor, saved);
-    B("    goto %s;\n", omega);
+    PLG(alpha, NULL);
+    PS(omega,  "if (%s >= %s)", cursor, subj_len);
+    PS(omega,  "if (strchr(%s, %s[%s]))", cs, subj, cursor);
+    PS(gamma,  "%s = %s; %s++;", saved, cursor, cursor);
+    PL(beta, omega, "%s = %s;", cursor, saved);
 }
 
 /* -----------------------------------------------------------------------
@@ -741,24 +819,22 @@ static void emit_span(const char *cs,
     decl_add("int64_t %s", delta);
     decl_add("int64_t %s", start);
 
-    B("%s:\n", alpha);
-    B("    %s = %s;\n", start, cursor);
-    B("    while (%s < %s && strchr(%s, %s[%s])) %s++;\n", cursor, subj_len, cs, subj, cursor, cursor);
-    B("    %s = %s - %s;\n", delta, cursor, start);
-    B("    if (%s == 0) goto %s;\n", delta, omega);
-    B("    goto %s;\n", gamma);
+    PLG(alpha, NULL);
+    PS(NULL,   "%s = %s;", start, cursor);
+    PS(NULL,   "while (%s < %s && strchr(%s, %s[%s])) %s++;",
+               cursor, subj_len, cs, subj, cursor, cursor);
+    PS(NULL,   "%s = %s - %s;", delta, cursor, start);
+    PS(omega,  "if (%s == 0)", delta);
+    PG(gamma);
 
-    B("%s:\n", beta);
-    B("    if (%s <= 1) { %s = %s; goto %s; }\n",
-      delta, cursor, start, omega);
-    B("    %s--; %s--;\n", delta, cursor);
-    B("    goto %s;\n", gamma);
+    PLG(beta, NULL);
+    PS(omega,  "if (%s <= 1) { %s = %s; }", delta, cursor, start);
+    PS(gamma,  "%s--; %s--;", delta, cursor);
 }
 
 /* -----------------------------------------------------------------------
- * BREAK node — mtch zero or more chars NOT in charset, stopping before hit
- *
- * Deterministic: no backtrack (beta → omega).
+ * BREAK node — match zero or more chars NOT in charset, stop before hit
+ * Deterministic: beta → omega.
  * ----------------------------------------------------------------------- */
 
 static void emit_break(const char *cs,
@@ -770,23 +846,17 @@ static void emit_break(const char *cs,
     snprintf(saved, LBUF, "%s_saved_cursor", alpha);
     decl_add("int64_t %s", saved);
 
-    B("%s:\n", alpha);
-    B("    %s = %s;\n", saved, cursor);
-    B("    while (%s < %s && !strchr(%s, %s[%s])) %s++;\n", cursor, subj_len, cs, subj, cursor, cursor);
-    B("    if (%s >= %s) { %s = %s; goto %s; }\n",
-      cursor, subj_len, cursor, saved, omega);
-    B("    goto %s;\n", gamma);
-
-    B("%s:\n", beta);
-    B("    %s = %s;\n", cursor, saved);
-    B("    goto %s;\n", omega);
+    PLG(alpha, NULL);
+    PS(NULL,  "%s = %s;", saved, cursor);
+    PS(NULL,  "while (%s < %s && !strchr(%s, %s[%s])) %s++;",
+              cursor, subj_len, cs, subj, cursor, cursor);
+    PS(omega, "if (%s >= %s) { %s = %s; }", cursor, subj_len, cursor, saved);
+    PG(gamma);
+    PL(beta, omega, "%s = %s;", cursor, saved);
 }
 
 /* -----------------------------------------------------------------------
- * ARB node — mtch any number of characters (greedy, backtrackable)
- *
- * On alpha: succeed at current position (zero chars), offering to extend.
- * On beta:  advance one more char and try again.
+ * ARB node — match any number of chars (greedy, backtrackable)
  * ----------------------------------------------------------------------- */
 
 static void emit_arb(const char *alpha, const char *beta,
@@ -796,19 +866,15 @@ static void emit_arb(const char *alpha, const char *beta,
     snprintf(saved, LBUF, "%s_saved_cursor", alpha);
     decl_add("int64_t %s", saved);
 
-    B("%s:\n", alpha);
-    B("    %s = %s;\n", saved, cursor);
-    B("    goto %s;\n", gamma);
+    PL(alpha, gamma, "%s = %s;", saved, cursor);
 
-    B("%s:\n", beta);
-    B("    if (%s >= %s) goto %s;\n", saved, subj_len, omega);
-    B("    %s++;\n", saved);
-    B("    %s = %s;\n", cursor, saved);
-    B("    goto %s;\n", gamma);
+    PLG(beta, NULL);
+    PS(omega, "if (%s >= %s)", saved, subj_len);
+    PS(gamma, "%s++; %s = %s;", saved, cursor, saved);
 }
 
 /* -----------------------------------------------------------------------
- * REM node — mtch the rest of the subject
+ * REM node — match the rest of the subject
  * ----------------------------------------------------------------------- */
 
 static void emit_rem(const char *alpha, const char *beta,
@@ -818,14 +884,8 @@ static void emit_rem(const char *alpha, const char *beta,
     snprintf(saved, LBUF, "%s_saved_cursor", alpha);
     decl_add("int64_t %s", saved);
 
-    B("%s:\n", alpha);
-    B("    %s = %s;\n", saved, cursor);
-    B("    %s = %s;\n", cursor, subj_len);
-    B("    goto %s;\n", gamma);
-
-    B("%s:\n", beta);
-    B("    %s = %s;\n", cursor, saved);
-    B("    goto %s;\n", omega);
+    PL(alpha, gamma, "%s = %s; %s = %s;", saved, cursor, cursor, subj_len);
+    PL(beta,  omega, "%s = %s;", cursor, saved);
 }
 
 /* -----------------------------------------------------------------------
@@ -857,25 +917,18 @@ static void emit_seq(Expr *left, Expr *right,
 
     Label left_α, left_β, right_α, right_β;
     label_fmt(left_α,  "cat_l", uid, "α");
-    label_fmt(left_β,   "cat_l", uid, "β");
+    label_fmt(left_β,  "cat_l", uid, "β");
     label_fmt(right_α, "cat_r", uid, "α");
-    label_fmt(right_β,  "cat_r", uid, "β");
+    label_fmt(right_β, "cat_r", uid, "β");
 
-    /* α → left_α */
-    B("%s: /* CAT — entr left */\n", alpha);
-    B("    goto %s;\n", left_α);
+    PLG(alpha, left_α);   /* α  → left_α  (CAT — entr left) */
+    PLG(beta,  right_β);  /* β  → right_β (resume right first) */
 
-    /* β → right_β (resume right first) */
-    B("%s:\n", beta);
-    B("    goto %s;\n", right_β);
-
-    /* lower left: succeed→right_α, concede→ω */
     byrd_emit(left,
               left_α, left_β,
               right_α, omega,
               subj, subj_len, cursor, depth + 1);
 
-    /* lower right: succeed→γ, concede→left_β */
     byrd_emit(right,
               right_α, right_β,
               gamma, left_β,
@@ -914,29 +967,18 @@ static void emit_alt(Expr *left, Expr *right,
 
     Label left_α, left_β, right_α, right_β;
     label_fmt(left_α,  "alt_l", uid, "α");
-    label_fmt(left_β,   "alt_l", uid, "β");
+    label_fmt(left_β,  "alt_l", uid, "β");
     label_fmt(right_α, "alt_r", uid, "α");
-    label_fmt(right_β,  "alt_r", uid, "β");
+    label_fmt(right_β, "alt_r", uid, "β");
 
-    /* α → left_α */
-    B("%s: /* ALT — try left */\n", alpha);
-    B("    goto %s;\n", left_α);
+    PLG(alpha, left_α);   /* α → left_α  (ALT — try left) */
+    PLG(beta,  right_β);  /* β → right_β (backtrack right arm) */
 
-    /* β → left_β first, then right_β
-     * Per oracle: cat_l3_beta: goto alt_r6_beta;
-     * The active arm's beta is wired directly: left_omega→right_α,
-     * right_omega→omega; β goes to right_β (second arm backtrack).
-     * This matches the oracle pattern exactly. */
-    B("%s:\n", beta);
-    B("    goto %s;\n", right_β);
-
-    /* lower left: succeed→γ, concede→right_α */
     byrd_emit(left,
               left_α, left_β,
               gamma, right_α,
               subj, subj_len, cursor, depth + 1);
 
-    /* lower right: succeed→γ, concede→ω */
     byrd_emit(right,
               right_α, right_β,
               gamma, omega,
@@ -980,39 +1022,31 @@ static void emit_arbno(Expr *child,
 
     Label child_α, child_β, child_ok, child_fail;
     label_fmt(child_α, "arbno_c", uid, "α");
-    label_fmt(child_β,  "arbno_c", uid, "β");
+    label_fmt(child_β, "arbno_c", uid, "β");
     snprintf(child_ok,   LBUF, "%s_child_ok",   alpha);
     snprintf(child_fail, LBUF, "%s_child_fail", alpha);
 
     char depth_var[LBUF], stack_var[LBUF];
-    snprintf(depth_var, LBUF, "%s_depth", alpha);
+    snprintf(depth_var, LBUF, "%s_depth",   alpha);
     snprintf(stack_var, LBUF, "%s_cursors", alpha);
-    decl_add("int %s", depth_var);
+    decl_add("int %s",         depth_var);
     decl_add("int64_t %s[64]", stack_var);
 
-    /* α: zero matches → succeed */
-    B("%s:\n", alpha);
-    B("    %s = -1;\n", depth_var);
-    B("    goto %s;              /* ARBNO: zero matches -> succeed */\n", gamma);
+    /* α: zero matches → succeed immediately */
+    PL(alpha, gamma, "%s = -1;", depth_var);
 
     /* β: extend by one — save cursor, try child */
-    B("%s:\n", beta);
-    B("    %s++;\n", depth_var);
-    B("    if (%s >= 64) goto %s;  /* stack overflow */\n", depth_var, omega);
-    B("    %s[%s] = %s;\n", stack_var, depth_var, cursor);
-    B("    goto %s;\n", child_α);
+    PLG(beta, NULL);
+    PS(omega,    "if (++%s >= 64)", depth_var);
+    PS(child_α,  "%s[%s] = %s;", stack_var, depth_var, cursor);
 
-    /* child_ok: child matched → ARBNO succeeds again */
-    B("%s:\n", child_ok);
-    B("    goto %s;              /* child matched -> ARBNO succeeds again */\n", gamma);
+    /* child_ok: child matched → ARBNO offers another match */
+    PLG(child_ok, gamma);
 
-    /* child_fail: child failed → restore cursor, depth--, ARBNO fails */
-    B("%s:\n", child_fail);
-    B("    %s = %s[%s];\n", cursor, stack_var, depth_var);
-    B("    %s--;\n", depth_var);
-    B("    goto %s;              /* child failed -> ARBNO fails */\n", omega);
+    /* child_fail: child failed → restore cursor, pop, ARBNO fails */
+    PLG(child_fail, NULL);
+    PS(omega,   "%s = %s[%s]; %s--;", cursor, stack_var, depth_var, depth_var);
 
-    /* lower child: succeed→child_ok, concede→child_fail */
     byrd_emit(child,
               child_α, child_β,
               child_ok, child_fail,
@@ -1047,7 +1081,7 @@ static void emit_imm(Expr *child, const char *varname,
                      const char *cursor, int depth) {
     int uid = byrd_uid();
 
-    /* Sanitize varname: non-alnum/underscore chars → '_' for use as C identifier */
+    /* Sanitize varname: non-alnum/underscore chars → '_' */
     char safe_varname[NAMED_PAT_NAMELEN];
     { int i = 0; const char *s = varname;
       for (; *s && i < (int)(sizeof safe_varname)-1; s++, i++)
@@ -1057,46 +1091,37 @@ static void emit_imm(Expr *child, const char *varname,
 
     Label child_α, child_β;
     label_fmt(child_α, "assign_c", uid, "α");
-    label_fmt(child_β,  "assign_c", uid, "β");
+    label_fmt(child_β, "assign_c", uid, "β");
 
     char start_var[LBUF], do_assign[LBUF];
-    snprintf(start_var, LBUF, "%s_start", alpha);
+    snprintf(start_var, LBUF, "%s_start",     alpha);
     snprintf(do_assign, LBUF, "%s_do_assign", alpha);
-
     decl_add("int64_t %s", start_var);
 
-    /* alpha: record start, entr child */
-    B("%s:\n", alpha);
-    B("    %s = %s;\n", start_var, cursor);
-    B("    goto %s;\n", child_α);
+    /* α: record start, enter child */
+    PL(alpha, child_α, "%s = %s;", start_var, cursor);
 
-    /* lower child: succeed → do_assign, concede → omega */
     byrd_emit(child,
               child_α, child_β,
               do_assign, omega,
               subj, subj_len, cursor, depth + 1);
 
-    /* do_assign: write span into variable */
-    B("%s:\n", do_assign);
+    /* do_assign: capture span → variable, then γ */
+    PLG(do_assign, NULL);
     if (strcasecmp(varname, "OUTPUT") == 0) {
-        /* OUTPUT is a special IO stream — use output_str */
-        B("    { int64_t _len = %s - %s;\n", cursor, start_var);
-        B("      char *_os = malloc(_len + 1); memcpy(_os, %s + %s, _len); _os[_len] = 0;\n",
-          subj, start_var);
-        B("      output_str(_os); free(_os); }\n");
+        PS(NULL,  "{ int64_t _len = %s - %s;", cursor, start_var);
+        PS(NULL,  "  char *_os = malloc(_len + 1);");
+        PS(NULL,  "  memcpy(_os, %s + %s, _len); _os[_len] = 0;", subj, start_var);
+        PS(gamma, "  output_str(_os); free(_os); }");
     } else {
-        /* Regular variable: capture span and write into SNOBOL4 variable table.
-         * Use GC_malloc so the string is GC-managed (var_set stores raw pointer). */
-        B("    { int64_t _len = %s - %s;\n", cursor, start_var);
-        B("      char *_os = (char*)GC_malloc(_len + 1);\n");
-        B("      memcpy(_os, %s + %s, _len); _os[_len] = 0;\n", subj, start_var);
-        B("      var_set(\"%s\", STR_VAL(_os)); }\n", varname);
+        PS(NULL,  "{ int64_t _len = %s - %s;", cursor, start_var);
+        PS(NULL,  "  char *_os = (char*)GC_malloc(_len + 1);");
+        PS(NULL,  "  memcpy(_os, %s + %s, _len); _os[_len] = 0;", subj, start_var);
+        PS(gamma, "  var_set(\"%s\", STR_VAL(_os)); }", varname);
     }
-    B("    goto %s;\n", gamma);
 
-    /* beta: backtrack into child */
-    B("%s:\n", beta);
-    B("    goto %s;\n", child_β);
+    /* β: backtrack into child */
+    PLG(beta, child_β);
 }
 
 /* -----------------------------------------------------------------------
@@ -1125,52 +1150,38 @@ static void emit_cond(Expr *child, const char *varname,
 
 static void emit_fence(const char *alpha, const char *beta,
                        const char *gamma, const char *omega) {
-    B("%s: /* FENCE */\n", alpha);
-    B("    goto %s;\n", gamma);
-
-    B("%s:\n", beta);
-    B("    goto %s;\n", omega);
+    PLG(alpha, gamma);   /* FENCE: α → γ, no backtrack */
+    PLG(beta,  omega);
 }
 
 /* -----------------------------------------------------------------------
- * SUCCEED node
- *
- * Always succeeds.  Repeats forever on backtrack.
+ * SUCCEED node — always succeeds, repeats forever on backtrack
  * ----------------------------------------------------------------------- */
 
 static void emit_succeed(const char *alpha, const char *beta,
                          const char *gamma) {
-    B("%s: /* SUCCEED */\n", alpha);
-    B("%s:\n", beta);
-    B("    goto %s;\n", gamma);
+    PLG(alpha, gamma);   /* SUCCEED: α and β both → γ */
+    PLG(beta,  gamma);
 }
 
 /* -----------------------------------------------------------------------
- * FAIL node
- *
- * Always fails.
+ * FAIL node — always fails
  * ----------------------------------------------------------------------- */
 
 static void emit_fail_node(const char *alpha, const char *beta,
                            const char *omega) {
-    B("%s: /* FAIL */\n", alpha);
-    B("%s:\n", beta);
-    B("    goto %s;\n", omega);
+    PLG(alpha, omega);   /* FAIL: α and β both → ω */
+    PLG(beta,  omega);
 }
 
 /* -----------------------------------------------------------------------
- * ABORT node
- *
- * Terminates the entire mtch (not just backtrack).
- * In the static path we jump to omega for now; callers handle abort
- * at the top level.
+ * ABORT node — terminates the entire match
  * ----------------------------------------------------------------------- */
 
 static void emit_abort_node(const char *alpha, const char *beta,
                             const char *omega) {
-    B("%s: /* ABORT */\n", alpha);
-    B("%s:\n", beta);
-    B("    goto %s;\n", omega);  /* TODO: propagate abort signal */
+    PLG(alpha, omega);   /* TODO: propagate abort signal */
+    PLG(beta,  omega);
 }
 
 /* -----------------------------------------------------------------------
@@ -1224,17 +1235,15 @@ static void byrd_emit(Expr *pat,
                       int depth) {
     if (!pat) {
         /* epsilon: succeed immediately */
-        B("%s: /* epsilon */\n", alpha);
-        B("    goto %s;\n", gamma);
-        B("%s:\n", beta);
-        B("    goto %s;\n", omega);
+        PLG(alpha, gamma);
+        PLG(beta,  omega);
         return;
     }
 
     if (depth > 128) {
         B("/* emit_byrd: depth limit hit */\n");
-        B("%s: goto %s;\n", alpha, omega);
-        B("%s: goto %s;\n", beta,  omega);
+        PLG(alpha, omega);
+        PLG(beta,  omega);
         return;
     }
 
@@ -1325,29 +1334,22 @@ static void byrd_emit(Expr *pat,
             emit_fence(alpha, beta, gamma, omega);
             return;
         }
-        /* FENCE(pat) — with argument: mtch pat, then fence */
+        /* FENCE(pat) — with argument: match pat, then cut */
         if (strcasecmp(n, "FENCE") == 0 && pat->nargs >= 1) {
-            /* FENCE(p): mtch p then prevent backtrack into it */
             int uid = byrd_uid();
             Label ca, cb;
             label_fmt(ca, "fence_p", uid, "α");
             label_fmt(cb, "fence_p", uid, "β");
-            /* alpha: entr child */
-            B("%s: /* FENCE(p) */\n", alpha);
-            B("    goto %s;\n", ca);
-            /* lower child: on success → fence_after (can't backtrack) */
-            /* use a synthetic gamma for the child that acts as a fence */
             char fence_after[LBUF];
             snprintf(fence_after, LBUF, "fence_after_%d", uid);
+
+            PLG(alpha, ca);   /* FENCE(p): enter child */
             byrd_emit(pat->args[0],
                       ca, cb,
                       fence_after, omega,
                       subj, subj_len, cursor, depth + 1);
-            B("%s:\n", fence_after);
-            B("    goto %s;\n", gamma);
-            /* beta: cut — prevent backtrack */
-            B("%s:\n", beta);
-            B("    goto %s;\n", omega);
+            PLG(fence_after, gamma);   /* child succeeded → γ (no backtrack) */
+            PLG(beta, omega);          /* β: cut */
             return;
         }
         /* SUCCEED */
@@ -1366,42 +1368,40 @@ static void byrd_emit(Expr *pat,
             return;
         }
 
-        /* nPush() — push counter stack, always succeed (side-effect only) */
+        /* nPush() */
         if (strcasecmp(n, "nPush") == 0) {
-            B("%s: npush(); goto %s;\n", alpha, gamma);
-            B("%s: goto %s;\n", beta, omega);
+            PL(alpha, gamma, "npush();");
+            PLG(beta, omega);
             return;
         }
-        /* nInc() — increment top counter, always succeed */
+        /* nInc() */
         if (strcasecmp(n, "nInc") == 0) {
-            B("%s: ninc(); goto %s;\n", alpha, gamma);
-            B("%s: goto %s;\n", beta, omega);
+            PL(alpha, gamma, "ninc();");
+            PLG(beta, omega);
             return;
         }
-        /* nDec() — decrement top counter, always succeed */
+        /* nDec() */
         if (strcasecmp(n, "nDec") == 0) {
-            B("%s: ndec(); goto %s;\n", alpha, gamma);
-            B("%s: goto %s;\n", beta, omega);
+            PL(alpha, gamma, "ndec();");
+            PLG(beta, omega);
             return;
         }
-        /* nPop() — pop counter stack, always succeed */
+        /* nPop() */
         if (strcasecmp(n, "nPop") == 0) {
-            B("%s: npop(); goto %s;\n", alpha, gamma);
-            B("%s: goto %s;\n", beta, omega);
+            PL(alpha, gamma, "npop();");
+            PLG(beta, omega);
             return;
         }
-        /* nTop() — read top counter, always succeed (value available via ntop()) */
+        /* nTop() */
         if (strcasecmp(n, "nTop") == 0) {
-            B("%s: (void)ntop(); goto %s;\n", alpha, gamma);
-            B("%s: goto %s;\n", beta, omega);
+            PL(alpha, gamma, "(void)ntop();");
+            PLG(beta, omega);
             return;
         }
 
         /* Fallback: unknown call — epsilon */
-        B("%s: /* unknown call: %s — epsilon */\n", alpha, n);
-        B("    goto %s;\n", gamma);
-        B("%s:\n", beta);
-        B("    goto %s;\n", omega);
+        PLG(alpha, gamma);
+        PLG(beta,  omega);
         return;
     }
 
@@ -1443,26 +1443,12 @@ static void byrd_emit(Expr *pat,
 
     /* ---------------------------------------------------------------- E_VAR (pattern var) */
     case E_VAR:
-        /* Pattern variable: acts as epsilon in the static path */
-        B("%s: /* pat var %s — epsilon */\n", alpha, pat->sval);
-        B("    goto %s;\n", gamma);
-        B("%s:\n", beta);
-        B("    goto %s;\n", omega);
+        PLG(alpha, gamma);   /* pat var — epsilon in static path */
+        PLG(beta,  omega);
         return;
 
     /* ---------------------------------------------------------------- E_DEREF (deferred ref) */
     case E_DEREF: {
-        /* *varname — indirect pattern reference.
-         *
-         * If varname is in the named pattern registry (compiled by
-         * byrd_emit_named_pattern), emit a direct call:
-         *   pat_X(&_z_X, 0)  on alpha
-         *   pat_X(&_z_X, 1)  on beta
-         * This is Technique 1 from PLAN.md — no engine.c, no match_pattern_at.
-         *
-         * If not registered, fall back to the interpreter path (match_pattern_at)
-         * for dynamic/EVAL patterns.
-         */
         const char *varname = NULL;
         if (pat->left && pat->left->kind == E_VAR)
             varname = pat->left->sval;
@@ -1471,16 +1457,12 @@ static void byrd_emit(Expr *pat,
         const NamedPat *np = named_pat_lookup(varname);
 
         if (np) {
-            /* Compiled path: direct function call — no engine.c.
-             * Signature: pat_X(subj, slen, &cursor, &child_frame, entry)
-             * The child frame pointer lives in the parent struct (Technique 1).
-             * We emit bare field names — the #define aliases expand them. */
+            /* Compiled path: direct function call — no engine.c */
             int uid = byrd_uid();
             char saved_cur[LBUF];
             snprintf(saved_cur, LBUF, "deref_%d_saved_cur", uid);
             decl_add("int64_t %s", saved_cur);
 
-            /* Child frame pointer field in parent struct */
             char child_field[LBUF];
             snprintf(child_field, LBUF, "deref_%d_z", uid);
             {
@@ -1492,8 +1474,7 @@ static void byrd_emit(Expr *pat,
                     decl_add("%s *%s", np->typename, child_field);
             }
 
-            /* alpha: first call — entry 0
-             * Use bare child_field so #define expands to z->child_field */
+            /* α: first call — entry 0 */
             B("%s: {\n", alpha);
             B("    %s = %s;\n", saved_cur, cursor);
             B("    SnoVal _r_%d = %s(%s, %s, &%s, &%s, 0);\n",
@@ -1503,7 +1484,7 @@ static void byrd_emit(Expr *pat,
             B("    goto %s;\n", gamma);
             B("}\n");
 
-            /* beta: backtrack — entry 1 */
+            /* β: backtrack — entry 1 */
             B("%s: {\n", beta);
             B("    %s = %s;\n", cursor, saved_cur);
             B("    SnoVal _r_%d_b = %s(%s, %s, &%s, &%s, 1);\n",
@@ -1515,13 +1496,13 @@ static void byrd_emit(Expr *pat,
             return;
         }
 
-        /* Interpreter fallback for unregistered vars (dynamic/EVAL patterns) */
+        /* Interpreter fallback for dynamic/EVAL patterns */
         char saved[LBUF];
         snprintf(saved, LBUF, "deref_%d_saved_cursor", byrd_uid());
         decl_add("int64_t %s", saved);
 
         B("%s: {\n", alpha);
-        B("    SnoVal _deref_pat = var_get(%s%s%s);\n", "\"", varname, "\"");
+        B("    SnoVal _deref_pat = var_get(\"%s\");\n", varname);
         B("    int _deref_new_cur = match_pattern_at(_deref_pat, %s, (int)%s, (int)%s);\n",
           subj, subj_len, cursor);
         B("    if (_deref_new_cur < 0) goto %s;\n", omega);
@@ -1529,7 +1510,6 @@ static void byrd_emit(Expr *pat,
         B("    %s = (int64_t)_deref_new_cur;\n", cursor);
         B("    goto %s;\n", gamma);
         B("}\n");
-
         B("%s:\n", beta);
         B("    %s = %s;\n", cursor, saved);
         B("    goto %s;\n", omega);
@@ -1538,12 +1518,6 @@ static void byrd_emit(Expr *pat,
 
     /* --------------------------------------------------------------- E_REDUCE (& operator) */
     case E_REDUCE: {
-        /* "type & count" — calls Reduce(type, count) at mtch time.
-         * Reduce() pops `count` trees from the linked-list stack ($'@S')
-         * and pushes one combined tree of `type`.  Always succeeds as a
-         * side-effect node (like nPush/nPop).
-         * left  = type  (E_STR like 'snoParse', or NULL)
-         * right = count (E_CALL(nTop), E_INT, etc.)              */
         B("%s: /* E_REDUCE & */\n", alpha);
         B("    { SnoVal _reduce_args[2] = {");
         emit_simple_val(pat->left);
@@ -1558,10 +1532,8 @@ static void byrd_emit(Expr *pat,
 
     /* ---------------------------------------------------------------- default */
     default:
-        B("%s: /* unhandled expr kind %d — epsilon */\n", alpha, (int)pat->kind);
-        B("    goto %s;\n", gamma);
-        B("%s:\n", beta);
-        B("    goto %s;\n", omega);
+        PLG(alpha, gamma);   /* unhandled — epsilon */
+        PLG(beta,  omega);
         return;
     }
 }
