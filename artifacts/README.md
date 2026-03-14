@@ -46,6 +46,36 @@ gcc -O0 -g beauty_full_first_clean.c \
 
 ---
 
+## `beauty_full_session53.c`
+
+**What**: Generated C from `sno2c beauty.sno -I $INC` at Session 53.
+Two major changes since session52:
+1. `sno_`/`SNO_` prefix eradication (3ea9815) — `runtime_shim.h`, `push_abort_handler`, `dyvide`, etc.
+2. `emit_byrd.c` compiled Byrd box path fully wired — M-COMPILED-BYRD fired (`560c56a`). Engine.c still linked for `*snoParse` interpreter path.
+
+**When**: Session 53, 2026-03-14.
+
+**Stats**: 16,610 lines of C. md5: `fc34ebc925c234e2ab5148840ed3cf41`
+
+**Compiles with 0 gcc errors.** Binary runs, outputs header + "Parse Error" + "START".
+Active bug: ARBNO in `*snoParse` takes epsilon — snoCommand fails on "START\n".
+Root cause candidate: `snoLabel` BREAK charset built at init time with `get(_tab)`/`get(_nl)` before those vars are set → charset incomplete → BREAK misses `\n`.
+
+**Build command**:
+```bash
+CORPUS=/home/claude/SNOBOL4-corpus
+INC=$CORPUS/programs/inc
+BEAUTY=$CORPUS/programs/beauty/beauty.sno
+R=src/runtime
+./src/sno2c/sno2c -I $INC $BEAUTY > artifacts/beauty_full_session53.c
+gcc -O0 -g -I $R/snobol4 -I $R \
+    artifacts/beauty_full_session53.c $R/snobol4/snobol4.c \
+    $R/snobol4/snobol4_inc.c $R/snobol4/snobol4_pattern.c \
+    $R/engine.c -lgc -lm -o /tmp/beauty_full_bin
+```
+
+---
+
 ## `beauty_full_session52.c`
 
 **What**: Generated C from `sno2c beauty.sno -I $INC` at Session 52.
