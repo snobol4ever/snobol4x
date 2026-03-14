@@ -40,6 +40,10 @@ static void E(const char *fmt, ...) {
     va_list ap; va_start(ap,fmt); vfprintf(out,fmt,ap); va_end(ap);
 }
 
+/* Three-column pretty printer — shared with emit_byrd.c */
+#define PRETTY_OUT out
+#include "emit_pretty.h"
+
 /* C-safe version of a SNOBOL4 name — always unique per call (heap-allocated) */
 static char *cs_alloc(const char *s) {
     char base[512]; int j=0;
@@ -445,6 +449,49 @@ static int is_body_boundary(const char *label, const char *cur_fn);
  *   Cross-fn labels -> fallthrough (label is in a different function's body)
  * All SNOBOL4 label -> C label mappings go through cs_label() for uniqueness.
  */
+
+/* Capture emit_goto_target output as a string (for use with PS/PL macros).
+ * PG/PS macros expect just the goto *target* (without "goto " prefix),
+ * because pretty_line col3 adds "goto " itself.
+ * For "return ..." targets (trampoline mode), returns the full statement
+ * with a leading "!" marker so callers can detect and use E() instead.
+ * Returns heap-allocated string; caller must free(). */
+static void emit_goto_target(const char *label, const char *fn);
+static char *goto_target_str(const char *label, const char *fn) {
+    char *buf = NULL; size_t sz = 0;
+    FILE *tmp = open_memstream(&buf, &sz);
+    FILE *saved = out; out = tmp;
+    emit_goto_target(label, fn);
+    out = saved; fclose(tmp);
+    /* Strip leading "goto " — pretty_line adds it back in col3 */
+    if (buf && strncmp(buf, "goto ", 5) == 0) {
+        char *stripped = strdup(buf + 5);
+        free(buf);
+        return stripped;
+    }
+    /* Return statements or other non-goto fragments: return as-is.
+     * Callers must use E("%s;\n", tgt) not PG(tgt) for these. */
+    return buf; /* caller frees */
+}
+
+/* Emit a conditional or unconditional goto line in 3-column format.
+ * cond: NULL/"" for unconditional; "if(_ok)" etc for conditional.
+ * tgt: raw output of goto_target_str — either a label (use PG/PS)
+ *      or a full "return ..." statement (use E). */
+static void emit_pretty_goto(const char *tgt, const char *cond) {
+    if (!tgt || !tgt[0]) return;
+    int is_return   = (strncmp(tgt, "return", 6) == 0);
+    int is_computed = (tgt[0] == '{');   /* computed-goto inline block */
+    if (is_return || is_computed) {
+        /* Can't put return/block in col3 — use E() raw */
+        if (cond && cond[0]) E("    %s { %s; }\n", cond, tgt);
+        else                  E("    %s;\n", tgt);
+    } else {
+        if (cond && cond[0]) PS(tgt, "%s", cond);
+        else                  PG(tgt);
+    }
+}
+
 static void emit_goto_target(const char *label, const char *fn) {
     int in_main = !fn || strcasecmp(fn, "main") == 0;
 
@@ -543,18 +590,19 @@ static void emit_goto(SnoGoto *g, const char *fn, int result_ok) {
         }
         return;
     }
-    if (!g) { E("    goto _SNO_NEXT_%d;\n", cur_stmt_next_uid); return; }
+    if (!g) { char _nl[64]; snprintf(_nl,sizeof _nl,"_SNO_NEXT_%d",cur_stmt_next_uid); PG(_nl); return; }
     if (g->uncond) {
-        E("    "); emit_goto_target(g->uncond, fn); E(";\n");
+        char *tgt = goto_target_str(g->uncond, fn);
+        emit_pretty_goto(tgt, NULL); free(tgt);
     } else {
         if (result_ok) {
-            if (g->onsuccess) { E("    if(_ok) "); emit_goto_target(g->onsuccess, fn); E(";\n"); }
-            if (g->onfailure) { E("    if(!_ok) "); emit_goto_target(g->onfailure, fn); E(";\n"); }
+            if (g->onsuccess) { char *tgt=goto_target_str(g->onsuccess,fn); emit_pretty_goto(tgt,"if(_ok)"); free(tgt); }
+            if (g->onfailure) { char *tgt=goto_target_str(g->onfailure,fn); emit_pretty_goto(tgt,"if(!_ok)"); free(tgt); }
         } else {
-            if (g->onsuccess) { E("    "); emit_goto_target(g->onsuccess, fn); E(";\n"); }
+            if (g->onsuccess) { char *tgt=goto_target_str(g->onsuccess,fn); emit_pretty_goto(tgt,NULL); free(tgt); }
             if (g->onfailure) { /* can't reach failure — skip */ }
         }
-        E("    goto _SNO_NEXT_%d;\n", cur_stmt_next_uid);
+        char _nl[64]; snprintf(_nl,sizeof _nl,"_SNO_NEXT_%d",cur_stmt_next_uid); PG(_nl);
     }
 }
 
@@ -753,6 +801,47 @@ static int pat_is_anchored(Expr *e) {
 }
 
 /* ============================================================
+ * emit_ok_goto — emit 3-column conditional :S/:F goto lines
+ *
+ * Replaces the repeated pattern:
+ *   if (!s->go) { fallthrough; }
+ *   else if (uncond) { emit_goto(g,fn,0); }
+ *   else {
+ *       if (onsuccess) PS(tgt, "if(_ok%d)", u);
+ *       if (onfailure) PS(tgt, "if(!_ok%d)", u);
+ *       fallthrough;
+ *   }
+ * Used by all three emit_stmt paths (pure-assign, pattern-match, expr-only).
+ * ============================================================ */
+static void emit_ok_goto(SnoGoto *g, const char *fn, int u) {
+    char next_lbl[64];
+    if (trampoline_mode)
+        snprintf(next_lbl, sizeof next_lbl, "return (void*)_tramp_next_%d", cur_stmt_next_uid);
+    else
+        snprintf(next_lbl, sizeof next_lbl, "_SNO_NEXT_%d", cur_stmt_next_uid);
+
+    if (!g) {
+        emit_pretty_goto(next_lbl, NULL);
+        return;
+    }
+    if (g->uncond) { emit_goto(g, fn, 0); return; }
+
+    if (g->onsuccess) {
+        char *tgt = goto_target_str(g->onsuccess, fn);
+        char cond[32]; snprintf(cond, sizeof cond, "if(_ok%d)", u);
+        emit_pretty_goto(tgt, cond);
+        free(tgt);
+    }
+    if (g->onfailure) {
+        char *tgt = goto_target_str(g->onfailure, fn);
+        char cond[32]; snprintf(cond, sizeof cond, "if(!_ok%d)", u);
+        emit_pretty_goto(tgt, cond);
+        free(tgt);
+    }
+    emit_pretty_goto(next_lbl, NULL);
+}
+
+/* ============================================================
  * Emit one statement
  * ============================================================ */
 static void emit_stmt(Stmt *s, const char *fn) {
@@ -760,8 +849,8 @@ static void emit_stmt(Stmt *s, const char *fn) {
     maybe_fix_pattern_stmt(s);
 
     E("/* line %d */\n", s->lineno);
-    if (s->label) E("_L%s:;\n", cs_label(s->label));
-    E("trampoline_stno(%d);\n", s->lineno);
+    if (s->label) { char _sl[128]; snprintf(_sl, sizeof _sl, "_L%s", cs_label(s->label)); PLG(_sl, ""); }
+    PS("", "trampoline_stno(%d);", s->lineno);
 
     /* label-only statement */
     if (!s->subject) {
@@ -787,17 +876,7 @@ static void emit_stmt(Stmt *s, const char *fn) {
         emit_assign_target_io(s->subject, rhs);
         E("}\n");
         /* emit goto using _ok%d for conditional :S/:F branches */
-        if (!s->go) {
-            if (trampoline_mode) E("    return (void*)_tramp_next_%d;\n", cur_stmt_next_uid);
-            else                 E("    goto _SNO_NEXT_%d;\n", cur_stmt_next_uid);
-        }
-        else if (s->go->uncond) { emit_goto(s->go, fn, 0); }
-        else {
-            if (s->go->onsuccess) { E("    if(_ok%d) ", u); emit_goto_target(s->go->onsuccess, fn); E(";\n"); }
-            if (s->go->onfailure) { E("    if(!_ok%d) ", u); emit_goto_target(s->go->onfailure, fn); E(";\n"); }
-            if (trampoline_mode) E("    return (void*)_tramp_next_%d;\n", cur_stmt_next_uid);
-            else                 E("    goto _SNO_NEXT_%d;\n", cur_stmt_next_uid);
-        }
+        emit_ok_goto(s->go, fn, u);
         return;
     }
 
@@ -846,8 +925,8 @@ static void emit_stmt(Stmt *s, const char *fn) {
         byrd_emit_pattern(scan_pat, out, root_lbl, sv, sl, cv, ok_lbl, fail_lbl);
 
         /* gamma: mtch succeeded */
-        E("%s:;\n", ok_lbl);
-        E("_ok%d = 1;\n", u);
+        PLG(ok_lbl, "");
+        PS("", "_ok%d = 1;", u);
         if (s->replacement) {
             /* Replace matched region [_mstart%d .. _cur%d) with replacement */
             E("{\n");
@@ -873,27 +952,17 @@ static void emit_stmt(Stmt *s, const char *fn) {
             }
             E("}\n");
         }
-        E("goto %s;\n", done_lbl);
+        PG(done_lbl);
 
         /* omega: mtch failed — restore @S to pre-match state */
-        E("%s:;\n", fail_lbl);
-        E("var_set(\"@S\", _stk_save_%d);\n", u);
-        E("_ok%d = 0;\n", u);
+        PLG(fail_lbl, "");
+        PS("", "var_set(\"@S\", _stk_save_%d);", u);
+        PS("", "_ok%d = 0;", u);
 
-        E("%s:;\n", done_lbl);
+        PLG(done_lbl, "");
 
         /* emit goto using _ok%d */
-        if (!s->go) {
-            if (trampoline_mode) E("    return (void*)_tramp_next_%d;\n", cur_stmt_next_uid);
-            else                 E("    goto _SNO_NEXT_%d;\n", cur_stmt_next_uid);
-        }
-        else if (s->go->uncond) { emit_goto(s->go, fn, 0); }
-        else {
-            if (s->go->onsuccess) { E("    if(_ok%d) ", u); emit_goto_target(s->go->onsuccess, fn); E(";\n"); }
-            if (s->go->onfailure) { E("    if(!_ok%d) ", u); emit_goto_target(s->go->onfailure, fn); E(";\n"); }
-            if (trampoline_mode) E("    return (void*)_tramp_next_%d;\n", cur_stmt_next_uid);
-            else                 E("    goto _SNO_NEXT_%d;\n", cur_stmt_next_uid);
-        }
+        emit_ok_goto(s->go, fn, u);
         return;
     }
 
@@ -903,17 +972,7 @@ static void emit_stmt(Stmt *s, const char *fn) {
         E("SnoVal _v%d = ", u); emit_expr(s->subject); E(";\n");
         E("int _ok%d = !IS_FAIL(_v%d);\n", u, u);
         /* emit goto using _ok%d */
-        if (!s->go) {
-            if (trampoline_mode) E("    return (void*)_tramp_next_%d;\n", cur_stmt_next_uid);
-            else                 E("    goto _SNO_NEXT_%d;\n", cur_stmt_next_uid);
-        }
-        else if (s->go->uncond) { emit_goto(s->go, fn, 0); }
-        else {
-            if (s->go->onsuccess) { E("    if(_ok%d) ", u); emit_goto_target(s->go->onsuccess, fn); E(";\n"); }
-            if (s->go->onfailure) { E("    if(!_ok%d) ", u); emit_goto_target(s->go->onfailure, fn); E(";\n"); }
-            if (trampoline_mode) E("    return (void*)_tramp_next_%d;\n", cur_stmt_next_uid);
-            else                 E("    goto _SNO_NEXT_%d;\n", cur_stmt_next_uid);
-        }
+        emit_ok_goto(s->go, fn, u);
     }
 }
 
@@ -1410,7 +1469,8 @@ static void emit_fn(FnDef *fn, Program *prog) {
     E("\n");
 
     if (fn->nbody_starts == 0) {
-        E("    goto _SNO_RETURN_%s;\n", fn->name);
+        char _lbl[128]; snprintf(_lbl, sizeof _lbl, "_SNO_RETURN_%s", fn->name);
+        PG(_lbl);
     } else {
         Stmt *bs = fn->body_starts[fn->nbody_starts - 1]; /* last DEFINE wins */
         for (Stmt *s = bs; s; s = s->next) {
@@ -1418,13 +1478,16 @@ static void emit_fn(FnDef *fn, Program *prog) {
             if (s != bs && is_body_boundary(s->label, fn->name)) break;
             cur_stmt_next_uid = uid();
             emit_stmt(s, fn->name);
-            E("_SNO_NEXT_%d:;\n", cur_stmt_next_uid);
+            char _nl[64]; snprintf(_nl, sizeof _nl, "_SNO_NEXT_%d", cur_stmt_next_uid);
+            PLG(_nl, "");
         }
-        E("    goto _SNO_RETURN_%s;\n", fn->name);
+        char _lbl[128]; snprintf(_lbl, sizeof _lbl, "_SNO_RETURN_%s", fn->name);
+        PG(_lbl);
     }
 
     /* --- RETURN path: restore caller's hash values (DEFF6: restore in reverse) --- */
-    E("\n_SNO_RETURN_%s:\n", fn->name);
+    E("\n");
+    { char _lbl[128]; snprintf(_lbl, sizeof _lbl, "_SNO_RETURN_%s", fn->name); PLG(_lbl, ""); }
     E("    pop_abort_handler();\n");
     for (int i = fn->nlocals - 1; i >= 0; i--)
         E("    var_set(\"%s\", _saved_%s); /* restore caller's value */\n",
@@ -1435,7 +1498,7 @@ static void emit_fn(FnDef *fn, Program *prog) {
     E("    return get(%s);\n", cs(fn->name));
 
     /* --- FRETURN path: restore caller's hash values --- */
-    E("_SNO_FRETURN_%s:\n", fn->name);
+    { char _lbl[128]; snprintf(_lbl, sizeof _lbl, "_SNO_FRETURN_%s", fn->name); PLG(_lbl, ""); }
     E("    pop_abort_handler();\n");
     for (int i = fn->nlocals - 1; i >= 0; i--)
         E("    var_set(\"%s\", _saved_%s); /* restore caller's value */\n",
@@ -1446,7 +1509,7 @@ static void emit_fn(FnDef *fn, Program *prog) {
     E("    return FAIL_VAL;\n");
 
     /* --- ABORT path (setjmp fired): restore then return FAIL --- */
-    E("_SNO_ABORT_%s:\n", fn->name);
+    { char _lbl[128]; snprintf(_lbl, sizeof _lbl, "_SNO_ABORT_%s", fn->name); PLG(_lbl, ""); }
     for (int i = fn->nlocals - 1; i >= 0; i--)
         E("    var_set(\"%s\", _saved_%s); /* restore caller's value */\n",
           fn->locals[i], cs(fn->locals[i]));
@@ -1522,7 +1585,8 @@ static void emit_main(Program *prog) {
     for (Stmt *s = prog->head; s; s = s->next) {
         /* END stmt — emit the end label and stop */
         if (s->is_end) {
-            E("\n_SNO_END:;\n");
+            E("\n");
+            PLG("_SNO_END", "");
             E("    finish();\n");
             E("    return 0;\n");
             E("}\n");
@@ -1537,7 +1601,7 @@ static void emit_main(Program *prog) {
 
         cur_stmt_next_uid = uid();
         emit_stmt(s, "main");
-        E("_SNO_NEXT_%d:;\n", cur_stmt_next_uid);
+        { char _nl[64]; snprintf(_nl, sizeof _nl, "_SNO_NEXT_%d", cur_stmt_next_uid); PLG(_nl, ""); }
     }
 
     /* Fallback if no END stmt found */
