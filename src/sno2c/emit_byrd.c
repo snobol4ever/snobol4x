@@ -617,7 +617,7 @@ static void emit_imm(Expr *child, const char *varname,
                      const char *alpha, const char *beta,
                      const char *gamma, const char *omega,
                      const char *subj, const char *subj_len,
-                     const char *cursor, int depth);
+                     const char *cursor, int depth, int do_shift);
 static void emit_cond(Expr *child, const char *varname,
                       const char *alpha, const char *beta,
                       const char *gamma, const char *omega,
@@ -1128,7 +1128,7 @@ static void emit_imm(Expr *child, const char *varname,
                      const char *alpha, const char *beta,
                      const char *gamma, const char *omega,
                      const char *subj, const char *subj_len,
-                     const char *cursor, int depth) {
+                     const char *cursor, int depth, int do_shift) {
     int uid = byrd_uid();
 
     /* -------------------------------------------------------------------
@@ -1227,11 +1227,17 @@ static void emit_imm(Expr *child, const char *varname,
         PS(NULL,  "  char *_os = (char*)GC_malloc(_len + 1);");
         PS(NULL,  "  memcpy(_os, %s + %s, _len); _os[_len] = 0;", subj, start_var);
         if (skip_cstatic) {
-            PS(gamma, "  var_set(\"%s\", STR_VAL(_os)); }", varname);
+            PS(NULL,  "  var_set(\"%s\", STR_VAL(_os));", varname);
         } else {
             PS(NULL,  "  var_set(\"%s\", STR_VAL(_os));", varname);
-            PS(gamma, "  %s = STR_VAL(_os); }", byrd_cs(varname));
+            PS(NULL,  "  %s = STR_VAL(_os);", byrd_cs(varname));
         }
+        if (do_shift) {
+            /* ~ operator: push tree node onto shift-reduce stack via Shift(type, value) */
+            PS(NULL, "  { SnoVal _shift_args[2] = {STR_VAL(\"%s\"), STR_VAL(_os)};", varname);
+            PS(NULL, "    aply(\"Shift\", _shift_args, 2); }");
+        }
+        PS(gamma, "}");
     }
 
     /* β: backtrack into child */
@@ -1251,9 +1257,9 @@ static void emit_cond(Expr *child, const char *varname,
                       const char *gamma, const char *omega,
                       const char *subj, const char *subj_len,
                       const char *cursor, int depth) {
-    /* Same as IMM for the compiled static path */
+    /* ~ operator: same as IMM but calls Shift() to push tree node */
     emit_imm(child, varname, alpha, beta, gamma, omega,
-             subj, subj_len, cursor, depth);
+             subj, subj_len, cursor, depth, 1);
 }
 
 /* -----------------------------------------------------------------------
@@ -1540,7 +1546,7 @@ static void byrd_emit(Expr *pat,
             varname = pat->right->sval;
         emit_imm(pat->left, varname,
                  alpha, beta, gamma, omega,
-                 subj, subj_len, cursor, depth);
+                 subj, subj_len, cursor, depth, 0);
         return;
     }
 
