@@ -179,22 +179,22 @@ CNode *build_expr(CArena *a, Expr *e) {
         return cn_rawf(a, "kw(\"%s\")", e->sval);
 
     case E_DEREF:
-        if (e->right && e->right->kind == E_VAR) {
-            /* *varname — simple deref */
-            return cn_call1(a, "deref", cn_rawf(a, "strv(\"%s\")", e->right->sval));
-        } else if (e->left && e->left->kind == E_VAR &&
-                   (!e->right || e->right == e->left)) {
-            /* Named pattern variable assignment: varname = pattern */
+        if (!e->left) {
+            /* $expr — indirect lookup: operand is in e->right */
+            return cn_call1(a, "deref", build_expr(a, e->right));
+        } else if (e->left->kind == E_VAR) {
+            /* *varname — deferred pattern reference */
             return cn_rawf(a, "var_as_pattern(pat_ref(\"%s\"))", e->left->sval);
-        } else if (e->left && e->left->kind == E_VAR && e->right &&
-                   e->right->kind == E_CONCAT) {
-            /* concat with deferred ref */
+        } else if (e->left->kind == E_CALL && e->left->nargs >= 1
+                   && !is_defined_function_cn(e->left->sval)) {
+            /* *varname(arg...) — continuation-line misparse: deref-ref cat arg */
             char buf[256];
             snprintf(buf, sizeof buf, "concat_sv(var_as_pattern(pat_ref(\"%s\")),", e->left->sval);
             return cn_seq(a,
                 cn_raw(a, buf),
-                cn_seq(a, build_expr(a, e->right->right), cn_raw(a, ")")));
+                cn_seq(a, build_expr(a, e->left->args[0]), cn_raw(a, ")")));
         }
+        /* *(expr) — deref of compound expression */
         return cn_call1(a, "deref", build_expr(a, e->left));
 
     case E_NEG:
