@@ -27,7 +27,7 @@ run_test() {
     fi
     if ! gcc -O0 -g "$c" \
         "$RT/snobol4/snobol4.c" "$RT/snobol4/mock_includes.c" \
-        "$RT/snobol4/snobol4_pattern.c" "$RT/engine_stub.c" \
+        "$RT/snobol4/snobol4_pattern.c" "$RT/mock_engine.c" \
         -I"$RT/snobol4" -I"$RT" -I"$SNO2C_INC" \
         -lgc -lm -w -o "$bin" 2>/dev/null; then
         echo -e "${RED}FAIL${RESET} $name  [gcc]"; FAIL=$((FAIL+1))

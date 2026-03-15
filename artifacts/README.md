@@ -19,7 +19,7 @@
 - emit_cnode.c build_expr E_DEREF fixed: grammar puts $expr operand in e->right (e->left is NULL)
 - Old code fell through to build_expr(a, e->left) → NULL → deref(NULL_VAL)
 - New code mirrors emit_expr: !e->left → deref(e->right), e->left->E_VAR → var_as_pattern(pat_ref(...))
-- Binary compiles 0 errors with engine_stub.c
+- Binary compiles 0 errors with mock_engine.c
 - Parse Error still active — emit.c emit_expr E_DEREF NOT YET FIXED (session 79 first action)
 - Lines: 31776 | MD5: 5046a4b6f8a751ea92a67d271c1c05a2 | CHANGED from session 77
 - Session also: TINY.md/SESSION.md rewritten (19-session staleness fixed), bootstrap plan written
@@ -28,7 +28,7 @@
 - **Artifact**: beauty_tramp_session78.c (UNCHANGED — md5 5046a4b6f8a751ea92a67d271c1c05a2)
 - **sno2c changes**: none this session
 - **Runtime fixes this session**:
-  - `engine_stub.c`: added T_FUNC and T_CAPTURE handlers
+  - `mock_engine.c`: added T_FUNC and T_CAPTURE handlers
   - `snobol4_pattern.c`: SPAT_USER_CALL materialise — primitive builtins (ANY/SPAN/BREAK/NOTANY/LEN/POS/RPOS/TAB/RTAB) now resolve to proper T_* nodes instead of T_FUNC
   - `snobol4.c`: pre-init UCASE, LCASE, digits in runtime_init (physical constants, available before global.sno line 25)
 - **Active bug**: `c[N]` subscript in pp_Stmt returns wrong value — `_c` variable type needs tracing. `indx(get(_c), {vint(N)}, 1)` suspected to be operating on UDEF tree node not SARRAY children

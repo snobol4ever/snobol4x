@@ -1,4 +1,4 @@
-/* engine_stub.c — minimal recursive interpreter for dynamic pattern nodes.
+/* mock_engine.c — minimal recursive interpreter for dynamic pattern nodes.
  *
  * The compiled Byrd box path (sno2c -trampoline output) emits labeled-goto C
  * for all statically known patterns.  But beauty.sno constructs a small number

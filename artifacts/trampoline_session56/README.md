@@ -22,7 +22,7 @@ sno2c -trampoline -I$INC beauty.sno > beauty_tramp_session56.c
 gcc -O0 ... beauty_tramp_session56.c ... -lgc -lm -w -o beauty_tramp_bin
 ```
 
-Binary linked with `engine_stub.c` — no `engine.c` in compiled path.
+Binary linked with `mock_engine.c` — no `engine.c` in compiled path.
 
 ## What changed in emit.c (sprint stmt-fn)
 
