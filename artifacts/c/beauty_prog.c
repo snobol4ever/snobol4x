@@ -10875,7 +10875,8 @@ pat_ppTokPat_t *deref_579_z;
     cat_l_577_β:                                            goto cat_r_578_β;
     cat_l_578_α:  cat_l_578_α_saved_cursor = _cur640;       goto cat_r_578_α;
     cat_l_578_β:
-                  if (cat_l_578_α_saved_cursor >= _slen640) goto _byrd_640_fail;
+                  if (kw_anchor || cat_l_578_α_saved_cursor >= _slen640)
+                                                            goto _byrd_640_fail;
                   cat_l_578_α_saved_cursor++; _cur640 = cat_l_578_α_saved_cursor;
                                                             goto cat_r_578_α;
     cat_r_578_α:  _mstart640 = _cur640;                     goto cat_r_577_α;
@@ -11872,7 +11873,8 @@ pat_ppGPat_t *deref_584_z;
     cat_l_582_β:                                            goto cat_r_583_β;
     cat_l_583_α:  cat_l_583_α_saved_cursor = _cur771;       goto cat_r_583_α;
     cat_l_583_β:
-                  if (cat_l_583_α_saved_cursor >= _slen771) goto _byrd_771_fail;
+                  if (kw_anchor || cat_l_583_α_saved_cursor >= _slen771)
+                                                            goto _byrd_771_fail;
                   cat_l_583_α_saved_cursor++; _cur771 = cat_l_583_α_saved_cursor;
                                                             goto cat_r_583_α;
     cat_r_583_α:  _mstart771 = _cur771;                     goto cat_r_582_α;
@@ -11941,7 +11943,8 @@ pat_ppTrimPat_t *deref_587_z;
     cat_l_585_β:                                            goto cat_r_586_β;
     cat_l_586_α:  cat_l_586_α_saved_cursor = _cur775;       goto cat_r_586_α;
     cat_l_586_β:
-                  if (cat_l_586_α_saved_cursor >= _slen775) goto _byrd_775_fail;
+                  if (kw_anchor || cat_l_586_α_saved_cursor >= _slen775)
+                                                            goto _byrd_775_fail;
                   cat_l_586_α_saved_cursor++; _cur775 = cat_l_586_α_saved_cursor;
                                                             goto cat_r_586_α;
     cat_r_586_α:  _mstart775 = _cur775;                     goto cat_r_585_α;
