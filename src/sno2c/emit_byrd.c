@@ -545,6 +545,11 @@ static void emit_break(const char *cs,
                        const char *gamma, const char *omega,
                        const char *subj, const char *subj_len,
                        const char *cursor);
+static void emit_breakx(const char *cs,
+                        const char *alpha, const char *beta,
+                        const char *gamma, const char *omega,
+                        const char *subj, const char *subj_len,
+                        const char *cursor);
 static void emit_arb(const char *alpha, const char *beta,
                      const char *gamma, const char *omega,
                      const char *subj_len, const char *cursor);
@@ -885,8 +890,43 @@ static void emit_break(const char *cs,
 }
 
 /* -----------------------------------------------------------------------
- * ARB node — match any number of chars (greedy, backtrackable)
+ * BREAKX node — like BREAK but β advances 1 past the break-char and retries.
+ *
+ * SPITBOL semantics (from sbl.asm p_bkx / s_bkx):
+ *   BREAKX(cs)  ≡  BREAK(cs) ARBNO(LEN(1) BREAK(cs))
+ *
+ * Byrd box wiring:
+ *   α: scan forward while not in cs.
+ *      if end-of-subject → ω (cs-char never found, fail).
+ *      else → γ (stopped AT a cs-char, succeed).
+ *   β: advance cursor 1 past the current cs-char, then scan again.
+ *      if end-of-subject after advance → ω.
+ *      else → γ.
+ *
+ * Key difference from BREAK: β does NOT restore cursor — it extends.
  * ----------------------------------------------------------------------- */
+static void emit_breakx(const char *cs,
+                        const char *alpha, const char *beta,
+                        const char *gamma, const char *omega,
+                        const char *subj, const char *subj_len,
+                        const char *cursor) {
+    /* shared scan label: both α and β funnel here */
+    char scan_lbl[LBUF];
+    snprintf(scan_lbl, LBUF, "%s_bkx_scan", alpha);
+
+    PLG(alpha, scan_lbl);
+    PLG(beta,  NULL);
+    /* β: advance 1 past the break-char, then fall into scan */
+    B("                  if (%s >= %s) goto %s;\n", cursor, subj_len, omega);
+    B("                  %s++;\n", cursor);          /* skip the cs-char */
+    B("    %s:\n", scan_lbl);
+    /* scan loop: advance while NOT in cs */
+    B("                  while (%s < %s && !strchr(%s, %s[%s])) %s++;\n",
+      cursor, subj_len, cs, subj, cursor, cursor);
+    B("                  if (%s >= %s)                           goto %s;\n",
+      cursor, subj_len, omega);
+    PG(gamma);
+}
 
 static void emit_arb(const char *alpha, const char *beta,
                      const char *gamma, const char *omega,
@@ -898,7 +938,7 @@ static void emit_arb(const char *alpha, const char *beta,
     PL(alpha, gamma, "%s = %s;", saved, cursor);
 
     PLG(beta, NULL);
-    PS(omega, "if (%s >= %s)", saved, subj_len);
+    PS(omega, "if (kw_anchor || %s >= %s)", saved, subj_len);
     PS(gamma, "%s++; %s = %s;", saved, cursor, saved);
 }
 
@@ -1549,6 +1589,11 @@ static void byrd_emit(EXPR_t *pat,
             emit_break(cs, alpha, beta, gamma, omega, subj, subj_len, cursor);
             return;
         }
+        if (strcasecmp(n, "BREAKX") == 0 && pat->nargs >= 1) {
+            char cs_buf[1024]; emit_charset_cexpr(pat->args[0], cs_buf, (int)sizeof cs_buf); const char *cs = cs_buf;
+            emit_breakx(cs, alpha, beta, gamma, omega, subj, subj_len, cursor);
+            return;
+        }
         /* ARB */
         if (strcasecmp(n, "ARB") == 0) {
             emit_arb(alpha, beta, gamma, omega, subj_len, cursor);
@@ -1685,7 +1730,12 @@ static void byrd_emit(EXPR_t *pat,
     case E_ATP: {
         /* @VAR — zero-width: capture current cursor position as integer into VAR.
          * Always succeeds, never consumes input.  No backtrack effect. */
-        const char *varname = (pat->right && pat->right->sval) ? pat->right->sval : "_";
+        /* unary @VAR: parser puts operand in left (via unop()).
+         * binary @VAR (rare): right holds the variable.
+         * Prefer left->sval, fall back to right->sval. */
+        const char *varname =
+            (pat->left  && pat->left->sval)  ? pat->left->sval  :
+            (pat->right && pat->right->sval) ? pat->right->sval : "_";
         int uid = byrd_uid();
         char safe[NAMED_PAT_NAMELEN];
         { int i=0; const char *s=varname;
@@ -1699,8 +1749,9 @@ static void byrd_emit(EXPR_t *pat,
         if (!skip_cs)
             PS(NULL, "  %s = INTVAL_fn((int64_t)%s);", byrd_cs(varname), cursor);
         PS(gamma, "}");
-        /* β → γ: position capture has no backtrack (zero-width, no state to undo) */
-        PLG(beta, gamma);
+        /* β → ω: @VAR is zero-width (no state to restore) but non-resumable.
+         * On backtrack, propagate failure upward — do NOT re-enter γ. */
+        PLG(beta, omega);
         return;
     }
 

@@ -145,7 +145,7 @@ static DESCR_t _b_IDENT(DESCR_t *a, int n) {
 static DESCR_t _b_DIFFER(DESCR_t *a, int n) {
     DESCR_t x = (n > 0) ? a[0] : NULVCL;
     DESCR_t y = (n > 1) ? a[1] : NULVCL;
-    return differ(x, y) ? x : FAILDESCR;
+    return differ(x, y) ? NULVCL : FAILDESCR;
 }
 static DESCR_t _b_HOST(DESCR_t *a, int n) {
     /* HOST(0) = command args string, HOST(1) = PID, HOST(3) = argc */
@@ -1116,6 +1116,13 @@ DESCR_t NV_GET_fn(const char *name) {
     if (!name) return NULVCL;
     /* Special I/O variables */
     if (strcmp(name, "INPUT") == 0) return input_read();
+    /* Protected/unprotected keywords backed by C globals */
+    if (strcmp(name, "STCOUNT")  == 0) return INTVAL(kw_stcount);
+    if (strcmp(name, "STNO")     == 0) return INTVAL(kw_stcount);
+    if (strcmp(name, "STLIMIT")  == 0) return INTVAL(kw_stlimit);
+    if (strcmp(name, "ANCHOR")   == 0) return INTVAL(kw_anchor);
+    if (strcmp(name, "TRIM")     == 0) return INTVAL(kw_trim);
+    if (strcmp(name, "FULLSCAN") == 0) return INTVAL(kw_fullscan);
     unsigned h = _var_hash(name);
     for (NV_t *e = _var_buckets[h]; e; e = e->next)
         if (strcmp(e->name, name) == 0) return e->val;
@@ -1128,6 +1135,11 @@ void NV_SET_fn(const char *name, DESCR_t val) {
     comm_var(name, val);
     /* Special I/O variables */
     if (strcmp(name, "OUTPUT") == 0) { output_val(val); return; }
+    /* Unprotected keywords backed by C globals */
+    if (strcmp(name, "STLIMIT")  == 0) { kw_stlimit  = (val.v==DT_I)?val.i:(int64_t)to_real(val); return; }
+    if (strcmp(name, "ANCHOR")   == 0) { kw_anchor   = (val.v==DT_I)?val.i:(int64_t)to_real(val); return; }
+    if (strcmp(name, "TRIM")     == 0) { kw_trim     = (val.v==DT_I)?val.i:(int64_t)to_real(val); return; }
+    if (strcmp(name, "FULLSCAN") == 0) { kw_fullscan = (val.v==DT_I)?val.i:(int64_t)to_real(val); return; }
     unsigned h = _var_hash(name);
     for (NV_t *e = _var_buckets[h]; e; e = e->next) {
         if (strcmp(e->name, name) == 0) {
