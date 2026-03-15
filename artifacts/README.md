@@ -61,3 +61,26 @@
 - Sprint A (`beauty-crosscheck`) begins next session.
 - First action: build beauty_full_bin, write 101_comment test, run run_beauty.sh.
 - See TINY.md §"Next action" and TESTING.md for full protocol.
+
+## Session 100 — 2026-03-15
+
+### beauty_tramp_session95.c (no new artifact)
+- **md5:** cc34e62fee07676e12d0824c14fe6e85 — UNCHANGED from session95
+- **compile status:** not recompiled (no sno2c changes)
+- **crosscheck:** 106/106 maintained
+
+### Session 100 work
+- No compiler or sno2c changes.
+- HQ: correct frontend×backend split — one file per input language / output target.
+- New files: FRONTEND-SNOBOL4.md, FRONTEND-SNOCONE.md, FRONTEND-ICON.md,
+  FRONTEND-PROLOG.md, FRONTEND-CSHARP.md, FRONTEND-CLOJURE.md,
+  BACKEND-X64.md, IMPL-SNO2C.md (renamed from FRONTEND-SNO2C.md).
+- Removed: FRONTEND-BEAUTY.md (absorbed into FRONTEND-SNOBOL4.md),
+  FRONTEND-SNO2C.md (renamed IMPL-SNO2C.md — it's a compiler impl, not a language).
+- PLAN.md: real product matrix table (frontend × backend × repo).
+- TINY.md: frontier table showing which frontend×backend combinations active/done/planned.
+
+### Active bug / next action
+- Sprint A (`beauty-crosscheck`) begins next session (101).
+- First: build beauty_full_bin → write 101_comment test → run run_beauty.sh.
+- See TINY.md §NOW and FRONTEND-SNOBOL4.md §Rung 12 Test Format.
