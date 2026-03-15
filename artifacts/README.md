@@ -71,3 +71,14 @@ to_int(NV_GET_fn("var")) dynamically instead of hardcoded 0.
 
 **Active bug:** E_ATP emits to _ instead of varname (pat->right vs pat->sval)
 **Rung status:** 1-7 clean (64/64), rung 8 15/17
+
+## Session 94 — 2026-03-15
+
+- **Artifact:** beauty_tramp_session94.c
+- **Lines:** 15641
+- **md5:** 31dfdcbf66138fcf831c9844c1155af0
+- **Changed from session93:** YES (15638→15641, +3 lines)
+- **Compile status:** not tested against beauty_full_bin (crosscheck sprint)
+- **Changes:** E_ATP varname fix (left not right), E_ATP beta→omega, ARB kw_anchor guard, BREAKX implemented, DIFFER fix, &STCOUNT/&STNO/&STLIMIT/&ANCHOR/&TRIM/&FULLSCAN wired into NV_GET/SET
+- **Active bug:** 082_keyword_stcount still fails (STNO reads kw_stcount — off by one?), 100_roman_numeral (block_roman_end not emitted in Pass 2 block walker)
+- **Rung 8:** 17/17 ✅ | **Rung 9:** 9/11
