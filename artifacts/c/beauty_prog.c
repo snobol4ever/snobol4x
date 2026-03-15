@@ -125,7 +125,6 @@ static DESCR_t _sno = {0};
 /* --- block forward declarations --- */
 static void *block_START(void);
 static void *block_END(void);
-static void *block_START(void);
 static void *block_ppArgLoop(void);
 static void *block_ppArgP2(void);
 static void *block_ppArgP3(void);
@@ -10076,11 +10075,11 @@ alt_r_528_β:
 
 typedef struct pat_Command_t {
     int64_t cat_l_536_α_cstart;
-    char *cond_comment_537;
+    char *cond_Comment_537;
     int64_t deref_538_saved_cur;
     int64_t deref_539_saved_cursor;
     int64_t cat_l_541_α_cstart;
-    char *cond_control_542;
+    char *cond_Control_542;
     int64_t deref_543_saved_cur;
     int64_t deref_545_saved_cursor;
     int64_t alt_r_544_α_saved_cursor;
@@ -10098,11 +10097,11 @@ static DESCR_t pat_Command(const char *_subj_np, int64_t _slen_np,
     pat_Command_t *z = *_zz_np;
     int64_t _cur_np = *_cur_ptr_np;
 #define cat_l_536_α_cstart z->cat_l_536_α_cstart
-#define cond_comment_537 z->cond_comment_537
+#define cond_Comment_537 z->cond_Comment_537
 #define deref_538_saved_cur z->deref_538_saved_cur
 #define deref_539_saved_cursor z->deref_539_saved_cursor
 #define cat_l_541_α_cstart z->cat_l_541_α_cstart
-#define cond_control_542 z->cond_control_542
+#define cond_Control_542 z->cond_Control_542
 #define deref_543_saved_cur z->deref_543_saved_cur
 #define deref_545_saved_cursor z->deref_545_saved_cursor
 #define alt_r_544_α_saved_cursor z->alt_r_544_α_saved_cursor
@@ -10130,7 +10129,7 @@ static DESCR_t pat_Command(const char *_subj_np, int64_t _slen_np,
     cat_l_535_α:                                            goto cat_l_536_α;
     cat_l_535_β:                                            goto cat_r_536_β;
     cat_l_536_α:
-                  cond_comment_537 = NULL;
+                  cond_Comment_537 = NULL;
                   cat_l_536_α_cstart = _cur_np;             goto cond_c_537_α;
 cond_c_537_α: {
     deref_538_saved_cur = _cur_np;
@@ -10146,8 +10145,8 @@ cond_c_537_β: {
 }
     cat_l_536_α_do_cap:
                   { int64_t _len = _cur_np - cat_l_536_α_cstart;
-                    cond_comment_537 = (char*)GC_malloc(_len + 1);
-                    memcpy(cond_comment_537, _subj_np + cat_l_536_α_cstart, _len); cond_comment_537[_len] = '\0'; }
+                    cond_Comment_537 = (char*)GC_malloc(_len + 1);
+                    memcpy(cond_Comment_537, _subj_np + cat_l_536_α_cstart, _len); cond_Comment_537[_len] = '\0'; }
                                                             goto cat_r_536_α;
     cat_l_536_β:                                            goto cond_c_537_β;
 cat_r_536_α: /* E_OPSYN & */
@@ -10171,7 +10170,7 @@ cat_r_535_β:
     cat_l_540_α:                                            goto cat_l_541_α;
     cat_l_540_β:                                            goto cat_r_541_β;
     cat_l_541_α:
-                  cond_control_542 = NULL;
+                  cond_Control_542 = NULL;
                   cat_l_541_α_cstart = _cur_np;             goto cond_c_542_α;
 cond_c_542_α: {
     deref_543_saved_cur = _cur_np;
@@ -10187,8 +10186,8 @@ cond_c_542_β: {
 }
     cat_l_541_α_do_cap:
                   { int64_t _len = _cur_np - cat_l_541_α_cstart;
-                    cond_control_542 = (char*)GC_malloc(_len + 1);
-                    memcpy(cond_control_542, _subj_np + cat_l_541_α_cstart, _len); cond_control_542[_len] = '\0'; }
+                    cond_Control_542 = (char*)GC_malloc(_len + 1);
+                    memcpy(cond_Control_542, _subj_np + cat_l_541_α_cstart, _len); cond_Control_542[_len] = '\0'; }
                                                             goto cat_r_541_α;
     cat_l_541_β:                                            goto cond_c_542_β;
 cat_r_541_α: /* E_OPSYN & */
@@ -10259,17 +10258,17 @@ alt_l_549_β:
     cat_r_531_β:                                            goto cat_l_531_β;
     _Command_γ:;
         *_cur_ptr_np = _cur_np;
-if (cond_comment_537) { NV_SET_fn("comment", STRVAL(cond_comment_537)); _comment = STRVAL(cond_comment_537); }
-if (cond_control_542) { NV_SET_fn("control", STRVAL(cond_control_542)); _control = STRVAL(cond_control_542); }
+if (cond_Comment_537) { NV_SET_fn("Comment", STRVAL(cond_Comment_537)); _Comment = STRVAL(cond_Comment_537); }
+if (cond_Control_542) { NV_SET_fn("Control", STRVAL(cond_Control_542)); _Control = STRVAL(cond_Control_542); }
         return STRVAL("");
     _Command_ω:;
         return FAILDESCR;
 #undef cat_l_536_α_cstart
-#undef cond_comment_537
+#undef cond_Comment_537
 #undef deref_538_saved_cur
 #undef deref_539_saved_cursor
 #undef cat_l_541_α_cstart
-#undef cond_control_542
+#undef cond_Control_542
 #undef deref_543_saved_cur
 #undef deref_545_saved_cursor
 #undef alt_r_544_α_saved_cursor
@@ -10664,7 +10663,7 @@ static void *stmt_5(void) { /* line 68 */
 DESCR_t _v620 = INTVAL_fn(15);
 int _ok620 = !IS_FAIL_fn(_v620);
 if(_ok620) {
-iset(INDEX_fn(get(_ppStop),(DESCR_t[]){INTVAL_fn(1)},1),_v620);
+aset(get(_ppStop),(DESCR_t[]){INTVAL_fn(1)},1,_v620);
 }
     return (void*)_tramp_next_619;
 }
@@ -10677,7 +10676,7 @@ static void *stmt_6(void) { /* line 69 */
 DESCR_t _v622 = INTVAL_fn(30);
 int _ok622 = !IS_FAIL_fn(_v622);
 if(_ok622) {
-iset(INDEX_fn(get(_ppStop),(DESCR_t[]){INTVAL_fn(2)},1),_v622);
+aset(get(_ppStop),(DESCR_t[]){INTVAL_fn(2)},1,_v622);
 }
     return (void*)_tramp_next_621;
 }
@@ -10690,7 +10689,7 @@ static void *stmt_7(void) { /* line 70 */
 DESCR_t _v624 = INTVAL_fn(33);
 int _ok624 = !IS_FAIL_fn(_v624);
 if(_ok624) {
-iset(INDEX_fn(get(_ppStop),(DESCR_t[]){INTVAL_fn(3)},1),_v624);
+aset(get(_ppStop),(DESCR_t[]){INTVAL_fn(3)},1,_v624);
 }
     return (void*)_tramp_next_623;
 }
@@ -10703,7 +10702,7 @@ static void *stmt_8(void) { /* line 71 */
 DESCR_t _v626 = INTVAL_fn(80);
 int _ok626 = !IS_FAIL_fn(_v626);
 if(_ok626) {
-iset(INDEX_fn(get(_ppStop),(DESCR_t[]){INTVAL_fn(4)},1),_v626);
+aset(get(_ppStop),(DESCR_t[]){INTVAL_fn(4)},1,_v626);
 }
     return (void*)_tramp_next_625;
 }
@@ -10938,7 +10937,7 @@ static void *stmt_17(void) { /* line 86 */
 DESCR_t _v644 = INTVAL_fn(11);
 int _ok644 = !IS_FAIL_fn(_v644);
 if(_ok644) {
-iset(INDEX_fn(get(_ppStop),(DESCR_t[]){INTVAL_fn(1)},1),_v644);
+aset(get(_ppStop),(DESCR_t[]){INTVAL_fn(1)},1,_v644);
 }
     return (void*)_tramp_next_643;
 }
@@ -10951,7 +10950,7 @@ static void *stmt_18(void) { /* line 87 */
 DESCR_t _v646 = INTVAL_fn(26);
 int _ok646 = !IS_FAIL_fn(_v646);
 if(_ok646) {
-iset(INDEX_fn(get(_ppStop),(DESCR_t[]){INTVAL_fn(2)},1),_v646);
+aset(get(_ppStop),(DESCR_t[]){INTVAL_fn(2)},1,_v646);
 }
     return (void*)_tramp_next_645;
 }
@@ -10964,7 +10963,7 @@ static void *stmt_19(void) { /* line 88 */
 DESCR_t _v648 = INTVAL_fn(29);
 int _ok648 = !IS_FAIL_fn(_v648);
 if(_ok648) {
-iset(INDEX_fn(get(_ppStop),(DESCR_t[]){INTVAL_fn(3)},1),_v648);
+aset(get(_ppStop),(DESCR_t[]){INTVAL_fn(3)},1,_v648);
 }
     return (void*)_tramp_next_647;
 }
@@ -10977,7 +10976,7 @@ static void *stmt_20(void) { /* line 89 */
 DESCR_t _v650 = INTVAL_fn(55);
 int _ok650 = !IS_FAIL_fn(_v650);
 if(_ok650) {
-iset(INDEX_fn(get(_ppStop),(DESCR_t[]){INTVAL_fn(4)},1),_v650);
+aset(get(_ppStop),(DESCR_t[]){INTVAL_fn(4)},1,_v650);
 }
     return (void*)_tramp_next_649;
 }
@@ -11030,7 +11029,7 @@ static void *stmt_24(void) { /* line 93 */
 DESCR_t _v658 = INTVAL_fn(13);
 int _ok658 = !IS_FAIL_fn(_v658);
 if(_ok658) {
-iset(INDEX_fn(get(_ppStop),(DESCR_t[]){INTVAL_fn(1)},1),_v658);
+aset(get(_ppStop),(DESCR_t[]){INTVAL_fn(1)},1,_v658);
 }
     return (void*)_tramp_next_657;
 }
@@ -11043,7 +11042,7 @@ static void *stmt_25(void) { /* line 94 */
 DESCR_t _v660 = INTVAL_fn(28);
 int _ok660 = !IS_FAIL_fn(_v660);
 if(_ok660) {
-iset(INDEX_fn(get(_ppStop),(DESCR_t[]){INTVAL_fn(2)},1),_v660);
+aset(get(_ppStop),(DESCR_t[]){INTVAL_fn(2)},1,_v660);
 }
     return (void*)_tramp_next_659;
 }
@@ -11056,7 +11055,7 @@ static void *stmt_26(void) { /* line 95 */
 DESCR_t _v662 = INTVAL_fn(31);
 int _ok662 = !IS_FAIL_fn(_v662);
 if(_ok662) {
-iset(INDEX_fn(get(_ppStop),(DESCR_t[]){INTVAL_fn(3)},1),_v662);
+aset(get(_ppStop),(DESCR_t[]){INTVAL_fn(3)},1,_v662);
 }
     return (void*)_tramp_next_661;
 }
@@ -11069,7 +11068,7 @@ static void *stmt_27(void) { /* line 96 */
 DESCR_t _v664 = INTVAL_fn(60);
 int _ok664 = !IS_FAIL_fn(_v664);
 if(_ok664) {
-iset(INDEX_fn(get(_ppStop),(DESCR_t[]){INTVAL_fn(4)},1),_v664);
+aset(get(_ppStop),(DESCR_t[]){INTVAL_fn(4)},1,_v664);
 }
     return (void*)_tramp_next_663;
 }
@@ -11122,7 +11121,7 @@ static void *stmt_31(void) { /* line 100 */
 DESCR_t _v672 = INTVAL_fn(15);
 int _ok672 = !IS_FAIL_fn(_v672);
 if(_ok672) {
-iset(INDEX_fn(get(_ppStop),(DESCR_t[]){INTVAL_fn(1)},1),_v672);
+aset(get(_ppStop),(DESCR_t[]){INTVAL_fn(1)},1,_v672);
 }
     return (void*)_tramp_next_671;
 }
@@ -11135,7 +11134,7 @@ static void *stmt_32(void) { /* line 101 */
 DESCR_t _v674 = INTVAL_fn(30);
 int _ok674 = !IS_FAIL_fn(_v674);
 if(_ok674) {
-iset(INDEX_fn(get(_ppStop),(DESCR_t[]){INTVAL_fn(2)},1),_v674);
+aset(get(_ppStop),(DESCR_t[]){INTVAL_fn(2)},1,_v674);
 }
     return (void*)_tramp_next_673;
 }
@@ -11148,7 +11147,7 @@ static void *stmt_33(void) { /* line 102 */
 DESCR_t _v676 = INTVAL_fn(33);
 int _ok676 = !IS_FAIL_fn(_v676);
 if(_ok676) {
-iset(INDEX_fn(get(_ppStop),(DESCR_t[]){INTVAL_fn(3)},1),_v676);
+aset(get(_ppStop),(DESCR_t[]){INTVAL_fn(3)},1,_v676);
 }
     return (void*)_tramp_next_675;
 }
@@ -11161,7 +11160,7 @@ static void *stmt_34(void) { /* line 103 */
 DESCR_t _v678 = INTVAL_fn(80);
 int _ok678 = !IS_FAIL_fn(_v678);
 if(_ok678) {
-iset(INDEX_fn(get(_ppStop),(DESCR_t[]){INTVAL_fn(4)},1),_v678);
+aset(get(_ppStop),(DESCR_t[]){INTVAL_fn(4)},1,_v678);
 }
     return (void*)_tramp_next_677;
 }
@@ -11214,7 +11213,7 @@ static void *stmt_38(void) { /* line 107 */
 DESCR_t _v686 = INTVAL_fn(17);
 int _ok686 = !IS_FAIL_fn(_v686);
 if(_ok686) {
-iset(INDEX_fn(get(_ppStop),(DESCR_t[]){INTVAL_fn(1)},1),_v686);
+aset(get(_ppStop),(DESCR_t[]){INTVAL_fn(1)},1,_v686);
 }
     return (void*)_tramp_next_685;
 }
@@ -11227,7 +11226,7 @@ static void *stmt_39(void) { /* line 108 */
 DESCR_t _v688 = INTVAL_fn(32);
 int _ok688 = !IS_FAIL_fn(_v688);
 if(_ok688) {
-iset(INDEX_fn(get(_ppStop),(DESCR_t[]){INTVAL_fn(2)},1),_v688);
+aset(get(_ppStop),(DESCR_t[]){INTVAL_fn(2)},1,_v688);
 }
     return (void*)_tramp_next_687;
 }
@@ -11240,7 +11239,7 @@ static void *stmt_40(void) { /* line 109 */
 DESCR_t _v690 = INTVAL_fn(35);
 int _ok690 = !IS_FAIL_fn(_v690);
 if(_ok690) {
-iset(INDEX_fn(get(_ppStop),(DESCR_t[]){INTVAL_fn(3)},1),_v690);
+aset(get(_ppStop),(DESCR_t[]){INTVAL_fn(3)},1,_v690);
 }
     return (void*)_tramp_next_689;
 }
@@ -11253,7 +11252,7 @@ static void *stmt_41(void) { /* line 110 */
 DESCR_t _v692 = INTVAL_fn(96);
 int _ok692 = !IS_FAIL_fn(_v692);
 if(_ok692) {
-iset(INDEX_fn(get(_ppStop),(DESCR_t[]){INTVAL_fn(4)},1),_v692);
+aset(get(_ppStop),(DESCR_t[]){INTVAL_fn(4)},1,_v692);
 }
     return (void*)_tramp_next_691;
 }
@@ -11306,7 +11305,7 @@ static void *stmt_45(void) { /* line 114 */
 DESCR_t _v700 = INTVAL_fn(19);
 int _ok700 = !IS_FAIL_fn(_v700);
 if(_ok700) {
-iset(INDEX_fn(get(_ppStop),(DESCR_t[]){INTVAL_fn(1)},1),_v700);
+aset(get(_ppStop),(DESCR_t[]){INTVAL_fn(1)},1,_v700);
 }
     return (void*)_tramp_next_699;
 }
@@ -11319,7 +11318,7 @@ static void *stmt_46(void) { /* line 115 */
 DESCR_t _v702 = INTVAL_fn(34);
 int _ok702 = !IS_FAIL_fn(_v702);
 if(_ok702) {
-iset(INDEX_fn(get(_ppStop),(DESCR_t[]){INTVAL_fn(2)},1),_v702);
+aset(get(_ppStop),(DESCR_t[]){INTVAL_fn(2)},1,_v702);
 }
     return (void*)_tramp_next_701;
 }
@@ -11332,7 +11331,7 @@ static void *stmt_47(void) { /* line 116 */
 DESCR_t _v704 = INTVAL_fn(37);
 int _ok704 = !IS_FAIL_fn(_v704);
 if(_ok704) {
-iset(INDEX_fn(get(_ppStop),(DESCR_t[]){INTVAL_fn(3)},1),_v704);
+aset(get(_ppStop),(DESCR_t[]){INTVAL_fn(3)},1,_v704);
 }
     return (void*)_tramp_next_703;
 }
@@ -11345,7 +11344,7 @@ static void *stmt_48(void) { /* line 117 */
 DESCR_t _v706 = INTVAL_fn(110);
 int _ok706 = !IS_FAIL_fn(_v706);
 if(_ok706) {
-iset(INDEX_fn(get(_ppStop),(DESCR_t[]){INTVAL_fn(4)},1),_v706);
+aset(get(_ppStop),(DESCR_t[]){INTVAL_fn(4)},1,_v706);
 }
     return (void*)_tramp_next_705;
 }
@@ -11398,7 +11397,7 @@ static void *stmt_52(void) { /* line 121 */
 DESCR_t _v714 = get(_ppTokVal);
 int _ok714 = !IS_FAIL_fn(_v714);
 if(_ok714) {
-iset(INDEX_fn(get(_ppStop),(DESCR_t[]){INTVAL_fn(1)},1),_v714);
+aset(get(_ppStop),(DESCR_t[]){INTVAL_fn(1)},1,_v714);
 }
     return (void*)block_ppArgLoop;
 }
@@ -11423,7 +11422,7 @@ static void *stmt_54(void) { /* line 123 */
 DESCR_t _v718 = get(_ppTokVal);
 int _ok718 = !IS_FAIL_fn(_v718);
 if(_ok718) {
-iset(INDEX_fn(get(_ppStop),(DESCR_t[]){INTVAL_fn(2)},1),_v718);
+aset(get(_ppStop),(DESCR_t[]){INTVAL_fn(2)},1,_v718);
 }
     return (void*)block_ppArgLoop;
 }
@@ -11448,7 +11447,7 @@ static void *stmt_56(void) { /* line 125 */
 DESCR_t _v722 = get(_ppTokVal);
 int _ok722 = !IS_FAIL_fn(_v722);
 if(_ok722) {
-iset(INDEX_fn(get(_ppStop),(DESCR_t[]){INTVAL_fn(3)},1),_v722);
+aset(get(_ppStop),(DESCR_t[]){INTVAL_fn(3)},1,_v722);
 }
     return (void*)block_ppArgLoop;
 }
@@ -11473,7 +11472,7 @@ static void *stmt_58(void) { /* line 127 */
 DESCR_t _v726 = get(_ppTokVal);
 int _ok726 = !IS_FAIL_fn(_v726);
 if(_ok726) {
-iset(INDEX_fn(get(_ppStop),(DESCR_t[]){INTVAL_fn(4)},1),_v726);
+aset(get(_ppStop),(DESCR_t[]){INTVAL_fn(4)},1,_v726);
 }
     return (void*)block_ppArgLoop;
 }
@@ -12033,7 +12032,7 @@ static void *stmt_87(void) { /* line 171 */
 DESCR_t _v783 = get(_ppW);
 int _ok783 = !IS_FAIL_fn(_v783);
 if(_ok783) {
-iset(INDEX_fn(get(_ppWArr),(DESCR_t[]){get(_ppNg)},1),_v783);
+aset(get(_ppWArr),(DESCR_t[]){get(_ppNg)},1,_v783);
 }
     return (void*)_tramp_next_782;
 }
@@ -12182,7 +12181,7 @@ static void *stmt_98(void) { /* line 184 */
 DESCR_t _v805 = INDEX_fn(get(_ppWArr),(DESCR_t[]){get(_ppJ1)},1);
 int _ok805 = !IS_FAIL_fn(_v805);
 if(_ok805) {
-iset(INDEX_fn(get(_ppWArr),(DESCR_t[]){get(_ppJ)},1),_v805);
+aset(get(_ppWArr),(DESCR_t[]){get(_ppJ)},1,_v805);
 }
     return (void*)_tramp_next_804;
 }
@@ -12210,7 +12209,7 @@ static void *stmt_100(void) { /* line 186 label:ppASins */
 DESCR_t _v809 = get(_ppKey);
 int _ok809 = !IS_FAIL_fn(_v809);
 if(_ok809) {
-iset(INDEX_fn(get(_ppWArr),(DESCR_t[]){get(_ppJ)},1),_v809);
+aset(get(_ppWArr),(DESCR_t[]){get(_ppJ)},1,_v809);
 }
     return (void*)block_ppAS1;
 }
@@ -12312,7 +12311,7 @@ static void *stmt_108(void) { /* line 197 */
 DESCR_t _v824 = add(get(_ppP90),INTVAL_fn(6));
 int _ok824 = !IS_FAIL_fn(_v824);
 if(_ok824) {
-iset(INDEX_fn(get(_ppStop),(DESCR_t[]){INTVAL_fn(4)},1),_v824);
+aset(get(_ppStop),(DESCR_t[]){INTVAL_fn(4)},1,_v824);
 }
     return (void*)_tramp_next_823;
 }
@@ -12336,7 +12335,7 @@ static void *stmt_110(void) { /* line 199 */
 DESCR_t _v828 = INTVAL_fn(40);
 int _ok828 = !IS_FAIL_fn(_v828);
 if(_ok828) {
-iset(INDEX_fn(get(_ppStop),(DESCR_t[]){INTVAL_fn(4)},1),_v828);
+aset(get(_ppStop),(DESCR_t[]){INTVAL_fn(4)},1,_v828);
 }
     return (void*)_tramp_next_827;
 }
@@ -12356,7 +12355,7 @@ DESCR_t _v830 = add(
                 );
 int _ok830 = !IS_FAIL_fn(_v830);
 if(_ok830) {
-iset(INDEX_fn(get(_ppStop),(DESCR_t[]){INTVAL_fn(1)},1),_v830);
+aset(get(_ppStop),(DESCR_t[]){INTVAL_fn(1)},1,_v830);
 }
     return (void*)_tramp_next_829;
 }
@@ -12369,7 +12368,7 @@ static void *stmt_112(void) { /* line 203 */
 DESCR_t _v832 = add(INDEX_fn(get(_ppStop),(DESCR_t[]){INTVAL_fn(1)},1),INTVAL_fn(15));
 int _ok832 = !IS_FAIL_fn(_v832);
 if(_ok832) {
-iset(INDEX_fn(get(_ppStop),(DESCR_t[]){INTVAL_fn(2)},1),_v832);
+aset(get(_ppStop),(DESCR_t[]){INTVAL_fn(2)},1,_v832);
 }
     return (void*)_tramp_next_831;
 }
@@ -12382,7 +12381,7 @@ static void *stmt_113(void) { /* line 204 */
 DESCR_t _v834 = add(INDEX_fn(get(_ppStop),(DESCR_t[]){INTVAL_fn(2)},1),INTVAL_fn(3));
 int _ok834 = !IS_FAIL_fn(_v834);
 if(_ok834) {
-iset(INDEX_fn(get(_ppStop),(DESCR_t[]){INTVAL_fn(3)},1),_v834);
+aset(get(_ppStop),(DESCR_t[]){INTVAL_fn(3)},1,_v834);
 }
     return (void*)_tramp_next_833;
 }
@@ -15437,7 +15436,6 @@ static void *block_refs_1(void) { return NULL; }
 _BlockEntry_t _block_label_table[] = {
     {"START", block_START},
     {"END",   block_END},
-    {"START", block_START},
     {"ppArgLoop", block_ppArgLoop},
     {"ppArgP2", block_ppArgP2},
     {"ppArgP3", block_ppArgP3},
