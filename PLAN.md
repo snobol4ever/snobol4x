@@ -248,7 +248,7 @@ Claude Sonnet 4.6 writes the commit message (recorded at `c5b3e99`).
 RUNTIME="/home/claude/SNOBOL4-tiny/src/runtime"
 gcc -O0 -g "$1" \
     $RUNTIME/snobol4/snobol4.c \
-    $RUNTIME/snobol4/snobol4_inc.c \
+    $RUNTIME/snobol4/mock_includes.c \
     $RUNTIME/snobol4/snobol4_pattern.c \
     $RUNTIME/engine.c \
     -I$RUNTIME/snobol4 \
@@ -269,7 +269,7 @@ src/snoc/main.c                              driver
 src/runtime/snobol4/snoc_runtime.h           shim header (Sprint 23)
 src/runtime/snobol4/snobol4.h                runtime API
 src/runtime/snobol4/snobol4.c                runtime impl
-src/runtime/snobol4/snobol4_inc.c            built-in functions
+src/runtime/snobol4/mock_includes.c            built-in functions
 src/runtime/snobol4/snobol4_pattern.c        pattern engine
 src/runtime/engine.c                         engine_match_ex (required)
 ../SNOBOL4-corpus/programs/beauty/beauty.sno target program

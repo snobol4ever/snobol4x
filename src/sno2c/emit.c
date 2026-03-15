@@ -2072,7 +2072,7 @@ void snoc_emit(Program *prog, FILE *f) {
 
     /* Phase 1b: inject phantom FnDef entries for every runtime-owned function
      * whose source body appears in the expanded -INCLUDE stream but whose DEFINE_fn
-     * is handled by snobol4_inc.c at runtime (so collect_functions never sees it).
+     * is handled by mock_includes.c at runtime (so collect_functions never sees it).
      *
      * Phantoms have name + end_label only. define_stmt = NULL, nbody_starts = 0.
      * They exist SOLELY so is_body_boundary() recognises their entry/end labels
@@ -2080,7 +2080,7 @@ void snoc_emit(Program *prog, FILE *f) {
      * emit_fn() skips phantoms (define_stmt == NULL → no C function emitted).
      * emit_main() skips phantoms (define_stmt == NULL → no DEFINE_fn() call).
      *
-     * Source: snobol4_inc.c inc_init() + inc_init_extra() registrations
+     * Source: mock_includes.c inc_init() + inc_init_extra() registrations
      * whose bodies appear in: ShiftReduce.sno, stack.sno, counter.sno, semantic.sno
      */
     static const struct { const char *name; const char *end_label; } phantoms[] = {

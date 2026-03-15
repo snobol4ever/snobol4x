@@ -63,7 +63,7 @@ def compile_and_run(source_text, stdin_text=None, include_dirs=None, timeout=10)
     gcc = subprocess.run(
         ['gcc', '-o', bin_path, c_path,
          os.path.join(RT_DIR, 'snobol4.c'),
-         os.path.join(RT_DIR, 'snobol4_inc.c'),
+         os.path.join(RT_DIR, 'mock_includes.c'),
          os.path.join(RT_DIR, 'snobol4_pattern.c'),
          os.path.join(RT_BASE, 'engine.c'),
          f'-I{RT_DIR}', f'-I{RT_BASE}',
@@ -101,7 +101,7 @@ def compile_file_and_run(sno_path, stdin_text=None, include_dirs=None, timeout=1
     gcc = subprocess.run(
         ['gcc', '-o', bin_path, c_path,
          os.path.join(RT_DIR, 'snobol4.c'),
-         os.path.join(RT_DIR, 'snobol4_inc.c'),
+         os.path.join(RT_DIR, 'mock_includes.c'),
          os.path.join(RT_DIR, 'snobol4_pattern.c'),
          os.path.join(RT_BASE, 'engine.c'),
          f'-I{RT_DIR}', f'-I{RT_BASE}',
@@ -247,7 +247,7 @@ else:
     gcc = subprocess.run(
         ['gcc', '-o', bin_path, c_path,
          os.path.join(RT_DIR, 'snobol4.c'),
-         os.path.join(RT_DIR, 'snobol4_inc.c'),
+         os.path.join(RT_DIR, 'mock_includes.c'),
          os.path.join(RT_DIR, 'snobol4_pattern.c'),
          os.path.join(RT_BASE, 'engine.c'),
          f'-I{RT_DIR}', f'-I{RT_BASE}',

@@ -19,7 +19,7 @@
 #   BEAUTY=$CORPUS/programs/beauty/beauty.sno
 #   R=$REPO/src/runtime/snobol4
 #   $SNOC $BEAUTY -I $INC > /tmp/beauty_full.c
-#   gcc -O0 -g /tmp/beauty_full.c $R/snobol4.c $R/snobol4_inc.c \
+#   gcc -O0 -g /tmp/beauty_full.c $R/snobol4.c $R/mock_includes.c \
 #       $R/snobol4_pattern.c $REPO/src/runtime/engine.c \
 #       -I$R -I$REPO/src/runtime -lgc -lm -w -o /tmp/beauty_full_bin
 

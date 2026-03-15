@@ -42,7 +42,7 @@ fi
 # 3. gcc → binary
 echo -n "Compiling C → binary (gcc) ... "
 if gcc -O0 -g /tmp/beauty_full.c \
-       "$R/snobol4.c" "$R/snobol4_inc.c" \
+       "$R/snobol4.c" "$R/mock_includes.c" \
        "$R/snobol4_pattern.c" "$RT/engine.c" \
        -I"$R" -I"$RT" -lgc -lm -w \
        -o /tmp/beauty_full_bin 2>/tmp/gcc_errors.txt; then

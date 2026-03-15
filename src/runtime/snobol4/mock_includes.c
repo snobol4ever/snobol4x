@@ -1,5 +1,5 @@
 /*
- * snobol4_inc.c — C implementations of SNOBOL4 .inc library functions
+ * mock_includes.c — C implementations of SNOBOL4 .inc library functions
  *
  * Implements the library used by beauty.sno:
  *   global, is, io, case, assign, MATCH_fn, Gen, Qize, ShiftReduce, TREEBLK_t, Stack
@@ -10,7 +10,7 @@
 #include <string.h>
 #include <ctype.h>
 #include "snobol4.h"
-#include "snobol4_inc.h"
+#include "mock_includes.h"
 
 /* =========================================================================
  * Global variables (global.inc)

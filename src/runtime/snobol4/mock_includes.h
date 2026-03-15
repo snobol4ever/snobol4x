@@ -1,5 +1,5 @@
 /*
- * snobol4_inc.h — hardcoded SNOBOL4 .inc library functions
+ * mock_includes.h — hardcoded SNOBOL4 .inc library functions
  *
  * These are C implementations of the .inc files used by beauty.sno:
  *   global.inc  — global variables (digits, tab, nl, ucase/lcase alphabets)
