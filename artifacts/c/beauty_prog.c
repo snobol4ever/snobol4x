@@ -5151,7 +5151,7 @@ static DESCR_t pat_XList(const char *_subj_np, int64_t _slen_np,
     cat_l_106_α:                                            goto cat_l_107_α;
     cat_l_106_β:                                            goto cat_r_107_β;
     cat_l_107_α:  NINC_fn();                                goto cat_r_107_α;
-    cat_l_107_β:  NDEC_fn();                                goto _XList_ω;
+    cat_l_107_β:  NDEC_fn();                                goto _XList_ω;  /* line 5154 */
     cat_r_107_α:                                            goto alt_l_108_α;
     cat_r_107_β:                                            goto alt_r_108_β;
 alt_l_108_α: {
@@ -5205,7 +5205,7 @@ assign_c_110_β:
                   { int64_t _len = _cur_np - dlit_115_start;
                     char *_os = malloc(_len + 1);
                     memcpy(_os, _subj_np + dlit_115_start, _len); _os[_len] = 0;
-                    output_str(_os); free(_os); }           goto cat_r_114_α;
+                    (void)_os; free(_os); /* output_str suppressed: $-capture output via Gen only */ }           goto cat_r_114_α;
     cat_l_114_β:                                            goto dlit_115_β;
 cat_r_114_α: {
     deref_116_saved_cur = _cur_np;
@@ -5347,7 +5347,7 @@ cat_l_119_β: {
                   { int64_t _len = _cur_np - dlit_125_start;
                     char *_os = malloc(_len + 1);
                     memcpy(_os, _subj_np + dlit_125_start, _len); _os[_len] = 0;
-                    output_str(_os); free(_os); }           goto cat_r_124_α;
+                    (void)_os; free(_os); /* output_str suppressed: $-capture output via Gen only */ }           goto cat_r_124_α;
     cat_l_124_β:                                            goto dlit_125_β;
 cat_r_124_α: {
     deref_126_saved_cur = _cur_np;
@@ -5454,7 +5454,7 @@ cat_l_128_β: {
                   { int64_t _len = _cur_np - dlit_134_start;
                     char *_os = malloc(_len + 1);
                     memcpy(_os, _subj_np + dlit_134_start, _len); _os[_len] = 0;
-                    output_str(_os); free(_os); }           goto cat_r_133_α;
+                    (void)_os; free(_os); /* output_str suppressed: $-capture output via Gen only */ }           goto cat_r_133_α;
     cat_l_133_β:                                            goto dlit_134_β;
 cat_r_133_α: {
     deref_135_saved_cur = _cur_np;
@@ -5561,7 +5561,7 @@ cat_l_137_β: {
                   { int64_t _len = _cur_np - dlit_143_start;
                     char *_os = malloc(_len + 1);
                     memcpy(_os, _subj_np + dlit_143_start, _len); _os[_len] = 0;
-                    output_str(_os); free(_os); }           goto cat_r_142_α;
+                    (void)_os; free(_os); /* output_str suppressed: $-capture output via Gen only */ }           goto cat_r_142_α;
     cat_l_142_β:                                            goto dlit_143_β;
 cat_r_142_α: {
     deref_144_saved_cur = _cur_np;
@@ -5611,6 +5611,7 @@ alt_r_140_β:
 typedef struct pat_Expr3_t {
     int64_t deref_149_saved_cur;
     pat_X3_t *deref_149_z;
+    int _saved_frame;
 } pat_Expr3_t;
 
 static DESCR_t pat_Expr3(const char *_subj_np, int64_t _slen_np,
@@ -5620,6 +5621,7 @@ static DESCR_t pat_Expr3(const char *_subj_np, int64_t _slen_np,
     int64_t _cur_np = *_cur_ptr_np;
 #define deref_149_saved_cur z->deref_149_saved_cur
 #define deref_149_z z->deref_149_z
+#define _expr3_frame z->_saved_frame
 
     if (_entry_np == 0) goto _Expr3_α;
     if (_entry_np == 1) goto _Expr3_β;
@@ -5629,9 +5631,9 @@ static DESCR_t pat_Expr3(const char *_subj_np, int64_t _slen_np,
     cat_l_146_α:                                            goto cat_l_147_α;
     cat_l_146_β:                                            goto cat_r_147_β;
     cat_l_147_α:                                            goto cat_l_148_α;
-    cat_l_147_β:  NPUSH_fn();                               goto cat_r_148_β;
-    cat_l_148_α:  NPUSH_fn();                               goto cat_r_148_α;
-    cat_l_148_β:                                            goto _Expr3_ω;
+    cat_l_147_β:  NPUSH_fn(); _expr3_frame=NTOP_INDEX_fn(); goto cat_r_148_β;
+    cat_l_148_α:  NPUSH_fn(); _expr3_frame=NTOP_INDEX_fn(); goto cat_r_148_α;
+    cat_l_148_β:  _expr3_frame=-1;                         goto _Expr3_ω;
 cat_r_148_α: {
     deref_149_saved_cur = _cur_np;
     DESCR_t _r_149 = pat_X3(_subj_np, _slen_np, &_cur_np, &deref_149_z, 0);
@@ -5645,10 +5647,11 @@ cat_r_148_β: {
     goto cat_r_147_α;
 }
 cat_r_147_α: /* E_OPSYN & */
-    if (ntop() > 1) {
-    { DESCR_t _reduce_args[2] = {STRVAL("|"), INTVAL(ntop())};
+    { int _cnt3 = (_expr3_frame>=0) ? (int)NSTACK_AT_fn(_expr3_frame) : 0;
+    if (_cnt3 > 1) {
+    { DESCR_t _reduce_args[2] = {STRVAL("|"), INTVAL(_cnt3)};
       APPLY_fn("Reduce", _reduce_args, 2); }
-    }
+    } }
     goto cat_r_146_α;
 cat_r_147_β: goto cat_l_147_β;
     cat_r_146_α:  NPOP_fn();                                goto _Expr3_γ;
@@ -5660,6 +5663,7 @@ cat_r_147_β: goto cat_l_147_β;
         return FAILDESCR;
 #undef deref_149_saved_cur
 #undef deref_149_z
+#undef _expr3_frame
 
 }
 
@@ -5694,7 +5698,7 @@ static DESCR_t pat_X3(const char *_subj_np, int64_t _slen_np,
     cat_l_150_α:                                            goto cat_l_151_α;
     cat_l_150_β:                                            goto cat_r_151_β;
     cat_l_151_α:  NINC_fn();                                goto cat_r_151_α;
-    cat_l_151_β:  NDEC_fn();                                goto _X3_ω;
+    cat_l_151_β:  NDEC_fn();                                goto _X3_ω;  /* line 5697 */
 cat_r_151_α: {
     deref_152_saved_cur = _cur_np;
     DESCR_t _r_152 = pat_Expr4(_subj_np, _slen_np, &_cur_np, &deref_152_z, 0);
@@ -5725,7 +5729,7 @@ cat_r_151_β: {
                   { int64_t _len = _cur_np - dlit_156_start;
                     char *_os = malloc(_len + 1);
                     memcpy(_os, _subj_np + dlit_156_start, _len); _os[_len] = 0;
-                    output_str(_os); free(_os); }           goto cat_r_155_α;
+                    (void)_os; free(_os); /* output_str suppressed: $-capture output via Gen only */ }           goto cat_r_155_α;
     cat_l_155_β:                                            goto dlit_156_β;
 cat_r_155_α: {
     deref_157_saved_cur = _cur_np;
@@ -5770,6 +5774,7 @@ alt_r_154_β:
 typedef struct pat_Expr4_t {
     int64_t deref_162_saved_cur;
     pat_X4_t *deref_162_z;
+    int _saved_frame;  /* frame index saved at NPUSH time */
 } pat_Expr4_t;
 
 static DESCR_t pat_Expr4(const char *_subj_np, int64_t _slen_np,
@@ -5779,8 +5784,9 @@ static DESCR_t pat_Expr4(const char *_subj_np, int64_t _slen_np,
     int64_t _cur_np = *_cur_ptr_np;
 #define deref_162_saved_cur z->deref_162_saved_cur
 #define deref_162_z z->deref_162_z
+#define _expr4_frame z->_saved_frame
 
-    if (_entry_np == 0) goto _Expr4_α;
+    if (_entry_np == 0) { z->_saved_frame = -1; goto _Expr4_α; }
     if (_entry_np == 1) goto _Expr4_β;
     goto _Expr4_ω;
     _Expr4_α:                                               goto cat_l_159_α;
@@ -5788,26 +5794,29 @@ static DESCR_t pat_Expr4(const char *_subj_np, int64_t _slen_np,
     cat_l_159_α:                                            goto cat_l_160_α;
     cat_l_159_β:                                            goto cat_r_160_β;
     cat_l_160_α:                                            goto cat_l_161_α;
-    cat_l_160_β:  NPUSH_fn();                               goto cat_r_161_β;
-    cat_l_161_α:  NPUSH_fn();                               goto cat_r_161_α;
-    cat_l_161_β:                                            goto _Expr4_ω;
+    cat_l_160_β:  NPUSH_fn(); _expr4_frame=NTOP_INDEX_fn(); goto cat_r_161_β;
+    cat_l_161_α:  NPUSH_fn(); _expr4_frame=NTOP_INDEX_fn(); goto cat_r_161_α;
+    cat_l_161_β:  _expr4_frame=-1;                         goto _Expr4_ω;
 cat_r_161_α: {
     deref_162_saved_cur = _cur_np;
+    _x4_pending_parent_frame = _expr4_frame;
     DESCR_t _r_162 = pat_X4(_subj_np, _slen_np, &_cur_np, &deref_162_z, 0);
     if (IS_FAIL_fn(_r_162)) { _cur_np = deref_162_saved_cur; goto cat_l_161_β; }
     goto cat_r_160_α;
 }
 cat_r_161_β: {
     _cur_np = deref_162_saved_cur;
+    _x4_pending_parent_frame = _expr4_frame;
     DESCR_t _r_162_b = pat_X4(_subj_np, _slen_np, &_cur_np, &deref_162_z, 1);
     if (IS_FAIL_fn(_r_162_b)) { _cur_np = deref_162_saved_cur; goto cat_l_161_β; }
     goto cat_r_160_α;
 }
 cat_r_160_α: /* E_OPSYN & */
-    if (ntop() > 1) {
-    { DESCR_t _reduce_args[2] = {STRVAL(".."), INTVAL(ntop())};
+    { int _cnt = (_expr4_frame>=0) ? (int)NSTACK_AT_fn(_expr4_frame) : 0;
+    if (_cnt > 1) {
+    { DESCR_t _reduce_args[2] = {STRVAL(".."), INTVAL(_cnt)};
       APPLY_fn("Reduce", _reduce_args, 2); }
-    }
+    } }
     goto cat_r_159_α;
 cat_r_160_β: goto cat_l_160_β;
     cat_r_159_α:  NPOP_fn();                                goto _Expr4_γ;
@@ -5819,6 +5828,7 @@ cat_r_160_β: goto cat_l_160_β;
         return FAILDESCR;
 #undef deref_162_saved_cur
 #undef deref_162_z
+#undef _expr4_frame
 
 }
 
@@ -5830,11 +5840,12 @@ typedef struct pat_X4_t {
     pat_Expr5_t *deref_165_z;
     pat_White_t *deref_169_z;
     pat_X4_t *deref_170_z;
+    int _parent_frame;  /* Expr4 frame to increment for concat counting */
 } pat_X4_t;
 
 static DESCR_t pat_X4(const char *_subj_np, int64_t _slen_np,
                   int64_t *_cur_ptr_np, pat_X4_t **_zz_np, int _entry_np) {
-    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_X4_t)); }
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_X4_t)); (*_zz_np)->_parent_frame = _x4_pending_parent_frame; }
     pat_X4_t *z = *_zz_np;
     int64_t _cur_np = *_cur_ptr_np;
 #define deref_165_saved_cur z->deref_165_saved_cur
@@ -5844,6 +5855,7 @@ static DESCR_t pat_X4(const char *_subj_np, int64_t _slen_np,
 #define deref_165_z z->deref_165_z
 #define deref_169_z z->deref_169_z
 #define deref_170_z z->deref_170_z
+#define _x4_parent_frame z->_parent_frame
 
     if (_entry_np == 0) goto _X4_α;
     if (_entry_np == 1) goto _X4_β;
@@ -5852,8 +5864,8 @@ static DESCR_t pat_X4(const char *_subj_np, int64_t _slen_np,
     _X4_β:                                                  goto cat_r_163_β;
     cat_l_163_α:                                            goto cat_l_164_α;
     cat_l_163_β:                                            goto cat_r_164_β;
-    cat_l_164_α:  NINC_fn();                                goto cat_r_164_α;
-    cat_l_164_β:  NDEC_fn();                                goto _X4_ω;
+    cat_l_164_α:  NINC_AT_fn(_x4_parent_frame);                                goto cat_r_164_α;
+    cat_l_164_β:                                            goto _X4_ω;  /* no NDEC: parent Expr4 owns count */
 cat_r_164_α: {
     deref_165_saved_cur = _cur_np;
     DESCR_t _r_165 = pat_Expr5(_subj_np, _slen_np, &_cur_np, &deref_165_z, 0);
@@ -5884,13 +5896,19 @@ cat_l_168_β: {
     goto cat_r_168_α;
 }
 cat_r_168_α: {
+    /* Bug6a: ':' after whitespace belongs to pat_Goto, not a concat atom */
+    if (_cur_np < _slen_np && _subj_np[_cur_np] == ':') { goto alt_r_167_α; }
     deref_170_saved_cur = _cur_np;
+    _x4_pending_parent_frame = _x4_parent_frame;
     DESCR_t _r_170 = pat_X4(_subj_np, _slen_np, &_cur_np, &deref_170_z, 0);
     if (IS_FAIL_fn(_r_170)) { _cur_np = deref_170_saved_cur; goto cat_l_168_β; }
     goto fence_after_166;
 }
 cat_r_168_β: {
+    /* Bug6a: same guard on backtrack path */
+    if (_cur_np < _slen_np && _subj_np[_cur_np] == ':') { goto alt_r_167_α; }
     _cur_np = deref_170_saved_cur;
+    _x4_pending_parent_frame = _x4_parent_frame;
     DESCR_t _r_170_b = pat_X4(_subj_np, _slen_np, &_cur_np, &deref_170_z, 1);
     if (IS_FAIL_fn(_r_170_b)) { _cur_np = deref_170_saved_cur; goto cat_l_168_β; }
     goto fence_after_166;
@@ -5920,6 +5938,7 @@ alt_r_167_β:
 #undef deref_165_z
 #undef deref_169_z
 #undef deref_170_z
+#undef _x4_parent_frame
 
 }
 
@@ -5983,7 +6002,7 @@ cat_l_172_β: {
                   { int64_t _len = _cur_np - dlit_178_start;
                     char *_os = malloc(_len + 1);
                     memcpy(_os, _subj_np + dlit_178_start, _len); _os[_len] = 0;
-                    output_str(_os); free(_os); }           goto cat_r_177_α;
+                    (void)_os; free(_os); /* output_str suppressed: $-capture output via Gen only */ }           goto cat_r_177_α;
     cat_l_177_β:                                            goto dlit_178_β;
 cat_r_177_α: {
     deref_179_saved_cur = _cur_np;
@@ -6100,7 +6119,7 @@ cat_l_181_β: {
                   { int64_t _len = _cur_np - dlit_188_start;
                     char *_os = malloc(_len + 1);
                     memcpy(_os, _subj_np + dlit_188_start, _len); _os[_len] = 0;
-                    output_str(_os); free(_os); }           goto cat_r_187_α;
+                    (void)_os; free(_os); /* output_str suppressed: $-capture output via Gen only */ }           goto cat_r_187_α;
     cat_l_187_β:                                            goto dlit_188_β;
 cat_r_187_α: {
     deref_189_saved_cur = _cur_np;
@@ -6136,7 +6155,7 @@ cat_r_186_β: goto cat_l_186_β;
                   { int64_t _len = _cur_np - dlit_192_start;
                     char *_os = malloc(_len + 1);
                     memcpy(_os, _subj_np + dlit_192_start, _len); _os[_len] = 0;
-                    output_str(_os); free(_os); }           goto cat_r_191_α;
+                    (void)_os; free(_os); /* output_str suppressed: $-capture output via Gen only */ }           goto cat_r_191_α;
     cat_l_191_β:                                            goto dlit_192_β;
 cat_r_191_α: {
     deref_193_saved_cur = _cur_np;
@@ -6247,7 +6266,7 @@ cat_l_195_β: {
                   { int64_t _len = _cur_np - dlit_201_start;
                     char *_os = malloc(_len + 1);
                     memcpy(_os, _subj_np + dlit_201_start, _len); _os[_len] = 0;
-                    output_str(_os); free(_os); }           goto cat_r_200_α;
+                    (void)_os; free(_os); /* output_str suppressed: $-capture output via Gen only */ }           goto cat_r_200_α;
     cat_l_200_β:                                            goto dlit_201_β;
 cat_r_200_α: {
     deref_202_saved_cur = _cur_np;
@@ -6354,7 +6373,7 @@ cat_l_204_β: {
                   { int64_t _len = _cur_np - dlit_210_start;
                     char *_os = malloc(_len + 1);
                     memcpy(_os, _subj_np + dlit_210_start, _len); _os[_len] = 0;
-                    output_str(_os); free(_os); }           goto cat_r_209_α;
+                    (void)_os; free(_os); /* output_str suppressed: $-capture output via Gen only */ }           goto cat_r_209_α;
     cat_l_209_β:                                            goto dlit_210_β;
 cat_r_209_α: {
     deref_211_saved_cur = _cur_np;
@@ -6461,7 +6480,7 @@ cat_l_213_β: {
                   { int64_t _len = _cur_np - dlit_219_start;
                     char *_os = malloc(_len + 1);
                     memcpy(_os, _subj_np + dlit_219_start, _len); _os[_len] = 0;
-                    output_str(_os); free(_os); }           goto cat_r_218_α;
+                    (void)_os; free(_os); /* output_str suppressed: $-capture output via Gen only */ }           goto cat_r_218_α;
     cat_l_218_β:                                            goto dlit_219_β;
 cat_r_218_α: {
     deref_220_saved_cur = _cur_np;
@@ -6568,7 +6587,7 @@ cat_l_222_β: {
                   { int64_t _len = _cur_np - dlit_228_start;
                     char *_os = malloc(_len + 1);
                     memcpy(_os, _subj_np + dlit_228_start, _len); _os[_len] = 0;
-                    output_str(_os); free(_os); }           goto cat_r_227_α;
+                    (void)_os; free(_os); /* output_str suppressed: $-capture output via Gen only */ }           goto cat_r_227_α;
     cat_l_227_β:                                            goto dlit_228_β;
 cat_r_227_α: {
     deref_229_saved_cur = _cur_np;
@@ -6687,7 +6706,7 @@ cat_l_231_β: {
                   { int64_t _len = _cur_np - dlit_239_start;
                     char *_os = malloc(_len + 1);
                     memcpy(_os, _subj_np + dlit_239_start, _len); _os[_len] = 0;
-                    output_str(_os); free(_os); }           goto cat_r_236_α;
+                    (void)_os; free(_os); /* output_str suppressed: $-capture output via Gen only */ }           goto cat_r_236_α;
     alt_l_238_β:                                            goto dlit_239_β;
     alt_r_238_α:
                   dlit_240_start = _cur_np;
@@ -6702,7 +6721,7 @@ cat_l_231_β: {
                   { int64_t _len = _cur_np - dlit_240_start;
                     char *_os = malloc(_len + 1);
                     memcpy(_os, _subj_np + dlit_240_start, _len); _os[_len] = 0;
-                    output_str(_os); free(_os); }           goto cat_r_236_α;
+                    (void)_os; free(_os); /* output_str suppressed: $-capture output via Gen only */ }           goto cat_r_236_α;
     alt_r_238_β:                                            goto dlit_240_β;
     alt_r_237_α:
                   dlit_241_start = _cur_np;
@@ -6718,7 +6737,7 @@ cat_l_231_β: {
                   { int64_t _len = _cur_np - dlit_241_start;
                     char *_os = malloc(_len + 1);
                     memcpy(_os, _subj_np + dlit_241_start, _len); _os[_len] = 0;
-                    output_str(_os); free(_os); }           goto cat_r_236_α;
+                    (void)_os; free(_os); /* output_str suppressed: $-capture output via Gen only */ }           goto cat_r_236_α;
     alt_r_237_β:                                            goto dlit_241_β;
 cat_r_236_α: {
     deref_242_saved_cur = _cur_np;
@@ -6839,7 +6858,7 @@ cat_l_244_β: {
                   { int64_t _len = _cur_np - dlit_251_start;
                     char *_os = malloc(_len + 1);
                     memcpy(_os, _subj_np + dlit_251_start, _len); _os[_len] = 0;
-                    output_str(_os); free(_os); }           goto cat_r_250_α;
+                    (void)_os; free(_os); /* output_str suppressed: $-capture output via Gen only */ }           goto cat_r_250_α;
     cat_l_250_β:                                            goto dlit_251_β;
 cat_r_250_α: {
     deref_252_saved_cur = _cur_np;
@@ -6875,7 +6894,7 @@ cat_r_249_β: goto cat_l_249_β;
                   { int64_t _len = _cur_np - dlit_255_start;
                     char *_os = malloc(_len + 1);
                     memcpy(_os, _subj_np + dlit_255_start, _len); _os[_len] = 0;
-                    output_str(_os); free(_os); }           goto cat_r_254_α;
+                    (void)_os; free(_os); /* output_str suppressed: $-capture output via Gen only */ }           goto cat_r_254_α;
     cat_l_254_β:                                            goto dlit_255_β;
 cat_r_254_α: {
     deref_256_saved_cur = _cur_np;
@@ -6986,7 +7005,7 @@ cat_l_258_β: {
                   { int64_t _len = _cur_np - dlit_264_start;
                     char *_os = malloc(_len + 1);
                     memcpy(_os, _subj_np + dlit_264_start, _len); _os[_len] = 0;
-                    output_str(_os); free(_os); }           goto cat_r_263_α;
+                    (void)_os; free(_os); /* output_str suppressed: $-capture output via Gen only */ }           goto cat_r_263_α;
     cat_l_263_β:                                            goto dlit_264_β;
 cat_r_263_α: {
     deref_265_saved_cur = _cur_np;
@@ -7849,8 +7868,8 @@ static DESCR_t pat_Expr16(const char *_subj_np, int64_t _slen_np,
     _Expr16_β:                                              goto cat_r_343_β;
     cat_l_343_α:                                            goto cat_l_344_α;
     cat_l_343_β:                                            goto cat_r_344_β;
-    cat_l_344_α:  NINC_fn();                                goto cat_r_344_α;
-    cat_l_344_β:  NDEC_fn();                                goto _Expr16_ω;
+    cat_l_344_α:  NPUSH_fn(); NINC_fn();                    goto cat_r_344_α;
+    cat_l_344_β:  NDEC_fn(); NPOP_fn();                     goto _Expr16_ω;  /* Expr16: isolated frame */
     cat_r_344_α:                                            goto alt_l_345_α;
     cat_r_344_β:                                            goto alt_r_345_β;
     alt_l_345_α:                                            goto cat_l_346_α;
@@ -7868,7 +7887,7 @@ static DESCR_t pat_Expr16(const char *_subj_np, int64_t _slen_np,
                   { int64_t _len = _cur_np - dlit_347_start;
                     char *_os = malloc(_len + 1);
                     memcpy(_os, _subj_np + dlit_347_start, _len); _os[_len] = 0;
-                    output_str(_os); free(_os); }           goto cat_r_346_α;
+                    (void)_os; free(_os); /* output_str suppressed: $-capture output via Gen only */ }           goto cat_r_346_α;
     cat_l_346_β:                                            goto dlit_347_β;
     cat_r_346_α:
                   dlit_348_stk_depth = STACK_DEPTH_fn();
@@ -7916,7 +7935,7 @@ assign_c_348_β: {
                   { int64_t _len = _cur_np - dlit_352_start;
                     char *_os = malloc(_len + 1);
                     memcpy(_os, _subj_np + dlit_352_start, _len); _os[_len] = 0;
-                    output_str(_os); free(_os); }           goto cat_r_351_α;
+                    (void)_os; free(_os); /* output_str suppressed: $-capture output via Gen only */ }           goto cat_r_351_α;
     cat_l_351_β:                                            goto dlit_352_β;
     cat_r_351_α:
                   dlit_353_stk_depth = STACK_DEPTH_fn();
@@ -7978,6 +7997,7 @@ alt_r_357_β:
     fence_after_356:                                        goto _Expr16_γ;
     cat_r_343_β:                                            goto cat_l_343_β;
     _Expr16_γ:;
+        NPOP_fn();  /* pop isolated Expr16 frame */
         *_cur_ptr_np = _cur_np;
         return STRVAL("");
     _Expr16_ω:;
@@ -8155,7 +8175,7 @@ NPUSH_fn();
                   { int64_t _len = _cur_np - cat_l_371_α_start;
                     char *_os = malloc(_len + 1);
                     memcpy(_os, _subj_np + cat_l_371_α_start, _len); _os[_len] = 0;
-                    output_str(_os); free(_os); }           goto cat_r_371_α;
+                    (void)_os; free(_os); /* output_str suppressed: $-capture output via Gen only */ }           goto cat_r_371_α;
     cat_l_371_β:                                            goto alt_r_368_α;
 cat_r_371_α: {
     deref_374_saved_cur = _cur_np;
@@ -8192,7 +8212,7 @@ cat_r_371_β: {
                   { int64_t _len = _cur_np - dlit_380_start;
                     char *_os = malloc(_len + 1);
                     memcpy(_os, _subj_np + dlit_380_start, _len); _os[_len] = 0;
-                    output_str(_os); free(_os); }           goto cat_r_379_α;
+                    (void)_os; free(_os); /* output_str suppressed: $-capture output via Gen only */ }           goto cat_r_379_α;
     cat_l_379_β:                                            goto dlit_380_β;
 cat_r_379_α: {
     deref_381_saved_cur = _cur_np;
@@ -8647,7 +8667,9 @@ static DESCR_t pat_SGoto(const char *_subj_np, int64_t _slen_np,
     _SGoto_β:                                               goto cond_c_414_β;
     _SGoto_γ:;
         *_cur_ptr_np = _cur_np;
-if (cond_OUTPUT_414) NV_SET_fn("OUTPUT", STRVAL(cond_OUTPUT_414));
+/* cond_OUTPUT_414 suppressed: $-capture in pat_SGoto fires during parse; Gen handles pp output */
+        /* assign(.SorF, *'S') — Bug6b: set SorF for Reduce type */
+        NV_SET_fn("SorF", STRVAL("S"));
         return STRVAL("");
     _SGoto_ω:;
         return FAILDESCR;
@@ -8703,7 +8725,9 @@ static DESCR_t pat_FGoto(const char *_subj_np, int64_t _slen_np,
     _FGoto_β:                                               goto cond_c_416_β;
     _FGoto_γ:;
         *_cur_ptr_np = _cur_np;
-if (cond_OUTPUT_416) NV_SET_fn("OUTPUT", STRVAL(cond_OUTPUT_416));
+/* cond_OUTPUT_416 suppressed: $-capture in pat_FGoto fires during parse; Gen handles pp output */
+        /* assign(.SorF, *'F') — Bug6b: set SorF for Reduce type */
+        NV_SET_fn("SorF", STRVAL("F"));
         return STRVAL("");
     _FGoto_ω:;
         return FAILDESCR;
@@ -8840,7 +8864,11 @@ static DESCR_t pat_Target(const char *_subj_np, int64_t _slen_np,
                   { int64_t _len = _cur_np - dlit_424_start;
                     char *_os = malloc(_len + 1);
                     memcpy(_os, _subj_np + dlit_424_start, _len); _os[_len] = 0;
-                    output_str(_os); free(_os); }           goto cat_l_422_α_do_cap;
+                    /* output_str suppressed: $'(' output belongs to pp(), not parser */
+                    free(_os); }
+                  /* assign(.Brackets, *'()') — Bug6b: set Brackets for Reduce type */
+                  NV_SET_fn("Brackets", STRVAL("()"));
+                                                            goto cat_l_422_α_do_cap;
     cond_c_423_β:                                           goto dlit_424_β;
     cat_l_422_α_do_cap:
                   { int64_t _len = _cur_np - cat_l_422_α_cstart;
@@ -8897,7 +8925,11 @@ assign_c_425_β: {
                   { int64_t _len = _cur_np - dlit_430_start;
                     char *_os = malloc(_len + 1);
                     memcpy(_os, _subj_np + dlit_430_start, _len); _os[_len] = 0;
-                    output_str(_os); free(_os); }           goto cat_l_428_α_do_cap;
+                    /* output_str suppressed: $'<' output belongs to pp(), not parser */
+                    free(_os); }
+                  /* assign(.Brackets, *'<>') — Bug6b: set Brackets for Reduce type */
+                  NV_SET_fn("Brackets", STRVAL("<>"));
+                                                            goto cat_l_428_α_do_cap;
     cond_c_429_β:                                           goto dlit_430_β;
     cat_l_428_α_do_cap:
                   { int64_t _len = _cur_np - cat_l_428_α_cstart;
@@ -8938,8 +8970,8 @@ assign_c_431_β: {
                   }                                         goto _Target_γ;
     _Target_γ:;
         *_cur_ptr_np = _cur_np;
-if (cond_OUTPUT_423) NV_SET_fn("OUTPUT", STRVAL(cond_OUTPUT_423));
-if (cond_OUTPUT_429) NV_SET_fn("OUTPUT", STRVAL(cond_OUTPUT_429));
+/* cond_OUTPUT_423/429 suppressed: $-capture OUTPUT in pat_Target fires during parse;
+   pp() Gen handles all output for goto brackets */
         return STRVAL("");
     _Target_ω:;
         return FAILDESCR;
@@ -9073,8 +9105,8 @@ cat_l_442_β: {
     if (IS_FAIL_fn(_r_443_b)) { _cur_np = deref_443_saved_cur; goto alt_r_440_α; }
     goto cat_r_442_α;
 }
-cat_r_442_α: /* E_OPSYN & */
-    { DESCR_t _reduce_args[2] = {STRVAL("*(':' Brackets)"), INTVAL(1)};
+cat_r_442_α: /* E_OPSYN & -- Bug6b fix: build ':' Brackets dynamically */
+    { DESCR_t _reduce_args[2] = {CONCAT_fn(STRVAL_fn(":"), NV_GET_fn("Brackets")), INTVAL(1)};
       APPLY_fn("Reduce", _reduce_args, 2); }
     goto cat_r_441_α;
 cat_r_442_β: goto cat_l_442_β;
@@ -9130,7 +9162,9 @@ cat_r_448_β: {
     goto cat_r_447_α;
 }
 cat_r_447_α: /* E_OPSYN & */
-    { DESCR_t _reduce_args[2] = {STRVAL("*(':' SorF Brackets)"), INTVAL(1)};
+    { /* Bug6b fix: build ':' SorF Brackets dynamically */
+      DESCR_t _sorf_b = CONCAT_fn(STRVAL_fn(":"), CONCAT_fn(NV_GET_fn("SorF"), NV_GET_fn("Brackets")));
+      DESCR_t _reduce_args[2] = {_sorf_b, INTVAL(1)};
       APPLY_fn("Reduce", _reduce_args, 2); }
     goto cat_r_446_α;
 cat_r_447_β: goto cat_l_447_β;
@@ -9180,7 +9214,9 @@ cat_r_454_β: {
     goto cat_r_453_α;
 }
 cat_r_453_α: /* E_OPSYN & */
-    { DESCR_t _reduce_args[2] = {STRVAL("*(':' SorF Brackets)"), INTVAL(1)};
+    { /* Bug6b fix: build ':' SorF Brackets dynamically */
+      DESCR_t _sorf_b = CONCAT_fn(STRVAL_fn(":"), CONCAT_fn(NV_GET_fn("SorF"), NV_GET_fn("Brackets")));
+      DESCR_t _reduce_args[2] = {_sorf_b, INTVAL(1)};
       APPLY_fn("Reduce", _reduce_args, 2); }
     goto fence_after_451;
 cat_r_453_β: goto cat_l_453_β;
@@ -9694,7 +9730,7 @@ assign_c_489_β:
                   { int64_t _len = _cur_np - dlit_494_start;
                     char *_os = malloc(_len + 1);
                     memcpy(_os, _subj_np + dlit_494_start, _len); _os[_len] = 0;
-                    output_str(_os); free(_os); }           goto cat_r_492_α;
+                    (void)_os; free(_os); /* output_str suppressed: $-capture output via Gen only */ }           goto cat_r_492_α;
     alt_l_493_β:                                            goto dlit_494_β;
 alt_r_493_α: {
     deref_495_saved_cur = _cur_np;
@@ -10250,6 +10286,7 @@ alt_r_547_β:
 }
 
 typedef struct pat_Command_t {
+    int _parent_frame;  /* Parse/Compiland nstack frame for NINC_AT */
     int64_t cat_l_555_α_start;
     int64_t deref_557_saved_cur;
     int64_t deref_558_saved_cursor;
@@ -10267,9 +10304,10 @@ typedef struct pat_Command_t {
 
 static DESCR_t pat_Command(const char *_subj_np, int64_t _slen_np,
                   int64_t *_cur_ptr_np, pat_Command_t **_zz_np, int _entry_np) {
-    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_Command_t)); }
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_Command_t)); (*_zz_np)->_parent_frame = _command_pending_parent_frame; }
     pat_Command_t *z = *_zz_np;
     int64_t _cur_np = *_cur_ptr_np;
+#define _cmd_parent_frame z->_parent_frame
 #define cat_l_555_α_start z->cat_l_555_α_start
 #define deref_557_saved_cur z->deref_557_saved_cur
 #define deref_558_saved_cursor z->deref_558_saved_cursor
@@ -10289,8 +10327,8 @@ static DESCR_t pat_Command(const char *_subj_np, int64_t _slen_np,
     goto _Command_ω;
     _Command_α:                                             goto cat_l_550_α;
     _Command_β:                                             goto cat_r_550_β;
-    cat_l_550_α:  NINC_fn();                                goto cat_r_550_α;
-    cat_l_550_β:  NDEC_fn();                                goto _Command_ω;
+    cat_l_550_α:  NINC_AT_fn(_cmd_parent_frame);            goto cat_r_550_α;
+    cat_l_550_β:  /* NDEC removed: parent frame owns counter */ goto _Command_ω;
     cat_r_550_α:                                            goto fence_p_551_α;
     fence_p_551_α:                                          goto alt_l_552_α;
     fence_p_551_β:                                          goto alt_r_552_β;
@@ -10435,6 +10473,7 @@ alt_l_568_β:
         return STRVAL("");
     _Command_ω:;
         return FAILDESCR;
+#undef _cmd_parent_frame
 #undef cat_l_555_α_start
 #undef deref_557_saved_cur
 #undef deref_558_saved_cursor
@@ -10452,6 +10491,7 @@ alt_l_568_β:
 }
 
 typedef struct pat_Parse_t {
+    int _saved_frame;  /* nstack frame index saved at NPUSH time */
     int cat_r_572_α_depth;
     int64_t cat_r_572_α_cursors[64];
     DESCR_t cat_r_572_α_saved_stk;
@@ -10461,9 +10501,10 @@ typedef struct pat_Parse_t {
 
 static DESCR_t pat_Parse(const char *_subj_np, int64_t _slen_np,
                   int64_t *_cur_ptr_np, pat_Parse_t **_zz_np, int _entry_np) {
-    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_Parse_t)); }
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_Parse_t)); (*_zz_np)->_saved_frame = -1; }
     pat_Parse_t *z = *_zz_np;
     int64_t _cur_np = *_cur_ptr_np;
+#define _parse_frame z->_saved_frame
 #define cat_r_572_α_depth z->cat_r_572_α_depth
 #define cat_r_572_α_cursors z->cat_r_572_α_cursors
 #define cat_r_572_α_saved_stk z->cat_r_572_α_saved_stk
@@ -10478,8 +10519,8 @@ static DESCR_t pat_Parse(const char *_subj_np, int64_t _slen_np,
     cat_l_570_α:                                            goto cat_l_571_α;
     cat_l_570_β:                                            goto cat_r_571_β;
     cat_l_571_α:                                            goto cat_l_572_α;
-    cat_l_571_β:  NPUSH_fn();                               goto cat_r_572_β;
-    cat_l_572_α:  NPUSH_fn();                               goto cat_r_572_α;
+    cat_l_571_β:  NPUSH_fn(); _parse_frame = NTOP_INDEX_fn(); _command_pending_parent_frame = _parse_frame; goto cat_r_572_β;
+    cat_l_572_α:  NPUSH_fn(); _parse_frame = NTOP_INDEX_fn(); _command_pending_parent_frame = _parse_frame; goto cat_r_572_α;
     cat_l_572_β:                                            goto _Parse_ω;
     cat_r_572_α:  cat_r_572_α_saved_stk = NV_GET_fn("@S"); cat_r_572_α_depth = -1;
                                                             goto cat_r_571_α;
@@ -10507,7 +10548,7 @@ arbno_c_573_β: {
     goto cat_r_572_α_child_ok;
 }
 cat_r_571_α: /* E_OPSYN & */
-    { DESCR_t _reduce_args[2] = {STRVAL("Parse"), INTVAL(ntop())};
+    { DESCR_t _reduce_args[2] = {STRVAL("Parse"), INTVAL((_parse_frame>=0)?NSTACK_AT_fn(_parse_frame):0)};
       APPLY_fn("Reduce", _reduce_args, 2); }
     goto cat_r_570_α;
 cat_r_571_β: goto cat_l_571_β;
@@ -10518,6 +10559,7 @@ cat_r_571_β: goto cat_l_571_β;
         return STRVAL("");
     _Parse_ω:;
         return FAILDESCR;
+#undef _parse_frame
 #undef cat_r_572_α_depth
 #undef cat_r_572_α_cursors
 #undef cat_r_572_α_saved_stk
@@ -10527,6 +10569,7 @@ cat_r_571_β: goto cat_l_571_β;
 }
 
 typedef struct pat_Compiland_t {
+    int _saved_frame;  /* nstack frame index saved at NPUSH time */
     int cat_r_578_α_depth;
     int64_t cat_r_578_α_cursors[64];
     DESCR_t cat_r_578_α_saved_stk;
@@ -10546,9 +10589,10 @@ typedef struct pat_Compiland_t {
 
 static DESCR_t pat_Compiland(const char *_subj_np, int64_t _slen_np,
                   int64_t *_cur_ptr_np, pat_Compiland_t **_zz_np, int _entry_np) {
-    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_Compiland_t)); }
+    if (_entry_np == 0) { *_zz_np = calloc(1, sizeof(pat_Compiland_t)); (*_zz_np)->_saved_frame = -1; }
     pat_Compiland_t *z = *_zz_np;
     int64_t _cur_np = *_cur_ptr_np;
+#define _compiland_frame z->_saved_frame
 #define cat_r_578_α_depth z->cat_r_578_α_depth
 #define cat_r_578_α_cursors z->cat_r_578_α_cursors
 #define cat_r_578_α_saved_stk z->cat_r_578_α_saved_stk
@@ -10575,8 +10619,8 @@ static DESCR_t pat_Compiland(const char *_subj_np, int64_t _slen_np,
     cat_l_576_α:                                            goto cat_l_577_α;
     cat_l_576_β:                                            goto cat_r_577_β;
     cat_l_577_α:                                            goto cat_l_578_α;
-    cat_l_577_β:  NPUSH_fn();                               goto cat_r_578_β;
-    cat_l_578_α:  NPUSH_fn();                               goto cat_r_578_α;
+    cat_l_577_β:  NPUSH_fn(); _compiland_frame = NTOP_INDEX_fn(); _command_pending_parent_frame = _compiland_frame; goto cat_r_578_β;
+    cat_l_578_α:  NPUSH_fn(); _compiland_frame = NTOP_INDEX_fn(); _command_pending_parent_frame = _compiland_frame; goto cat_r_578_α;
     cat_l_578_β:                                            goto _Compiland_ω;
     cat_r_578_α:  cat_r_578_α_saved_stk = NV_GET_fn("@S"); cat_r_578_α_depth = -1;
                                                             goto cat_r_577_α;
@@ -10604,7 +10648,7 @@ arbno_c_579_β: {
     goto cat_r_578_α_child_ok;
 }
 cat_r_577_α: /* E_OPSYN & */
-    { DESCR_t _reduce_args[2] = {STRVAL("Parse"), INTVAL(ntop())};
+    { DESCR_t _reduce_args[2] = {STRVAL("Parse"), INTVAL((_compiland_frame>=0)?NSTACK_AT_fn(_compiland_frame):0)};
       APPLY_fn("Reduce", _reduce_args, 2); }
     goto cat_r_576_α;
 cat_r_577_β: goto cat_l_577_β;
@@ -10711,6 +10755,7 @@ alt_r_581_β:
         return STRVAL("");
     _Compiland_ω:;
         return FAILDESCR;
+#undef _compiland_frame
 #undef cat_r_578_α_depth
 #undef cat_r_578_α_cursors
 #undef cat_r_578_α_saved_stk
@@ -11736,7 +11781,7 @@ static void *stmt_65(void) { /* line 134 label:ppArgWarn */
 /* line 134 */
     _L_ppArgWarn:
                   trampoline_stno(134);
-DESCR_t _v740 = CONCAT_fn(STRVAL_fn("* Warning: unknown switch --"),get(_ppTokName));
+DESCR_t _v740 = CONCAT_fn(EVAL_fn(STRVAL_fn("* Warning: unknown switch --")),get(_ppTokName));
 int _ok740 = !IS_FAIL_fn(_v740);
 if(_ok740) {
 NV_SET_fn("OUTPUT", _v740);
@@ -12646,7 +12691,7 @@ DESCR_t _v844 = CONCAT_fn(
                                                             CONCAT_fn(
                                                                 CONCAT_fn(
                                                                     CONCAT_fn(
-                                                                        CONCAT_fn(STRVAL_fn("* --auto: n="),get(_ppNg)),
+                                                                        CONCAT_fn(EVAL_fn(STRVAL_fn("* --auto: n=")),get(_ppNg)),
                                                                         STRVAL_fn(" p90=")
                                                                     ),
                                                                     get(_ppP90)
@@ -13237,7 +13282,7 @@ static void *stmt_149(void) { /* line 277 */
 DESCR_t _v905 = pat_cat(pat_cat(pat_ref("White"),pat_lit("**")),pat_ref("White"));
 int _ok905 = !IS_FAIL_fn(_v905);
 if(_ok905) {
-iset(STRVAL_fn("**"),_v905);
+iset(EVAL_fn(STRVAL_fn("**")),_v905);
 }
     return (void*)_tramp_next_904;
 }
@@ -13433,7 +13478,7 @@ DESCR_t _v935 = pat_cat(
                     pat_cat(
                         pat_cat(pat_user_call("nPush",NULL,0),pat_ref("XList")),
                         pat_val(
-                            APPLY_fn("reduce",(DESCR_t[]){STRVAL_fn("'ExprList'"),STRVAL_fn("*(GT(nTop(), 1) nTop())")},2)
+                            APPLY_fn("reduce",(DESCR_t[]){STRVAL_fn("'ExprList'"),EVAL_fn(STRVAL_fn("*(GT(nTop(), 1) nTop())"))},2)
                         )
                     ),
                     pat_user_call("nPop",NULL,0)
@@ -13560,7 +13605,7 @@ static void *stmt_170(void) { /* line 302 */
 DESCR_t _v947 = pat_cat(
                     pat_cat(
                         pat_cat(pat_user_call("nPush",NULL,0),pat_ref("X3")),
-                        pat_val(APPLY_fn("reduce",(DESCR_t[]){STRVAL_fn("'|'"),STRVAL_fn("*(GT(nTop(), 1) nTop())")},2))
+                        pat_val(APPLY_fn("reduce",(DESCR_t[]){STRVAL_fn("'|'"),EVAL_fn(STRVAL_fn("*(GT(nTop(), 1) nTop())"))},2))
                     ),
                     pat_user_call("nPop",NULL,0)
                 );
@@ -13598,7 +13643,7 @@ DESCR_t _v951 = pat_cat(
                     pat_cat(
                         pat_cat(pat_user_call("nPush",NULL,0),pat_ref("X4")),
                         pat_val(
-                            APPLY_fn("reduce",(DESCR_t[]){STRVAL_fn("'..'"),STRVAL_fn("*(GT(nTop(), 1) nTop())")},2)
+                            APPLY_fn("reduce",(DESCR_t[]){STRVAL_fn("'..'"),EVAL_fn(STRVAL_fn("*(GT(nTop(), 1) nTop())"))},2)
                         )
                     ),
                     pat_user_call("nPop",NULL,0)
@@ -13797,7 +13842,7 @@ DESCR_t _v967 = pat_cat(
                                 pat_cat(
                                     pat_alt(
                                         pat_alt(pat_deref(STRVAL_fn("^")),pat_deref(STRVAL_fn("!"))),
-                                        pat_deref(STRVAL_fn("**"))
+                                        pat_deref(EVAL_fn(STRVAL_fn("**")))
                                     ),
                                     pat_ref("Expr11")
                                 ),
@@ -14224,7 +14269,7 @@ DESCR_t _v989 = pat_cat(
                             pat_cat(
                                 pat_cat(
                                     pat_ref("Target"),
-                                    pat_val(APPLY_fn("reduce",(DESCR_t[]){STRVAL_fn("*(':' Brackets)"),INTVAL_fn(1)},2))
+                                    pat_val(APPLY_fn("reduce",(DESCR_t[]){EVAL_fn(STRVAL_fn("*(':' Brackets)")),INTVAL_fn(1)},2))
                                 ),
                                 pat_val(get(_epsilon))
                             ),
@@ -14232,7 +14277,7 @@ DESCR_t _v989 = pat_cat(
                                 pat_cat(
                                     pat_cat(pat_ref("SorF"),pat_ref("Target")),
                                     pat_val(
-                                        APPLY_fn("reduce",(DESCR_t[]){STRVAL_fn("*(':' SorF Brackets)"),INTVAL_fn(1)},2)
+                                        APPLY_fn("reduce",(DESCR_t[]){EVAL_fn(STRVAL_fn("*(':' SorF Brackets)")),INTVAL_fn(1)},2)
                                     )
                                 ),
                                 pat_fence_p(
@@ -14240,7 +14285,7 @@ DESCR_t _v989 = pat_cat(
                                         pat_cat(
                                             pat_cat(pat_cat(pat_ref("Gray"),pat_ref("SorF")),pat_ref("Target")),
                                             pat_val(
-                                                APPLY_fn("reduce",(DESCR_t[]){STRVAL_fn("*(':' SorF Brackets)"),INTVAL_fn(1)},2)
+                                                APPLY_fn("reduce",(DESCR_t[]){EVAL_fn(STRVAL_fn("*(':' SorF Brackets)")),INTVAL_fn(1)},2)
                                             )
                                         ),
                                         pat_val(get(_epsilon))
