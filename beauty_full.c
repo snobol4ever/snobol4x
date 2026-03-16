@@ -4418,8 +4418,9 @@ static DESCR_t pat_Function(const char *_subj_np, int64_t _slen_np,
                   }                                         goto dolc_58_mid;
     dolc_58_lb:                                             goto assign_c_59_β;
 dolc_58_mid: {
-    DESCR_t _deref_pat = NV_GET_fn("match");
-    int _deref_new_cur = match_pattern_at(_deref_pat, _subj_np, (int)_slen_np, (int)_cur_np);
+    DESCR_t _match_args_fix[2] = {NV_GET_fn("List"), NV_GET_fn("TxInList")};
+    DESCR_t _deref_pat = APPLY_fn("match", _match_args_fix, 2);
+    int _deref_new_cur = IS_FAIL_fn(_deref_pat) ? -1 : match_pattern_at(_deref_pat, _subj_np, (int)_slen_np, (int)_cur_np);
     if (_deref_new_cur < 0) goto _Function_ω;
     deref_60_saved_cursor = _cur_np;
     _cur_np = (int64_t)_deref_new_cur;
@@ -4481,8 +4482,9 @@ static DESCR_t pat_BuiltinVar(const char *_subj_np, int64_t _slen_np,
                   }                                         goto dolc_61_mid;
     dolc_61_lb:                                             goto assign_c_62_β;
 dolc_61_mid: {
-    DESCR_t _deref_pat = NV_GET_fn("match");
-    int _deref_new_cur = match_pattern_at(_deref_pat, _subj_np, (int)_slen_np, (int)_cur_np);
+    DESCR_t _match_args_fix[2] = {NV_GET_fn("List"), NV_GET_fn("TxInList")};
+    DESCR_t _deref_pat = APPLY_fn("match", _match_args_fix, 2);
+    int _deref_new_cur = IS_FAIL_fn(_deref_pat) ? -1 : match_pattern_at(_deref_pat, _subj_np, (int)_slen_np, (int)_cur_np);
     if (_deref_new_cur < 0) goto _BuiltinVar_ω;
     deref_63_saved_cursor = _cur_np;
     _cur_np = (int64_t)_deref_new_cur;
@@ -4544,8 +4546,9 @@ static DESCR_t pat_SpecialNm(const char *_subj_np, int64_t _slen_np,
                   }                                         goto dolc_64_mid;
     dolc_64_lb:                                             goto assign_c_65_β;
 dolc_64_mid: {
-    DESCR_t _deref_pat = NV_GET_fn("match");
-    int _deref_new_cur = match_pattern_at(_deref_pat, _subj_np, (int)_slen_np, (int)_cur_np);
+    DESCR_t _match_args_fix[2] = {NV_GET_fn("List"), NV_GET_fn("TxInList")};
+    DESCR_t _deref_pat = APPLY_fn("match", _match_args_fix, 2);
+    int _deref_new_cur = IS_FAIL_fn(_deref_pat) ? -1 : match_pattern_at(_deref_pat, _subj_np, (int)_slen_np, (int)_cur_np);
     if (_deref_new_cur < 0) goto _SpecialNm_ω;
     deref_66_saved_cursor = _cur_np;
     _cur_np = (int64_t)_deref_new_cur;
@@ -4617,8 +4620,9 @@ static DESCR_t pat_ProtKwd(const char *_subj_np, int64_t _slen_np,
                   }                                         goto dolc_68_mid;
     dolc_68_lb:                                             goto assign_c_69_β;
 dolc_68_mid: {
-    DESCR_t _deref_pat = NV_GET_fn("match");
-    int _deref_new_cur = match_pattern_at(_deref_pat, _subj_np, (int)_slen_np, (int)_cur_np);
+    DESCR_t _match_args_fix[2] = {NV_GET_fn("List"), NV_GET_fn("TxInList")};
+    DESCR_t _deref_pat = APPLY_fn("match", _match_args_fix, 2);
+    int _deref_new_cur = IS_FAIL_fn(_deref_pat) ? -1 : match_pattern_at(_deref_pat, _subj_np, (int)_slen_np, (int)_cur_np);
     if (_deref_new_cur < 0) goto cat_l_67_β;
     deref_70_saved_cursor = _cur_np;
     _cur_np = (int64_t)_deref_new_cur;
@@ -4691,8 +4695,9 @@ static DESCR_t pat_UnprotKwd(const char *_subj_np, int64_t _slen_np,
                   }                                         goto dolc_72_mid;
     dolc_72_lb:                                             goto assign_c_73_β;
 dolc_72_mid: {
-    DESCR_t _deref_pat = NV_GET_fn("match");
-    int _deref_new_cur = match_pattern_at(_deref_pat, _subj_np, (int)_slen_np, (int)_cur_np);
+    DESCR_t _match_args_fix[2] = {NV_GET_fn("List"), NV_GET_fn("TxInList")};
+    DESCR_t _deref_pat = APPLY_fn("match", _match_args_fix, 2);
+    int _deref_new_cur = IS_FAIL_fn(_deref_pat) ? -1 : match_pattern_at(_deref_pat, _subj_np, (int)_slen_np, (int)_cur_np);
     if (_deref_new_cur < 0) goto cat_l_71_β;
     deref_74_saved_cursor = _cur_np;
     _cur_np = (int64_t)_deref_new_cur;

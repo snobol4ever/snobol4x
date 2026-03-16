@@ -1986,6 +1986,62 @@ static void byrd_emit(EXPR_t *pat,
             return;
         }
 
+        /* -------------------------------------------------------------------
+         * Category: *fnname(args...) — E_INDR(left=E_FNC("name",[...]))
+         *
+         * Semantics: call the function with its arguments to obtain a pattern
+         * descriptor at runtime, then use THAT descriptor as the pattern.
+         * This is the correct reading of SNOBOL4 *f(a,b): evaluate f(a,b),
+         * treat the result as an unevaluated (deferred) pattern.
+         *
+         * The bug (session 107): line 1951 above extracted only pat->left->sval
+         * ("match") and fell through to NV_GET_fn("match") — a variable lookup
+         * by name, dropping ALL arguments.  match_pattern_at(NULVCL,...) then
+         * succeeded vacuously, making OUTPUT look like a Function.
+         *
+         * Fix: when the inner node is E_FNC with arguments, emit APPLY_fn(name,
+         * args, nargs) to get the real pattern descriptor, then match against it.
+         * beta → omega: function calls are non-resumable.
+         * ------------------------------------------------------------------- */
+        if (pat->left && pat->left->kind == E_FNC && pat->left->nargs > 0) {
+            EXPR_t *fn = pat->left;
+            const char *fname = fn->sval ? fn->sval : "";
+            int nargs = fn->nargs;
+            int uid = byrd_uid();
+            char saved[LBUF];
+            snprintf(saved, LBUF, "deref_fnc_%d_saved_cursor", uid);
+            decl_add("int64_t %s", saved);
+
+            B("%s: {\n", alpha);
+            /* Build args array */
+            B("    DESCR_t _fcall_%d_args[%d];\n", uid, nargs);
+            for (int ai = 0; ai < nargs; ai++) {
+                EXPR_t *a = fn->args[ai];
+                if (a && a->kind == E_VART && a->sval)
+                    B("    _fcall_%d_args[%d] = NV_GET_fn(\"%s\");\n", uid, ai, a->sval);
+                else if (a && a->kind == E_QLIT && a->sval)
+                    B("    _fcall_%d_args[%d] = STRVAL(\"%s\");\n", uid, ai, a->sval);
+                else if (a && a->kind == E_ILIT)
+                    B("    _fcall_%d_args[%d] = INTVAL(%ld);\n", uid, ai, a->ival);
+                else
+                    B("    _fcall_%d_args[%d] = NULVCL;\n", uid, ai);
+            }
+            B("    DESCR_t _fcall_%d_pat = APPLY_fn(\"%s\", _fcall_%d_args, %d);\n",
+              uid, fname, uid, nargs);
+            B("    if (IS_FAIL_fn(_fcall_%d_pat)) goto %s;\n", uid, omega);
+            B("    int _deref_fnc_%d_new_cur = match_pattern_at(_fcall_%d_pat, %s, (int)%s, (int)%s);\n",
+              uid, uid, subj, subj_len, cursor);
+            B("    if (_deref_fnc_%d_new_cur < 0) goto %s;\n", uid, omega);
+            B("    %s = %s;\n", saved, cursor);
+            B("    %s = (int64_t)_deref_fnc_%d_new_cur;\n", cursor, uid);
+            B("    goto %s;\n", gamma);
+            B("}\n");
+            B("%s:\n", beta);
+            B("    %s = %s;\n", cursor, saved);
+            B("    goto %s;\n", omega);
+            return;
+        }
+
         const NamedPat *np = named_pat_lookup(varname);
 
         if (np) {
