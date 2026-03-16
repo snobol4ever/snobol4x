@@ -8192,15 +8192,14 @@ assign_c_384_β: {
                   }                                         goto cat_r_382_α;
     cat_l_382_β:                                            goto assign_c_383_β;
     cat_r_382_α:  cat_r_382_α_start = _cur_np;
-                  /* Bug2 fix (session109): function-call requires '(' before ExprList.
-                   * Without this guard, pat_ExprList matches epsilon and "OUTPUT" is
-                   * spuriously reduced as Call(Function,ExprList0) instead of a bare subject.
-                   * We must pop the Shift("Function",...) already on the value stack
-                   * before backtracking, otherwise the stack is left dirty. */
+                  /* Bug2 fix (session110): function-call requires '(' before ExprList.
+                   * If no '(' follows, this is a BARE Function reference (e.g. OUTPUT as subject).
+                   * The Shift("Function", tok) is already on the stack from assign_c_383_α_do_assign —
+                   * keep it and succeed as a bare-Function atom.  Do NOT pop and fall through to
+                   * alt_r_365_α, which tries BuiltinVar/SpecialNm/Id and will miss OUTPUT entirely
+                   * because OUTPUT lives in Functions, not BuiltinVars or plain identifiers. */
                   if (_cur_np >= _slen_np || _subj_np[_cur_np] != '(') {
-                      pop_val();   /* undo Shift("Function", v) from assign_c_383_α_do_assign */
-                      _cur_np = deref_385_saved_cur;  /* restore cursor to before Function */
-                      goto alt_r_365_α;   /* skip entire function-call arm */
+                      goto fence_after_358;   /* keep Shift("Function", tok); succeed as bare atom */
                   }
                   goto assign_c_386_α;
 assign_c_386_α: {
@@ -8262,11 +8261,11 @@ assign_c_391_β: {
                   }                                         goto cat_r_389_α;
     cat_l_389_β:                                            goto assign_c_390_β;
     cat_r_389_α:  cat_r_389_α_start = _cur_np;
-                  /* Bug2 fix (session109): same guard for Id arm — pop Shift("Id",...) if no '(' */
+                  /* Bug2 fix (session110): same logic for Id arm — if no '(' follows,
+                   * this is a bare identifier reference (user variable as subject/operand).
+                   * Shift("Id", tok) is already on the stack; keep it and succeed. */
                   if (_cur_np >= _slen_np || _subj_np[_cur_np] != '(') {
-                      pop_val();   /* undo Shift("Id", v) from assign_c_390_α_do_assign */
-                      _cur_np = deref_392_saved_cur;  /* restore cursor to before Id */
-                      goto alt_r_364_α;   /* skip entire Id function-call arm */
+                      goto fence_after_358;   /* keep Shift("Id", tok); succeed as bare atom */
                   }
                   goto assign_c_393_α;
 assign_c_393_α: {
