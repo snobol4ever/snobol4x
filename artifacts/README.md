@@ -239,3 +239,22 @@ session115 | 2026-03-16 | 6d5919daa03d3c56646b5f0a165f86ee | 15859 lines | compi
 - **design:** α/β/γ/ω as real NASM labels; cursor+saved_cursor in flat .bss qwords; no structs, no malloc
 - **notes:** repe cmpsb for multi-byte compare; single-char case can use cmp byte
 - **active:** Sprint A2 next — POS/RPOS nodes
+
+## session148 — 2026-03-17 — ASM backend Sprint A7 (M-ASM-ASSIGN)
+
+### artifacts/asm/assign_lit.s  (Sprint A7 — M-ASM-ASSIGN ✅)
+- **status:** PASS — `POS(0) LIT("hello") $ CAP RPOS(0)` on `"hello"` → `hello\n` exit 0
+- **milestone:** M-ASM-ASSIGN fires session148
+- **assemble:** `nasm -f elf64 assign_lit.s -o assign_lit.o && ld assign_lit.o -o assign_lit && ./assign_lit`
+- **design:** DOL α saves entry_cursor; child (LIT) γ jumps dol_γ; dol_γ computes span length, rep movsb into cap_buf, stores cap_len; dol_ω propagates failure without assignment. No rollback needed — $ is forward-only (v311.sil ENMI).
+
+### artifacts/asm/assign_digits.s  (Sprint A7 — M-ASM-ASSIGN ✅)
+- **status:** PASS — `SPAN("0123456789") $ NUM` on `"abc123def"` (unanchored) → `123\n` exit 0
+- **assemble:** `nasm -f elf64 assign_digits.s -o assign_digits.o && ld assign_digits.o -o assign_digits && ./assign_digits`
+- **design:** Outer unanchored loop advances outer_cursor on dol_ω; SPAN counts consecutive digit chars (greedy, no β retry); dol_γ copies span into cap_buf. Demonstrates $ capture across non-LIT child with unanchored match.
+
+### emit_byrd_asm.c — E_DOL wired (session148)
+- Added `emit_asm_assign()` implementing the DOL Byrd box for `expr $ var`
+- Also handles `E_NAM` (`.` conditional assignment) with same box — assignment timing distinction deferred to crosscheck phase
+- `cap_buf` (resb 256) registered via `asm_extra_bss[]`; `cap_len` + `dol_N_entry` via `bss_add()`
+- 106/106 crosscheck invariant confirmed PASS before and after

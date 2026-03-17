@@ -445,6 +445,103 @@ static void emit_asm_arbno(EXPR_t *child,
 }
 
 /* -----------------------------------------------------------------------
+ * emit_asm_assign — E_DOL (expr $ var) — immediate assignment
+ *
+ * Byrd Box (v311.sil ENMI, Proebsting §4.3):
+ *   dol_α:    save cursor → entry_cursor; goto child_α
+ *   dol_β:    → child_β           (transparent backtrack)
+ *   child_γ → dol_γ:
+ *               span = subject[entry_cursor .. cursor]
+ *               memcpy → cap_buf; cap_len = cursor - entry_cursor
+ *               goto γ            (succeed; assignment done — no rollback)
+ *   child_ω → dol_ω: goto ω      (no assignment performed)
+ *
+ * The capture variable name (pat->right->sval) is used to derive
+ * the .bss buffer names:  cap_<varname>_N_buf  (resb 256)
+ *                          cap_<varname>_N_len  (resq 1)
+ *                          dol_<N>_entry        (resq 1)
+ *
+ * The buffer is emitted via asm_extra_bss (like ARBNO stacks).
+ * ----------------------------------------------------------------------- */
+
+static void emit_asm_assign(EXPR_t *child, const char *varname,
+                             const char *alpha, const char *beta,
+                             const char *gamma, const char *omega,
+                             const char *cursor,
+                             const char *subj, const char *subj_len_sym,
+                             int depth) {
+    int uid = asm_uid();
+    char cα[LBUF], cβ[LBUF];
+    char dol_gamma[LBUF], dol_omega[LBUF];
+    char entry_cur[LBUF], cap_buf[LBUF], cap_len[LBUF];
+
+    /* derive safe varname prefix (strip non-alnum) */
+    char safe[64]; int si = 0;
+    if (varname) {
+        for (const char *p = varname; *p && si < 60; p++)
+            safe[si++] = (isalnum((unsigned char)*p) || *p=='_') ? *p : '_';
+    }
+    safe[si] = '\0';
+    if (!si) { safe[0]='v'; safe[1]='\0'; }
+
+    snprintf(cα,        LBUF, "dol%d_child_alpha", uid);
+    snprintf(cβ,        LBUF, "dol%d_child_beta",  uid);
+    snprintf(dol_gamma, LBUF, "dol%d_gamma",        uid);
+    snprintf(dol_omega, LBUF, "dol%d_omega",        uid);
+    snprintf(entry_cur, LBUF, "dol%d_entry",        uid);
+    snprintf(cap_buf,   LBUF, "cap_%s_%d_buf",      safe, uid);
+    snprintf(cap_len,   LBUF, "cap_%s_%d_len",      safe, uid);
+
+    /* register .bss slots */
+    bss_add(entry_cur);
+    bss_add(cap_len);
+    /* cap_buf needs resb 256, not resq 1 — use extra_bss */
+    extern char asm_extra_bss[][128];
+    extern int  asm_extra_bss_count;
+    if (asm_extra_bss_count < 64) {
+        snprintf(asm_extra_bss[asm_extra_bss_count++], 128,
+                 "%-24s resb 256", cap_buf);
+    }
+
+    A("\n; DOL(%s $  %s)  α=%s\n", varname ? varname : "?", safe, alpha);
+
+    /* α: save entry cursor, enter child */
+    asmL(alpha);
+    A("    mov     rax, [%s]\n", cursor);
+    A("    mov     [%s], rax\n", entry_cur);
+    asmJ(cα);
+
+    /* β: transparent — backtrack into child */
+    asmL(beta);
+    asmJ(cβ);
+
+    /* Emit child subtree — child's γ goes to dol_gamma, child's ω to dol_omega */
+    emit_asm_node(child, cα, cβ, dol_gamma, dol_omega,
+                  cursor, subj, subj_len_sym, depth + 1);
+
+    /* dol_γ: compute span, copy to cap_buf, proceed to outer γ */
+    A("\n; DOL γ — capture span into %s\n", cap_buf);
+    asmL(dol_gamma);
+    /* rax = cursor - entry_cursor = span length */
+    A("    mov     rax, [%s]\n", cursor);
+    A("    mov     rbx, [%s]\n", entry_cur);
+    A("    sub     rax, rbx\n");
+    A("    mov     [%s], rax\n", cap_len);
+    /* rep movsb: rsi = &subj[entry_cursor], rdi = cap_buf, rcx = len */
+    A("    lea     rsi, [rel %s]\n", subj);
+    A("    add     rsi, rbx\n");
+    A("    lea     rdi, [rel %s]\n", cap_buf);
+    A("    mov     rcx, rax\n");
+    A("    rep     movsb\n");
+    asmJ(gamma);
+
+    /* dol_ω: child failed — no assignment, propagate failure */
+    A("\n; DOL ω — child failed, no capture\n");
+    asmL(dol_omega);
+    asmJ(omega);
+}
+
+/* -----------------------------------------------------------------------
  * emit_asm_node — recursive dispatch
  * ----------------------------------------------------------------------- */
 
@@ -474,6 +571,31 @@ static void emit_asm_node(EXPR_t *pat,
                      alpha, beta, gamma, omega,
                      cursor, subj, subj_len_sym, depth);
         break;
+
+    case E_DOL: {
+        /* expr $ var — immediate assignment.
+         * left = sub-pattern, right = capture variable (E_VART). */
+        const char *varname = (pat->right && pat->right->sval)
+                              ? pat->right->sval : "cap";
+        emit_asm_assign(pat->left, varname,
+                        alpha, beta, gamma, omega,
+                        cursor, subj, subj_len_sym, depth);
+        break;
+    }
+
+    case E_NAM: {
+        /* expr . var — conditional assignment.
+         * Semantics identical to $ in the pattern match phase
+         * (assignment deferred to after full match for ., but for
+         * our standalone crosscheck harness the distinction doesn't
+         * matter yet — emit same as E_DOL). */
+        const char *varname = (pat->right && pat->right->sval)
+                              ? pat->right->sval : "cap";
+        emit_asm_assign(pat->left, varname,
+                        alpha, beta, gamma, omega,
+                        cursor, subj, subj_len_sym, depth);
+        break;
+    }
 
     case E_FNC:
         if (pat->sval && strcasecmp(pat->sval, "POS") == 0 && pat->nargs == 1) {
