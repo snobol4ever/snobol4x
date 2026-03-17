@@ -191,7 +191,7 @@ session115 | 2026-03-16 | 6d5919daa03d3c56646b5f0a165f86ee | 15859 lines | compi
 - **active bug:** Bug5 saved-frame NSTACK_AT port incomplete — pending_npush_uid not surviving nested CAT levels to reach E_OPSYN; 101-103 PASS, 104-105 FAIL from regenerated C
 - **note:** beauty_full_bin (in repo) still from WIP — passes 101-105; emit_byrd.c port WIP
 
-## session147 — 2026-03-17 — ASM backend Sprint A4: M-ASM-ALT ✅
+## session147 — 2026-03-17 — ASM backend Sprint A4+A5: M-ASM-ALT + M-ASM-ARBNO ✅
 
 ### artifacts/asm/alt_first.s  (Sprint A4 — M-ASM-ALT ✅)
 - **status:** PASS — subject "cat", pattern `LIT("cat") | LIT("dog")` → `cat\n` exit 0
@@ -208,6 +208,22 @@ session115 | 2026-03-16 | 6d5919daa03d3c56646b5f0a165f86ee | 15859 lines | compi
 - **status:** PASS — subject "fish" → both arms fail → no output, exit 1
 - **assemble:** `nasm -f elf64 alt_fail.s -o alt_fail.o && ld alt_fail.o -o alt_fail_bin && ./alt_fail_bin`
 - **design:** right_ω → alt_ω chain; alt_ω exits 1
+
+### artifacts/asm/arbno_match.s  (Sprint A5 — M-ASM-ARBNO ✅)
+- **status:** PASS — subject "aaa", `POS(0) ARBNO(LIT("a")) RPOS(0)` → `aaa\n` exit 0
+- **milestone:** M-ASM-ARBNO fires session147
+- **assemble:** `nasm -f elf64 arbno_match.s -o arbno_match.o && ld arbno_match.o -o arbno_match_bin && ./arbno_match_bin`
+- **design:** flat .bss cursor stack (64 slots + depth counter). α pushes cursor, succeeds immediately (zero reps). β pops, tries one LIT rep; if cursor advances pushes new cursor and re-succeeds. Zero-advance guard prevents infinite loop.
+
+### artifacts/asm/arbno_empty.s  (Sprint A5 — M-ASM-ARBNO ✅)
+- **status:** PASS — subject "aaa", `POS(0) ARBNO(LIT("x")) RPOS(0)` → no output, exit 1
+- **assemble:** `nasm -f elf64 arbno_empty.s -o arbno_empty.o && ld arbno_empty.o -o arbno_empty_bin && ./arbno_empty_bin`
+- **design:** zero reps succeed, RPOS(0) fails, backtrack β, LIT("x") fails → exit 1
+
+### artifacts/asm/arbno_alt.s  (Sprint A5 — M-ASM-ARBNO ✅)
+- **status:** PASS — subject "abba", `POS(0) ARBNO(LIT("a")|LIT("b")) RPOS(0)` → `abba\n` exit 0
+- **assemble:** `nasm -f elf64 arbno_alt.s -o arbno_alt.o && ld arbno_alt.o -o arbno_alt_bin && ./arbno_alt_bin`
+- **design:** ALT wired inside ARBNO β rep attempt; rep_success checks zero-advance guard then pushes new cursor → arbno_γ
 
 ## session146 — 2026-03-17 — ASM backend Sprint A0–A1
 
