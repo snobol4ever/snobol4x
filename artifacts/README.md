@@ -190,3 +190,18 @@ session115 | 2026-03-16 | 6d5919daa03d3c56646b5f0a165f86ee | 15859 lines | compi
 - **compile:** ok
 - **active bug:** Bug5 saved-frame NSTACK_AT port incomplete — pending_npush_uid not surviving nested CAT levels to reach E_OPSYN; 101-103 PASS, 104-105 FAIL from regenerated C
 - **note:** beauty_full_bin (in repo) still from WIP — passes 101-105; emit_byrd.c port WIP
+
+## session146 — 2026-03-17 — ASM backend Sprint A0–A1
+
+### artifacts/asm/null.s  (Sprint A0 — M-ASM-HELLO ✅)
+- **status:** PASS — assembles, links, runs → exit 0
+- **milestone:** M-ASM-HELLO fired session145; artifact archived here session146
+- **assemble:** `nasm -f elf64 null.s -o null.o && ld null.o -o null && ./null`
+
+### artifacts/asm/lit_hello.s  (Sprint A1 — M-ASM-LIT ✅)
+- **status:** PASS — `hello\n` on stdout, exit 0; diff vs lit_hello_expected.txt CLEAN
+- **milestone:** M-ASM-LIT fires session146
+- **assemble:** `nasm -f elf64 lit_hello.s -o lit_hello.o && ld lit_hello.o -o lit_hello && ./lit_hello`
+- **design:** α/β/γ/ω as real NASM labels; cursor+saved_cursor in flat .bss qwords; no structs, no malloc
+- **notes:** repe cmpsb for multi-byte compare; single-char case can use cmp byte
+- **active:** Sprint A2 next — POS/RPOS nodes
