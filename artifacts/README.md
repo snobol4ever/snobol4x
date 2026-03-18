@@ -392,3 +392,12 @@ session115 | 2026-03-16 | 6d5919daa03d3c56646b5f0a165f86ee | 15859 lines | compi
   ALT_SAVE_CURSOR/ALT_RESTORE_CURSOR, STORE_RESULT/SAVE_DESCR.
   Body-only (-asm-body) now emits %include + crosscheck script uses -I flag.
 - **Invariants:** 106/106 C crosscheck PASS, 26/26 ASM crosscheck PASS
+
+## beauty_prog_session161.s
+- **Sprint:** A14 — M-ASM-BEAUTIFUL
+- **Status:** assembles clean (nasm -f elf64 -I src/runtime/asm/)
+- **Lines:** 15883 (vs 16421 session160 — 538 more lines eliminated)
+- **What changed:** ALF() helper — label and instruction on the same line.
+  Every Byrd box port now reads: `label:  MACRO  args`
+  40 asmL+A/asmJ pairs folded into single ALF() calls.
+- **Invariants:** 106/106 C crosscheck PASS, 26/26 ASM crosscheck PASS
