@@ -59,7 +59,7 @@ static FILE *asm_out;
 /* Comment separator width (configurable).
  * SEP_W = total width of ; === / ; --- lines, including the leading "; ".
  * 80 is the classic terminal width; 120 suits wide monitors. */
-#define SEP_W 80
+#define SEP_W 120
 
 static int out_col = 0;
 

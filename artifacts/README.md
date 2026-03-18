@@ -480,3 +480,9 @@ session115 | 2026-03-16 | 6d5919daa03d3c56646b5f0a165f86ee | 15859 lines | compi
   - FAIL_BR/FAIL_BR16/SUBJ_FROM16 emit sites updated in emitter
 - next: CONC2_SV macro (QLIT left + VART right — dominant shape, ~300 sites remaining)
 - **Invariants:** 106/106 C crosscheck PASS, 26/26 ASM crosscheck PASS
+
+### artifacts/asm/beauty_prog_session169.s  (Sprint A14 — M-ASM-BEAUTIFUL)
+- status: 12689 lines, NASM clean (1 harmless db-empty warning)
+- change: SEP_W 80 → 120; separator lines now 120 chars wide (Cherryholmes standard)
+- assemble: nasm -I src/runtime/asm/ -f elf64 beauty_prog_session169.s -o /dev/null
+- invariants: 106/106 C crosscheck PASS, 26/26 ASM crosscheck PASS
