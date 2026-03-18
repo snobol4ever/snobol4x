@@ -522,3 +522,12 @@ session115 | 2026-03-16 | 6d5919daa03d3c56646b5f0a165f86ee | 15859 lines | compi
 - **Status:** NASM clean, 106/106 C, 26/26 ASM
 - **Changes:** CALL1_VAR + CONC2_VI/IV/II/NI/SI/IS + *16 variants; 77→15 verbose sub rsp,32 blocks remain (all have complex children: E_IDX/E_SUB/E_FNC/E_NAM); remaining 15 need result-temp strategy
 - **Assemble:** `nasm -f elf64 -I src/runtime/asm/ beauty_prog_session174.s -o /dev/null`
+
+### artifacts/asm/beauty_prog_session175.s  (Sprint A14 — M-ASM-BEAUTIFUL ⏳)
+- status: PASS — beauty.sno compiled to x64 ASM; col3 alignment perfected
+- milestone: col3 operand alignment fixed for ALFC/ALF/pending-label paths
+- assemble: nasm -f elf64 -I src/runtime/asm/ beauty_prog_session175.s -o /dev/null
+- design: emit_instr() helper added; used in asmLB, ALFC, and pending-label fold in A().
+  Every instruction line: col1=label(0..27), col2=opcode(28..39), col3=operands(40+).
+  asmLC comment-only lines exempt (label: ; comment — no opcode/operand split).
+  11654 lines; 106/106 C crosscheck PASS; 26/26 ASM crosscheck PASS.

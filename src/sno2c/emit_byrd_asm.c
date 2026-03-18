@@ -138,6 +138,30 @@ static void emit_to_col(int n) {
     while (out_col < n) oc_char(' ');
 }
 
+/* emit_instr — emit opcode + operands with col3 alignment.
+ * Caller has already padded to COL_W (col1 done).
+ * We emit the opcode word, then pad to COL_W+COL2_W for operands.
+ * instr must have leading whitespace already stripped. */
+static void emit_instr(const char *instr) {
+    /* find end of opcode word */
+    const char *sp = instr;
+    while (*sp && *sp != ' ' && *sp != '\t') sp++;
+    /* emit opcode */
+    const char *op = instr;
+    while (op < sp) oc_char(*op++);
+    /* skip whitespace between opcode and operands */
+    while (*sp == ' ' || *sp == '\t') sp++;
+    if (*sp) {
+        /* pad to COL3 for operands */
+        int col3 = COL_W + COL2_W;
+        if (out_col < col3) emit_to_col(col3);
+        else oc_char(' ');
+        oc_str(sp);
+    } else {
+        oc_char('\n');
+    }
+}
+
 /* -----------------------------------------------------------------------
  * Pending-label mechanism (Sprint A14 beauty):
  * Instead of emitting "label:\n" immediately, we hold it and prepend it
@@ -202,7 +226,7 @@ static void A(const char *fmt, ...) {
             emit_to_col(COL_W);
             /* strip leading whitespace from instruction content */
             while (*start == ' ' || *start == '\t') start++;
-            oc_str(start);
+            emit_instr(start);
             return;
         } else {
             flush_pending_label();
@@ -350,7 +374,7 @@ static void asmLB(const char *lbl, const char *instr) {
     oc_str(lbl); oc_char(':');
     emit_to_col(COL_W);
     while (*instr == ' ') instr++;
-    oc_str(instr);
+    emit_instr(instr);
 }
 
 /* asmLC — emit "label: ; comment\n" — label with col2 comment, no instruction.
@@ -385,7 +409,19 @@ static char _alfc_ibuf[768];
     emit_to_col(COL_W); \
     const char *_alfc_p = _alfc_ibuf; \
     while (*_alfc_p == ' ') _alfc_p++; \
-    oc_str(_alfc_p); \
+    /* emit opcode, pad to COL3, emit operands (if any), then comment */ \
+    { \
+        const char *_sp = _alfc_p; \
+        while (*_sp && *_sp != ' ' && *_sp != '\t') _sp++; \
+        const char *_op = _alfc_p; \
+        while (_op < _sp) oc_char(*_op++); \
+        while (*_sp == ' ' || *_sp == '\t') _sp++; \
+        if (*_sp) { \
+            int _col3 = COL_W + COL2_W; \
+            if (out_col < _col3) emit_to_col(_col3); else oc_char(' '); \
+            oc_str(_sp); \
+        } \
+    } \
     /* one space before comment — rule: no fourth column */ \
     oc_char(' '); \
     oc_str("; "); oc_str(comment); oc_char('\n'); \
