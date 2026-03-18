@@ -1,7 +1,0 @@
-	I = 1
-LOOP	OUTPUT = I
-	I = I + 1
-	EQ(I, 4)	:S(DONE)
-	:(LOOP)
-DONE	OUTPUT = 'done'
-END
