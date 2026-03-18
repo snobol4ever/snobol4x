@@ -340,3 +340,12 @@ session115 | 2026-03-16 | 6d5919daa03d3c56646b5f0a165f86ee | 15859 lines | compi
 - global cursor/subject_data/subject_len_val exported for stmt_rt.c linkage
 - hello-world test: assembles + links + runs correctly
 - remaining: all inline mov/call → macro calls; body macros (GET_VAR/SET_OUTPUT etc)
+
+### artifacts/asm/beauty_prog_session156b.s  (Sprint A12 — end of session156)
+- status: 0 errors, 1 warning (label-orphan from STMT_SEP — benign)
+- 12843 lines; cap_* symbols fixed; empty db fixed; STMT_SEP reordered
+- links clean; hangs on run (asm_named_count=0 prevents pattern execution)
+- next: fix asm_named_count, wire pattern-match execution, M-ASM-BEAUTY
+
+### beauty_tramp session156b — no change
+- md5: 185f391427d156b6a7ee5f9153f19b89 (same as session116)

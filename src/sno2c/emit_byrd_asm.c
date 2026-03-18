@@ -106,12 +106,16 @@ static void lit_emit_data(void) {
     A("subject_str:    db 0        ; placeholder — harness fills this\n");
     A("newline:        db 10\n");
     for (int i = 0; i < lit_count; i++) {
-        A("%-20s db ", lit_table[i].label);
-        for (int j = 0; j < lit_table[i].len; j++) {
-            if (j) A(", ");
-            A("%d", (unsigned char)lit_table[i].val[j]);
+        if (lit_table[i].len == 0) {
+            A("%-20s db 0    ; \"\"\n", lit_table[i].label);
+        } else {
+            A("%-20s db ", lit_table[i].label);
+            for (int j = 0; j < lit_table[i].len; j++) {
+                if (j) A(", ");
+                A("%d", (unsigned char)lit_table[i].val[j]);
+            }
+            A("    ; \"%.*s\"\n", lit_table[i].len, lit_table[i].val);
         }
-        A("    ; \"%.*s\"\n", lit_table[i].len, lit_table[i].val);
     }
 }
 
@@ -2034,7 +2038,8 @@ static void asm_emit_program(Program *prog) {
         A("%-24s resq 1\n", bss_slots[i]);
     /* Byrd box scratch slots (saved_cursor, arbno stack, etc.) */
     extra_bss_emit();
-    /* lit_table string literals used by pattern nodes */
+    /* DOL $ capture buffers (cap_VAR_buf/cap_VAR_len) */
+    cap_vars_emit_bss();
     /* subject buffer for pattern matching */
     A("%-24s resb 65536\n", "subject_data");
     A("\n");
@@ -2053,18 +2058,17 @@ static void asm_emit_program(Program *prog) {
             break;
         }
 
-        if (s->label) {
-            A("\n%s:\n", prog_label_nasm(s->label));
-            { int _id = prog_label_id(s->label);
-              if (_id >= 0) prog_label_defined[_id] = 1; }
-        } else {
-            A("\n");
-        }
-
         int uid = stmt_uid++;
         char next_lbl[64]; snprintf(next_lbl, sizeof next_lbl, "L_sn_%d", uid);
         char sfail_lbl[64]; snprintf(sfail_lbl, sizeof sfail_lbl, "L_sf_%d", uid);
-        A("    STMT_SEP\n"); /* ======= statement boundary ======= */
+
+        /* STMT_SEP before label so label has an instruction following it */
+        A("\n    STMT_SEP\n");
+        if (s->label) {
+            A("%s:\n", prog_label_nasm(s->label));
+            { int _id = prog_label_id(s->label);
+              if (_id >= 0) prog_label_defined[_id] = 1; }
+        }
 
         /* Determine S/F/uncond targets */
         const char *tgt_s = s->go ? s->go->onsuccess : NULL;
