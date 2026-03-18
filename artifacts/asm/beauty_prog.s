@@ -263,6 +263,24 @@ seq_l236_alpha_saved     resq 1
 seq_l239_alpha_saved     resq 1
 seq_l242_alpha_saved     resq 1
 seq_l245_alpha_saved     resq 1
+cap_ppTokName_buf        resb 256
+cap_ppTokName_len        resq 1
+cap_ppTokVal_buf         resb 256
+cap_ppTokVal_len         resq 1
+cap_ppGCon_buf           resb 256
+cap_ppGCon_len           resq 1
+cap_ppDrop_buf           resb 256
+cap_ppDrop_len           resq 1
+cap_cap_buf              resb 256
+cap_cap_len              resq 1
+cap_tx_buf               resb 256
+cap_tx_len               resq 1
+cap_v_buf                resb 256
+cap_v_len                resq 1
+cap_ProtKwd_buf          resb 256
+cap_ProtKwd_len          resq 1
+cap_UnprotKwd_buf        resb 256
+cap_UnprotKwd_len        resq 1
 subject_data             resb 65536
 
 section .text
@@ -271,8 +289,8 @@ main:
     PROG_INIT
 
 
-L_START_0:
     STMT_SEP
+L_START_0:
 L_sn_0:
 
     STMT_SEP
@@ -408,8 +426,8 @@ L_sn_10:
     jmp     L_sn_11
 L_sn_11:
 
-L_ppArgLoop_1:
     STMT_SEP
+L_ppArgLoop_1:
     lea     rdi, [rel S_9]
     call    stmt_get
     mov     [rbp-16], rax
@@ -591,8 +609,8 @@ L_sn_20:
     jmp     L_ppArgLoop_1
 L_sn_21:
 
-L_ppArgP2_3:
     STMT_SEP
+L_ppArgP2_3:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_22:
@@ -659,8 +677,8 @@ L_sn_27:
     jmp     L_ppArgLoop_1
 L_sn_28:
 
-L_ppArgP3_4:
     STMT_SEP
+L_ppArgP3_4:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_29:
@@ -727,8 +745,8 @@ L_sn_34:
     jmp     L_ppArgLoop_1
 L_sn_35:
 
-L_ppArgP4_5:
     STMT_SEP
+L_ppArgP4_5:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_36:
@@ -795,8 +813,8 @@ L_sn_41:
     jmp     L_ppArgLoop_1
 L_sn_42:
 
-L_ppArgP5_6:
     STMT_SEP
+L_ppArgP5_6:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_43:
@@ -863,8 +881,8 @@ L_sn_48:
     jmp     L_ppArgLoop_1
 L_sn_49:
 
-L_ppArgChk1_7:
     STMT_SEP
+L_ppArgChk1_7:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_50:
@@ -875,8 +893,8 @@ L_sn_50:
     jmp     L_ppArgLoop_1
 L_sn_51:
 
-L_ppArgChk2_8:
     STMT_SEP
+L_ppArgChk2_8:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_52:
@@ -887,8 +905,8 @@ L_sn_52:
     jmp     L_ppArgLoop_1
 L_sn_53:
 
-L_ppArgChk3_9:
     STMT_SEP
+L_ppArgChk3_9:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_54:
@@ -899,8 +917,8 @@ L_sn_54:
     jmp     L_ppArgLoop_1
 L_sn_55:
 
-L_ppArgChk4_10:
     STMT_SEP
+L_ppArgChk4_10:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_56:
@@ -911,8 +929,8 @@ L_sn_56:
     jmp     L_ppArgLoop_1
 L_sn_57:
 
-L_ppArgChk5_11:
     STMT_SEP
+L_ppArgChk5_11:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_58:
@@ -938,8 +956,8 @@ L_sn_58:
     jmp     L_ppArgLoop_1
 L_sn_59:
 
-L_ppArgChk6_12:
     STMT_SEP
+L_ppArgChk6_12:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_60:
@@ -965,8 +983,8 @@ L_sn_60:
     jmp     L_ppArgLoop_1
 L_sn_61:
 
-L_ppArgUnk_13:
     STMT_SEP
+L_ppArgUnk_13:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_62:
@@ -992,8 +1010,8 @@ L_sn_62:
     jmp     L_ppArgLoop_1
 L_sn_63:
 
-L_ppArgWarn_14:
     STMT_SEP
+L_ppArgWarn_14:
     lea     rdi, [rel S_51]
     call    stmt_get
     mov     [rbp-16], rax
@@ -1011,8 +1029,8 @@ L_ppArgWarn_14:
     jmp     L_ppArgLoop_1
 L_sn_64:
 
-L_ppArgDone_2:
     STMT_SEP
+L_ppArgDone_2:
 L_sn_65:
 
     STMT_SEP
@@ -1160,8 +1178,8 @@ L_sn_73:
     mov     qword [rbp-8], 0
 L_sn_74:
 
-L_ppAutoR_16:
     STMT_SEP
+L_ppAutoR_16:
     lea     rdi, [rel S_74]
     call    stmt_get
     mov     [rbp-16], rax
@@ -1487,8 +1505,8 @@ L_sn_85:
     mov     qword [rbp-8], 0
 L_sn_86:
 
-L_ppAutoNew_19:
     STMT_SEP
+L_ppAutoNew_19:
     lea     rdi, [rel S_78]
     call    stmt_get
     mov     [rbp-16], rax
@@ -1509,8 +1527,8 @@ L_ppAutoNew_19:
     jmp     L_ppAutoR_16
 L_sn_87:
 
-L_ppAutoCont_18:
     STMT_SEP
+L_ppAutoCont_18:
     lea     rdi, [rel S_78]
     call    stmt_get
     mov     [rbp-16], rax
@@ -1529,8 +1547,8 @@ L_ppAutoCont_18:
     jmp     L_ppAutoR_16
 L_sn_88:
 
-L_ppAutoSort_17:
     STMT_SEP
+L_ppAutoSort_17:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_89:
@@ -1556,8 +1574,8 @@ L_sn_89:
     jmp     L_sn_90
 L_sn_90:
 
-L_ppAS1_20:
     STMT_SEP
+L_ppAS1_20:
     lea     rdi, [rel S_86]
     call    stmt_get
     mov     [rbp-16], rax
@@ -1618,8 +1636,8 @@ L_sn_92:
     jmp     L_sn_93
 L_sn_93:
 
-L_ppAS2_22:
     STMT_SEP
+L_ppAS2_22:
     lea     rdi, [rel S_92]
     call    stmt_get
     mov     [rbp-16], rax
@@ -1674,15 +1692,15 @@ L_sn_97:
     jmp     L_ppAS2_22
 L_sn_98:
 
-L_ppASins_23:
     STMT_SEP
+L_ppASins_23:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
     jmp     L_ppAS1_20
 L_sn_99:
 
-L_ppAutoCalc_21:
     STMT_SEP
+L_ppAutoCalc_21:
     lea     rdi, [rel S_95]
     call    stmt_get
     mov     [rbp-16], rax
@@ -1727,8 +1745,8 @@ L_sn_101:
     jmp     L_sn_102
 L_sn_102:
 
-L_ppAP90ok_24:
     STMT_SEP
+L_ppAP90ok_24:
     lea     rdi, [rel S_97]
     call    stmt_get
     mov     [rbp-16], rax
@@ -1773,8 +1791,8 @@ L_sn_104:
     jmp     L_sn_105
 L_sn_105:
 
-L_ppAscale_25:
     STMT_SEP
+L_ppAscale_25:
 L_sn_106:
 
     STMT_SEP
@@ -1792,8 +1810,8 @@ L_sn_108:
     mov     qword [rbp-8], 0
 L_sn_109:
 
-L_ppAs1_26:
     STMT_SEP
+L_ppAs1_26:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_110:
@@ -1872,8 +1890,8 @@ L_sn_115:
     jmp     L_sn_116
 L_sn_116:
 
-L_ppAutoMsg_27:
     STMT_SEP
+L_ppAutoMsg_27:
     lea     rdi, [rel S_51]
     call    stmt_get
     mov     [rbp-16], rax
@@ -1896,8 +1914,8 @@ L_sn_117:
     mov     qword [rbp-8], 0
 L_sn_118:
 
-L_ppAutoSkip_15:
     STMT_SEP
+L_ppAutoSkip_15:
 L_sn_119:
 
     STMT_SEP
@@ -3075,8 +3093,8 @@ L_sn_198:
     jmp     L_ppEnd_28
 L_sn_199:
 
-L_pp_29:
     STMT_SEP
+L_pp_29:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_200:
@@ -3180,8 +3198,8 @@ L_sn_205:
     mov     qword [rbp-8], 0
 L_sn_206:
 
-L_pp_Parse_31:
     STMT_SEP
+L_pp_Parse_31:
     lea     rdi, [rel S_282]
     call    stmt_get
     mov     [rbp-16], rax
@@ -3200,8 +3218,8 @@ L_pp_Parse_31:
     jmp     L_pp_0_32
 L_sn_207:
 
-L_pp_0_32:
     STMT_SEP
+L_pp_0_32:
     lea     rdi, [rel S_284]
     call    stmt_get
     mov     [rbp-16], rax
@@ -3222,8 +3240,8 @@ L_pp_0_32:
     jmp     L_sn_208
 L_sn_208:
 
-L_pp_1_33:
     STMT_SEP
+L_pp_1_33:
     lea     rdi, [rel S_284]
     call    stmt_get
     mov     [rbp-16], rax
@@ -3250,104 +3268,104 @@ L_sn_209:
     jmp     L_pp_1_33
 L_sn_210:
 
-L_pp_BuiltinVar_34:
     STMT_SEP
+L_pp_BuiltinVar_34:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_211:
 
-L_pp_Function_36:
     STMT_SEP
+L_pp_Function_36:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_212:
 
-L_pp_Id_37:
     STMT_SEP
+L_pp_Id_37:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_213:
 
-L_pp_Integer_38:
     STMT_SEP
+L_pp_Integer_38:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_214:
 
-L_pp_Label_39:
     STMT_SEP
+L_pp_Label_39:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_215:
 
-L_pp_ProtKwd_40:
     STMT_SEP
+L_pp_ProtKwd_40:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_216:
 
-L_pp_Real_41:
     STMT_SEP
+L_pp_Real_41:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_217:
 
-L_pp_SpecialNm_42:
     STMT_SEP
+L_pp_SpecialNm_42:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_218:
 
-L_pp_String_43:
     STMT_SEP
+L_pp_String_43:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_219:
 
-L_pp_UnprotKwd_44:
     STMT_SEP
+L_pp_UnprotKwd_44:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_220:
 
-L_pp_45:
     STMT_SEP
+L_pp_45:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_221:
 
-L_pp_46:
     STMT_SEP
+L_pp_46:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_222:
 
-L_pp_S_47:
     STMT_SEP
+L_pp_S_47:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_223:
 
-L_pp_S_48:
     STMT_SEP
+L_pp_S_48:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_224:
 
-L_pp_F_49:
     STMT_SEP
+L_pp_F_49:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_225:
 
-L_pp_F_50:
     STMT_SEP
+L_pp_F_50:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_226:
 
-L_ppUnOp_51:
     STMT_SEP
+L_ppUnOp_51:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_227:
@@ -3363,8 +3381,8 @@ L_sn_228:
     GOTO_ALWAYS  L_SNO_END     ; RETURN
 L_sn_229:
 
-L_ppBinOp_52:
     STMT_SEP
+L_ppBinOp_52:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_230:
@@ -3405,14 +3423,14 @@ L_sn_236:
     GOTO_ALWAYS  L_SNO_END     ; RETURN
 L_sn_237:
 
-L_pp_53:
     STMT_SEP
+L_pp_53:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_238:
 
-L_pp_54:
     STMT_SEP
+L_pp_54:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_239:
@@ -3422,8 +3440,8 @@ L_sn_239:
     mov     qword [rbp-8], 0
 L_sn_240:
 
-L_pp_55:
     STMT_SEP
+L_pp_55:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_241:
@@ -3433,8 +3451,8 @@ L_sn_241:
     mov     qword [rbp-8], 0
 L_sn_242:
 
-L_pp_56:
     STMT_SEP
+L_pp_56:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_243:
@@ -3444,8 +3462,8 @@ L_sn_243:
     mov     qword [rbp-8], 0
 L_sn_244:
 
-L_pp_57:
     STMT_SEP
+L_pp_57:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_245:
@@ -3455,8 +3473,8 @@ L_sn_245:
     mov     qword [rbp-8], 0
 L_sn_246:
 
-L_pp_58:
     STMT_SEP
+L_pp_58:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_247:
@@ -3466,8 +3484,8 @@ L_sn_247:
     mov     qword [rbp-8], 0
 L_sn_248:
 
-L_pp_59:
     STMT_SEP
+L_pp_59:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_249:
@@ -3477,8 +3495,8 @@ L_sn_249:
     mov     qword [rbp-8], 0
 L_sn_250:
 
-L_pp_60:
     STMT_SEP
+L_pp_60:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_251:
@@ -3488,8 +3506,8 @@ L_sn_251:
     mov     qword [rbp-8], 0
 L_sn_252:
 
-L_pp_61:
     STMT_SEP
+L_pp_61:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_253:
@@ -3499,8 +3517,8 @@ L_sn_253:
     mov     qword [rbp-8], 0
 L_sn_254:
 
-L_pp_62:
     STMT_SEP
+L_pp_62:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_255:
@@ -3510,8 +3528,8 @@ L_sn_255:
     mov     qword [rbp-8], 0
 L_sn_256:
 
-L_pp_63:
     STMT_SEP
+L_pp_63:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_257:
@@ -3521,8 +3539,8 @@ L_sn_257:
     mov     qword [rbp-8], 0
 L_sn_258:
 
-L_pp_64:
     STMT_SEP
+L_pp_64:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_259:
@@ -3532,8 +3550,8 @@ L_sn_259:
     mov     qword [rbp-8], 0
 L_sn_260:
 
-L_pp_65:
     STMT_SEP
+L_pp_65:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_261:
@@ -3543,14 +3561,14 @@ L_sn_261:
     mov     qword [rbp-8], 0
 L_sn_262:
 
-L_pp_66:
     STMT_SEP
+L_pp_66:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_263:
 
-L_pp_67:
     STMT_SEP
+L_pp_67:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_264:
@@ -3560,8 +3578,8 @@ L_sn_264:
     mov     qword [rbp-8], 0
 L_sn_265:
 
-L_pp_Comment_68:
     STMT_SEP
+L_pp_Comment_68:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_266:
@@ -3577,8 +3595,8 @@ L_sn_267:
     GOTO_ALWAYS  L_SNO_END     ; RETURN
 L_sn_268:
 
-L_pp_Control_69:
     STMT_SEP
+L_pp_Control_69:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_269:
@@ -3594,8 +3612,8 @@ L_sn_270:
     GOTO_ALWAYS  L_SNO_END     ; RETURN
 L_sn_271:
 
-L_pp_Stmt_70:
     STMT_SEP
+L_pp_Stmt_70:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_272:
@@ -3876,8 +3894,8 @@ L_sn_298:
     jmp     L_pp_Stmt7_71
 L_sn_299:
 
-L_pp_Stmt5_72:
     STMT_SEP
+L_pp_Stmt5_72:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_300:
@@ -3947,8 +3965,8 @@ L_sn_309:
     jmp     L_pp_Stmt7_71
 L_sn_310:
 
-L_pp_Stmt7_71:
     STMT_SEP
+L_pp_Stmt7_71:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_311:
@@ -4010,15 +4028,15 @@ L_sn_318:
     jmp     L_pp_Stmt9_73
 L_sn_319:
 
-L_pp_Stmt9_73:
     STMT_SEP
+L_pp_Stmt9_73:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
     GOTO_ALWAYS  L_SNO_END     ; RETURN
 L_sn_320:
 
-L_pp_ExprList_74:
     STMT_SEP
+L_pp_ExprList_74:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_321:
@@ -4049,8 +4067,8 @@ L_sn_322:
     jmp     L_sn_323
 L_sn_323:
 
-L_pp_ExprList0_75:
     STMT_SEP
+L_pp_ExprList0_75:
     lea     rdi, [rel S_284]
     call    stmt_get
     mov     [rbp-16], rax
@@ -4102,8 +4120,8 @@ L_sn_329:
     jmp     L_pp_ExprList0_75
 L_sn_330:
 
-L_pp_76:
     STMT_SEP
+L_pp_76:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_331:
@@ -4149,8 +4167,8 @@ L_sn_335:
     jmp     L_sn_336
 L_sn_336:
 
-L_pp_0_77:
     STMT_SEP
+L_pp_0_77:
     lea     rdi, [rel S_284]
     call    stmt_get
     mov     [rbp-16], rax
@@ -4202,8 +4220,8 @@ L_sn_342:
     jmp     L_COMPUTED_pp_0_79
 L_sn_343:
 
-L_pp_1_80:
     STMT_SEP
+L_pp_1_80:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_344:
@@ -4219,8 +4237,8 @@ L_sn_345:
     GOTO_ALWAYS  L_SNO_END     ; RETURN
 L_sn_346:
 
-L_pp_81:
     STMT_SEP
+L_pp_81:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_347:
@@ -4256,8 +4274,8 @@ L_sn_349:
     jmp     L_sn_350
 L_sn_350:
 
-L_pp_0_82:
     STMT_SEP
+L_pp_0_82:
     lea     rdi, [rel S_284]
     call    stmt_get
     mov     [rbp-16], rax
@@ -4309,8 +4327,8 @@ L_sn_356:
     jmp     L_COMPUTED_pp_0_83
 L_sn_357:
 
-L_pp_84:
     STMT_SEP
+L_pp_84:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_358:
@@ -4336,8 +4354,8 @@ L_sn_358:
     jmp     L_sn_359
 L_sn_359:
 
-L_pp_0_85:
     STMT_SEP
+L_pp_0_85:
     lea     rdi, [rel S_284]
     call    stmt_get
     mov     [rbp-16], rax
@@ -4369,8 +4387,8 @@ L_sn_361:
     jmp     L_COMPUTED_pp_0_86
 L_sn_362:
 
-L_pp_87:
     STMT_SEP
+L_pp_87:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_363:
@@ -4401,8 +4419,8 @@ L_sn_364:
     jmp     L_sn_365
 L_sn_365:
 
-L_pp_0_88:
     STMT_SEP
+L_pp_0_88:
     lea     rdi, [rel S_284]
     call    stmt_get
     mov     [rbp-16], rax
@@ -4464,8 +4482,8 @@ L_sn_373:
     jmp     L_COMPUTED_pp_0_89
 L_sn_374:
 
-L_pp_90:
     STMT_SEP
+L_pp_90:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_375:
@@ -4506,8 +4524,8 @@ L_sn_381:
     GOTO_ALWAYS  L_SNO_END     ; RETURN
 L_sn_382:
 
-L_pp_Call_91:
     STMT_SEP
+L_pp_Call_91:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_383:
@@ -4553,8 +4571,8 @@ L_sn_390:
     GOTO_ALWAYS  L_SNO_END     ; RETURN
 L_sn_391:
 
-L_ppEnd_28:
     STMT_SEP
+L_ppEnd_28:
 L_sn_392:
 
     STMT_SEP
@@ -4563,8 +4581,8 @@ L_sn_392:
     jmp     L_ssEnd_92
 L_sn_393:
 
-L_ss_93:
     STMT_SEP
+L_ss_93:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_394:
@@ -4692,8 +4710,8 @@ L_sn_401:
     mov     qword [rbp-8], 0
 L_sn_402:
 
-L_ss_BuiltinVar_95:
     STMT_SEP
+L_ss_BuiltinVar_95:
     lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
@@ -4712,8 +4730,8 @@ L_ss_BuiltinVar_95:
     jmp     L_ss_atomic_96
 L_sn_403:
 
-L_ss_Function_97:
     STMT_SEP
+L_ss_Function_97:
     lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
@@ -4732,8 +4750,8 @@ L_ss_Function_97:
     jmp     L_ss_atomic_96
 L_sn_404:
 
-L_ss_Id_98:
     STMT_SEP
+L_ss_Id_98:
     lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
@@ -4754,8 +4772,8 @@ L_ss_Id_98:
     jmp     L_ss_atomic_96
 L_sn_405:
 
-L_ss_Integer_99:
     STMT_SEP
+L_ss_Integer_99:
     lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
@@ -4776,8 +4794,8 @@ L_ss_Integer_99:
     jmp     L_ss_atomic_96
 L_sn_406:
 
-L_ss_Label_100:
     STMT_SEP
+L_ss_Label_100:
     lea     rdi, [rel S_272]
     call    stmt_get
     mov     [rbp-16], rax
@@ -4848,8 +4866,8 @@ P_407_ω:
     jmp     L_ss_Label1_102
 L_sn_407:
 
-L_ss_Label0_101:
     STMT_SEP
+L_ss_Label0_101:
     lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
@@ -4868,8 +4886,8 @@ L_ss_Label0_101:
     jmp     L_ss_atomic_96
 L_sn_408:
 
-L_ss_Label1_102:
     STMT_SEP
+L_ss_Label1_102:
     lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
@@ -4890,8 +4908,8 @@ L_ss_Label1_102:
     jmp     L_ss_atomic_96
 L_sn_409:
 
-L_ss_ProtKwd_103:
     STMT_SEP
+L_ss_ProtKwd_103:
     lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
@@ -4910,8 +4928,8 @@ L_ss_ProtKwd_103:
     jmp     L_ss_atomic_96
 L_sn_410:
 
-L_ss_Real_104:
     STMT_SEP
+L_ss_Real_104:
     lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
@@ -4932,8 +4950,8 @@ L_ss_Real_104:
     jmp     L_ss_atomic_96
 L_sn_411:
 
-L_ss_SpecialNm_105:
     STMT_SEP
+L_ss_SpecialNm_105:
     lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
@@ -4952,8 +4970,8 @@ L_ss_SpecialNm_105:
     jmp     L_ss_atomic_96
 L_sn_412:
 
-L_ss_String_106:
     STMT_SEP
+L_ss_String_106:
     lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
@@ -4974,8 +4992,8 @@ L_ss_String_106:
     jmp     L_ss_atomic_96
 L_sn_413:
 
-L_ss_UnprotKwd_107:
     STMT_SEP
+L_ss_UnprotKwd_107:
     lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
@@ -4994,14 +5012,14 @@ L_ss_UnprotKwd_107:
     jmp     L_ss_atomic_96
 L_sn_414:
 
-L_ss_atomic_96:
     STMT_SEP
+L_ss_atomic_96:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_415:
 
-L_ss_108:
     STMT_SEP
+L_ss_108:
     lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
@@ -5022,8 +5040,8 @@ L_sf_416:
     jmp     L_error_35
 L_sn_416:
 
-L_ss_109:
     STMT_SEP
+L_ss_109:
     lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
@@ -5044,8 +5062,8 @@ L_sf_417:
     jmp     L_error_35
 L_sn_417:
 
-L_ss_S_110:
     STMT_SEP
+L_ss_S_110:
     lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
@@ -5066,8 +5084,8 @@ L_sf_418:
     jmp     L_error_35
 L_sn_418:
 
-L_ss_S_111:
     STMT_SEP
+L_ss_S_111:
     lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
@@ -5088,8 +5106,8 @@ L_sf_419:
     jmp     L_error_35
 L_sn_419:
 
-L_ss_F_112:
     STMT_SEP
+L_ss_F_112:
     lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
@@ -5110,8 +5128,8 @@ L_sf_420:
     jmp     L_error_35
 L_sn_420:
 
-L_ss_F_113:
     STMT_SEP
+L_ss_F_113:
     lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
@@ -5132,8 +5150,8 @@ L_sf_421:
     jmp     L_error_35
 L_sn_421:
 
-L_ssUnOp_114:
     STMT_SEP
+L_ssUnOp_114:
     lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
@@ -5154,8 +5172,8 @@ L_sf_422:
     GOTO_ALWAYS  L_SNO_END     ; FRETURN
 L_sn_422:
 
-L_ssBinOp_115:
     STMT_SEP
+L_ssBinOp_115:
     lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
@@ -5197,14 +5215,14 @@ L_sf_424:
     GOTO_ALWAYS  L_SNO_END     ; FRETURN
 L_sn_424:
 
-L_ss_116:
     STMT_SEP
+L_ss_116:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_425:
 
-L_ss_117:
     STMT_SEP
+L_ss_117:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_426:
@@ -5214,8 +5232,8 @@ L_sn_426:
     mov     qword [rbp-8], 0
 L_sn_427:
 
-L_ss_118:
     STMT_SEP
+L_ss_118:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_428:
@@ -5225,8 +5243,8 @@ L_sn_428:
     mov     qword [rbp-8], 0
 L_sn_429:
 
-L_ss_119:
     STMT_SEP
+L_ss_119:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_430:
@@ -5236,8 +5254,8 @@ L_sn_430:
     mov     qword [rbp-8], 0
 L_sn_431:
 
-L_ss_120:
     STMT_SEP
+L_ss_120:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_432:
@@ -5247,8 +5265,8 @@ L_sn_432:
     mov     qword [rbp-8], 0
 L_sn_433:
 
-L_ss_121:
     STMT_SEP
+L_ss_121:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_434:
@@ -5258,8 +5276,8 @@ L_sn_434:
     mov     qword [rbp-8], 0
 L_sn_435:
 
-L_ss_122:
     STMT_SEP
+L_ss_122:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_436:
@@ -5269,8 +5287,8 @@ L_sn_436:
     mov     qword [rbp-8], 0
 L_sn_437:
 
-L_ss_123:
     STMT_SEP
+L_ss_123:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_438:
@@ -5280,8 +5298,8 @@ L_sn_438:
     mov     qword [rbp-8], 0
 L_sn_439:
 
-L_ss_124:
     STMT_SEP
+L_ss_124:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_440:
@@ -5291,8 +5309,8 @@ L_sn_440:
     mov     qword [rbp-8], 0
 L_sn_441:
 
-L_ss_125:
     STMT_SEP
+L_ss_125:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_442:
@@ -5302,8 +5320,8 @@ L_sn_442:
     mov     qword [rbp-8], 0
 L_sn_443:
 
-L_ss_126:
     STMT_SEP
+L_ss_126:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_444:
@@ -5313,8 +5331,8 @@ L_sn_444:
     mov     qword [rbp-8], 0
 L_sn_445:
 
-L_ss_127:
     STMT_SEP
+L_ss_127:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_446:
@@ -5324,8 +5342,8 @@ L_sn_446:
     mov     qword [rbp-8], 0
 L_sn_447:
 
-L_ss_128:
     STMT_SEP
+L_ss_128:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_448:
@@ -5335,14 +5353,14 @@ L_sn_448:
     mov     qword [rbp-8], 0
 L_sn_449:
 
-L_ss_129:
     STMT_SEP
+L_ss_129:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_450:
 
-L_ss_130:
     STMT_SEP
+L_ss_130:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_451:
@@ -5352,8 +5370,8 @@ L_sn_451:
     mov     qword [rbp-8], 0
 L_sn_452:
 
-L_ss_ExprList_131:
     STMT_SEP
+L_ss_ExprList_131:
     lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
@@ -5395,8 +5413,8 @@ L_sn_453:
     jmp     L_sn_454
 L_sn_454:
 
-L_ss_ExprList0_132:
     STMT_SEP
+L_ss_ExprList0_132:
     lea     rdi, [rel S_284]
     call    stmt_get
     mov     [rbp-16], rax
@@ -5438,8 +5456,8 @@ L_sf_456:
     GOTO_ALWAYS  L_SNO_END     ; FRETURN
 L_sn_456:
 
-L_ss_133:
     STMT_SEP
+L_ss_133:
     lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
@@ -5481,8 +5499,8 @@ L_sn_457:
     jmp     L_sn_458
 L_sn_458:
 
-L_ss_0_134:
     STMT_SEP
+L_ss_0_134:
     lea     rdi, [rel S_284]
     call    stmt_get
     mov     [rbp-16], rax
@@ -5524,8 +5542,8 @@ L_sf_460:
     GOTO_ALWAYS  L_SNO_END     ; FRETURN
 L_sn_460:
 
-L_ss_1_137:
     STMT_SEP
+L_ss_1_137:
     lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
@@ -5544,8 +5562,8 @@ L_ss_1_137:
     GOTO_ALWAYS  L_SNO_END     ; RETURN
 L_sn_461:
 
-L_ss_138:
     STMT_SEP
+L_ss_138:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_462:
@@ -5592,8 +5610,8 @@ L_sn_463:
     jmp     L_sn_464
 L_sn_464:
 
-L_ss_0_139:
     STMT_SEP
+L_ss_0_139:
     lea     rdi, [rel S_284]
     call    stmt_get
     mov     [rbp-16], rax
@@ -5635,8 +5653,8 @@ L_sf_466:
     GOTO_ALWAYS  L_SNO_END     ; FRETURN
 L_sn_466:
 
-L_ss_141:
     STMT_SEP
+L_ss_141:
     lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
@@ -5678,8 +5696,8 @@ L_sn_467:
     jmp     L_sn_468
 L_sn_468:
 
-L_ss_0_142:
     STMT_SEP
+L_ss_0_142:
     lea     rdi, [rel S_284]
     call    stmt_get
     mov     [rbp-16], rax
@@ -5721,8 +5739,8 @@ L_sf_470:
     GOTO_ALWAYS  L_SNO_END     ; FRETURN
 L_sn_470:
 
-L_ss_144:
     STMT_SEP
+L_ss_144:
     lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
@@ -5764,8 +5782,8 @@ L_sn_471:
     jmp     L_sn_472
 L_sn_472:
 
-L_ss_0_145:
     STMT_SEP
+L_ss_0_145:
     lea     rdi, [rel S_284]
     call    stmt_get
     mov     [rbp-16], rax
@@ -5807,8 +5825,8 @@ L_sf_474:
     GOTO_ALWAYS  L_SNO_END     ; FRETURN
 L_sn_474:
 
-L_ss_147:
     STMT_SEP
+L_ss_147:
     lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
@@ -5829,8 +5847,8 @@ L_sf_475:
     GOTO_ALWAYS  L_SNO_END     ; FRETURN
 L_sn_475:
 
-L_ss_Call_148:
     STMT_SEP
+L_ss_Call_148:
     lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
@@ -5851,8 +5869,8 @@ L_sf_476:
     GOTO_ALWAYS  L_SNO_END     ; FRETURN
 L_sn_476:
 
-L_ssEnd_92:
     STMT_SEP
+L_ssEnd_92:
 L_sn_477:
 
     STMT_SEP
@@ -5861,8 +5879,8 @@ L_sn_477:
     jmp     L_bVisitEnd_149
 L_sn_478:
 
-L_bVisit_150:
     STMT_SEP
+L_bVisit_150:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_479:
@@ -5888,8 +5906,8 @@ L_sn_479:
     jmp     L_sn_480
 L_sn_480:
 
-L_bVisit_1_151:
     STMT_SEP
+L_bVisit_1_151:
     lea     rdi, [rel S_284]
     call    stmt_get
     mov     [rbp-16], rax
@@ -5916,8 +5934,8 @@ L_sn_481:
     jmp     L_bVisit_1_151
 L_sn_482:
 
-L_bVisitEnd_149:
     STMT_SEP
+L_bVisitEnd_149:
 L_sn_483:
 
     STMT_SEP
@@ -5933,8 +5951,8 @@ L_sn_484:
     jmp     L_findRefsEnd_152
 L_sn_485:
 
-L_findRefs_153:
     STMT_SEP
+L_findRefs_153:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_486:
@@ -5965,8 +5983,8 @@ L_sn_487:
     jmp     L_sn_488
 L_sn_488:
 
-L_findRefs_0_155:
     STMT_SEP
+L_findRefs_0_155:
     lea     rdi, [rel S_273]
     call    stmt_get
     mov     [rbp-16], rax
@@ -5993,8 +6011,8 @@ L_sn_489:
     jmp     L_findRefs_0_155
 L_sn_490:
 
-L_findRefs_1_154:
     STMT_SEP
+L_findRefs_1_154:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_491:
@@ -6018,8 +6036,8 @@ L_sn_491:
     jmp     L_findRefs_9_157
 L_sn_492:
 
-L_findRefs_2_156:
     STMT_SEP
+L_findRefs_2_156:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
 L_sn_493:
@@ -6043,8 +6061,8 @@ L_sn_493:
     jmp     L_findRefs_9_157
 L_sn_494:
 
-L_findRefs_9_157:
     STMT_SEP
+L_findRefs_9_157:
     lea     rdi, [rel S_272]
     call    stmt_get
     mov     [rbp-16], rax
@@ -6171,8 +6189,8 @@ L_sn_496:
     GOTO_ALWAYS  L_SNO_END     ; FRETURN
 L_sn_497:
 
-L_findRefsEnd_152:
     STMT_SEP
+L_findRefsEnd_152:
 L_sn_498:
 
     STMT_SEP
@@ -6181,8 +6199,8 @@ L_sn_498:
     jmp     L_refsEnd_158
 L_sn_499:
 
-L_refs_159:
     STMT_SEP
+L_refs_159:
     lea     rdi, [rel S_274]
     call    stmt_get
     mov     [rbp-16], rax
@@ -6222,8 +6240,8 @@ L_sn_500:
     jmp     L_sn_501
 L_sn_501:
 
-L_refs_0_160:
     STMT_SEP
+L_refs_0_160:
     lea     rdi, [rel S_273]
     call    stmt_get
     mov     [rbp-16], rax
@@ -6288,8 +6306,8 @@ L_sn_507:
     mov     qword [rbp-8], 0
 L_sn_508:
 
-L_refs_1_161:
     STMT_SEP
+L_refs_1_161:
     lea     rdi, [rel S_438]
     call    stmt_get
     mov     [rbp-16], rax
@@ -6338,8 +6356,8 @@ L_sn_511:
     jmp     L_refs_0_160
 L_sn_512:
 
-L_refsEnd_158:
     STMT_SEP
+L_refsEnd_158:
 L_sn_513:
 
     STMT_SEP
@@ -6382,8 +6400,8 @@ L_sn_514:
     jmp     L_sn_515
 L_sn_515:
 
-L_main00_162:
     STMT_SEP
+L_main00_162:
     lea     rdi, [rel S_445]
     call    stmt_get
     mov     [rbp-16], rax
@@ -6406,8 +6424,8 @@ L_sf_516:
     GOTO_ALWAYS  L_SNO_END     ; END
 L_sn_516:
 
-L_main01_163:
     STMT_SEP
+L_main01_163:
     lea     rdi, [rel S_447]
     call    stmt_get
     mov     [rbp-16], rax
@@ -6500,8 +6518,8 @@ L_sn_518:
     jmp     L_main00_162
 L_sn_519:
 
-L_main02_164:
     STMT_SEP
+L_main02_164:
     lea     rdi, [rel S_447]
     call    stmt_get
     mov     [rbp-16], rax
@@ -6686,8 +6704,8 @@ L_sn_524:
     jmp     L_main01_163
 L_sn_525:
 
-L_main05_165:
     STMT_SEP
+L_main05_165:
     lea     rdi, [rel S_447]
     call    stmt_get
     mov     [rbp-16], rax
@@ -6764,8 +6782,8 @@ L_sn_527:
     GOTO_ALWAYS  L_SNO_END     ; END
 L_sn_528:
 
-L_mainErr1_166:
     STMT_SEP
+L_mainErr1_166:
     lea     rdi, [rel S_51]
     call    stmt_get
     mov     [rbp-16], rax
@@ -6805,8 +6823,8 @@ L_sn_529:
     GOTO_ALWAYS  L_SNO_END     ; END
 L_sn_530:
 
-L_mainErr2_167:
     STMT_SEP
+L_mainErr2_167:
     lea     rdi, [rel S_51]
     call    stmt_get
     mov     [rbp-16], rax
