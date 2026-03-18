@@ -1111,5 +1111,136 @@
 %define ALT2_VV  CONC2_VV
 
 ; =============================================================================
-; END Session 167/171 high-level statement macros
+; Session 172 — *16 variants: result stored at [rbp-16/8] (subject slot)
+;
+; Identical to CONC2/ALT2 family but final mov pair targets rbp-16/rbp-8.
+; Used when prog_emit_expr is called with rbp_off == -16 (subject position).
+;
+;   CONC2_16   fn, s1, s2
+;   CONC2_N16  fn, s
+;   CONC2_SV16 fn, strlab, varlab
+;   CONC2_VS16 fn, varlab, strlab
+;   CONC2_VN16 fn, varlab
+;   CONC2_VV16 fn, varlab1, varlab2
+;   ALT2_*16   — identical expansions, different fn label
+; =============================================================================
+
+%macro CONC2_16 3              ; fn, str1, str2  → [rbp-16/8]
+    sub     rsp, 32
+    lea     rdi, [rel %2]
+    call    stmt_strval
+    mov     [rsp], rax
+    mov     [rsp+8], rdx
+    lea     rdi, [rel %3]
+    call    stmt_strval
+    mov     [rsp+16], rax
+    mov     [rsp+24], rdx
+    lea     rdi, [rel %1]
+    mov     rsi, rsp
+    mov     rdx, 2
+    call    stmt_apply
+    add     rsp, 32
+    mov     [rbp-16], rax
+    mov     [rbp-8],  rdx
+%endmacro
+%define ALT2_16    CONC2_16
+
+%macro CONC2_N16 2             ; fn, strlab  → [rbp-16/8]
+    sub     rsp, 32
+    lea     rdi, [rel %2]
+    call    stmt_strval
+    mov     [rsp], rax
+    mov     [rsp+8], rdx
+    mov     qword [rsp+16], 1
+    mov     qword [rsp+24], 0
+    lea     rdi, [rel %1]
+    mov     rsi, rsp
+    mov     rdx, 2
+    call    stmt_apply
+    add     rsp, 32
+    mov     [rbp-16], rax
+    mov     [rbp-8],  rdx
+%endmacro
+%define ALT2_N16   CONC2_N16
+
+%macro CONC2_SV16 3            ; fn, strlab, varlab  → [rbp-16/8]
+    sub     rsp, 32
+    lea     rdi, [rel %2]
+    call    stmt_strval
+    mov     [rsp], rax
+    mov     [rsp+8], rdx
+    lea     rdi, [rel %3]
+    call    stmt_get
+    mov     [rsp+16], rax
+    mov     [rsp+24], rdx
+    lea     rdi, [rel %1]
+    mov     rsi, rsp
+    mov     rdx, 2
+    call    stmt_apply
+    add     rsp, 32
+    mov     [rbp-16], rax
+    mov     [rbp-8],  rdx
+%endmacro
+%define ALT2_SV16  CONC2_SV16
+
+%macro CONC2_VS16 3            ; fn, varlab, strlab  → [rbp-16/8]
+    sub     rsp, 32
+    lea     rdi, [rel %2]
+    call    stmt_get
+    mov     [rsp], rax
+    mov     [rsp+8], rdx
+    lea     rdi, [rel %3]
+    call    stmt_strval
+    mov     [rsp+16], rax
+    mov     [rsp+24], rdx
+    lea     rdi, [rel %1]
+    mov     rsi, rsp
+    mov     rdx, 2
+    call    stmt_apply
+    add     rsp, 32
+    mov     [rbp-16], rax
+    mov     [rbp-8],  rdx
+%endmacro
+%define ALT2_VS16  CONC2_VS16
+
+%macro CONC2_VN16 2            ; fn, varlab  → [rbp-16/8]
+    sub     rsp, 32
+    lea     rdi, [rel %2]
+    call    stmt_get
+    mov     [rsp], rax
+    mov     [rsp+8], rdx
+    mov     qword [rsp+16], 1
+    mov     qword [rsp+24], 0
+    lea     rdi, [rel %1]
+    mov     rsi, rsp
+    mov     rdx, 2
+    call    stmt_apply
+    add     rsp, 32
+    mov     [rbp-16], rax
+    mov     [rbp-8],  rdx
+%endmacro
+%define ALT2_VN16  CONC2_VN16
+
+%macro CONC2_VV16 3            ; fn, var1, var2  → [rbp-16/8]
+    sub     rsp, 32
+    lea     rdi, [rel %2]
+    call    stmt_get
+    mov     [rsp], rax
+    mov     [rsp+8], rdx
+    lea     rdi, [rel %3]
+    call    stmt_get
+    mov     [rsp+16], rax
+    mov     [rsp+24], rdx
+    lea     rdi, [rel %1]
+    mov     rsi, rsp
+    mov     rdx, 2
+    call    stmt_apply
+    add     rsp, 32
+    mov     [rbp-16], rax
+    mov     [rbp-8],  rdx
+%endmacro
+%define ALT2_VV16  CONC2_VV16
+
+; =============================================================================
+; END Session 167/171/172 high-level statement macros
 ; =============================================================================

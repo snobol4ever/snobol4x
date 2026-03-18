@@ -1774,6 +1774,52 @@ static int prog_emit_expr(EXPR_t *e, int rbp_off) {
                 return 1;
             }
         }
+        /* Fast path: 2-arg call with atom args → CONC2_* macros (work for any fn) */
+        if (na == 2 && e->args[0] && e->args[1] &&
+            (rbp_off == -32 || rbp_off == -16)) {
+            EXPR_t *a0 = e->args[0], *a1 = e->args[1];
+            int a0s = (a0->kind == E_QLIT);
+            int a0v = (a0->kind == E_VART);
+            int a1s = (a1->kind == E_QLIT);
+            int a1v = (a1->kind == E_VART);
+            int a1n = (a1->kind == E_NULV ||
+                      (a1->kind == E_ILIT && a1->ival == 0));
+            int r16  = (rbp_off == -16);
+            const char *m_ss = r16 ? "CONC2_16  " : "CONC2   ";
+            const char *m_sn = r16 ? "CONC2_N16 " : "CONC2_N ";
+            const char *m_sv = r16 ? "CONC2_SV16" : "CONC2_SV";
+            const char *m_vs = r16 ? "CONC2_VS16" : "CONC2_VS";
+            const char *m_vn = r16 ? "CONC2_VN16" : "CONC2_VN";
+            const char *m_vv = r16 ? "CONC2_VV16" : "CONC2_VV";
+            if (a0s && a1n) {
+                A("    %s %s, %s\n", m_sn, fnlab, prog_str_intern(a0->sval));
+                return 1;
+            }
+            if (a0s && a1s) {
+                A("    %s %s, %s, %s\n", m_ss, fnlab,
+                  prog_str_intern(a0->sval), prog_str_intern(a1->sval));
+                return 1;
+            }
+            if (a0s && a1v) {
+                A("    %s %s, %s, %s\n", m_sv, fnlab,
+                  prog_str_intern(a0->sval), prog_str_intern(a1->sval));
+                return 1;
+            }
+            if (a0v && a1s) {
+                A("    %s %s, %s, %s\n", m_vs, fnlab,
+                  prog_str_intern(a0->sval), prog_str_intern(a1->sval));
+                return 1;
+            }
+            if (a0v && a1n) {
+                A("    %s %s, %s\n", m_vn, fnlab, prog_str_intern(a0->sval));
+                return 1;
+            }
+            if (a0v && a1v) {
+                A("    %s %s, %s, %s\n", m_vv, fnlab,
+                  prog_str_intern(a0->sval), prog_str_intern(a1->sval));
+                return 1;
+            }
+        }
         if (na == 0) {
             A("    APPLY_FN_0  %s\n", fnlab);
         } else {
@@ -1812,6 +1858,13 @@ static int prog_emit_expr(EXPR_t *e, int rbp_off) {
         const char *mac_vs = (e->kind == E_OR) ? "ALT2_VS " : "CONC2_VS";
         const char *mac_vn = (e->kind == E_OR) ? "ALT2_VN " : "CONC2_VN";
         const char *mac_vv = (e->kind == E_OR) ? "ALT2_VV " : "CONC2_VV";
+        /* *16 variants — result stored at [rbp-16/8] (subject slot) */
+        const char *mac_ss16 = (e->kind == E_OR) ? "ALT2_16   " : "CONC2_16  ";
+        const char *mac_sn16 = (e->kind == E_OR) ? "ALT2_N16  " : "CONC2_N16 ";
+        const char *mac_sv16 = (e->kind == E_OR) ? "ALT2_SV16 " : "CONC2_SV16";
+        const char *mac_vs16 = (e->kind == E_OR) ? "ALT2_VS16 " : "CONC2_VS16";
+        const char *mac_vn16 = (e->kind == E_OR) ? "ALT2_VN16 " : "CONC2_VN16";
+        const char *mac_vv16 = (e->kind == E_OR) ? "ALT2_VV16 " : "CONC2_VV16";
         const char *fnlab  = prog_str_intern(opname);
 
         int left_is_str  = e->left  && e->left->kind  == E_QLIT;
@@ -1854,6 +1907,41 @@ static int prog_emit_expr(EXPR_t *e, int rbp_off) {
             const char *v1 = prog_str_intern(e->left->sval);
             const char *v2 = prog_str_intern(e->right->sval);
             A("    %s %s, %s, %s\n", mac_vv, fnlab, v1, v2);
+            return 1;
+        }
+        /* rbp_off == -16 fast paths (subject slot) */
+        if (left_is_str && right_is_nul && rbp_off == -16) {
+            const char *slab = prog_str_intern(e->left->sval);
+            A("    %s%s, %s\n", mac_sn16, fnlab, slab);
+            return 1;
+        }
+        if (left_is_str && right_is_str && rbp_off == -16) {
+            const char *s1 = prog_str_intern(e->left->sval);
+            const char *s2 = prog_str_intern(e->right->sval);
+            A("    %s%s, %s, %s\n", mac_ss16, fnlab, s1, s2);
+            return 1;
+        }
+        if (left_is_str && right_is_var && rbp_off == -16) {
+            const char *slab = prog_str_intern(e->left->sval);
+            const char *vlab = prog_str_intern(e->right->sval);
+            A("    %s %s, %s, %s\n", mac_sv16, fnlab, slab, vlab);
+            return 1;
+        }
+        if (left_is_var && right_is_str && rbp_off == -16) {
+            const char *vlab = prog_str_intern(e->left->sval);
+            const char *slab = prog_str_intern(e->right->sval);
+            A("    %s %s, %s, %s\n", mac_vs16, fnlab, vlab, slab);
+            return 1;
+        }
+        if (left_is_var && right_is_nul && rbp_off == -16) {
+            const char *vlab = prog_str_intern(e->left->sval);
+            A("    %s %s, %s\n", mac_vn16, fnlab, vlab);
+            return 1;
+        }
+        if (left_is_var && right_is_var && rbp_off == -16) {
+            const char *v1 = prog_str_intern(e->left->sval);
+            const char *v2 = prog_str_intern(e->right->sval);
+            A("    %s %s, %s, %s\n", mac_vv16, fnlab, v1, v2);
             return 1;
         }
 

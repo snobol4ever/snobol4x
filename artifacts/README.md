@@ -496,7 +496,14 @@ session115 | 2026-03-16 | 6d5919daa03d3c56646b5f0a165f86ee | 15859 lines | compi
 
 ### artifacts/asm/beauty_prog_session171.s  (Sprint A14 — M-ASM-BEAUTIFUL)
 - status: 12444 lines (down 245 from session170), NASM clean
-- change: CONC2_SV/CONC2_VS/CONC2_VN/CONC2_VV macros + fast paths; ALT2_SV/VS/VN/VV aliases
+- change: CONC2_SV/CONC2_VS/CONC2_VN/CONC2_VV macros + fast paths; ALT2_SV/VS/VS/VN/VV aliases
 - 529 verbose sub-rsp,32 blocks remain (nested expression trees — irreducible with atom fast-paths)
 - assemble: nasm -I src/runtime/asm/ -f elf64 beauty_prog_session171.s -o /dev/null
+- invariants: 106/106 C crosscheck PASS, 26/26 ASM crosscheck PASS
+
+## beauty_prog_session172.s
+- milestone: M-ASM-BEAUTIFUL (Sprint A14, active)
+- status: 12100 lines (down 344 from session171), NASM clean
+- change: CONC2_*16/ALT2_*16 macros (rbp-16 slot variants); E_FNC 2-arg atom fast paths; 529→496 verbose blocks
+- assemble: nasm -I src/runtime/asm/ -f elf64 beauty_prog_session172.s -o /dev/null
 - invariants: 106/106 C crosscheck PASS, 26/26 ASM crosscheck PASS
