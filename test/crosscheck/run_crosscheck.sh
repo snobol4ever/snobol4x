@@ -5,24 +5,29 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TINY="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CORPUS="$(cd "$TINY/../../snobol4corpus/crosscheck" && pwd)"
-SNO2C="$TINY/src/sno2c/sno2c"
+SNO2C="$TINY/sno2c"
 RT="$TINY/src/runtime"
-SNO2C_INC="$TINY/src/sno2c"
+SNO2C_INC="$TINY/src/frontend/snobol4"
 FILTER="${FILTER:-}"
 STOP_ON_FAIL="${STOP_ON_FAIL:-1}"
 TIMEOUT=5
 TMPDIR_RUN=$(mktemp -d); trap "rm -rf $TMPDIR_RUN" EXIT
+
+BACKEND_C="$TINY/src/backend/c"
 
 # Precompile runtime into a static archive once — 5x faster per-test gcc link.
 RTLIB="$TMPDIR_RUN/libsnobol4rt.a"
 _rt_objs=()
 for _src in \
     "$RT/snobol4/snobol4.c" \
-    "$RT/snobol4/mock_includes.c" \
+    "$RT/mock/mock_includes.c" \
     "$RT/snobol4/snobol4_pattern.c" \
-    "$RT/mock_engine.c"; do
+    "$RT/mock/mock_engine.c" \
+    "$BACKEND_C/trampoline_branches.c" \
+    "$BACKEND_C/trampoline_hello.c" \
+    "$BACKEND_C/trampoline_pattern.c"; do
     _o="$TMPDIR_RUN/$(basename "${_src%.c}").o"
-    gcc -O0 -g -c "$_src" -I"$RT/snobol4" -I"$RT" -I"$SNO2C_INC" -w -o "$_o"
+    gcc -O0 -g -c "$_src" -I"$RT/snobol4" -I"$RT" -I"$RT/engine" -I"$RT/mock" -I"$SNO2C_INC" -I"$BACKEND_C" -w -o "$_o"
     _rt_objs+=("$_o")
 done
 ar rcs "$RTLIB" "${_rt_objs[@]}"
@@ -40,7 +45,7 @@ run_test() {
         [[ "$STOP_ON_FAIL" == "1" ]] && summary && exit 1; return 1
     fi
     if ! gcc -O0 -g "$c" "$RTLIB" \
-        -I"$RT/snobol4" -I"$RT" -I"$SNO2C_INC" \
+        -I"$RT/snobol4" -I"$RT" -I"$RT/engine" -I"$RT/mock" -I"$SNO2C_INC" -I"$BACKEND_C" \
         -lgc -lm -w -o "$bin" 2>/dev/null; then
         echo -e "${RED}FAIL${RESET} $name  [gcc]"; FAIL=$((FAIL+1))
         [[ "$STOP_ON_FAIL" == "1" ]] && summary && exit 1; return 1

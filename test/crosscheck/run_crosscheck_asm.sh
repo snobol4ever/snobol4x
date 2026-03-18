@@ -12,13 +12,16 @@
 # Usage: bash test/crosscheck/run_crosscheck_asm.sh [--stop-on-fail]
 #
 # Environment:
-#   SNO2C     path to sno2c (default: src/sno2c/sno2c)
+#   SNO2C     path to sno2c (default: sno2c)
 #   HARNESS_O path to harness object (default: src/runtime/asm/snobol4_asm_harness.o)
 #   CORPUS    path to crosscheck dir (default: /home/snobol4corpus/crosscheck)
 
 set -euo pipefail
 
-SNO2C="${SNO2C:-src/sno2c/sno2c}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TINY="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+SNO2C="${SNO2C:-$TINY/sno2c}"
 HARNESS_O="${HARNESS_O:-src/runtime/asm/snobol4_asm_harness.o}"
 CORPUS="${CORPUS:-/home/snobol4corpus/crosscheck}"
 

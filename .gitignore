@@ -25,3 +25,4 @@ beauty_full_bin_wip[0-9]*
 beauty_full_bin_wip_*
 src/sno2c/sno2c
 artifacts/asm/*_bin
+scratch/

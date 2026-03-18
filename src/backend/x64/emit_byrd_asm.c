@@ -2845,10 +2845,10 @@ static void asm_emit_program(Program *prog) {
         A("    mov     rax, [%s]\n", scan_start);
         A("    inc     rax\n");
         A("    cmp     rax, [subject_len_val]\n");
-        A("    jg      %s\n", next_lbl);   /* exhausted → F-target path */
+        A("    jg      %s\n", next_lbl);     /* exhausted → F-target */
         A("    mov     [%s], rax\n", scan_start);
         A("    jmp     %s\n", scan_retry);
-        /* F-target reached when scan exhausted */
+        /* exhausted: fall through to F-target */
         emit_jmp(tgt_f, next_lbl);
 
         asmL(next_lbl);
