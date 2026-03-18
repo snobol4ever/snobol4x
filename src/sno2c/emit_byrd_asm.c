@@ -1759,14 +1759,19 @@ static const char *prog_str_intern(const char *s) {
 
 static void prog_str_emit_data(void) {
     for (int i = 0; i < prog_str_count; i++) {
-        A("%-20s db ", prog_strs[i].label);
         const char *v = prog_strs[i].val;
         int len = (int)strlen(v);
-        for (int j = 0; j < len; j++) {
-            if (j) A(", ");
-            A("%d", (unsigned char)v[j]);
+        if (len == 0) {
+            /* empty string — just null terminator */
+            A("%-20s db 0  ; ""\n", prog_strs[i].label);
+        } else {
+            A("%-20s db ", prog_strs[i].label);
+            for (int j = 0; j < len; j++) {
+                if (j) A(", ");
+                A("%d", (unsigned char)v[j]);
+            }
+            A(", 0  ; \"%s\"\n", v);
         }
-        A(", 0  ; \"%s\"\n", v);
     }
 }
 
@@ -1826,9 +1831,35 @@ static int prog_emit_expr(EXPR_t *e, int rbp_off) {
 /* ---- emit goto target (resolves label to NASM label) ---- */
 static const char *prog_label_nasm(const char *lbl); /* forward */
 
+/* Returns 1 if target is a SNOBOL4 special goto (RETURN/FRETURN/END etc.)
+ * that should map to _SNO_END rather than a user label. */
+static int is_special_goto(const char *t) {
+    if (!t || !*t) return 0;
+    return (strcasecmp(t,"RETURN")==0  || strcasecmp(t,"FRETURN")==0 ||
+            strcasecmp(t,"NRETURN")==0 || strcasecmp(t,"SRETURN")==0 ||
+            strcasecmp(t,"END")==0);
+}
+
+/* Emit a jmp to a goto target, handling special targets. */
+static void emit_jmp(const char *tgt, const char *fallthrough) {
+    if (!tgt || !*tgt) {
+        if (fallthrough) A("    jmp     %s\n", fallthrough);
+        return;
+    }
+    if (is_special_goto(tgt)) { A("    jmp     _SNO_END      ; %s\n", tgt); return; }
+    A("    jmp     %s\n", prog_label_nasm(tgt));
+}
+
 static void prog_emit_goto(const char *target, const char *fallthrough) {
     if (!target || strcmp(target, "") == 0) {
         if (fallthrough) A("    jmp     %s\n", fallthrough);
+        return;
+    }
+    /* Special SNOBOL4 goto targets */
+    if (strcasecmp(target,"END")==0 || strcasecmp(target,"RETURN")==0 ||
+        strcasecmp(target,"FRETURN")==0 || strcasecmp(target,"NRETURN")==0 ||
+        strcasecmp(target,"SRETURN")==0) {
+        A("    jmp     _SNO_END      ; %s\n", target);
         return;
     }
     A("    jmp     %s\n", prog_label_nasm(target));
@@ -1836,12 +1867,15 @@ static void prog_emit_goto(const char *target, const char *fallthrough) {
 /* ---- scan all labels in program for the jump table ---- */
 #define MAX_PROG_LABELS 1024
 /* Numeric label registry: each unique SNOBOL4 label name gets an integer ID.
- * Emitted as _L_N in NASM, with original name as a comment.
- * Collision-free by construction — integers are always distinct.
- * TODO M-ASM-READABLE: switch to encoded names for debuggability (post M-ASM-BEAUTY). */
+ * Emitted as _L_<base>_N in NASM — number guarantees uniqueness, base aids readability.
+ * TODO M-ASM-READABLE: named expansion (pp_>= → pp_GT_EQ_N) post M-ASM-BEAUTY. */
 static char *prog_labels[MAX_PROG_LABELS];
+static int   prog_label_defined[MAX_PROG_LABELS]; /* 1 if _L_X: was emitted */
 static int   prog_label_count = 0;
-static void prog_labels_reset(void) { prog_label_count = 0; }
+static void prog_labels_reset(void) {
+    prog_label_count = 0;
+    memset(prog_label_defined, 0, sizeof prog_label_defined);
+}
 
 static int prog_label_id(const char *lbl) {
     if (!lbl || !*lbl) return -1;
@@ -1891,26 +1925,39 @@ static void asm_emit_program(Program *prog) {
     lit_reset();
     asm_extra_bss_count = 0;
 
-    /* Pass 1: collect all labels + string literals */
+    /* Pass 1: collect all labels + string literals (recursive expr walk) */
+    /* Recursive helper: intern all string/var names reachable from an expr */
+    #define WALK_EXPR(root) do {         EXPR_t *_stk[256]; int _top = 0;         if (root) _stk[_top++] = (root);         while (_top > 0) {             EXPR_t *_e = _stk[--_top];             if (!_e) continue;             if (_e->kind == E_QLIT && _e->sval) prog_str_intern(_e->sval);             if (_e->kind == E_VART && _e->sval) prog_str_intern(_e->sval);             if (_e->kind == E_KW   && _e->sval) prog_str_intern(_e->sval);             if (_e->kind == E_FNC  && _e->sval) prog_str_intern(_e->sval);             if (_e->left  && _top < 255) _stk[_top++] = _e->left;             if (_e->right && _top < 255) _stk[_top++] = _e->right;             for (int _i = 0; _i < _e->nargs && _top < 254; _i++)                 if (_e->args[_i]) _stk[_top++] = _e->args[_i];         }     } while(0)
+
     for (STMT_t *s = prog->head; s; s = s->next) {
-        if (s->label) prog_label_register(s->label);
+        if (s->label) { prog_label_register(s->label); prog_str_intern(s->label); }
         if (s->go) {
-            if (s->go->onsuccess) prog_label_register(s->go->onsuccess);
-            if (s->go->onfailure) prog_label_register(s->go->onfailure);
-            if (s->go->uncond)    prog_label_register(s->go->uncond);
+            /* Special SNOBOL4 goto targets — handled at emit time, not as labels */
+            const char *special[] = {"RETURN","FRETURN","NRETURN","SRETURN","END",NULL};
+            if (s->go->onsuccess) {
+                int sp = 0;
+                for (int i = 0; special[i]; i++)
+                    if (strcasecmp(s->go->onsuccess, special[i]) == 0) { sp=1; break; }
+                if (!sp) prog_label_register(s->go->onsuccess);
+            }
+            if (s->go->onfailure) {
+                int sp = 0;
+                for (int i = 0; special[i]; i++)
+                    if (strcasecmp(s->go->onfailure, special[i]) == 0) { sp=1; break; }
+                if (!sp) prog_label_register(s->go->onfailure);
+            }
+            if (s->go->uncond) {
+                int sp = 0;
+                for (int i = 0; special[i]; i++)
+                    if (strcasecmp(s->go->uncond, special[i]) == 0) { sp=1; break; }
+                if (!sp) prog_label_register(s->go->uncond);
+            }
         }
-        /* intern string literals in subject / replacement */
-        if (s->subject && s->subject->kind == E_QLIT)
-            prog_str_intern(s->subject->sval);
-        if (s->replacement && s->replacement->kind == E_QLIT)
-            prog_str_intern(s->replacement->sval);
-        if (s->subject && s->subject->kind == E_VART)
-            prog_str_intern(s->subject->sval);
-        if (s->replacement && s->replacement->kind == E_VART)
-            prog_str_intern(s->replacement->sval);
-        if (s->label)
-            prog_str_intern(s->label);
+        WALK_EXPR(s->subject);
+        WALK_EXPR(s->replacement);
+        WALK_EXPR(s->pattern);
     }
+    #undef WALK_EXPR
 
     /* Pass 2: collect .bss slots for pattern stmts (named-pat ret_ pointers).
      * In program mode, skip entries whose replacement is a plain value
@@ -1937,12 +1984,8 @@ static void asm_emit_program(Program *prog) {
     A("    extern  stmt_apply, stmt_goto_dispatch\n");
     A("\n");
 
-    /* ---- .data ---- */
-    A("section .data\n\n");
-    /* String literals will be filled after pass 2 above */
-    prog_str_emit_data();
-    /* emit string literals for all registered prog labels */
-    A("\n");
+    /* .data emitted at end of file (after .text) so late prog_str_intern()
+     * calls from emit time are captured. See prog_str_emit_data() below. */
 
     /* ---- .note.GNU-stack ---- */
     A("section .note.GNU-stack noalloc noexec nowrite progbits\n\n");
@@ -1977,6 +2020,8 @@ static void asm_emit_program(Program *prog) {
 
         if (s->label) {
             A("\n%s:\n", prog_label_nasm(s->label));
+            { int _id = prog_label_id(s->label);
+              if (_id >= 0) prog_label_defined[_id] = 1; }
         } else {
             A("\n");
         }
@@ -2027,17 +2072,15 @@ static void asm_emit_program(Program *prog) {
                     A("    call    stmt_set\n");
                 }
                 /* success path */
-                if (id_s >= 0) A("    jmp     %s\n", prog_label_nasm(tgt_s));
-                else if (id_u >= 0) A("    jmp     %s\n", prog_label_nasm(tgt_u));
-                else A("    jmp     %s\n", next_lbl);
+                emit_jmp(tgt_s ? tgt_s : tgt_u, next_lbl);
                 /* failure path */
                 if (id_f >= 0) {
                     A("%s:\n", sfail_lbl);
-                    A("    jmp     %s\n", prog_label_nasm(tgt_f));
+                    emit_jmp(tgt_f, next_lbl);
                 }
             } else {
                 /* expression-only or complex case: just evaluate and branch */
-                if (id_u >= 0) A("    jmp     %s\n", prog_label_nasm(tgt_u));
+                if (id_u >= 0) emit_jmp(tgt_u, next_lbl);
             }
             A("%s:\n", next_lbl);
             continue;
@@ -2062,15 +2105,14 @@ static void asm_emit_program(Program *prog) {
         }
 
         /* For now: emit unconditional fallthrough (pattern match TBD) */
-        if (id_u >= 0) A("    jmp     %s\n", prog_label_nasm(tgt_u));
-        else           A("    jmp     %s\n", next_lbl);
+        if (id_u >= 0) emit_jmp(tgt_u, next_lbl);
+        else           emit_jmp(NULL, next_lbl);
 
         A("%s:\n", sm_lbl);
-        if (id_s >= 0) A("    jmp     %s\n", prog_label_nasm(tgt_s));
-        else           A("    jmp     %s\n", next_lbl);
+        emit_jmp(tgt_s, next_lbl);
 
         A("%s:\n", sfail_lbl);
-        if (id_f >= 0) A("    jmp     %s\n", prog_label_nasm(tgt_f));
+        if (id_f >= 0) emit_jmp(tgt_f, next_lbl);
         else           A("    jmp     %s\n", next_lbl);
 
         A("%s:\n", next_lbl);
@@ -2082,6 +2124,23 @@ static void asm_emit_program(Program *prog) {
     A("    xor     eax, eax\n");
     A("    leave\n");
     A("    ret\n");
+
+    /* ---- Stub definitions for referenced-but-undefined labels ----
+     * These are dangling gotos (e.g. :F(error) with no "error" label defined,
+     * or computed goto dispatch labels not yet implemented).
+     * Map them to _SNO_END so the program assembles and terminates cleanly. */
+    A("\n; --- stub labels (dangling gotos / computed goto TBD) ---\n");
+    for (int i = 0; i < prog_label_count; i++) {
+        if (!prog_label_defined[i]) {
+            A("%s:  ; STUB → _SNO_END (dangling or computed goto)\n",
+              prog_label_nasm(prog_labels[i]));
+            A("    jmp     _SNO_END\n");
+        }
+    }
+
+    /* ---- .data emitted last so all prog_str_intern() calls are captured ---- */
+    A("\nsection .data\n\n");
+    prog_str_emit_data();
 }
 
 void asm_emit(Program *prog, FILE *f) {
