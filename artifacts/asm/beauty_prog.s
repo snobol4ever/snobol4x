@@ -7,128 +7,261 @@
     extern  stmt_get, stmt_set, stmt_output, stmt_input
     extern  stmt_concat, stmt_is_fail, stmt_finish
     extern  stmt_apply, stmt_goto_dispatch
+    extern  stmt_setup_subject, stmt_apply_replacement
 
+; pattern match globals (subject buffer, len, cursor)
 section .note.GNU-stack noalloc noexec nowrite progbits
 
 section .bss
 
-_cursor                  resq 1
-pat_ppStop_ret_gamma     resq 1
-pat_ppStop_ret_omega     resq 1
-pat_ppSmBump_ret_gamma   resq 1
-pat_ppSmBump_ret_omega   resq 1
-pat_ppArgs_ret_gamma     resq 1
-pat_ppArgs_ret_omega     resq 1
-pat_ppTokPat_ret_gamma   resq 1
-pat_ppTokPat_ret_omega   resq 1
-pat_OUTPUT_ret_gamma     resq 1
-pat_OUTPUT_ret_omega     resq 1
-pat_ppTab_ret_gamma      resq 1
-pat_ppTab_ret_omega      resq 1
-pat_ppGSfx_ret_gamma     resq 1
-pat_ppGSfx_ret_omega     resq 1
-pat_ppGPat_ret_gamma     resq 1
-pat_ppGPat_ret_omega     resq 1
-pat_ppTrimPat_ret_gamma  resq 1
-pat_ppTrimPat_ret_omega  resq 1
-pat_ppNg_ret_gamma       resq 1
-pat_ppNg_ret_omega       resq 1
-pat_ppWArr_ret_gamma     resq 1
-pat_ppWArr_ret_omega     resq 1
-pat_ppTmpFile_ret_gamma  resq 1
-pat_ppTmpFile_ret_omega  resq 1
-pat_ppLn_ret_gamma       resq 1
-pat_ppLn_ret_omega       resq 1
-pat_ppTmp_ret_gamma      resq 1
-pat_ppTmp_ret_omega      resq 1
-pat_ppGConT_ret_gamma    resq 1
-pat_ppGConT_ret_omega    resq 1
-pat_ppW_ret_gamma        resq 1
-pat_ppW_ret_omega        resq 1
-pat_ppStmt_ret_gamma     resq 1
-pat_ppStmt_ret_omega     resq 1
-pat_ppI_ret_gamma        resq 1
-pat_ppI_ret_omega        resq 1
-pat_ppJ_ret_gamma        resq 1
-pat_ppJ_ret_omega        resq 1
-pat_ppKey_ret_gamma      resq 1
-pat_ppKey_ret_omega      resq 1
-pat_ppJ1_ret_gamma       resq 1
-pat_ppJ1_ret_omega       resq 1
-pat_Integer_ret_gamma    resq 1
-pat_Integer_ret_omega    resq 1
-pat_DQ_ret_gamma         resq 1
-pat_DQ_ret_omega         resq 1
-pat_SQ_ret_gamma         resq 1
-pat_SQ_ret_omega         resq 1
-pat_String_ret_gamma     resq 1
-pat_String_ret_omega     resq 1
-pat_Real_ret_gamma       resq 1
-pat_Real_ret_omega       resq 1
-pat_Id_ret_gamma         resq 1
-pat_Id_ret_omega         resq 1
-pat_Function_ret_gamma   resq 1
-pat_Function_ret_omega   resq 1
-pat_BuiltinVar_ret_gamma resq 1
-pat_BuiltinVar_ret_omega resq 1
-pat_SpecialNm_ret_gamma  resq 1
-pat_SpecialNm_ret_omega  resq 1
-pat_ProtKwd_ret_gamma    resq 1
-pat_ProtKwd_ret_omega    resq 1
-pat_UnprotKwd_ret_gamma  resq 1
-pat_UnprotKwd_ret_omega  resq 1
-pat_Gray_ret_gamma       resq 1
-pat_Gray_ret_omega       resq 1
-pat_White_ret_gamma      resq 1
-pat_White_ret_omega      resq 1
-pat_TxInList_ret_gamma   resq 1
-pat_TxInList_ret_omega   resq 1
-pat_ProtKwds_ret_gamma   resq 1
-pat_ProtKwds_ret_omega   resq 1
-pat_UnprotKwds_ret_gamma resq 1
-pat_UnprotKwds_ret_omega resq 1
-pat_Functions_ret_gamma  resq 1
-pat_Functions_ret_omega  resq 1
-pat_ExprList_ret_gamma   resq 1
-pat_ExprList_ret_omega   resq 1
-pat_XList_ret_gamma      resq 1
-pat_XList_ret_omega      resq 1
-pat_Expr_ret_gamma       resq 1
-pat_Expr_ret_omega       resq 1
-pat_Expr0_ret_gamma      resq 1
-pat_Expr0_ret_omega      resq 1
-pat_Expr1_ret_gamma      resq 1
-pat_Expr1_ret_omega      resq 1
-pat_Expr2_ret_gamma      resq 1
-pat_Expr2_ret_omega      resq 1
-pat_Expr3_ret_gamma      resq 1
-pat_Expr3_ret_omega      resq 1
-pat_X3_ret_gamma         resq 1
-pat_X3_ret_omega         resq 1
-pat_Expr4_ret_gamma      resq 1
-pat_Expr4_ret_omega      resq 1
-pat_X4_ret_gamma         resq 1
-pat_X4_ret_omega         resq 1
-pat_Expr5_ret_gamma      resq 1
-pat_Expr5_ret_omega      resq 1
-pat_Expr6_ret_gamma      resq 1
-pat_Expr6_ret_omega      resq 1
-pat_Expr7_ret_gamma      resq 1
-pat_Expr7_ret_omega      resq 1
-pat_Expr8_ret_gamma      resq 1
-pat_Expr8_ret_omega      resq 1
-pat_Expr9_ret_gamma      resq 1
-pat_Expr9_ret_omega      resq 1
-pat_Expr10_ret_gamma     resq 1
-pat_Expr10_ret_omega     resq 1
-pat_Expr11_ret_gamma     resq 1
-pat_Expr11_ret_omega     resq 1
-pat_Expr12_ret_gamma     resq 1
-pat_Expr12_ret_omega     resq 1
-pat_Expr13_ret_gamma     resq 1
-pat_Expr13_ret_omega     resq 1
-pat_Expr14_ret_gamma     resq 1
-pat_Expr14_ret_omega     resq 1
+cursor                   resq 1
+subject_len_val          resq 1
+P_ppStop_ret_gamma       resq 1
+P_ppStop_ret_omega       resq 1
+P_ppSmBump_ret_gamma     resq 1
+P_ppSmBump_ret_omega     resq 1
+P_ppArgs_ret_gamma       resq 1
+P_ppArgs_ret_omega       resq 1
+P_ppTokPat_ret_gamma     resq 1
+P_ppTokPat_ret_omega     resq 1
+P_OUTPUT_ret_gamma       resq 1
+P_OUTPUT_ret_omega       resq 1
+P_ppTab_ret_gamma        resq 1
+P_ppTab_ret_omega        resq 1
+P_ppGSfx_ret_gamma       resq 1
+P_ppGSfx_ret_omega       resq 1
+P_ppGPat_ret_gamma       resq 1
+P_ppGPat_ret_omega       resq 1
+P_ppTrimPat_ret_gamma    resq 1
+P_ppTrimPat_ret_omega    resq 1
+P_ppNg_ret_gamma         resq 1
+P_ppNg_ret_omega         resq 1
+P_ppWArr_ret_gamma       resq 1
+P_ppWArr_ret_omega       resq 1
+P_ppTmpFile_ret_gamma    resq 1
+P_ppTmpFile_ret_omega    resq 1
+P_ppLn_ret_gamma         resq 1
+P_ppLn_ret_omega         resq 1
+P_ppTmp_ret_gamma        resq 1
+P_ppTmp_ret_omega        resq 1
+P_ppGConT_ret_gamma      resq 1
+P_ppGConT_ret_omega      resq 1
+P_ppW_ret_gamma          resq 1
+P_ppW_ret_omega          resq 1
+P_ppStmt_ret_gamma       resq 1
+P_ppStmt_ret_omega       resq 1
+P_ppI_ret_gamma          resq 1
+P_ppI_ret_omega          resq 1
+P_ppJ_ret_gamma          resq 1
+P_ppJ_ret_omega          resq 1
+P_ppKey_ret_gamma        resq 1
+P_ppKey_ret_omega        resq 1
+P_ppJ1_ret_gamma         resq 1
+P_ppJ1_ret_omega         resq 1
+P_Integer_ret_gamma      resq 1
+P_Integer_ret_omega      resq 1
+P_DQ_ret_gamma           resq 1
+P_DQ_ret_omega           resq 1
+P_SQ_ret_gamma           resq 1
+P_SQ_ret_omega           resq 1
+P_String_ret_gamma       resq 1
+P_String_ret_omega       resq 1
+P_Real_ret_gamma         resq 1
+P_Real_ret_omega         resq 1
+P_Id_ret_gamma           resq 1
+P_Id_ret_omega           resq 1
+P_Function_ret_gamma     resq 1
+P_Function_ret_omega     resq 1
+P_BuiltinVar_ret_gamma   resq 1
+P_BuiltinVar_ret_omega   resq 1
+P_SpecialNm_ret_gamma    resq 1
+P_SpecialNm_ret_omega    resq 1
+P_ProtKwd_ret_gamma      resq 1
+P_ProtKwd_ret_omega      resq 1
+P_UnprotKwd_ret_gamma    resq 1
+P_UnprotKwd_ret_omega    resq 1
+P_Gray_ret_gamma         resq 1
+P_Gray_ret_omega         resq 1
+P_White_ret_gamma        resq 1
+P_White_ret_omega        resq 1
+P_TxInList_ret_gamma     resq 1
+P_TxInList_ret_omega     resq 1
+P_ProtKwds_ret_gamma     resq 1
+P_ProtKwds_ret_omega     resq 1
+P_UnprotKwds_ret_gamma   resq 1
+P_UnprotKwds_ret_omega   resq 1
+P_Functions_ret_gamma    resq 1
+P_Functions_ret_omega    resq 1
+P_ExprList_ret_gamma     resq 1
+P_ExprList_ret_omega     resq 1
+P_XList_ret_gamma        resq 1
+P_XList_ret_omega        resq 1
+P_Expr_ret_gamma         resq 1
+P_Expr_ret_omega         resq 1
+P_Expr0_ret_gamma        resq 1
+P_Expr0_ret_omega        resq 1
+P_Expr1_ret_gamma        resq 1
+P_Expr1_ret_omega        resq 1
+P_Expr2_ret_gamma        resq 1
+P_Expr2_ret_omega        resq 1
+P_Expr3_ret_gamma        resq 1
+P_Expr3_ret_omega        resq 1
+P_X3_ret_gamma           resq 1
+P_X3_ret_omega           resq 1
+P_Expr4_ret_gamma        resq 1
+P_Expr4_ret_omega        resq 1
+P_X4_ret_gamma           resq 1
+P_X4_ret_omega           resq 1
+P_Expr5_ret_gamma        resq 1
+P_Expr5_ret_omega        resq 1
+P_Expr6_ret_gamma        resq 1
+P_Expr6_ret_omega        resq 1
+P_Expr7_ret_gamma        resq 1
+P_Expr7_ret_omega        resq 1
+P_Expr8_ret_gamma        resq 1
+P_Expr8_ret_omega        resq 1
+P_Expr9_ret_gamma        resq 1
+P_Expr9_ret_omega        resq 1
+P_Expr10_ret_gamma       resq 1
+P_Expr10_ret_omega       resq 1
+P_Expr11_ret_gamma       resq 1
+P_Expr11_ret_omega       resq 1
+P_Expr12_ret_gamma       resq 1
+P_Expr12_ret_omega       resq 1
+P_Expr13_ret_gamma       resq 1
+P_Expr13_ret_omega       resq 1
+P_Expr14_ret_gamma       resq 1
+P_Expr14_ret_omega       resq 1
+span1_saved              resq 1
+any4_saved               resq 1
+any6_saved               resq 1
+span14_saved             resq 1
+any16_saved              resq 1
+any18_saved              resq 1
+seq_l26_alpha_saved      resq 1
+dol_entry_ppTokName      resq 1
+alt28_cur_save           resq 1
+brk29_saved              resq 1
+rem30_saved              resq 1
+alt31_cur_save           resq 1
+seq_l32_alpha_saved      resq 1
+dol_entry_ppTokVal       resq 1
+alt34_cur_save           resq 1
+brk35_saved              resq 1
+rem36_saved              resq 1
+dol37_child_alpha_saved  resq 1
+alt42_cur_save           resq 1
+span43_saved             resq 1
+alt_r42_alpha_saved      resq 1
+seq_r41_alpha_saved      resq 1
+alt44_cur_save           resq 1
+any45_saved              resq 1
+alt_r44_alpha_saved      resq 1
+alt46_cur_save           resq 1
+any47_saved              resq 1
+alt_r46_alpha_saved      resq 1
+rem48_saved              resq 1
+dol_entry_ppGCon         resq 1
+brk51_saved              resq 1
+dol_entry_ppDrop         resq 1
+span55_saved             resq 1
+seq_l57_alpha_saved      resq 1
+seq_r56_alpha_saved      resq 1
+seq_r60_alpha_saved      resq 1
+span65_saved             resq 1
+seq_l67_alpha_saved      resq 1
+brk68_saved              resq 1
+seq_r66_alpha_saved      resq 1
+seq_l70_alpha_saved      resq 1
+brk71_saved              resq 1
+seq_r69_alpha_saved      resq 1
+alt72_cur_save           resq 1
+alt75_cur_save           resq 1
+span80_saved             resq 1
+alt81_cur_save           resq 1
+seq_l82_alpha_saved      resq 1
+alt83_cur_save           resq 1
+alt_l83_alpha_saved      resq 1
+alt_r83_alpha_saved      resq 1
+alt84_cur_save           resq 1
+alt85_cur_save           resq 1
+alt_l85_alpha_saved      resq 1
+alt_r85_alpha_saved      resq 1
+span86_saved             resq 1
+span89_saved             resq 1
+seq_r88_alpha_saved      resq 1
+any91_saved              resq 1
+dol_entry_cap            resq 1
+dol_entry_tx             resq 1
+span94_saved             resq 1
+span97_saved             resq 1
+span100_saved            resq 1
+seq_l101_alpha_saved     resq 1
+span104_saved            resq 1
+seq_l105_alpha_saved     resq 1
+span108_saved            resq 1
+alt109_cur_save          resq 1
+alt111_cur_save          resq 1
+span113_saved            resq 1
+alt116_cur_save          resq 1
+alt_l116_alpha_saved     resq 1
+alt_r116_alpha_saved     resq 1
+alt119_cur_save          resq 1
+alt_r119_alpha_saved     resq 1
+alt120_cur_save          resq 1
+alt_l120_alpha_saved     resq 1
+seq_l122_alpha_saved     resq 1
+seq_r122_alpha_saved     resq 1
+seq_r121_alpha_saved     resq 1
+seq_l124_alpha_saved     resq 1
+seq_r124_alpha_saved     resq 1
+seq_r123_alpha_saved     resq 1
+seq_l132_alpha_saved     resq 1
+seq_r132_alpha_saved     resq 1
+seq_r131_alpha_saved     resq 1
+seq_r130_alpha_saved     resq 1
+seq_r129_alpha_saved     resq 1
+seq_r128_alpha_saved     resq 1
+seq_r127_alpha_saved     resq 1
+seq_r126_alpha_saved     resq 1
+seq_r125_alpha_saved     resq 1
+alt139_cur_save          resq 1
+dol_entry_v              resq 1
+alt181_cur_save          resq 1
+alt182_cur_save          resq 1
+alt183_cur_save          resq 1
+alt184_cur_save          resq 1
+alt185_cur_save          resq 1
+alt186_cur_save          resq 1
+alt187_cur_save          resq 1
+alt188_cur_save          resq 1
+alt189_cur_save          resq 1
+alt190_cur_save          resq 1
+alt191_cur_save          resq 1
+alt192_cur_save          resq 1
+alt193_cur_save          resq 1
+alt194_cur_save          resq 1
+alt195_cur_save          resq 1
+alt196_cur_save          resq 1
+alt197_cur_save          resq 1
+seq_l199_alpha_saved     resq 1
+seq_l202_alpha_saved     resq 1
+seq_l205_alpha_saved     resq 1
+dol_entry_ProtKwd        resq 1
+dol_entry_UnprotKwd      resq 1
+seq_l212_alpha_saved     resq 1
+seq_l215_alpha_saved     resq 1
+seq_l218_alpha_saved     resq 1
+seq_l221_alpha_saved     resq 1
+seq_l224_alpha_saved     resq 1
+seq_l227_alpha_saved     resq 1
+seq_l230_alpha_saved     resq 1
+seq_l233_alpha_saved     resq 1
+seq_l236_alpha_saved     resq 1
+seq_l239_alpha_saved     resq 1
+seq_l242_alpha_saved     resq 1
+seq_l245_alpha_saved     resq 1
+subject_data             resb 65536
 
 section .text
 
@@ -139,22 +272,22 @@ main:
     call    stmt_init
 
 
-_L_START_0:
-_sn_0:
+L_START_0:
+L_sn_0:
 
-    lea     rdi, [rel ps_457]
+    lea     rdi, [rel S_457]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
-_sn_1:
+L_sn_1:
 
-    lea     rdi, [rel ps_458]
+    lea     rdi, [rel S_458]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
-_sn_2:
+L_sn_2:
 
-    lea     rdi, [rel ps_4]
+    lea     rdi, [rel S_4]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -164,31 +297,31 @@ _sn_2:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_3
-    lea     rdi, [rel ps_4]
+    jnz     L_sn_3
+    lea     rdi, [rel S_4]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_3
-_sn_3:
+    jmp     L_sn_3
+L_sn_3:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_4:
+L_sn_4:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_5:
+L_sn_5:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_6:
+L_sn_6:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_7:
+L_sn_7:
 
-    lea     rdi, [rel ps_7]
+    lea     rdi, [rel S_7]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -200,15 +333,15 @@ _sn_7:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_8
-    lea     rdi, [rel ps_7]
+    jnz     L_sn_8
+    lea     rdi, [rel S_7]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_8
-_sn_8:
+    jmp     L_sn_8
+L_sn_8:
 
-    lea     rdi, [rel ps_8]
+    lea     rdi, [rel S_8]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -220,15 +353,15 @@ _sn_8:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_9
-    lea     rdi, [rel ps_8]
+    jnz     L_sn_9
+    lea     rdi, [rel S_8]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_9
-_sn_9:
+    jmp     L_sn_9
+L_sn_9:
 
-    lea     rdi, [rel ps_9]
+    lea     rdi, [rel S_9]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -238,15 +371,15 @@ _sn_9:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_10
-    lea     rdi, [rel ps_9]
+    jnz     L_sn_10
+    lea     rdi, [rel S_9]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_10
-_sn_10:
+    jmp     L_sn_10
+L_sn_10:
 
-    lea     rdi, [rel ps_11]
+    lea     rdi, [rel S_11]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -256,62 +389,148 @@ _sn_10:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_11
-    lea     rdi, [rel ps_11]
+    jnz     L_sn_11
+    lea     rdi, [rel S_11]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_11
-_sn_11:
+    jmp     L_sn_11
+L_sn_11:
 
-_L_ppArgLoop_1:
-    lea     rdi, [rel ps_9]
+L_ppArgLoop_1:
+    lea     rdi, [rel S_9]
     call    stmt_get
     mov     [rbp-16], rax
-    mov     [rbp-8],  rdx
-    jmp     _sn_12
-_sm_12:
-    jmp     _sn_12
-_sf_12:
-    jmp     _sn_12
-_sn_12:
+    mov     [rbp-8], rdx
+    mov     rdi, [rbp-16]
+    mov     rsi, [rbp-8]
+    call    stmt_setup_subject
+    jmp     P_12_α
+
+
+; SEQ α=P_12_α
+P_12_α:
+    jmp     seq_l0_alpha
+P_12_β:
+    jmp     seq_r0_beta
+
+; POS(0)  α=seq_l0_alpha
+seq_l0_alpha:
+    cmp     qword [cursor], 0
+    jne     P_12_ω
+    jmp     seq_r0_alpha
+
+; POS β=seq_l0_beta
+seq_l0_beta:
+    jmp     P_12_ω
+
+; SPAN(" ") REAL  α=seq_r0_alpha
+seq_r0_alpha:
+    mov     rax, [cursor]
+    cmp     rax, [subject_len_val]
+    jge     seq_l0_beta
+    mov     [span1_saved], rax
+    mov     r12, rax
+span1_outer:
+    cmp     r12, [subject_len_val]
+    jge     span1_notin
+    lea     rbx, [rel subject_data]
+    movzx   ecx, byte [rbx + r12]
+    lea     rsi, [rel lit_str_1]
+    mov     rdx, 1
+span1_csscan:
+    test    rdx, rdx
+    jz      span1_notin
+    movzx   eax, byte [rsi]
+    cmp     al, cl
+    je      span1_inset
+    inc     rsi
+    dec     rdx
+    jmp     span1_csscan
+span1_inset:
+    inc     r12
+    jmp     span1_outer
+span1_notin:
+    mov     rbx, [span1_saved]
+    cmp     r12, rbx
+    je      seq_l0_beta
+    mov     [cursor], r12
+    jmp     P_12_γ
+
+; SPAN β=seq_r0_beta
+seq_r0_beta:
+    mov     rax, [span1_saved]
+    mov     [cursor], rax
+    jmp     seq_l0_beta
+
+P_12_γ:
+    jmp     L_sn_12
+P_12_ω:
+    jmp     L_sn_12
+L_sn_12:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_13:
+L_sn_13:
 
-    lea     rdi, [rel ps_9]
+    lea     rdi, [rel S_9]
     call    stmt_get
     mov     [rbp-16], rax
-    mov     [rbp-8],  rdx
-    jmp     _sn_14
-_sm_14:
-    jmp     _sn_14
-_sf_14:
-    jmp     _L_ppArgDone_2
-_sn_14:
+    mov     [rbp-8], rdx
+    mov     rdi, [rbp-16]
+    mov     rsi, [rbp-8]
+    call    stmt_setup_subject
+    jmp     P_14_α
+
+
+; REF(ppTokPat) α=P_14_α
+P_14_α:
+    lea     rax, [rel nref2_gamma]
+    mov     [P_ppTokPat_ret_gamma], rax
+    lea     rax, [rel nref2_omega]
+    mov     [P_ppTokPat_ret_omega], rax
+    jmp     P_ppTokPat_alpha
+
+; REF(ppTokPat) β=P_14_β
+P_14_β:
+    lea     rax, [rel nref2_gamma]
+    mov     [P_ppTokPat_ret_gamma], rax
+    lea     rax, [rel nref2_omega]
+    mov     [P_ppTokPat_ret_omega], rax
+    jmp     P_ppTokPat_beta
+
+nref2_gamma:
+    jmp     P_14_γ
+nref2_omega:
+    jmp     P_14_ω
+
+P_14_γ:
+    jmp     L_sn_14
+P_14_ω:
+    jmp     L_ppArgDone_2
+L_sn_14:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_15:
+L_sn_15:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_16:
+L_sn_16:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_17:
+L_sn_17:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_18:
+L_sn_18:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_19:
+L_sn_19:
 
-    lea     rdi, [rel ps_7]
+    lea     rdi, [rel S_7]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -323,15 +542,15 @@ _sn_19:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_20
-    lea     rdi, [rel ps_7]
+    jnz     L_sn_20
+    lea     rdi, [rel S_7]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_20
-_sn_20:
+    jmp     L_sn_20
+L_sn_20:
 
-    lea     rdi, [rel ps_8]
+    lea     rdi, [rel S_8]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -343,36 +562,36 @@ _sn_20:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_21
-    lea     rdi, [rel ps_8]
+    jnz     L_sn_21
+    lea     rdi, [rel S_8]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _L_ppArgLoop_1
-_sn_21:
+    jmp     L_ppArgLoop_1
+L_sn_21:
 
-_L_ppArgP2_3:
+L_ppArgP2_3:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_22:
-
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_23:
+L_sn_22:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_24:
+L_sn_23:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_25:
+L_sn_24:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_26:
+L_sn_25:
 
-    lea     rdi, [rel ps_7]
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_26:
+
+    lea     rdi, [rel S_7]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -384,15 +603,15 @@ _sn_26:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_27
-    lea     rdi, [rel ps_7]
+    jnz     L_sn_27
+    lea     rdi, [rel S_7]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_27
-_sn_27:
+    jmp     L_sn_27
+L_sn_27:
 
-    lea     rdi, [rel ps_8]
+    lea     rdi, [rel S_8]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -404,36 +623,36 @@ _sn_27:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_28
-    lea     rdi, [rel ps_8]
+    jnz     L_sn_28
+    lea     rdi, [rel S_8]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _L_ppArgLoop_1
-_sn_28:
+    jmp     L_ppArgLoop_1
+L_sn_28:
 
-_L_ppArgP3_4:
+L_ppArgP3_4:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_29:
-
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_30:
+L_sn_29:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_31:
+L_sn_30:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_32:
+L_sn_31:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_33:
+L_sn_32:
 
-    lea     rdi, [rel ps_7]
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_33:
+
+    lea     rdi, [rel S_7]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -445,15 +664,15 @@ _sn_33:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_34
-    lea     rdi, [rel ps_7]
+    jnz     L_sn_34
+    lea     rdi, [rel S_7]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_34
-_sn_34:
+    jmp     L_sn_34
+L_sn_34:
 
-    lea     rdi, [rel ps_8]
+    lea     rdi, [rel S_8]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -465,36 +684,36 @@ _sn_34:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_35
-    lea     rdi, [rel ps_8]
+    jnz     L_sn_35
+    lea     rdi, [rel S_8]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _L_ppArgLoop_1
-_sn_35:
+    jmp     L_ppArgLoop_1
+L_sn_35:
 
-_L_ppArgP4_5:
+L_ppArgP4_5:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_36:
-
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_37:
+L_sn_36:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_38:
+L_sn_37:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_39:
+L_sn_38:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_40:
+L_sn_39:
 
-    lea     rdi, [rel ps_7]
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_40:
+
+    lea     rdi, [rel S_7]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -506,15 +725,15 @@ _sn_40:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_41
-    lea     rdi, [rel ps_7]
+    jnz     L_sn_41
+    lea     rdi, [rel S_7]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_41
-_sn_41:
+    jmp     L_sn_41
+L_sn_41:
 
-    lea     rdi, [rel ps_8]
+    lea     rdi, [rel S_8]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -526,36 +745,36 @@ _sn_41:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_42
-    lea     rdi, [rel ps_8]
+    jnz     L_sn_42
+    lea     rdi, [rel S_8]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _L_ppArgLoop_1
-_sn_42:
+    jmp     L_ppArgLoop_1
+L_sn_42:
 
-_L_ppArgP5_6:
+L_ppArgP5_6:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_43:
-
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_44:
+L_sn_43:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_45:
+L_sn_44:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_46:
+L_sn_45:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_47:
+L_sn_46:
 
-    lea     rdi, [rel ps_7]
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_47:
+
+    lea     rdi, [rel S_7]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -567,15 +786,15 @@ _sn_47:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_48
-    lea     rdi, [rel ps_7]
+    jnz     L_sn_48
+    lea     rdi, [rel S_7]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_48
-_sn_48:
+    jmp     L_sn_48
+L_sn_48:
 
-    lea     rdi, [rel ps_8]
+    lea     rdi, [rel S_8]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -587,64 +806,64 @@ _sn_48:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_49
-    lea     rdi, [rel ps_8]
+    jnz     L_sn_49
+    lea     rdi, [rel S_8]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _L_ppArgLoop_1
-_sn_49:
+    jmp     L_ppArgLoop_1
+L_sn_49:
 
-_L_ppArgChk1_7:
+L_ppArgChk1_7:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_50:
-
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-    jmp     _L_ppArgLoop_1
-_sn_51:
-
-_L_ppArgChk2_8:
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_52:
+L_sn_50:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-    jmp     _L_ppArgLoop_1
-_sn_53:
+    jmp     L_ppArgLoop_1
+L_sn_51:
 
-_L_ppArgChk3_9:
+L_ppArgChk2_8:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_54:
-
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-    jmp     _L_ppArgLoop_1
-_sn_55:
-
-_L_ppArgChk4_10:
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_56:
+L_sn_52:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-    jmp     _L_ppArgLoop_1
-_sn_57:
+    jmp     L_ppArgLoop_1
+L_sn_53:
 
-_L_ppArgChk5_11:
+L_ppArgChk3_9:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_58:
+L_sn_54:
 
-    lea     rdi, [rel ps_7]
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+    jmp     L_ppArgLoop_1
+L_sn_55:
+
+L_ppArgChk4_10:
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_56:
+
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+    jmp     L_ppArgLoop_1
+L_sn_57:
+
+L_ppArgChk5_11:
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_58:
+
+    lea     rdi, [rel S_7]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
-    lea     rdi, [rel ps_12]
+    lea     rdi, [rel S_12]
     call    stmt_get
     mov     [rbp-32], rax
     mov     [rbp-24], rdx
@@ -652,24 +871,24 @@ _sn_58:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_59
-    lea     rdi, [rel ps_7]
+    jnz     L_sn_59
+    lea     rdi, [rel S_7]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _L_ppArgLoop_1
-_sn_59:
+    jmp     L_ppArgLoop_1
+L_sn_59:
 
-_L_ppArgChk6_12:
+L_ppArgChk6_12:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_60:
+L_sn_60:
 
-    lea     rdi, [rel ps_8]
+    lea     rdi, [rel S_8]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
-    lea     rdi, [rel ps_12]
+    lea     rdi, [rel S_12]
     call    stmt_get
     mov     [rbp-32], rax
     mov     [rbp-24], rdx
@@ -677,20 +896,20 @@ _sn_60:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_61
-    lea     rdi, [rel ps_8]
+    jnz     L_sn_61
+    lea     rdi, [rel S_8]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _L_ppArgLoop_1
-_sn_61:
+    jmp     L_ppArgLoop_1
+L_sn_61:
 
-_L_ppArgUnk_13:
+L_ppArgUnk_13:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_62:
+L_sn_62:
 
-    lea     rdi, [rel ps_49]
+    lea     rdi, [rel S_49]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -702,16 +921,16 @@ _sn_62:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_63
-    lea     rdi, [rel ps_49]
+    jnz     L_sn_63
+    lea     rdi, [rel S_49]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _L_ppArgLoop_1
-_sn_63:
+    jmp     L_ppArgLoop_1
+L_sn_63:
 
-_L_ppArgWarn_14:
-    lea     rdi, [rel ps_51]
+L_ppArgWarn_14:
+    lea     rdi, [rel S_51]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -721,21 +940,21 @@ _L_ppArgWarn_14:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_64
+    jnz     L_sn_64
     mov     rdi, [rbp-32]
     mov     rsi, [rbp-24]
     call    stmt_output
-    jmp     _L_ppArgLoop_1
-_sn_64:
+    jmp     L_ppArgLoop_1
+L_sn_64:
 
-_L_ppArgDone_2:
-_sn_65:
+L_ppArgDone_2:
+L_sn_65:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_66:
+L_sn_66:
 
-    lea     rdi, [rel ps_54]
+    lea     rdi, [rel S_54]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -745,15 +964,15 @@ _sn_66:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_67
-    lea     rdi, [rel ps_54]
+    jnz     L_sn_67
+    lea     rdi, [rel S_54]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_67
-_sn_67:
+    jmp     L_sn_67
+L_sn_67:
 
-    lea     rdi, [rel ps_56]
+    lea     rdi, [rel S_56]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -763,15 +982,15 @@ _sn_67:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_68
-    lea     rdi, [rel ps_56]
+    jnz     L_sn_68
+    lea     rdi, [rel S_56]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_68
-_sn_68:
+    jmp     L_sn_68
+L_sn_68:
 
-    lea     rdi, [rel ps_61]
+    lea     rdi, [rel S_61]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -781,15 +1000,15 @@ _sn_68:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_69
-    lea     rdi, [rel ps_61]
+    jnz     L_sn_69
+    lea     rdi, [rel S_61]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_69
-_sn_69:
+    jmp     L_sn_69
+L_sn_69:
 
-    lea     rdi, [rel ps_63]
+    lea     rdi, [rel S_63]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -799,15 +1018,15 @@ _sn_69:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_70
-    lea     rdi, [rel ps_63]
+    jnz     L_sn_70
+    lea     rdi, [rel S_63]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_70
-_sn_70:
+    jmp     L_sn_70
+L_sn_70:
 
-    lea     rdi, [rel ps_66]
+    lea     rdi, [rel S_66]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -819,15 +1038,15 @@ _sn_70:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_71
-    lea     rdi, [rel ps_66]
+    jnz     L_sn_71
+    lea     rdi, [rel S_66]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_71
-_sn_71:
+    jmp     L_sn_71
+L_sn_71:
 
-    lea     rdi, [rel ps_67]
+    lea     rdi, [rel S_67]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -837,15 +1056,15 @@ _sn_71:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_72
-    lea     rdi, [rel ps_67]
+    jnz     L_sn_72
+    lea     rdi, [rel S_67]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_72
-_sn_72:
+    jmp     L_sn_72
+L_sn_72:
 
-    lea     rdi, [rel ps_68]
+    lea     rdi, [rel S_68]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -855,24 +1074,24 @@ _sn_72:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_73
-    lea     rdi, [rel ps_68]
+    jnz     L_sn_73
+    lea     rdi, [rel S_68]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_73
-_sn_73:
+    jmp     L_sn_73
+L_sn_73:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_74:
+L_sn_74:
 
-_L_ppAutoR_16:
-    lea     rdi, [rel ps_74]
+L_ppAutoR_16:
+    lea     rdi, [rel S_74]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
-    lea     rdi, [rel ps_75]
+    lea     rdi, [rel S_75]
     call    stmt_get
     mov     [rbp-32], rax
     mov     [rbp-24], rdx
@@ -880,21 +1099,21 @@ _L_ppAutoR_16:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sf_75
-    lea     rdi, [rel ps_74]
+    jnz     L_sf_75
+    lea     rdi, [rel S_74]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_75
-_sf_75:
-    jmp     _L_ppAutoSort_17
-_sn_75:
+    jmp     L_sn_75
+L_sf_75:
+    jmp     L_ppAutoSort_17
+L_sn_75:
 
-    lea     rdi, [rel ps_72]
+    lea     rdi, [rel S_72]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
-    lea     rdi, [rel ps_74]
+    lea     rdi, [rel S_74]
     call    stmt_get
     mov     [rbp-32], rax
     mov     [rbp-24], rdx
@@ -902,56 +1121,190 @@ _sn_75:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_76
-    lea     rdi, [rel ps_72]
+    jnz     L_sn_76
+    lea     rdi, [rel S_72]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_76
-_sn_76:
+    jmp     L_sn_76
+L_sn_76:
 
-    lea     rdi, [rel ps_74]
+    lea     rdi, [rel S_74]
     call    stmt_get
     mov     [rbp-16], rax
-    mov     [rbp-8],  rdx
-    jmp     _sn_77
-_sm_77:
-    jmp     _L_ppAutoR_16
-_sf_77:
-    jmp     _sn_77
-_sn_77:
+    mov     [rbp-8], rdx
+    mov     rdi, [rbp-16]
+    mov     rsi, [rbp-8]
+    call    stmt_setup_subject
+    jmp     P_77_α
 
-    lea     rdi, [rel ps_74]
+
+; SEQ α=P_77_α
+P_77_α:
+    jmp     seq_l3_alpha
+P_77_β:
+    jmp     seq_r3_beta
+
+; POS(0)  α=seq_l3_alpha
+seq_l3_alpha:
+    cmp     qword [cursor], 0
+    jne     P_77_ω
+    jmp     seq_r3_alpha
+
+; POS β=seq_l3_beta
+seq_l3_beta:
+    jmp     P_77_ω
+
+; ANY("*-")  α=seq_r3_alpha
+seq_r3_alpha:
+    mov     rax, [cursor]
+    cmp     rax, [subject_len_val]
+    jge     seq_l3_beta
+    mov     [any4_saved], rax
+    lea     rbx, [rel subject_data]
+    movzx   ecx, byte [rbx + rax]
+    lea     rsi, [rel lit_str_2]
+    mov     rdx, 2
+any4_loop:
+    test    rdx, rdx
+    jz      any4_notfound
+    movzx   eax, byte [rsi]
+    cmp     al, cl
+    je      any4_found
+    inc     rsi
+    dec     rdx
+    jmp     any4_loop
+any4_notfound:
+    jmp     seq_l3_beta
+any4_found:
+    mov     rax, [any4_saved]
+    inc     rax
+    mov     [cursor], rax
+    jmp     P_77_γ
+
+; ANY β=seq_r3_beta
+seq_r3_beta:
+    mov     rax, [any4_saved]
+    mov     [cursor], rax
+    jmp     seq_l3_beta
+
+P_77_γ:
+    jmp     L_ppAutoR_16
+P_77_ω:
+    jmp     L_sn_77
+L_sn_77:
+
+    lea     rdi, [rel S_74]
     call    stmt_get
     mov     [rbp-16], rax
-    mov     [rbp-8],  rdx
-    jmp     _sn_78
-_sm_78:
-    jmp     _L_ppAutoCont_18
-_sf_78:
-    jmp     _sn_78
-_sn_78:
+    mov     [rbp-8], rdx
+    mov     rdi, [rbp-16]
+    mov     rsi, [rbp-8]
+    call    stmt_setup_subject
+    jmp     P_78_α
+
+
+; SEQ α=P_78_α
+P_78_α:
+    jmp     seq_l5_alpha
+P_78_β:
+    jmp     seq_r5_beta
+
+; POS(0)  α=seq_l5_alpha
+seq_l5_alpha:
+    cmp     qword [cursor], 0
+    jne     P_78_ω
+    jmp     seq_r5_alpha
+
+; POS β=seq_l5_beta
+seq_l5_beta:
+    jmp     P_78_ω
+
+; ANY("+.")  α=seq_r5_alpha
+seq_r5_alpha:
+    mov     rax, [cursor]
+    cmp     rax, [subject_len_val]
+    jge     seq_l5_beta
+    mov     [any6_saved], rax
+    lea     rbx, [rel subject_data]
+    movzx   ecx, byte [rbx + rax]
+    lea     rsi, [rel lit_str_3]
+    mov     rdx, 2
+any6_loop:
+    test    rdx, rdx
+    jz      any6_notfound
+    movzx   eax, byte [rsi]
+    cmp     al, cl
+    je      any6_found
+    inc     rsi
+    dec     rdx
+    jmp     any6_loop
+any6_notfound:
+    jmp     seq_l5_beta
+any6_found:
+    mov     rax, [any6_saved]
+    inc     rax
+    mov     [cursor], rax
+    jmp     P_78_γ
+
+; ANY β=seq_r5_beta
+seq_r5_beta:
+    mov     rax, [any6_saved]
+    mov     [cursor], rax
+    jmp     seq_l5_beta
+
+P_78_γ:
+    jmp     L_ppAutoCont_18
+P_78_ω:
+    jmp     L_sn_78
+L_sn_78:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_79:
+L_sn_79:
 
-    lea     rdi, [rel ps_78]
-    call    stmt_get
-    mov     [rbp-16], rax
-    mov     [rbp-8],  rdx
-    jmp     _sn_80
-_sm_80:
-    jmp     _sn_80
-_sf_80:
-    jmp     _L_ppAutoNew_19
-_sn_80:
-
-    lea     rdi, [rel ps_79]
+    lea     rdi, [rel S_78]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
-    lea     rdi, [rel ps_62]
+    mov     rdi, [rbp-16]
+    mov     rsi, [rbp-8]
+    call    stmt_setup_subject
+    jmp     P_80_α
+
+
+; REF(ppGPat) α=P_80_α
+P_80_α:
+    lea     rax, [rel nref7_gamma]
+    mov     [P_ppGPat_ret_gamma], rax
+    lea     rax, [rel nref7_omega]
+    mov     [P_ppGPat_ret_omega], rax
+    jmp     P_ppGPat_alpha
+
+; REF(ppGPat) β=P_80_β
+P_80_β:
+    lea     rax, [rel nref7_gamma]
+    mov     [P_ppGPat_ret_gamma], rax
+    lea     rax, [rel nref7_omega]
+    mov     [P_ppGPat_ret_omega], rax
+    jmp     P_ppGPat_beta
+
+nref7_gamma:
+    jmp     P_80_γ
+nref7_omega:
+    jmp     P_80_ω
+
+P_80_γ:
+    jmp     L_sn_80
+P_80_ω:
+    jmp     L_ppAutoNew_19
+L_sn_80:
+
+    lea     rdi, [rel S_79]
+    call    stmt_get
+    mov     [rbp-16], rax
+    mov     [rbp-8], rdx
+    lea     rdi, [rel S_62]
     call    stmt_get
     mov     [rbp-32], rax
     mov     [rbp-24], rdx
@@ -959,26 +1312,52 @@ _sn_80:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_81
-    lea     rdi, [rel ps_79]
+    jnz     L_sn_81
+    lea     rdi, [rel S_79]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_81
-_sn_81:
+    jmp     L_sn_81
+L_sn_81:
 
-    lea     rdi, [rel ps_79]
+    lea     rdi, [rel S_79]
     call    stmt_get
     mov     [rbp-16], rax
-    mov     [rbp-8],  rdx
-    jmp     _sn_82
-_sm_82:
-    jmp     _sn_82
-_sf_82:
-    jmp     _sn_82
-_sn_82:
+    mov     [rbp-8], rdx
+    mov     rdi, [rbp-16]
+    mov     rsi, [rbp-8]
+    call    stmt_setup_subject
+    jmp     P_82_α
 
-    lea     rdi, [rel ps_80]
+
+; REF(ppTrimPat) α=P_82_α
+P_82_α:
+    lea     rax, [rel nref8_gamma]
+    mov     [P_ppTrimPat_ret_gamma], rax
+    lea     rax, [rel nref8_omega]
+    mov     [P_ppTrimPat_ret_omega], rax
+    jmp     P_ppTrimPat_alpha
+
+; REF(ppTrimPat) β=P_82_β
+P_82_β:
+    lea     rax, [rel nref8_gamma]
+    mov     [P_ppTrimPat_ret_gamma], rax
+    lea     rax, [rel nref8_omega]
+    mov     [P_ppTrimPat_ret_omega], rax
+    jmp     P_ppTrimPat_beta
+
+nref8_gamma:
+    jmp     P_82_γ
+nref8_omega:
+    jmp     P_82_ω
+
+P_82_γ:
+    jmp     L_sn_82
+P_82_ω:
+    jmp     L_sn_82
+L_sn_82:
+
+    lea     rdi, [rel S_80]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -988,19 +1367,19 @@ _sn_82:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_83
-    lea     rdi, [rel ps_80]
+    jnz     L_sn_83
+    lea     rdi, [rel S_80]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_83
-_sn_83:
+    jmp     L_sn_83
+L_sn_83:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_84:
+L_sn_84:
 
-    lea     rdi, [rel ps_66]
+    lea     rdi, [rel S_66]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -1010,24 +1389,24 @@ _sn_84:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_85
-    lea     rdi, [rel ps_66]
+    jnz     L_sn_85
+    lea     rdi, [rel S_66]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_85
-_sn_85:
+    jmp     L_sn_85
+L_sn_85:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_86:
+L_sn_86:
 
-_L_ppAutoNew_19:
-    lea     rdi, [rel ps_78]
+L_ppAutoNew_19:
+    lea     rdi, [rel S_78]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
-    lea     rdi, [rel ps_74]
+    lea     rdi, [rel S_74]
     call    stmt_get
     mov     [rbp-32], rax
     mov     [rbp-24], rdx
@@ -1035,16 +1414,16 @@ _L_ppAutoNew_19:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_87
-    lea     rdi, [rel ps_78]
+    jnz     L_sn_87
+    lea     rdi, [rel S_78]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _L_ppAutoR_16
-_sn_87:
+    jmp     L_ppAutoR_16
+L_sn_87:
 
-_L_ppAutoCont_18:
-    lea     rdi, [rel ps_78]
+L_ppAutoCont_18:
+    lea     rdi, [rel S_78]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -1054,20 +1433,20 @@ _L_ppAutoCont_18:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_88
-    lea     rdi, [rel ps_78]
+    jnz     L_sn_88
+    lea     rdi, [rel S_78]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _L_ppAutoR_16
-_sn_88:
+    jmp     L_ppAutoR_16
+L_sn_88:
 
-_L_ppAutoSort_17:
+L_ppAutoSort_17:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_89:
+L_sn_89:
 
-    lea     rdi, [rel ps_86]
+    lea     rdi, [rel S_86]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -1079,16 +1458,16 @@ _sn_89:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_90
-    lea     rdi, [rel ps_86]
+    jnz     L_sn_90
+    lea     rdi, [rel S_86]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_90
-_sn_90:
+    jmp     L_sn_90
+L_sn_90:
 
-_L_ppAS1_20:
-    lea     rdi, [rel ps_86]
+L_ppAS1_20:
+    lea     rdi, [rel S_86]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -1098,21 +1477,21 @@ _L_ppAS1_20:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sf_91
-    lea     rdi, [rel ps_86]
+    jnz     L_sf_91
+    lea     rdi, [rel S_86]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_91
-_sf_91:
-    jmp     _L_ppAutoCalc_21
-_sn_91:
+    jmp     L_sn_91
+L_sf_91:
+    jmp     L_ppAutoCalc_21
+L_sn_91:
 
-    lea     rdi, [rel ps_89]
+    lea     rdi, [rel S_89]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
-    lea     rdi, [rel ps_86]
+    lea     rdi, [rel S_86]
     call    stmt_get
     mov     [rbp-32], rax
     mov     [rbp-24], rdx
@@ -1120,15 +1499,15 @@ _sn_91:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_92
-    lea     rdi, [rel ps_89]
+    jnz     L_sn_92
+    lea     rdi, [rel S_89]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_92
-_sn_92:
+    jmp     L_sn_92
+L_sn_92:
 
-    lea     rdi, [rel ps_90]
+    lea     rdi, [rel S_90]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -1138,16 +1517,16 @@ _sn_92:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_93
-    lea     rdi, [rel ps_90]
+    jnz     L_sn_93
+    lea     rdi, [rel S_90]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_93
-_sn_93:
+    jmp     L_sn_93
+L_sn_93:
 
-_L_ppAS2_22:
-    lea     rdi, [rel ps_92]
+L_ppAS2_22:
+    lea     rdi, [rel S_92]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -1157,31 +1536,31 @@ _L_ppAS2_22:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_94
-    lea     rdi, [rel ps_92]
+    jnz     L_sn_94
+    lea     rdi, [rel S_92]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_94
-_sn_94:
+    jmp     L_sn_94
+L_sn_94:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_95:
+L_sn_95:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_96:
+L_sn_96:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_97:
+L_sn_97:
 
-    lea     rdi, [rel ps_89]
+    lea     rdi, [rel S_89]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
-    lea     rdi, [rel ps_92]
+    lea     rdi, [rel S_92]
     call    stmt_get
     mov     [rbp-32], rax
     mov     [rbp-24], rdx
@@ -1189,22 +1568,22 @@ _sn_97:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_98
-    lea     rdi, [rel ps_89]
+    jnz     L_sn_98
+    lea     rdi, [rel S_89]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _L_ppAS2_22
-_sn_98:
+    jmp     L_ppAS2_22
+L_sn_98:
 
-_L_ppASins_23:
+L_ppASins_23:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-    jmp     _L_ppAS1_20
-_sn_99:
+    jmp     L_ppAS1_20
+L_sn_99:
 
-_L_ppAutoCalc_21:
-    lea     rdi, [rel ps_95]
+L_ppAutoCalc_21:
+    lea     rdi, [rel S_95]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -1214,19 +1593,19 @@ _L_ppAutoCalc_21:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_100
-    lea     rdi, [rel ps_95]
+    jnz     L_sn_100
+    lea     rdi, [rel S_95]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_100
-_sn_100:
+    jmp     L_sn_100
+L_sn_100:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_101:
+L_sn_101:
 
-    lea     rdi, [rel ps_95]
+    lea     rdi, [rel S_95]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -1238,16 +1617,16 @@ _sn_101:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_102
-    lea     rdi, [rel ps_95]
+    jnz     L_sn_102
+    lea     rdi, [rel S_95]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_102
-_sn_102:
+    jmp     L_sn_102
+L_sn_102:
 
-_L_ppAP90ok_24:
-    lea     rdi, [rel ps_97]
+L_ppAP90ok_24:
+    lea     rdi, [rel S_97]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -1257,19 +1636,19 @@ _L_ppAP90ok_24:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_103
-    lea     rdi, [rel ps_97]
+    jnz     L_sn_103
+    lea     rdi, [rel S_97]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_103
-_sn_103:
+    jmp     L_sn_103
+L_sn_103:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_104:
+L_sn_104:
 
-    lea     rdi, [rel ps_97]
+    lea     rdi, [rel S_97]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -1281,43 +1660,43 @@ _sn_104:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_105
-    lea     rdi, [rel ps_97]
+    jnz     L_sn_105
+    lea     rdi, [rel S_97]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_105
-_sn_105:
+    jmp     L_sn_105
+L_sn_105:
 
-_L_ppAscale_25:
-_sn_106:
-
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_107:
+L_ppAscale_25:
+L_sn_106:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_108:
+L_sn_107:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_109:
-
-_L_ppAs1_26:
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_110:
+L_sn_108:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_111:
+L_sn_109:
+
+L_ppAs1_26:
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_110:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_112:
+L_sn_111:
 
-    lea     rdi, [rel ps_7]
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_112:
+
+    lea     rdi, [rel S_7]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -1327,15 +1706,15 @@ _sn_112:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_113
-    lea     rdi, [rel ps_7]
+    jnz     L_sn_113
+    lea     rdi, [rel S_7]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_113
-_sn_113:
+    jmp     L_sn_113
+L_sn_113:
 
-    lea     rdi, [rel ps_8]
+    lea     rdi, [rel S_8]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -1345,19 +1724,19 @@ _sn_113:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_114
-    lea     rdi, [rel ps_8]
+    jnz     L_sn_114
+    lea     rdi, [rel S_8]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_114
-_sn_114:
+    jmp     L_sn_114
+L_sn_114:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_115:
+L_sn_115:
 
-    lea     rdi, [rel ps_8]
+    lea     rdi, [rel S_8]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -1369,16 +1748,16 @@ _sn_115:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_116
-    lea     rdi, [rel ps_8]
+    jnz     L_sn_116
+    lea     rdi, [rel S_8]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_116
-_sn_116:
+    jmp     L_sn_116
+L_sn_116:
 
-_L_ppAutoMsg_27:
-    lea     rdi, [rel ps_51]
+L_ppAutoMsg_27:
+    lea     rdi, [rel S_51]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -1388,21 +1767,21 @@ _L_ppAutoMsg_27:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_117
+    jnz     L_sn_117
     mov     rdi, [rbp-32]
     mov     rsi, [rbp-24]
     call    stmt_output
-    jmp     _sn_117
-_sn_117:
+    jmp     L_sn_117
+L_sn_117:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_118:
+L_sn_118:
 
-_L_ppAutoSkip_15:
-_sn_119:
+L_ppAutoSkip_15:
+L_sn_119:
 
-    lea     rdi, [rel ps_111]
+    lea     rdi, [rel S_111]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -1412,15 +1791,15 @@ _sn_119:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_120
-    lea     rdi, [rel ps_111]
+    jnz     L_sn_120
+    lea     rdi, [rel S_111]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_120
-_sn_120:
+    jmp     L_sn_120
+L_sn_120:
 
-    lea     rdi, [rel ps_113]
+    lea     rdi, [rel S_113]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -1430,15 +1809,15 @@ _sn_120:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_121
-    lea     rdi, [rel ps_113]
+    jnz     L_sn_121
+    lea     rdi, [rel S_113]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_121
-_sn_121:
+    jmp     L_sn_121
+L_sn_121:
 
-    lea     rdi, [rel ps_116]
+    lea     rdi, [rel S_116]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -1448,15 +1827,15 @@ _sn_121:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_122
-    lea     rdi, [rel ps_116]
+    jnz     L_sn_122
+    lea     rdi, [rel S_116]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_122
-_sn_122:
+    jmp     L_sn_122
+L_sn_122:
 
-    lea     rdi, [rel ps_118]
+    lea     rdi, [rel S_118]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -1466,15 +1845,15 @@ _sn_122:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_123
-    lea     rdi, [rel ps_118]
+    jnz     L_sn_123
+    lea     rdi, [rel S_118]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_123
-_sn_123:
+    jmp     L_sn_123
+L_sn_123:
 
-    lea     rdi, [rel ps_119]
+    lea     rdi, [rel S_119]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -1484,15 +1863,15 @@ _sn_123:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_124
-    lea     rdi, [rel ps_119]
+    jnz     L_sn_124
+    lea     rdi, [rel S_119]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_124
-_sn_124:
+    jmp     L_sn_124
+L_sn_124:
 
-    lea     rdi, [rel ps_127]
+    lea     rdi, [rel S_127]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -1502,15 +1881,15 @@ _sn_124:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_125
-    lea     rdi, [rel ps_127]
+    jnz     L_sn_125
+    lea     rdi, [rel S_127]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_125
-_sn_125:
+    jmp     L_sn_125
+L_sn_125:
 
-    lea     rdi, [rel ps_131]
+    lea     rdi, [rel S_131]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -1520,15 +1899,15 @@ _sn_125:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_126
-    lea     rdi, [rel ps_131]
+    jnz     L_sn_126
+    lea     rdi, [rel S_131]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_126
-_sn_126:
+    jmp     L_sn_126
+L_sn_126:
 
-    lea     rdi, [rel ps_136]
+    lea     rdi, [rel S_136]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -1538,15 +1917,15 @@ _sn_126:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_127
-    lea     rdi, [rel ps_136]
+    jnz     L_sn_127
+    lea     rdi, [rel S_136]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_127
-_sn_127:
+    jmp     L_sn_127
+L_sn_127:
 
-    lea     rdi, [rel ps_138]
+    lea     rdi, [rel S_138]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -1556,15 +1935,15 @@ _sn_127:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_128
-    lea     rdi, [rel ps_138]
+    jnz     L_sn_128
+    lea     rdi, [rel S_138]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_128
-_sn_128:
+    jmp     L_sn_128
+L_sn_128:
 
-    lea     rdi, [rel ps_140]
+    lea     rdi, [rel S_140]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -1574,15 +1953,15 @@ _sn_128:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_129
-    lea     rdi, [rel ps_140]
+    jnz     L_sn_129
+    lea     rdi, [rel S_140]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_129
-_sn_129:
+    jmp     L_sn_129
+L_sn_129:
 
-    lea     rdi, [rel ps_143]
+    lea     rdi, [rel S_143]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -1592,15 +1971,15 @@ _sn_129:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_130
-    lea     rdi, [rel ps_143]
+    jnz     L_sn_130
+    lea     rdi, [rel S_143]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_130
-_sn_130:
+    jmp     L_sn_130
+L_sn_130:
 
-    lea     rdi, [rel ps_145]
+    lea     rdi, [rel S_145]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -1610,15 +1989,15 @@ _sn_130:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_131
-    lea     rdi, [rel ps_145]
+    jnz     L_sn_131
+    lea     rdi, [rel S_145]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_131
-_sn_131:
+    jmp     L_sn_131
+L_sn_131:
 
-    lea     rdi, [rel ps_146]
+    lea     rdi, [rel S_146]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -1628,15 +2007,15 @@ _sn_131:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_132
-    lea     rdi, [rel ps_146]
+    jnz     L_sn_132
+    lea     rdi, [rel S_146]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_132
-_sn_132:
+    jmp     L_sn_132
+L_sn_132:
 
-    lea     rdi, [rel ps_133]
+    lea     rdi, [rel S_133]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -1646,19 +2025,19 @@ _sn_132:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_133
-    lea     rdi, [rel ps_133]
+    jnz     L_sn_133
+    lea     rdi, [rel S_133]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_133
-_sn_133:
+    jmp     L_sn_133
+L_sn_133:
 
-    lea     rdi, [rel ps_139]
+    lea     rdi, [rel S_139]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
-    lea     rdi, [rel ps_149]
+    lea     rdi, [rel S_149]
     call    stmt_strval
     mov     [rbp-32], rax
     mov     [rbp-24], rdx
@@ -1666,19 +2045,19 @@ _sn_133:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_134
-    lea     rdi, [rel ps_139]
+    jnz     L_sn_134
+    lea     rdi, [rel S_139]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_134
-_sn_134:
+    jmp     L_sn_134
+L_sn_134:
 
-    lea     rdi, [rel ps_137]
+    lea     rdi, [rel S_137]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
-    lea     rdi, [rel ps_150]
+    lea     rdi, [rel S_150]
     call    stmt_strval
     mov     [rbp-32], rax
     mov     [rbp-24], rdx
@@ -1686,15 +2065,15 @@ _sn_134:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_135
-    lea     rdi, [rel ps_137]
+    jnz     L_sn_135
+    lea     rdi, [rel S_137]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_135
-_sn_135:
+    jmp     L_sn_135
+L_sn_135:
 
-    lea     rdi, [rel ps_141]
+    lea     rdi, [rel S_141]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -1704,15 +2083,15 @@ _sn_135:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_136
-    lea     rdi, [rel ps_141]
+    jnz     L_sn_136
+    lea     rdi, [rel S_141]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_136
-_sn_136:
+    jmp     L_sn_136
+L_sn_136:
 
-    lea     rdi, [rel ps_144]
+    lea     rdi, [rel S_144]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -1722,15 +2101,15 @@ _sn_136:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_137
-    lea     rdi, [rel ps_144]
+    jnz     L_sn_137
+    lea     rdi, [rel S_144]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_137
-_sn_137:
+    jmp     L_sn_137
+L_sn_137:
 
-    lea     rdi, [rel ps_134]
+    lea     rdi, [rel S_134]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -1740,111 +2119,111 @@ _sn_137:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_138
-    lea     rdi, [rel ps_134]
+    jnz     L_sn_138
+    lea     rdi, [rel S_134]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_138
-_sn_138:
+    jmp     L_sn_138
+L_sn_138:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_139:
+L_sn_139:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_140:
+L_sn_140:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_141:
+L_sn_141:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_142:
+L_sn_142:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_143:
+L_sn_143:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_144:
+L_sn_144:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_145:
+L_sn_145:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_146:
+L_sn_146:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_147:
+L_sn_147:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_148:
+L_sn_148:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_149:
+L_sn_149:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_150:
+L_sn_150:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_151:
+L_sn_151:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_152:
+L_sn_152:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_153:
+L_sn_153:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_154:
+L_sn_154:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_155:
+L_sn_155:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_156:
+L_sn_156:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_157:
+L_sn_157:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_158:
+L_sn_158:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_159:
+L_sn_159:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_160:
+L_sn_160:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_161:
+L_sn_161:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_162:
+L_sn_162:
 
-    lea     rdi, [rel ps_185]
+    lea     rdi, [rel S_185]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -1854,15 +2233,15 @@ _sn_162:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_163
-    lea     rdi, [rel ps_185]
+    jnz     L_sn_163
+    lea     rdi, [rel S_185]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_163
-_sn_163:
+    jmp     L_sn_163
+L_sn_163:
 
-    lea     rdi, [rel ps_189]
+    lea     rdi, [rel S_189]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -1872,15 +2251,15 @@ _sn_163:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_164
-    lea     rdi, [rel ps_189]
+    jnz     L_sn_164
+    lea     rdi, [rel S_189]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_164
-_sn_164:
+    jmp     L_sn_164
+L_sn_164:
 
-    lea     rdi, [rel ps_191]
+    lea     rdi, [rel S_191]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -1890,15 +2269,15 @@ _sn_164:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_165
-    lea     rdi, [rel ps_191]
+    jnz     L_sn_165
+    lea     rdi, [rel S_191]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_165
-_sn_165:
+    jmp     L_sn_165
+L_sn_165:
 
-    lea     rdi, [rel ps_193]
+    lea     rdi, [rel S_193]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -1908,15 +2287,15 @@ _sn_165:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_166
-    lea     rdi, [rel ps_193]
+    jnz     L_sn_166
+    lea     rdi, [rel S_193]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_166
-_sn_166:
+    jmp     L_sn_166
+L_sn_166:
 
-    lea     rdi, [rel ps_195]
+    lea     rdi, [rel S_195]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -1926,15 +2305,15 @@ _sn_166:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_167
-    lea     rdi, [rel ps_195]
+    jnz     L_sn_167
+    lea     rdi, [rel S_195]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_167
-_sn_167:
+    jmp     L_sn_167
+L_sn_167:
 
-    lea     rdi, [rel ps_197]
+    lea     rdi, [rel S_197]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -1944,15 +2323,15 @@ _sn_167:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_168
-    lea     rdi, [rel ps_197]
+    jnz     L_sn_168
+    lea     rdi, [rel S_197]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_168
-_sn_168:
+    jmp     L_sn_168
+L_sn_168:
 
-    lea     rdi, [rel ps_199]
+    lea     rdi, [rel S_199]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -1962,15 +2341,15 @@ _sn_168:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_169
-    lea     rdi, [rel ps_199]
+    jnz     L_sn_169
+    lea     rdi, [rel S_199]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_169
-_sn_169:
+    jmp     L_sn_169
+L_sn_169:
 
-    lea     rdi, [rel ps_201]
+    lea     rdi, [rel S_201]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -1980,15 +2359,15 @@ _sn_169:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_170
-    lea     rdi, [rel ps_201]
+    jnz     L_sn_170
+    lea     rdi, [rel S_201]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_170
-_sn_170:
+    jmp     L_sn_170
+L_sn_170:
 
-    lea     rdi, [rel ps_202]
+    lea     rdi, [rel S_202]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -1998,15 +2377,15 @@ _sn_170:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_171
-    lea     rdi, [rel ps_202]
+    jnz     L_sn_171
+    lea     rdi, [rel S_202]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_171
-_sn_171:
+    jmp     L_sn_171
+L_sn_171:
 
-    lea     rdi, [rel ps_204]
+    lea     rdi, [rel S_204]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -2016,15 +2395,15 @@ _sn_171:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_172
-    lea     rdi, [rel ps_204]
+    jnz     L_sn_172
+    lea     rdi, [rel S_204]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_172
-_sn_172:
+    jmp     L_sn_172
+L_sn_172:
 
-    lea     rdi, [rel ps_205]
+    lea     rdi, [rel S_205]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -2034,15 +2413,15 @@ _sn_172:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_173
-    lea     rdi, [rel ps_205]
+    jnz     L_sn_173
+    lea     rdi, [rel S_205]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_173
-_sn_173:
+    jmp     L_sn_173
+L_sn_173:
 
-    lea     rdi, [rel ps_207]
+    lea     rdi, [rel S_207]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -2052,15 +2431,15 @@ _sn_173:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_174
-    lea     rdi, [rel ps_207]
+    jnz     L_sn_174
+    lea     rdi, [rel S_207]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_174
-_sn_174:
+    jmp     L_sn_174
+L_sn_174:
 
-    lea     rdi, [rel ps_210]
+    lea     rdi, [rel S_210]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -2070,15 +2449,15 @@ _sn_174:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_175
-    lea     rdi, [rel ps_210]
+    jnz     L_sn_175
+    lea     rdi, [rel S_210]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_175
-_sn_175:
+    jmp     L_sn_175
+L_sn_175:
 
-    lea     rdi, [rel ps_212]
+    lea     rdi, [rel S_212]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -2088,15 +2467,15 @@ _sn_175:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_176
-    lea     rdi, [rel ps_212]
+    jnz     L_sn_176
+    lea     rdi, [rel S_212]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_176
-_sn_176:
+    jmp     L_sn_176
+L_sn_176:
 
-    lea     rdi, [rel ps_214]
+    lea     rdi, [rel S_214]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -2106,15 +2485,15 @@ _sn_176:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_177
-    lea     rdi, [rel ps_214]
+    jnz     L_sn_177
+    lea     rdi, [rel S_214]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_177
-_sn_177:
+    jmp     L_sn_177
+L_sn_177:
 
-    lea     rdi, [rel ps_216]
+    lea     rdi, [rel S_216]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -2124,15 +2503,15 @@ _sn_177:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_178
-    lea     rdi, [rel ps_216]
+    jnz     L_sn_178
+    lea     rdi, [rel S_216]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_178
-_sn_178:
+    jmp     L_sn_178
+L_sn_178:
 
-    lea     rdi, [rel ps_218]
+    lea     rdi, [rel S_218]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -2142,15 +2521,15 @@ _sn_178:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_179
-    lea     rdi, [rel ps_218]
+    jnz     L_sn_179
+    lea     rdi, [rel S_218]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_179
-_sn_179:
+    jmp     L_sn_179
+L_sn_179:
 
-    lea     rdi, [rel ps_220]
+    lea     rdi, [rel S_220]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -2160,15 +2539,15 @@ _sn_179:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_180
-    lea     rdi, [rel ps_220]
+    jnz     L_sn_180
+    lea     rdi, [rel S_220]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_180
-_sn_180:
+    jmp     L_sn_180
+L_sn_180:
 
-    lea     rdi, [rel ps_223]
+    lea     rdi, [rel S_223]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -2178,15 +2557,15 @@ _sn_180:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_181
-    lea     rdi, [rel ps_223]
+    jnz     L_sn_181
+    lea     rdi, [rel S_223]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_181
-_sn_181:
+    jmp     L_sn_181
+L_sn_181:
 
-    lea     rdi, [rel ps_225]
+    lea     rdi, [rel S_225]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -2196,15 +2575,15 @@ _sn_181:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_182
-    lea     rdi, [rel ps_225]
+    jnz     L_sn_182
+    lea     rdi, [rel S_225]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_182
-_sn_182:
+    jmp     L_sn_182
+L_sn_182:
 
-    lea     rdi, [rel ps_226]
+    lea     rdi, [rel S_226]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -2214,15 +2593,15 @@ _sn_182:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_183
-    lea     rdi, [rel ps_226]
+    jnz     L_sn_183
+    lea     rdi, [rel S_226]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_183
-_sn_183:
+    jmp     L_sn_183
+L_sn_183:
 
-    lea     rdi, [rel ps_230]
+    lea     rdi, [rel S_230]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -2232,15 +2611,15 @@ _sn_183:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_184
-    lea     rdi, [rel ps_230]
+    jnz     L_sn_184
+    lea     rdi, [rel S_230]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_184
-_sn_184:
+    jmp     L_sn_184
+L_sn_184:
 
-    lea     rdi, [rel ps_231]
+    lea     rdi, [rel S_231]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -2250,15 +2629,15 @@ _sn_184:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_185
-    lea     rdi, [rel ps_231]
+    jnz     L_sn_185
+    lea     rdi, [rel S_231]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_185
-_sn_185:
+    jmp     L_sn_185
+L_sn_185:
 
-    lea     rdi, [rel ps_235]
+    lea     rdi, [rel S_235]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -2268,15 +2647,15 @@ _sn_185:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_186
-    lea     rdi, [rel ps_235]
+    jnz     L_sn_186
+    lea     rdi, [rel S_235]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_186
-_sn_186:
+    jmp     L_sn_186
+L_sn_186:
 
-    lea     rdi, [rel ps_240]
+    lea     rdi, [rel S_240]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -2286,15 +2665,15 @@ _sn_186:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_187
-    lea     rdi, [rel ps_240]
+    jnz     L_sn_187
+    lea     rdi, [rel S_240]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_187
-_sn_187:
+    jmp     L_sn_187
+L_sn_187:
 
-    lea     rdi, [rel ps_238]
+    lea     rdi, [rel S_238]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -2304,15 +2683,15 @@ _sn_187:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_188
-    lea     rdi, [rel ps_238]
+    jnz     L_sn_188
+    lea     rdi, [rel S_238]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_188
-_sn_188:
+    jmp     L_sn_188
+L_sn_188:
 
-    lea     rdi, [rel ps_243]
+    lea     rdi, [rel S_243]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -2322,15 +2701,15 @@ _sn_188:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_189
-    lea     rdi, [rel ps_243]
+    jnz     L_sn_189
+    lea     rdi, [rel S_243]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_189
-_sn_189:
+    jmp     L_sn_189
+L_sn_189:
 
-    lea     rdi, [rel ps_247]
+    lea     rdi, [rel S_247]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -2340,15 +2719,15 @@ _sn_189:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_190
-    lea     rdi, [rel ps_247]
+    jnz     L_sn_190
+    lea     rdi, [rel S_247]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_190
-_sn_190:
+    jmp     L_sn_190
+L_sn_190:
 
-    lea     rdi, [rel ps_250]
+    lea     rdi, [rel S_250]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -2358,15 +2737,15 @@ _sn_190:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_191
-    lea     rdi, [rel ps_250]
+    jnz     L_sn_191
+    lea     rdi, [rel S_250]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_191
-_sn_191:
+    jmp     L_sn_191
+L_sn_191:
 
-    lea     rdi, [rel ps_252]
+    lea     rdi, [rel S_252]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -2376,15 +2755,15 @@ _sn_191:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_192
-    lea     rdi, [rel ps_252]
+    jnz     L_sn_192
+    lea     rdi, [rel S_252]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_192
-_sn_192:
+    jmp     L_sn_192
+L_sn_192:
 
-    lea     rdi, [rel ps_253]
+    lea     rdi, [rel S_253]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -2394,15 +2773,15 @@ _sn_192:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_193
-    lea     rdi, [rel ps_253]
+    jnz     L_sn_193
+    lea     rdi, [rel S_253]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_193
-_sn_193:
+    jmp     L_sn_193
+L_sn_193:
 
-    lea     rdi, [rel ps_254]
+    lea     rdi, [rel S_254]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -2412,15 +2791,15 @@ _sn_193:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_194
-    lea     rdi, [rel ps_254]
+    jnz     L_sn_194
+    lea     rdi, [rel S_254]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_194
-_sn_194:
+    jmp     L_sn_194
+L_sn_194:
 
-    lea     rdi, [rel ps_255]
+    lea     rdi, [rel S_255]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -2430,15 +2809,15 @@ _sn_194:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_195
-    lea     rdi, [rel ps_255]
+    jnz     L_sn_195
+    lea     rdi, [rel S_255]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_195
-_sn_195:
+    jmp     L_sn_195
+L_sn_195:
 
-    lea     rdi, [rel ps_256]
+    lea     rdi, [rel S_256]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -2448,15 +2827,15 @@ _sn_195:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_196
-    lea     rdi, [rel ps_256]
+    jnz     L_sn_196
+    lea     rdi, [rel S_256]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_196
-_sn_196:
+    jmp     L_sn_196
+L_sn_196:
 
-    lea     rdi, [rel ps_260]
+    lea     rdi, [rel S_260]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -2466,15 +2845,15 @@ _sn_196:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_197
-    lea     rdi, [rel ps_260]
+    jnz     L_sn_197
+    lea     rdi, [rel S_260]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_197
-_sn_197:
+    jmp     L_sn_197
+L_sn_197:
 
-    lea     rdi, [rel ps_264]
+    lea     rdi, [rel S_264]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -2484,25 +2863,25 @@ _sn_197:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_198
-    lea     rdi, [rel ps_264]
+    jnz     L_sn_198
+    lea     rdi, [rel S_264]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_198
-_sn_198:
+    jmp     L_sn_198
+L_sn_198:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-    jmp     _L_ppEnd_28
-_sn_199:
+    jmp     L_ppEnd_28
+L_sn_199:
 
-_L_pp_29:
+L_pp_29:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_200:
+L_sn_200:
 
-    lea     rdi, [rel ps_271]
+    lea     rdi, [rel S_271]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -2512,15 +2891,15 @@ _sn_200:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_201
-    lea     rdi, [rel ps_271]
+    jnz     L_sn_201
+    lea     rdi, [rel S_271]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_201
-_sn_201:
+    jmp     L_sn_201
+L_sn_201:
 
-    lea     rdi, [rel ps_272]
+    lea     rdi, [rel S_272]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -2530,15 +2909,15 @@ _sn_201:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_202
-    lea     rdi, [rel ps_272]
+    jnz     L_sn_202
+    lea     rdi, [rel S_272]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_202
-_sn_202:
+    jmp     L_sn_202
+L_sn_202:
 
-    lea     rdi, [rel ps_273]
+    lea     rdi, [rel S_273]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -2548,15 +2927,15 @@ _sn_202:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_203
-    lea     rdi, [rel ps_273]
+    jnz     L_sn_203
+    lea     rdi, [rel S_273]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_203
-_sn_203:
+    jmp     L_sn_203
+L_sn_203:
 
-    lea     rdi, [rel ps_274]
+    lea     rdi, [rel S_274]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -2566,15 +2945,15 @@ _sn_203:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_204
-    lea     rdi, [rel ps_274]
+    jnz     L_sn_204
+    lea     rdi, [rel S_274]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_204
-_sn_204:
+    jmp     L_sn_204
+L_sn_204:
 
-    lea     rdi, [rel ps_51]
+    lea     rdi, [rel S_51]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -2584,19 +2963,19 @@ _sn_204:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_205
+    jnz     L_sn_205
     mov     rdi, [rbp-32]
     mov     rsi, [rbp-24]
     call    stmt_output
-    jmp     _sn_205
-_sn_205:
+    jmp     L_sn_205
+L_sn_205:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_206:
+L_sn_206:
 
-_L_pp_Parse_31:
-    lea     rdi, [rel ps_282]
+L_pp_Parse_31:
+    lea     rdi, [rel S_282]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -2606,16 +2985,16 @@ _L_pp_Parse_31:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_207
-    lea     rdi, [rel ps_282]
+    jnz     L_sn_207
+    lea     rdi, [rel S_282]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _L_pp_0_32
-_sn_207:
+    jmp     L_pp_0_32
+L_sn_207:
 
-_L_pp_0_32:
-    lea     rdi, [rel ps_284]
+L_pp_0_32:
+    lea     rdi, [rel S_284]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -2627,16 +3006,16 @@ _L_pp_0_32:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_208
-    lea     rdi, [rel ps_284]
+    jnz     L_sn_208
+    lea     rdi, [rel S_284]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_208
-_sn_208:
+    jmp     L_sn_208
+L_sn_208:
 
-_L_pp_1_33:
-    lea     rdi, [rel ps_284]
+L_pp_1_33:
+    lea     rdi, [rel S_284]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -2646,314 +3025,314 @@ _L_pp_1_33:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sf_209
-    lea     rdi, [rel ps_284]
+    jnz     L_sf_209
+    lea     rdi, [rel S_284]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_209
-_sf_209:
+    jmp     L_sn_209
+L_sf_209:
     jmp     _SNO_END      ; RETURN
-_sn_209:
+L_sn_209:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-    jmp     _L_pp_1_33
-_sn_210:
+    jmp     L_pp_1_33
+L_sn_210:
 
-_L_pp_BuiltinVar_34:
+L_pp_BuiltinVar_34:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_211:
+L_sn_211:
 
-_L_pp_Function_36:
+L_pp_Function_36:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_212:
+L_sn_212:
 
-_L_pp_Id_37:
+L_pp_Id_37:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_213:
+L_sn_213:
 
-_L_pp_Integer_38:
+L_pp_Integer_38:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_214:
+L_sn_214:
 
-_L_pp_Label_39:
+L_pp_Label_39:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_215:
+L_sn_215:
 
-_L_pp_ProtKwd_40:
+L_pp_ProtKwd_40:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_216:
+L_sn_216:
 
-_L_pp_Real_41:
+L_pp_Real_41:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_217:
+L_sn_217:
 
-_L_pp_SpecialNm_42:
+L_pp_SpecialNm_42:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_218:
+L_sn_218:
 
-_L_pp_String_43:
+L_pp_String_43:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_219:
+L_sn_219:
 
-_L_pp_UnprotKwd_44:
+L_pp_UnprotKwd_44:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_220:
+L_sn_220:
 
-_L_pp_45:
+L_pp_45:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_221:
+L_sn_221:
 
-_L_pp_46:
+L_pp_46:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_222:
+L_sn_222:
 
-_L_pp_S_47:
+L_pp_S_47:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_223:
+L_sn_223:
 
-_L_pp_S_48:
+L_pp_S_48:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_224:
+L_sn_224:
 
-_L_pp_F_49:
+L_pp_F_49:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_225:
+L_sn_225:
 
-_L_pp_F_50:
+L_pp_F_50:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_226:
+L_sn_226:
 
-_L_ppUnOp_51:
+L_ppUnOp_51:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_227:
-
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_228:
+L_sn_227:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-    jmp     _SNO_END      ; RETURN
-_sn_229:
-
-_L_ppBinOp_52:
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_230:
-
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_231:
-
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_232:
-
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_233:
-
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_234:
-
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_235:
-
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_236:
+L_sn_228:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
     jmp     _SNO_END      ; RETURN
-_sn_237:
+L_sn_229:
 
-_L_pp_53:
+L_ppBinOp_52:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_238:
-
-_L_pp_54:
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_239:
+L_sn_230:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_240:
-
-_L_pp_55:
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_241:
+L_sn_231:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_242:
-
-_L_pp_56:
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_243:
+L_sn_232:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_244:
-
-_L_pp_57:
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_245:
+L_sn_233:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_246:
-
-_L_pp_58:
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_247:
+L_sn_234:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_248:
-
-_L_pp_59:
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_249:
+L_sn_235:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_250:
-
-_L_pp_60:
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_251:
-
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_252:
-
-_L_pp_61:
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_253:
-
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_254:
-
-_L_pp_62:
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_255:
-
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_256:
-
-_L_pp_63:
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_257:
-
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_258:
-
-_L_pp_64:
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_259:
-
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_260:
-
-_L_pp_65:
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_261:
-
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_262:
-
-_L_pp_66:
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_263:
-
-_L_pp_67:
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_264:
-
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_265:
-
-_L_pp_Comment_68:
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_266:
-
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_267:
+L_sn_236:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
     jmp     _SNO_END      ; RETURN
-_sn_268:
+L_sn_237:
 
-_L_pp_Control_69:
+L_pp_53:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_269:
+L_sn_238:
+
+L_pp_54:
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_239:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_270:
+L_sn_240:
+
+L_pp_55:
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_241:
+
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_242:
+
+L_pp_56:
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_243:
+
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_244:
+
+L_pp_57:
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_245:
+
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_246:
+
+L_pp_58:
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_247:
+
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_248:
+
+L_pp_59:
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_249:
+
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_250:
+
+L_pp_60:
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_251:
+
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_252:
+
+L_pp_61:
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_253:
+
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_254:
+
+L_pp_62:
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_255:
+
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_256:
+
+L_pp_63:
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_257:
+
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_258:
+
+L_pp_64:
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_259:
+
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_260:
+
+L_pp_65:
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_261:
+
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_262:
+
+L_pp_66:
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_263:
+
+L_pp_67:
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_264:
+
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_265:
+
+L_pp_Comment_68:
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_266:
+
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_267:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
     jmp     _SNO_END      ; RETURN
-_sn_271:
+L_sn_268:
 
-_L_pp_Stmt_70:
+L_pp_Control_69:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_272:
+L_sn_269:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_273:
+L_sn_270:
 
-    lea     rdi, [rel ps_282]
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+    jmp     _SNO_END      ; RETURN
+L_sn_271:
+
+L_pp_Stmt_70:
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_272:
+
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_273:
+
+    lea     rdi, [rel S_282]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -2963,15 +3342,15 @@ _sn_273:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_274
-    lea     rdi, [rel ps_282]
+    jnz     L_sn_274
+    lea     rdi, [rel S_282]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_274
-_sn_274:
+    jmp     L_sn_274
+L_sn_274:
 
-    lea     rdi, [rel ps_331]
+    lea     rdi, [rel S_331]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -2981,15 +3360,15 @@ _sn_274:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_275
-    lea     rdi, [rel ps_331]
+    jnz     L_sn_275
+    lea     rdi, [rel S_331]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_275
-_sn_275:
+    jmp     L_sn_275
+L_sn_275:
 
-    lea     rdi, [rel ps_332]
+    lea     rdi, [rel S_332]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -2999,15 +3378,15 @@ _sn_275:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_276
-    lea     rdi, [rel ps_332]
+    jnz     L_sn_276
+    lea     rdi, [rel S_332]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_276
-_sn_276:
+    jmp     L_sn_276
+L_sn_276:
 
-    lea     rdi, [rel ps_333]
+    lea     rdi, [rel S_333]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -3017,15 +3396,15 @@ _sn_276:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_277
-    lea     rdi, [rel ps_333]
+    jnz     L_sn_277
+    lea     rdi, [rel S_333]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_277
-_sn_277:
+    jmp     L_sn_277
+L_sn_277:
 
-    lea     rdi, [rel ps_334]
+    lea     rdi, [rel S_334]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -3035,15 +3414,15 @@ _sn_277:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_278
-    lea     rdi, [rel ps_334]
+    jnz     L_sn_278
+    lea     rdi, [rel S_334]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_278
-_sn_278:
+    jmp     L_sn_278
+L_sn_278:
 
-    lea     rdi, [rel ps_335]
+    lea     rdi, [rel S_335]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -3053,15 +3432,15 @@ _sn_278:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_279
-    lea     rdi, [rel ps_335]
+    jnz     L_sn_279
+    lea     rdi, [rel S_335]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_279
-_sn_279:
+    jmp     L_sn_279
+L_sn_279:
 
-    lea     rdi, [rel ps_336]
+    lea     rdi, [rel S_336]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -3071,15 +3450,15 @@ _sn_279:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_280
-    lea     rdi, [rel ps_336]
+    jnz     L_sn_280
+    lea     rdi, [rel S_336]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_280
-_sn_280:
+    jmp     L_sn_280
+L_sn_280:
 
-    lea     rdi, [rel ps_337]
+    lea     rdi, [rel S_337]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -3089,35 +3468,35 @@ _sn_280:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_281
-    lea     rdi, [rel ps_337]
+    jnz     L_sn_281
+    lea     rdi, [rel S_337]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_281
-_sn_281:
+    jmp     L_sn_281
+L_sn_281:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_282:
+L_sn_282:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_283:
+L_sn_283:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_284:
+L_sn_284:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_285:
+L_sn_285:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_286:
+L_sn_286:
 
-    lea     rdi, [rel ps_282]
+    lea     rdi, [rel S_282]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -3127,35 +3506,35 @@ _sn_286:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_287
-    lea     rdi, [rel ps_282]
+    jnz     L_sn_287
+    lea     rdi, [rel S_282]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_287
-_sn_287:
+    jmp     L_sn_287
+L_sn_287:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_288:
+L_sn_288:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_289:
+L_sn_289:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_290:
+L_sn_290:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_291:
+L_sn_291:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_292:
+L_sn_292:
 
-    lea     rdi, [rel ps_282]
+    lea     rdi, [rel S_282]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -3165,77 +3544,77 @@ _sn_292:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_293
-    lea     rdi, [rel ps_282]
+    jnz     L_sn_293
+    lea     rdi, [rel S_282]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_293
-_sn_293:
+    jmp     L_sn_293
+L_sn_293:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_294:
+L_sn_294:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_295:
+L_sn_295:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_296:
+L_sn_296:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_297:
+L_sn_297:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_298:
+L_sn_298:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-    jmp     _L_pp_Stmt7_71
-_sn_299:
+    jmp     L_pp_Stmt7_71
+L_sn_299:
 
-_L_pp_Stmt5_72:
+L_pp_Stmt5_72:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_300:
-
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_301:
+L_sn_300:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_302:
+L_sn_301:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_303:
+L_sn_302:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_304:
+L_sn_303:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_305:
+L_sn_304:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_306:
+L_sn_305:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_307:
+L_sn_306:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_308:
+L_sn_307:
 
-    lea     rdi, [rel ps_282]
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_308:
+
+    lea     rdi, [rel S_282]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -3245,25 +3624,25 @@ _sn_308:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_309
-    lea     rdi, [rel ps_282]
+    jnz     L_sn_309
+    lea     rdi, [rel S_282]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_309
-_sn_309:
+    jmp     L_sn_309
+L_sn_309:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-    jmp     _L_pp_Stmt7_71
-_sn_310:
+    jmp     L_pp_Stmt7_71
+L_sn_310:
 
-_L_pp_Stmt7_71:
+L_pp_Stmt7_71:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_311:
+L_sn_311:
 
-    lea     rdi, [rel ps_282]
+    lea     rdi, [rel S_282]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -3275,59 +3654,59 @@ _sn_311:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_312
-    lea     rdi, [rel ps_282]
+    jnz     L_sn_312
+    lea     rdi, [rel S_282]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_312
-_sn_312:
+    jmp     L_sn_312
+L_sn_312:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_313:
+L_sn_313:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_314:
+L_sn_314:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_315:
+L_sn_315:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_316:
+L_sn_316:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_317:
+L_sn_317:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_318:
+L_sn_318:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-    jmp     _L_pp_Stmt9_73
-_sn_319:
+    jmp     L_pp_Stmt9_73
+L_sn_319:
 
-_L_pp_Stmt9_73:
+L_pp_Stmt9_73:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
     jmp     _SNO_END      ; RETURN
-_sn_320:
+L_sn_320:
 
-_L_pp_ExprList_74:
+L_pp_ExprList_74:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_321:
+L_sn_321:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_322:
+L_sn_322:
 
-    lea     rdi, [rel ps_284]
+    lea     rdi, [rel S_284]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -3339,16 +3718,16 @@ _sn_322:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_323
-    lea     rdi, [rel ps_284]
+    jnz     L_sn_323
+    lea     rdi, [rel S_284]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_323
-_sn_323:
+    jmp     L_sn_323
+L_sn_323:
 
-_L_pp_ExprList0_75:
-    lea     rdi, [rel ps_284]
+L_pp_ExprList0_75:
+    lea     rdi, [rel S_284]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -3358,63 +3737,63 @@ _L_pp_ExprList0_75:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sf_324
-    lea     rdi, [rel ps_284]
+    jnz     L_sf_324
+    lea     rdi, [rel S_284]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_324
-_sf_324:
+    jmp     L_sn_324
+L_sf_324:
     jmp     _SNO_END      ; RETURN
-_sn_324:
+L_sn_324:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_325:
+L_sn_325:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_326:
+L_sn_326:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_327:
+L_sn_327:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_328:
+L_sn_328:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_329:
+L_sn_329:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-    jmp     _L_pp_ExprList0_75
-_sn_330:
+    jmp     L_pp_ExprList0_75
+L_sn_330:
 
-_L_pp_76:
+L_pp_76:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_331:
-
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_332:
+L_sn_331:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_333:
+L_sn_332:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_334:
+L_sn_333:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_335:
+L_sn_334:
 
-    lea     rdi, [rel ps_284]
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_335:
+
+    lea     rdi, [rel S_284]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -3426,16 +3805,16 @@ _sn_335:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_336
-    lea     rdi, [rel ps_284]
+    jnz     L_sn_336
+    lea     rdi, [rel S_284]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_336
-_sn_336:
+    jmp     L_sn_336
+L_sn_336:
 
-_L_pp_0_77:
-    lea     rdi, [rel ps_284]
+L_pp_0_77:
+    lea     rdi, [rel S_284]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -3445,69 +3824,69 @@ _L_pp_0_77:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sf_337
-    lea     rdi, [rel ps_284]
+    jnz     L_sf_337
+    lea     rdi, [rel S_284]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_337
-_sf_337:
-    jmp     _L_COMPUTED_pp_1_78
-_sn_337:
+    jmp     L_sn_337
+L_sf_337:
+    jmp     L_COMPUTED_pp_1_78
+L_sn_337:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_338:
+L_sn_338:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_339:
+L_sn_339:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_340:
+L_sn_340:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_341:
+L_sn_341:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_342:
+L_sn_342:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-    jmp     _L_COMPUTED_pp_0_79
-_sn_343:
+    jmp     L_COMPUTED_pp_0_79
+L_sn_343:
 
-_L_pp_1_80:
+L_pp_1_80:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_344:
+L_sn_344:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_345:
+L_sn_345:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
     jmp     _SNO_END      ; RETURN
-_sn_346:
+L_sn_346:
 
-_L_pp_81:
+L_pp_81:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_347:
-
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_348:
+L_sn_347:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_349:
+L_sn_348:
 
-    lea     rdi, [rel ps_284]
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_349:
+
+    lea     rdi, [rel S_284]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -3519,16 +3898,16 @@ _sn_349:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_350
-    lea     rdi, [rel ps_284]
+    jnz     L_sn_350
+    lea     rdi, [rel S_284]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_350
-_sn_350:
+    jmp     L_sn_350
+L_sn_350:
 
-_L_pp_0_82:
-    lea     rdi, [rel ps_284]
+L_pp_0_82:
+    lea     rdi, [rel S_284]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -3538,47 +3917,47 @@ _L_pp_0_82:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sf_351
-    lea     rdi, [rel ps_284]
+    jnz     L_sf_351
+    lea     rdi, [rel S_284]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_351
-_sf_351:
+    jmp     L_sn_351
+L_sf_351:
     jmp     _SNO_END      ; RETURN
-_sn_351:
+L_sn_351:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_352:
+L_sn_352:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_353:
+L_sn_353:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_354:
+L_sn_354:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_355:
+L_sn_355:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_356:
+L_sn_356:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-    jmp     _L_COMPUTED_pp_0_83
-_sn_357:
+    jmp     L_COMPUTED_pp_0_83
+L_sn_357:
 
-_L_pp_84:
+L_pp_84:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_358:
+L_sn_358:
 
-    lea     rdi, [rel ps_284]
+    lea     rdi, [rel S_284]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -3590,16 +3969,16 @@ _sn_358:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_359
-    lea     rdi, [rel ps_284]
+    jnz     L_sn_359
+    lea     rdi, [rel S_284]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_359
-_sn_359:
+    jmp     L_sn_359
+L_sn_359:
 
-_L_pp_0_85:
-    lea     rdi, [rel ps_284]
+L_pp_0_85:
+    lea     rdi, [rel S_284]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -3609,35 +3988,35 @@ _L_pp_0_85:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sf_360
-    lea     rdi, [rel ps_284]
+    jnz     L_sf_360
+    lea     rdi, [rel S_284]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_360
-_sf_360:
+    jmp     L_sn_360
+L_sf_360:
     jmp     _SNO_END      ; RETURN
-_sn_360:
+L_sn_360:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_361:
+L_sn_361:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-    jmp     _L_COMPUTED_pp_0_86
-_sn_362:
+    jmp     L_COMPUTED_pp_0_86
+L_sn_362:
 
-_L_pp_87:
+L_pp_87:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_363:
+L_sn_363:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_364:
+L_sn_364:
 
-    lea     rdi, [rel ps_284]
+    lea     rdi, [rel S_284]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -3649,16 +4028,16 @@ _sn_364:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_365
-    lea     rdi, [rel ps_284]
+    jnz     L_sn_365
+    lea     rdi, [rel S_284]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_365
-_sn_365:
+    jmp     L_sn_365
+L_sn_365:
 
-_L_pp_0_88:
-    lea     rdi, [rel ps_284]
+L_pp_0_88:
+    lea     rdi, [rel S_284]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -3668,157 +4047,135 @@ _L_pp_0_88:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sf_366
-    lea     rdi, [rel ps_284]
+    jnz     L_sf_366
+    lea     rdi, [rel S_284]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_366
-_sf_366:
+    jmp     L_sn_366
+L_sf_366:
     jmp     _SNO_END      ; RETURN
-_sn_366:
+L_sn_366:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_367:
+L_sn_367:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_368:
+L_sn_368:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_369:
+L_sn_369:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_370:
+L_sn_370:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_371:
+L_sn_371:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_372:
+L_sn_372:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_373:
+L_sn_373:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-    jmp     _L_COMPUTED_pp_0_89
-_sn_374:
+    jmp     L_COMPUTED_pp_0_89
+L_sn_374:
 
-_L_pp_90:
+L_pp_90:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_375:
-
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_376:
+L_sn_375:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_377:
+L_sn_376:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_378:
+L_sn_377:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_379:
+L_sn_378:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_380:
+L_sn_379:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_381:
+L_sn_380:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-    jmp     _SNO_END      ; RETURN
-_sn_382:
-
-_L_pp_Call_91:
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_383:
-
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_384:
-
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_385:
-
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_386:
-
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_387:
-
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_388:
-
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_389:
-
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_390:
+L_sn_381:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
     jmp     _SNO_END      ; RETURN
-_sn_391:
+L_sn_382:
 
-_L_ppEnd_28:
-_sn_392:
+L_pp_Call_91:
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_383:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-    jmp     _L_ssEnd_92
-_sn_393:
-
-_L_ss_93:
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_394:
-
-    lea     rdi, [rel ps_357]
-    call    stmt_get
-    mov     [rbp-16], rax
-    mov     [rbp-8], rdx
-    mov     qword [rbp-32], 1
-    mov     qword [rbp-24], 0
-    mov     rdi, [rbp-32]
-    mov     rsi, [rbp-24]
-    call    stmt_is_fail
-    test    eax, eax
-    jnz     _sn_395
-    lea     rdi, [rel ps_357]
-    mov     rsi, [rbp-32]
-    mov     rdx, [rbp-24]
-    call    stmt_set
-    jmp     _sn_395
-_sn_395:
+L_sn_384:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_396:
+L_sn_385:
 
-    lea     rdi, [rel ps_271]
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_386:
+
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_387:
+
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_388:
+
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_389:
+
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_390:
+
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+    jmp     _SNO_END      ; RETURN
+L_sn_391:
+
+L_ppEnd_28:
+L_sn_392:
+
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+    jmp     L_ssEnd_92
+L_sn_393:
+
+L_ss_93:
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_394:
+
+    lea     rdi, [rel S_357]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -3828,15 +4185,19 @@ _sn_396:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_397
-    lea     rdi, [rel ps_271]
+    jnz     L_sn_395
+    lea     rdi, [rel S_357]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_397
-_sn_397:
+    jmp     L_sn_395
+L_sn_395:
 
-    lea     rdi, [rel ps_272]
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_396:
+
+    lea     rdi, [rel S_271]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -3846,15 +4207,15 @@ _sn_397:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_398
-    lea     rdi, [rel ps_272]
+    jnz     L_sn_397
+    lea     rdi, [rel S_271]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_398
-_sn_398:
+    jmp     L_sn_397
+L_sn_397:
 
-    lea     rdi, [rel ps_273]
+    lea     rdi, [rel S_272]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -3864,15 +4225,15 @@ _sn_398:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_399
-    lea     rdi, [rel ps_273]
+    jnz     L_sn_398
+    lea     rdi, [rel S_272]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_399
-_sn_399:
+    jmp     L_sn_398
+L_sn_398:
 
-    lea     rdi, [rel ps_274]
+    lea     rdi, [rel S_273]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -3882,15 +4243,15 @@ _sn_399:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_400
-    lea     rdi, [rel ps_274]
+    jnz     L_sn_399
+    lea     rdi, [rel S_273]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_400
-_sn_400:
+    jmp     L_sn_399
+L_sn_399:
 
-    lea     rdi, [rel ps_51]
+    lea     rdi, [rel S_274]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -3900,19 +4261,37 @@ _sn_400:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_401
+    jnz     L_sn_400
+    lea     rdi, [rel S_274]
+    mov     rsi, [rbp-32]
+    mov     rdx, [rbp-24]
+    call    stmt_set
+    jmp     L_sn_400
+L_sn_400:
+
+    lea     rdi, [rel S_51]
+    call    stmt_get
+    mov     [rbp-16], rax
+    mov     [rbp-8], rdx
+    mov     qword [rbp-32], 1
+    mov     qword [rbp-24], 0
+    mov     rdi, [rbp-32]
+    mov     rsi, [rbp-24]
+    call    stmt_is_fail
+    test    eax, eax
+    jnz     L_sn_401
     mov     rdi, [rbp-32]
     mov     rsi, [rbp-24]
     call    stmt_output
-    jmp     _sn_401
-_sn_401:
+    jmp     L_sn_401
+L_sn_401:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_402:
+L_sn_402:
 
-_L_ss_BuiltinVar_95:
-    lea     rdi, [rel ps_288]
+L_ss_BuiltinVar_95:
+    lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -3922,16 +4301,16 @@ _L_ss_BuiltinVar_95:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_403
-    lea     rdi, [rel ps_288]
+    jnz     L_sn_403
+    lea     rdi, [rel S_288]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _L_ss_atomic_96
-_sn_403:
+    jmp     L_ss_atomic_96
+L_sn_403:
 
-_L_ss_Function_97:
-    lea     rdi, [rel ps_288]
+L_ss_Function_97:
+    lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -3941,20 +4320,20 @@ _L_ss_Function_97:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_404
-    lea     rdi, [rel ps_288]
+    jnz     L_sn_404
+    lea     rdi, [rel S_288]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _L_ss_atomic_96
-_sn_404:
+    jmp     L_ss_atomic_96
+L_sn_404:
 
-_L_ss_Id_98:
-    lea     rdi, [rel ps_288]
+L_ss_Id_98:
+    lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
-    lea     rdi, [rel ps_272]
+    lea     rdi, [rel S_272]
     call    stmt_get
     mov     [rbp-32], rax
     mov     [rbp-24], rdx
@@ -3962,20 +4341,20 @@ _L_ss_Id_98:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_405
-    lea     rdi, [rel ps_288]
+    jnz     L_sn_405
+    lea     rdi, [rel S_288]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _L_ss_atomic_96
-_sn_405:
+    jmp     L_ss_atomic_96
+L_sn_405:
 
-_L_ss_Integer_99:
-    lea     rdi, [rel ps_288]
+L_ss_Integer_99:
+    lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
-    lea     rdi, [rel ps_272]
+    lea     rdi, [rel S_272]
     call    stmt_get
     mov     [rbp-32], rax
     mov     [rbp-24], rdx
@@ -3983,28 +4362,87 @@ _L_ss_Integer_99:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_406
-    lea     rdi, [rel ps_288]
+    jnz     L_sn_406
+    lea     rdi, [rel S_288]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _L_ss_atomic_96
-_sn_406:
+    jmp     L_ss_atomic_96
+L_sn_406:
 
-_L_ss_Label_100:
-    lea     rdi, [rel ps_272]
+L_ss_Label_100:
+    lea     rdi, [rel S_272]
     call    stmt_get
     mov     [rbp-16], rax
-    mov     [rbp-8],  rdx
-    jmp     _sn_407
-_sm_407:
-    jmp     _L_ss_Label0_101
-_sf_407:
-    jmp     _L_ss_Label1_102
-_sn_407:
+    mov     [rbp-8], rdx
+    mov     rdi, [rbp-16]
+    mov     rsi, [rbp-8]
+    call    stmt_setup_subject
+    jmp     P_407_α
 
-_L_ss_Label0_101:
-    lea     rdi, [rel ps_288]
+
+; SEQ α=P_407_α
+P_407_α:
+    jmp     seq_l9_alpha
+P_407_β:
+    jmp     seq_r9_beta
+
+; SEQ α=seq_l9_alpha
+seq_l9_alpha:
+    jmp     seq_l10_alpha
+seq_l9_beta:
+    jmp     seq_r10_beta
+
+; POS(0)  α=seq_l10_alpha
+seq_l10_alpha:
+    cmp     qword [cursor], 0
+    jne     P_407_ω
+    jmp     seq_r10_alpha
+
+; POS β=seq_l10_beta
+seq_l10_beta:
+    jmp     P_407_ω
+
+; REF(SpecialNm) α=seq_r10_alpha
+seq_r10_alpha:
+    lea     rax, [rel nref11_gamma]
+    mov     [P_SpecialNm_ret_gamma], rax
+    lea     rax, [rel nref11_omega]
+    mov     [P_SpecialNm_ret_omega], rax
+    jmp     P_SpecialNm_alpha
+
+; REF(SpecialNm) β=seq_r10_beta
+seq_r10_beta:
+    lea     rax, [rel nref11_gamma]
+    mov     [P_SpecialNm_ret_gamma], rax
+    lea     rax, [rel nref11_omega]
+    mov     [P_SpecialNm_ret_omega], rax
+    jmp     P_SpecialNm_beta
+
+nref11_gamma:
+    jmp     seq_r9_alpha
+nref11_omega:
+    jmp     seq_l10_beta
+
+; RPOS(0)  α=seq_r9_alpha
+seq_r9_alpha:
+    mov     rax, [subject_len_val]
+    cmp     [cursor], rax
+    jne     seq_l9_beta
+    jmp     P_407_γ
+
+; RPOS β=seq_r9_beta
+seq_r9_beta:
+    jmp     seq_l9_beta
+
+P_407_γ:
+    jmp     L_ss_Label0_101
+P_407_ω:
+    jmp     L_ss_Label1_102
+L_sn_407:
+
+L_ss_Label0_101:
+    lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -4014,20 +4452,20 @@ _L_ss_Label0_101:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_408
-    lea     rdi, [rel ps_288]
+    jnz     L_sn_408
+    lea     rdi, [rel S_288]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _L_ss_atomic_96
-_sn_408:
+    jmp     L_ss_atomic_96
+L_sn_408:
 
-_L_ss_Label1_102:
-    lea     rdi, [rel ps_288]
+L_ss_Label1_102:
+    lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
-    lea     rdi, [rel ps_272]
+    lea     rdi, [rel S_272]
     call    stmt_get
     mov     [rbp-32], rax
     mov     [rbp-24], rdx
@@ -4035,16 +4473,16 @@ _L_ss_Label1_102:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_409
-    lea     rdi, [rel ps_288]
+    jnz     L_sn_409
+    lea     rdi, [rel S_288]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _L_ss_atomic_96
-_sn_409:
+    jmp     L_ss_atomic_96
+L_sn_409:
 
-_L_ss_ProtKwd_103:
-    lea     rdi, [rel ps_288]
+L_ss_ProtKwd_103:
+    lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -4054,20 +4492,20 @@ _L_ss_ProtKwd_103:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_410
-    lea     rdi, [rel ps_288]
+    jnz     L_sn_410
+    lea     rdi, [rel S_288]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _L_ss_atomic_96
-_sn_410:
+    jmp     L_ss_atomic_96
+L_sn_410:
 
-_L_ss_Real_104:
-    lea     rdi, [rel ps_288]
+L_ss_Real_104:
+    lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
-    lea     rdi, [rel ps_272]
+    lea     rdi, [rel S_272]
     call    stmt_get
     mov     [rbp-32], rax
     mov     [rbp-24], rdx
@@ -4075,16 +4513,16 @@ _L_ss_Real_104:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_411
-    lea     rdi, [rel ps_288]
+    jnz     L_sn_411
+    lea     rdi, [rel S_288]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _L_ss_atomic_96
-_sn_411:
+    jmp     L_ss_atomic_96
+L_sn_411:
 
-_L_ss_SpecialNm_105:
-    lea     rdi, [rel ps_288]
+L_ss_SpecialNm_105:
+    lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -4094,20 +4532,20 @@ _L_ss_SpecialNm_105:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_412
-    lea     rdi, [rel ps_288]
+    jnz     L_sn_412
+    lea     rdi, [rel S_288]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _L_ss_atomic_96
-_sn_412:
+    jmp     L_ss_atomic_96
+L_sn_412:
 
-_L_ss_String_106:
-    lea     rdi, [rel ps_288]
+L_ss_String_106:
+    lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
-    lea     rdi, [rel ps_272]
+    lea     rdi, [rel S_272]
     call    stmt_get
     mov     [rbp-32], rax
     mov     [rbp-24], rdx
@@ -4115,16 +4553,16 @@ _L_ss_String_106:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_413
-    lea     rdi, [rel ps_288]
+    jnz     L_sn_413
+    lea     rdi, [rel S_288]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _L_ss_atomic_96
-_sn_413:
+    jmp     L_ss_atomic_96
+L_sn_413:
 
-_L_ss_UnprotKwd_107:
-    lea     rdi, [rel ps_288]
+L_ss_UnprotKwd_107:
+    lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -4134,21 +4572,21 @@ _L_ss_UnprotKwd_107:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_414
-    lea     rdi, [rel ps_288]
+    jnz     L_sn_414
+    lea     rdi, [rel S_288]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _L_ss_atomic_96
-_sn_414:
+    jmp     L_ss_atomic_96
+L_sn_414:
 
-_L_ss_atomic_96:
+L_ss_atomic_96:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_415:
+L_sn_415:
 
-_L_ss_108:
-    lea     rdi, [rel ps_288]
+L_ss_108:
+    lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -4158,18 +4596,18 @@ _L_ss_108:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sf_416
-    lea     rdi, [rel ps_288]
+    jnz     L_sf_416
+    lea     rdi, [rel S_288]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
     jmp     _SNO_END      ; RETURN
-_sf_416:
-    jmp     _L_error_35
-_sn_416:
+L_sf_416:
+    jmp     L_error_35
+L_sn_416:
 
-_L_ss_109:
-    lea     rdi, [rel ps_288]
+L_ss_109:
+    lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -4179,18 +4617,18 @@ _L_ss_109:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sf_417
-    lea     rdi, [rel ps_288]
+    jnz     L_sf_417
+    lea     rdi, [rel S_288]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
     jmp     _SNO_END      ; RETURN
-_sf_417:
-    jmp     _L_error_35
-_sn_417:
+L_sf_417:
+    jmp     L_error_35
+L_sn_417:
 
-_L_ss_S_110:
-    lea     rdi, [rel ps_288]
+L_ss_S_110:
+    lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -4200,18 +4638,18 @@ _L_ss_S_110:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sf_418
-    lea     rdi, [rel ps_288]
+    jnz     L_sf_418
+    lea     rdi, [rel S_288]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
     jmp     _SNO_END      ; RETURN
-_sf_418:
-    jmp     _L_error_35
-_sn_418:
+L_sf_418:
+    jmp     L_error_35
+L_sn_418:
 
-_L_ss_S_111:
-    lea     rdi, [rel ps_288]
+L_ss_S_111:
+    lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -4221,18 +4659,18 @@ _L_ss_S_111:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sf_419
-    lea     rdi, [rel ps_288]
+    jnz     L_sf_419
+    lea     rdi, [rel S_288]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
     jmp     _SNO_END      ; RETURN
-_sf_419:
-    jmp     _L_error_35
-_sn_419:
+L_sf_419:
+    jmp     L_error_35
+L_sn_419:
 
-_L_ss_F_112:
-    lea     rdi, [rel ps_288]
+L_ss_F_112:
+    lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -4242,18 +4680,18 @@ _L_ss_F_112:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sf_420
-    lea     rdi, [rel ps_288]
+    jnz     L_sf_420
+    lea     rdi, [rel S_288]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
     jmp     _SNO_END      ; RETURN
-_sf_420:
-    jmp     _L_error_35
-_sn_420:
+L_sf_420:
+    jmp     L_error_35
+L_sn_420:
 
-_L_ss_F_113:
-    lea     rdi, [rel ps_288]
+L_ss_F_113:
+    lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -4263,18 +4701,18 @@ _L_ss_F_113:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sf_421
-    lea     rdi, [rel ps_288]
+    jnz     L_sf_421
+    lea     rdi, [rel S_288]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
     jmp     _SNO_END      ; RETURN
-_sf_421:
-    jmp     _L_error_35
-_sn_421:
+L_sf_421:
+    jmp     L_error_35
+L_sn_421:
 
-_L_ssUnOp_114:
-    lea     rdi, [rel ps_288]
+L_ssUnOp_114:
+    lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -4284,18 +4722,18 @@ _L_ssUnOp_114:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sf_422
-    lea     rdi, [rel ps_288]
+    jnz     L_sf_422
+    lea     rdi, [rel S_288]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
     jmp     _SNO_END      ; RETURN
-_sf_422:
+L_sf_422:
     jmp     _SNO_END      ; FRETURN
-_sn_422:
+L_sn_422:
 
-_L_ssBinOp_115:
-    lea     rdi, [rel ps_288]
+L_ssBinOp_115:
+    lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -4305,17 +4743,17 @@ _L_ssBinOp_115:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sf_423
-    lea     rdi, [rel ps_288]
+    jnz     L_sf_423
+    lea     rdi, [rel S_288]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_423
-_sf_423:
+    jmp     L_sn_423
+L_sf_423:
     jmp     _SNO_END      ; FRETURN
-_sn_423:
+L_sn_423:
 
-    lea     rdi, [rel ps_288]
+    lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -4325,145 +4763,145 @@ _sn_423:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sf_424
-    lea     rdi, [rel ps_288]
+    jnz     L_sf_424
+    lea     rdi, [rel S_288]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
     jmp     _SNO_END      ; RETURN
-_sf_424:
+L_sf_424:
     jmp     _SNO_END      ; FRETURN
-_sn_424:
+L_sn_424:
 
-_L_ss_116:
+L_ss_116:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_425:
+L_sn_425:
 
-_L_ss_117:
+L_ss_117:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_426:
-
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_427:
-
-_L_ss_118:
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_428:
+L_sn_426:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_429:
+L_sn_427:
 
-_L_ss_119:
+L_ss_118:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_430:
-
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_431:
-
-_L_ss_120:
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_432:
+L_sn_428:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_433:
+L_sn_429:
 
-_L_ss_121:
+L_ss_119:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_434:
-
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_435:
-
-_L_ss_122:
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_436:
+L_sn_430:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_437:
+L_sn_431:
 
-_L_ss_123:
+L_ss_120:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_438:
-
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_439:
-
-_L_ss_124:
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_440:
+L_sn_432:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_441:
+L_sn_433:
 
-_L_ss_125:
+L_ss_121:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_442:
-
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_443:
-
-_L_ss_126:
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_444:
+L_sn_434:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_445:
+L_sn_435:
 
-_L_ss_127:
+L_ss_122:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_446:
-
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_447:
-
-_L_ss_128:
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_448:
+L_sn_436:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_449:
+L_sn_437:
 
-_L_ss_129:
+L_ss_123:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_450:
-
-_L_ss_130:
-    mov     qword [rbp-16], 1
-    mov     qword [rbp-8], 0
-_sn_451:
+L_sn_438:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_452:
+L_sn_439:
 
-_L_ss_ExprList_131:
-    lea     rdi, [rel ps_288]
+L_ss_124:
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_440:
+
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_441:
+
+L_ss_125:
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_442:
+
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_443:
+
+L_ss_126:
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_444:
+
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_445:
+
+L_ss_127:
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_446:
+
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_447:
+
+L_ss_128:
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_448:
+
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_449:
+
+L_ss_129:
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_450:
+
+L_ss_130:
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_451:
+
+    mov     qword [rbp-16], 1
+    mov     qword [rbp-8], 0
+L_sn_452:
+
+L_ss_ExprList_131:
+    lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -4473,17 +4911,17 @@ _L_ss_ExprList_131:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sf_453
-    lea     rdi, [rel ps_288]
+    jnz     L_sf_453
+    lea     rdi, [rel S_288]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_453
-_sf_453:
+    jmp     L_sn_453
+L_sf_453:
     jmp     _SNO_END      ; FRETURN
-_sn_453:
+L_sn_453:
 
-    lea     rdi, [rel ps_284]
+    lea     rdi, [rel S_284]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -4495,16 +4933,16 @@ _sn_453:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_454
-    lea     rdi, [rel ps_284]
+    jnz     L_sn_454
+    lea     rdi, [rel S_284]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_454
-_sn_454:
+    jmp     L_sn_454
+L_sn_454:
 
-_L_ss_ExprList0_132:
-    lea     rdi, [rel ps_284]
+L_ss_ExprList0_132:
+    lea     rdi, [rel S_284]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -4514,17 +4952,17 @@ _L_ss_ExprList0_132:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sf_455
-    lea     rdi, [rel ps_284]
+    jnz     L_sf_455
+    lea     rdi, [rel S_284]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_455
-_sf_455:
+    jmp     L_sn_455
+L_sf_455:
     jmp     _SNO_END      ; RETURN
-_sn_455:
+L_sn_455:
 
-    lea     rdi, [rel ps_288]
+    lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -4534,18 +4972,18 @@ _sn_455:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sf_456
-    lea     rdi, [rel ps_288]
+    jnz     L_sf_456
+    lea     rdi, [rel S_288]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _L_ss_ExprList0_132
-_sf_456:
+    jmp     L_ss_ExprList0_132
+L_sf_456:
     jmp     _SNO_END      ; FRETURN
-_sn_456:
+L_sn_456:
 
-_L_ss_133:
-    lea     rdi, [rel ps_288]
+L_ss_133:
+    lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -4555,17 +4993,17 @@ _L_ss_133:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sf_457
-    lea     rdi, [rel ps_288]
+    jnz     L_sf_457
+    lea     rdi, [rel S_288]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_457
-_sf_457:
+    jmp     L_sn_457
+L_sf_457:
     jmp     _SNO_END      ; FRETURN
-_sn_457:
+L_sn_457:
 
-    lea     rdi, [rel ps_284]
+    lea     rdi, [rel S_284]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -4577,16 +5015,16 @@ _sn_457:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_458
-    lea     rdi, [rel ps_284]
+    jnz     L_sn_458
+    lea     rdi, [rel S_284]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_458
-_sn_458:
+    jmp     L_sn_458
+L_sn_458:
 
-_L_ss_0_134:
-    lea     rdi, [rel ps_284]
+L_ss_0_134:
+    lea     rdi, [rel S_284]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -4596,17 +5034,17 @@ _L_ss_0_134:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sf_459
-    lea     rdi, [rel ps_284]
+    jnz     L_sf_459
+    lea     rdi, [rel S_284]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_459
-_sf_459:
-    jmp     _L_COMPUTED_ss_1_135
-_sn_459:
+    jmp     L_sn_459
+L_sf_459:
+    jmp     L_COMPUTED_ss_1_135
+L_sn_459:
 
-    lea     rdi, [rel ps_288]
+    lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -4616,18 +5054,18 @@ _sn_459:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sf_460
-    lea     rdi, [rel ps_288]
+    jnz     L_sf_460
+    lea     rdi, [rel S_288]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _L_COMPUTED_ss_0_136
-_sf_460:
+    jmp     L_COMPUTED_ss_0_136
+L_sf_460:
     jmp     _SNO_END      ; FRETURN
-_sn_460:
+L_sn_460:
 
-_L_ss_1_137:
-    lea     rdi, [rel ps_288]
+L_ss_1_137:
+    lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -4637,20 +5075,20 @@ _L_ss_1_137:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_461
-    lea     rdi, [rel ps_288]
+    jnz     L_sn_461
+    lea     rdi, [rel S_288]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
     jmp     _SNO_END      ; RETURN
-_sn_461:
+L_sn_461:
 
-_L_ss_138:
+L_ss_138:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_462:
+L_sn_462:
 
-    lea     rdi, [rel ps_288]
+    lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -4660,17 +5098,17 @@ _sn_462:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sf_463
-    lea     rdi, [rel ps_288]
+    jnz     L_sf_463
+    lea     rdi, [rel S_288]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_463
-_sf_463:
+    jmp     L_sn_463
+L_sf_463:
     jmp     _SNO_END      ; FRETURN
-_sn_463:
+L_sn_463:
 
-    lea     rdi, [rel ps_284]
+    lea     rdi, [rel S_284]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -4682,16 +5120,16 @@ _sn_463:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_464
-    lea     rdi, [rel ps_284]
+    jnz     L_sn_464
+    lea     rdi, [rel S_284]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_464
-_sn_464:
+    jmp     L_sn_464
+L_sn_464:
 
-_L_ss_0_139:
-    lea     rdi, [rel ps_284]
+L_ss_0_139:
+    lea     rdi, [rel S_284]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -4701,17 +5139,17 @@ _L_ss_0_139:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sf_465
-    lea     rdi, [rel ps_284]
+    jnz     L_sf_465
+    lea     rdi, [rel S_284]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_465
-_sf_465:
+    jmp     L_sn_465
+L_sf_465:
     jmp     _SNO_END      ; RETURN
-_sn_465:
+L_sn_465:
 
-    lea     rdi, [rel ps_288]
+    lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -4721,18 +5159,18 @@ _sn_465:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sf_466
-    lea     rdi, [rel ps_288]
+    jnz     L_sf_466
+    lea     rdi, [rel S_288]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _L_COMPUTED_ss_0_140
-_sf_466:
+    jmp     L_COMPUTED_ss_0_140
+L_sf_466:
     jmp     _SNO_END      ; FRETURN
-_sn_466:
+L_sn_466:
 
-_L_ss_141:
-    lea     rdi, [rel ps_288]
+L_ss_141:
+    lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -4742,17 +5180,17 @@ _L_ss_141:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sf_467
-    lea     rdi, [rel ps_288]
+    jnz     L_sf_467
+    lea     rdi, [rel S_288]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_467
-_sf_467:
+    jmp     L_sn_467
+L_sf_467:
     jmp     _SNO_END      ; FRETURN
-_sn_467:
+L_sn_467:
 
-    lea     rdi, [rel ps_284]
+    lea     rdi, [rel S_284]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -4764,16 +5202,16 @@ _sn_467:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_468
-    lea     rdi, [rel ps_284]
+    jnz     L_sn_468
+    lea     rdi, [rel S_284]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_468
-_sn_468:
+    jmp     L_sn_468
+L_sn_468:
 
-_L_ss_0_142:
-    lea     rdi, [rel ps_284]
+L_ss_0_142:
+    lea     rdi, [rel S_284]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -4783,17 +5221,17 @@ _L_ss_0_142:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sf_469
-    lea     rdi, [rel ps_284]
+    jnz     L_sf_469
+    lea     rdi, [rel S_284]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_469
-_sf_469:
+    jmp     L_sn_469
+L_sf_469:
     jmp     _SNO_END      ; RETURN
-_sn_469:
+L_sn_469:
 
-    lea     rdi, [rel ps_288]
+    lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -4803,18 +5241,18 @@ _sn_469:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sf_470
-    lea     rdi, [rel ps_288]
+    jnz     L_sf_470
+    lea     rdi, [rel S_288]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _L_COMPUTED_ss_0_143
-_sf_470:
+    jmp     L_COMPUTED_ss_0_143
+L_sf_470:
     jmp     _SNO_END      ; FRETURN
-_sn_470:
+L_sn_470:
 
-_L_ss_144:
-    lea     rdi, [rel ps_288]
+L_ss_144:
+    lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -4824,17 +5262,17 @@ _L_ss_144:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sf_471
-    lea     rdi, [rel ps_288]
+    jnz     L_sf_471
+    lea     rdi, [rel S_288]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_471
-_sf_471:
+    jmp     L_sn_471
+L_sf_471:
     jmp     _SNO_END      ; FRETURN
-_sn_471:
+L_sn_471:
 
-    lea     rdi, [rel ps_284]
+    lea     rdi, [rel S_284]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -4846,16 +5284,16 @@ _sn_471:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_472
-    lea     rdi, [rel ps_284]
+    jnz     L_sn_472
+    lea     rdi, [rel S_284]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_472
-_sn_472:
+    jmp     L_sn_472
+L_sn_472:
 
-_L_ss_0_145:
-    lea     rdi, [rel ps_284]
+L_ss_0_145:
+    lea     rdi, [rel S_284]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -4865,17 +5303,17 @@ _L_ss_0_145:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sf_473
-    lea     rdi, [rel ps_284]
+    jnz     L_sf_473
+    lea     rdi, [rel S_284]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_473
-_sf_473:
+    jmp     L_sn_473
+L_sf_473:
     jmp     _SNO_END      ; RETURN
-_sn_473:
+L_sn_473:
 
-    lea     rdi, [rel ps_288]
+    lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -4885,18 +5323,18 @@ _sn_473:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sf_474
-    lea     rdi, [rel ps_288]
+    jnz     L_sf_474
+    lea     rdi, [rel S_288]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _L_COMPUTED_ss_0_146
-_sf_474:
+    jmp     L_COMPUTED_ss_0_146
+L_sf_474:
     jmp     _SNO_END      ; FRETURN
-_sn_474:
+L_sn_474:
 
-_L_ss_147:
-    lea     rdi, [rel ps_288]
+L_ss_147:
+    lea     rdi, [rel S_288]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -4906,51 +5344,51 @@ _L_ss_147:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sf_475
-    lea     rdi, [rel ps_288]
-    mov     rsi, [rbp-32]
-    mov     rdx, [rbp-24]
-    call    stmt_set
-    jmp     _SNO_END      ; RETURN
-_sf_475:
-    jmp     _SNO_END      ; FRETURN
-_sn_475:
-
-_L_ss_Call_148:
-    lea     rdi, [rel ps_288]
-    call    stmt_get
-    mov     [rbp-16], rax
-    mov     [rbp-8], rdx
-    mov     qword [rbp-32], 1
-    mov     qword [rbp-24], 0
-    mov     rdi, [rbp-32]
-    mov     rsi, [rbp-24]
-    call    stmt_is_fail
-    test    eax, eax
-    jnz     _sf_476
-    lea     rdi, [rel ps_288]
+    jnz     L_sf_475
+    lea     rdi, [rel S_288]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
     jmp     _SNO_END      ; RETURN
-_sf_476:
+L_sf_475:
     jmp     _SNO_END      ; FRETURN
-_sn_476:
+L_sn_475:
 
-_L_ssEnd_92:
-_sn_477:
+L_ss_Call_148:
+    lea     rdi, [rel S_288]
+    call    stmt_get
+    mov     [rbp-16], rax
+    mov     [rbp-8], rdx
+    mov     qword [rbp-32], 1
+    mov     qword [rbp-24], 0
+    mov     rdi, [rbp-32]
+    mov     rsi, [rbp-24]
+    call    stmt_is_fail
+    test    eax, eax
+    jnz     L_sf_476
+    lea     rdi, [rel S_288]
+    mov     rsi, [rbp-32]
+    mov     rdx, [rbp-24]
+    call    stmt_set
+    jmp     _SNO_END      ; RETURN
+L_sf_476:
+    jmp     _SNO_END      ; FRETURN
+L_sn_476:
+
+L_ssEnd_92:
+L_sn_477:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-    jmp     _L_bVisitEnd_149
-_sn_478:
+    jmp     L_bVisitEnd_149
+L_sn_478:
 
-_L_bVisit_150:
+L_bVisit_150:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_479:
+L_sn_479:
 
-    lea     rdi, [rel ps_284]
+    lea     rdi, [rel S_284]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -4962,16 +5400,16 @@ _sn_479:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_480
-    lea     rdi, [rel ps_284]
+    jnz     L_sn_480
+    lea     rdi, [rel S_284]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_480
-_sn_480:
+    jmp     L_sn_480
+L_sn_480:
 
-_L_bVisit_1_151:
-    lea     rdi, [rel ps_284]
+L_bVisit_1_151:
+    lea     rdi, [rel S_284]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -4981,45 +5419,45 @@ _L_bVisit_1_151:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sf_481
-    lea     rdi, [rel ps_284]
+    jnz     L_sf_481
+    lea     rdi, [rel S_284]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_481
-_sf_481:
+    jmp     L_sn_481
+L_sf_481:
     jmp     _SNO_END      ; RETURN
-_sn_481:
+L_sn_481:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-    jmp     _L_bVisit_1_151
-_sn_482:
+    jmp     L_bVisit_1_151
+L_sn_482:
 
-_L_bVisitEnd_149:
-_sn_483:
+L_bVisitEnd_149:
+L_sn_483:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_484:
+L_sn_484:
 
-    lea     rdi, [rel ps_424]
+    lea     rdi, [rel S_424]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
-    jmp     _L_findRefsEnd_152
-_sn_485:
+    jmp     L_findRefsEnd_152
+L_sn_485:
 
-_L_findRefs_153:
+L_findRefs_153:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_486:
+L_sn_486:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_487:
+L_sn_487:
 
-    lea     rdi, [rel ps_273]
+    lea     rdi, [rel S_273]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -5031,16 +5469,16 @@ _sn_487:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_488
-    lea     rdi, [rel ps_273]
+    jnz     L_sn_488
+    lea     rdi, [rel S_273]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_488
-_sn_488:
+    jmp     L_sn_488
+L_sn_488:
 
-_L_findRefs_0_155:
-    lea     rdi, [rel ps_273]
+L_findRefs_0_155:
+    lea     rdi, [rel S_273]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -5050,27 +5488,27 @@ _L_findRefs_0_155:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sf_489
-    lea     rdi, [rel ps_273]
+    jnz     L_sf_489
+    lea     rdi, [rel S_273]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_489
-_sf_489:
+    jmp     L_sn_489
+L_sf_489:
     jmp     _SNO_END      ; FRETURN
-_sn_489:
+L_sn_489:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-    jmp     _L_findRefs_0_155
-_sn_490:
+    jmp     L_findRefs_0_155
+L_sn_490:
 
-_L_findRefs_1_154:
+L_findRefs_1_154:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_491:
+L_sn_491:
 
-    lea     rdi, [rel ps_272]
+    lea     rdi, [rel S_272]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -5080,20 +5518,20 @@ _sn_491:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_492
-    lea     rdi, [rel ps_272]
+    jnz     L_sn_492
+    lea     rdi, [rel S_272]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _L_findRefs_9_157
-_sn_492:
+    jmp     L_findRefs_9_157
+L_sn_492:
 
-_L_findRefs_2_156:
+L_findRefs_2_156:
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_493:
+L_sn_493:
 
-    lea     rdi, [rel ps_272]
+    lea     rdi, [rel S_272]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -5103,27 +5541,104 @@ _sn_493:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_494
-    lea     rdi, [rel ps_272]
+    jnz     L_sn_494
+    lea     rdi, [rel S_272]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _L_findRefs_9_157
-_sn_494:
+    jmp     L_findRefs_9_157
+L_sn_494:
 
-_L_findRefs_9_157:
-    lea     rdi, [rel ps_272]
+L_findRefs_9_157:
+    lea     rdi, [rel S_272]
     call    stmt_get
     mov     [rbp-16], rax
-    mov     [rbp-8],  rdx
-    jmp     _sn_495
-_sm_495:
-    jmp     _sn_495
-_sf_495:
-    jmp     _SNO_END      ; FRETURN
-_sn_495:
+    mov     [rbp-8], rdx
+    mov     rdi, [rbp-16]
+    mov     rsi, [rbp-8]
+    call    stmt_setup_subject
+    jmp     P_495_α
 
-    lea     rdi, [rel ps_424]
+
+; SEQ α=P_495_α
+P_495_α:
+    jmp     seq_l12_alpha
+P_495_β:
+    jmp     seq_r12_beta
+
+; SEQ α=seq_l12_alpha
+seq_l12_alpha:
+    jmp     seq_l13_alpha
+seq_l12_beta:
+    jmp     seq_r13_beta
+
+; POS(0)  α=seq_l13_alpha
+seq_l13_alpha:
+    cmp     qword [cursor], 0
+    jne     P_495_ω
+    jmp     seq_r13_alpha
+
+; POS β=seq_l13_beta
+seq_l13_beta:
+    jmp     P_495_ω
+
+; SPAN("") REAL  α=seq_r13_alpha
+seq_r13_alpha:
+    mov     rax, [cursor]
+    cmp     rax, [subject_len_val]
+    jge     seq_l13_beta
+    mov     [span14_saved], rax
+    mov     r12, rax
+span14_outer:
+    cmp     r12, [subject_len_val]
+    jge     span14_notin
+    lea     rbx, [rel subject_data]
+    movzx   ecx, byte [rbx + r12]
+    lea     rsi, [rel lit_str_4]
+    mov     rdx, 0
+span14_csscan:
+    test    rdx, rdx
+    jz      span14_notin
+    movzx   eax, byte [rsi]
+    cmp     al, cl
+    je      span14_inset
+    inc     rsi
+    dec     rdx
+    jmp     span14_csscan
+span14_inset:
+    inc     r12
+    jmp     span14_outer
+span14_notin:
+    mov     rbx, [span14_saved]
+    cmp     r12, rbx
+    je      seq_l13_beta
+    mov     [cursor], r12
+    jmp     seq_r12_alpha
+
+; SPAN β=seq_r13_beta
+seq_r13_beta:
+    mov     rax, [span14_saved]
+    mov     [cursor], rax
+    jmp     seq_l13_beta
+
+; RPOS(0)  α=seq_r12_alpha
+seq_r12_alpha:
+    mov     rax, [subject_len_val]
+    cmp     [cursor], rax
+    jne     seq_l12_beta
+    jmp     P_495_γ
+
+; RPOS β=seq_r12_beta
+seq_r12_beta:
+    jmp     seq_l12_beta
+
+P_495_γ:
+    jmp     L_sn_495
+P_495_ω:
+    jmp     _SNO_END      ; FRETURN
+L_sn_495:
+
+    lea     rdi, [rel S_424]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -5133,15 +5648,15 @@ _sn_495:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_496
-    lea     rdi, [rel ps_424]
+    jnz     L_sn_496
+    lea     rdi, [rel S_424]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
     jmp     _SNO_END      ; FRETURN
-_sn_496:
+L_sn_496:
 
-    lea     rdi, [rel ps_424]
+    lea     rdi, [rel S_424]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -5151,24 +5666,24 @@ _sn_496:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_497
-    lea     rdi, [rel ps_424]
+    jnz     L_sn_497
+    lea     rdi, [rel S_424]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
     jmp     _SNO_END      ; FRETURN
-_sn_497:
+L_sn_497:
 
-_L_findRefsEnd_152:
-_sn_498:
+L_findRefsEnd_152:
+L_sn_498:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-    jmp     _L_refsEnd_158
-_sn_499:
+    jmp     L_refsEnd_158
+L_sn_499:
 
-_L_refs_159:
-    lea     rdi, [rel ps_274]
+L_refs_159:
+    lea     rdi, [rel S_274]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -5178,15 +5693,15 @@ _L_refs_159:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_500
-    lea     rdi, [rel ps_274]
+    jnz     L_sn_500
+    lea     rdi, [rel S_274]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_500
-_sn_500:
+    jmp     L_sn_500
+L_sn_500:
 
-    lea     rdi, [rel ps_273]
+    lea     rdi, [rel S_273]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -5198,16 +5713,16 @@ _sn_500:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_501
-    lea     rdi, [rel ps_273]
+    jnz     L_sn_501
+    lea     rdi, [rel S_273]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_501
-_sn_501:
+    jmp     L_sn_501
+L_sn_501:
 
-_L_refs_0_160:
-    lea     rdi, [rel ps_273]
+L_refs_0_160:
+    lea     rdi, [rel S_273]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -5217,21 +5732,21 @@ _L_refs_0_160:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sf_502
-    lea     rdi, [rel ps_273]
+    jnz     L_sf_502
+    lea     rdi, [rel S_273]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_502
-_sf_502:
+    jmp     L_sn_502
+L_sf_502:
     jmp     _SNO_END      ; RETURN
-_sn_502:
+L_sn_502:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_503:
+L_sn_503:
 
-    lea     rdi, [rel ps_239]
+    lea     rdi, [rel S_239]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -5241,32 +5756,32 @@ _sn_503:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_504
-    lea     rdi, [rel ps_239]
+    jnz     L_sn_504
+    lea     rdi, [rel S_239]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_504
-_sn_504:
+    jmp     L_sn_504
+L_sn_504:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_505:
+L_sn_505:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_506:
+L_sn_506:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_507:
+L_sn_507:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_508:
+L_sn_508:
 
-_L_refs_1_161:
-    lea     rdi, [rel ps_438]
+L_refs_1_161:
+    lea     rdi, [rel S_438]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -5276,25 +5791,25 @@ _L_refs_1_161:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_509
-    lea     rdi, [rel ps_438]
+    jnz     L_sn_509
+    lea     rdi, [rel S_438]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_509
-_sn_509:
+    jmp     L_sn_509
+L_sn_509:
 
-    lea     rdi, [rel ps_424]
+    lea     rdi, [rel S_424]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
-_sn_510:
+L_sn_510:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_511:
+L_sn_511:
 
-    lea     rdi, [rel ps_51]
+    lea     rdi, [rel S_51]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -5304,17 +5819,17 @@ _sn_511:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_512
+    jnz     L_sn_512
     mov     rdi, [rbp-32]
     mov     rsi, [rbp-24]
     call    stmt_output
-    jmp     _L_refs_0_160
-_sn_512:
+    jmp     L_refs_0_160
+L_sn_512:
 
-_L_refsEnd_158:
-_sn_513:
+L_refsEnd_158:
+L_sn_513:
 
-    lea     rdi, [rel ps_280]
+    lea     rdi, [rel S_280]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -5326,15 +5841,15 @@ _sn_513:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_514
-    lea     rdi, [rel ps_280]
+    jnz     L_sn_514
+    lea     rdi, [rel S_280]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_514
-_sn_514:
+    jmp     L_sn_514
+L_sn_514:
 
-    lea     rdi, [rel ps_443]
+    lea     rdi, [rel S_443]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -5344,20 +5859,20 @@ _sn_514:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_515
-    lea     rdi, [rel ps_443]
+    jnz     L_sn_515
+    lea     rdi, [rel S_443]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_515
-_sn_515:
+    jmp     L_sn_515
+L_sn_515:
 
-_L_main00_162:
-    lea     rdi, [rel ps_445]
+L_main00_162:
+    lea     rdi, [rel S_445]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
-    lea     rdi, [rel ps_75]
+    lea     rdi, [rel S_75]
     call    stmt_get
     mov     [rbp-32], rax
     mov     [rbp-24], rdx
@@ -5365,39 +5880,93 @@ _L_main00_162:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sf_516
-    lea     rdi, [rel ps_445]
+    jnz     L_sf_516
+    lea     rdi, [rel S_445]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_516
-_sf_516:
+    jmp     L_sn_516
+L_sf_516:
     jmp     _SNO_END      ; END
-_sn_516:
+L_sn_516:
 
-_L_main01_163:
-    lea     rdi, [rel ps_447]
+L_main01_163:
+    lea     rdi, [rel S_447]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
-_sn_517:
+L_sn_517:
 
-    lea     rdi, [rel ps_445]
-    call    stmt_get
-    mov     [rbp-16], rax
-    mov     [rbp-8],  rdx
-    jmp     _sn_518
-_sm_518:
-    jmp     _sn_518
-_sf_518:
-    jmp     _L_main02_164
-_sn_518:
-
-    lea     rdi, [rel ps_51]
+    lea     rdi, [rel S_445]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
-    lea     rdi, [rel ps_445]
+    mov     rdi, [rbp-16]
+    mov     rsi, [rbp-8]
+    call    stmt_setup_subject
+    jmp     P_518_α
+
+
+; SEQ α=P_518_α
+P_518_α:
+    jmp     seq_l15_alpha
+P_518_β:
+    jmp     seq_r15_beta
+
+; POS(0)  α=seq_l15_alpha
+seq_l15_alpha:
+    cmp     qword [cursor], 0
+    jne     P_518_ω
+    jmp     seq_r15_alpha
+
+; POS β=seq_l15_beta
+seq_l15_beta:
+    jmp     P_518_ω
+
+; ANY("*-")  α=seq_r15_alpha
+seq_r15_alpha:
+    mov     rax, [cursor]
+    cmp     rax, [subject_len_val]
+    jge     seq_l15_beta
+    mov     [any16_saved], rax
+    lea     rbx, [rel subject_data]
+    movzx   ecx, byte [rbx + rax]
+    lea     rsi, [rel lit_str_2]
+    mov     rdx, 2
+any16_loop:
+    test    rdx, rdx
+    jz      any16_notfound
+    movzx   eax, byte [rsi]
+    cmp     al, cl
+    je      any16_found
+    inc     rsi
+    dec     rdx
+    jmp     any16_loop
+any16_notfound:
+    jmp     seq_l15_beta
+any16_found:
+    mov     rax, [any16_saved]
+    inc     rax
+    mov     [cursor], rax
+    jmp     P_518_γ
+
+; ANY β=seq_r15_beta
+seq_r15_beta:
+    mov     rax, [any16_saved]
+    mov     [cursor], rax
+    jmp     seq_l15_beta
+
+P_518_γ:
+    jmp     L_sn_518
+P_518_ω:
+    jmp     L_main02_164
+L_sn_518:
+
+    lea     rdi, [rel S_51]
+    call    stmt_get
+    mov     [rbp-16], rax
+    mov     [rbp-8], rdx
+    lea     rdi, [rel S_445]
     call    stmt_get
     mov     [rbp-32], rax
     mov     [rbp-24], rdx
@@ -5405,15 +5974,15 @@ _sn_518:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_519
+    jnz     L_sn_519
     mov     rdi, [rbp-32]
     mov     rsi, [rbp-24]
     call    stmt_output
-    jmp     _L_main00_162
-_sn_519:
+    jmp     L_main00_162
+L_sn_519:
 
-_L_main02_164:
-    lea     rdi, [rel ps_447]
+L_main02_164:
+    lea     rdi, [rel S_447]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
@@ -5423,19 +5992,19 @@ _L_main02_164:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_520
-    lea     rdi, [rel ps_447]
+    jnz     L_sn_520
+    lea     rdi, [rel S_447]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_520
-_sn_520:
+    jmp     L_sn_520
+L_sn_520:
 
-    lea     rdi, [rel ps_445]
+    lea     rdi, [rel S_445]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
-    lea     rdi, [rel ps_75]
+    lea     rdi, [rel S_75]
     call    stmt_get
     mov     [rbp-32], rax
     mov     [rbp-24], rdx
@@ -5443,74 +6012,236 @@ _sn_520:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sf_521
-    lea     rdi, [rel ps_445]
+    jnz     L_sf_521
+    lea     rdi, [rel S_445]
     mov     rsi, [rbp-32]
     mov     rdx, [rbp-24]
     call    stmt_set
-    jmp     _sn_521
-_sf_521:
-    jmp     _L_main05_165
-_sn_521:
+    jmp     L_sn_521
+L_sf_521:
+    jmp     L_main05_165
+L_sn_521:
 
-    lea     rdi, [rel ps_445]
+    lea     rdi, [rel S_445]
     call    stmt_get
     mov     [rbp-16], rax
-    mov     [rbp-8],  rdx
-    jmp     _sn_522
-_sm_522:
-    jmp     _L_main02_164
-_sf_522:
-    jmp     _sn_522
-_sn_522:
+    mov     [rbp-8], rdx
+    mov     rdi, [rbp-16]
+    mov     rsi, [rbp-8]
+    call    stmt_setup_subject
+    jmp     P_522_α
 
-    lea     rdi, [rel ps_447]
+
+; SEQ α=P_522_α
+P_522_α:
+    jmp     seq_l17_alpha
+P_522_β:
+    jmp     seq_r17_beta
+
+; POS(0)  α=seq_l17_alpha
+seq_l17_alpha:
+    cmp     qword [cursor], 0
+    jne     P_522_ω
+    jmp     seq_r17_alpha
+
+; POS β=seq_l17_beta
+seq_l17_beta:
+    jmp     P_522_ω
+
+; ANY(".+")  α=seq_r17_alpha
+seq_r17_alpha:
+    mov     rax, [cursor]
+    cmp     rax, [subject_len_val]
+    jge     seq_l17_beta
+    mov     [any18_saved], rax
+    lea     rbx, [rel subject_data]
+    movzx   ecx, byte [rbx + rax]
+    lea     rsi, [rel lit_str_5]
+    mov     rdx, 2
+any18_loop:
+    test    rdx, rdx
+    jz      any18_notfound
+    movzx   eax, byte [rsi]
+    cmp     al, cl
+    je      any18_found
+    inc     rsi
+    dec     rdx
+    jmp     any18_loop
+any18_notfound:
+    jmp     seq_l17_beta
+any18_found:
+    mov     rax, [any18_saved]
+    inc     rax
+    mov     [cursor], rax
+    jmp     P_522_γ
+
+; ANY β=seq_r17_beta
+seq_r17_beta:
+    mov     rax, [any18_saved]
+    mov     [cursor], rax
+    jmp     seq_l17_beta
+
+P_522_γ:
+    jmp     L_main02_164
+P_522_ω:
+    jmp     L_sn_522
+L_sn_522:
+
+    lea     rdi, [rel S_447]
     call    stmt_get
     mov     [rbp-16], rax
-    mov     [rbp-8],  rdx
-    jmp     _sn_523
-_sm_523:
-    jmp     _sn_523
-_sf_523:
-    jmp     _L_mainErr1_166
-_sn_523:
+    mov     [rbp-8], rdx
+    mov     rdi, [rbp-16]
+    mov     rsi, [rbp-8]
+    call    stmt_setup_subject
+    jmp     P_523_α
+
+
+; SEQ α=P_523_α
+P_523_α:
+    jmp     seq_l19_alpha
+P_523_β:
+    jmp     seq_r19_beta
+
+; SEQ α=seq_l19_alpha
+seq_l19_alpha:
+    jmp     seq_l20_alpha
+seq_l19_beta:
+    jmp     seq_r20_beta
+
+; SEQ α=seq_l20_alpha
+seq_l20_alpha:
+    jmp     seq_l21_alpha
+seq_l20_beta:
+    jmp     seq_r21_beta
+
+; POS(0)  α=seq_l21_alpha
+seq_l21_alpha:
+    cmp     qword [cursor], 0
+    jne     P_523_ω
+    jmp     seq_r21_alpha
+
+; POS β=seq_l21_beta
+seq_l21_beta:
+    jmp     P_523_ω
+
+; E_INDR unresolved: Parse → ω
+seq_r21_alpha:
+seq_r21_beta:
+    jmp     seq_l21_beta
+
+; E_INDR unresolved: Space → ω
+seq_r20_alpha:
+seq_r20_beta:
+    jmp     seq_l20_beta
+
+; RPOS(0)  α=seq_r19_alpha
+seq_r19_alpha:
+    mov     rax, [subject_len_val]
+    cmp     [cursor], rax
+    jne     seq_l19_beta
+    jmp     P_523_γ
+
+; RPOS β=seq_r19_beta
+seq_r19_beta:
+    jmp     seq_l19_beta
+
+P_523_γ:
+    jmp     L_sn_523
+P_523_ω:
+    jmp     L_mainErr1_166
+L_sn_523:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_524:
+L_sn_524:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-    jmp     _L_main01_163
-_sn_525:
+    jmp     L_main01_163
+L_sn_525:
 
-_L_main05_165:
-    lea     rdi, [rel ps_447]
+L_main05_165:
+    lea     rdi, [rel S_447]
     call    stmt_get
     mov     [rbp-16], rax
-    mov     [rbp-8],  rdx
-    jmp     _sn_526
-_sm_526:
-    jmp     _sn_526
-_sf_526:
-    jmp     _L_mainErr1_166
-_sn_526:
+    mov     [rbp-8], rdx
+    mov     rdi, [rbp-16]
+    mov     rsi, [rbp-8]
+    call    stmt_setup_subject
+    jmp     P_526_α
+
+
+; SEQ α=P_526_α
+P_526_α:
+    jmp     seq_l22_alpha
+P_526_β:
+    jmp     seq_r22_beta
+
+; SEQ α=seq_l22_alpha
+seq_l22_alpha:
+    jmp     seq_l23_alpha
+seq_l22_beta:
+    jmp     seq_r23_beta
+
+; SEQ α=seq_l23_alpha
+seq_l23_alpha:
+    jmp     seq_l24_alpha
+seq_l23_beta:
+    jmp     seq_r24_beta
+
+; POS(0)  α=seq_l24_alpha
+seq_l24_alpha:
+    cmp     qword [cursor], 0
+    jne     P_526_ω
+    jmp     seq_r24_alpha
+
+; POS β=seq_l24_beta
+seq_l24_beta:
+    jmp     P_526_ω
+
+; E_INDR unresolved: Parse → ω
+seq_r24_alpha:
+seq_r24_beta:
+    jmp     seq_l24_beta
+
+; E_INDR unresolved: Space → ω
+seq_r23_alpha:
+seq_r23_beta:
+    jmp     seq_l23_beta
+
+; RPOS(0)  α=seq_r22_alpha
+seq_r22_alpha:
+    mov     rax, [subject_len_val]
+    cmp     [cursor], rax
+    jne     seq_l22_beta
+    jmp     P_526_γ
+
+; RPOS β=seq_r22_beta
+seq_r22_beta:
+    jmp     seq_l22_beta
+
+P_526_γ:
+    jmp     L_sn_526
+P_526_ω:
+    jmp     L_mainErr1_166
+L_sn_526:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
-_sn_527:
+L_sn_527:
 
     mov     qword [rbp-16], 1
     mov     qword [rbp-8], 0
     jmp     _SNO_END      ; END
-_sn_528:
+L_sn_528:
 
-_L_mainErr1_166:
-    lea     rdi, [rel ps_51]
+L_mainErr1_166:
+    lea     rdi, [rel S_51]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
-    lea     rdi, [rel ps_454]
+    lea     rdi, [rel S_454]
     call    stmt_strval
     mov     [rbp-32], rax
     mov     [rbp-24], rdx
@@ -5518,18 +6249,18 @@ _L_mainErr1_166:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_529
+    jnz     L_sn_529
     mov     rdi, [rbp-32]
     mov     rsi, [rbp-24]
     call    stmt_output
-    jmp     _sn_529
-_sn_529:
+    jmp     L_sn_529
+L_sn_529:
 
-    lea     rdi, [rel ps_51]
+    lea     rdi, [rel S_51]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
-    lea     rdi, [rel ps_447]
+    lea     rdi, [rel S_447]
     call    stmt_get
     mov     [rbp-32], rax
     mov     [rbp-24], rdx
@@ -5537,19 +6268,19 @@ _sn_529:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_530
+    jnz     L_sn_530
     mov     rdi, [rbp-32]
     mov     rsi, [rbp-24]
     call    stmt_output
     jmp     _SNO_END      ; END
-_sn_530:
+L_sn_530:
 
-_L_mainErr2_167:
-    lea     rdi, [rel ps_51]
+L_mainErr2_167:
+    lea     rdi, [rel S_51]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
-    lea     rdi, [rel ps_456]
+    lea     rdi, [rel S_456]
     call    stmt_strval
     mov     [rbp-32], rax
     mov     [rbp-24], rdx
@@ -5557,18 +6288,18 @@ _L_mainErr2_167:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_531
+    jnz     L_sn_531
     mov     rdi, [rbp-32]
     mov     rsi, [rbp-24]
     call    stmt_output
-    jmp     _sn_531
-_sn_531:
+    jmp     L_sn_531
+L_sn_531:
 
-    lea     rdi, [rel ps_51]
+    lea     rdi, [rel S_51]
     call    stmt_get
     mov     [rbp-16], rax
     mov     [rbp-8], rdx
-    lea     rdi, [rel ps_447]
+    lea     rdi, [rel S_447]
     call    stmt_get
     mov     [rbp-32], rax
     mov     [rbp-24], rdx
@@ -5576,12 +6307,12 @@ _sn_531:
     mov     rsi, [rbp-24]
     call    stmt_is_fail
     test    eax, eax
-    jnz     _sn_532
+    jnz     L_sn_532
     mov     rdi, [rbp-32]
     mov     rsi, [rbp-24]
     call    stmt_output
     jmp     _SNO_END      ; END
-_sn_532:
+L_sn_532:
 
 _SNO_END:
     call    stmt_finish
@@ -5595,497 +6326,5976 @@ _prog_end:
     leave
     ret
 
+section .data
+
+lit_str_1            db 32
+lit_str_2            db 42, 45
+lit_str_3            db 43, 46
+lit_str_4            db 
+lit_str_5            db 46, 43
+lit_str_6            db 45, 45
+lit_str_7            db 61, 32
+lit_str_8            db 61
+lit_str_9            db 58
+lit_str_10           db 83, 70
+lit_str_11           db 40, 60
+lit_str_12           db 47, 116, 109, 112, 47, 98, 101, 97, 117, 116, 121, 95, 97, 117, 116, 111, 95
+lit_str_13           db 46, 115, 110, 111
+lit_str_14           db 34
+lit_str_15           db 39
+lit_str_16           db 46
+lit_str_17           db 69
+lit_str_18           db 101
+lit_str_19           db 43
+lit_str_20           db 45
+lit_str_21           db 38
+lit_str_22           db 65, 66, 79, 82, 84, 32, 65, 76, 80, 72, 65, 66, 69, 84, 32, 65, 82, 66, 32, 66, 65, 76, 32, 70, 65, 73, 76, 32, 70, 69, 78, 67, 69, 32, 70, 73, 76, 69, 32, 70, 78, 67, 76, 69, 86, 69, 76, 32
+lit_str_23           db 76, 65, 83, 84, 70, 73, 76, 69, 32, 76, 65, 83, 84, 76, 73, 78, 69, 32, 76, 65, 83, 84, 78, 79, 32, 76, 67, 65, 83, 69, 32, 76, 73, 78, 69, 32, 82, 69, 77, 32, 82, 84, 78, 84, 89, 80, 69, 32
+lit_str_24           db 83, 84, 67, 79, 85, 78, 84, 32, 83, 84, 78, 79, 32, 83, 85, 67, 67, 69, 69, 68, 32, 85, 67, 65, 83, 69
+lit_str_25           db 65, 66, 69, 78, 68, 32, 65, 78, 67, 72, 79, 82, 32, 67, 65, 83, 69, 32, 67, 79, 68, 69, 32, 67, 79, 77, 80, 65, 82, 69, 32, 68, 85, 77, 80, 32, 69, 82, 82, 76, 73, 77, 73, 84, 32
+lit_str_26           db 69, 82, 82, 84, 69, 88, 84, 32, 69, 82, 82, 84, 89, 80, 69, 32, 70, 84, 82, 65, 67, 69, 32, 73, 78, 80, 85, 84, 32, 77, 65, 88, 76, 78, 71, 84, 72, 32, 79, 85, 84, 80, 85, 84, 32
+lit_str_27           db 80, 82, 79, 70, 73, 76, 69, 32, 83, 84, 76, 73, 77, 73, 84, 32, 84, 82, 65, 67, 69, 32, 84, 82, 73, 77, 32, 70, 85, 76, 76, 83, 67, 65, 78
+lit_str_28           db 65, 78, 89, 32, 65, 80, 80, 76, 89, 32, 65, 82, 66, 78, 79, 32, 65, 82, 71, 32, 65, 82, 82, 65, 89, 32, 65, 84, 65, 78, 32, 66, 65, 67, 75, 83, 80, 65, 67, 69, 32, 66, 82, 69, 65, 75, 32, 66, 82, 69, 65, 75, 88, 32
+lit_str_29           db 67, 72, 65, 82, 32, 67, 72, 79, 80, 32, 67, 76, 69, 65, 82, 32, 67, 79, 68, 69, 32, 67, 79, 76, 76, 69, 67, 84, 32, 67, 79, 78, 86, 69, 82, 84, 32, 67, 79, 80, 89, 32, 67, 79, 83, 32, 68, 65, 84, 65, 32
+lit_str_30           db 68, 65, 84, 65, 84, 89, 80, 69, 32, 68, 65, 84, 69, 32, 68, 69, 70, 73, 78, 69, 32, 68, 69, 84, 65, 67, 72, 32, 68, 73, 70, 70, 69, 82, 32, 68, 85, 77, 80, 32, 68, 85, 80, 76, 32, 69, 74, 69, 67, 84, 32
+lit_str_31           db 69, 78, 68, 70, 73, 76, 69, 32, 69, 81, 32, 69, 86, 65, 76, 32, 69, 88, 73, 84, 32, 69, 88, 80, 32, 70, 69, 78, 67, 69, 32, 70, 73, 69, 76, 68, 32, 71, 69, 32, 71, 84, 32, 72, 79, 83, 84, 32
+lit_str_32           db 73, 68, 69, 78, 84, 32, 73, 78, 80, 85, 84, 32, 73, 78, 84, 69, 71, 69, 82, 32, 73, 84, 69, 77, 32, 76, 69, 32, 76, 69, 78, 32, 76, 69, 81, 32, 76, 71, 69, 32, 76, 71, 84, 32, 76, 76, 69, 32
+lit_str_33           db 76, 76, 84, 32, 76, 78, 32, 76, 78, 69, 32, 76, 79, 65, 68, 32, 76, 79, 67, 65, 76, 32, 76, 80, 65, 68, 32, 76, 84, 32, 78, 69, 32, 78, 79, 84, 65, 78, 89, 32, 79, 80, 83, 89, 78, 32, 79, 85, 84, 80, 85, 84, 32
+lit_str_34           db 80, 79, 83, 32, 80, 82, 79, 84, 79, 84, 89, 80, 69, 32, 82, 69, 77, 68, 82, 32, 82, 69, 80, 76, 65, 67, 69, 32, 82, 69, 86, 69, 82, 83, 69, 32, 82, 69, 87, 73, 78, 68, 32, 82, 80, 65, 68, 32, 82, 80, 79, 83, 32
+lit_str_35           db 82, 83, 79, 82, 84, 32, 82, 84, 65, 66, 32, 83, 69, 84, 32, 83, 69, 84, 69, 88, 73, 84, 32, 83, 73, 78, 32, 83, 73, 90, 69, 32, 83, 79, 82, 84, 32, 83, 80, 65, 78, 32, 83, 81, 82, 84, 32, 83, 84, 79, 80, 84, 82, 32
+lit_str_36           db 83, 85, 66, 83, 84, 82, 32, 84, 65, 66, 32, 84, 65, 66, 76, 69, 32, 84, 65, 78, 32, 84, 73, 77, 69, 32, 84, 82, 65, 67, 69, 32, 84, 82, 73, 77, 32, 85, 78, 76, 79, 65, 68
+lit_str_37           db 64
+lit_str_38           db 126
+lit_str_39           db 63
+lit_str_40           db 42
+lit_str_41           db 36
+lit_str_42           db 33
+lit_str_43           db 37
+lit_str_44           db 47
+lit_str_45           db 35
+lit_str_46           db 124
+
+; ======== named pattern bodies ========
+
+; ============ Named pattern: ppStop ============
+; P_ppStop_alpha (α entry)
+
+; UNIMPLEMENTED: ARRAY() → ω
+P_ppStop_alpha:
+P_ppStop_beta:
+    jmp     patdef_ppStop_omega
+
+patdef_ppStop_gamma:
+    jmp     [P_ppStop_ret_gamma]
+patdef_ppStop_omega:
+    jmp     [P_ppStop_ret_omega]
+
+; ============ Named pattern: ppSmBump ============
+; P_ppSmBump_alpha (α entry)
+
+; UNIMPLEMENTED node kind 8 → ω
+P_ppSmBump_alpha:
+P_ppSmBump_beta:
+    jmp     patdef_ppSmBump_omega
+
+patdef_ppSmBump_gamma:
+    jmp     [P_ppSmBump_ret_gamma]
+patdef_ppSmBump_omega:
+    jmp     [P_ppSmBump_ret_omega]
+
+; ============ Named pattern: ppArgs ============
+; P_ppArgs_alpha (α entry)
+
+; UNIMPLEMENTED: HOST() → ω
+P_ppArgs_alpha:
+P_ppArgs_beta:
+    jmp     patdef_ppArgs_omega
+
+patdef_ppArgs_gamma:
+    jmp     [P_ppArgs_ret_gamma]
+patdef_ppArgs_omega:
+    jmp     [P_ppArgs_ret_omega]
+
+; ============ Named pattern: ppTokPat ============
+; P_ppTokPat_alpha (α entry)
+
+; SEQ α=P_ppTokPat_alpha
+P_ppTokPat_alpha:
+    jmp     seq_l25_alpha
+P_ppTokPat_beta:
+    jmp     seq_r25_beta
+
+; SEQ α=seq_l25_alpha
+seq_l25_alpha:
+    jmp     seq_l26_alpha
+seq_l25_beta:
+    jmp     seq_r26_beta
+
+; LIT("--")  α=seq_l26_alpha
+seq_l26_alpha:
+    mov     rax, [cursor]
+    add     rax, 2
+    cmp     rax, [subject_len_val]
+    jg      patdef_ppTokPat_omega
+    lea     rsi, [rel subject_data]
+    mov     rcx, [cursor]
+    add     rsi, rcx
+    lea     rdi, [rel lit_str_6]
+    mov     rcx, 2
+    repe    cmpsb
+    jne     patdef_ppTokPat_omega
+    mov     rax, [cursor]
+    mov     [seq_l26_alpha_saved], rax
+    add     rax, 2
+    mov     [cursor], rax
+    jmp     seq_r26_alpha
+
+; LIT β=seq_l26_beta
+seq_l26_beta:
+    mov     rax, [seq_l26_alpha_saved]
+    mov     [cursor], rax
+    jmp     patdef_ppTokPat_omega
+
+; DOL(ppTokName $  ppTokName)  α=seq_r26_alpha
+seq_r26_alpha:
+    mov     rax, [cursor]
+    mov     [dol_entry_ppTokName], rax
+    jmp     dol27_child_alpha
+seq_r26_beta:
+    jmp     dol27_child_beta
+
+; ALT α=dol27_child_alpha
+dol27_child_alpha:
+    mov     rax, [cursor]
+    mov     [alt28_cur_save], rax
+    jmp     alt_l28_alpha
+dol27_child_beta:
+    jmp     alt_r28_beta
+
+; BREAK("= ") REAL  α=alt_l28_alpha
+alt_l28_alpha:
+    mov     rax, [cursor]
+    mov     [brk29_saved], rax
+    mov     r12, rax
+brk29_outer:
+    cmp     r12, [subject_len_val]
+    jge     alt28_left_omega
+    lea     rbx, [rel subject_data]
+    movzx   ecx, byte [rbx + r12]
+    lea     rsi, [rel lit_str_7]
+    mov     rdx, 2
+brk29_csscan:
+    test    rdx, rdx
+    je      brk29_advance
+    movzx   eax, byte [rsi]
+    cmp     al, cl
+    je      brk29_inset
+    inc     rsi
+    dec     rdx
+    jmp     brk29_csscan
+brk29_advance:
+    inc     r12
+    jmp     brk29_outer
+brk29_inset:
+    mov     [cursor], r12
+    jmp     dol27_gamma
+
+; BREAK β=alt_l28_beta
+alt_l28_beta:
+    mov     rax, [brk29_saved]
+    mov     [cursor], rax
+    jmp     alt28_left_omega
+
+; ALT left_ω trampoline
+alt28_left_omega:
+    mov     rax, [alt28_cur_save]
+    mov     [cursor], rax
+    jmp     alt_r28_alpha
+
+; REM  α=alt_r28_alpha
+alt_r28_alpha:
+    mov     rax, [cursor]
+    mov     [rem30_saved], rax
+    mov     rax, [subject_len_val]
+    mov     [cursor], rax
+    jmp     dol27_gamma
+
+; REM β=alt_r28_beta
+alt_r28_beta:
+    mov     rax, [rem30_saved]
+    mov     [cursor], rax
+    jmp     dol27_omega
+
+; DOL γ — capture span into cap_ppTokName_buf
+dol27_gamma:
+    mov     rax, [cursor]
+    mov     rbx, [dol_entry_ppTokName]
+    sub     rax, rbx
+    mov     [cap_ppTokName_len], rax
+    lea     rsi, [rel subject_data]
+    add     rsi, rbx
+    lea     rdi, [rel cap_ppTokName_buf]
+    mov     rcx, rax
+    rep     movsb
+    jmp     seq_r25_alpha
+
+; DOL ω — child failed, no capture
+dol27_omega:
+    jmp     seq_l26_beta
+
+; ALT α=seq_r25_alpha
+seq_r25_alpha:
+    mov     rax, [cursor]
+    mov     [alt31_cur_save], rax
+    jmp     alt_l31_alpha
+seq_r25_beta:
+    jmp     alt_r31_beta
+
+; SEQ α=alt_l31_alpha
+alt_l31_alpha:
+    jmp     seq_l32_alpha
+alt_l31_beta:
+    jmp     seq_r32_beta
+
+; LIT("=")  α=seq_l32_alpha
+seq_l32_alpha:
+    mov     rax, [cursor]
+    add     rax, 1
+    cmp     rax, [subject_len_val]
+    jg      alt31_left_omega
+    lea     rbx, [rel subject_data]
+    mov     rcx, [cursor]
+    movzx   eax, byte [rbx + rcx]
+    cmp     al, 61
+    jne     alt31_left_omega
+    mov     rax, [cursor]
+    mov     [seq_l32_alpha_saved], rax
+    add     rax, 1
+    mov     [cursor], rax
+    jmp     seq_r32_alpha
+
+; LIT β=seq_l32_beta
+seq_l32_beta:
+    mov     rax, [seq_l32_alpha_saved]
+    mov     [cursor], rax
+    jmp     alt31_left_omega
+
+; DOL(ppTokVal $  ppTokVal)  α=seq_r32_alpha
+seq_r32_alpha:
+    mov     rax, [cursor]
+    mov     [dol_entry_ppTokVal], rax
+    jmp     dol33_child_alpha
+seq_r32_beta:
+    jmp     dol33_child_beta
+
+; ALT α=dol33_child_alpha
+dol33_child_alpha:
+    mov     rax, [cursor]
+    mov     [alt34_cur_save], rax
+    jmp     alt_l34_alpha
+dol33_child_beta:
+    jmp     alt_r34_beta
+
+; BREAK(" ") REAL  α=alt_l34_alpha
+alt_l34_alpha:
+    mov     rax, [cursor]
+    mov     [brk35_saved], rax
+    mov     r12, rax
+brk35_outer:
+    cmp     r12, [subject_len_val]
+    jge     alt34_left_omega
+    lea     rbx, [rel subject_data]
+    movzx   ecx, byte [rbx + r12]
+    lea     rsi, [rel lit_str_1]
+    mov     rdx, 1
+brk35_csscan:
+    test    rdx, rdx
+    je      brk35_advance
+    movzx   eax, byte [rsi]
+    cmp     al, cl
+    je      brk35_inset
+    inc     rsi
+    dec     rdx
+    jmp     brk35_csscan
+brk35_advance:
+    inc     r12
+    jmp     brk35_outer
+brk35_inset:
+    mov     [cursor], r12
+    jmp     dol33_gamma
+
+; BREAK β=alt_l34_beta
+alt_l34_beta:
+    mov     rax, [brk35_saved]
+    mov     [cursor], rax
+    jmp     alt34_left_omega
+
+; ALT left_ω trampoline
+alt34_left_omega:
+    mov     rax, [alt34_cur_save]
+    mov     [cursor], rax
+    jmp     alt_r34_alpha
+
+; REM  α=alt_r34_alpha
+alt_r34_alpha:
+    mov     rax, [cursor]
+    mov     [rem36_saved], rax
+    mov     rax, [subject_len_val]
+    mov     [cursor], rax
+    jmp     dol33_gamma
+
+; REM β=alt_r34_beta
+alt_r34_beta:
+    mov     rax, [rem36_saved]
+    mov     [cursor], rax
+    jmp     dol33_omega
+
+; DOL γ — capture span into cap_ppTokVal_buf
+dol33_gamma:
+    mov     rax, [cursor]
+    mov     rbx, [dol_entry_ppTokVal]
+    sub     rax, rbx
+    mov     [cap_ppTokVal_len], rax
+    lea     rsi, [rel subject_data]
+    add     rsi, rbx
+    lea     rdi, [rel cap_ppTokVal_buf]
+    mov     rcx, rax
+    rep     movsb
+    jmp     patdef_ppTokPat_gamma
+
+; DOL ω — child failed, no capture
+dol33_omega:
+    jmp     seq_l32_beta
+
+; ALT left_ω trampoline
+alt31_left_omega:
+    mov     rax, [alt31_cur_save]
+    mov     [cursor], rax
+    jmp     alt_r31_alpha
+
+; DOL(ppTokVal $  ppTokVal)  α=alt_r31_alpha
+alt_r31_alpha:
+    mov     rax, [cursor]
+    mov     [dol_entry_ppTokVal], rax
+    jmp     dol37_child_alpha
+alt_r31_beta:
+    jmp     dol37_child_beta
+
+; LIT("")  α=dol37_child_alpha
+dol37_child_alpha:
+    mov     rax, [cursor]
+    add     rax, 0
+    cmp     rax, [subject_len_val]
+    jg      dol37_omega
+    lea     rsi, [rel subject_data]
+    mov     rcx, [cursor]
+    add     rsi, rcx
+    lea     rdi, [rel lit_str_4]
+    mov     rcx, 0
+    repe    cmpsb
+    jne     dol37_omega
+    mov     rax, [cursor]
+    mov     [dol37_child_alpha_saved], rax
+    add     rax, 0
+    mov     [cursor], rax
+    jmp     dol37_gamma
+
+; LIT β=dol37_child_beta
+dol37_child_beta:
+    mov     rax, [dol37_child_alpha_saved]
+    mov     [cursor], rax
+    jmp     dol37_omega
+
+; DOL γ — capture span into cap_ppTokVal_buf
+dol37_gamma:
+    mov     rax, [cursor]
+    mov     rbx, [dol_entry_ppTokVal]
+    sub     rax, rbx
+    mov     [cap_ppTokVal_len], rax
+    lea     rsi, [rel subject_data]
+    add     rsi, rbx
+    lea     rdi, [rel cap_ppTokVal_buf]
+    mov     rcx, rax
+    rep     movsb
+    jmp     patdef_ppTokPat_gamma
+
+; DOL ω — child failed, no capture
+dol37_omega:
+    jmp     seq_l25_beta
+
+patdef_ppTokPat_gamma:
+    jmp     [P_ppTokPat_ret_gamma]
+patdef_ppTokPat_omega:
+    jmp     [P_ppTokPat_ret_omega]
+
+; ============ Named pattern: OUTPUT ============
+; P_OUTPUT_alpha (α entry)
+
+; UNRESOLVED named pattern ref: Src → ω
+P_OUTPUT_alpha:
+P_OUTPUT_beta:
+    jmp     patdef_OUTPUT_omega
+
+patdef_OUTPUT_gamma:
+    jmp     [P_OUTPUT_ret_gamma]
+patdef_OUTPUT_omega:
+    jmp     [P_OUTPUT_ret_omega]
+
+; ============ Named pattern: ppTab ============
+; P_ppTab_alpha (α entry)
+
+; UNIMPLEMENTED: CHAR() → ω
+P_ppTab_alpha:
+P_ppTab_beta:
+    jmp     patdef_ppTab_omega
+
+patdef_ppTab_gamma:
+    jmp     [P_ppTab_ret_gamma]
+patdef_ppTab_omega:
+    jmp     [P_ppTab_ret_omega]
+
+; ============ Named pattern: ppGSfx ============
+; P_ppGSfx_alpha (α entry)
+
+; SEQ α=P_ppGSfx_alpha
+P_ppGSfx_alpha:
+    jmp     seq_l38_alpha
+P_ppGSfx_beta:
+    jmp     seq_r38_beta
+
+; SEQ α=seq_l38_alpha
+seq_l38_alpha:
+    jmp     seq_l39_alpha
+seq_l38_beta:
+    jmp     seq_r39_beta
+
+; SEQ α=seq_l39_alpha
+seq_l39_alpha:
+    jmp     seq_l40_alpha
+seq_l39_beta:
+    jmp     seq_r40_beta
+
+; SEQ α=seq_l40_alpha
+seq_l40_alpha:
+    jmp     seq_l41_alpha
+seq_l40_beta:
+    jmp     seq_r41_beta
+
+; ALT α=seq_l41_alpha
+seq_l41_alpha:
+    mov     rax, [cursor]
+    mov     [alt42_cur_save], rax
+    jmp     alt_l42_alpha
+seq_l41_beta:
+    jmp     alt_r42_beta
+
+; SPAN("") REAL  α=alt_l42_alpha
+alt_l42_alpha:
+    mov     rax, [cursor]
+    cmp     rax, [subject_len_val]
+    jge     alt42_left_omega
+    mov     [span43_saved], rax
+    mov     r12, rax
+span43_outer:
+    cmp     r12, [subject_len_val]
+    jge     span43_notin
+    lea     rbx, [rel subject_data]
+    movzx   ecx, byte [rbx + r12]
+    lea     rsi, [rel lit_str_4]
+    mov     rdx, 0
+span43_csscan:
+    test    rdx, rdx
+    jz      span43_notin
+    movzx   eax, byte [rsi]
+    cmp     al, cl
+    je      span43_inset
+    inc     rsi
+    dec     rdx
+    jmp     span43_csscan
+span43_inset:
+    inc     r12
+    jmp     span43_outer
+span43_notin:
+    mov     rbx, [span43_saved]
+    cmp     r12, rbx
+    je      alt42_left_omega
+    mov     [cursor], r12
+    jmp     seq_r41_alpha
+
+; SPAN β=alt_l42_beta
+alt_l42_beta:
+    mov     rax, [span43_saved]
+    mov     [cursor], rax
+    jmp     alt42_left_omega
+
+; ALT left_ω trampoline
+alt42_left_omega:
+    mov     rax, [alt42_cur_save]
+    mov     [cursor], rax
+    jmp     alt_r42_alpha
+
+; LIT("")  α=alt_r42_alpha
+alt_r42_alpha:
+    mov     rax, [cursor]
+    add     rax, 0
+    cmp     rax, [subject_len_val]
+    jg      patdef_ppGSfx_omega
+    lea     rsi, [rel subject_data]
+    mov     rcx, [cursor]
+    add     rsi, rcx
+    lea     rdi, [rel lit_str_4]
+    mov     rcx, 0
+    repe    cmpsb
+    jne     patdef_ppGSfx_omega
+    mov     rax, [cursor]
+    mov     [alt_r42_alpha_saved], rax
+    add     rax, 0
+    mov     [cursor], rax
+    jmp     seq_r41_alpha
+
+; LIT β=alt_r42_beta
+alt_r42_beta:
+    mov     rax, [alt_r42_alpha_saved]
+    mov     [cursor], rax
+    jmp     patdef_ppGSfx_omega
+
+; LIT(":")  α=seq_r41_alpha
+seq_r41_alpha:
+    mov     rax, [cursor]
+    add     rax, 1
+    cmp     rax, [subject_len_val]
+    jg      seq_l41_beta
+    lea     rbx, [rel subject_data]
+    mov     rcx, [cursor]
+    movzx   eax, byte [rbx + rcx]
+    cmp     al, 58
+    jne     seq_l41_beta
+    mov     rax, [cursor]
+    mov     [seq_r41_alpha_saved], rax
+    add     rax, 1
+    mov     [cursor], rax
+    jmp     seq_r40_alpha
+
+; LIT β=seq_r41_beta
+seq_r41_beta:
+    mov     rax, [seq_r41_alpha_saved]
+    mov     [cursor], rax
+    jmp     seq_l41_beta
+
+; ALT α=seq_r40_alpha
+seq_r40_alpha:
+    mov     rax, [cursor]
+    mov     [alt44_cur_save], rax
+    jmp     alt_l44_alpha
+seq_r40_beta:
+    jmp     alt_r44_beta
+
+; ANY("SF")  α=alt_l44_alpha
+alt_l44_alpha:
+    mov     rax, [cursor]
+    cmp     rax, [subject_len_val]
+    jge     alt44_left_omega
+    mov     [any45_saved], rax
+    lea     rbx, [rel subject_data]
+    movzx   ecx, byte [rbx + rax]
+    lea     rsi, [rel lit_str_10]
+    mov     rdx, 2
+any45_loop:
+    test    rdx, rdx
+    jz      any45_notfound
+    movzx   eax, byte [rsi]
+    cmp     al, cl
+    je      any45_found
+    inc     rsi
+    dec     rdx
+    jmp     any45_loop
+any45_notfound:
+    jmp     alt44_left_omega
+any45_found:
+    mov     rax, [any45_saved]
+    inc     rax
+    mov     [cursor], rax
+    jmp     seq_r39_alpha
+
+; ANY β=alt_l44_beta
+alt_l44_beta:
+    mov     rax, [any45_saved]
+    mov     [cursor], rax
+    jmp     alt44_left_omega
+
+; ALT left_ω trampoline
+alt44_left_omega:
+    mov     rax, [alt44_cur_save]
+    mov     [cursor], rax
+    jmp     alt_r44_alpha
+
+; LIT("")  α=alt_r44_alpha
+alt_r44_alpha:
+    mov     rax, [cursor]
+    add     rax, 0
+    cmp     rax, [subject_len_val]
+    jg      seq_l40_beta
+    lea     rsi, [rel subject_data]
+    mov     rcx, [cursor]
+    add     rsi, rcx
+    lea     rdi, [rel lit_str_4]
+    mov     rcx, 0
+    repe    cmpsb
+    jne     seq_l40_beta
+    mov     rax, [cursor]
+    mov     [alt_r44_alpha_saved], rax
+    add     rax, 0
+    mov     [cursor], rax
+    jmp     seq_r39_alpha
+
+; LIT β=alt_r44_beta
+alt_r44_beta:
+    mov     rax, [alt_r44_alpha_saved]
+    mov     [cursor], rax
+    jmp     seq_l40_beta
+
+; ALT α=seq_r39_alpha
+seq_r39_alpha:
+    mov     rax, [cursor]
+    mov     [alt46_cur_save], rax
+    jmp     alt_l46_alpha
+seq_r39_beta:
+    jmp     alt_r46_beta
+
+; ANY("(<")  α=alt_l46_alpha
+alt_l46_alpha:
+    mov     rax, [cursor]
+    cmp     rax, [subject_len_val]
+    jge     alt46_left_omega
+    mov     [any47_saved], rax
+    lea     rbx, [rel subject_data]
+    movzx   ecx, byte [rbx + rax]
+    lea     rsi, [rel lit_str_11]
+    mov     rdx, 2
+any47_loop:
+    test    rdx, rdx
+    jz      any47_notfound
+    movzx   eax, byte [rsi]
+    cmp     al, cl
+    je      any47_found
+    inc     rsi
+    dec     rdx
+    jmp     any47_loop
+any47_notfound:
+    jmp     alt46_left_omega
+any47_found:
+    mov     rax, [any47_saved]
+    inc     rax
+    mov     [cursor], rax
+    jmp     seq_r38_alpha
+
+; ANY β=alt_l46_beta
+alt_l46_beta:
+    mov     rax, [any47_saved]
+    mov     [cursor], rax
+    jmp     alt46_left_omega
+
+; ALT left_ω trampoline
+alt46_left_omega:
+    mov     rax, [alt46_cur_save]
+    mov     [cursor], rax
+    jmp     alt_r46_alpha
+
+; LIT("")  α=alt_r46_alpha
+alt_r46_alpha:
+    mov     rax, [cursor]
+    add     rax, 0
+    cmp     rax, [subject_len_val]
+    jg      seq_l39_beta
+    lea     rsi, [rel subject_data]
+    mov     rcx, [cursor]
+    add     rsi, rcx
+    lea     rdi, [rel lit_str_4]
+    mov     rcx, 0
+    repe    cmpsb
+    jne     seq_l39_beta
+    mov     rax, [cursor]
+    mov     [alt_r46_alpha_saved], rax
+    add     rax, 0
+    mov     [cursor], rax
+    jmp     seq_r38_alpha
+
+; LIT β=alt_r46_beta
+alt_r46_beta:
+    mov     rax, [alt_r46_alpha_saved]
+    mov     [cursor], rax
+    jmp     seq_l39_beta
+
+; REM  α=seq_r38_alpha
+seq_r38_alpha:
+    mov     rax, [cursor]
+    mov     [rem48_saved], rax
+    mov     rax, [subject_len_val]
+    mov     [cursor], rax
+    jmp     patdef_ppGSfx_gamma
+
+; REM β=seq_r38_beta
+seq_r38_beta:
+    mov     rax, [rem48_saved]
+    mov     [cursor], rax
+    jmp     seq_l38_beta
+
+patdef_ppGSfx_gamma:
+    jmp     [P_ppGSfx_ret_gamma]
+patdef_ppGSfx_omega:
+    jmp     [P_ppGSfx_ret_omega]
+
+; ============ Named pattern: ppGPat ============
+; P_ppGPat_alpha (α entry)
+
+; SEQ α=P_ppGPat_alpha
+P_ppGPat_alpha:
+    jmp     seq_l49_alpha
+P_ppGPat_beta:
+    jmp     seq_r49_beta
+
+; DOL(ppGCon $  ppGCon)  α=seq_l49_alpha
+seq_l49_alpha:
+    mov     rax, [cursor]
+    mov     [dol_entry_ppGCon], rax
+    jmp     dol50_child_alpha
+seq_l49_beta:
+    jmp     dol50_child_beta
+
+; BREAK(":") REAL  α=dol50_child_alpha
+dol50_child_alpha:
+    mov     rax, [cursor]
+    mov     [brk51_saved], rax
+    mov     r12, rax
+brk51_outer:
+    cmp     r12, [subject_len_val]
+    jge     dol50_omega
+    lea     rbx, [rel subject_data]
+    movzx   ecx, byte [rbx + r12]
+    lea     rsi, [rel lit_str_9]
+    mov     rdx, 1
+brk51_csscan:
+    test    rdx, rdx
+    je      brk51_advance
+    movzx   eax, byte [rsi]
+    cmp     al, cl
+    je      brk51_inset
+    inc     rsi
+    dec     rdx
+    jmp     brk51_csscan
+brk51_advance:
+    inc     r12
+    jmp     brk51_outer
+brk51_inset:
+    mov     [cursor], r12
+    jmp     dol50_gamma
+
+; BREAK β=dol50_child_beta
+dol50_child_beta:
+    mov     rax, [brk51_saved]
+    mov     [cursor], rax
+    jmp     dol50_omega
+
+; DOL γ — capture span into cap_ppGCon_buf
+dol50_gamma:
+    mov     rax, [cursor]
+    mov     rbx, [dol_entry_ppGCon]
+    sub     rax, rbx
+    mov     [cap_ppGCon_len], rax
+    lea     rsi, [rel subject_data]
+    add     rsi, rbx
+    lea     rdi, [rel cap_ppGCon_buf]
+    mov     rcx, rax
+    rep     movsb
+    jmp     seq_r49_alpha
+
+; DOL ω — child failed, no capture
+dol50_omega:
+    jmp     patdef_ppGPat_omega
+
+; REF(ppGSfx) α=seq_r49_alpha
+seq_r49_alpha:
+    lea     rax, [rel nref52_gamma]
+    mov     [P_ppGSfx_ret_gamma], rax
+    lea     rax, [rel nref52_omega]
+    mov     [P_ppGSfx_ret_omega], rax
+    jmp     P_ppGSfx_alpha
+
+; REF(ppGSfx) β=seq_r49_beta
+seq_r49_beta:
+    lea     rax, [rel nref52_gamma]
+    mov     [P_ppGSfx_ret_gamma], rax
+    lea     rax, [rel nref52_omega]
+    mov     [P_ppGSfx_ret_omega], rax
+    jmp     P_ppGSfx_beta
+
+nref52_gamma:
+    jmp     patdef_ppGPat_gamma
+nref52_omega:
+    jmp     seq_l49_beta
+
+patdef_ppGPat_gamma:
+    jmp     [P_ppGPat_ret_gamma]
+patdef_ppGPat_omega:
+    jmp     [P_ppGPat_ret_omega]
+
+; ============ Named pattern: ppTrimPat ============
+; P_ppTrimPat_alpha (α entry)
+
+; DOL(ppDrop $  ppDrop)  α=P_ppTrimPat_alpha
+P_ppTrimPat_alpha:
+    mov     rax, [cursor]
+    mov     [dol_entry_ppDrop], rax
+    jmp     dol53_child_alpha
+P_ppTrimPat_beta:
+    jmp     dol53_child_beta
+
+; SEQ α=dol53_child_alpha
+dol53_child_alpha:
+    jmp     seq_l54_alpha
+dol53_child_beta:
+    jmp     seq_r54_beta
+
+; SPAN("") REAL  α=seq_l54_alpha
+seq_l54_alpha:
+    mov     rax, [cursor]
+    cmp     rax, [subject_len_val]
+    jge     dol53_omega
+    mov     [span55_saved], rax
+    mov     r12, rax
+span55_outer:
+    cmp     r12, [subject_len_val]
+    jge     span55_notin
+    lea     rbx, [rel subject_data]
+    movzx   ecx, byte [rbx + r12]
+    lea     rsi, [rel lit_str_4]
+    mov     rdx, 0
+span55_csscan:
+    test    rdx, rdx
+    jz      span55_notin
+    movzx   eax, byte [rsi]
+    cmp     al, cl
+    je      span55_inset
+    inc     rsi
+    dec     rdx
+    jmp     span55_csscan
+span55_inset:
+    inc     r12
+    jmp     span55_outer
+span55_notin:
+    mov     rbx, [span55_saved]
+    cmp     r12, rbx
+    je      dol53_omega
+    mov     [cursor], r12
+    jmp     seq_r54_alpha
+
+; SPAN β=seq_l54_beta
+seq_l54_beta:
+    mov     rax, [span55_saved]
+    mov     [cursor], rax
+    jmp     dol53_omega
+
+; RPOS(0)  α=seq_r54_alpha
+seq_r54_alpha:
+    mov     rax, [subject_len_val]
+    cmp     [cursor], rax
+    jne     seq_l54_beta
+    jmp     dol53_gamma
+
+; RPOS β=seq_r54_beta
+seq_r54_beta:
+    jmp     seq_l54_beta
+
+; DOL γ — capture span into cap_ppDrop_buf
+dol53_gamma:
+    mov     rax, [cursor]
+    mov     rbx, [dol_entry_ppDrop]
+    sub     rax, rbx
+    mov     [cap_ppDrop_len], rax
+    lea     rsi, [rel subject_data]
+    add     rsi, rbx
+    lea     rdi, [rel cap_ppDrop_buf]
+    mov     rcx, rax
+    rep     movsb
+    jmp     patdef_ppTrimPat_gamma
+
+; DOL ω — child failed, no capture
+dol53_omega:
+    jmp     patdef_ppTrimPat_omega
+
+patdef_ppTrimPat_gamma:
+    jmp     [P_ppTrimPat_ret_gamma]
+patdef_ppTrimPat_omega:
+    jmp     [P_ppTrimPat_ret_omega]
+
+; ============ Named pattern: ppNg ============
+; P_ppNg_alpha (α entry)
+
+; UNIMPLEMENTED node kind 8 → ω
+P_ppNg_alpha:
+P_ppNg_beta:
+    jmp     patdef_ppNg_omega
+
+patdef_ppNg_gamma:
+    jmp     [P_ppNg_ret_gamma]
+patdef_ppNg_omega:
+    jmp     [P_ppNg_ret_omega]
+
+; ============ Named pattern: ppWArr ============
+; P_ppWArr_alpha (α entry)
+
+; UNIMPLEMENTED: ARRAY() → ω
+P_ppWArr_alpha:
+P_ppWArr_beta:
+    jmp     patdef_ppWArr_omega
+
+patdef_ppWArr_gamma:
+    jmp     [P_ppWArr_ret_gamma]
+patdef_ppWArr_omega:
+    jmp     [P_ppWArr_ret_omega]
+
+; ============ Named pattern: ppTmpFile ============
+; P_ppTmpFile_alpha (α entry)
+
+; SEQ α=P_ppTmpFile_alpha
+P_ppTmpFile_alpha:
+    jmp     seq_l56_alpha
+P_ppTmpFile_beta:
+    jmp     seq_r56_beta
+
+; SEQ α=seq_l56_alpha
+seq_l56_alpha:
+    jmp     seq_l57_alpha
+seq_l56_beta:
+    jmp     seq_r57_beta
+
+; LIT("/tmp/beauty_auto_")  α=seq_l57_alpha
+seq_l57_alpha:
+    mov     rax, [cursor]
+    add     rax, 17
+    cmp     rax, [subject_len_val]
+    jg      patdef_ppTmpFile_omega
+    lea     rsi, [rel subject_data]
+    mov     rcx, [cursor]
+    add     rsi, rcx
+    lea     rdi, [rel lit_str_12]
+    mov     rcx, 17
+    repe    cmpsb
+    jne     patdef_ppTmpFile_omega
+    mov     rax, [cursor]
+    mov     [seq_l57_alpha_saved], rax
+    add     rax, 17
+    mov     [cursor], rax
+    jmp     seq_r57_alpha
+
+; LIT β=seq_l57_beta
+seq_l57_beta:
+    mov     rax, [seq_l57_alpha_saved]
+    mov     [cursor], rax
+    jmp     patdef_ppTmpFile_omega
+
+; UNIMPLEMENTED: HOST() → ω
+seq_r57_alpha:
+seq_r57_beta:
+    jmp     seq_l57_beta
+
+; LIT(".sno")  α=seq_r56_alpha
+seq_r56_alpha:
+    mov     rax, [cursor]
+    add     rax, 4
+    cmp     rax, [subject_len_val]
+    jg      seq_l56_beta
+    lea     rsi, [rel subject_data]
+    mov     rcx, [cursor]
+    add     rsi, rcx
+    lea     rdi, [rel lit_str_13]
+    mov     rcx, 4
+    repe    cmpsb
+    jne     seq_l56_beta
+    mov     rax, [cursor]
+    mov     [seq_r56_alpha_saved], rax
+    add     rax, 4
+    mov     [cursor], rax
+    jmp     patdef_ppTmpFile_gamma
+
+; LIT β=seq_r56_beta
+seq_r56_beta:
+    mov     rax, [seq_r56_alpha_saved]
+    mov     [cursor], rax
+    jmp     seq_l56_beta
+
+patdef_ppTmpFile_gamma:
+    jmp     [P_ppTmpFile_ret_gamma]
+patdef_ppTmpFile_omega:
+    jmp     [P_ppTmpFile_ret_omega]
+
+; ============ Named pattern: ppLn ============
+; P_ppLn_alpha (α entry)
+
+; UNRESOLVED named pattern ref: INPUT → ω
+P_ppLn_alpha:
+P_ppLn_beta:
+    jmp     patdef_ppLn_omega
+
+patdef_ppLn_gamma:
+    jmp     [P_ppLn_ret_gamma]
+patdef_ppLn_omega:
+    jmp     [P_ppLn_ret_omega]
+
+; ============ Named pattern: ppTmp ============
+; P_ppTmp_alpha (α entry)
+
+; REF(ppLn) α=P_ppTmp_alpha
+P_ppTmp_alpha:
+    lea     rax, [rel nref58_gamma]
+    mov     [P_ppLn_ret_gamma], rax
+    lea     rax, [rel nref58_omega]
+    mov     [P_ppLn_ret_omega], rax
+    jmp     P_ppLn_alpha
+
+; REF(ppLn) β=P_ppTmp_beta
+P_ppTmp_beta:
+    lea     rax, [rel nref58_gamma]
+    mov     [P_ppLn_ret_gamma], rax
+    lea     rax, [rel nref58_omega]
+    mov     [P_ppLn_ret_omega], rax
+    jmp     P_ppLn_beta
+
+nref58_gamma:
+    jmp     patdef_ppTmp_gamma
+nref58_omega:
+    jmp     patdef_ppTmp_omega
+
+patdef_ppTmp_gamma:
+    jmp     [P_ppTmp_ret_gamma]
+patdef_ppTmp_omega:
+    jmp     [P_ppTmp_ret_omega]
+
+; ============ Named pattern: ppGConT ============
+; P_ppGConT_alpha (α entry)
+
+; UNRESOLVED named pattern ref: ppGCon → ω
+P_ppGConT_alpha:
+P_ppGConT_beta:
+    jmp     patdef_ppGConT_omega
+
+patdef_ppGConT_gamma:
+    jmp     [P_ppGConT_ret_gamma]
+patdef_ppGConT_omega:
+    jmp     [P_ppGConT_ret_omega]
+
+; ============ Named pattern: ppW ============
+; P_ppW_alpha (α entry)
+
+; UNIMPLEMENTED: SIZE() → ω
+P_ppW_alpha:
+P_ppW_beta:
+    jmp     patdef_ppW_omega
+
+patdef_ppW_gamma:
+    jmp     [P_ppW_ret_gamma]
+patdef_ppW_omega:
+    jmp     [P_ppW_ret_omega]
+
+; ============ Named pattern: ppStmt ============
+; P_ppStmt_alpha (α entry)
+
+; SEQ α=P_ppStmt_alpha
+P_ppStmt_alpha:
+    jmp     seq_l59_alpha
+P_ppStmt_beta:
+    jmp     seq_r59_beta
+
+; SEQ α=seq_l59_alpha
+seq_l59_alpha:
+    jmp     seq_l60_alpha
+seq_l59_beta:
+    jmp     seq_r60_beta
+
+; REF(ppStmt) α=seq_l60_alpha
+seq_l60_alpha:
+    lea     rax, [rel nref61_gamma]
+    mov     [P_ppStmt_ret_gamma], rax
+    lea     rax, [rel nref61_omega]
+    mov     [P_ppStmt_ret_omega], rax
+    jmp     P_ppStmt_alpha
+
+; REF(ppStmt) β=seq_l60_beta
+seq_l60_beta:
+    lea     rax, [rel nref61_gamma]
+    mov     [P_ppStmt_ret_gamma], rax
+    lea     rax, [rel nref61_omega]
+    mov     [P_ppStmt_ret_omega], rax
+    jmp     P_ppStmt_beta
+
+nref61_gamma:
+    jmp     seq_r60_alpha
+nref61_omega:
+    jmp     patdef_ppStmt_omega
+
+; LIT(" ")  α=seq_r60_alpha
+seq_r60_alpha:
+    mov     rax, [cursor]
+    add     rax, 1
+    cmp     rax, [subject_len_val]
+    jg      seq_l60_beta
+    lea     rbx, [rel subject_data]
+    mov     rcx, [cursor]
+    movzx   eax, byte [rbx + rcx]
+    cmp     al, 32
+    jne     seq_l60_beta
+    mov     rax, [cursor]
+    mov     [seq_r60_alpha_saved], rax
+    add     rax, 1
+    mov     [cursor], rax
+    jmp     seq_r59_alpha
+
+; LIT β=seq_r60_beta
+seq_r60_beta:
+    mov     rax, [seq_r60_alpha_saved]
+    mov     [cursor], rax
+    jmp     seq_l60_beta
+
+; REF(ppLn) α=seq_r59_alpha
+seq_r59_alpha:
+    lea     rax, [rel nref62_gamma]
+    mov     [P_ppLn_ret_gamma], rax
+    lea     rax, [rel nref62_omega]
+    mov     [P_ppLn_ret_omega], rax
+    jmp     P_ppLn_alpha
+
+; REF(ppLn) β=seq_r59_beta
+seq_r59_beta:
+    lea     rax, [rel nref62_gamma]
+    mov     [P_ppLn_ret_gamma], rax
+    lea     rax, [rel nref62_omega]
+    mov     [P_ppLn_ret_omega], rax
+    jmp     P_ppLn_beta
+
+nref62_gamma:
+    jmp     patdef_ppStmt_gamma
+nref62_omega:
+    jmp     seq_l59_beta
+
+patdef_ppStmt_gamma:
+    jmp     [P_ppStmt_ret_gamma]
+patdef_ppStmt_omega:
+    jmp     [P_ppStmt_ret_omega]
+
+; ============ Named pattern: ppI ============
+; P_ppI_alpha (α entry)
+
+; SEQ α=P_ppI_alpha
+P_ppI_alpha:
+    jmp     seq_l63_alpha
+P_ppI_beta:
+    jmp     seq_r63_beta
+
+; UNIMPLEMENTED: LT() → ω
+seq_l63_alpha:
+seq_l63_beta:
+    jmp     patdef_ppI_omega
+
+; UNIMPLEMENTED node kind 8 → ω
+seq_r63_alpha:
+seq_r63_beta:
+    jmp     seq_l63_beta
+
+patdef_ppI_gamma:
+    jmp     [P_ppI_ret_gamma]
+patdef_ppI_omega:
+    jmp     [P_ppI_ret_omega]
+
+; ============ Named pattern: ppJ ============
+; P_ppJ_alpha (α entry)
+
+; REF(ppJ1) α=P_ppJ_alpha
+P_ppJ_alpha:
+    lea     rax, [rel nref64_gamma]
+    mov     [P_ppJ1_ret_gamma], rax
+    lea     rax, [rel nref64_omega]
+    mov     [P_ppJ1_ret_omega], rax
+    jmp     P_ppJ1_alpha
+
+; REF(ppJ1) β=P_ppJ_beta
+P_ppJ_beta:
+    lea     rax, [rel nref64_gamma]
+    mov     [P_ppJ1_ret_gamma], rax
+    lea     rax, [rel nref64_omega]
+    mov     [P_ppJ1_ret_omega], rax
+    jmp     P_ppJ1_beta
+
+nref64_gamma:
+    jmp     patdef_ppJ_gamma
+nref64_omega:
+    jmp     patdef_ppJ_omega
+
+patdef_ppJ_gamma:
+    jmp     [P_ppJ_ret_gamma]
+patdef_ppJ_omega:
+    jmp     [P_ppJ_ret_omega]
+
+; ============ Named pattern: ppKey ============
+; P_ppKey_alpha (α entry)
+
+; UNIMPLEMENTED node kind 20 → ω
+P_ppKey_alpha:
+P_ppKey_beta:
+    jmp     patdef_ppKey_omega
+
+patdef_ppKey_gamma:
+    jmp     [P_ppKey_ret_gamma]
+patdef_ppKey_omega:
+    jmp     [P_ppKey_ret_omega]
+
+; ============ Named pattern: ppJ1 ============
+; P_ppJ1_alpha (α entry)
+
+; UNIMPLEMENTED node kind 9 → ω
+P_ppJ1_alpha:
+P_ppJ1_beta:
+    jmp     patdef_ppJ1_omega
+
+patdef_ppJ1_gamma:
+    jmp     [P_ppJ1_ret_gamma]
+patdef_ppJ1_omega:
+    jmp     [P_ppJ1_ret_omega]
+
+; ============ Named pattern: Integer ============
+; P_Integer_alpha (α entry)
+
+; SPAN("") REAL  α=P_Integer_alpha
+P_Integer_alpha:
+    mov     rax, [cursor]
+    cmp     rax, [subject_len_val]
+    jge     patdef_Integer_omega
+    mov     [span65_saved], rax
+    mov     r12, rax
+span65_outer:
+    cmp     r12, [subject_len_val]
+    jge     span65_notin
+    lea     rbx, [rel subject_data]
+    movzx   ecx, byte [rbx + r12]
+    lea     rsi, [rel lit_str_4]
+    mov     rdx, 0
+span65_csscan:
+    test    rdx, rdx
+    jz      span65_notin
+    movzx   eax, byte [rsi]
+    cmp     al, cl
+    je      span65_inset
+    inc     rsi
+    dec     rdx
+    jmp     span65_csscan
+span65_inset:
+    inc     r12
+    jmp     span65_outer
+span65_notin:
+    mov     rbx, [span65_saved]
+    cmp     r12, rbx
+    je      patdef_Integer_omega
+    mov     [cursor], r12
+    jmp     patdef_Integer_gamma
+
+; SPAN β=P_Integer_beta
+P_Integer_beta:
+    mov     rax, [span65_saved]
+    mov     [cursor], rax
+    jmp     patdef_Integer_omega
+
+patdef_Integer_gamma:
+    jmp     [P_Integer_ret_gamma]
+patdef_Integer_omega:
+    jmp     [P_Integer_ret_omega]
+
+; ============ Named pattern: DQ ============
+; P_DQ_alpha (α entry)
+
+; SEQ α=P_DQ_alpha
+P_DQ_alpha:
+    jmp     seq_l66_alpha
+P_DQ_beta:
+    jmp     seq_r66_beta
+
+; SEQ α=seq_l66_alpha
+seq_l66_alpha:
+    jmp     seq_l67_alpha
+seq_l66_beta:
+    jmp     seq_r67_beta
+
+; LIT(""")  α=seq_l67_alpha
+seq_l67_alpha:
+    mov     rax, [cursor]
+    add     rax, 1
+    cmp     rax, [subject_len_val]
+    jg      patdef_DQ_omega
+    lea     rbx, [rel subject_data]
+    mov     rcx, [cursor]
+    movzx   eax, byte [rbx + rcx]
+    cmp     al, 34
+    jne     patdef_DQ_omega
+    mov     rax, [cursor]
+    mov     [seq_l67_alpha_saved], rax
+    add     rax, 1
+    mov     [cursor], rax
+    jmp     seq_r67_alpha
+
+; LIT β=seq_l67_beta
+seq_l67_beta:
+    mov     rax, [seq_l67_alpha_saved]
+    mov     [cursor], rax
+    jmp     patdef_DQ_omega
+
+; BREAK("") REAL  α=seq_r67_alpha
+seq_r67_alpha:
+    mov     rax, [cursor]
+    mov     [brk68_saved], rax
+    mov     r12, rax
+brk68_outer:
+    cmp     r12, [subject_len_val]
+    jge     seq_l67_beta
+    lea     rbx, [rel subject_data]
+    movzx   ecx, byte [rbx + r12]
+    lea     rsi, [rel lit_str_4]
+    mov     rdx, 0
+brk68_csscan:
+    test    rdx, rdx
+    je      brk68_advance
+    movzx   eax, byte [rsi]
+    cmp     al, cl
+    je      brk68_inset
+    inc     rsi
+    dec     rdx
+    jmp     brk68_csscan
+brk68_advance:
+    inc     r12
+    jmp     brk68_outer
+brk68_inset:
+    mov     [cursor], r12
+    jmp     seq_r66_alpha
+
+; BREAK β=seq_r67_beta
+seq_r67_beta:
+    mov     rax, [brk68_saved]
+    mov     [cursor], rax
+    jmp     seq_l67_beta
+
+; LIT(""")  α=seq_r66_alpha
+seq_r66_alpha:
+    mov     rax, [cursor]
+    add     rax, 1
+    cmp     rax, [subject_len_val]
+    jg      seq_l66_beta
+    lea     rbx, [rel subject_data]
+    mov     rcx, [cursor]
+    movzx   eax, byte [rbx + rcx]
+    cmp     al, 34
+    jne     seq_l66_beta
+    mov     rax, [cursor]
+    mov     [seq_r66_alpha_saved], rax
+    add     rax, 1
+    mov     [cursor], rax
+    jmp     patdef_DQ_gamma
+
+; LIT β=seq_r66_beta
+seq_r66_beta:
+    mov     rax, [seq_r66_alpha_saved]
+    mov     [cursor], rax
+    jmp     seq_l66_beta
+
+patdef_DQ_gamma:
+    jmp     [P_DQ_ret_gamma]
+patdef_DQ_omega:
+    jmp     [P_DQ_ret_omega]
+
+; ============ Named pattern: SQ ============
+; P_SQ_alpha (α entry)
+
+; SEQ α=P_SQ_alpha
+P_SQ_alpha:
+    jmp     seq_l69_alpha
+P_SQ_beta:
+    jmp     seq_r69_beta
+
+; SEQ α=seq_l69_alpha
+seq_l69_alpha:
+    jmp     seq_l70_alpha
+seq_l69_beta:
+    jmp     seq_r70_beta
+
+; LIT("'")  α=seq_l70_alpha
+seq_l70_alpha:
+    mov     rax, [cursor]
+    add     rax, 1
+    cmp     rax, [subject_len_val]
+    jg      patdef_SQ_omega
+    lea     rbx, [rel subject_data]
+    mov     rcx, [cursor]
+    movzx   eax, byte [rbx + rcx]
+    cmp     al, 39
+    jne     patdef_SQ_omega
+    mov     rax, [cursor]
+    mov     [seq_l70_alpha_saved], rax
+    add     rax, 1
+    mov     [cursor], rax
+    jmp     seq_r70_alpha
+
+; LIT β=seq_l70_beta
+seq_l70_beta:
+    mov     rax, [seq_l70_alpha_saved]
+    mov     [cursor], rax
+    jmp     patdef_SQ_omega
+
+; BREAK("") REAL  α=seq_r70_alpha
+seq_r70_alpha:
+    mov     rax, [cursor]
+    mov     [brk71_saved], rax
+    mov     r12, rax
+brk71_outer:
+    cmp     r12, [subject_len_val]
+    jge     seq_l70_beta
+    lea     rbx, [rel subject_data]
+    movzx   ecx, byte [rbx + r12]
+    lea     rsi, [rel lit_str_4]
+    mov     rdx, 0
+brk71_csscan:
+    test    rdx, rdx
+    je      brk71_advance
+    movzx   eax, byte [rsi]
+    cmp     al, cl
+    je      brk71_inset
+    inc     rsi
+    dec     rdx
+    jmp     brk71_csscan
+brk71_advance:
+    inc     r12
+    jmp     brk71_outer
+brk71_inset:
+    mov     [cursor], r12
+    jmp     seq_r69_alpha
+
+; BREAK β=seq_r70_beta
+seq_r70_beta:
+    mov     rax, [brk71_saved]
+    mov     [cursor], rax
+    jmp     seq_l70_beta
+
+; LIT("'")  α=seq_r69_alpha
+seq_r69_alpha:
+    mov     rax, [cursor]
+    add     rax, 1
+    cmp     rax, [subject_len_val]
+    jg      seq_l69_beta
+    lea     rbx, [rel subject_data]
+    mov     rcx, [cursor]
+    movzx   eax, byte [rbx + rcx]
+    cmp     al, 39
+    jne     seq_l69_beta
+    mov     rax, [cursor]
+    mov     [seq_r69_alpha_saved], rax
+    add     rax, 1
+    mov     [cursor], rax
+    jmp     patdef_SQ_gamma
+
+; LIT β=seq_r69_beta
+seq_r69_beta:
+    mov     rax, [seq_r69_alpha_saved]
+    mov     [cursor], rax
+    jmp     seq_l69_beta
+
+patdef_SQ_gamma:
+    jmp     [P_SQ_ret_gamma]
+patdef_SQ_omega:
+    jmp     [P_SQ_ret_omega]
+
+; ============ Named pattern: String ============
+; P_String_alpha (α entry)
+
+; ALT α=P_String_alpha
+P_String_alpha:
+    mov     rax, [cursor]
+    mov     [alt72_cur_save], rax
+    jmp     alt_l72_alpha
+P_String_beta:
+    jmp     alt_r72_beta
+
+; REF(SQ) α=alt_l72_alpha
+alt_l72_alpha:
+    lea     rax, [rel nref73_gamma]
+    mov     [P_SQ_ret_gamma], rax
+    lea     rax, [rel nref73_omega]
+    mov     [P_SQ_ret_omega], rax
+    jmp     P_SQ_alpha
+
+; REF(SQ) β=alt_l72_beta
+alt_l72_beta:
+    lea     rax, [rel nref73_gamma]
+    mov     [P_SQ_ret_gamma], rax
+    lea     rax, [rel nref73_omega]
+    mov     [P_SQ_ret_omega], rax
+    jmp     P_SQ_beta
+
+nref73_gamma:
+    jmp     patdef_String_gamma
+nref73_omega:
+    jmp     alt72_left_omega
+
+; ALT left_ω trampoline
+alt72_left_omega:
+    mov     rax, [alt72_cur_save]
+    mov     [cursor], rax
+    jmp     alt_r72_alpha
+
+; REF(DQ) α=alt_r72_alpha
+alt_r72_alpha:
+    lea     rax, [rel nref74_gamma]
+    mov     [P_DQ_ret_gamma], rax
+    lea     rax, [rel nref74_omega]
+    mov     [P_DQ_ret_omega], rax
+    jmp     P_DQ_alpha
+
+; REF(DQ) β=alt_r72_beta
+alt_r72_beta:
+    lea     rax, [rel nref74_gamma]
+    mov     [P_DQ_ret_gamma], rax
+    lea     rax, [rel nref74_omega]
+    mov     [P_DQ_ret_omega], rax
+    jmp     P_DQ_beta
+
+nref74_gamma:
+    jmp     patdef_String_gamma
+nref74_omega:
+    jmp     patdef_String_omega
+
+patdef_String_gamma:
+    jmp     [P_String_ret_gamma]
+patdef_String_omega:
+    jmp     [P_String_ret_omega]
+
+; ============ Named pattern: Real ============
+; P_Real_alpha (α entry)
+
+; ALT α=P_Real_alpha
+P_Real_alpha:
+    mov     rax, [cursor]
+    mov     [alt75_cur_save], rax
+    jmp     alt_l75_alpha
+P_Real_beta:
+    jmp     alt_r75_beta
+
+; SEQ α=alt_l75_alpha
+alt_l75_alpha:
+    jmp     seq_l76_alpha
+alt_l75_beta:
+    jmp     seq_r76_beta
+
+; SEQ α=seq_l76_alpha
+seq_l76_alpha:
+    jmp     seq_l77_alpha
+seq_l76_beta:
+    jmp     seq_r77_beta
+
+; SEQ α=seq_l77_alpha
+seq_l77_alpha:
+    jmp     seq_l78_alpha
+seq_l77_beta:
+    jmp     seq_r78_beta
+
+; SEQ α=seq_l78_alpha
+seq_l78_alpha:
+    jmp     seq_l79_alpha
+seq_l78_beta:
+    jmp     seq_r79_beta
+
+; SPAN("") REAL  α=seq_l79_alpha
+seq_l79_alpha:
+    mov     rax, [cursor]
+    cmp     rax, [subject_len_val]
+    jge     alt75_left_omega
+    mov     [span80_saved], rax
+    mov     r12, rax
+span80_outer:
+    cmp     r12, [subject_len_val]
+    jge     span80_notin
+    lea     rbx, [rel subject_data]
+    movzx   ecx, byte [rbx + r12]
+    lea     rsi, [rel lit_str_4]
+    mov     rdx, 0
+span80_csscan:
+    test    rdx, rdx
+    jz      span80_notin
+    movzx   eax, byte [rsi]
+    cmp     al, cl
+    je      span80_inset
+    inc     rsi
+    dec     rdx
+    jmp     span80_csscan
+span80_inset:
+    inc     r12
+    jmp     span80_outer
+span80_notin:
+    mov     rbx, [span80_saved]
+    cmp     r12, rbx
+    je      alt75_left_omega
+    mov     [cursor], r12
+    jmp     seq_r79_alpha
+
+; SPAN β=seq_l79_beta
+seq_l79_beta:
+    mov     rax, [span80_saved]
+    mov     [cursor], rax
+    jmp     alt75_left_omega
+
+; ALT α=seq_r79_alpha
+seq_r79_alpha:
+    mov     rax, [cursor]
+    mov     [alt81_cur_save], rax
+    jmp     alt_l81_alpha
+seq_r79_beta:
+    jmp     alt_r81_beta
+
+; SEQ α=alt_l81_alpha
+alt_l81_alpha:
+    jmp     seq_l82_alpha
+alt_l81_beta:
+    jmp     seq_r82_beta
+
+; LIT(".")  α=seq_l82_alpha
+seq_l82_alpha:
+    mov     rax, [cursor]
+    add     rax, 1
+    cmp     rax, [subject_len_val]
+    jg      alt81_left_omega
+    lea     rbx, [rel subject_data]
+    mov     rcx, [cursor]
+    movzx   eax, byte [rbx + rcx]
+    cmp     al, 46
+    jne     alt81_left_omega
+    mov     rax, [cursor]
+    mov     [seq_l82_alpha_saved], rax
+    add     rax, 1
+    mov     [cursor], rax
+    jmp     seq_r82_alpha
+
+; LIT β=seq_l82_beta
+seq_l82_beta:
+    mov     rax, [seq_l82_alpha_saved]
+    mov     [cursor], rax
+    jmp     alt81_left_omega
+
+; UNIMPLEMENTED: FENCE() → ω
+seq_r82_alpha:
+seq_r82_beta:
+    jmp     seq_l82_beta
+
+; ALT left_ω trampoline
+alt81_left_omega:
+    mov     rax, [alt81_cur_save]
+    mov     [cursor], rax
+    jmp     alt_r81_alpha
+
+; UNRESOLVED named pattern ref: epsilon → ω
+alt_r81_alpha:
+alt_r81_beta:
+    jmp     seq_l79_beta
+
+; ALT α=seq_r78_alpha
+seq_r78_alpha:
+    mov     rax, [cursor]
+    mov     [alt83_cur_save], rax
+    jmp     alt_l83_alpha
+seq_r78_beta:
+    jmp     alt_r83_beta
+
+; LIT("E")  α=alt_l83_alpha
+alt_l83_alpha:
+    mov     rax, [cursor]
+    add     rax, 1
+    cmp     rax, [subject_len_val]
+    jg      alt83_left_omega
+    lea     rbx, [rel subject_data]
+    mov     rcx, [cursor]
+    movzx   eax, byte [rbx + rcx]
+    cmp     al, 69
+    jne     alt83_left_omega
+    mov     rax, [cursor]
+    mov     [alt_l83_alpha_saved], rax
+    add     rax, 1
+    mov     [cursor], rax
+    jmp     seq_r77_alpha
+
+; LIT β=alt_l83_beta
+alt_l83_beta:
+    mov     rax, [alt_l83_alpha_saved]
+    mov     [cursor], rax
+    jmp     alt83_left_omega
+
+; ALT left_ω trampoline
+alt83_left_omega:
+    mov     rax, [alt83_cur_save]
+    mov     [cursor], rax
+    jmp     alt_r83_alpha
+
+; LIT("e")  α=alt_r83_alpha
+alt_r83_alpha:
+    mov     rax, [cursor]
+    add     rax, 1
+    cmp     rax, [subject_len_val]
+    jg      seq_l78_beta
+    lea     rbx, [rel subject_data]
+    mov     rcx, [cursor]
+    movzx   eax, byte [rbx + rcx]
+    cmp     al, 101
+    jne     seq_l78_beta
+    mov     rax, [cursor]
+    mov     [alt_r83_alpha_saved], rax
+    add     rax, 1
+    mov     [cursor], rax
+    jmp     seq_r77_alpha
+
+; LIT β=alt_r83_beta
+alt_r83_beta:
+    mov     rax, [alt_r83_alpha_saved]
+    mov     [cursor], rax
+    jmp     seq_l78_beta
+
+; ALT α=seq_r77_alpha
+seq_r77_alpha:
+    mov     rax, [cursor]
+    mov     [alt84_cur_save], rax
+    jmp     alt_l84_alpha
+seq_r77_beta:
+    jmp     alt_r84_beta
+
+; ALT α=alt_l84_alpha
+alt_l84_alpha:
+    mov     rax, [cursor]
+    mov     [alt85_cur_save], rax
+    jmp     alt_l85_alpha
+alt_l84_beta:
+    jmp     alt_r85_beta
+
+; LIT("+")  α=alt_l85_alpha
+alt_l85_alpha:
+    mov     rax, [cursor]
+    add     rax, 1
+    cmp     rax, [subject_len_val]
+    jg      alt85_left_omega
+    lea     rbx, [rel subject_data]
+    mov     rcx, [cursor]
+    movzx   eax, byte [rbx + rcx]
+    cmp     al, 43
+    jne     alt85_left_omega
+    mov     rax, [cursor]
+    mov     [alt_l85_alpha_saved], rax
+    add     rax, 1
+    mov     [cursor], rax
+    jmp     seq_r76_alpha
+
+; LIT β=alt_l85_beta
+alt_l85_beta:
+    mov     rax, [alt_l85_alpha_saved]
+    mov     [cursor], rax
+    jmp     alt85_left_omega
+
+; ALT left_ω trampoline
+alt85_left_omega:
+    mov     rax, [alt85_cur_save]
+    mov     [cursor], rax
+    jmp     alt_r85_alpha
+
+; LIT("-")  α=alt_r85_alpha
+alt_r85_alpha:
+    mov     rax, [cursor]
+    add     rax, 1
+    cmp     rax, [subject_len_val]
+    jg      alt84_left_omega
+    lea     rbx, [rel subject_data]
+    mov     rcx, [cursor]
+    movzx   eax, byte [rbx + rcx]
+    cmp     al, 45
+    jne     alt84_left_omega
+    mov     rax, [cursor]
+    mov     [alt_r85_alpha_saved], rax
+    add     rax, 1
+    mov     [cursor], rax
+    jmp     seq_r76_alpha
+
+; LIT β=alt_r85_beta
+alt_r85_beta:
+    mov     rax, [alt_r85_alpha_saved]
+    mov     [cursor], rax
+    jmp     alt84_left_omega
+
+; ALT left_ω trampoline
+alt84_left_omega:
+    mov     rax, [alt84_cur_save]
+    mov     [cursor], rax
+    jmp     alt_r84_alpha
+
+; UNRESOLVED named pattern ref: epsilon → ω
+alt_r84_alpha:
+alt_r84_beta:
+    jmp     seq_l77_beta
+
+; SPAN("") REAL  α=seq_r76_alpha
+seq_r76_alpha:
+    mov     rax, [cursor]
+    cmp     rax, [subject_len_val]
+    jge     seq_l76_beta
+    mov     [span86_saved], rax
+    mov     r12, rax
+span86_outer:
+    cmp     r12, [subject_len_val]
+    jge     span86_notin
+    lea     rbx, [rel subject_data]
+    movzx   ecx, byte [rbx + r12]
+    lea     rsi, [rel lit_str_4]
+    mov     rdx, 0
+span86_csscan:
+    test    rdx, rdx
+    jz      span86_notin
+    movzx   eax, byte [rsi]
+    cmp     al, cl
+    je      span86_inset
+    inc     rsi
+    dec     rdx
+    jmp     span86_csscan
+span86_inset:
+    inc     r12
+    jmp     span86_outer
+span86_notin:
+    mov     rbx, [span86_saved]
+    cmp     r12, rbx
+    je      seq_l76_beta
+    mov     [cursor], r12
+    jmp     patdef_Real_gamma
+
+; SPAN β=seq_r76_beta
+seq_r76_beta:
+    mov     rax, [span86_saved]
+    mov     [cursor], rax
+    jmp     seq_l76_beta
+
+; ALT left_ω trampoline
+alt75_left_omega:
+    mov     rax, [alt75_cur_save]
+    mov     [cursor], rax
+    jmp     alt_r75_alpha
+
+; SEQ α=alt_r75_alpha
+alt_r75_alpha:
+    jmp     seq_l87_alpha
+alt_r75_beta:
+    jmp     seq_r87_beta
+
+; SEQ α=seq_l87_alpha
+seq_l87_alpha:
+    jmp     seq_l88_alpha
+seq_l87_beta:
+    jmp     seq_r88_beta
+
+; SPAN("") REAL  α=seq_l88_alpha
+seq_l88_alpha:
+    mov     rax, [cursor]
+    cmp     rax, [subject_len_val]
+    jge     patdef_Real_omega
+    mov     [span89_saved], rax
+    mov     r12, rax
+span89_outer:
+    cmp     r12, [subject_len_val]
+    jge     span89_notin
+    lea     rbx, [rel subject_data]
+    movzx   ecx, byte [rbx + r12]
+    lea     rsi, [rel lit_str_4]
+    mov     rdx, 0
+span89_csscan:
+    test    rdx, rdx
+    jz      span89_notin
+    movzx   eax, byte [rsi]
+    cmp     al, cl
+    je      span89_inset
+    inc     rsi
+    dec     rdx
+    jmp     span89_csscan
+span89_inset:
+    inc     r12
+    jmp     span89_outer
+span89_notin:
+    mov     rbx, [span89_saved]
+    cmp     r12, rbx
+    je      patdef_Real_omega
+    mov     [cursor], r12
+    jmp     seq_r88_alpha
+
+; SPAN β=seq_l88_beta
+seq_l88_beta:
+    mov     rax, [span89_saved]
+    mov     [cursor], rax
+    jmp     patdef_Real_omega
+
+; LIT(".")  α=seq_r88_alpha
+seq_r88_alpha:
+    mov     rax, [cursor]
+    add     rax, 1
+    cmp     rax, [subject_len_val]
+    jg      seq_l88_beta
+    lea     rbx, [rel subject_data]
+    mov     rcx, [cursor]
+    movzx   eax, byte [rbx + rcx]
+    cmp     al, 46
+    jne     seq_l88_beta
+    mov     rax, [cursor]
+    mov     [seq_r88_alpha_saved], rax
+    add     rax, 1
+    mov     [cursor], rax
+    jmp     seq_r87_alpha
+
+; LIT β=seq_r88_beta
+seq_r88_beta:
+    mov     rax, [seq_r88_alpha_saved]
+    mov     [cursor], rax
+    jmp     seq_l88_beta
+
+; UNIMPLEMENTED: FENCE() → ω
+seq_r87_alpha:
+seq_r87_beta:
+    jmp     seq_l87_beta
+
+patdef_Real_gamma:
+    jmp     [P_Real_ret_gamma]
+patdef_Real_omega:
+    jmp     [P_Real_ret_omega]
+
+; ============ Named pattern: Id ============
+; P_Id_alpha (α entry)
+
+; SEQ α=P_Id_alpha
+P_Id_alpha:
+    jmp     seq_l90_alpha
+P_Id_beta:
+    jmp     seq_r90_beta
+
+; ANY("")  α=seq_l90_alpha
+seq_l90_alpha:
+    mov     rax, [cursor]
+    cmp     rax, [subject_len_val]
+    jge     patdef_Id_omega
+    mov     [any91_saved], rax
+    lea     rbx, [rel subject_data]
+    movzx   ecx, byte [rbx + rax]
+    lea     rsi, [rel lit_str_4]
+    mov     rdx, 0
+any91_loop:
+    test    rdx, rdx
+    jz      any91_notfound
+    movzx   eax, byte [rsi]
+    cmp     al, cl
+    je      any91_found
+    inc     rsi
+    dec     rdx
+    jmp     any91_loop
+any91_notfound:
+    jmp     patdef_Id_omega
+any91_found:
+    mov     rax, [any91_saved]
+    inc     rax
+    mov     [cursor], rax
+    jmp     seq_r90_alpha
+
+; ANY β=seq_l90_beta
+seq_l90_beta:
+    mov     rax, [any91_saved]
+    mov     [cursor], rax
+    jmp     patdef_Id_omega
+
+; UNIMPLEMENTED: FENCE() → ω
+seq_r90_alpha:
+seq_r90_beta:
+    jmp     seq_l90_beta
+
+patdef_Id_gamma:
+    jmp     [P_Id_ret_gamma]
+patdef_Id_omega:
+    jmp     [P_Id_ret_omega]
+
+; ============ Named pattern: Function ============
+; P_Function_alpha (α entry)
+
+; DOL(cap $  cap)  α=P_Function_alpha
+P_Function_alpha:
+    mov     rax, [cursor]
+    mov     [dol_entry_cap], rax
+    jmp     dol92_child_alpha
+P_Function_beta:
+    jmp     dol92_child_beta
+
+; DOL(tx $  tx)  α=dol92_child_alpha
+dol92_child_alpha:
+    mov     rax, [cursor]
+    mov     [dol_entry_tx], rax
+    jmp     dol93_child_alpha
+dol92_child_beta:
+    jmp     dol93_child_beta
+
+; SPAN("") REAL  α=dol93_child_alpha
+dol93_child_alpha:
+    mov     rax, [cursor]
+    cmp     rax, [subject_len_val]
+    jge     dol93_omega
+    mov     [span94_saved], rax
+    mov     r12, rax
+span94_outer:
+    cmp     r12, [subject_len_val]
+    jge     span94_notin
+    lea     rbx, [rel subject_data]
+    movzx   ecx, byte [rbx + r12]
+    lea     rsi, [rel lit_str_4]
+    mov     rdx, 0
+span94_csscan:
+    test    rdx, rdx
+    jz      span94_notin
+    movzx   eax, byte [rsi]
+    cmp     al, cl
+    je      span94_inset
+    inc     rsi
+    dec     rdx
+    jmp     span94_csscan
+span94_inset:
+    inc     r12
+    jmp     span94_outer
+span94_notin:
+    mov     rbx, [span94_saved]
+    cmp     r12, rbx
+    je      dol93_omega
+    mov     [cursor], r12
+    jmp     dol93_gamma
+
+; SPAN β=dol93_child_beta
+dol93_child_beta:
+    mov     rax, [span94_saved]
+    mov     [cursor], rax
+    jmp     dol93_omega
+
+; DOL γ — capture span into cap_tx_buf
+dol93_gamma:
+    mov     rax, [cursor]
+    mov     rbx, [dol_entry_tx]
+    sub     rax, rbx
+    mov     [cap_tx_len], rax
+    lea     rsi, [rel subject_data]
+    add     rsi, rbx
+    lea     rdi, [rel cap_tx_buf]
+    mov     rcx, rax
+    rep     movsb
+    jmp     dol92_gamma
+
+; DOL ω — child failed, no capture
+dol93_omega:
+    jmp     dol92_omega
+
+; DOL γ — capture span into cap_cap_buf
+dol92_gamma:
+    mov     rax, [cursor]
+    mov     rbx, [dol_entry_cap]
+    sub     rax, rbx
+    mov     [cap_cap_len], rax
+    lea     rsi, [rel subject_data]
+    add     rsi, rbx
+    lea     rdi, [rel cap_cap_buf]
+    mov     rcx, rax
+    rep     movsb
+    jmp     patdef_Function_gamma
+
+; DOL ω — child failed, no capture
+dol92_omega:
+    jmp     patdef_Function_omega
+
+patdef_Function_gamma:
+    jmp     [P_Function_ret_gamma]
+patdef_Function_omega:
+    jmp     [P_Function_ret_omega]
+
+; ============ Named pattern: BuiltinVar ============
+; P_BuiltinVar_alpha (α entry)
+
+; DOL(cap $  cap)  α=P_BuiltinVar_alpha
+P_BuiltinVar_alpha:
+    mov     rax, [cursor]
+    mov     [dol_entry_cap], rax
+    jmp     dol95_child_alpha
+P_BuiltinVar_beta:
+    jmp     dol95_child_beta
+
+; DOL(tx $  tx)  α=dol95_child_alpha
+dol95_child_alpha:
+    mov     rax, [cursor]
+    mov     [dol_entry_tx], rax
+    jmp     dol96_child_alpha
+dol95_child_beta:
+    jmp     dol96_child_beta
+
+; SPAN("") REAL  α=dol96_child_alpha
+dol96_child_alpha:
+    mov     rax, [cursor]
+    cmp     rax, [subject_len_val]
+    jge     dol96_omega
+    mov     [span97_saved], rax
+    mov     r12, rax
+span97_outer:
+    cmp     r12, [subject_len_val]
+    jge     span97_notin
+    lea     rbx, [rel subject_data]
+    movzx   ecx, byte [rbx + r12]
+    lea     rsi, [rel lit_str_4]
+    mov     rdx, 0
+span97_csscan:
+    test    rdx, rdx
+    jz      span97_notin
+    movzx   eax, byte [rsi]
+    cmp     al, cl
+    je      span97_inset
+    inc     rsi
+    dec     rdx
+    jmp     span97_csscan
+span97_inset:
+    inc     r12
+    jmp     span97_outer
+span97_notin:
+    mov     rbx, [span97_saved]
+    cmp     r12, rbx
+    je      dol96_omega
+    mov     [cursor], r12
+    jmp     dol96_gamma
+
+; SPAN β=dol96_child_beta
+dol96_child_beta:
+    mov     rax, [span97_saved]
+    mov     [cursor], rax
+    jmp     dol96_omega
+
+; DOL γ — capture span into cap_tx_buf
+dol96_gamma:
+    mov     rax, [cursor]
+    mov     rbx, [dol_entry_tx]
+    sub     rax, rbx
+    mov     [cap_tx_len], rax
+    lea     rsi, [rel subject_data]
+    add     rsi, rbx
+    lea     rdi, [rel cap_tx_buf]
+    mov     rcx, rax
+    rep     movsb
+    jmp     dol95_gamma
+
+; DOL ω — child failed, no capture
+dol96_omega:
+    jmp     dol95_omega
+
+; DOL γ — capture span into cap_cap_buf
+dol95_gamma:
+    mov     rax, [cursor]
+    mov     rbx, [dol_entry_cap]
+    sub     rax, rbx
+    mov     [cap_cap_len], rax
+    lea     rsi, [rel subject_data]
+    add     rsi, rbx
+    lea     rdi, [rel cap_cap_buf]
+    mov     rcx, rax
+    rep     movsb
+    jmp     patdef_BuiltinVar_gamma
+
+; DOL ω — child failed, no capture
+dol95_omega:
+    jmp     patdef_BuiltinVar_omega
+
+patdef_BuiltinVar_gamma:
+    jmp     [P_BuiltinVar_ret_gamma]
+patdef_BuiltinVar_omega:
+    jmp     [P_BuiltinVar_ret_omega]
+
+; ============ Named pattern: SpecialNm ============
+; P_SpecialNm_alpha (α entry)
+
+; DOL(cap $  cap)  α=P_SpecialNm_alpha
+P_SpecialNm_alpha:
+    mov     rax, [cursor]
+    mov     [dol_entry_cap], rax
+    jmp     dol98_child_alpha
+P_SpecialNm_beta:
+    jmp     dol98_child_beta
+
+; DOL(tx $  tx)  α=dol98_child_alpha
+dol98_child_alpha:
+    mov     rax, [cursor]
+    mov     [dol_entry_tx], rax
+    jmp     dol99_child_alpha
+dol98_child_beta:
+    jmp     dol99_child_beta
+
+; SPAN("") REAL  α=dol99_child_alpha
+dol99_child_alpha:
+    mov     rax, [cursor]
+    cmp     rax, [subject_len_val]
+    jge     dol99_omega
+    mov     [span100_saved], rax
+    mov     r12, rax
+span100_outer:
+    cmp     r12, [subject_len_val]
+    jge     span100_notin
+    lea     rbx, [rel subject_data]
+    movzx   ecx, byte [rbx + r12]
+    lea     rsi, [rel lit_str_4]
+    mov     rdx, 0
+span100_csscan:
+    test    rdx, rdx
+    jz      span100_notin
+    movzx   eax, byte [rsi]
+    cmp     al, cl
+    je      span100_inset
+    inc     rsi
+    dec     rdx
+    jmp     span100_csscan
+span100_inset:
+    inc     r12
+    jmp     span100_outer
+span100_notin:
+    mov     rbx, [span100_saved]
+    cmp     r12, rbx
+    je      dol99_omega
+    mov     [cursor], r12
+    jmp     dol99_gamma
+
+; SPAN β=dol99_child_beta
+dol99_child_beta:
+    mov     rax, [span100_saved]
+    mov     [cursor], rax
+    jmp     dol99_omega
+
+; DOL γ — capture span into cap_tx_buf
+dol99_gamma:
+    mov     rax, [cursor]
+    mov     rbx, [dol_entry_tx]
+    sub     rax, rbx
+    mov     [cap_tx_len], rax
+    lea     rsi, [rel subject_data]
+    add     rsi, rbx
+    lea     rdi, [rel cap_tx_buf]
+    mov     rcx, rax
+    rep     movsb
+    jmp     dol98_gamma
+
+; DOL ω — child failed, no capture
+dol99_omega:
+    jmp     dol98_omega
+
+; DOL γ — capture span into cap_cap_buf
+dol98_gamma:
+    mov     rax, [cursor]
+    mov     rbx, [dol_entry_cap]
+    sub     rax, rbx
+    mov     [cap_cap_len], rax
+    lea     rsi, [rel subject_data]
+    add     rsi, rbx
+    lea     rdi, [rel cap_cap_buf]
+    mov     rcx, rax
+    rep     movsb
+    jmp     patdef_SpecialNm_gamma
+
+; DOL ω — child failed, no capture
+dol98_omega:
+    jmp     patdef_SpecialNm_omega
+
+patdef_SpecialNm_gamma:
+    jmp     [P_SpecialNm_ret_gamma]
+patdef_SpecialNm_omega:
+    jmp     [P_SpecialNm_ret_omega]
+
+; ============ Named pattern: ProtKwd ============
+; P_ProtKwd_alpha (α entry)
+
+; SEQ α=P_ProtKwd_alpha
+P_ProtKwd_alpha:
+    jmp     seq_l101_alpha
+P_ProtKwd_beta:
+    jmp     seq_r101_beta
+
+; LIT("&")  α=seq_l101_alpha
+seq_l101_alpha:
+    mov     rax, [cursor]
+    add     rax, 1
+    cmp     rax, [subject_len_val]
+    jg      patdef_ProtKwd_omega
+    lea     rbx, [rel subject_data]
+    mov     rcx, [cursor]
+    movzx   eax, byte [rbx + rcx]
+    cmp     al, 38
+    jne     patdef_ProtKwd_omega
+    mov     rax, [cursor]
+    mov     [seq_l101_alpha_saved], rax
+    add     rax, 1
+    mov     [cursor], rax
+    jmp     seq_r101_alpha
+
+; LIT β=seq_l101_beta
+seq_l101_beta:
+    mov     rax, [seq_l101_alpha_saved]
+    mov     [cursor], rax
+    jmp     patdef_ProtKwd_omega
+
+; DOL(cap $  cap)  α=seq_r101_alpha
+seq_r101_alpha:
+    mov     rax, [cursor]
+    mov     [dol_entry_cap], rax
+    jmp     dol102_child_alpha
+seq_r101_beta:
+    jmp     dol102_child_beta
+
+; DOL(tx $  tx)  α=dol102_child_alpha
+dol102_child_alpha:
+    mov     rax, [cursor]
+    mov     [dol_entry_tx], rax
+    jmp     dol103_child_alpha
+dol102_child_beta:
+    jmp     dol103_child_beta
+
+; SPAN("") REAL  α=dol103_child_alpha
+dol103_child_alpha:
+    mov     rax, [cursor]
+    cmp     rax, [subject_len_val]
+    jge     dol103_omega
+    mov     [span104_saved], rax
+    mov     r12, rax
+span104_outer:
+    cmp     r12, [subject_len_val]
+    jge     span104_notin
+    lea     rbx, [rel subject_data]
+    movzx   ecx, byte [rbx + r12]
+    lea     rsi, [rel lit_str_4]
+    mov     rdx, 0
+span104_csscan:
+    test    rdx, rdx
+    jz      span104_notin
+    movzx   eax, byte [rsi]
+    cmp     al, cl
+    je      span104_inset
+    inc     rsi
+    dec     rdx
+    jmp     span104_csscan
+span104_inset:
+    inc     r12
+    jmp     span104_outer
+span104_notin:
+    mov     rbx, [span104_saved]
+    cmp     r12, rbx
+    je      dol103_omega
+    mov     [cursor], r12
+    jmp     dol103_gamma
+
+; SPAN β=dol103_child_beta
+dol103_child_beta:
+    mov     rax, [span104_saved]
+    mov     [cursor], rax
+    jmp     dol103_omega
+
+; DOL γ — capture span into cap_tx_buf
+dol103_gamma:
+    mov     rax, [cursor]
+    mov     rbx, [dol_entry_tx]
+    sub     rax, rbx
+    mov     [cap_tx_len], rax
+    lea     rsi, [rel subject_data]
+    add     rsi, rbx
+    lea     rdi, [rel cap_tx_buf]
+    mov     rcx, rax
+    rep     movsb
+    jmp     dol102_gamma
+
+; DOL ω — child failed, no capture
+dol103_omega:
+    jmp     dol102_omega
+
+; DOL γ — capture span into cap_cap_buf
+dol102_gamma:
+    mov     rax, [cursor]
+    mov     rbx, [dol_entry_cap]
+    sub     rax, rbx
+    mov     [cap_cap_len], rax
+    lea     rsi, [rel subject_data]
+    add     rsi, rbx
+    lea     rdi, [rel cap_cap_buf]
+    mov     rcx, rax
+    rep     movsb
+    jmp     patdef_ProtKwd_gamma
+
+; DOL ω — child failed, no capture
+dol102_omega:
+    jmp     seq_l101_beta
+
+patdef_ProtKwd_gamma:
+    jmp     [P_ProtKwd_ret_gamma]
+patdef_ProtKwd_omega:
+    jmp     [P_ProtKwd_ret_omega]
+
+; ============ Named pattern: UnprotKwd ============
+; P_UnprotKwd_alpha (α entry)
+
+; SEQ α=P_UnprotKwd_alpha
+P_UnprotKwd_alpha:
+    jmp     seq_l105_alpha
+P_UnprotKwd_beta:
+    jmp     seq_r105_beta
+
+; LIT("&")  α=seq_l105_alpha
+seq_l105_alpha:
+    mov     rax, [cursor]
+    add     rax, 1
+    cmp     rax, [subject_len_val]
+    jg      patdef_UnprotKwd_omega
+    lea     rbx, [rel subject_data]
+    mov     rcx, [cursor]
+    movzx   eax, byte [rbx + rcx]
+    cmp     al, 38
+    jne     patdef_UnprotKwd_omega
+    mov     rax, [cursor]
+    mov     [seq_l105_alpha_saved], rax
+    add     rax, 1
+    mov     [cursor], rax
+    jmp     seq_r105_alpha
+
+; LIT β=seq_l105_beta
+seq_l105_beta:
+    mov     rax, [seq_l105_alpha_saved]
+    mov     [cursor], rax
+    jmp     patdef_UnprotKwd_omega
+
+; DOL(cap $  cap)  α=seq_r105_alpha
+seq_r105_alpha:
+    mov     rax, [cursor]
+    mov     [dol_entry_cap], rax
+    jmp     dol106_child_alpha
+seq_r105_beta:
+    jmp     dol106_child_beta
+
+; DOL(tx $  tx)  α=dol106_child_alpha
+dol106_child_alpha:
+    mov     rax, [cursor]
+    mov     [dol_entry_tx], rax
+    jmp     dol107_child_alpha
+dol106_child_beta:
+    jmp     dol107_child_beta
+
+; SPAN("") REAL  α=dol107_child_alpha
+dol107_child_alpha:
+    mov     rax, [cursor]
+    cmp     rax, [subject_len_val]
+    jge     dol107_omega
+    mov     [span108_saved], rax
+    mov     r12, rax
+span108_outer:
+    cmp     r12, [subject_len_val]
+    jge     span108_notin
+    lea     rbx, [rel subject_data]
+    movzx   ecx, byte [rbx + r12]
+    lea     rsi, [rel lit_str_4]
+    mov     rdx, 0
+span108_csscan:
+    test    rdx, rdx
+    jz      span108_notin
+    movzx   eax, byte [rsi]
+    cmp     al, cl
+    je      span108_inset
+    inc     rsi
+    dec     rdx
+    jmp     span108_csscan
+span108_inset:
+    inc     r12
+    jmp     span108_outer
+span108_notin:
+    mov     rbx, [span108_saved]
+    cmp     r12, rbx
+    je      dol107_omega
+    mov     [cursor], r12
+    jmp     dol107_gamma
+
+; SPAN β=dol107_child_beta
+dol107_child_beta:
+    mov     rax, [span108_saved]
+    mov     [cursor], rax
+    jmp     dol107_omega
+
+; DOL γ — capture span into cap_tx_buf
+dol107_gamma:
+    mov     rax, [cursor]
+    mov     rbx, [dol_entry_tx]
+    sub     rax, rbx
+    mov     [cap_tx_len], rax
+    lea     rsi, [rel subject_data]
+    add     rsi, rbx
+    lea     rdi, [rel cap_tx_buf]
+    mov     rcx, rax
+    rep     movsb
+    jmp     dol106_gamma
+
+; DOL ω — child failed, no capture
+dol107_omega:
+    jmp     dol106_omega
+
+; DOL γ — capture span into cap_cap_buf
+dol106_gamma:
+    mov     rax, [cursor]
+    mov     rbx, [dol_entry_cap]
+    sub     rax, rbx
+    mov     [cap_cap_len], rax
+    lea     rsi, [rel subject_data]
+    add     rsi, rbx
+    lea     rdi, [rel cap_cap_buf]
+    mov     rcx, rax
+    rep     movsb
+    jmp     patdef_UnprotKwd_gamma
+
+; DOL ω — child failed, no capture
+dol106_omega:
+    jmp     seq_l105_beta
+
+patdef_UnprotKwd_gamma:
+    jmp     [P_UnprotKwd_ret_gamma]
+patdef_UnprotKwd_omega:
+    jmp     [P_UnprotKwd_ret_omega]
+
+; ============ Named pattern: Gray ============
+; P_Gray_alpha (α entry)
+
+; ALT α=P_Gray_alpha
+P_Gray_alpha:
+    mov     rax, [cursor]
+    mov     [alt109_cur_save], rax
+    jmp     alt_l109_alpha
+P_Gray_beta:
+    jmp     alt_r109_beta
+
+; REF(White) α=alt_l109_alpha
+alt_l109_alpha:
+    lea     rax, [rel nref110_gamma]
+    mov     [P_White_ret_gamma], rax
+    lea     rax, [rel nref110_omega]
+    mov     [P_White_ret_omega], rax
+    jmp     P_White_alpha
+
+; REF(White) β=alt_l109_beta
+alt_l109_beta:
+    lea     rax, [rel nref110_gamma]
+    mov     [P_White_ret_gamma], rax
+    lea     rax, [rel nref110_omega]
+    mov     [P_White_ret_omega], rax
+    jmp     P_White_beta
+
+nref110_gamma:
+    jmp     patdef_Gray_gamma
+nref110_omega:
+    jmp     alt109_left_omega
+
+; ALT left_ω trampoline
+alt109_left_omega:
+    mov     rax, [alt109_cur_save]
+    mov     [cursor], rax
+    jmp     alt_r109_alpha
+
+; UNRESOLVED named pattern ref: epsilon → ω
+alt_r109_alpha:
+alt_r109_beta:
+    jmp     patdef_Gray_omega
+
+patdef_Gray_gamma:
+    jmp     [P_Gray_ret_gamma]
+patdef_Gray_omega:
+    jmp     [P_Gray_ret_omega]
+
+; ============ Named pattern: White ============
+; P_White_alpha (α entry)
+
+; ALT α=P_White_alpha
+P_White_alpha:
+    mov     rax, [cursor]
+    mov     [alt111_cur_save], rax
+    jmp     alt_l111_alpha
+P_White_beta:
+    jmp     alt_r111_beta
+
+; SEQ α=alt_l111_alpha
+alt_l111_alpha:
+    jmp     seq_l112_alpha
+alt_l111_beta:
+    jmp     seq_r112_beta
+
+; SPAN("") REAL  α=seq_l112_alpha
+seq_l112_alpha:
+    mov     rax, [cursor]
+    cmp     rax, [subject_len_val]
+    jge     alt111_left_omega
+    mov     [span113_saved], rax
+    mov     r12, rax
+span113_outer:
+    cmp     r12, [subject_len_val]
+    jge     span113_notin
+    lea     rbx, [rel subject_data]
+    movzx   ecx, byte [rbx + r12]
+    lea     rsi, [rel lit_str_4]
+    mov     rdx, 0
+span113_csscan:
+    test    rdx, rdx
+    jz      span113_notin
+    movzx   eax, byte [rsi]
+    cmp     al, cl
+    je      span113_inset
+    inc     rsi
+    dec     rdx
+    jmp     span113_csscan
+span113_inset:
+    inc     r12
+    jmp     span113_outer
+span113_notin:
+    mov     rbx, [span113_saved]
+    cmp     r12, rbx
+    je      alt111_left_omega
+    mov     [cursor], r12
+    jmp     seq_r112_alpha
+
+; SPAN β=seq_l112_beta
+seq_l112_beta:
+    mov     rax, [span113_saved]
+    mov     [cursor], rax
+    jmp     alt111_left_omega
+
+; UNIMPLEMENTED: FENCE() → ω
+seq_r112_alpha:
+seq_r112_beta:
+    jmp     seq_l112_beta
+
+; ALT left_ω trampoline
+alt111_left_omega:
+    mov     rax, [alt111_cur_save]
+    mov     [cursor], rax
+    jmp     alt_r111_alpha
+
+; SEQ α=alt_r111_alpha
+alt_r111_alpha:
+    jmp     seq_l114_alpha
+alt_r111_beta:
+    jmp     seq_r114_beta
+
+; SEQ α=seq_l114_alpha
+seq_l114_alpha:
+    jmp     seq_l115_alpha
+seq_l114_beta:
+    jmp     seq_r115_beta
+
+; UNRESOLVED named pattern ref: nl → ω
+seq_l115_alpha:
+seq_l115_beta:
+    jmp     patdef_White_omega
+
+; ALT α=seq_r115_alpha
+seq_r115_alpha:
+    mov     rax, [cursor]
+    mov     [alt116_cur_save], rax
+    jmp     alt_l116_alpha
+seq_r115_beta:
+    jmp     alt_r116_beta
+
+; LIT("+")  α=alt_l116_alpha
+alt_l116_alpha:
+    mov     rax, [cursor]
+    add     rax, 1
+    cmp     rax, [subject_len_val]
+    jg      alt116_left_omega
+    lea     rbx, [rel subject_data]
+    mov     rcx, [cursor]
+    movzx   eax, byte [rbx + rcx]
+    cmp     al, 43
+    jne     alt116_left_omega
+    mov     rax, [cursor]
+    mov     [alt_l116_alpha_saved], rax
+    add     rax, 1
+    mov     [cursor], rax
+    jmp     seq_r114_alpha
+
+; LIT β=alt_l116_beta
+alt_l116_beta:
+    mov     rax, [alt_l116_alpha_saved]
+    mov     [cursor], rax
+    jmp     alt116_left_omega
+
+; ALT left_ω trampoline
+alt116_left_omega:
+    mov     rax, [alt116_cur_save]
+    mov     [cursor], rax
+    jmp     alt_r116_alpha
+
+; LIT(".")  α=alt_r116_alpha
+alt_r116_alpha:
+    mov     rax, [cursor]
+    add     rax, 1
+    cmp     rax, [subject_len_val]
+    jg      seq_l115_beta
+    lea     rbx, [rel subject_data]
+    mov     rcx, [cursor]
+    movzx   eax, byte [rbx + rcx]
+    cmp     al, 46
+    jne     seq_l115_beta
+    mov     rax, [cursor]
+    mov     [alt_r116_alpha_saved], rax
+    add     rax, 1
+    mov     [cursor], rax
+    jmp     seq_r114_alpha
+
+; LIT β=alt_r116_beta
+alt_r116_beta:
+    mov     rax, [alt_r116_alpha_saved]
+    mov     [cursor], rax
+    jmp     seq_l115_beta
+
+; UNIMPLEMENTED: FENCE() → ω
+seq_r114_alpha:
+seq_r114_beta:
+    jmp     seq_l114_beta
+
+patdef_White_gamma:
+    jmp     [P_White_ret_gamma]
+patdef_White_omega:
+    jmp     [P_White_ret_omega]
+
+; ============ Named pattern: TxInList ============
+; P_TxInList_alpha (α entry)
+
+; SEQ α=P_TxInList_alpha
+P_TxInList_alpha:
+    jmp     seq_l117_alpha
+P_TxInList_beta:
+    jmp     seq_r117_beta
+
+; SEQ α=seq_l117_alpha
+seq_l117_alpha:
+    jmp     seq_l118_alpha
+seq_l117_beta:
+    jmp     seq_r118_beta
+
+; ALT α=seq_l118_alpha
+seq_l118_alpha:
+    mov     rax, [cursor]
+    mov     [alt119_cur_save], rax
+    jmp     alt_l119_alpha
+seq_l118_beta:
+    jmp     alt_r119_beta
+
+; POS(0)  α=alt_l119_alpha
+alt_l119_alpha:
+    cmp     qword [cursor], 0
+    jne     alt119_left_omega
+    jmp     seq_r118_alpha
+
+; POS β=alt_l119_beta
+alt_l119_beta:
+    jmp     alt119_left_omega
+
+; ALT left_ω trampoline
+alt119_left_omega:
+    mov     rax, [alt119_cur_save]
+    mov     [cursor], rax
+    jmp     alt_r119_alpha
+
+; LIT(" ")  α=alt_r119_alpha
+alt_r119_alpha:
+    mov     rax, [cursor]
+    add     rax, 1
+    cmp     rax, [subject_len_val]
+    jg      patdef_TxInList_omega
+    lea     rbx, [rel subject_data]
+    mov     rcx, [cursor]
+    movzx   eax, byte [rbx + rcx]
+    cmp     al, 32
+    jne     patdef_TxInList_omega
+    mov     rax, [cursor]
+    mov     [alt_r119_alpha_saved], rax
+    add     rax, 1
+    mov     [cursor], rax
+    jmp     seq_r118_alpha
+
+; LIT β=alt_r119_beta
+alt_r119_beta:
+    mov     rax, [alt_r119_alpha_saved]
+    mov     [cursor], rax
+    jmp     patdef_TxInList_omega
+
+; E_INDR unresolved: upr → ω
+seq_r118_alpha:
+seq_r118_beta:
+    jmp     seq_l118_beta
+
+; ALT α=seq_r117_alpha
+seq_r117_alpha:
+    mov     rax, [cursor]
+    mov     [alt120_cur_save], rax
+    jmp     alt_l120_alpha
+seq_r117_beta:
+    jmp     alt_r120_beta
+
+; LIT(" ")  α=alt_l120_alpha
+alt_l120_alpha:
+    mov     rax, [cursor]
+    add     rax, 1
+    cmp     rax, [subject_len_val]
+    jg      alt120_left_omega
+    lea     rbx, [rel subject_data]
+    mov     rcx, [cursor]
+    movzx   eax, byte [rbx + rcx]
+    cmp     al, 32
+    jne     alt120_left_omega
+    mov     rax, [cursor]
+    mov     [alt_l120_alpha_saved], rax
+    add     rax, 1
+    mov     [cursor], rax
+    jmp     patdef_TxInList_gamma
+
+; LIT β=alt_l120_beta
+alt_l120_beta:
+    mov     rax, [alt_l120_alpha_saved]
+    mov     [cursor], rax
+    jmp     alt120_left_omega
+
+; ALT left_ω trampoline
+alt120_left_omega:
+    mov     rax, [alt120_cur_save]
+    mov     [cursor], rax
+    jmp     alt_r120_alpha
+
+; RPOS(0)  α=alt_r120_alpha
+alt_r120_alpha:
+    mov     rax, [subject_len_val]
+    cmp     [cursor], rax
+    jne     seq_l117_beta
+    jmp     patdef_TxInList_gamma
+
+; RPOS β=alt_r120_beta
+alt_r120_beta:
+    jmp     seq_l117_beta
+
+patdef_TxInList_gamma:
+    jmp     [P_TxInList_ret_gamma]
+patdef_TxInList_omega:
+    jmp     [P_TxInList_ret_omega]
+
+; ============ Named pattern: ProtKwds ============
+; P_ProtKwds_alpha (α entry)
+
+; SEQ α=P_ProtKwds_alpha
+P_ProtKwds_alpha:
+    jmp     seq_l121_alpha
+P_ProtKwds_beta:
+    jmp     seq_r121_beta
+
+; SEQ α=seq_l121_alpha
+seq_l121_alpha:
+    jmp     seq_l122_alpha
+seq_l121_beta:
+    jmp     seq_r122_beta
+
+; LIT("ABORT ALPHABET ARB BAL FAIL FENCE FILE FNCLEVEL ")  α=seq_l122_alpha
+seq_l122_alpha:
+    mov     rax, [cursor]
+    add     rax, 48
+    cmp     rax, [subject_len_val]
+    jg      patdef_ProtKwds_omega
+    lea     rsi, [rel subject_data]
+    mov     rcx, [cursor]
+    add     rsi, rcx
+    lea     rdi, [rel lit_str_22]
+    mov     rcx, 48
+    repe    cmpsb
+    jne     patdef_ProtKwds_omega
+    mov     rax, [cursor]
+    mov     [seq_l122_alpha_saved], rax
+    add     rax, 48
+    mov     [cursor], rax
+    jmp     seq_r122_alpha
+
+; LIT β=seq_l122_beta
+seq_l122_beta:
+    mov     rax, [seq_l122_alpha_saved]
+    mov     [cursor], rax
+    jmp     patdef_ProtKwds_omega
+
+; LIT("LASTFILE LASTLINE LASTNO LCASE LINE REM RTNTYPE ")  α=seq_r122_alpha
+seq_r122_alpha:
+    mov     rax, [cursor]
+    add     rax, 48
+    cmp     rax, [subject_len_val]
+    jg      seq_l122_beta
+    lea     rsi, [rel subject_data]
+    mov     rcx, [cursor]
+    add     rsi, rcx
+    lea     rdi, [rel lit_str_23]
+    mov     rcx, 48
+    repe    cmpsb
+    jne     seq_l122_beta
+    mov     rax, [cursor]
+    mov     [seq_r122_alpha_saved], rax
+    add     rax, 48
+    mov     [cursor], rax
+    jmp     seq_r121_alpha
+
+; LIT β=seq_r122_beta
+seq_r122_beta:
+    mov     rax, [seq_r122_alpha_saved]
+    mov     [cursor], rax
+    jmp     seq_l122_beta
+
+; LIT("STCOUNT STNO SUCCEED UCASE")  α=seq_r121_alpha
+seq_r121_alpha:
+    mov     rax, [cursor]
+    add     rax, 26
+    cmp     rax, [subject_len_val]
+    jg      seq_l121_beta
+    lea     rsi, [rel subject_data]
+    mov     rcx, [cursor]
+    add     rsi, rcx
+    lea     rdi, [rel lit_str_24]
+    mov     rcx, 26
+    repe    cmpsb
+    jne     seq_l121_beta
+    mov     rax, [cursor]
+    mov     [seq_r121_alpha_saved], rax
+    add     rax, 26
+    mov     [cursor], rax
+    jmp     patdef_ProtKwds_gamma
+
+; LIT β=seq_r121_beta
+seq_r121_beta:
+    mov     rax, [seq_r121_alpha_saved]
+    mov     [cursor], rax
+    jmp     seq_l121_beta
+
+patdef_ProtKwds_gamma:
+    jmp     [P_ProtKwds_ret_gamma]
+patdef_ProtKwds_omega:
+    jmp     [P_ProtKwds_ret_omega]
+
+; ============ Named pattern: UnprotKwds ============
+; P_UnprotKwds_alpha (α entry)
+
+; SEQ α=P_UnprotKwds_alpha
+P_UnprotKwds_alpha:
+    jmp     seq_l123_alpha
+P_UnprotKwds_beta:
+    jmp     seq_r123_beta
+
+; SEQ α=seq_l123_alpha
+seq_l123_alpha:
+    jmp     seq_l124_alpha
+seq_l123_beta:
+    jmp     seq_r124_beta
+
+; LIT("ABEND ANCHOR CASE CODE COMPARE DUMP ERRLIMIT ")  α=seq_l124_alpha
+seq_l124_alpha:
+    mov     rax, [cursor]
+    add     rax, 45
+    cmp     rax, [subject_len_val]
+    jg      patdef_UnprotKwds_omega
+    lea     rsi, [rel subject_data]
+    mov     rcx, [cursor]
+    add     rsi, rcx
+    lea     rdi, [rel lit_str_25]
+    mov     rcx, 45
+    repe    cmpsb
+    jne     patdef_UnprotKwds_omega
+    mov     rax, [cursor]
+    mov     [seq_l124_alpha_saved], rax
+    add     rax, 45
+    mov     [cursor], rax
+    jmp     seq_r124_alpha
+
+; LIT β=seq_l124_beta
+seq_l124_beta:
+    mov     rax, [seq_l124_alpha_saved]
+    mov     [cursor], rax
+    jmp     patdef_UnprotKwds_omega
+
+; LIT("ERRTEXT ERRTYPE FTRACE INPUT MAXLNGTH OUTPUT ")  α=seq_r124_alpha
+seq_r124_alpha:
+    mov     rax, [cursor]
+    add     rax, 45
+    cmp     rax, [subject_len_val]
+    jg      seq_l124_beta
+    lea     rsi, [rel subject_data]
+    mov     rcx, [cursor]
+    add     rsi, rcx
+    lea     rdi, [rel lit_str_26]
+    mov     rcx, 45
+    repe    cmpsb
+    jne     seq_l124_beta
+    mov     rax, [cursor]
+    mov     [seq_r124_alpha_saved], rax
+    add     rax, 45
+    mov     [cursor], rax
+    jmp     seq_r123_alpha
+
+; LIT β=seq_r124_beta
+seq_r124_beta:
+    mov     rax, [seq_r124_alpha_saved]
+    mov     [cursor], rax
+    jmp     seq_l124_beta
+
+; LIT("PROFILE STLIMIT TRACE TRIM FULLSCAN")  α=seq_r123_alpha
+seq_r123_alpha:
+    mov     rax, [cursor]
+    add     rax, 35
+    cmp     rax, [subject_len_val]
+    jg      seq_l123_beta
+    lea     rsi, [rel subject_data]
+    mov     rcx, [cursor]
+    add     rsi, rcx
+    lea     rdi, [rel lit_str_27]
+    mov     rcx, 35
+    repe    cmpsb
+    jne     seq_l123_beta
+    mov     rax, [cursor]
+    mov     [seq_r123_alpha_saved], rax
+    add     rax, 35
+    mov     [cursor], rax
+    jmp     patdef_UnprotKwds_gamma
+
+; LIT β=seq_r123_beta
+seq_r123_beta:
+    mov     rax, [seq_r123_alpha_saved]
+    mov     [cursor], rax
+    jmp     seq_l123_beta
+
+patdef_UnprotKwds_gamma:
+    jmp     [P_UnprotKwds_ret_gamma]
+patdef_UnprotKwds_omega:
+    jmp     [P_UnprotKwds_ret_omega]
+
+; ============ Named pattern: Functions ============
+; P_Functions_alpha (α entry)
+
+; SEQ α=P_Functions_alpha
+P_Functions_alpha:
+    jmp     seq_l125_alpha
+P_Functions_beta:
+    jmp     seq_r125_beta
+
+; SEQ α=seq_l125_alpha
+seq_l125_alpha:
+    jmp     seq_l126_alpha
+seq_l125_beta:
+    jmp     seq_r126_beta
+
+; SEQ α=seq_l126_alpha
+seq_l126_alpha:
+    jmp     seq_l127_alpha
+seq_l126_beta:
+    jmp     seq_r127_beta
+
+; SEQ α=seq_l127_alpha
+seq_l127_alpha:
+    jmp     seq_l128_alpha
+seq_l127_beta:
+    jmp     seq_r128_beta
+
+; SEQ α=seq_l128_alpha
+seq_l128_alpha:
+    jmp     seq_l129_alpha
+seq_l128_beta:
+    jmp     seq_r129_beta
+
+; SEQ α=seq_l129_alpha
+seq_l129_alpha:
+    jmp     seq_l130_alpha
+seq_l129_beta:
+    jmp     seq_r130_beta
+
+; SEQ α=seq_l130_alpha
+seq_l130_alpha:
+    jmp     seq_l131_alpha
+seq_l130_beta:
+    jmp     seq_r131_beta
+
+; SEQ α=seq_l131_alpha
+seq_l131_alpha:
+    jmp     seq_l132_alpha
+seq_l131_beta:
+    jmp     seq_r132_beta
+
+; LIT("ANY APPLY ARBNO ARG ARRAY ATAN BACKSPACE BREAK BREAKX ")  α=seq_l132_alpha
+seq_l132_alpha:
+    mov     rax, [cursor]
+    add     rax, 54
+    cmp     rax, [subject_len_val]
+    jg      patdef_Functions_omega
+    lea     rsi, [rel subject_data]
+    mov     rcx, [cursor]
+    add     rsi, rcx
+    lea     rdi, [rel lit_str_28]
+    mov     rcx, 54
+    repe    cmpsb
+    jne     patdef_Functions_omega
+    mov     rax, [cursor]
+    mov     [seq_l132_alpha_saved], rax
+    add     rax, 54
+    mov     [cursor], rax
+    jmp     seq_r132_alpha
+
+; LIT β=seq_l132_beta
+seq_l132_beta:
+    mov     rax, [seq_l132_alpha_saved]
+    mov     [cursor], rax
+    jmp     patdef_Functions_omega
+
+; LIT("CHAR CHOP CLEAR CODE COLLECT CONVERT COPY COS DATA ")  α=seq_r132_alpha
+seq_r132_alpha:
+    mov     rax, [cursor]
+    add     rax, 51
+    cmp     rax, [subject_len_val]
+    jg      seq_l132_beta
+    lea     rsi, [rel subject_data]
+    mov     rcx, [cursor]
+    add     rsi, rcx
+    lea     rdi, [rel lit_str_29]
+    mov     rcx, 51
+    repe    cmpsb
+    jne     seq_l132_beta
+    mov     rax, [cursor]
+    mov     [seq_r132_alpha_saved], rax
+    add     rax, 51
+    mov     [cursor], rax
+    jmp     seq_r131_alpha
+
+; LIT β=seq_r132_beta
+seq_r132_beta:
+    mov     rax, [seq_r132_alpha_saved]
+    mov     [cursor], rax
+    jmp     seq_l132_beta
+
+; LIT("DATATYPE DATE DEFINE DETACH DIFFER DUMP DUPL EJECT ")  α=seq_r131_alpha
+seq_r131_alpha:
+    mov     rax, [cursor]
+    add     rax, 51
+    cmp     rax, [subject_len_val]
+    jg      seq_l131_beta
+    lea     rsi, [rel subject_data]
+    mov     rcx, [cursor]
+    add     rsi, rcx
+    lea     rdi, [rel lit_str_30]
+    mov     rcx, 51
+    repe    cmpsb
+    jne     seq_l131_beta
+    mov     rax, [cursor]
+    mov     [seq_r131_alpha_saved], rax
+    add     rax, 51
+    mov     [cursor], rax
+    jmp     seq_r130_alpha
+
+; LIT β=seq_r131_beta
+seq_r131_beta:
+    mov     rax, [seq_r131_alpha_saved]
+    mov     [cursor], rax
+    jmp     seq_l131_beta
+
+; LIT("ENDFILE EQ EVAL EXIT EXP FENCE FIELD GE GT HOST ")  α=seq_r130_alpha
+seq_r130_alpha:
+    mov     rax, [cursor]
+    add     rax, 48
+    cmp     rax, [subject_len_val]
+    jg      seq_l130_beta
+    lea     rsi, [rel subject_data]
+    mov     rcx, [cursor]
+    add     rsi, rcx
+    lea     rdi, [rel lit_str_31]
+    mov     rcx, 48
+    repe    cmpsb
+    jne     seq_l130_beta
+    mov     rax, [cursor]
+    mov     [seq_r130_alpha_saved], rax
+    add     rax, 48
+    mov     [cursor], rax
+    jmp     seq_r129_alpha
+
+; LIT β=seq_r130_beta
+seq_r130_beta:
+    mov     rax, [seq_r130_alpha_saved]
+    mov     [cursor], rax
+    jmp     seq_l130_beta
+
+; LIT("IDENT INPUT INTEGER ITEM LE LEN LEQ LGE LGT LLE ")  α=seq_r129_alpha
+seq_r129_alpha:
+    mov     rax, [cursor]
+    add     rax, 48
+    cmp     rax, [subject_len_val]
+    jg      seq_l129_beta
+    lea     rsi, [rel subject_data]
+    mov     rcx, [cursor]
+    add     rsi, rcx
+    lea     rdi, [rel lit_str_32]
+    mov     rcx, 48
+    repe    cmpsb
+    jne     seq_l129_beta
+    mov     rax, [cursor]
+    mov     [seq_r129_alpha_saved], rax
+    add     rax, 48
+    mov     [cursor], rax
+    jmp     seq_r128_alpha
+
+; LIT β=seq_r129_beta
+seq_r129_beta:
+    mov     rax, [seq_r129_alpha_saved]
+    mov     [cursor], rax
+    jmp     seq_l129_beta
+
+; LIT("LLT LN LNE LOAD LOCAL LPAD LT NE NOTANY OPSYN OUTPUT ")  α=seq_r128_alpha
+seq_r128_alpha:
+    mov     rax, [cursor]
+    add     rax, 53
+    cmp     rax, [subject_len_val]
+    jg      seq_l128_beta
+    lea     rsi, [rel subject_data]
+    mov     rcx, [cursor]
+    add     rsi, rcx
+    lea     rdi, [rel lit_str_33]
+    mov     rcx, 53
+    repe    cmpsb
+    jne     seq_l128_beta
+    mov     rax, [cursor]
+    mov     [seq_r128_alpha_saved], rax
+    add     rax, 53
+    mov     [cursor], rax
+    jmp     seq_r127_alpha
+
+; LIT β=seq_r128_beta
+seq_r128_beta:
+    mov     rax, [seq_r128_alpha_saved]
+    mov     [cursor], rax
+    jmp     seq_l128_beta
+
+; LIT("POS PROTOTYPE REMDR REPLACE REVERSE REWIND RPAD RPOS ")  α=seq_r127_alpha
+seq_r127_alpha:
+    mov     rax, [cursor]
+    add     rax, 53
+    cmp     rax, [subject_len_val]
+    jg      seq_l127_beta
+    lea     rsi, [rel subject_data]
+    mov     rcx, [cursor]
+    add     rsi, rcx
+    lea     rdi, [rel lit_str_34]
+    mov     rcx, 53
+    repe    cmpsb
+    jne     seq_l127_beta
+    mov     rax, [cursor]
+    mov     [seq_r127_alpha_saved], rax
+    add     rax, 53
+    mov     [cursor], rax
+    jmp     seq_r126_alpha
+
+; LIT β=seq_r127_beta
+seq_r127_beta:
+    mov     rax, [seq_r127_alpha_saved]
+    mov     [cursor], rax
+    jmp     seq_l127_beta
+
+; LIT("RSORT RTAB SET SETEXIT SIN SIZE SORT SPAN SQRT STOPTR ")  α=seq_r126_alpha
+seq_r126_alpha:
+    mov     rax, [cursor]
+    add     rax, 54
+    cmp     rax, [subject_len_val]
+    jg      seq_l126_beta
+    lea     rsi, [rel subject_data]
+    mov     rcx, [cursor]
+    add     rsi, rcx
+    lea     rdi, [rel lit_str_35]
+    mov     rcx, 54
+    repe    cmpsb
+    jne     seq_l126_beta
+    mov     rax, [cursor]
+    mov     [seq_r126_alpha_saved], rax
+    add     rax, 54
+    mov     [cursor], rax
+    jmp     seq_r125_alpha
+
+; LIT β=seq_r126_beta
+seq_r126_beta:
+    mov     rax, [seq_r126_alpha_saved]
+    mov     [cursor], rax
+    jmp     seq_l126_beta
+
+; LIT("SUBSTR TAB TABLE TAN TIME TRACE TRIM UNLOAD")  α=seq_r125_alpha
+seq_r125_alpha:
+    mov     rax, [cursor]
+    add     rax, 43
+    cmp     rax, [subject_len_val]
+    jg      seq_l125_beta
+    lea     rsi, [rel subject_data]
+    mov     rcx, [cursor]
+    add     rsi, rcx
+    lea     rdi, [rel lit_str_36]
+    mov     rcx, 43
+    repe    cmpsb
+    jne     seq_l125_beta
+    mov     rax, [cursor]
+    mov     [seq_r125_alpha_saved], rax
+    add     rax, 43
+    mov     [cursor], rax
+    jmp     patdef_Functions_gamma
+
+; LIT β=seq_r125_beta
+seq_r125_beta:
+    mov     rax, [seq_r125_alpha_saved]
+    mov     [cursor], rax
+    jmp     seq_l125_beta
+
+patdef_Functions_gamma:
+    jmp     [P_Functions_ret_gamma]
+patdef_Functions_omega:
+    jmp     [P_Functions_ret_omega]
+
+; ============ Named pattern: ExprList ============
+; P_ExprList_alpha (α entry)
+
+; SEQ α=P_ExprList_alpha
+P_ExprList_alpha:
+    jmp     seq_l133_alpha
+P_ExprList_beta:
+    jmp     seq_r133_beta
+
+; SEQ α=seq_l133_alpha
+seq_l133_alpha:
+    jmp     seq_l134_alpha
+seq_l133_beta:
+    jmp     seq_r134_beta
+
+; SEQ α=seq_l134_alpha
+seq_l134_alpha:
+    jmp     seq_l135_alpha
+seq_l134_beta:
+    jmp     seq_r135_beta
+
+; UNIMPLEMENTED: nPush() → ω
+seq_l135_alpha:
+seq_l135_beta:
+    jmp     patdef_ExprList_omega
+
+; REF(XList) α=seq_r135_alpha
+seq_r135_alpha:
+    lea     rax, [rel nref136_gamma]
+    mov     [P_XList_ret_gamma], rax
+    lea     rax, [rel nref136_omega]
+    mov     [P_XList_ret_omega], rax
+    jmp     P_XList_alpha
+
+; REF(XList) β=seq_r135_beta
+seq_r135_beta:
+    lea     rax, [rel nref136_gamma]
+    mov     [P_XList_ret_gamma], rax
+    lea     rax, [rel nref136_omega]
+    mov     [P_XList_ret_omega], rax
+    jmp     P_XList_beta
+
+nref136_gamma:
+    jmp     seq_r134_alpha
+nref136_omega:
+    jmp     seq_l135_beta
+
+; UNIMPLEMENTED node kind 14 → ω
+seq_r134_alpha:
+seq_r134_beta:
+    jmp     seq_l134_beta
+
+; UNIMPLEMENTED: nPop() → ω
+seq_r133_alpha:
+seq_r133_beta:
+    jmp     seq_l133_beta
+
+patdef_ExprList_gamma:
+    jmp     [P_ExprList_ret_gamma]
+patdef_ExprList_omega:
+    jmp     [P_ExprList_ret_omega]
+
+; ============ Named pattern: XList ============
+; P_XList_alpha (α entry)
+
+; SEQ α=P_XList_alpha
+P_XList_alpha:
+    jmp     seq_l137_alpha
+P_XList_beta:
+    jmp     seq_r137_beta
+
+; SEQ α=seq_l137_alpha
+seq_l137_alpha:
+    jmp     seq_l138_alpha
+seq_l137_beta:
+    jmp     seq_r138_beta
+
+; UNIMPLEMENTED: nInc() → ω
+seq_l138_alpha:
+seq_l138_beta:
+    jmp     patdef_XList_omega
+
+; ALT α=seq_r138_alpha
+seq_r138_alpha:
+    mov     rax, [cursor]
+    mov     [alt139_cur_save], rax
+    jmp     alt_l139_alpha
+seq_r138_beta:
+    jmp     alt_r139_beta
+
+; REF(Expr) α=alt_l139_alpha
+alt_l139_alpha:
+    lea     rax, [rel nref140_gamma]
+    mov     [P_Expr_ret_gamma], rax
+    lea     rax, [rel nref140_omega]
+    mov     [P_Expr_ret_omega], rax
+    jmp     P_Expr_alpha
+
+; REF(Expr) β=alt_l139_beta
+alt_l139_beta:
+    lea     rax, [rel nref140_gamma]
+    mov     [P_Expr_ret_gamma], rax
+    lea     rax, [rel nref140_omega]
+    mov     [P_Expr_ret_omega], rax
+    jmp     P_Expr_beta
+
+nref140_gamma:
+    jmp     seq_r137_alpha
+nref140_omega:
+    jmp     alt139_left_omega
+
+; ALT left_ω trampoline
+alt139_left_omega:
+    mov     rax, [alt139_cur_save]
+    mov     [cursor], rax
+    jmp     alt_r139_alpha
+
+; DOL( $  v)  α=alt_r139_alpha
+alt_r139_alpha:
+    mov     rax, [cursor]
+    mov     [dol_entry_v], rax
+    jmp     dol141_child_alpha
+alt_r139_beta:
+    jmp     dol141_child_beta
+
+; UNRESOLVED named pattern ref: epsilon → ω
+dol141_child_alpha:
+dol141_child_beta:
+    jmp     dol141_omega
+
+; DOL γ — capture span into cap_v_buf
+dol141_gamma:
+    mov     rax, [cursor]
+    mov     rbx, [dol_entry_v]
+    sub     rax, rbx
+    mov     [cap_v_len], rax
+    lea     rsi, [rel subject_data]
+    add     rsi, rbx
+    lea     rdi, [rel cap_v_buf]
+    mov     rcx, rax
+    rep     movsb
+    jmp     seq_r137_alpha
+
+; DOL ω — child failed, no capture
+dol141_omega:
+    jmp     seq_l138_beta
+
+; UNIMPLEMENTED: FENCE() → ω
+seq_r137_alpha:
+seq_r137_beta:
+    jmp     seq_l137_beta
+
+patdef_XList_gamma:
+    jmp     [P_XList_ret_gamma]
+patdef_XList_omega:
+    jmp     [P_XList_ret_omega]
+
+; ============ Named pattern: Expr ============
+; P_Expr_alpha (α entry)
+
+; REF(Expr0) α=P_Expr_alpha
+P_Expr_alpha:
+    lea     rax, [rel nref142_gamma]
+    mov     [P_Expr0_ret_gamma], rax
+    lea     rax, [rel nref142_omega]
+    mov     [P_Expr0_ret_omega], rax
+    jmp     P_Expr0_alpha
+
+; REF(Expr0) β=P_Expr_beta
+P_Expr_beta:
+    lea     rax, [rel nref142_gamma]
+    mov     [P_Expr0_ret_gamma], rax
+    lea     rax, [rel nref142_omega]
+    mov     [P_Expr0_ret_omega], rax
+    jmp     P_Expr0_beta
+
+nref142_gamma:
+    jmp     patdef_Expr_gamma
+nref142_omega:
+    jmp     patdef_Expr_omega
+
+patdef_Expr_gamma:
+    jmp     [P_Expr_ret_gamma]
+patdef_Expr_omega:
+    jmp     [P_Expr_ret_omega]
+
+; ============ Named pattern: Expr0 ============
+; P_Expr0_alpha (α entry)
+
+; SEQ α=P_Expr0_alpha
+P_Expr0_alpha:
+    jmp     seq_l143_alpha
+P_Expr0_beta:
+    jmp     seq_r143_beta
+
+; REF(Expr1) α=seq_l143_alpha
+seq_l143_alpha:
+    lea     rax, [rel nref144_gamma]
+    mov     [P_Expr1_ret_gamma], rax
+    lea     rax, [rel nref144_omega]
+    mov     [P_Expr1_ret_omega], rax
+    jmp     P_Expr1_alpha
+
+; REF(Expr1) β=seq_l143_beta
+seq_l143_beta:
+    lea     rax, [rel nref144_gamma]
+    mov     [P_Expr1_ret_gamma], rax
+    lea     rax, [rel nref144_omega]
+    mov     [P_Expr1_ret_omega], rax
+    jmp     P_Expr1_beta
+
+nref144_gamma:
+    jmp     seq_r143_alpha
+nref144_omega:
+    jmp     patdef_Expr0_omega
+
+; UNIMPLEMENTED: FENCE() → ω
+seq_r143_alpha:
+seq_r143_beta:
+    jmp     seq_l143_beta
+
+patdef_Expr0_gamma:
+    jmp     [P_Expr0_ret_gamma]
+patdef_Expr0_omega:
+    jmp     [P_Expr0_ret_omega]
+
+; ============ Named pattern: Expr1 ============
+; P_Expr1_alpha (α entry)
+
+; SEQ α=P_Expr1_alpha
+P_Expr1_alpha:
+    jmp     seq_l145_alpha
+P_Expr1_beta:
+    jmp     seq_r145_beta
+
+; REF(Expr2) α=seq_l145_alpha
+seq_l145_alpha:
+    lea     rax, [rel nref146_gamma]
+    mov     [P_Expr2_ret_gamma], rax
+    lea     rax, [rel nref146_omega]
+    mov     [P_Expr2_ret_omega], rax
+    jmp     P_Expr2_alpha
+
+; REF(Expr2) β=seq_l145_beta
+seq_l145_beta:
+    lea     rax, [rel nref146_gamma]
+    mov     [P_Expr2_ret_gamma], rax
+    lea     rax, [rel nref146_omega]
+    mov     [P_Expr2_ret_omega], rax
+    jmp     P_Expr2_beta
+
+nref146_gamma:
+    jmp     seq_r145_alpha
+nref146_omega:
+    jmp     patdef_Expr1_omega
+
+; UNIMPLEMENTED: FENCE() → ω
+seq_r145_alpha:
+seq_r145_beta:
+    jmp     seq_l145_beta
+
+patdef_Expr1_gamma:
+    jmp     [P_Expr1_ret_gamma]
+patdef_Expr1_omega:
+    jmp     [P_Expr1_ret_omega]
+
+; ============ Named pattern: Expr2 ============
+; P_Expr2_alpha (α entry)
+
+; SEQ α=P_Expr2_alpha
+P_Expr2_alpha:
+    jmp     seq_l147_alpha
+P_Expr2_beta:
+    jmp     seq_r147_beta
+
+; REF(Expr3) α=seq_l147_alpha
+seq_l147_alpha:
+    lea     rax, [rel nref148_gamma]
+    mov     [P_Expr3_ret_gamma], rax
+    lea     rax, [rel nref148_omega]
+    mov     [P_Expr3_ret_omega], rax
+    jmp     P_Expr3_alpha
+
+; REF(Expr3) β=seq_l147_beta
+seq_l147_beta:
+    lea     rax, [rel nref148_gamma]
+    mov     [P_Expr3_ret_gamma], rax
+    lea     rax, [rel nref148_omega]
+    mov     [P_Expr3_ret_omega], rax
+    jmp     P_Expr3_beta
+
+nref148_gamma:
+    jmp     seq_r147_alpha
+nref148_omega:
+    jmp     patdef_Expr2_omega
+
+; UNIMPLEMENTED: FENCE() → ω
+seq_r147_alpha:
+seq_r147_beta:
+    jmp     seq_l147_beta
+
+patdef_Expr2_gamma:
+    jmp     [P_Expr2_ret_gamma]
+patdef_Expr2_omega:
+    jmp     [P_Expr2_ret_omega]
+
+; ============ Named pattern: Expr3 ============
+; P_Expr3_alpha (α entry)
+
+; SEQ α=P_Expr3_alpha
+P_Expr3_alpha:
+    jmp     seq_l149_alpha
+P_Expr3_beta:
+    jmp     seq_r149_beta
+
+; SEQ α=seq_l149_alpha
+seq_l149_alpha:
+    jmp     seq_l150_alpha
+seq_l149_beta:
+    jmp     seq_r150_beta
+
+; SEQ α=seq_l150_alpha
+seq_l150_alpha:
+    jmp     seq_l151_alpha
+seq_l150_beta:
+    jmp     seq_r151_beta
+
+; UNIMPLEMENTED: nPush() → ω
+seq_l151_alpha:
+seq_l151_beta:
+    jmp     patdef_Expr3_omega
+
+; REF(X3) α=seq_r151_alpha
+seq_r151_alpha:
+    lea     rax, [rel nref152_gamma]
+    mov     [P_X3_ret_gamma], rax
+    lea     rax, [rel nref152_omega]
+    mov     [P_X3_ret_omega], rax
+    jmp     P_X3_alpha
+
+; REF(X3) β=seq_r151_beta
+seq_r151_beta:
+    lea     rax, [rel nref152_gamma]
+    mov     [P_X3_ret_gamma], rax
+    lea     rax, [rel nref152_omega]
+    mov     [P_X3_ret_omega], rax
+    jmp     P_X3_beta
+
+nref152_gamma:
+    jmp     seq_r150_alpha
+nref152_omega:
+    jmp     seq_l151_beta
+
+; UNIMPLEMENTED node kind 14 → ω
+seq_r150_alpha:
+seq_r150_beta:
+    jmp     seq_l150_beta
+
+; UNIMPLEMENTED: nPop() → ω
+seq_r149_alpha:
+seq_r149_beta:
+    jmp     seq_l149_beta
+
+patdef_Expr3_gamma:
+    jmp     [P_Expr3_ret_gamma]
+patdef_Expr3_omega:
+    jmp     [P_Expr3_ret_omega]
+
+; ============ Named pattern: X3 ============
+; P_X3_alpha (α entry)
+
+; SEQ α=P_X3_alpha
+P_X3_alpha:
+    jmp     seq_l153_alpha
+P_X3_beta:
+    jmp     seq_r153_beta
+
+; SEQ α=seq_l153_alpha
+seq_l153_alpha:
+    jmp     seq_l154_alpha
+seq_l153_beta:
+    jmp     seq_r154_beta
+
+; UNIMPLEMENTED: nInc() → ω
+seq_l154_alpha:
+seq_l154_beta:
+    jmp     patdef_X3_omega
+
+; REF(Expr4) α=seq_r154_alpha
+seq_r154_alpha:
+    lea     rax, [rel nref155_gamma]
+    mov     [P_Expr4_ret_gamma], rax
+    lea     rax, [rel nref155_omega]
+    mov     [P_Expr4_ret_omega], rax
+    jmp     P_Expr4_alpha
+
+; REF(Expr4) β=seq_r154_beta
+seq_r154_beta:
+    lea     rax, [rel nref155_gamma]
+    mov     [P_Expr4_ret_gamma], rax
+    lea     rax, [rel nref155_omega]
+    mov     [P_Expr4_ret_omega], rax
+    jmp     P_Expr4_beta
+
+nref155_gamma:
+    jmp     seq_r153_alpha
+nref155_omega:
+    jmp     seq_l154_beta
+
+; UNIMPLEMENTED: FENCE() → ω
+seq_r153_alpha:
+seq_r153_beta:
+    jmp     seq_l153_beta
+
+patdef_X3_gamma:
+    jmp     [P_X3_ret_gamma]
+patdef_X3_omega:
+    jmp     [P_X3_ret_omega]
+
+; ============ Named pattern: Expr4 ============
+; P_Expr4_alpha (α entry)
+
+; SEQ α=P_Expr4_alpha
+P_Expr4_alpha:
+    jmp     seq_l156_alpha
+P_Expr4_beta:
+    jmp     seq_r156_beta
+
+; SEQ α=seq_l156_alpha
+seq_l156_alpha:
+    jmp     seq_l157_alpha
+seq_l156_beta:
+    jmp     seq_r157_beta
+
+; SEQ α=seq_l157_alpha
+seq_l157_alpha:
+    jmp     seq_l158_alpha
+seq_l157_beta:
+    jmp     seq_r158_beta
+
+; UNIMPLEMENTED: nPush() → ω
+seq_l158_alpha:
+seq_l158_beta:
+    jmp     patdef_Expr4_omega
+
+; REF(X4) α=seq_r158_alpha
+seq_r158_alpha:
+    lea     rax, [rel nref159_gamma]
+    mov     [P_X4_ret_gamma], rax
+    lea     rax, [rel nref159_omega]
+    mov     [P_X4_ret_omega], rax
+    jmp     P_X4_alpha
+
+; REF(X4) β=seq_r158_beta
+seq_r158_beta:
+    lea     rax, [rel nref159_gamma]
+    mov     [P_X4_ret_gamma], rax
+    lea     rax, [rel nref159_omega]
+    mov     [P_X4_ret_omega], rax
+    jmp     P_X4_beta
+
+nref159_gamma:
+    jmp     seq_r157_alpha
+nref159_omega:
+    jmp     seq_l158_beta
+
+; UNIMPLEMENTED node kind 14 → ω
+seq_r157_alpha:
+seq_r157_beta:
+    jmp     seq_l157_beta
+
+; UNIMPLEMENTED: nPop() → ω
+seq_r156_alpha:
+seq_r156_beta:
+    jmp     seq_l156_beta
+
+patdef_Expr4_gamma:
+    jmp     [P_Expr4_ret_gamma]
+patdef_Expr4_omega:
+    jmp     [P_Expr4_ret_omega]
+
+; ============ Named pattern: X4 ============
+; P_X4_alpha (α entry)
+
+; SEQ α=P_X4_alpha
+P_X4_alpha:
+    jmp     seq_l160_alpha
+P_X4_beta:
+    jmp     seq_r160_beta
+
+; SEQ α=seq_l160_alpha
+seq_l160_alpha:
+    jmp     seq_l161_alpha
+seq_l160_beta:
+    jmp     seq_r161_beta
+
+; UNIMPLEMENTED: nInc() → ω
+seq_l161_alpha:
+seq_l161_beta:
+    jmp     patdef_X4_omega
+
+; REF(Expr5) α=seq_r161_alpha
+seq_r161_alpha:
+    lea     rax, [rel nref162_gamma]
+    mov     [P_Expr5_ret_gamma], rax
+    lea     rax, [rel nref162_omega]
+    mov     [P_Expr5_ret_omega], rax
+    jmp     P_Expr5_alpha
+
+; REF(Expr5) β=seq_r161_beta
+seq_r161_beta:
+    lea     rax, [rel nref162_gamma]
+    mov     [P_Expr5_ret_gamma], rax
+    lea     rax, [rel nref162_omega]
+    mov     [P_Expr5_ret_omega], rax
+    jmp     P_Expr5_beta
+
+nref162_gamma:
+    jmp     seq_r160_alpha
+nref162_omega:
+    jmp     seq_l161_beta
+
+; UNIMPLEMENTED: FENCE() → ω
+seq_r160_alpha:
+seq_r160_beta:
+    jmp     seq_l160_beta
+
+patdef_X4_gamma:
+    jmp     [P_X4_ret_gamma]
+patdef_X4_omega:
+    jmp     [P_X4_ret_omega]
+
+; ============ Named pattern: Expr5 ============
+; P_Expr5_alpha (α entry)
+
+; SEQ α=P_Expr5_alpha
+P_Expr5_alpha:
+    jmp     seq_l163_alpha
+P_Expr5_beta:
+    jmp     seq_r163_beta
+
+; REF(Expr6) α=seq_l163_alpha
+seq_l163_alpha:
+    lea     rax, [rel nref164_gamma]
+    mov     [P_Expr6_ret_gamma], rax
+    lea     rax, [rel nref164_omega]
+    mov     [P_Expr6_ret_omega], rax
+    jmp     P_Expr6_alpha
+
+; REF(Expr6) β=seq_l163_beta
+seq_l163_beta:
+    lea     rax, [rel nref164_gamma]
+    mov     [P_Expr6_ret_gamma], rax
+    lea     rax, [rel nref164_omega]
+    mov     [P_Expr6_ret_omega], rax
+    jmp     P_Expr6_beta
+
+nref164_gamma:
+    jmp     seq_r163_alpha
+nref164_omega:
+    jmp     patdef_Expr5_omega
+
+; UNIMPLEMENTED: FENCE() → ω
+seq_r163_alpha:
+seq_r163_beta:
+    jmp     seq_l163_beta
+
+patdef_Expr5_gamma:
+    jmp     [P_Expr5_ret_gamma]
+patdef_Expr5_omega:
+    jmp     [P_Expr5_ret_omega]
+
+; ============ Named pattern: Expr6 ============
+; P_Expr6_alpha (α entry)
+
+; SEQ α=P_Expr6_alpha
+P_Expr6_alpha:
+    jmp     seq_l165_alpha
+P_Expr6_beta:
+    jmp     seq_r165_beta
+
+; REF(Expr7) α=seq_l165_alpha
+seq_l165_alpha:
+    lea     rax, [rel nref166_gamma]
+    mov     [P_Expr7_ret_gamma], rax
+    lea     rax, [rel nref166_omega]
+    mov     [P_Expr7_ret_omega], rax
+    jmp     P_Expr7_alpha
+
+; REF(Expr7) β=seq_l165_beta
+seq_l165_beta:
+    lea     rax, [rel nref166_gamma]
+    mov     [P_Expr7_ret_gamma], rax
+    lea     rax, [rel nref166_omega]
+    mov     [P_Expr7_ret_omega], rax
+    jmp     P_Expr7_beta
+
+nref166_gamma:
+    jmp     seq_r165_alpha
+nref166_omega:
+    jmp     patdef_Expr6_omega
+
+; UNIMPLEMENTED: FENCE() → ω
+seq_r165_alpha:
+seq_r165_beta:
+    jmp     seq_l165_beta
+
+patdef_Expr6_gamma:
+    jmp     [P_Expr6_ret_gamma]
+patdef_Expr6_omega:
+    jmp     [P_Expr6_ret_omega]
+
+; ============ Named pattern: Expr7 ============
+; P_Expr7_alpha (α entry)
+
+; SEQ α=P_Expr7_alpha
+P_Expr7_alpha:
+    jmp     seq_l167_alpha
+P_Expr7_beta:
+    jmp     seq_r167_beta
+
+; REF(Expr8) α=seq_l167_alpha
+seq_l167_alpha:
+    lea     rax, [rel nref168_gamma]
+    mov     [P_Expr8_ret_gamma], rax
+    lea     rax, [rel nref168_omega]
+    mov     [P_Expr8_ret_omega], rax
+    jmp     P_Expr8_alpha
+
+; REF(Expr8) β=seq_l167_beta
+seq_l167_beta:
+    lea     rax, [rel nref168_gamma]
+    mov     [P_Expr8_ret_gamma], rax
+    lea     rax, [rel nref168_omega]
+    mov     [P_Expr8_ret_omega], rax
+    jmp     P_Expr8_beta
+
+nref168_gamma:
+    jmp     seq_r167_alpha
+nref168_omega:
+    jmp     patdef_Expr7_omega
+
+; UNIMPLEMENTED: FENCE() → ω
+seq_r167_alpha:
+seq_r167_beta:
+    jmp     seq_l167_beta
+
+patdef_Expr7_gamma:
+    jmp     [P_Expr7_ret_gamma]
+patdef_Expr7_omega:
+    jmp     [P_Expr7_ret_omega]
+
+; ============ Named pattern: Expr8 ============
+; P_Expr8_alpha (α entry)
+
+; SEQ α=P_Expr8_alpha
+P_Expr8_alpha:
+    jmp     seq_l169_alpha
+P_Expr8_beta:
+    jmp     seq_r169_beta
+
+; REF(Expr9) α=seq_l169_alpha
+seq_l169_alpha:
+    lea     rax, [rel nref170_gamma]
+    mov     [P_Expr9_ret_gamma], rax
+    lea     rax, [rel nref170_omega]
+    mov     [P_Expr9_ret_omega], rax
+    jmp     P_Expr9_alpha
+
+; REF(Expr9) β=seq_l169_beta
+seq_l169_beta:
+    lea     rax, [rel nref170_gamma]
+    mov     [P_Expr9_ret_gamma], rax
+    lea     rax, [rel nref170_omega]
+    mov     [P_Expr9_ret_omega], rax
+    jmp     P_Expr9_beta
+
+nref170_gamma:
+    jmp     seq_r169_alpha
+nref170_omega:
+    jmp     patdef_Expr8_omega
+
+; UNIMPLEMENTED: FENCE() → ω
+seq_r169_alpha:
+seq_r169_beta:
+    jmp     seq_l169_beta
+
+patdef_Expr8_gamma:
+    jmp     [P_Expr8_ret_gamma]
+patdef_Expr8_omega:
+    jmp     [P_Expr8_ret_omega]
+
+; ============ Named pattern: Expr9 ============
+; P_Expr9_alpha (α entry)
+
+; SEQ α=P_Expr9_alpha
+P_Expr9_alpha:
+    jmp     seq_l171_alpha
+P_Expr9_beta:
+    jmp     seq_r171_beta
+
+; REF(Expr10) α=seq_l171_alpha
+seq_l171_alpha:
+    lea     rax, [rel nref172_gamma]
+    mov     [P_Expr10_ret_gamma], rax
+    lea     rax, [rel nref172_omega]
+    mov     [P_Expr10_ret_omega], rax
+    jmp     P_Expr10_alpha
+
+; REF(Expr10) β=seq_l171_beta
+seq_l171_beta:
+    lea     rax, [rel nref172_gamma]
+    mov     [P_Expr10_ret_gamma], rax
+    lea     rax, [rel nref172_omega]
+    mov     [P_Expr10_ret_omega], rax
+    jmp     P_Expr10_beta
+
+nref172_gamma:
+    jmp     seq_r171_alpha
+nref172_omega:
+    jmp     patdef_Expr9_omega
+
+; UNIMPLEMENTED: FENCE() → ω
+seq_r171_alpha:
+seq_r171_beta:
+    jmp     seq_l171_beta
+
+patdef_Expr9_gamma:
+    jmp     [P_Expr9_ret_gamma]
+patdef_Expr9_omega:
+    jmp     [P_Expr9_ret_omega]
+
+; ============ Named pattern: Expr10 ============
+; P_Expr10_alpha (α entry)
+
+; SEQ α=P_Expr10_alpha
+P_Expr10_alpha:
+    jmp     seq_l173_alpha
+P_Expr10_beta:
+    jmp     seq_r173_beta
+
+; REF(Expr11) α=seq_l173_alpha
+seq_l173_alpha:
+    lea     rax, [rel nref174_gamma]
+    mov     [P_Expr11_ret_gamma], rax
+    lea     rax, [rel nref174_omega]
+    mov     [P_Expr11_ret_omega], rax
+    jmp     P_Expr11_alpha
+
+; REF(Expr11) β=seq_l173_beta
+seq_l173_beta:
+    lea     rax, [rel nref174_gamma]
+    mov     [P_Expr11_ret_gamma], rax
+    lea     rax, [rel nref174_omega]
+    mov     [P_Expr11_ret_omega], rax
+    jmp     P_Expr11_beta
+
+nref174_gamma:
+    jmp     seq_r173_alpha
+nref174_omega:
+    jmp     patdef_Expr10_omega
+
+; UNIMPLEMENTED: FENCE() → ω
+seq_r173_alpha:
+seq_r173_beta:
+    jmp     seq_l173_beta
+
+patdef_Expr10_gamma:
+    jmp     [P_Expr10_ret_gamma]
+patdef_Expr10_omega:
+    jmp     [P_Expr10_ret_omega]
+
+; ============ Named pattern: Expr11 ============
+; P_Expr11_alpha (α entry)
+
+; SEQ α=P_Expr11_alpha
+P_Expr11_alpha:
+    jmp     seq_l175_alpha
+P_Expr11_beta:
+    jmp     seq_r175_beta
+
+; REF(Expr12) α=seq_l175_alpha
+seq_l175_alpha:
+    lea     rax, [rel nref176_gamma]
+    mov     [P_Expr12_ret_gamma], rax
+    lea     rax, [rel nref176_omega]
+    mov     [P_Expr12_ret_omega], rax
+    jmp     P_Expr12_alpha
+
+; REF(Expr12) β=seq_l175_beta
+seq_l175_beta:
+    lea     rax, [rel nref176_gamma]
+    mov     [P_Expr12_ret_gamma], rax
+    lea     rax, [rel nref176_omega]
+    mov     [P_Expr12_ret_omega], rax
+    jmp     P_Expr12_beta
+
+nref176_gamma:
+    jmp     seq_r175_alpha
+nref176_omega:
+    jmp     patdef_Expr11_omega
+
+; UNIMPLEMENTED: FENCE() → ω
+seq_r175_alpha:
+seq_r175_beta:
+    jmp     seq_l175_beta
+
+patdef_Expr11_gamma:
+    jmp     [P_Expr11_ret_gamma]
+patdef_Expr11_omega:
+    jmp     [P_Expr11_ret_omega]
+
+; ============ Named pattern: Expr12 ============
+; P_Expr12_alpha (α entry)
+
+; SEQ α=P_Expr12_alpha
+P_Expr12_alpha:
+    jmp     seq_l177_alpha
+P_Expr12_beta:
+    jmp     seq_r177_beta
+
+; REF(Expr13) α=seq_l177_alpha
+seq_l177_alpha:
+    lea     rax, [rel nref178_gamma]
+    mov     [P_Expr13_ret_gamma], rax
+    lea     rax, [rel nref178_omega]
+    mov     [P_Expr13_ret_omega], rax
+    jmp     P_Expr13_alpha
+
+; REF(Expr13) β=seq_l177_beta
+seq_l177_beta:
+    lea     rax, [rel nref178_gamma]
+    mov     [P_Expr13_ret_gamma], rax
+    lea     rax, [rel nref178_omega]
+    mov     [P_Expr13_ret_omega], rax
+    jmp     P_Expr13_beta
+
+nref178_gamma:
+    jmp     seq_r177_alpha
+nref178_omega:
+    jmp     patdef_Expr12_omega
+
+; UNIMPLEMENTED: FENCE() → ω
+seq_r177_alpha:
+seq_r177_beta:
+    jmp     seq_l177_beta
+
+patdef_Expr12_gamma:
+    jmp     [P_Expr12_ret_gamma]
+patdef_Expr12_omega:
+    jmp     [P_Expr12_ret_omega]
+
+; ============ Named pattern: Expr13 ============
+; P_Expr13_alpha (α entry)
+
+; SEQ α=P_Expr13_alpha
+P_Expr13_alpha:
+    jmp     seq_l179_alpha
+P_Expr13_beta:
+    jmp     seq_r179_beta
+
+; REF(Expr14) α=seq_l179_alpha
+seq_l179_alpha:
+    lea     rax, [rel nref180_gamma]
+    mov     [P_Expr14_ret_gamma], rax
+    lea     rax, [rel nref180_omega]
+    mov     [P_Expr14_ret_omega], rax
+    jmp     P_Expr14_alpha
+
+; REF(Expr14) β=seq_l179_beta
+seq_l179_beta:
+    lea     rax, [rel nref180_gamma]
+    mov     [P_Expr14_ret_gamma], rax
+    lea     rax, [rel nref180_omega]
+    mov     [P_Expr14_ret_omega], rax
+    jmp     P_Expr14_beta
+
+nref180_gamma:
+    jmp     seq_r179_alpha
+nref180_omega:
+    jmp     patdef_Expr13_omega
+
+; UNIMPLEMENTED: FENCE() → ω
+seq_r179_alpha:
+seq_r179_beta:
+    jmp     seq_l179_beta
+
+patdef_Expr13_gamma:
+    jmp     [P_Expr13_ret_gamma]
+patdef_Expr13_omega:
+    jmp     [P_Expr13_ret_omega]
+
+; ============ Named pattern: Expr14 ============
+; P_Expr14_alpha (α entry)
+
+; ALT α=P_Expr14_alpha
+P_Expr14_alpha:
+    mov     rax, [cursor]
+    mov     [alt181_cur_save], rax
+    jmp     alt_l181_alpha
+P_Expr14_beta:
+    jmp     alt_r181_beta
+
+; ALT α=alt_l181_alpha
+alt_l181_alpha:
+    mov     rax, [cursor]
+    mov     [alt182_cur_save], rax
+    jmp     alt_l182_alpha
+alt_l181_beta:
+    jmp     alt_r182_beta
+
+; ALT α=alt_l182_alpha
+alt_l182_alpha:
+    mov     rax, [cursor]
+    mov     [alt183_cur_save], rax
+    jmp     alt_l183_alpha
+alt_l182_beta:
+    jmp     alt_r183_beta
+
+; ALT α=alt_l183_alpha
+alt_l183_alpha:
+    mov     rax, [cursor]
+    mov     [alt184_cur_save], rax
+    jmp     alt_l184_alpha
+alt_l183_beta:
+    jmp     alt_r184_beta
+
+; ALT α=alt_l184_alpha
+alt_l184_alpha:
+    mov     rax, [cursor]
+    mov     [alt185_cur_save], rax
+    jmp     alt_l185_alpha
+alt_l184_beta:
+    jmp     alt_r185_beta
+
+; ALT α=alt_l185_alpha
+alt_l185_alpha:
+    mov     rax, [cursor]
+    mov     [alt186_cur_save], rax
+    jmp     alt_l186_alpha
+alt_l185_beta:
+    jmp     alt_r186_beta
+
+; ALT α=alt_l186_alpha
+alt_l186_alpha:
+    mov     rax, [cursor]
+    mov     [alt187_cur_save], rax
+    jmp     alt_l187_alpha
+alt_l186_beta:
+    jmp     alt_r187_beta
+
+; ALT α=alt_l187_alpha
+alt_l187_alpha:
+    mov     rax, [cursor]
+    mov     [alt188_cur_save], rax
+    jmp     alt_l188_alpha
+alt_l187_beta:
+    jmp     alt_r188_beta
+
+; ALT α=alt_l188_alpha
+alt_l188_alpha:
+    mov     rax, [cursor]
+    mov     [alt189_cur_save], rax
+    jmp     alt_l189_alpha
+alt_l188_beta:
+    jmp     alt_r189_beta
+
+; ALT α=alt_l189_alpha
+alt_l189_alpha:
+    mov     rax, [cursor]
+    mov     [alt190_cur_save], rax
+    jmp     alt_l190_alpha
+alt_l189_beta:
+    jmp     alt_r190_beta
+
+; ALT α=alt_l190_alpha
+alt_l190_alpha:
+    mov     rax, [cursor]
+    mov     [alt191_cur_save], rax
+    jmp     alt_l191_alpha
+alt_l190_beta:
+    jmp     alt_r191_beta
+
+; ALT α=alt_l191_alpha
+alt_l191_alpha:
+    mov     rax, [cursor]
+    mov     [alt192_cur_save], rax
+    jmp     alt_l192_alpha
+alt_l191_beta:
+    jmp     alt_r192_beta
+
+; ALT α=alt_l192_alpha
+alt_l192_alpha:
+    mov     rax, [cursor]
+    mov     [alt193_cur_save], rax
+    jmp     alt_l193_alpha
+alt_l192_beta:
+    jmp     alt_r193_beta
+
+; ALT α=alt_l193_alpha
+alt_l193_alpha:
+    mov     rax, [cursor]
+    mov     [alt194_cur_save], rax
+    jmp     alt_l194_alpha
+alt_l193_beta:
+    jmp     alt_r194_beta
+
+; ALT α=alt_l194_alpha
+alt_l194_alpha:
+    mov     rax, [cursor]
+    mov     [alt195_cur_save], rax
+    jmp     alt_l195_alpha
+alt_l194_beta:
+    jmp     alt_r195_beta
+
+; ALT α=alt_l195_alpha
+alt_l195_alpha:
+    mov     rax, [cursor]
+    mov     [alt196_cur_save], rax
+    jmp     alt_l196_alpha
+alt_l195_beta:
+    jmp     alt_r196_beta
+
+; ALT α=alt_l196_alpha
+alt_l196_alpha:
+    mov     rax, [cursor]
+    mov     [alt197_cur_save], rax
+    jmp     alt_l197_alpha
+alt_l196_beta:
+    jmp     alt_r197_beta
+
+; SEQ α=alt_l197_alpha
+alt_l197_alpha:
+    jmp     seq_l198_alpha
+alt_l197_beta:
+    jmp     seq_r198_beta
+
+; SEQ α=seq_l198_alpha
+seq_l198_alpha:
+    jmp     seq_l199_alpha
+seq_l198_beta:
+    jmp     seq_r199_beta
+
+; LIT("@")  α=seq_l199_alpha
+seq_l199_alpha:
+    mov     rax, [cursor]
+    add     rax, 1
+    cmp     rax, [subject_len_val]
+    jg      alt197_left_omega
+    lea     rbx, [rel subject_data]
+    mov     rcx, [cursor]
+    movzx   eax, byte [rbx + rcx]
+    cmp     al, 64
+    jne     alt197_left_omega
+    mov     rax, [cursor]
+    mov     [seq_l199_alpha_saved], rax
+    add     rax, 1
+    mov     [cursor], rax
+    jmp     seq_r199_alpha
+
+; LIT β=seq_l199_beta
+seq_l199_beta:
+    mov     rax, [seq_l199_alpha_saved]
+    mov     [cursor], rax
+    jmp     alt197_left_omega
+
+; REF(Expr14) α=seq_r199_alpha
+seq_r199_alpha:
+    lea     rax, [rel nref200_gamma]
+    mov     [P_Expr14_ret_gamma], rax
+    lea     rax, [rel nref200_omega]
+    mov     [P_Expr14_ret_omega], rax
+    jmp     P_Expr14_alpha
+
+; REF(Expr14) β=seq_r199_beta
+seq_r199_beta:
+    lea     rax, [rel nref200_gamma]
+    mov     [P_Expr14_ret_gamma], rax
+    lea     rax, [rel nref200_omega]
+    mov     [P_Expr14_ret_omega], rax
+    jmp     P_Expr14_beta
+
+nref200_gamma:
+    jmp     seq_r198_alpha
+nref200_omega:
+    jmp     seq_l199_beta
+
+; UNIMPLEMENTED node kind 14 → ω
+seq_r198_alpha:
+seq_r198_beta:
+    jmp     seq_l198_beta
+
+; ALT left_ω trampoline
+alt197_left_omega:
+    mov     rax, [alt197_cur_save]
+    mov     [cursor], rax
+    jmp     alt_r197_alpha
+
+; SEQ α=alt_r197_alpha
+alt_r197_alpha:
+    jmp     seq_l201_alpha
+alt_r197_beta:
+    jmp     seq_r201_beta
+
+; SEQ α=seq_l201_alpha
+seq_l201_alpha:
+    jmp     seq_l202_alpha
+seq_l201_beta:
+    jmp     seq_r202_beta
+
+; LIT("~")  α=seq_l202_alpha
+seq_l202_alpha:
+    mov     rax, [cursor]
+    add     rax, 1
+    cmp     rax, [subject_len_val]
+    jg      alt196_left_omega
+    lea     rbx, [rel subject_data]
+    mov     rcx, [cursor]
+    movzx   eax, byte [rbx + rcx]
+    cmp     al, 126
+    jne     alt196_left_omega
+    mov     rax, [cursor]
+    mov     [seq_l202_alpha_saved], rax
+    add     rax, 1
+    mov     [cursor], rax
+    jmp     seq_r202_alpha
+
+; LIT β=seq_l202_beta
+seq_l202_beta:
+    mov     rax, [seq_l202_alpha_saved]
+    mov     [cursor], rax
+    jmp     alt196_left_omega
+
+; REF(Expr14) α=seq_r202_alpha
+seq_r202_alpha:
+    lea     rax, [rel nref203_gamma]
+    mov     [P_Expr14_ret_gamma], rax
+    lea     rax, [rel nref203_omega]
+    mov     [P_Expr14_ret_omega], rax
+    jmp     P_Expr14_alpha
+
+; REF(Expr14) β=seq_r202_beta
+seq_r202_beta:
+    lea     rax, [rel nref203_gamma]
+    mov     [P_Expr14_ret_gamma], rax
+    lea     rax, [rel nref203_omega]
+    mov     [P_Expr14_ret_omega], rax
+    jmp     P_Expr14_beta
+
+nref203_gamma:
+    jmp     seq_r201_alpha
+nref203_omega:
+    jmp     seq_l202_beta
+
+; UNIMPLEMENTED node kind 14 → ω
+seq_r201_alpha:
+seq_r201_beta:
+    jmp     seq_l201_beta
+
+; ALT left_ω trampoline
+alt196_left_omega:
+    mov     rax, [alt196_cur_save]
+    mov     [cursor], rax
+    jmp     alt_r196_alpha
+
+; SEQ α=alt_r196_alpha
+alt_r196_alpha:
+    jmp     seq_l204_alpha
+alt_r196_beta:
+    jmp     seq_r204_beta
+
+; SEQ α=seq_l204_alpha
+seq_l204_alpha:
+    jmp     seq_l205_alpha
+seq_l204_beta:
+    jmp     seq_r205_beta
+
+; LIT("?")  α=seq_l205_alpha
+seq_l205_alpha:
+    mov     rax, [cursor]
+    add     rax, 1
+    cmp     rax, [subject_len_val]
+    jg      alt195_left_omega
+    lea     rbx, [rel subject_data]
+    mov     rcx, [cursor]
+    movzx   eax, byte [rbx + rcx]
+    cmp     al, 63
+    jne     alt195_left_omega
+    mov     rax, [cursor]
+    mov     [seq_l205_alpha_saved], rax
+    add     rax, 1
+    mov     [cursor], rax
+    jmp     seq_r205_alpha
+
+; LIT β=seq_l205_beta
+seq_l205_beta:
+    mov     rax, [seq_l205_alpha_saved]
+    mov     [cursor], rax
+    jmp     alt195_left_omega
+
+; REF(Expr14) α=seq_r205_alpha
+seq_r205_alpha:
+    lea     rax, [rel nref206_gamma]
+    mov     [P_Expr14_ret_gamma], rax
+    lea     rax, [rel nref206_omega]
+    mov     [P_Expr14_ret_omega], rax
+    jmp     P_Expr14_alpha
+
+; REF(Expr14) β=seq_r205_beta
+seq_r205_beta:
+    lea     rax, [rel nref206_gamma]
+    mov     [P_Expr14_ret_gamma], rax
+    lea     rax, [rel nref206_omega]
+    mov     [P_Expr14_ret_omega], rax
+    jmp     P_Expr14_beta
+
+nref206_gamma:
+    jmp     seq_r204_alpha
+nref206_omega:
+    jmp     seq_l205_beta
+
+; UNIMPLEMENTED node kind 14 → ω
+seq_r204_alpha:
+seq_r204_beta:
+    jmp     seq_l204_beta
+
+; ALT left_ω trampoline
+alt195_left_omega:
+    mov     rax, [alt195_cur_save]
+    mov     [cursor], rax
+    jmp     alt_r195_alpha
+
+; DOL(ProtKwd $  ProtKwd)  α=alt_r195_alpha
+alt_r195_alpha:
+    mov     rax, [cursor]
+    mov     [dol_entry_ProtKwd], rax
+    jmp     dol207_child_alpha
+alt_r195_beta:
+    jmp     dol207_child_beta
+
+; REF(ProtKwd) α=dol207_child_alpha
+dol207_child_alpha:
+    lea     rax, [rel nref208_gamma]
+    mov     [P_ProtKwd_ret_gamma], rax
+    lea     rax, [rel nref208_omega]
+    mov     [P_ProtKwd_ret_omega], rax
+    jmp     P_ProtKwd_alpha
+
+; REF(ProtKwd) β=dol207_child_beta
+dol207_child_beta:
+    lea     rax, [rel nref208_gamma]
+    mov     [P_ProtKwd_ret_gamma], rax
+    lea     rax, [rel nref208_omega]
+    mov     [P_ProtKwd_ret_omega], rax
+    jmp     P_ProtKwd_beta
+
+nref208_gamma:
+    jmp     dol207_gamma
+nref208_omega:
+    jmp     dol207_omega
+
+; DOL γ — capture span into cap_ProtKwd_buf
+dol207_gamma:
+    mov     rax, [cursor]
+    mov     rbx, [dol_entry_ProtKwd]
+    sub     rax, rbx
+    mov     [cap_ProtKwd_len], rax
+    lea     rsi, [rel subject_data]
+    add     rsi, rbx
+    lea     rdi, [rel cap_ProtKwd_buf]
+    mov     rcx, rax
+    rep     movsb
+    jmp     patdef_Expr14_gamma
+
+; DOL ω — child failed, no capture
+dol207_omega:
+    jmp     alt194_left_omega
+
+; ALT left_ω trampoline
+alt194_left_omega:
+    mov     rax, [alt194_cur_save]
+    mov     [cursor], rax
+    jmp     alt_r194_alpha
+
+; DOL(UnprotKwd $  UnprotKwd)  α=alt_r194_alpha
+alt_r194_alpha:
+    mov     rax, [cursor]
+    mov     [dol_entry_UnprotKwd], rax
+    jmp     dol209_child_alpha
+alt_r194_beta:
+    jmp     dol209_child_beta
+
+; REF(UnprotKwd) α=dol209_child_alpha
+dol209_child_alpha:
+    lea     rax, [rel nref210_gamma]
+    mov     [P_UnprotKwd_ret_gamma], rax
+    lea     rax, [rel nref210_omega]
+    mov     [P_UnprotKwd_ret_omega], rax
+    jmp     P_UnprotKwd_alpha
+
+; REF(UnprotKwd) β=dol209_child_beta
+dol209_child_beta:
+    lea     rax, [rel nref210_gamma]
+    mov     [P_UnprotKwd_ret_gamma], rax
+    lea     rax, [rel nref210_omega]
+    mov     [P_UnprotKwd_ret_omega], rax
+    jmp     P_UnprotKwd_beta
+
+nref210_gamma:
+    jmp     dol209_gamma
+nref210_omega:
+    jmp     dol209_omega
+
+; DOL γ — capture span into cap_UnprotKwd_buf
+dol209_gamma:
+    mov     rax, [cursor]
+    mov     rbx, [dol_entry_UnprotKwd]
+    sub     rax, rbx
+    mov     [cap_UnprotKwd_len], rax
+    lea     rsi, [rel subject_data]
+    add     rsi, rbx
+    lea     rdi, [rel cap_UnprotKwd_buf]
+    mov     rcx, rax
+    rep     movsb
+    jmp     patdef_Expr14_gamma
+
+; DOL ω — child failed, no capture
+dol209_omega:
+    jmp     alt193_left_omega
+
+; ALT left_ω trampoline
+alt193_left_omega:
+    mov     rax, [alt193_cur_save]
+    mov     [cursor], rax
+    jmp     alt_r193_alpha
+
+; SEQ α=alt_r193_alpha
+alt_r193_alpha:
+    jmp     seq_l211_alpha
+alt_r193_beta:
+    jmp     seq_r211_beta
+
+; SEQ α=seq_l211_alpha
+seq_l211_alpha:
+    jmp     seq_l212_alpha
+seq_l211_beta:
+    jmp     seq_r212_beta
+
+; LIT("&")  α=seq_l212_alpha
+seq_l212_alpha:
+    mov     rax, [cursor]
+    add     rax, 1
+    cmp     rax, [subject_len_val]
+    jg      alt192_left_omega
+    lea     rbx, [rel subject_data]
+    mov     rcx, [cursor]
+    movzx   eax, byte [rbx + rcx]
+    cmp     al, 38
+    jne     alt192_left_omega
+    mov     rax, [cursor]
+    mov     [seq_l212_alpha_saved], rax
+    add     rax, 1
+    mov     [cursor], rax
+    jmp     seq_r212_alpha
+
+; LIT β=seq_l212_beta
+seq_l212_beta:
+    mov     rax, [seq_l212_alpha_saved]
+    mov     [cursor], rax
+    jmp     alt192_left_omega
+
+; REF(Expr14) α=seq_r212_alpha
+seq_r212_alpha:
+    lea     rax, [rel nref213_gamma]
+    mov     [P_Expr14_ret_gamma], rax
+    lea     rax, [rel nref213_omega]
+    mov     [P_Expr14_ret_omega], rax
+    jmp     P_Expr14_alpha
+
+; REF(Expr14) β=seq_r212_beta
+seq_r212_beta:
+    lea     rax, [rel nref213_gamma]
+    mov     [P_Expr14_ret_gamma], rax
+    lea     rax, [rel nref213_omega]
+    mov     [P_Expr14_ret_omega], rax
+    jmp     P_Expr14_beta
+
+nref213_gamma:
+    jmp     seq_r211_alpha
+nref213_omega:
+    jmp     seq_l212_beta
+
+; UNIMPLEMENTED node kind 14 → ω
+seq_r211_alpha:
+seq_r211_beta:
+    jmp     seq_l211_beta
+
+; ALT left_ω trampoline
+alt192_left_omega:
+    mov     rax, [alt192_cur_save]
+    mov     [cursor], rax
+    jmp     alt_r192_alpha
+
+; SEQ α=alt_r192_alpha
+alt_r192_alpha:
+    jmp     seq_l214_alpha
+alt_r192_beta:
+    jmp     seq_r214_beta
+
+; SEQ α=seq_l214_alpha
+seq_l214_alpha:
+    jmp     seq_l215_alpha
+seq_l214_beta:
+    jmp     seq_r215_beta
+
+; LIT("+")  α=seq_l215_alpha
+seq_l215_alpha:
+    mov     rax, [cursor]
+    add     rax, 1
+    cmp     rax, [subject_len_val]
+    jg      alt191_left_omega
+    lea     rbx, [rel subject_data]
+    mov     rcx, [cursor]
+    movzx   eax, byte [rbx + rcx]
+    cmp     al, 43
+    jne     alt191_left_omega
+    mov     rax, [cursor]
+    mov     [seq_l215_alpha_saved], rax
+    add     rax, 1
+    mov     [cursor], rax
+    jmp     seq_r215_alpha
+
+; LIT β=seq_l215_beta
+seq_l215_beta:
+    mov     rax, [seq_l215_alpha_saved]
+    mov     [cursor], rax
+    jmp     alt191_left_omega
+
+; REF(Expr14) α=seq_r215_alpha
+seq_r215_alpha:
+    lea     rax, [rel nref216_gamma]
+    mov     [P_Expr14_ret_gamma], rax
+    lea     rax, [rel nref216_omega]
+    mov     [P_Expr14_ret_omega], rax
+    jmp     P_Expr14_alpha
+
+; REF(Expr14) β=seq_r215_beta
+seq_r215_beta:
+    lea     rax, [rel nref216_gamma]
+    mov     [P_Expr14_ret_gamma], rax
+    lea     rax, [rel nref216_omega]
+    mov     [P_Expr14_ret_omega], rax
+    jmp     P_Expr14_beta
+
+nref216_gamma:
+    jmp     seq_r214_alpha
+nref216_omega:
+    jmp     seq_l215_beta
+
+; UNIMPLEMENTED node kind 14 → ω
+seq_r214_alpha:
+seq_r214_beta:
+    jmp     seq_l214_beta
+
+; ALT left_ω trampoline
+alt191_left_omega:
+    mov     rax, [alt191_cur_save]
+    mov     [cursor], rax
+    jmp     alt_r191_alpha
+
+; SEQ α=alt_r191_alpha
+alt_r191_alpha:
+    jmp     seq_l217_alpha
+alt_r191_beta:
+    jmp     seq_r217_beta
+
+; SEQ α=seq_l217_alpha
+seq_l217_alpha:
+    jmp     seq_l218_alpha
+seq_l217_beta:
+    jmp     seq_r218_beta
+
+; LIT("-")  α=seq_l218_alpha
+seq_l218_alpha:
+    mov     rax, [cursor]
+    add     rax, 1
+    cmp     rax, [subject_len_val]
+    jg      alt190_left_omega
+    lea     rbx, [rel subject_data]
+    mov     rcx, [cursor]
+    movzx   eax, byte [rbx + rcx]
+    cmp     al, 45
+    jne     alt190_left_omega
+    mov     rax, [cursor]
+    mov     [seq_l218_alpha_saved], rax
+    add     rax, 1
+    mov     [cursor], rax
+    jmp     seq_r218_alpha
+
+; LIT β=seq_l218_beta
+seq_l218_beta:
+    mov     rax, [seq_l218_alpha_saved]
+    mov     [cursor], rax
+    jmp     alt190_left_omega
+
+; REF(Expr14) α=seq_r218_alpha
+seq_r218_alpha:
+    lea     rax, [rel nref219_gamma]
+    mov     [P_Expr14_ret_gamma], rax
+    lea     rax, [rel nref219_omega]
+    mov     [P_Expr14_ret_omega], rax
+    jmp     P_Expr14_alpha
+
+; REF(Expr14) β=seq_r218_beta
+seq_r218_beta:
+    lea     rax, [rel nref219_gamma]
+    mov     [P_Expr14_ret_gamma], rax
+    lea     rax, [rel nref219_omega]
+    mov     [P_Expr14_ret_omega], rax
+    jmp     P_Expr14_beta
+
+nref219_gamma:
+    jmp     seq_r217_alpha
+nref219_omega:
+    jmp     seq_l218_beta
+
+; UNIMPLEMENTED node kind 14 → ω
+seq_r217_alpha:
+seq_r217_beta:
+    jmp     seq_l217_beta
+
+; ALT left_ω trampoline
+alt190_left_omega:
+    mov     rax, [alt190_cur_save]
+    mov     [cursor], rax
+    jmp     alt_r190_alpha
+
+; SEQ α=alt_r190_alpha
+alt_r190_alpha:
+    jmp     seq_l220_alpha
+alt_r190_beta:
+    jmp     seq_r220_beta
+
+; SEQ α=seq_l220_alpha
+seq_l220_alpha:
+    jmp     seq_l221_alpha
+seq_l220_beta:
+    jmp     seq_r221_beta
+
+; LIT("*")  α=seq_l221_alpha
+seq_l221_alpha:
+    mov     rax, [cursor]
+    add     rax, 1
+    cmp     rax, [subject_len_val]
+    jg      alt189_left_omega
+    lea     rbx, [rel subject_data]
+    mov     rcx, [cursor]
+    movzx   eax, byte [rbx + rcx]
+    cmp     al, 42
+    jne     alt189_left_omega
+    mov     rax, [cursor]
+    mov     [seq_l221_alpha_saved], rax
+    add     rax, 1
+    mov     [cursor], rax
+    jmp     seq_r221_alpha
+
+; LIT β=seq_l221_beta
+seq_l221_beta:
+    mov     rax, [seq_l221_alpha_saved]
+    mov     [cursor], rax
+    jmp     alt189_left_omega
+
+; REF(Expr14) α=seq_r221_alpha
+seq_r221_alpha:
+    lea     rax, [rel nref222_gamma]
+    mov     [P_Expr14_ret_gamma], rax
+    lea     rax, [rel nref222_omega]
+    mov     [P_Expr14_ret_omega], rax
+    jmp     P_Expr14_alpha
+
+; REF(Expr14) β=seq_r221_beta
+seq_r221_beta:
+    lea     rax, [rel nref222_gamma]
+    mov     [P_Expr14_ret_gamma], rax
+    lea     rax, [rel nref222_omega]
+    mov     [P_Expr14_ret_omega], rax
+    jmp     P_Expr14_beta
+
+nref222_gamma:
+    jmp     seq_r220_alpha
+nref222_omega:
+    jmp     seq_l221_beta
+
+; UNIMPLEMENTED node kind 14 → ω
+seq_r220_alpha:
+seq_r220_beta:
+    jmp     seq_l220_beta
+
+; ALT left_ω trampoline
+alt189_left_omega:
+    mov     rax, [alt189_cur_save]
+    mov     [cursor], rax
+    jmp     alt_r189_alpha
+
+; SEQ α=alt_r189_alpha
+alt_r189_alpha:
+    jmp     seq_l223_alpha
+alt_r189_beta:
+    jmp     seq_r223_beta
+
+; SEQ α=seq_l223_alpha
+seq_l223_alpha:
+    jmp     seq_l224_alpha
+seq_l223_beta:
+    jmp     seq_r224_beta
+
+; LIT("$")  α=seq_l224_alpha
+seq_l224_alpha:
+    mov     rax, [cursor]
+    add     rax, 1
+    cmp     rax, [subject_len_val]
+    jg      alt188_left_omega
+    lea     rbx, [rel subject_data]
+    mov     rcx, [cursor]
+    movzx   eax, byte [rbx + rcx]
+    cmp     al, 36
+    jne     alt188_left_omega
+    mov     rax, [cursor]
+    mov     [seq_l224_alpha_saved], rax
+    add     rax, 1
+    mov     [cursor], rax
+    jmp     seq_r224_alpha
+
+; LIT β=seq_l224_beta
+seq_l224_beta:
+    mov     rax, [seq_l224_alpha_saved]
+    mov     [cursor], rax
+    jmp     alt188_left_omega
+
+; REF(Expr14) α=seq_r224_alpha
+seq_r224_alpha:
+    lea     rax, [rel nref225_gamma]
+    mov     [P_Expr14_ret_gamma], rax
+    lea     rax, [rel nref225_omega]
+    mov     [P_Expr14_ret_omega], rax
+    jmp     P_Expr14_alpha
+
+; REF(Expr14) β=seq_r224_beta
+seq_r224_beta:
+    lea     rax, [rel nref225_gamma]
+    mov     [P_Expr14_ret_gamma], rax
+    lea     rax, [rel nref225_omega]
+    mov     [P_Expr14_ret_omega], rax
+    jmp     P_Expr14_beta
+
+nref225_gamma:
+    jmp     seq_r223_alpha
+nref225_omega:
+    jmp     seq_l224_beta
+
+; UNIMPLEMENTED node kind 14 → ω
+seq_r223_alpha:
+seq_r223_beta:
+    jmp     seq_l223_beta
+
+; ALT left_ω trampoline
+alt188_left_omega:
+    mov     rax, [alt188_cur_save]
+    mov     [cursor], rax
+    jmp     alt_r188_alpha
+
+; SEQ α=alt_r188_alpha
+alt_r188_alpha:
+    jmp     seq_l226_alpha
+alt_r188_beta:
+    jmp     seq_r226_beta
+
+; SEQ α=seq_l226_alpha
+seq_l226_alpha:
+    jmp     seq_l227_alpha
+seq_l226_beta:
+    jmp     seq_r227_beta
+
+; LIT(".")  α=seq_l227_alpha
+seq_l227_alpha:
+    mov     rax, [cursor]
+    add     rax, 1
+    cmp     rax, [subject_len_val]
+    jg      alt187_left_omega
+    lea     rbx, [rel subject_data]
+    mov     rcx, [cursor]
+    movzx   eax, byte [rbx + rcx]
+    cmp     al, 46
+    jne     alt187_left_omega
+    mov     rax, [cursor]
+    mov     [seq_l227_alpha_saved], rax
+    add     rax, 1
+    mov     [cursor], rax
+    jmp     seq_r227_alpha
+
+; LIT β=seq_l227_beta
+seq_l227_beta:
+    mov     rax, [seq_l227_alpha_saved]
+    mov     [cursor], rax
+    jmp     alt187_left_omega
+
+; REF(Expr14) α=seq_r227_alpha
+seq_r227_alpha:
+    lea     rax, [rel nref228_gamma]
+    mov     [P_Expr14_ret_gamma], rax
+    lea     rax, [rel nref228_omega]
+    mov     [P_Expr14_ret_omega], rax
+    jmp     P_Expr14_alpha
+
+; REF(Expr14) β=seq_r227_beta
+seq_r227_beta:
+    lea     rax, [rel nref228_gamma]
+    mov     [P_Expr14_ret_gamma], rax
+    lea     rax, [rel nref228_omega]
+    mov     [P_Expr14_ret_omega], rax
+    jmp     P_Expr14_beta
+
+nref228_gamma:
+    jmp     seq_r226_alpha
+nref228_omega:
+    jmp     seq_l227_beta
+
+; UNIMPLEMENTED node kind 14 → ω
+seq_r226_alpha:
+seq_r226_beta:
+    jmp     seq_l226_beta
+
+; ALT left_ω trampoline
+alt187_left_omega:
+    mov     rax, [alt187_cur_save]
+    mov     [cursor], rax
+    jmp     alt_r187_alpha
+
+; SEQ α=alt_r187_alpha
+alt_r187_alpha:
+    jmp     seq_l229_alpha
+alt_r187_beta:
+    jmp     seq_r229_beta
+
+; SEQ α=seq_l229_alpha
+seq_l229_alpha:
+    jmp     seq_l230_alpha
+seq_l229_beta:
+    jmp     seq_r230_beta
+
+; LIT("!")  α=seq_l230_alpha
+seq_l230_alpha:
+    mov     rax, [cursor]
+    add     rax, 1
+    cmp     rax, [subject_len_val]
+    jg      alt186_left_omega
+    lea     rbx, [rel subject_data]
+    mov     rcx, [cursor]
+    movzx   eax, byte [rbx + rcx]
+    cmp     al, 33
+    jne     alt186_left_omega
+    mov     rax, [cursor]
+    mov     [seq_l230_alpha_saved], rax
+    add     rax, 1
+    mov     [cursor], rax
+    jmp     seq_r230_alpha
+
+; LIT β=seq_l230_beta
+seq_l230_beta:
+    mov     rax, [seq_l230_alpha_saved]
+    mov     [cursor], rax
+    jmp     alt186_left_omega
+
+; REF(Expr14) α=seq_r230_alpha
+seq_r230_alpha:
+    lea     rax, [rel nref231_gamma]
+    mov     [P_Expr14_ret_gamma], rax
+    lea     rax, [rel nref231_omega]
+    mov     [P_Expr14_ret_omega], rax
+    jmp     P_Expr14_alpha
+
+; REF(Expr14) β=seq_r230_beta
+seq_r230_beta:
+    lea     rax, [rel nref231_gamma]
+    mov     [P_Expr14_ret_gamma], rax
+    lea     rax, [rel nref231_omega]
+    mov     [P_Expr14_ret_omega], rax
+    jmp     P_Expr14_beta
+
+nref231_gamma:
+    jmp     seq_r229_alpha
+nref231_omega:
+    jmp     seq_l230_beta
+
+; UNIMPLEMENTED node kind 14 → ω
+seq_r229_alpha:
+seq_r229_beta:
+    jmp     seq_l229_beta
+
+; ALT left_ω trampoline
+alt186_left_omega:
+    mov     rax, [alt186_cur_save]
+    mov     [cursor], rax
+    jmp     alt_r186_alpha
+
+; SEQ α=alt_r186_alpha
+alt_r186_alpha:
+    jmp     seq_l232_alpha
+alt_r186_beta:
+    jmp     seq_r232_beta
+
+; SEQ α=seq_l232_alpha
+seq_l232_alpha:
+    jmp     seq_l233_alpha
+seq_l232_beta:
+    jmp     seq_r233_beta
+
+; LIT("%")  α=seq_l233_alpha
+seq_l233_alpha:
+    mov     rax, [cursor]
+    add     rax, 1
+    cmp     rax, [subject_len_val]
+    jg      alt185_left_omega
+    lea     rbx, [rel subject_data]
+    mov     rcx, [cursor]
+    movzx   eax, byte [rbx + rcx]
+    cmp     al, 37
+    jne     alt185_left_omega
+    mov     rax, [cursor]
+    mov     [seq_l233_alpha_saved], rax
+    add     rax, 1
+    mov     [cursor], rax
+    jmp     seq_r233_alpha
+
+; LIT β=seq_l233_beta
+seq_l233_beta:
+    mov     rax, [seq_l233_alpha_saved]
+    mov     [cursor], rax
+    jmp     alt185_left_omega
+
+; REF(Expr14) α=seq_r233_alpha
+seq_r233_alpha:
+    lea     rax, [rel nref234_gamma]
+    mov     [P_Expr14_ret_gamma], rax
+    lea     rax, [rel nref234_omega]
+    mov     [P_Expr14_ret_omega], rax
+    jmp     P_Expr14_alpha
+
+; REF(Expr14) β=seq_r233_beta
+seq_r233_beta:
+    lea     rax, [rel nref234_gamma]
+    mov     [P_Expr14_ret_gamma], rax
+    lea     rax, [rel nref234_omega]
+    mov     [P_Expr14_ret_omega], rax
+    jmp     P_Expr14_beta
+
+nref234_gamma:
+    jmp     seq_r232_alpha
+nref234_omega:
+    jmp     seq_l233_beta
+
+; UNIMPLEMENTED node kind 14 → ω
+seq_r232_alpha:
+seq_r232_beta:
+    jmp     seq_l232_beta
+
+; ALT left_ω trampoline
+alt185_left_omega:
+    mov     rax, [alt185_cur_save]
+    mov     [cursor], rax
+    jmp     alt_r185_alpha
+
+; SEQ α=alt_r185_alpha
+alt_r185_alpha:
+    jmp     seq_l235_alpha
+alt_r185_beta:
+    jmp     seq_r235_beta
+
+; SEQ α=seq_l235_alpha
+seq_l235_alpha:
+    jmp     seq_l236_alpha
+seq_l235_beta:
+    jmp     seq_r236_beta
+
+; LIT("/")  α=seq_l236_alpha
+seq_l236_alpha:
+    mov     rax, [cursor]
+    add     rax, 1
+    cmp     rax, [subject_len_val]
+    jg      alt184_left_omega
+    lea     rbx, [rel subject_data]
+    mov     rcx, [cursor]
+    movzx   eax, byte [rbx + rcx]
+    cmp     al, 47
+    jne     alt184_left_omega
+    mov     rax, [cursor]
+    mov     [seq_l236_alpha_saved], rax
+    add     rax, 1
+    mov     [cursor], rax
+    jmp     seq_r236_alpha
+
+; LIT β=seq_l236_beta
+seq_l236_beta:
+    mov     rax, [seq_l236_alpha_saved]
+    mov     [cursor], rax
+    jmp     alt184_left_omega
+
+; REF(Expr14) α=seq_r236_alpha
+seq_r236_alpha:
+    lea     rax, [rel nref237_gamma]
+    mov     [P_Expr14_ret_gamma], rax
+    lea     rax, [rel nref237_omega]
+    mov     [P_Expr14_ret_omega], rax
+    jmp     P_Expr14_alpha
+
+; REF(Expr14) β=seq_r236_beta
+seq_r236_beta:
+    lea     rax, [rel nref237_gamma]
+    mov     [P_Expr14_ret_gamma], rax
+    lea     rax, [rel nref237_omega]
+    mov     [P_Expr14_ret_omega], rax
+    jmp     P_Expr14_beta
+
+nref237_gamma:
+    jmp     seq_r235_alpha
+nref237_omega:
+    jmp     seq_l236_beta
+
+; UNIMPLEMENTED node kind 14 → ω
+seq_r235_alpha:
+seq_r235_beta:
+    jmp     seq_l235_beta
+
+; ALT left_ω trampoline
+alt184_left_omega:
+    mov     rax, [alt184_cur_save]
+    mov     [cursor], rax
+    jmp     alt_r184_alpha
+
+; SEQ α=alt_r184_alpha
+alt_r184_alpha:
+    jmp     seq_l238_alpha
+alt_r184_beta:
+    jmp     seq_r238_beta
+
+; SEQ α=seq_l238_alpha
+seq_l238_alpha:
+    jmp     seq_l239_alpha
+seq_l238_beta:
+    jmp     seq_r239_beta
+
+; LIT("#")  α=seq_l239_alpha
+seq_l239_alpha:
+    mov     rax, [cursor]
+    add     rax, 1
+    cmp     rax, [subject_len_val]
+    jg      alt183_left_omega
+    lea     rbx, [rel subject_data]
+    mov     rcx, [cursor]
+    movzx   eax, byte [rbx + rcx]
+    cmp     al, 35
+    jne     alt183_left_omega
+    mov     rax, [cursor]
+    mov     [seq_l239_alpha_saved], rax
+    add     rax, 1
+    mov     [cursor], rax
+    jmp     seq_r239_alpha
+
+; LIT β=seq_l239_beta
+seq_l239_beta:
+    mov     rax, [seq_l239_alpha_saved]
+    mov     [cursor], rax
+    jmp     alt183_left_omega
+
+; REF(Expr14) α=seq_r239_alpha
+seq_r239_alpha:
+    lea     rax, [rel nref240_gamma]
+    mov     [P_Expr14_ret_gamma], rax
+    lea     rax, [rel nref240_omega]
+    mov     [P_Expr14_ret_omega], rax
+    jmp     P_Expr14_alpha
+
+; REF(Expr14) β=seq_r239_beta
+seq_r239_beta:
+    lea     rax, [rel nref240_gamma]
+    mov     [P_Expr14_ret_gamma], rax
+    lea     rax, [rel nref240_omega]
+    mov     [P_Expr14_ret_omega], rax
+    jmp     P_Expr14_beta
+
+nref240_gamma:
+    jmp     seq_r238_alpha
+nref240_omega:
+    jmp     seq_l239_beta
+
+; UNIMPLEMENTED node kind 14 → ω
+seq_r238_alpha:
+seq_r238_beta:
+    jmp     seq_l238_beta
+
+; ALT left_ω trampoline
+alt183_left_omega:
+    mov     rax, [alt183_cur_save]
+    mov     [cursor], rax
+    jmp     alt_r183_alpha
+
+; SEQ α=alt_r183_alpha
+alt_r183_alpha:
+    jmp     seq_l241_alpha
+alt_r183_beta:
+    jmp     seq_r241_beta
+
+; SEQ α=seq_l241_alpha
+seq_l241_alpha:
+    jmp     seq_l242_alpha
+seq_l241_beta:
+    jmp     seq_r242_beta
+
+; LIT("=")  α=seq_l242_alpha
+seq_l242_alpha:
+    mov     rax, [cursor]
+    add     rax, 1
+    cmp     rax, [subject_len_val]
+    jg      alt182_left_omega
+    lea     rbx, [rel subject_data]
+    mov     rcx, [cursor]
+    movzx   eax, byte [rbx + rcx]
+    cmp     al, 61
+    jne     alt182_left_omega
+    mov     rax, [cursor]
+    mov     [seq_l242_alpha_saved], rax
+    add     rax, 1
+    mov     [cursor], rax
+    jmp     seq_r242_alpha
+
+; LIT β=seq_l242_beta
+seq_l242_beta:
+    mov     rax, [seq_l242_alpha_saved]
+    mov     [cursor], rax
+    jmp     alt182_left_omega
+
+; REF(Expr14) α=seq_r242_alpha
+seq_r242_alpha:
+    lea     rax, [rel nref243_gamma]
+    mov     [P_Expr14_ret_gamma], rax
+    lea     rax, [rel nref243_omega]
+    mov     [P_Expr14_ret_omega], rax
+    jmp     P_Expr14_alpha
+
+; REF(Expr14) β=seq_r242_beta
+seq_r242_beta:
+    lea     rax, [rel nref243_gamma]
+    mov     [P_Expr14_ret_gamma], rax
+    lea     rax, [rel nref243_omega]
+    mov     [P_Expr14_ret_omega], rax
+    jmp     P_Expr14_beta
+
+nref243_gamma:
+    jmp     seq_r241_alpha
+nref243_omega:
+    jmp     seq_l242_beta
+
+; UNIMPLEMENTED node kind 14 → ω
+seq_r241_alpha:
+seq_r241_beta:
+    jmp     seq_l241_beta
+
+; ALT left_ω trampoline
+alt182_left_omega:
+    mov     rax, [alt182_cur_save]
+    mov     [cursor], rax
+    jmp     alt_r182_alpha
+
+; SEQ α=alt_r182_alpha
+alt_r182_alpha:
+    jmp     seq_l244_alpha
+alt_r182_beta:
+    jmp     seq_r244_beta
+
+; SEQ α=seq_l244_alpha
+seq_l244_alpha:
+    jmp     seq_l245_alpha
+seq_l244_beta:
+    jmp     seq_r245_beta
+
+; LIT("|")  α=seq_l245_alpha
+seq_l245_alpha:
+    mov     rax, [cursor]
+    add     rax, 1
+    cmp     rax, [subject_len_val]
+    jg      alt181_left_omega
+    lea     rbx, [rel subject_data]
+    mov     rcx, [cursor]
+    movzx   eax, byte [rbx + rcx]
+    cmp     al, 124
+    jne     alt181_left_omega
+    mov     rax, [cursor]
+    mov     [seq_l245_alpha_saved], rax
+    add     rax, 1
+    mov     [cursor], rax
+    jmp     seq_r245_alpha
+
+; LIT β=seq_l245_beta
+seq_l245_beta:
+    mov     rax, [seq_l245_alpha_saved]
+    mov     [cursor], rax
+    jmp     alt181_left_omega
+
+; REF(Expr14) α=seq_r245_alpha
+seq_r245_alpha:
+    lea     rax, [rel nref246_gamma]
+    mov     [P_Expr14_ret_gamma], rax
+    lea     rax, [rel nref246_omega]
+    mov     [P_Expr14_ret_omega], rax
+    jmp     P_Expr14_alpha
+
+; REF(Expr14) β=seq_r245_beta
+seq_r245_beta:
+    lea     rax, [rel nref246_gamma]
+    mov     [P_Expr14_ret_gamma], rax
+    lea     rax, [rel nref246_omega]
+    mov     [P_Expr14_ret_omega], rax
+    jmp     P_Expr14_beta
+
+nref246_gamma:
+    jmp     seq_r244_alpha
+nref246_omega:
+    jmp     seq_l245_beta
+
+; UNIMPLEMENTED node kind 14 → ω
+seq_r244_alpha:
+seq_r244_beta:
+    jmp     seq_l244_beta
+
+; ALT left_ω trampoline
+alt181_left_omega:
+    mov     rax, [alt181_cur_save]
+    mov     [cursor], rax
+    jmp     alt_r181_alpha
+
+; E_INDR unresolved: Expr15 → ω
+alt_r181_alpha:
+alt_r181_beta:
+    jmp     patdef_Expr14_omega
+
+patdef_Expr14_gamma:
+    jmp     [P_Expr14_ret_gamma]
+patdef_Expr14_omega:
+    jmp     [P_Expr14_ret_omega]
+
 ; --- stub labels (dangling gotos / computed goto TBD) ---
-_L_COMPUTED_pp_t_30:  ; STUB → _SNO_END (dangling or computed goto)
+L_COMPUTED_pp_t_30:  ; STUB → _SNO_END (dangling or computed goto)
     jmp     _SNO_END
-_L_error_35:  ; STUB → _SNO_END (dangling or computed goto)
+L_error_35:  ; STUB → _SNO_END (dangling or computed goto)
     jmp     _SNO_END
-_L_COMPUTED_pp_1_78:  ; STUB → _SNO_END (dangling or computed goto)
+L_COMPUTED_pp_1_78:  ; STUB → _SNO_END (dangling or computed goto)
     jmp     _SNO_END
-_L_COMPUTED_pp_0_79:  ; STUB → _SNO_END (dangling or computed goto)
+L_COMPUTED_pp_0_79:  ; STUB → _SNO_END (dangling or computed goto)
     jmp     _SNO_END
-_L_COMPUTED_pp_0_83:  ; STUB → _SNO_END (dangling or computed goto)
+L_COMPUTED_pp_0_83:  ; STUB → _SNO_END (dangling or computed goto)
     jmp     _SNO_END
-_L_COMPUTED_pp_0_86:  ; STUB → _SNO_END (dangling or computed goto)
+L_COMPUTED_pp_0_86:  ; STUB → _SNO_END (dangling or computed goto)
     jmp     _SNO_END
-_L_COMPUTED_pp_0_89:  ; STUB → _SNO_END (dangling or computed goto)
+L_COMPUTED_pp_0_89:  ; STUB → _SNO_END (dangling or computed goto)
     jmp     _SNO_END
-_L_COMPUTED_ss_t_94:  ; STUB → _SNO_END (dangling or computed goto)
+L_COMPUTED_ss_t_94:  ; STUB → _SNO_END (dangling or computed goto)
     jmp     _SNO_END
-_L_COMPUTED_ss_1_135:  ; STUB → _SNO_END (dangling or computed goto)
+L_COMPUTED_ss_1_135:  ; STUB → _SNO_END (dangling or computed goto)
     jmp     _SNO_END
-_L_COMPUTED_ss_0_136:  ; STUB → _SNO_END (dangling or computed goto)
+L_COMPUTED_ss_0_136:  ; STUB → _SNO_END (dangling or computed goto)
     jmp     _SNO_END
-_L_COMPUTED_ss_0_140:  ; STUB → _SNO_END (dangling or computed goto)
+L_COMPUTED_ss_0_140:  ; STUB → _SNO_END (dangling or computed goto)
     jmp     _SNO_END
-_L_COMPUTED_ss_0_143:  ; STUB → _SNO_END (dangling or computed goto)
+L_COMPUTED_ss_0_143:  ; STUB → _SNO_END (dangling or computed goto)
     jmp     _SNO_END
-_L_COMPUTED_ss_0_146:  ; STUB → _SNO_END (dangling or computed goto)
+L_COMPUTED_ss_0_146:  ; STUB → _SNO_END (dangling or computed goto)
     jmp     _SNO_END
-_L_END_168:  ; STUB → _SNO_END (dangling or computed goto)
+L_END_168:  ; STUB → _SNO_END (dangling or computed goto)
     jmp     _SNO_END
-_L_RETURN_169:  ; STUB → _SNO_END (dangling or computed goto)
+L_RETURN_169:  ; STUB → _SNO_END (dangling or computed goto)
     jmp     _SNO_END
-_L_FRETURN_170:  ; STUB → _SNO_END (dangling or computed goto)
+L_FRETURN_170:  ; STUB → _SNO_END (dangling or computed goto)
     jmp     _SNO_END
 
 section .data
 
-ps_1                 db 83, 84, 65, 82, 84, 0  ; "START"
-ps_2                 db 70, 85, 76, 76, 83, 67, 65, 78, 0  ; "FULLSCAN"
-ps_3                 db 77, 65, 88, 76, 78, 71, 84, 72, 0  ; "MAXLNGTH"
-ps_4                 db 112, 112, 83, 116, 111, 112, 0  ; "ppStop"
-ps_5                 db 65, 82, 82, 65, 89, 0  ; "ARRAY"
-ps_6                 db 49, 58, 52, 0  ; "1:4"
-ps_7                 db 112, 112, 83, 109, 66, 117, 109, 112, 0  ; "ppSmBump"
-ps_8                 db 112, 112, 76, 103, 66, 117, 109, 112, 0  ; "ppLgBump"
-ps_9                 db 112, 112, 65, 114, 103, 115, 0  ; "ppArgs"
-ps_10                db 72, 79, 83, 84, 0  ; "HOST"
-ps_11                db 112, 112, 84, 111, 107, 80, 97, 116, 0  ; "ppTokPat"
-ps_12                db 112, 112, 84, 111, 107, 86, 97, 108, 0  ; "ppTokVal"
-ps_13                db 0  ; 
-ps_14                db 82, 69, 77, 0  ; "REM"
-ps_15                db 66, 82, 69, 65, 75, 0  ; "BREAK"
-ps_16                db 32, 0  ; " "
-ps_17                db 61, 0  ; "="
-ps_18                db 112, 112, 84, 111, 107, 78, 97, 109, 101, 0  ; "ppTokName"
-ps_19                db 61, 32, 0  ; "= "
-ps_20                db 45, 45, 0  ; "--"
-ps_21                db 112, 112, 65, 114, 103, 76, 111, 111, 112, 0  ; "ppArgLoop"
-ps_22                db 83, 80, 65, 78, 0  ; "SPAN"
-ps_23                db 80, 79, 83, 0  ; "POS"
-ps_24                db 68, 73, 70, 70, 69, 82, 0  ; "DIFFER"
-ps_25                db 73, 68, 69, 78, 84, 0  ; "IDENT"
-ps_26                db 109, 105, 99, 114, 111, 0  ; "micro"
-ps_27                db 112, 112, 65, 114, 103, 80, 50, 0  ; "ppArgP2"
-ps_28                db 115, 109, 97, 108, 108, 0  ; "small"
-ps_29                db 112, 112, 65, 114, 103, 80, 51, 0  ; "ppArgP3"
-ps_30                db 109, 101, 100, 105, 117, 109, 0  ; "medium"
-ps_31                db 112, 112, 65, 114, 103, 80, 52, 0  ; "ppArgP4"
-ps_32                db 108, 97, 114, 103, 101, 0  ; "large"
-ps_33                db 112, 112, 65, 114, 103, 80, 53, 0  ; "ppArgP5"
-ps_34                db 119, 105, 100, 101, 0  ; "wide"
-ps_35                db 112, 112, 65, 114, 103, 67, 104, 107, 49, 0  ; "ppArgChk1"
-ps_36                db 115, 49, 0  ; "s1"
-ps_37                db 112, 112, 65, 114, 103, 67, 104, 107, 50, 0  ; "ppArgChk2"
-ps_38                db 115, 50, 0  ; "s2"
-ps_39                db 112, 112, 65, 114, 103, 67, 104, 107, 51, 0  ; "ppArgChk3"
-ps_40                db 115, 51, 0  ; "s3"
-ps_41                db 112, 112, 65, 114, 103, 67, 104, 107, 52, 0  ; "ppArgChk4"
-ps_42                db 115, 52, 0  ; "s4"
-ps_43                db 112, 112, 65, 114, 103, 67, 104, 107, 53, 0  ; "ppArgChk5"
-ps_44                db 115, 109, 98, 117, 109, 112, 0  ; "smbump"
-ps_45                db 112, 112, 65, 114, 103, 67, 104, 107, 54, 0  ; "ppArgChk6"
-ps_46                db 108, 103, 98, 117, 109, 112, 0  ; "lgbump"
-ps_47                db 112, 112, 65, 114, 103, 85, 110, 107, 0  ; "ppArgUnk"
-ps_48                db 97, 117, 116, 111, 0  ; "auto"
-ps_49                db 112, 112, 65, 117, 116, 111, 77, 111, 100, 101, 0  ; "ppAutoMode"
-ps_50                db 112, 112, 65, 114, 103, 87, 97, 114, 110, 0  ; "ppArgWarn"
-ps_51                db 79, 85, 84, 80, 85, 84, 0  ; "OUTPUT"
-ps_52                db 42, 32, 87, 97, 114, 110, 105, 110, 103, 58, 32, 117, 110, 107, 110, 111, 119, 110, 32, 115, 119, 105, 116, 99, 104, 32, 45, 45, 0  ; "* Warning: unknown switch --"
-ps_53                db 112, 112, 65, 114, 103, 68, 111, 110, 101, 0  ; "ppArgDone"
-ps_54                db 112, 112, 84, 97, 98, 0  ; "ppTab"
-ps_55                db 67, 72, 65, 82, 0  ; "CHAR"
-ps_56                db 112, 112, 71, 83, 102, 120, 0  ; "ppGSfx"
-ps_57                db 65, 78, 89, 0  ; "ANY"
-ps_58                db 40, 60, 0  ; "(<"
-ps_59                db 83, 70, 0  ; "SF"
-ps_60                db 58, 0  ; ":"
-ps_61                db 112, 112, 71, 80, 97, 116, 0  ; "ppGPat"
-ps_62                db 112, 112, 71, 67, 111, 110, 0  ; "ppGCon"
-ps_63                db 112, 112, 84, 114, 105, 109, 80, 97, 116, 0  ; "ppTrimPat"
-ps_64                db 112, 112, 68, 114, 111, 112, 0  ; "ppDrop"
-ps_65                db 82, 80, 79, 83, 0  ; "RPOS"
-ps_66                db 112, 112, 78, 103, 0  ; "ppNg"
-ps_67                db 112, 112, 87, 65, 114, 114, 0  ; "ppWArr"
-ps_68                db 112, 112, 84, 109, 112, 70, 105, 108, 101, 0  ; "ppTmpFile"
-ps_69                db 46, 115, 110, 111, 0  ; ".sno"
-ps_70                db 47, 116, 109, 112, 47, 98, 101, 97, 117, 116, 121, 95, 97, 117, 116, 111, 95, 0  ; "/tmp/beauty_auto_"
-ps_71                db 111, 117, 116, 112, 117, 116, 95, 95, 0  ; "output__"
-ps_72                db 112, 112, 84, 109, 112, 0  ; "ppTmp"
-ps_73                db 112, 112, 65, 117, 116, 111, 82, 0  ; "ppAutoR"
-ps_74                db 112, 112, 76, 110, 0  ; "ppLn"
-ps_75                db 73, 78, 80, 85, 84, 0  ; "INPUT"
-ps_76                db 42, 45, 0  ; "*-"
-ps_77                db 43, 46, 0  ; "+."
-ps_78                db 112, 112, 83, 116, 109, 116, 0  ; "ppStmt"
-ps_79                db 112, 112, 71, 67, 111, 110, 84, 0  ; "ppGConT"
-ps_80                db 112, 112, 87, 0  ; "ppW"
-ps_81                db 83, 73, 90, 69, 0  ; "SIZE"
-ps_82                db 112, 112, 65, 117, 116, 111, 78, 101, 119, 0  ; "ppAutoNew"
-ps_83                db 112, 112, 65, 117, 116, 111, 67, 111, 110, 116, 0  ; "ppAutoCont"
-ps_84                db 112, 112, 65, 117, 116, 111, 83, 111, 114, 116, 0  ; "ppAutoSort"
-ps_85                db 69, 78, 68, 70, 73, 76, 69, 0  ; "ENDFILE"
-ps_86                db 112, 112, 73, 0  ; "ppI"
-ps_87                db 112, 112, 65, 83, 49, 0  ; "ppAS1"
-ps_88                db 76, 84, 0  ; "LT"
-ps_89                db 112, 112, 74, 0  ; "ppJ"
-ps_90                db 112, 112, 75, 101, 121, 0  ; "ppKey"
-ps_91                db 112, 112, 65, 83, 50, 0  ; "ppAS2"
-ps_92                db 112, 112, 74, 49, 0  ; "ppJ1"
-ps_93                db 112, 112, 65, 83, 105, 110, 115, 0  ; "ppASins"
-ps_94                db 112, 112, 65, 117, 116, 111, 67, 97, 108, 99, 0  ; "ppAutoCalc"
-ps_95                db 112, 112, 80, 57, 48, 105, 0  ; "ppP90i"
-ps_96                db 112, 112, 65, 80, 57, 48, 111, 107, 0  ; "ppAP90ok"
-ps_97                db 112, 112, 80, 57, 48, 0  ; "ppP90"
-ps_98                db 112, 112, 65, 115, 99, 97, 108, 101, 0  ; "ppAscale"
-ps_99                db 112, 112, 65, 115, 49, 0  ; "ppAs1"
-ps_100               db 112, 112, 65, 117, 116, 111, 77, 115, 103, 0  ; "ppAutoMsg"
-ps_101               db 32, 108, 103, 98, 117, 109, 112, 61, 0  ; " lgbump="
-ps_102               db 32, 115, 109, 98, 117, 109, 112, 61, 0  ; " smbump="
-ps_103               db 32, 115, 52, 61, 0  ; " s4="
-ps_104               db 32, 115, 51, 61, 0  ; " s3="
-ps_105               db 32, 115, 50, 61, 0  ; " s2="
-ps_106               db 32, 115, 49, 61, 0  ; " s1="
-ps_107               db 32, 112, 57, 48, 61, 0  ; " p90="
-ps_108               db 42, 32, 45, 45, 97, 117, 116, 111, 58, 32, 110, 61, 0  ; "* --auto: n="
-ps_109               db 105, 110, 112, 117, 116, 95, 95, 0  ; "input__"
-ps_110               db 112, 112, 65, 117, 116, 111, 83, 107, 105, 112, 0  ; "ppAutoSkip"
-ps_111               db 73, 110, 116, 101, 103, 101, 114, 0  ; "Integer"
-ps_112               db 100, 105, 103, 105, 116, 115, 0  ; "digits"
-ps_113               db 68, 81, 0  ; "DQ"
-ps_114               db 34, 0  ; """
-ps_115               db 110, 108, 0  ; "nl"
-ps_116               db 83, 81, 0  ; "SQ"
-ps_117               db 39, 0  ; "'"
-ps_118               db 83, 116, 114, 105, 110, 103, 0  ; "String"
-ps_119               db 82, 101, 97, 108, 0  ; "Real"
-ps_120               db 70, 69, 78, 67, 69, 0  ; "FENCE"
-ps_121               db 101, 112, 115, 105, 108, 111, 110, 0  ; "epsilon"
-ps_122               db 46, 0  ; "."
-ps_123               db 45, 0  ; "-"
-ps_124               db 43, 0  ; "+"
-ps_125               db 101, 0  ; "e"
-ps_126               db 69, 0  ; "E"
-ps_127               db 73, 100, 0  ; "Id"
-ps_128               db 76, 67, 65, 83, 69, 0  ; "LCASE"
-ps_129               db 95, 0  ; "_"
-ps_130               db 85, 67, 65, 83, 69, 0  ; "UCASE"
-ps_131               db 70, 117, 110, 99, 116, 105, 111, 110, 0  ; "Function"
-ps_132               db 109, 97, 116, 99, 104, 0  ; "match"
-ps_133               db 84, 120, 73, 110, 76, 105, 115, 116, 0  ; "TxInList"
-ps_134               db 70, 117, 110, 99, 116, 105, 111, 110, 115, 0  ; "Functions"
-ps_135               db 116, 120, 0  ; "tx"
-ps_136               db 66, 117, 105, 108, 116, 105, 110, 86, 97, 114, 0  ; "BuiltinVar"
-ps_137               db 66, 117, 105, 108, 116, 105, 110, 86, 97, 114, 115, 0  ; "BuiltinVars"
-ps_138               db 83, 112, 101, 99, 105, 97, 108, 78, 109, 0  ; "SpecialNm"
-ps_139               db 83, 112, 101, 99, 105, 97, 108, 78, 109, 115, 0  ; "SpecialNms"
-ps_140               db 80, 114, 111, 116, 75, 119, 100, 0  ; "ProtKwd"
-ps_141               db 80, 114, 111, 116, 75, 119, 100, 115, 0  ; "ProtKwds"
-ps_142               db 38, 0  ; "&"
-ps_143               db 85, 110, 112, 114, 111, 116, 75, 119, 100, 0  ; "UnprotKwd"
-ps_144               db 85, 110, 112, 114, 111, 116, 75, 119, 100, 115, 0  ; "UnprotKwds"
-ps_145               db 71, 114, 97, 121, 0  ; "Gray"
-ps_146               db 87, 104, 105, 116, 101, 0  ; "White"
-ps_147               db 116, 97, 98, 0  ; "tab"
-ps_148               db 117, 112, 114, 0  ; "upr"
-ps_149               db 65, 66, 79, 82, 84, 32, 67, 79, 78, 84, 73, 78, 85, 69, 32, 69, 78, 68, 32, 70, 82, 69, 84, 85, 82, 78, 32, 78, 82, 69, 84, 85, 82, 78, 32, 82, 69, 84, 85, 82, 78, 32, 83, 67, 79, 78, 84, 73, 78, 85, 69, 32, 83, 84, 65, 82, 84, 0  ; "ABORT CONTINUE END FRETURN NRETURN RETURN SCONTINUE START"
-ps_150               db 65, 66, 79, 82, 84, 32, 65, 82, 66, 32, 66, 65, 76, 32, 70, 65, 73, 76, 32, 70, 69, 78, 67, 69, 32, 73, 78, 80, 85, 84, 32, 79, 85, 84, 80, 85, 84, 32, 82, 69, 77, 32, 84, 69, 82, 77, 73, 78, 65, 76, 0  ; "ABORT ARB BAL FAIL FENCE INPUT OUTPUT REM TERMINAL"
-ps_151               db 83, 84, 67, 79, 85, 78, 84, 32, 83, 84, 78, 79, 32, 83, 85, 67, 67, 69, 69, 68, 32, 85, 67, 65, 83, 69, 0  ; "STCOUNT STNO SUCCEED UCASE"
-ps_152               db 76, 65, 83, 84, 70, 73, 76, 69, 32, 76, 65, 83, 84, 76, 73, 78, 69, 32, 76, 65, 83, 84, 78, 79, 32, 76, 67, 65, 83, 69, 32, 76, 73, 78, 69, 32, 82, 69, 77, 32, 82, 84, 78, 84, 89, 80, 69, 32, 0  ; "LASTFILE LASTLINE LASTNO LCASE LINE REM RTNTYPE "
-ps_153               db 65, 66, 79, 82, 84, 32, 65, 76, 80, 72, 65, 66, 69, 84, 32, 65, 82, 66, 32, 66, 65, 76, 32, 70, 65, 73, 76, 32, 70, 69, 78, 67, 69, 32, 70, 73, 76, 69, 32, 70, 78, 67, 76, 69, 86, 69, 76, 32, 0  ; "ABORT ALPHABET ARB BAL FAIL FENCE FILE FNCLEVEL "
-ps_154               db 80, 82, 79, 70, 73, 76, 69, 32, 83, 84, 76, 73, 77, 73, 84, 32, 84, 82, 65, 67, 69, 32, 84, 82, 73, 77, 32, 70, 85, 76, 76, 83, 67, 65, 78, 0  ; "PROFILE STLIMIT TRACE TRIM FULLSCAN"
-ps_155               db 69, 82, 82, 84, 69, 88, 84, 32, 69, 82, 82, 84, 89, 80, 69, 32, 70, 84, 82, 65, 67, 69, 32, 73, 78, 80, 85, 84, 32, 77, 65, 88, 76, 78, 71, 84, 72, 32, 79, 85, 84, 80, 85, 84, 32, 0  ; "ERRTEXT ERRTYPE FTRACE INPUT MAXLNGTH OUTPUT "
-ps_156               db 65, 66, 69, 78, 68, 32, 65, 78, 67, 72, 79, 82, 32, 67, 65, 83, 69, 32, 67, 79, 68, 69, 32, 67, 79, 77, 80, 65, 82, 69, 32, 68, 85, 77, 80, 32, 69, 82, 82, 76, 73, 77, 73, 84, 32, 0  ; "ABEND ANCHOR CASE CODE COMPARE DUMP ERRLIMIT "
-ps_157               db 83, 85, 66, 83, 84, 82, 32, 84, 65, 66, 32, 84, 65, 66, 76, 69, 32, 84, 65, 78, 32, 84, 73, 77, 69, 32, 84, 82, 65, 67, 69, 32, 84, 82, 73, 77, 32, 85, 78, 76, 79, 65, 68, 0  ; "SUBSTR TAB TABLE TAN TIME TRACE TRIM UNLOAD"
-ps_158               db 82, 83, 79, 82, 84, 32, 82, 84, 65, 66, 32, 83, 69, 84, 32, 83, 69, 84, 69, 88, 73, 84, 32, 83, 73, 78, 32, 83, 73, 90, 69, 32, 83, 79, 82, 84, 32, 83, 80, 65, 78, 32, 83, 81, 82, 84, 32, 83, 84, 79, 80, 84, 82, 32, 0  ; "RSORT RTAB SET SETEXIT SIN SIZE SORT SPAN SQRT STOPTR "
-ps_159               db 80, 79, 83, 32, 80, 82, 79, 84, 79, 84, 89, 80, 69, 32, 82, 69, 77, 68, 82, 32, 82, 69, 80, 76, 65, 67, 69, 32, 82, 69, 86, 69, 82, 83, 69, 32, 82, 69, 87, 73, 78, 68, 32, 82, 80, 65, 68, 32, 82, 80, 79, 83, 32, 0  ; "POS PROTOTYPE REMDR REPLACE REVERSE REWIND RPAD RPOS "
-ps_160               db 76, 76, 84, 32, 76, 78, 32, 76, 78, 69, 32, 76, 79, 65, 68, 32, 76, 79, 67, 65, 76, 32, 76, 80, 65, 68, 32, 76, 84, 32, 78, 69, 32, 78, 79, 84, 65, 78, 89, 32, 79, 80, 83, 89, 78, 32, 79, 85, 84, 80, 85, 84, 32, 0  ; "LLT LN LNE LOAD LOCAL LPAD LT NE NOTANY OPSYN OUTPUT "
-ps_161               db 73, 68, 69, 78, 84, 32, 73, 78, 80, 85, 84, 32, 73, 78, 84, 69, 71, 69, 82, 32, 73, 84, 69, 77, 32, 76, 69, 32, 76, 69, 78, 32, 76, 69, 81, 32, 76, 71, 69, 32, 76, 71, 84, 32, 76, 76, 69, 32, 0  ; "IDENT INPUT INTEGER ITEM LE LEN LEQ LGE LGT LLE "
-ps_162               db 69, 78, 68, 70, 73, 76, 69, 32, 69, 81, 32, 69, 86, 65, 76, 32, 69, 88, 73, 84, 32, 69, 88, 80, 32, 70, 69, 78, 67, 69, 32, 70, 73, 69, 76, 68, 32, 71, 69, 32, 71, 84, 32, 72, 79, 83, 84, 32, 0  ; "ENDFILE EQ EVAL EXIT EXP FENCE FIELD GE GT HOST "
-ps_163               db 68, 65, 84, 65, 84, 89, 80, 69, 32, 68, 65, 84, 69, 32, 68, 69, 70, 73, 78, 69, 32, 68, 69, 84, 65, 67, 72, 32, 68, 73, 70, 70, 69, 82, 32, 68, 85, 77, 80, 32, 68, 85, 80, 76, 32, 69, 74, 69, 67, 84, 32, 0  ; "DATATYPE DATE DEFINE DETACH DIFFER DUMP DUPL EJECT "
-ps_164               db 67, 72, 65, 82, 32, 67, 72, 79, 80, 32, 67, 76, 69, 65, 82, 32, 67, 79, 68, 69, 32, 67, 79, 76, 76, 69, 67, 84, 32, 67, 79, 78, 86, 69, 82, 84, 32, 67, 79, 80, 89, 32, 67, 79, 83, 32, 68, 65, 84, 65, 32, 0  ; "CHAR CHOP CLEAR CODE COLLECT CONVERT COPY COS DATA "
-ps_165               db 65, 78, 89, 32, 65, 80, 80, 76, 89, 32, 65, 82, 66, 78, 79, 32, 65, 82, 71, 32, 65, 82, 82, 65, 89, 32, 65, 84, 65, 78, 32, 66, 65, 67, 75, 83, 80, 65, 67, 69, 32, 66, 82, 69, 65, 75, 32, 66, 82, 69, 65, 75, 88, 32, 0  ; "ANY APPLY ARBNO ARG ARRAY ATAN BACKSPACE BREAK BREAKX "
-ps_166               db 63, 0  ; "?"
-ps_167               db 124, 0  ; "|"
-ps_168               db 47, 0  ; "/"
-ps_169               db 42, 0  ; "*"
-ps_170               db 94, 0  ; "^"
-ps_171               db 33, 0  ; "!"
-ps_172               db 42, 42, 0  ; "**"
-ps_173               db 36, 0  ; "$"
-ps_174               db 64, 0  ; "@"
-ps_175               db 35, 0  ; "#"
-ps_176               db 37, 0  ; "%"
-ps_177               db 126, 0  ; "~"
-ps_178               db 44, 0  ; ","
-ps_179               db 40, 0  ; "("
-ps_180               db 91, 0  ; "["
-ps_181               db 60, 0  ; "<"
-ps_182               db 41, 0  ; ")"
-ps_183               db 93, 0  ; "]"
-ps_184               db 62, 0  ; ">"
-ps_185               db 69, 120, 112, 114, 76, 105, 115, 116, 0  ; "ExprList"
-ps_186               db 110, 80, 111, 112, 0  ; "nPop"
-ps_187               db 42, 40, 71, 84, 40, 110, 84, 111, 112, 40, 41, 44, 32, 49, 41, 32, 110, 84, 111, 112, 40, 41, 41, 0  ; "*(GT(nTop(), 1) nTop())"
-ps_188               db 39, 69, 120, 112, 114, 76, 105, 115, 116, 39, 0  ; "'ExprList'"
-ps_189               db 88, 76, 105, 115, 116, 0  ; "XList"
-ps_190               db 110, 80, 117, 115, 104, 0  ; "nPush"
-ps_191               db 69, 120, 112, 114, 0  ; "Expr"
-ps_192               db 110, 73, 110, 99, 0  ; "nInc"
-ps_193               db 69, 120, 112, 114, 48, 0  ; "Expr0"
-ps_194               db 39, 61, 39, 0  ; "'='"
-ps_195               db 69, 120, 112, 114, 49, 0  ; "Expr1"
-ps_196               db 39, 63, 39, 0  ; "'?'"
-ps_197               db 69, 120, 112, 114, 50, 0  ; "Expr2"
-ps_198               db 39, 38, 39, 0  ; "'&'"
-ps_199               db 69, 120, 112, 114, 51, 0  ; "Expr3"
-ps_200               db 39, 124, 39, 0  ; "'|'"
-ps_201               db 88, 51, 0  ; "X3"
-ps_202               db 69, 120, 112, 114, 52, 0  ; "Expr4"
-ps_203               db 39, 46, 46, 39, 0  ; "'..'"
-ps_204               db 88, 52, 0  ; "X4"
-ps_205               db 69, 120, 112, 114, 53, 0  ; "Expr5"
-ps_206               db 39, 64, 39, 0  ; "'@'"
-ps_207               db 69, 120, 112, 114, 54, 0  ; "Expr6"
-ps_208               db 39, 45, 39, 0  ; "'-'"
-ps_209               db 39, 43, 39, 0  ; "'+'"
-ps_210               db 69, 120, 112, 114, 55, 0  ; "Expr7"
-ps_211               db 39, 35, 39, 0  ; "'#'"
-ps_212               db 69, 120, 112, 114, 56, 0  ; "Expr8"
-ps_213               db 39, 47, 39, 0  ; "'/'"
-ps_214               db 69, 120, 112, 114, 57, 0  ; "Expr9"
-ps_215               db 39, 42, 39, 0  ; "'*'"
-ps_216               db 69, 120, 112, 114, 49, 48, 0  ; "Expr10"
-ps_217               db 39, 37, 39, 0  ; "'%'"
-ps_218               db 69, 120, 112, 114, 49, 49, 0  ; "Expr11"
-ps_219               db 39, 94, 39, 0  ; "'^'"
-ps_220               db 69, 120, 112, 114, 49, 50, 0  ; "Expr12"
-ps_221               db 39, 46, 39, 0  ; "'.'"
-ps_222               db 39, 36, 39, 0  ; "'$'"
-ps_223               db 69, 120, 112, 114, 49, 51, 0  ; "Expr13"
-ps_224               db 39, 126, 39, 0  ; "'~'"
-ps_225               db 69, 120, 112, 114, 49, 52, 0  ; "Expr14"
-ps_226               db 69, 120, 112, 114, 49, 53, 0  ; "Expr15"
-ps_227               db 39, 33, 39, 0  ; "'!'"
-ps_228               db 110, 84, 111, 112, 40, 41, 32, 43, 32, 49, 0  ; "nTop() + 1"
-ps_229               db 39, 91, 93, 39, 0  ; "'[]'"
-ps_230               db 69, 120, 112, 114, 49, 54, 0  ; "Expr16"
-ps_231               db 69, 120, 112, 114, 49, 55, 0  ; "Expr17"
-ps_232               db 39, 67, 97, 108, 108, 39, 0  ; "'Call'"
-ps_233               db 39, 40, 41, 39, 0  ; "'()'"
-ps_234               db 39, 44, 39, 0  ; "','"
-ps_235               db 83, 71, 111, 116, 111, 0  ; "SGoto"
-ps_236               db 97, 115, 115, 105, 103, 110, 0  ; "assign"
-ps_237               db 83, 0  ; "S"
-ps_238               db 83, 111, 114, 70, 0  ; "SorF"
-ps_239               db 115, 0  ; "s"
-ps_240               db 70, 71, 111, 116, 111, 0  ; "FGoto"
-ps_241               db 70, 0  ; "F"
-ps_242               db 102, 0  ; "f"
-ps_243               db 84, 97, 114, 103, 101, 116, 0  ; "Target"
-ps_244               db 60, 62, 0  ; "<>"
-ps_245               db 66, 114, 97, 99, 107, 101, 116, 115, 0  ; "Brackets"
-ps_246               db 40, 41, 0  ; "()"
-ps_247               db 71, 111, 116, 111, 0  ; "Goto"
-ps_248               db 42, 40, 39, 58, 39, 32, 83, 111, 114, 70, 32, 66, 114, 97, 99, 107, 101, 116, 115, 41, 0  ; "*(':' SorF Brackets)"
-ps_249               db 42, 40, 39, 58, 39, 32, 66, 114, 97, 99, 107, 101, 116, 115, 41, 0  ; "*(':' Brackets)"
-ps_250               db 67, 111, 110, 116, 114, 111, 108, 0  ; "Control"
-ps_251               db 59, 0  ; ";"
-ps_252               db 67, 111, 109, 109, 101, 110, 116, 0  ; "Comment"
-ps_253               db 76, 97, 98, 101, 108, 0  ; "Label"
-ps_254               db 83, 116, 109, 116, 0  ; "Stmt"
-ps_255               db 67, 111, 109, 109, 97, 110, 100, 115, 0  ; "Commands"
-ps_256               db 67, 111, 109, 109, 97, 110, 100, 0  ; "Command"
-ps_257               db 39, 83, 116, 109, 116, 39, 0  ; "'Stmt'"
-ps_258               db 39, 67, 111, 110, 116, 114, 111, 108, 39, 0  ; "'Control'"
-ps_259               db 39, 67, 111, 109, 109, 101, 110, 116, 39, 0  ; "'Comment'"
-ps_260               db 80, 97, 114, 115, 101, 0  ; "Parse"
-ps_261               db 110, 84, 111, 112, 40, 41, 0  ; "nTop()"
-ps_262               db 39, 80, 97, 114, 115, 101, 39, 0  ; "'Parse'"
-ps_263               db 65, 82, 66, 78, 79, 0  ; "ARBNO"
-ps_264               db 67, 111, 109, 112, 105, 108, 97, 110, 100, 0  ; "Compiland"
-ps_265               db 105, 99, 97, 115, 101, 0  ; "icase"
-ps_266               db 69, 78, 68, 0  ; "END"
-ps_267               db 68, 69, 70, 73, 78, 69, 0  ; "DEFINE"
-ps_268               db 112, 112, 40, 120, 41, 99, 44, 105, 44, 110, 44, 115, 44, 116, 44, 118, 0  ; "pp(x)c,i,n,s,t,v"
-ps_269               db 112, 112, 0  ; "pp"
-ps_270               db 120, 0  ; "x"
-ps_271               db 116, 0  ; "t"
-ps_272               db 118, 0  ; "v"
-ps_273               db 110, 0  ; "n"
-ps_274               db 99, 0  ; "c"
-ps_275               db 44, 32, 118, 32, 61, 32, 0  ; ", v = "
-ps_276               db 108, 101, 118, 101, 108, 0  ; "level"
-ps_277               db 44, 32, 115, 122, 32, 61, 32, 0  ; ", sz = "
-ps_278               db 112, 112, 40, 0  ; "pp("
-ps_279               db 71, 84, 0  ; "GT"
-ps_280               db 100, 111, 68, 101, 98, 117, 103, 0  ; "doDebug"
-ps_281               db 112, 112, 95, 80, 97, 114, 115, 101, 0  ; "pp_Parse"
-ps_282               db 112, 112, 87, 105, 100, 116, 104, 0  ; "ppWidth"
-ps_283               db 112, 112, 95, 48, 0  ; "pp_0"
-ps_284               db 105, 0  ; "i"
-ps_285               db 112, 112, 95, 49, 0  ; "pp_1"
-ps_286               db 112, 112, 95, 66, 117, 105, 108, 116, 105, 110, 86, 97, 114, 0  ; "pp_BuiltinVar"
-ps_287               db 71, 101, 110, 0  ; "Gen"
-ps_288               db 115, 115, 0  ; "ss"
-ps_289               db 112, 112, 95, 70, 117, 110, 99, 116, 105, 111, 110, 0  ; "pp_Function"
-ps_290               db 112, 112, 95, 73, 100, 0  ; "pp_Id"
-ps_291               db 112, 112, 95, 73, 110, 116, 101, 103, 101, 114, 0  ; "pp_Integer"
-ps_292               db 112, 112, 95, 76, 97, 98, 101, 108, 0  ; "pp_Label"
-ps_293               db 112, 112, 95, 80, 114, 111, 116, 75, 119, 100, 0  ; "pp_ProtKwd"
-ps_294               db 112, 112, 95, 82, 101, 97, 108, 0  ; "pp_Real"
-ps_295               db 112, 112, 95, 83, 112, 101, 99, 105, 97, 108, 78, 109, 0  ; "pp_SpecialNm"
-ps_296               db 112, 112, 95, 83, 116, 114, 105, 110, 103, 0  ; "pp_String"
-ps_297               db 112, 112, 95, 85, 110, 112, 114, 111, 116, 75, 119, 100, 0  ; "pp_UnprotKwd"
-ps_298               db 112, 112, 95, 58, 40, 41, 0  ; "pp_:()"
-ps_299               db 112, 112, 95, 58, 60, 62, 0  ; "pp_:<>"
-ps_300               db 112, 112, 95, 58, 83, 40, 41, 0  ; "pp_:S()"
-ps_301               db 112, 112, 95, 58, 83, 60, 62, 0  ; "pp_:S<>"
-ps_302               db 112, 112, 95, 58, 70, 40, 41, 0  ; "pp_:F()"
-ps_303               db 112, 112, 95, 58, 70, 60, 62, 0  ; "pp_:F<>"
-ps_304               db 112, 112, 85, 110, 79, 112, 0  ; "ppUnOp"
-ps_305               db 71, 101, 116, 76, 101, 118, 101, 108, 0  ; "GetLevel"
-ps_306               db 112, 112, 66, 105, 110, 79, 112, 0  ; "ppBinOp"
-ps_307               db 68, 101, 99, 76, 101, 118, 101, 108, 0  ; "DecLevel"
-ps_308               db 73, 110, 99, 76, 101, 118, 101, 108, 0  ; "IncLevel"
-ps_309               db 71, 101, 110, 84, 97, 98, 0  ; "GenTab"
-ps_310               db 112, 112, 95, 33, 0  ; "pp_!"
-ps_311               db 69, 81, 0  ; "EQ"
-ps_312               db 112, 112, 95, 35, 0  ; "pp_#"
-ps_313               db 112, 112, 95, 36, 0  ; "pp_$"
-ps_314               db 112, 112, 95, 37, 0  ; "pp_%"
-ps_315               db 112, 112, 95, 38, 0  ; "pp_&"
-ps_316               db 112, 112, 95, 42, 0  ; "pp_*"
-ps_317               db 112, 112, 95, 43, 0  ; "pp_+"
-ps_318               db 112, 112, 95, 45, 0  ; "pp_-"
-ps_319               db 112, 112, 95, 46, 0  ; "pp_."
-ps_320               db 112, 112, 95, 47, 0  ; "pp_/"
-ps_321               db 112, 112, 95, 61, 0  ; "pp_="
-ps_322               db 112, 112, 95, 63, 0  ; "pp_?"
-ps_323               db 112, 112, 95, 64, 0  ; "pp_@"
-ps_324               db 112, 112, 95, 94, 0  ; "pp_^"
-ps_325               db 112, 112, 95, 126, 0  ; "pp_~"
-ps_326               db 112, 112, 95, 67, 111, 109, 109, 101, 110, 116, 0  ; "pp_Comment"
-ps_327               db 83, 101, 116, 76, 101, 118, 101, 108, 0  ; "SetLevel"
-ps_328               db 71, 101, 110, 83, 101, 116, 67, 111, 110, 116, 0  ; "GenSetCont"
-ps_329               db 112, 112, 95, 67, 111, 110, 116, 114, 111, 108, 0  ; "pp_Control"
-ps_330               db 112, 112, 95, 83, 116, 109, 116, 0  ; "pp_Stmt"
-ps_331               db 112, 112, 76, 98, 108, 0  ; "ppLbl"
-ps_332               db 112, 112, 83, 117, 98, 106, 0  ; "ppSubj"
-ps_333               db 112, 112, 80, 97, 116, 114, 110, 0  ; "ppPatrn"
-ps_334               db 112, 112, 65, 115, 103, 110, 0  ; "ppAsgn"
-ps_335               db 112, 112, 82, 101, 112, 108, 0  ; "ppRepl"
-ps_336               db 112, 112, 71, 111, 49, 0  ; "ppGo1"
-ps_337               db 112, 112, 71, 111, 50, 0  ; "ppGo2"
-ps_338               db 32, 61, 0  ; " ="
-ps_339               db 112, 112, 95, 83, 116, 109, 116, 53, 0  ; "pp_Stmt5"
-ps_340               db 112, 112, 95, 83, 116, 109, 116, 55, 0  ; "pp_Stmt7"
-ps_341               db 112, 112, 95, 83, 116, 109, 116, 57, 0  ; "pp_Stmt9"
-ps_342               db 112, 112, 95, 69, 120, 112, 114, 76, 105, 115, 116, 0  ; "pp_ExprList"
-ps_343               db 112, 112, 95, 69, 120, 112, 114, 76, 105, 115, 116, 48, 0  ; "pp_ExprList0"
-ps_344               db 112, 112, 95, 44, 0  ; "pp_,"
-ps_345               db 112, 112, 95, 44, 48, 0  ; "pp_,0"
-ps_346               db 112, 112, 95, 44, 49, 0  ; "pp_,1"
-ps_347               db 112, 112, 95, 124, 0  ; "pp_|"
-ps_348               db 112, 112, 95, 124, 48, 0  ; "pp_|0"
-ps_349               db 112, 112, 95, 46, 46, 0  ; "pp_.."
-ps_350               db 112, 112, 95, 46, 46, 48, 0  ; "pp_..0"
-ps_351               db 112, 112, 95, 91, 93, 0  ; "pp_[]"
-ps_352               db 112, 112, 95, 91, 93, 48, 0  ; "pp_[]0"
-ps_353               db 112, 112, 95, 40, 41, 0  ; "pp_()"
-ps_354               db 112, 112, 95, 67, 97, 108, 108, 0  ; "pp_Call"
-ps_355               db 112, 112, 69, 110, 100, 0  ; "ppEnd"
-ps_356               db 115, 115, 40, 120, 44, 108, 101, 110, 41, 99, 44, 99, 49, 44, 99, 50, 44, 105, 44, 110, 44, 115, 44, 116, 44, 118, 0  ; "ss(x,len)c,c1,c2,i,n,s,t,v"
-ps_357               db 108, 101, 110, 0  ; "len"
-ps_358               db 115, 115, 40, 0  ; "ss("
-ps_359               db 115, 115, 95, 66, 117, 105, 108, 116, 105, 110, 86, 97, 114, 0  ; "ss_BuiltinVar"
-ps_360               db 115, 115, 95, 70, 117, 110, 99, 116, 105, 111, 110, 0  ; "ss_Function"
-ps_361               db 115, 115, 95, 73, 100, 0  ; "ss_Id"
-ps_362               db 115, 115, 95, 73, 110, 116, 101, 103, 101, 114, 0  ; "ss_Integer"
-ps_363               db 115, 115, 95, 76, 97, 98, 101, 108, 0  ; "ss_Label"
-ps_364               db 115, 115, 95, 76, 97, 98, 101, 108, 48, 0  ; "ss_Label0"
-ps_365               db 115, 115, 95, 76, 97, 98, 101, 108, 49, 0  ; "ss_Label1"
-ps_366               db 115, 115, 95, 80, 114, 111, 116, 75, 119, 100, 0  ; "ss_ProtKwd"
-ps_367               db 115, 115, 95, 82, 101, 97, 108, 0  ; "ss_Real"
-ps_368               db 115, 115, 95, 83, 112, 101, 99, 105, 97, 108, 78, 109, 0  ; "ss_SpecialNm"
-ps_369               db 115, 115, 95, 83, 116, 114, 105, 110, 103, 0  ; "ss_String"
-ps_370               db 115, 115, 95, 85, 110, 112, 114, 111, 116, 75, 119, 100, 0  ; "ss_UnprotKwd"
-ps_371               db 115, 115, 95, 97, 116, 111, 109, 105, 99, 0  ; "ss_atomic"
-ps_372               db 76, 69, 0  ; "LE"
-ps_373               db 115, 115, 95, 58, 40, 41, 0  ; "ss_:()"
-ps_374               db 115, 115, 95, 58, 60, 62, 0  ; "ss_:<>"
-ps_375               db 115, 115, 95, 58, 83, 40, 41, 0  ; "ss_:S()"
-ps_376               db 83, 40, 0  ; "S("
-ps_377               db 115, 115, 95, 58, 83, 60, 62, 0  ; "ss_:S<>"
-ps_378               db 83, 60, 0  ; "S<"
-ps_379               db 115, 115, 95, 58, 70, 40, 41, 0  ; "ss_:F()"
-ps_380               db 70, 40, 0  ; "F("
-ps_381               db 115, 115, 95, 58, 70, 60, 62, 0  ; "ss_:F<>"
-ps_382               db 70, 60, 0  ; "F<"
-ps_383               db 115, 115, 85, 110, 79, 112, 0  ; "ssUnOp"
-ps_384               db 115, 115, 66, 105, 110, 79, 112, 0  ; "ssBinOp"
-ps_385               db 115, 115, 95, 33, 0  ; "ss_!"
-ps_386               db 115, 115, 95, 35, 0  ; "ss_#"
-ps_387               db 115, 115, 95, 36, 0  ; "ss_$"
-ps_388               db 115, 115, 95, 37, 0  ; "ss_%"
-ps_389               db 115, 115, 95, 38, 0  ; "ss_&"
-ps_390               db 115, 115, 95, 42, 0  ; "ss_*"
-ps_391               db 115, 115, 95, 43, 0  ; "ss_+"
-ps_392               db 115, 115, 95, 45, 0  ; "ss_-"
-ps_393               db 115, 115, 95, 46, 0  ; "ss_."
-ps_394               db 115, 115, 95, 47, 0  ; "ss_/"
-ps_395               db 115, 115, 95, 61, 0  ; "ss_="
-ps_396               db 115, 115, 95, 63, 0  ; "ss_?"
-ps_397               db 115, 115, 95, 64, 0  ; "ss_@"
-ps_398               db 115, 115, 95, 94, 0  ; "ss_^"
-ps_399               db 115, 115, 95, 126, 0  ; "ss_~"
-ps_400               db 115, 115, 95, 69, 120, 112, 114, 76, 105, 115, 116, 0  ; "ss_ExprList"
-ps_401               db 115, 115, 95, 69, 120, 112, 114, 76, 105, 115, 116, 48, 0  ; "ss_ExprList0"
-ps_402               db 44, 32, 0  ; ", "
-ps_403               db 115, 115, 95, 44, 0  ; "ss_,"
-ps_404               db 115, 115, 95, 44, 48, 0  ; "ss_,0"
-ps_405               db 115, 115, 95, 44, 49, 0  ; "ss_,1"
-ps_406               db 115, 115, 95, 124, 0  ; "ss_|"
-ps_407               db 115, 115, 95, 124, 48, 0  ; "ss_|0"
-ps_408               db 32, 124, 32, 0  ; " | "
-ps_409               db 115, 115, 95, 46, 46, 0  ; "ss_.."
-ps_410               db 115, 115, 95, 46, 46, 48, 0  ; "ss_..0"
-ps_411               db 115, 115, 95, 91, 93, 0  ; "ss_[]"
-ps_412               db 115, 115, 95, 91, 93, 48, 0  ; "ss_[]0"
-ps_413               db 115, 115, 95, 40, 41, 0  ; "ss_()"
-ps_414               db 115, 115, 95, 67, 97, 108, 108, 0  ; "ss_Call"
-ps_415               db 115, 115, 69, 110, 100, 0  ; "ssEnd"
-ps_416               db 98, 86, 105, 115, 105, 116, 95, 0  ; "bVisit_"
-ps_417               db 98, 86, 105, 115, 105, 116, 40, 120, 44, 102, 110, 99, 41, 105, 0  ; "bVisit(x,fnc)i"
-ps_418               db 65, 80, 80, 76, 89, 0  ; "APPLY"
-ps_419               db 102, 110, 99, 0  ; "fnc"
-ps_420               db 98, 86, 105, 115, 105, 116, 95, 49, 0  ; "bVisit_1"
-ps_421               db 98, 86, 105, 115, 105, 116, 0  ; "bVisit"
-ps_422               db 98, 86, 105, 115, 105, 116, 69, 110, 100, 0  ; "bVisitEnd"
-ps_423               db 102, 105, 110, 100, 82, 101, 102, 115, 40, 120, 41, 110, 44, 118, 0  ; "findRefs(x)n,v"
-ps_424               db 82, 101, 102, 115, 0  ; "Refs"
-ps_425               db 102, 105, 110, 100, 82, 101, 102, 115, 0  ; "findRefs"
-ps_426               db 67, 97, 108, 108, 0  ; "Call"
-ps_427               db 102, 105, 110, 100, 82, 101, 102, 115, 95, 48, 0  ; "findRefs_0"
-ps_428               db 102, 105, 110, 100, 82, 101, 102, 115, 95, 49, 0  ; "findRefs_1"
-ps_429               db 102, 105, 110, 100, 82, 101, 102, 115, 95, 50, 0  ; "findRefs_2"
-ps_430               db 102, 105, 110, 100, 82, 101, 102, 115, 95, 57, 0  ; "findRefs_9"
-ps_431               db 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 0  ; "0123456789"
-ps_432               db 102, 105, 110, 100, 82, 101, 102, 115, 69, 110, 100, 0  ; "findRefsEnd"
-ps_433               db 114, 101, 102, 115, 40, 112, 41, 99, 44, 110, 44, 115, 44, 115, 117, 98, 106, 0  ; "refs(p)c,n,s,subj"
-ps_434               db 114, 101, 102, 115, 0  ; "refs"
-ps_435               db 112, 0  ; "p"
-ps_436               db 114, 101, 102, 115, 95, 48, 0  ; "refs_0"
-ps_437               db 114, 101, 102, 115, 95, 49, 0  ; "refs_1"
-ps_438               db 115, 117, 98, 106, 0  ; "subj"
-ps_439               db 82, 80, 65, 68, 0  ; "RPAD"
-ps_440               db 58, 32, 0  ; ": "
-ps_441               db 76, 80, 65, 68, 0  ; "LPAD"
-ps_442               db 114, 101, 102, 115, 69, 110, 100, 0  ; "refsEnd"
-ps_443               db 83, 112, 97, 99, 101, 0  ; "Space"
-ps_444               db 109, 97, 105, 110, 48, 48, 0  ; "main00"
-ps_445               db 76, 105, 110, 101, 0  ; "Line"
-ps_446               db 109, 97, 105, 110, 48, 49, 0  ; "main01"
-ps_447               db 83, 114, 99, 0  ; "Src"
-ps_448               db 109, 97, 105, 110, 48, 50, 0  ; "main02"
-ps_449               db 46, 43, 0  ; ".+"
-ps_450               db 80, 111, 112, 0  ; "Pop"
-ps_451               db 115, 110, 111, 0  ; "sno"
-ps_452               db 109, 97, 105, 110, 48, 53, 0  ; "main05"
-ps_453               db 109, 97, 105, 110, 69, 114, 114, 49, 0  ; "mainErr1"
-ps_454               db 80, 97, 114, 115, 101, 32, 69, 114, 114, 111, 114, 0  ; "Parse Error"
-ps_455               db 109, 97, 105, 110, 69, 114, 114, 50, 0  ; "mainErr2"
-ps_456               db 73, 110, 116, 101, 114, 110, 97, 108, 32, 69, 114, 114, 111, 114, 0  ; "Internal Error"
-ps_457               db 38, 70, 85, 76, 76, 83, 67, 65, 78, 0  ; "&FULLSCAN"
-ps_458               db 38, 77, 65, 88, 76, 78, 71, 84, 72, 0  ; "&MAXLNGTH"
+S_1                  db 83, 84, 65, 82, 84, 0  ; "START"
+S_2                  db 70, 85, 76, 76, 83, 67, 65, 78, 0  ; "FULLSCAN"
+S_3                  db 77, 65, 88, 76, 78, 71, 84, 72, 0  ; "MAXLNGTH"
+S_4                  db 112, 112, 83, 116, 111, 112, 0  ; "ppStop"
+S_5                  db 65, 82, 82, 65, 89, 0  ; "ARRAY"
+S_6                  db 49, 58, 52, 0  ; "1:4"
+S_7                  db 112, 112, 83, 109, 66, 117, 109, 112, 0  ; "ppSmBump"
+S_8                  db 112, 112, 76, 103, 66, 117, 109, 112, 0  ; "ppLgBump"
+S_9                  db 112, 112, 65, 114, 103, 115, 0  ; "ppArgs"
+S_10                 db 72, 79, 83, 84, 0  ; "HOST"
+S_11                 db 112, 112, 84, 111, 107, 80, 97, 116, 0  ; "ppTokPat"
+S_12                 db 112, 112, 84, 111, 107, 86, 97, 108, 0  ; "ppTokVal"
+S_13                 db 0  ; 
+S_14                 db 82, 69, 77, 0  ; "REM"
+S_15                 db 66, 82, 69, 65, 75, 0  ; "BREAK"
+S_16                 db 32, 0  ; " "
+S_17                 db 61, 0  ; "="
+S_18                 db 112, 112, 84, 111, 107, 78, 97, 109, 101, 0  ; "ppTokName"
+S_19                 db 61, 32, 0  ; "= "
+S_20                 db 45, 45, 0  ; "--"
+S_21                 db 112, 112, 65, 114, 103, 76, 111, 111, 112, 0  ; "ppArgLoop"
+S_22                 db 83, 80, 65, 78, 0  ; "SPAN"
+S_23                 db 80, 79, 83, 0  ; "POS"
+S_24                 db 68, 73, 70, 70, 69, 82, 0  ; "DIFFER"
+S_25                 db 73, 68, 69, 78, 84, 0  ; "IDENT"
+S_26                 db 109, 105, 99, 114, 111, 0  ; "micro"
+S_27                 db 112, 112, 65, 114, 103, 80, 50, 0  ; "ppArgP2"
+S_28                 db 115, 109, 97, 108, 108, 0  ; "small"
+S_29                 db 112, 112, 65, 114, 103, 80, 51, 0  ; "ppArgP3"
+S_30                 db 109, 101, 100, 105, 117, 109, 0  ; "medium"
+S_31                 db 112, 112, 65, 114, 103, 80, 52, 0  ; "ppArgP4"
+S_32                 db 108, 97, 114, 103, 101, 0  ; "large"
+S_33                 db 112, 112, 65, 114, 103, 80, 53, 0  ; "ppArgP5"
+S_34                 db 119, 105, 100, 101, 0  ; "wide"
+S_35                 db 112, 112, 65, 114, 103, 67, 104, 107, 49, 0  ; "ppArgChk1"
+S_36                 db 115, 49, 0  ; "s1"
+S_37                 db 112, 112, 65, 114, 103, 67, 104, 107, 50, 0  ; "ppArgChk2"
+S_38                 db 115, 50, 0  ; "s2"
+S_39                 db 112, 112, 65, 114, 103, 67, 104, 107, 51, 0  ; "ppArgChk3"
+S_40                 db 115, 51, 0  ; "s3"
+S_41                 db 112, 112, 65, 114, 103, 67, 104, 107, 52, 0  ; "ppArgChk4"
+S_42                 db 115, 52, 0  ; "s4"
+S_43                 db 112, 112, 65, 114, 103, 67, 104, 107, 53, 0  ; "ppArgChk5"
+S_44                 db 115, 109, 98, 117, 109, 112, 0  ; "smbump"
+S_45                 db 112, 112, 65, 114, 103, 67, 104, 107, 54, 0  ; "ppArgChk6"
+S_46                 db 108, 103, 98, 117, 109, 112, 0  ; "lgbump"
+S_47                 db 112, 112, 65, 114, 103, 85, 110, 107, 0  ; "ppArgUnk"
+S_48                 db 97, 117, 116, 111, 0  ; "auto"
+S_49                 db 112, 112, 65, 117, 116, 111, 77, 111, 100, 101, 0  ; "ppAutoMode"
+S_50                 db 112, 112, 65, 114, 103, 87, 97, 114, 110, 0  ; "ppArgWarn"
+S_51                 db 79, 85, 84, 80, 85, 84, 0  ; "OUTPUT"
+S_52                 db 42, 32, 87, 97, 114, 110, 105, 110, 103, 58, 32, 117, 110, 107, 110, 111, 119, 110, 32, 115, 119, 105, 116, 99, 104, 32, 45, 45, 0  ; "* Warning: unknown switch --"
+S_53                 db 112, 112, 65, 114, 103, 68, 111, 110, 101, 0  ; "ppArgDone"
+S_54                 db 112, 112, 84, 97, 98, 0  ; "ppTab"
+S_55                 db 67, 72, 65, 82, 0  ; "CHAR"
+S_56                 db 112, 112, 71, 83, 102, 120, 0  ; "ppGSfx"
+S_57                 db 65, 78, 89, 0  ; "ANY"
+S_58                 db 40, 60, 0  ; "(<"
+S_59                 db 83, 70, 0  ; "SF"
+S_60                 db 58, 0  ; ":"
+S_61                 db 112, 112, 71, 80, 97, 116, 0  ; "ppGPat"
+S_62                 db 112, 112, 71, 67, 111, 110, 0  ; "ppGCon"
+S_63                 db 112, 112, 84, 114, 105, 109, 80, 97, 116, 0  ; "ppTrimPat"
+S_64                 db 112, 112, 68, 114, 111, 112, 0  ; "ppDrop"
+S_65                 db 82, 80, 79, 83, 0  ; "RPOS"
+S_66                 db 112, 112, 78, 103, 0  ; "ppNg"
+S_67                 db 112, 112, 87, 65, 114, 114, 0  ; "ppWArr"
+S_68                 db 112, 112, 84, 109, 112, 70, 105, 108, 101, 0  ; "ppTmpFile"
+S_69                 db 46, 115, 110, 111, 0  ; ".sno"
+S_70                 db 47, 116, 109, 112, 47, 98, 101, 97, 117, 116, 121, 95, 97, 117, 116, 111, 95, 0  ; "/tmp/beauty_auto_"
+S_71                 db 111, 117, 116, 112, 117, 116, 95, 95, 0  ; "output__"
+S_72                 db 112, 112, 84, 109, 112, 0  ; "ppTmp"
+S_73                 db 112, 112, 65, 117, 116, 111, 82, 0  ; "ppAutoR"
+S_74                 db 112, 112, 76, 110, 0  ; "ppLn"
+S_75                 db 73, 78, 80, 85, 84, 0  ; "INPUT"
+S_76                 db 42, 45, 0  ; "*-"
+S_77                 db 43, 46, 0  ; "+."
+S_78                 db 112, 112, 83, 116, 109, 116, 0  ; "ppStmt"
+S_79                 db 112, 112, 71, 67, 111, 110, 84, 0  ; "ppGConT"
+S_80                 db 112, 112, 87, 0  ; "ppW"
+S_81                 db 83, 73, 90, 69, 0  ; "SIZE"
+S_82                 db 112, 112, 65, 117, 116, 111, 78, 101, 119, 0  ; "ppAutoNew"
+S_83                 db 112, 112, 65, 117, 116, 111, 67, 111, 110, 116, 0  ; "ppAutoCont"
+S_84                 db 112, 112, 65, 117, 116, 111, 83, 111, 114, 116, 0  ; "ppAutoSort"
+S_85                 db 69, 78, 68, 70, 73, 76, 69, 0  ; "ENDFILE"
+S_86                 db 112, 112, 73, 0  ; "ppI"
+S_87                 db 112, 112, 65, 83, 49, 0  ; "ppAS1"
+S_88                 db 76, 84, 0  ; "LT"
+S_89                 db 112, 112, 74, 0  ; "ppJ"
+S_90                 db 112, 112, 75, 101, 121, 0  ; "ppKey"
+S_91                 db 112, 112, 65, 83, 50, 0  ; "ppAS2"
+S_92                 db 112, 112, 74, 49, 0  ; "ppJ1"
+S_93                 db 112, 112, 65, 83, 105, 110, 115, 0  ; "ppASins"
+S_94                 db 112, 112, 65, 117, 116, 111, 67, 97, 108, 99, 0  ; "ppAutoCalc"
+S_95                 db 112, 112, 80, 57, 48, 105, 0  ; "ppP90i"
+S_96                 db 112, 112, 65, 80, 57, 48, 111, 107, 0  ; "ppAP90ok"
+S_97                 db 112, 112, 80, 57, 48, 0  ; "ppP90"
+S_98                 db 112, 112, 65, 115, 99, 97, 108, 101, 0  ; "ppAscale"
+S_99                 db 112, 112, 65, 115, 49, 0  ; "ppAs1"
+S_100                db 112, 112, 65, 117, 116, 111, 77, 115, 103, 0  ; "ppAutoMsg"
+S_101                db 32, 108, 103, 98, 117, 109, 112, 61, 0  ; " lgbump="
+S_102                db 32, 115, 109, 98, 117, 109, 112, 61, 0  ; " smbump="
+S_103                db 32, 115, 52, 61, 0  ; " s4="
+S_104                db 32, 115, 51, 61, 0  ; " s3="
+S_105                db 32, 115, 50, 61, 0  ; " s2="
+S_106                db 32, 115, 49, 61, 0  ; " s1="
+S_107                db 32, 112, 57, 48, 61, 0  ; " p90="
+S_108                db 42, 32, 45, 45, 97, 117, 116, 111, 58, 32, 110, 61, 0  ; "* --auto: n="
+S_109                db 105, 110, 112, 117, 116, 95, 95, 0  ; "input__"
+S_110                db 112, 112, 65, 117, 116, 111, 83, 107, 105, 112, 0  ; "ppAutoSkip"
+S_111                db 73, 110, 116, 101, 103, 101, 114, 0  ; "Integer"
+S_112                db 100, 105, 103, 105, 116, 115, 0  ; "digits"
+S_113                db 68, 81, 0  ; "DQ"
+S_114                db 34, 0  ; """
+S_115                db 110, 108, 0  ; "nl"
+S_116                db 83, 81, 0  ; "SQ"
+S_117                db 39, 0  ; "'"
+S_118                db 83, 116, 114, 105, 110, 103, 0  ; "String"
+S_119                db 82, 101, 97, 108, 0  ; "Real"
+S_120                db 70, 69, 78, 67, 69, 0  ; "FENCE"
+S_121                db 101, 112, 115, 105, 108, 111, 110, 0  ; "epsilon"
+S_122                db 46, 0  ; "."
+S_123                db 45, 0  ; "-"
+S_124                db 43, 0  ; "+"
+S_125                db 101, 0  ; "e"
+S_126                db 69, 0  ; "E"
+S_127                db 73, 100, 0  ; "Id"
+S_128                db 76, 67, 65, 83, 69, 0  ; "LCASE"
+S_129                db 95, 0  ; "_"
+S_130                db 85, 67, 65, 83, 69, 0  ; "UCASE"
+S_131                db 70, 117, 110, 99, 116, 105, 111, 110, 0  ; "Function"
+S_132                db 109, 97, 116, 99, 104, 0  ; "match"
+S_133                db 84, 120, 73, 110, 76, 105, 115, 116, 0  ; "TxInList"
+S_134                db 70, 117, 110, 99, 116, 105, 111, 110, 115, 0  ; "Functions"
+S_135                db 116, 120, 0  ; "tx"
+S_136                db 66, 117, 105, 108, 116, 105, 110, 86, 97, 114, 0  ; "BuiltinVar"
+S_137                db 66, 117, 105, 108, 116, 105, 110, 86, 97, 114, 115, 0  ; "BuiltinVars"
+S_138                db 83, 112, 101, 99, 105, 97, 108, 78, 109, 0  ; "SpecialNm"
+S_139                db 83, 112, 101, 99, 105, 97, 108, 78, 109, 115, 0  ; "SpecialNms"
+S_140                db 80, 114, 111, 116, 75, 119, 100, 0  ; "ProtKwd"
+S_141                db 80, 114, 111, 116, 75, 119, 100, 115, 0  ; "ProtKwds"
+S_142                db 38, 0  ; "&"
+S_143                db 85, 110, 112, 114, 111, 116, 75, 119, 100, 0  ; "UnprotKwd"
+S_144                db 85, 110, 112, 114, 111, 116, 75, 119, 100, 115, 0  ; "UnprotKwds"
+S_145                db 71, 114, 97, 121, 0  ; "Gray"
+S_146                db 87, 104, 105, 116, 101, 0  ; "White"
+S_147                db 116, 97, 98, 0  ; "tab"
+S_148                db 117, 112, 114, 0  ; "upr"
+S_149                db 65, 66, 79, 82, 84, 32, 67, 79, 78, 84, 73, 78, 85, 69, 32, 69, 78, 68, 32, 70, 82, 69, 84, 85, 82, 78, 32, 78, 82, 69, 84, 85, 82, 78, 32, 82, 69, 84, 85, 82, 78, 32, 83, 67, 79, 78, 84, 73, 78, 85, 69, 32, 83, 84, 65, 82, 84, 0  ; "ABORT CONTINUE END FRETURN NRETURN RETURN SCONTINUE START"
+S_150                db 65, 66, 79, 82, 84, 32, 65, 82, 66, 32, 66, 65, 76, 32, 70, 65, 73, 76, 32, 70, 69, 78, 67, 69, 32, 73, 78, 80, 85, 84, 32, 79, 85, 84, 80, 85, 84, 32, 82, 69, 77, 32, 84, 69, 82, 77, 73, 78, 65, 76, 0  ; "ABORT ARB BAL FAIL FENCE INPUT OUTPUT REM TERMINAL"
+S_151                db 83, 84, 67, 79, 85, 78, 84, 32, 83, 84, 78, 79, 32, 83, 85, 67, 67, 69, 69, 68, 32, 85, 67, 65, 83, 69, 0  ; "STCOUNT STNO SUCCEED UCASE"
+S_152                db 76, 65, 83, 84, 70, 73, 76, 69, 32, 76, 65, 83, 84, 76, 73, 78, 69, 32, 76, 65, 83, 84, 78, 79, 32, 76, 67, 65, 83, 69, 32, 76, 73, 78, 69, 32, 82, 69, 77, 32, 82, 84, 78, 84, 89, 80, 69, 32, 0  ; "LASTFILE LASTLINE LASTNO LCASE LINE REM RTNTYPE "
+S_153                db 65, 66, 79, 82, 84, 32, 65, 76, 80, 72, 65, 66, 69, 84, 32, 65, 82, 66, 32, 66, 65, 76, 32, 70, 65, 73, 76, 32, 70, 69, 78, 67, 69, 32, 70, 73, 76, 69, 32, 70, 78, 67, 76, 69, 86, 69, 76, 32, 0  ; "ABORT ALPHABET ARB BAL FAIL FENCE FILE FNCLEVEL "
+S_154                db 80, 82, 79, 70, 73, 76, 69, 32, 83, 84, 76, 73, 77, 73, 84, 32, 84, 82, 65, 67, 69, 32, 84, 82, 73, 77, 32, 70, 85, 76, 76, 83, 67, 65, 78, 0  ; "PROFILE STLIMIT TRACE TRIM FULLSCAN"
+S_155                db 69, 82, 82, 84, 69, 88, 84, 32, 69, 82, 82, 84, 89, 80, 69, 32, 70, 84, 82, 65, 67, 69, 32, 73, 78, 80, 85, 84, 32, 77, 65, 88, 76, 78, 71, 84, 72, 32, 79, 85, 84, 80, 85, 84, 32, 0  ; "ERRTEXT ERRTYPE FTRACE INPUT MAXLNGTH OUTPUT "
+S_156                db 65, 66, 69, 78, 68, 32, 65, 78, 67, 72, 79, 82, 32, 67, 65, 83, 69, 32, 67, 79, 68, 69, 32, 67, 79, 77, 80, 65, 82, 69, 32, 68, 85, 77, 80, 32, 69, 82, 82, 76, 73, 77, 73, 84, 32, 0  ; "ABEND ANCHOR CASE CODE COMPARE DUMP ERRLIMIT "
+S_157                db 83, 85, 66, 83, 84, 82, 32, 84, 65, 66, 32, 84, 65, 66, 76, 69, 32, 84, 65, 78, 32, 84, 73, 77, 69, 32, 84, 82, 65, 67, 69, 32, 84, 82, 73, 77, 32, 85, 78, 76, 79, 65, 68, 0  ; "SUBSTR TAB TABLE TAN TIME TRACE TRIM UNLOAD"
+S_158                db 82, 83, 79, 82, 84, 32, 82, 84, 65, 66, 32, 83, 69, 84, 32, 83, 69, 84, 69, 88, 73, 84, 32, 83, 73, 78, 32, 83, 73, 90, 69, 32, 83, 79, 82, 84, 32, 83, 80, 65, 78, 32, 83, 81, 82, 84, 32, 83, 84, 79, 80, 84, 82, 32, 0  ; "RSORT RTAB SET SETEXIT SIN SIZE SORT SPAN SQRT STOPTR "
+S_159                db 80, 79, 83, 32, 80, 82, 79, 84, 79, 84, 89, 80, 69, 32, 82, 69, 77, 68, 82, 32, 82, 69, 80, 76, 65, 67, 69, 32, 82, 69, 86, 69, 82, 83, 69, 32, 82, 69, 87, 73, 78, 68, 32, 82, 80, 65, 68, 32, 82, 80, 79, 83, 32, 0  ; "POS PROTOTYPE REMDR REPLACE REVERSE REWIND RPAD RPOS "
+S_160                db 76, 76, 84, 32, 76, 78, 32, 76, 78, 69, 32, 76, 79, 65, 68, 32, 76, 79, 67, 65, 76, 32, 76, 80, 65, 68, 32, 76, 84, 32, 78, 69, 32, 78, 79, 84, 65, 78, 89, 32, 79, 80, 83, 89, 78, 32, 79, 85, 84, 80, 85, 84, 32, 0  ; "LLT LN LNE LOAD LOCAL LPAD LT NE NOTANY OPSYN OUTPUT "
+S_161                db 73, 68, 69, 78, 84, 32, 73, 78, 80, 85, 84, 32, 73, 78, 84, 69, 71, 69, 82, 32, 73, 84, 69, 77, 32, 76, 69, 32, 76, 69, 78, 32, 76, 69, 81, 32, 76, 71, 69, 32, 76, 71, 84, 32, 76, 76, 69, 32, 0  ; "IDENT INPUT INTEGER ITEM LE LEN LEQ LGE LGT LLE "
+S_162                db 69, 78, 68, 70, 73, 76, 69, 32, 69, 81, 32, 69, 86, 65, 76, 32, 69, 88, 73, 84, 32, 69, 88, 80, 32, 70, 69, 78, 67, 69, 32, 70, 73, 69, 76, 68, 32, 71, 69, 32, 71, 84, 32, 72, 79, 83, 84, 32, 0  ; "ENDFILE EQ EVAL EXIT EXP FENCE FIELD GE GT HOST "
+S_163                db 68, 65, 84, 65, 84, 89, 80, 69, 32, 68, 65, 84, 69, 32, 68, 69, 70, 73, 78, 69, 32, 68, 69, 84, 65, 67, 72, 32, 68, 73, 70, 70, 69, 82, 32, 68, 85, 77, 80, 32, 68, 85, 80, 76, 32, 69, 74, 69, 67, 84, 32, 0  ; "DATATYPE DATE DEFINE DETACH DIFFER DUMP DUPL EJECT "
+S_164                db 67, 72, 65, 82, 32, 67, 72, 79, 80, 32, 67, 76, 69, 65, 82, 32, 67, 79, 68, 69, 32, 67, 79, 76, 76, 69, 67, 84, 32, 67, 79, 78, 86, 69, 82, 84, 32, 67, 79, 80, 89, 32, 67, 79, 83, 32, 68, 65, 84, 65, 32, 0  ; "CHAR CHOP CLEAR CODE COLLECT CONVERT COPY COS DATA "
+S_165                db 65, 78, 89, 32, 65, 80, 80, 76, 89, 32, 65, 82, 66, 78, 79, 32, 65, 82, 71, 32, 65, 82, 82, 65, 89, 32, 65, 84, 65, 78, 32, 66, 65, 67, 75, 83, 80, 65, 67, 69, 32, 66, 82, 69, 65, 75, 32, 66, 82, 69, 65, 75, 88, 32, 0  ; "ANY APPLY ARBNO ARG ARRAY ATAN BACKSPACE BREAK BREAKX "
+S_166                db 63, 0  ; "?"
+S_167                db 124, 0  ; "|"
+S_168                db 47, 0  ; "/"
+S_169                db 42, 0  ; "*"
+S_170                db 94, 0  ; "^"
+S_171                db 33, 0  ; "!"
+S_172                db 42, 42, 0  ; "**"
+S_173                db 36, 0  ; "$"
+S_174                db 64, 0  ; "@"
+S_175                db 35, 0  ; "#"
+S_176                db 37, 0  ; "%"
+S_177                db 126, 0  ; "~"
+S_178                db 44, 0  ; ","
+S_179                db 40, 0  ; "("
+S_180                db 91, 0  ; "["
+S_181                db 60, 0  ; "<"
+S_182                db 41, 0  ; ")"
+S_183                db 93, 0  ; "]"
+S_184                db 62, 0  ; ">"
+S_185                db 69, 120, 112, 114, 76, 105, 115, 116, 0  ; "ExprList"
+S_186                db 110, 80, 111, 112, 0  ; "nPop"
+S_187                db 42, 40, 71, 84, 40, 110, 84, 111, 112, 40, 41, 44, 32, 49, 41, 32, 110, 84, 111, 112, 40, 41, 41, 0  ; "*(GT(nTop(), 1) nTop())"
+S_188                db 39, 69, 120, 112, 114, 76, 105, 115, 116, 39, 0  ; "'ExprList'"
+S_189                db 88, 76, 105, 115, 116, 0  ; "XList"
+S_190                db 110, 80, 117, 115, 104, 0  ; "nPush"
+S_191                db 69, 120, 112, 114, 0  ; "Expr"
+S_192                db 110, 73, 110, 99, 0  ; "nInc"
+S_193                db 69, 120, 112, 114, 48, 0  ; "Expr0"
+S_194                db 39, 61, 39, 0  ; "'='"
+S_195                db 69, 120, 112, 114, 49, 0  ; "Expr1"
+S_196                db 39, 63, 39, 0  ; "'?'"
+S_197                db 69, 120, 112, 114, 50, 0  ; "Expr2"
+S_198                db 39, 38, 39, 0  ; "'&'"
+S_199                db 69, 120, 112, 114, 51, 0  ; "Expr3"
+S_200                db 39, 124, 39, 0  ; "'|'"
+S_201                db 88, 51, 0  ; "X3"
+S_202                db 69, 120, 112, 114, 52, 0  ; "Expr4"
+S_203                db 39, 46, 46, 39, 0  ; "'..'"
+S_204                db 88, 52, 0  ; "X4"
+S_205                db 69, 120, 112, 114, 53, 0  ; "Expr5"
+S_206                db 39, 64, 39, 0  ; "'@'"
+S_207                db 69, 120, 112, 114, 54, 0  ; "Expr6"
+S_208                db 39, 45, 39, 0  ; "'-'"
+S_209                db 39, 43, 39, 0  ; "'+'"
+S_210                db 69, 120, 112, 114, 55, 0  ; "Expr7"
+S_211                db 39, 35, 39, 0  ; "'#'"
+S_212                db 69, 120, 112, 114, 56, 0  ; "Expr8"
+S_213                db 39, 47, 39, 0  ; "'/'"
+S_214                db 69, 120, 112, 114, 57, 0  ; "Expr9"
+S_215                db 39, 42, 39, 0  ; "'*'"
+S_216                db 69, 120, 112, 114, 49, 48, 0  ; "Expr10"
+S_217                db 39, 37, 39, 0  ; "'%'"
+S_218                db 69, 120, 112, 114, 49, 49, 0  ; "Expr11"
+S_219                db 39, 94, 39, 0  ; "'^'"
+S_220                db 69, 120, 112, 114, 49, 50, 0  ; "Expr12"
+S_221                db 39, 46, 39, 0  ; "'.'"
+S_222                db 39, 36, 39, 0  ; "'$'"
+S_223                db 69, 120, 112, 114, 49, 51, 0  ; "Expr13"
+S_224                db 39, 126, 39, 0  ; "'~'"
+S_225                db 69, 120, 112, 114, 49, 52, 0  ; "Expr14"
+S_226                db 69, 120, 112, 114, 49, 53, 0  ; "Expr15"
+S_227                db 39, 33, 39, 0  ; "'!'"
+S_228                db 110, 84, 111, 112, 40, 41, 32, 43, 32, 49, 0  ; "nTop() + 1"
+S_229                db 39, 91, 93, 39, 0  ; "'[]'"
+S_230                db 69, 120, 112, 114, 49, 54, 0  ; "Expr16"
+S_231                db 69, 120, 112, 114, 49, 55, 0  ; "Expr17"
+S_232                db 39, 67, 97, 108, 108, 39, 0  ; "'Call'"
+S_233                db 39, 40, 41, 39, 0  ; "'()'"
+S_234                db 39, 44, 39, 0  ; "','"
+S_235                db 83, 71, 111, 116, 111, 0  ; "SGoto"
+S_236                db 97, 115, 115, 105, 103, 110, 0  ; "assign"
+S_237                db 83, 0  ; "S"
+S_238                db 83, 111, 114, 70, 0  ; "SorF"
+S_239                db 115, 0  ; "s"
+S_240                db 70, 71, 111, 116, 111, 0  ; "FGoto"
+S_241                db 70, 0  ; "F"
+S_242                db 102, 0  ; "f"
+S_243                db 84, 97, 114, 103, 101, 116, 0  ; "Target"
+S_244                db 60, 62, 0  ; "<>"
+S_245                db 66, 114, 97, 99, 107, 101, 116, 115, 0  ; "Brackets"
+S_246                db 40, 41, 0  ; "()"
+S_247                db 71, 111, 116, 111, 0  ; "Goto"
+S_248                db 42, 40, 39, 58, 39, 32, 83, 111, 114, 70, 32, 66, 114, 97, 99, 107, 101, 116, 115, 41, 0  ; "*(':' SorF Brackets)"
+S_249                db 42, 40, 39, 58, 39, 32, 66, 114, 97, 99, 107, 101, 116, 115, 41, 0  ; "*(':' Brackets)"
+S_250                db 67, 111, 110, 116, 114, 111, 108, 0  ; "Control"
+S_251                db 59, 0  ; ";"
+S_252                db 67, 111, 109, 109, 101, 110, 116, 0  ; "Comment"
+S_253                db 76, 97, 98, 101, 108, 0  ; "Label"
+S_254                db 83, 116, 109, 116, 0  ; "Stmt"
+S_255                db 67, 111, 109, 109, 97, 110, 100, 115, 0  ; "Commands"
+S_256                db 67, 111, 109, 109, 97, 110, 100, 0  ; "Command"
+S_257                db 39, 83, 116, 109, 116, 39, 0  ; "'Stmt'"
+S_258                db 39, 67, 111, 110, 116, 114, 111, 108, 39, 0  ; "'Control'"
+S_259                db 39, 67, 111, 109, 109, 101, 110, 116, 39, 0  ; "'Comment'"
+S_260                db 80, 97, 114, 115, 101, 0  ; "Parse"
+S_261                db 110, 84, 111, 112, 40, 41, 0  ; "nTop()"
+S_262                db 39, 80, 97, 114, 115, 101, 39, 0  ; "'Parse'"
+S_263                db 65, 82, 66, 78, 79, 0  ; "ARBNO"
+S_264                db 67, 111, 109, 112, 105, 108, 97, 110, 100, 0  ; "Compiland"
+S_265                db 105, 99, 97, 115, 101, 0  ; "icase"
+S_266                db 69, 78, 68, 0  ; "END"
+S_267                db 68, 69, 70, 73, 78, 69, 0  ; "DEFINE"
+S_268                db 112, 112, 40, 120, 41, 99, 44, 105, 44, 110, 44, 115, 44, 116, 44, 118, 0  ; "pp(x)c,i,n,s,t,v"
+S_269                db 112, 112, 0  ; "pp"
+S_270                db 120, 0  ; "x"
+S_271                db 116, 0  ; "t"
+S_272                db 118, 0  ; "v"
+S_273                db 110, 0  ; "n"
+S_274                db 99, 0  ; "c"
+S_275                db 44, 32, 118, 32, 61, 32, 0  ; ", v = "
+S_276                db 108, 101, 118, 101, 108, 0  ; "level"
+S_277                db 44, 32, 115, 122, 32, 61, 32, 0  ; ", sz = "
+S_278                db 112, 112, 40, 0  ; "pp("
+S_279                db 71, 84, 0  ; "GT"
+S_280                db 100, 111, 68, 101, 98, 117, 103, 0  ; "doDebug"
+S_281                db 112, 112, 95, 80, 97, 114, 115, 101, 0  ; "pp_Parse"
+S_282                db 112, 112, 87, 105, 100, 116, 104, 0  ; "ppWidth"
+S_283                db 112, 112, 95, 48, 0  ; "pp_0"
+S_284                db 105, 0  ; "i"
+S_285                db 112, 112, 95, 49, 0  ; "pp_1"
+S_286                db 112, 112, 95, 66, 117, 105, 108, 116, 105, 110, 86, 97, 114, 0  ; "pp_BuiltinVar"
+S_287                db 71, 101, 110, 0  ; "Gen"
+S_288                db 115, 115, 0  ; "ss"
+S_289                db 112, 112, 95, 70, 117, 110, 99, 116, 105, 111, 110, 0  ; "pp_Function"
+S_290                db 112, 112, 95, 73, 100, 0  ; "pp_Id"
+S_291                db 112, 112, 95, 73, 110, 116, 101, 103, 101, 114, 0  ; "pp_Integer"
+S_292                db 112, 112, 95, 76, 97, 98, 101, 108, 0  ; "pp_Label"
+S_293                db 112, 112, 95, 80, 114, 111, 116, 75, 119, 100, 0  ; "pp_ProtKwd"
+S_294                db 112, 112, 95, 82, 101, 97, 108, 0  ; "pp_Real"
+S_295                db 112, 112, 95, 83, 112, 101, 99, 105, 97, 108, 78, 109, 0  ; "pp_SpecialNm"
+S_296                db 112, 112, 95, 83, 116, 114, 105, 110, 103, 0  ; "pp_String"
+S_297                db 112, 112, 95, 85, 110, 112, 114, 111, 116, 75, 119, 100, 0  ; "pp_UnprotKwd"
+S_298                db 112, 112, 95, 58, 40, 41, 0  ; "pp_:()"
+S_299                db 112, 112, 95, 58, 60, 62, 0  ; "pp_:<>"
+S_300                db 112, 112, 95, 58, 83, 40, 41, 0  ; "pp_:S()"
+S_301                db 112, 112, 95, 58, 83, 60, 62, 0  ; "pp_:S<>"
+S_302                db 112, 112, 95, 58, 70, 40, 41, 0  ; "pp_:F()"
+S_303                db 112, 112, 95, 58, 70, 60, 62, 0  ; "pp_:F<>"
+S_304                db 112, 112, 85, 110, 79, 112, 0  ; "ppUnOp"
+S_305                db 71, 101, 116, 76, 101, 118, 101, 108, 0  ; "GetLevel"
+S_306                db 112, 112, 66, 105, 110, 79, 112, 0  ; "ppBinOp"
+S_307                db 68, 101, 99, 76, 101, 118, 101, 108, 0  ; "DecLevel"
+S_308                db 73, 110, 99, 76, 101, 118, 101, 108, 0  ; "IncLevel"
+S_309                db 71, 101, 110, 84, 97, 98, 0  ; "GenTab"
+S_310                db 112, 112, 95, 33, 0  ; "pp_!"
+S_311                db 69, 81, 0  ; "EQ"
+S_312                db 112, 112, 95, 35, 0  ; "pp_#"
+S_313                db 112, 112, 95, 36, 0  ; "pp_$"
+S_314                db 112, 112, 95, 37, 0  ; "pp_%"
+S_315                db 112, 112, 95, 38, 0  ; "pp_&"
+S_316                db 112, 112, 95, 42, 0  ; "pp_*"
+S_317                db 112, 112, 95, 43, 0  ; "pp_+"
+S_318                db 112, 112, 95, 45, 0  ; "pp_-"
+S_319                db 112, 112, 95, 46, 0  ; "pp_."
+S_320                db 112, 112, 95, 47, 0  ; "pp_/"
+S_321                db 112, 112, 95, 61, 0  ; "pp_="
+S_322                db 112, 112, 95, 63, 0  ; "pp_?"
+S_323                db 112, 112, 95, 64, 0  ; "pp_@"
+S_324                db 112, 112, 95, 94, 0  ; "pp_^"
+S_325                db 112, 112, 95, 126, 0  ; "pp_~"
+S_326                db 112, 112, 95, 67, 111, 109, 109, 101, 110, 116, 0  ; "pp_Comment"
+S_327                db 83, 101, 116, 76, 101, 118, 101, 108, 0  ; "SetLevel"
+S_328                db 71, 101, 110, 83, 101, 116, 67, 111, 110, 116, 0  ; "GenSetCont"
+S_329                db 112, 112, 95, 67, 111, 110, 116, 114, 111, 108, 0  ; "pp_Control"
+S_330                db 112, 112, 95, 83, 116, 109, 116, 0  ; "pp_Stmt"
+S_331                db 112, 112, 76, 98, 108, 0  ; "ppLbl"
+S_332                db 112, 112, 83, 117, 98, 106, 0  ; "ppSubj"
+S_333                db 112, 112, 80, 97, 116, 114, 110, 0  ; "ppPatrn"
+S_334                db 112, 112, 65, 115, 103, 110, 0  ; "ppAsgn"
+S_335                db 112, 112, 82, 101, 112, 108, 0  ; "ppRepl"
+S_336                db 112, 112, 71, 111, 49, 0  ; "ppGo1"
+S_337                db 112, 112, 71, 111, 50, 0  ; "ppGo2"
+S_338                db 32, 61, 0  ; " ="
+S_339                db 112, 112, 95, 83, 116, 109, 116, 53, 0  ; "pp_Stmt5"
+S_340                db 112, 112, 95, 83, 116, 109, 116, 55, 0  ; "pp_Stmt7"
+S_341                db 112, 112, 95, 83, 116, 109, 116, 57, 0  ; "pp_Stmt9"
+S_342                db 112, 112, 95, 69, 120, 112, 114, 76, 105, 115, 116, 0  ; "pp_ExprList"
+S_343                db 112, 112, 95, 69, 120, 112, 114, 76, 105, 115, 116, 48, 0  ; "pp_ExprList0"
+S_344                db 112, 112, 95, 44, 0  ; "pp_,"
+S_345                db 112, 112, 95, 44, 48, 0  ; "pp_,0"
+S_346                db 112, 112, 95, 44, 49, 0  ; "pp_,1"
+S_347                db 112, 112, 95, 124, 0  ; "pp_|"
+S_348                db 112, 112, 95, 124, 48, 0  ; "pp_|0"
+S_349                db 112, 112, 95, 46, 46, 0  ; "pp_.."
+S_350                db 112, 112, 95, 46, 46, 48, 0  ; "pp_..0"
+S_351                db 112, 112, 95, 91, 93, 0  ; "pp_[]"
+S_352                db 112, 112, 95, 91, 93, 48, 0  ; "pp_[]0"
+S_353                db 112, 112, 95, 40, 41, 0  ; "pp_()"
+S_354                db 112, 112, 95, 67, 97, 108, 108, 0  ; "pp_Call"
+S_355                db 112, 112, 69, 110, 100, 0  ; "ppEnd"
+S_356                db 115, 115, 40, 120, 44, 108, 101, 110, 41, 99, 44, 99, 49, 44, 99, 50, 44, 105, 44, 110, 44, 115, 44, 116, 44, 118, 0  ; "ss(x,len)c,c1,c2,i,n,s,t,v"
+S_357                db 108, 101, 110, 0  ; "len"
+S_358                db 115, 115, 40, 0  ; "ss("
+S_359                db 115, 115, 95, 66, 117, 105, 108, 116, 105, 110, 86, 97, 114, 0  ; "ss_BuiltinVar"
+S_360                db 115, 115, 95, 70, 117, 110, 99, 116, 105, 111, 110, 0  ; "ss_Function"
+S_361                db 115, 115, 95, 73, 100, 0  ; "ss_Id"
+S_362                db 115, 115, 95, 73, 110, 116, 101, 103, 101, 114, 0  ; "ss_Integer"
+S_363                db 115, 115, 95, 76, 97, 98, 101, 108, 0  ; "ss_Label"
+S_364                db 115, 115, 95, 76, 97, 98, 101, 108, 48, 0  ; "ss_Label0"
+S_365                db 115, 115, 95, 76, 97, 98, 101, 108, 49, 0  ; "ss_Label1"
+S_366                db 115, 115, 95, 80, 114, 111, 116, 75, 119, 100, 0  ; "ss_ProtKwd"
+S_367                db 115, 115, 95, 82, 101, 97, 108, 0  ; "ss_Real"
+S_368                db 115, 115, 95, 83, 112, 101, 99, 105, 97, 108, 78, 109, 0  ; "ss_SpecialNm"
+S_369                db 115, 115, 95, 83, 116, 114, 105, 110, 103, 0  ; "ss_String"
+S_370                db 115, 115, 95, 85, 110, 112, 114, 111, 116, 75, 119, 100, 0  ; "ss_UnprotKwd"
+S_371                db 115, 115, 95, 97, 116, 111, 109, 105, 99, 0  ; "ss_atomic"
+S_372                db 76, 69, 0  ; "LE"
+S_373                db 115, 115, 95, 58, 40, 41, 0  ; "ss_:()"
+S_374                db 115, 115, 95, 58, 60, 62, 0  ; "ss_:<>"
+S_375                db 115, 115, 95, 58, 83, 40, 41, 0  ; "ss_:S()"
+S_376                db 83, 40, 0  ; "S("
+S_377                db 115, 115, 95, 58, 83, 60, 62, 0  ; "ss_:S<>"
+S_378                db 83, 60, 0  ; "S<"
+S_379                db 115, 115, 95, 58, 70, 40, 41, 0  ; "ss_:F()"
+S_380                db 70, 40, 0  ; "F("
+S_381                db 115, 115, 95, 58, 70, 60, 62, 0  ; "ss_:F<>"
+S_382                db 70, 60, 0  ; "F<"
+S_383                db 115, 115, 85, 110, 79, 112, 0  ; "ssUnOp"
+S_384                db 115, 115, 66, 105, 110, 79, 112, 0  ; "ssBinOp"
+S_385                db 115, 115, 95, 33, 0  ; "ss_!"
+S_386                db 115, 115, 95, 35, 0  ; "ss_#"
+S_387                db 115, 115, 95, 36, 0  ; "ss_$"
+S_388                db 115, 115, 95, 37, 0  ; "ss_%"
+S_389                db 115, 115, 95, 38, 0  ; "ss_&"
+S_390                db 115, 115, 95, 42, 0  ; "ss_*"
+S_391                db 115, 115, 95, 43, 0  ; "ss_+"
+S_392                db 115, 115, 95, 45, 0  ; "ss_-"
+S_393                db 115, 115, 95, 46, 0  ; "ss_."
+S_394                db 115, 115, 95, 47, 0  ; "ss_/"
+S_395                db 115, 115, 95, 61, 0  ; "ss_="
+S_396                db 115, 115, 95, 63, 0  ; "ss_?"
+S_397                db 115, 115, 95, 64, 0  ; "ss_@"
+S_398                db 115, 115, 95, 94, 0  ; "ss_^"
+S_399                db 115, 115, 95, 126, 0  ; "ss_~"
+S_400                db 115, 115, 95, 69, 120, 112, 114, 76, 105, 115, 116, 0  ; "ss_ExprList"
+S_401                db 115, 115, 95, 69, 120, 112, 114, 76, 105, 115, 116, 48, 0  ; "ss_ExprList0"
+S_402                db 44, 32, 0  ; ", "
+S_403                db 115, 115, 95, 44, 0  ; "ss_,"
+S_404                db 115, 115, 95, 44, 48, 0  ; "ss_,0"
+S_405                db 115, 115, 95, 44, 49, 0  ; "ss_,1"
+S_406                db 115, 115, 95, 124, 0  ; "ss_|"
+S_407                db 115, 115, 95, 124, 48, 0  ; "ss_|0"
+S_408                db 32, 124, 32, 0  ; " | "
+S_409                db 115, 115, 95, 46, 46, 0  ; "ss_.."
+S_410                db 115, 115, 95, 46, 46, 48, 0  ; "ss_..0"
+S_411                db 115, 115, 95, 91, 93, 0  ; "ss_[]"
+S_412                db 115, 115, 95, 91, 93, 48, 0  ; "ss_[]0"
+S_413                db 115, 115, 95, 40, 41, 0  ; "ss_()"
+S_414                db 115, 115, 95, 67, 97, 108, 108, 0  ; "ss_Call"
+S_415                db 115, 115, 69, 110, 100, 0  ; "ssEnd"
+S_416                db 98, 86, 105, 115, 105, 116, 95, 0  ; "bVisit_"
+S_417                db 98, 86, 105, 115, 105, 116, 40, 120, 44, 102, 110, 99, 41, 105, 0  ; "bVisit(x,fnc)i"
+S_418                db 65, 80, 80, 76, 89, 0  ; "APPLY"
+S_419                db 102, 110, 99, 0  ; "fnc"
+S_420                db 98, 86, 105, 115, 105, 116, 95, 49, 0  ; "bVisit_1"
+S_421                db 98, 86, 105, 115, 105, 116, 0  ; "bVisit"
+S_422                db 98, 86, 105, 115, 105, 116, 69, 110, 100, 0  ; "bVisitEnd"
+S_423                db 102, 105, 110, 100, 82, 101, 102, 115, 40, 120, 41, 110, 44, 118, 0  ; "findRefs(x)n,v"
+S_424                db 82, 101, 102, 115, 0  ; "Refs"
+S_425                db 102, 105, 110, 100, 82, 101, 102, 115, 0  ; "findRefs"
+S_426                db 67, 97, 108, 108, 0  ; "Call"
+S_427                db 102, 105, 110, 100, 82, 101, 102, 115, 95, 48, 0  ; "findRefs_0"
+S_428                db 102, 105, 110, 100, 82, 101, 102, 115, 95, 49, 0  ; "findRefs_1"
+S_429                db 102, 105, 110, 100, 82, 101, 102, 115, 95, 50, 0  ; "findRefs_2"
+S_430                db 102, 105, 110, 100, 82, 101, 102, 115, 95, 57, 0  ; "findRefs_9"
+S_431                db 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 0  ; "0123456789"
+S_432                db 102, 105, 110, 100, 82, 101, 102, 115, 69, 110, 100, 0  ; "findRefsEnd"
+S_433                db 114, 101, 102, 115, 40, 112, 41, 99, 44, 110, 44, 115, 44, 115, 117, 98, 106, 0  ; "refs(p)c,n,s,subj"
+S_434                db 114, 101, 102, 115, 0  ; "refs"
+S_435                db 112, 0  ; "p"
+S_436                db 114, 101, 102, 115, 95, 48, 0  ; "refs_0"
+S_437                db 114, 101, 102, 115, 95, 49, 0  ; "refs_1"
+S_438                db 115, 117, 98, 106, 0  ; "subj"
+S_439                db 82, 80, 65, 68, 0  ; "RPAD"
+S_440                db 58, 32, 0  ; ": "
+S_441                db 76, 80, 65, 68, 0  ; "LPAD"
+S_442                db 114, 101, 102, 115, 69, 110, 100, 0  ; "refsEnd"
+S_443                db 83, 112, 97, 99, 101, 0  ; "Space"
+S_444                db 109, 97, 105, 110, 48, 48, 0  ; "main00"
+S_445                db 76, 105, 110, 101, 0  ; "Line"
+S_446                db 109, 97, 105, 110, 48, 49, 0  ; "main01"
+S_447                db 83, 114, 99, 0  ; "Src"
+S_448                db 109, 97, 105, 110, 48, 50, 0  ; "main02"
+S_449                db 46, 43, 0  ; ".+"
+S_450                db 80, 111, 112, 0  ; "Pop"
+S_451                db 115, 110, 111, 0  ; "sno"
+S_452                db 109, 97, 105, 110, 48, 53, 0  ; "main05"
+S_453                db 109, 97, 105, 110, 69, 114, 114, 49, 0  ; "mainErr1"
+S_454                db 80, 97, 114, 115, 101, 32, 69, 114, 114, 111, 114, 0  ; "Parse Error"
+S_455                db 109, 97, 105, 110, 69, 114, 114, 50, 0  ; "mainErr2"
+S_456                db 73, 110, 116, 101, 114, 110, 97, 108, 32, 69, 114, 114, 111, 114, 0  ; "Internal Error"
+S_457                db 38, 70, 85, 76, 76, 83, 67, 65, 78, 0  ; "&FULLSCAN"
+S_458                db 38, 77, 65, 88, 76, 78, 71, 84, 72, 0  ; "&MAXLNGTH"
