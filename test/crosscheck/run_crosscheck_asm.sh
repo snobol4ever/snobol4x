@@ -142,7 +142,7 @@ run_one() {
 
     # nasm
     local body_o="$WORK/${tag}_body.o"
-    if ! nasm -f elf64 -w-other "$body_s" -o "$body_o" 2>"$WORK/${tag}_nasm.err"; then
+    if ! nasm -f elf64 -w-other -I src/runtime/asm/ "$body_s" -o "$body_o" 2>"$WORK/${tag}_nasm.err"; then
         fail "$tag (nasm error: $(cat $WORK/${tag}_nasm.err))"
         ((failed++)) || true
         [[ $STOP_ON_FAIL -eq 1 ]] && exit 1

@@ -379,3 +379,16 @@ session115 | 2026-03-16 | 6d5919daa03d3c56646b5f0a165f86ee | 15859 lines | compi
     SET_OUTPUT, IS_FAIL_BRANCH, APPLY_FN_0/N, STORE_ARG32, SET_CAPTURE,
     APPLY_REPL, SETUP_SUBJECT_FROM16, LOAD_NULVCL)
 - invariants: 106/106 C crosscheck PASS, 26/26 ASM crosscheck PASS
+
+## beauty_prog_session160.s
+- **Sprint:** A14 — M-ASM-BEAUTIFUL
+- **Status:** assembles clean (nasm -f elf64 -I src/runtime/asm/)
+- **Lines:** 16421 (vs 18220 session159 — 1799 lines eliminated)
+- **What changed:** All pattern node ports now emit named macros instead of raw instructions:
+  LIT_ALPHA/LIT_BETA, SPAN_ALPHA/SPAN_BETA, BREAK_ALPHA/BREAK_BETA,
+  ANY_ALPHA/ANY_BETA, NOTANY_ALPHA/NOTANY_BETA, POS_ALPHA/POS_BETA,
+  RPOS_ALPHA/RPOS_BETA, LEN_ALPHA/LEN_BETA, TAB_ALPHA/TAB_BETA,
+  RTAB_ALPHA/RTAB_BETA, REM_ALPHA/REM_BETA, SEQ_ALPHA/SEQ_BETA,
+  ALT_SAVE_CURSOR/ALT_RESTORE_CURSOR, STORE_RESULT/SAVE_DESCR.
+  Body-only (-asm-body) now emits %include + crosscheck script uses -I flag.
+- **Invariants:** 106/106 C crosscheck PASS, 26/26 ASM crosscheck PASS
