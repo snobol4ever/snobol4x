@@ -401,3 +401,12 @@ session115 | 2026-03-16 | 6d5919daa03d3c56646b5f0a165f86ee | 15859 lines | compi
   Every Byrd box port now reads: `label:  MACRO  args`
   40 asmL+A/asmJ pairs folded into single ALF() calls.
 - **Invariants:** 106/106 C crosscheck PASS, 26/26 ASM crosscheck PASS
+
+## beauty_prog_session162.s
+- **Sprint:** A14 — M-ASM-BEAUTIFUL
+- **Status:** assembles clean (nasm -f elf64 -I src/runtime/asm/)
+- **Lines:** 14950 (down from 18220 at session159 — 3270 lines eliminated total)
+- **What changed:** ALFC() helper — three-column format: `label:  MACRO args ; comment`
+  Comments folded from preceding lines onto the instruction line.
+  ALT emitter now uses ALT_SAVE_CURSOR/ALT_RESTORE_CURSOR macros fully.
+- **Invariants:** 106/106 C crosscheck PASS, 26/26 ASM crosscheck PASS
