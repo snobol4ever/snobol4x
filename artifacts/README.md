@@ -531,3 +531,12 @@ session115 | 2026-03-16 | 6d5919daa03d3c56646b5f0a165f86ee | 15859 lines | compi
   Every instruction line: col1=label(0..27), col2=opcode(28..39), col3=operands(40+).
   asmLC comment-only lines exempt (label: ; comment — no opcode/operand split).
   11654 lines; 106/106 C crosscheck PASS; 26/26 ASM crosscheck PASS.
+
+### artifacts/asm/beauty_prog_session176.s  (Sprint A11 — M-ASM-READABLE ✅)
+- status: PASS — M-ASM-READABLE-A: special-char expansion; _ passes through; uid on collision
+- milestone: M-ASM-READABLE fires session176
+- assemble: nasm -f elf64 -I src/runtime/asm/ beauty_prog_session176.s -o /dev/null
+- design: asm_expand_name() table: 24 special chars → named tokens (_GT_/_EQ_/_PL_ etc).
+  _ kept as literal passthrough (common word-separator). Collision → _N uid appended.
+  beauty.sno: 0 collisions. S_pp_>= → S_pp_GT_EQ, S_pp_$ → S_pp_DL etc.
+  11656 lines; 106/106 C crosscheck PASS; 26/26 ASM crosscheck PASS.

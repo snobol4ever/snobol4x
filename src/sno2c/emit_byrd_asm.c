@@ -289,6 +289,44 @@ static int asm_uid_ctr = 0;
 static int asm_uid(void) { return asm_uid_ctr++; }
 
 /* -----------------------------------------------------------------------
+ * M-ASM-READABLE: special-char expansion table.
+ * Converts a SNOBOL4 source name to a valid, readable ASM label fragment.
+ * Each special char expands to a named token surrounded by underscores.
+ * The mapping is injective: distinct source names produce distinct labels.
+ * asm_expand_name(src, dst, dstlen) — fills dst, always NUL-terminates.
+ * ----------------------------------------------------------------------- */
+static void asm_expand_name(const char *src, char *dst, int dstlen) {
+    static const struct { char ch; const char *nm; } tbl[] = {
+        {'>', "GT"}, {'<', "LT"}, {'=', "EQ"}, {'+', "PL"}, {'-', "MI"},
+        {'*', "ST"}, {'/', "SL"}, {'(', "LP"}, {')', "RP"}, {'$', "DL"},
+        {'.', "DT"}, {'?', "QM"}, {'!', "BG"}, {'&', "AM"}, {'|', "OR"},
+        {'@', "AT"}, {'~', "TL"}, {':', "CL"}, {',', "CM"}, {'#', "HS"},
+        {'%', "PC"}, {'^', "CA"}, {'[', "LB"}, {']', "RB"}, {' ', "SP"},
+        {0, NULL}
+    };
+    int di = 0;
+    for (const char *p = src; *p && di < dstlen - 1; p++) {
+        /* plain alnum or underscore — copy directly */
+        if (isalnum((unsigned char)*p) || *p == '_') {
+            dst[di++] = *p;
+            continue;
+        }
+        /* special char — expand to _NM_ */
+        const char *nm = NULL;
+        for (int i = 0; tbl[i].ch; i++)
+            if (tbl[i].ch == *p) { nm = tbl[i].nm; break; }
+        if (!nm) nm = "XX"; /* unknown char fallback */
+        /* emit underscore separator only if needed */
+        if (di > 0 && dst[di-1] != '_') dst[di++] = '_';
+        for (const char *q = nm; *q && di < dstlen - 2; q++) dst[di++] = *q;
+        dst[di++] = '_';
+    }
+    /* trim trailing underscores */
+    while (di > 0 && dst[di-1] == '_') di--;
+    dst[di] = '\0';
+}
+
+/* -----------------------------------------------------------------------
  * .bss slot registry
  * ----------------------------------------------------------------------- */
 
@@ -935,14 +973,10 @@ static void emit_asm_assign(EXPR_t *child, const char *varname,
     char dol_gamma[LBUF], dol_omega[LBUF];
     char entry_cur[LBUF], cap_buf[LBUF], cap_len[LBUF];
 
-    /* derive safe varname prefix (strip non-alnum) */
-    char safe[64]; int si = 0;
-    if (varname) {
-        for (const char *p = varname; *p && si < 60; p++)
-            safe[si++] = (isalnum((unsigned char)*p) || *p=='_') ? *p : '_';
-    }
-    safe[si] = '\0';
-    if (!si) { safe[0]='v'; safe[1]='\0'; }
+    /* derive safe varname prefix (expand special chars) */
+    char safe[64];
+    asm_expand_name(varname ? varname : "", safe, sizeof safe);
+    if (!safe[0]) { safe[0]='v'; safe[1]='\0'; }
 
     snprintf(cα,        LBUF, "dol%d_child_alpha", uid);
     snprintf(cβ,        LBUF, "dol%d_child_beta",  uid);
@@ -1205,12 +1239,9 @@ static CaptureVar *cap_var_register(const char *varname) {
     CaptureVar *cv = &cap_vars[cap_var_count++];
     strncpy(cv->varname, varname, sizeof cv->varname - 1);
     cv->varname[sizeof cv->varname - 1] = '\0';
-    /* build safe label fragment */
-    int si = 0;
-    for (const char *p = varname; *p && si < 60; p++)
-        cv->safe[si++] = (isalnum((unsigned char)*p) || *p == '_') ? *p : '_';
-    cv->safe[si] = '\0';
-    if (!si) { cv->safe[0] = 'v'; cv->safe[1] = '\0'; }
+    /* build safe label fragment using expansion table */
+    asm_expand_name(varname, cv->safe, sizeof cv->safe);
+    if (!cv->safe[0]) { cv->safe[0] = 'v'; cv->safe[1] = '\0'; }
     snprintf(cv->buf_sym, sizeof cv->buf_sym, "cap_%s_buf", cv->safe);
     snprintf(cv->len_sym, sizeof cv->len_sym, "cap_%s_len", cv->safe);
     return cv;
@@ -1285,13 +1316,10 @@ static int         asm_named_count = 0;
 
 static void asm_named_reset(void) { asm_named_count = 0; }
 
-/* Make a label-safe version of a SNOBOL4 variable name */
+/* Make a label-safe version of a SNOBOL4 variable name — use expansion table */
 static void asm_safe_name(const char *src, char *dst, int dstlen) {
-    int i = 0;
-    for (const char *p = src; *p && i < dstlen - 1; p++)
-        dst[i++] = (isalnum((unsigned char)*p) || *p == '_') ? *p : '_';
-    dst[i] = '\0';
-    if (!i) { dst[0] = 'v'; dst[1] = '\0'; }
+    asm_expand_name(src, dst, dstlen);
+    if (!dst[0]) { dst[0] = 'v'; dst[1] = '\0'; }
 }
 
 /* Register a named pattern — called during program scan */
@@ -1759,7 +1787,23 @@ static const char *prog_str_intern(const char *s) {
         if (strcmp(prog_strs[i].val, s) == 0) return prog_strs[i].label;
     if (prog_str_count >= MAX_PROG_STRS) return "S_overflow";
     ProgStr *e = &prog_strs[prog_str_count++];
-    snprintf(e->label, sizeof e->label, "S_%d", prog_str_count);
+    /* M-ASM-READABLE-A: expand special chars for readability.
+     * _ passes through (common word-separator — keep readable).
+     * On collision (two distinct source names expand identically),
+     * append _N uid to the second — rare, visible, honest. */
+    char exp[128];
+    asm_expand_name(s, exp, sizeof exp);
+    if (exp[0]) {
+        snprintf(e->label, sizeof e->label, "S_%s", exp);
+        for (int i = 0; i < prog_str_count - 1; i++) {
+            if (strcmp(prog_strs[i].label, e->label) == 0) {
+                snprintf(e->label, sizeof e->label, "S_%s_%d", exp, prog_str_count);
+                break;
+            }
+        }
+    } else {
+        snprintf(e->label, sizeof e->label, "S_%d", prog_str_count);
+    }
     e->val = strdup(s);
     return e->label;
 }
@@ -2347,6 +2391,9 @@ static void asm_emit_program(Program *prog) {
     extra_bss_emit();
     /* DOL $ capture buffers (cap_VAR_buf/cap_VAR_len) */
     cap_vars_emit_bss();
+    /* Result-temp scratch pair for complex-child CONC2/ALT2 generic path */
+    A("%-24s resq 1\n", "conc_tmp0_rax");
+    A("%-24s resq 1\n", "conc_tmp0_rdx");
     /* subject buffer for pattern matching */
     A("%-24s resb 65536\n", "subject_data");
     A("\n");
