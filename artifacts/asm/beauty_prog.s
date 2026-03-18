@@ -298,7 +298,7 @@ L_sn_1:                     GET_VAR     S_458
 ; ==============================================================================
 L_sn_2:                     GET_VAR     S_4
                             CALL1_STR   S_5, S_6
-                            IS_FAIL_BRANCH  L_sn_3
+                            FAIL_BR     L_sn_3
                             SET_VAR     S_4
                             jmp     L_sn_3
 
@@ -327,7 +327,7 @@ L_sn_8:                     GET_VAR     S_8
 ; ==============================================================================
 L_sn_9:                     GET_VAR     S_9
                             CALL1_INT   S_10, 0
-                            IS_FAIL_BRANCH  L_sn_10
+                            FAIL_BR     L_sn_10
                             SET_VAR     S_9
                             jmp     L_sn_10
 
@@ -369,14 +369,14 @@ L_sn_10:                    GET_VAR     S_11
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_11
+                            FAIL_BR     L_sn_11
                             SET_VAR     S_11
                             jmp     L_sn_11
 
 ;  ppArgLoop ===================================================================
 L_sn_11:
 L_ppArgLoop_1:              GET_VAR     S_9
-                            SETUP_SUBJECT_FROM16
+                            SUBJ_FROM16
                             jmp     P_12_α
 
 P_12_α:                     jmp     seq_l0_alpha                        ; SEQ
@@ -405,13 +405,13 @@ L_sn_12:                    sub     rsp, 16
                             APPLY_FN_N  S_24, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_13
+                            FAIL_BR16   L_sf_13
                             jmp     L_sn_13
 L_sf_13:                    jmp     L_ppArgDone_2
 
 ; ==============================================================================
 L_sn_13:                    GET_VAR     S_9
-                            SETUP_SUBJECT_FROM16
+                            SUBJ_FROM16
                             jmp     P_14_α
 
 
@@ -454,7 +454,7 @@ L_sn_14:                    sub     rsp, 32
                             APPLY_FN_N  S_25, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_15
+                            FAIL_BR16   L_sf_15
                             jmp     L_sn_15
 L_sf_15:                    jmp     L_ppArgP2_3
 
@@ -492,7 +492,7 @@ L_ppArgP2_3:                sub     rsp, 32
                             APPLY_FN_N  S_25, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_22
+                            FAIL_BR16   L_sf_22
                             jmp     L_sn_22
 L_sf_22:                    jmp     L_ppArgP3_4
 
@@ -530,7 +530,7 @@ L_ppArgP3_4:                sub     rsp, 32
                             APPLY_FN_N  S_25, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_29
+                            FAIL_BR16   L_sf_29
                             jmp     L_sn_29
 L_sf_29:                    jmp     L_ppArgP4_5
 
@@ -568,7 +568,7 @@ L_ppArgP4_5:                sub     rsp, 32
                             APPLY_FN_N  S_25, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_36
+                            FAIL_BR16   L_sf_36
                             jmp     L_sn_36
 L_sf_36:                    jmp     L_ppArgP5_6
 
@@ -606,7 +606,7 @@ L_ppArgP5_6:                sub     rsp, 32
                             APPLY_FN_N  S_25, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_43
+                            FAIL_BR16   L_sf_43
                             jmp     L_sn_43
 L_sf_43:                    jmp     L_ppArgChk1_7
 
@@ -644,7 +644,7 @@ L_ppArgChk1_7:              sub     rsp, 32
                             APPLY_FN_N  S_25, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_50
+                            FAIL_BR16   L_sf_50
                             jmp     L_sn_50
 L_sf_50:                    jmp     L_ppArgChk2_8
 
@@ -664,7 +664,7 @@ L_ppArgChk2_8:              sub     rsp, 32
                             APPLY_FN_N  S_25, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_52
+                            FAIL_BR16   L_sf_52
                             jmp     L_sn_52
 L_sf_52:                    jmp     L_ppArgChk3_9
 
@@ -684,7 +684,7 @@ L_ppArgChk3_9:              sub     rsp, 32
                             APPLY_FN_N  S_25, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_54
+                            FAIL_BR16   L_sf_54
                             jmp     L_sn_54
 L_sf_54:                    jmp     L_ppArgChk4_10
 
@@ -704,7 +704,7 @@ L_ppArgChk4_10:             sub     rsp, 32
                             APPLY_FN_N  S_25, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_56
+                            FAIL_BR16   L_sf_56
                             jmp     L_sn_56
 L_sf_56:                    jmp     L_ppArgChk5_11
 
@@ -724,7 +724,7 @@ L_ppArgChk5_11:             sub     rsp, 32
                             APPLY_FN_N  S_25, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_58
+                            FAIL_BR16   L_sf_58
                             jmp     L_sn_58
 L_sf_58:                    jmp     L_ppArgChk6_12
 
@@ -734,7 +734,7 @@ L_sn_58:                    GET_VAR     S_7
                             call    stmt_get
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_59
+                            FAIL_BR     L_sn_59
                             SET_VAR     S_7
                             jmp     L_ppArgLoop_1
 
@@ -750,7 +750,7 @@ L_ppArgChk6_12:             sub     rsp, 32
                             APPLY_FN_N  S_25, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_60
+                            FAIL_BR16   L_sf_60
                             jmp     L_sn_60
 L_sf_60:                    jmp     L_ppArgUnk_13
 
@@ -760,7 +760,7 @@ L_sn_60:                    GET_VAR     S_8
                             call    stmt_get
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_61
+                            FAIL_BR     L_sn_61
                             SET_VAR     S_8
                             jmp     L_ppArgLoop_1
 
@@ -776,7 +776,7 @@ L_ppArgUnk_13:              sub     rsp, 32
                             APPLY_FN_N  S_25, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_62
+                            FAIL_BR16   L_sf_62
                             jmp     L_sn_62
 L_sf_62:                    jmp     L_ppArgWarn_14
 
@@ -800,7 +800,7 @@ L_ppArgWarn_14:             GET_VAR     S_51
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_64
+                            FAIL_BR     L_sn_64
                             SET_OUTPUT
                             jmp     L_ppArgLoop_1
 
@@ -815,14 +815,14 @@ L_sn_65:                    sub     rsp, 16
                             APPLY_FN_N  S_24, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_66
+                            FAIL_BR16   L_sf_66
                             jmp     L_sn_66
 L_sf_66:                    jmp     L_ppAutoSkip_15
 
 ; ==============================================================================
 L_sn_66:                    GET_VAR     S_54
                             CALL1_INT   S_55, 9
-                            IS_FAIL_BRANCH  L_sn_67
+                            FAIL_BR     L_sn_67
                             SET_VAR     S_54
                             jmp     L_sn_67
 
@@ -904,7 +904,7 @@ L_sn_67:                    GET_VAR     S_56
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_68
+                            FAIL_BR     L_sn_68
                             SET_VAR     S_56
                             jmp     L_sn_68
 
@@ -923,7 +923,7 @@ L_sn_68:                    GET_VAR     S_61
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_69
+                            FAIL_BR     L_sn_69
                             SET_VAR     S_61
                             jmp     L_sn_69
 
@@ -931,7 +931,7 @@ L_sn_68:                    GET_VAR     S_61
 L_sn_69:                    GET_VAR     S_63
                             mov     qword [rbp-32], 1
                             mov     qword [rbp-24], 0
-                            IS_FAIL_BRANCH  L_sn_70
+                            FAIL_BR     L_sn_70
                             SET_VAR     S_63
                             jmp     L_sn_70
 
@@ -943,7 +943,7 @@ L_sn_70:                    GET_VAR     S_66
 ; ==============================================================================
 L_sn_71:                    GET_VAR     S_67
                             CALL1_INT   S_5, 2000
-                            IS_FAIL_BRANCH  L_sn_72
+                            FAIL_BR     L_sn_72
                             SET_VAR     S_67
                             jmp     L_sn_72
 
@@ -966,7 +966,7 @@ L_sn_72:                    GET_VAR     S_68
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_73
+                            FAIL_BR     L_sn_73
                             SET_VAR     S_68
                             jmp     L_sn_73
 
@@ -995,7 +995,7 @@ L_ppAutoR_16:               GET_VAR     S_74
                             call    stmt_get
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sf_75
+                            FAIL_BR     L_sf_75
                             SET_VAR     S_74
                             jmp     L_sn_75
 L_sf_75:                    jmp     L_ppAutoSort_17
@@ -1006,13 +1006,13 @@ L_sn_75:                    GET_VAR     S_72
                             call    stmt_get
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_76
+                            FAIL_BR     L_sn_76
                             SET_VAR     S_72
                             jmp     L_sn_76
 
 ; ==============================================================================
 L_sn_76:                    GET_VAR     S_74
-                            SETUP_SUBJECT_FROM16
+                            SUBJ_FROM16
                             jmp     P_77_α
 
 P_77_α:                     jmp     seq_l3_alpha                        ; SEQ
@@ -1036,7 +1036,7 @@ P_77_ω:                     jmp     L_sn_77
 
 ; ==============================================================================
 L_sn_77:                    GET_VAR     S_74
-                            SETUP_SUBJECT_FROM16
+                            SUBJ_FROM16
                             jmp     P_78_α
 
 P_78_α:                     jmp     seq_l5_alpha                        ; SEQ
@@ -1065,13 +1065,13 @@ L_sn_78:                    sub     rsp, 16
                             APPLY_FN_N  S_24, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_79
+                            FAIL_BR16   L_sf_79
                             jmp     L_sn_79
 L_sf_79:                    jmp     L_ppAutoNew_19
 
 ; ==============================================================================
 L_sn_79:                    GET_VAR     S_78
-                            SETUP_SUBJECT_FROM16
+                            SUBJ_FROM16
                             jmp     P_80_α
 
 
@@ -1109,13 +1109,13 @@ L_sn_80:                    GET_VAR     S_79
                             call    stmt_get
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_81
+                            FAIL_BR     L_sn_81
                             SET_VAR     S_79
                             jmp     L_sn_81
 
 ; ==============================================================================
 L_sn_81:                    GET_VAR     S_79
-                            SETUP_SUBJECT_FROM16
+                            SUBJ_FROM16
                             jmp     P_82_α
 
 
@@ -1158,7 +1158,7 @@ L_sn_82:                    GET_VAR     S_80
                             APPLY_FN_N  S_81, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH  L_sn_83
+                            FAIL_BR     L_sn_83
                             SET_VAR     S_80
                             jmp     L_sn_83
 
@@ -1173,7 +1173,7 @@ L_sn_83:                    sub     rsp, 32
                             APPLY_FN_N  S_24, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_84
+                            FAIL_BR16   L_sf_84
                             jmp     L_sn_84
 L_sf_84:                    jmp     L_ppAutoNew_19
 
@@ -1181,7 +1181,7 @@ L_sf_84:                    jmp     L_ppAutoNew_19
 L_sn_84:                    GET_VAR     S_66
                             mov     qword [rbp-32], 1
                             mov     qword [rbp-24], 0
-                            IS_FAIL_BRANCH  L_sn_85
+                            FAIL_BR     L_sn_85
                             SET_VAR     S_66
                             jmp     L_sn_85
 
@@ -1195,7 +1195,7 @@ L_ppAutoNew_19:             GET_VAR     S_78
                             call    stmt_get
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_87
+                            FAIL_BR     L_sn_87
                             SET_VAR     S_78
                             jmp     L_ppAutoR_16
 
@@ -1225,7 +1225,7 @@ L_ppAutoCont_18:            GET_VAR     S_78
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_88
+                            FAIL_BR     L_sn_88
                             SET_VAR     S_78
                             jmp     L_ppAutoR_16
 
@@ -1271,7 +1271,7 @@ L_ppAS1_20:                 GET_VAR     S_86
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sf_91
+                            FAIL_BR     L_sf_91
                             SET_VAR     S_86
                             jmp     L_sn_91
 L_sf_91:                    jmp     L_ppAutoCalc_21
@@ -1282,7 +1282,7 @@ L_sn_91:                    GET_VAR     S_89
                             call    stmt_get
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_92
+                            FAIL_BR     L_sn_92
                             SET_VAR     S_89
                             jmp     L_sn_92
 
@@ -1290,7 +1290,7 @@ L_sn_91:                    GET_VAR     S_89
 L_sn_92:                    GET_VAR     S_90
                             mov     qword [rbp-32], 1
                             mov     qword [rbp-24], 0
-                            IS_FAIL_BRANCH  L_sn_93
+                            FAIL_BR     L_sn_93
                             SET_VAR     S_90
                             jmp     L_sn_93
 
@@ -1299,7 +1299,7 @@ L_sn_93:
 L_ppAS2_22:                 GET_VAR     S_92
                             mov     qword [rbp-32], 1
                             mov     qword [rbp-24], 0
-                            IS_FAIL_BRANCH  L_sn_94
+                            FAIL_BR     L_sn_94
                             SET_VAR     S_92
                             jmp     L_sn_94
 
@@ -1314,7 +1314,7 @@ L_sn_94:                    sub     rsp, 32
                             APPLY_FN_N  S_88, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sn_95
+                            FAIL_BR16   L_sn_95
                             jmp     L_ppASins_23
 
 ; ==============================================================================
@@ -1326,7 +1326,7 @@ L_sn_95:                    sub     rsp, 32
                             APPLY_FN_N  S_88, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_96
+                            FAIL_BR16   L_sf_96
                             jmp     L_sn_96
 L_sf_96:                    jmp     L_ppASins_23
 
@@ -1339,7 +1339,7 @@ L_sn_97:                    GET_VAR     S_89
                             call    stmt_get
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_98
+                            FAIL_BR     L_sn_98
                             SET_VAR     S_89
                             jmp     L_ppAS2_22
 
@@ -1353,7 +1353,7 @@ L_sn_99:
 L_ppAutoCalc_21:            GET_VAR     S_95
                             mov     qword [rbp-32], 1
                             mov     qword [rbp-24], 0
-                            IS_FAIL_BRANCH  L_sn_100
+                            FAIL_BR     L_sn_100
                             SET_VAR     S_95
                             jmp     L_sn_100
 
@@ -1368,7 +1368,7 @@ L_sn_100:                   sub     rsp, 32
                             APPLY_FN_N  S_88, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_101
+                            FAIL_BR16   L_sf_101
                             jmp     L_sn_101
 L_sf_101:                   jmp     L_ppAP90ok_24
 
@@ -1382,7 +1382,7 @@ L_sn_102:
 L_ppAP90ok_24:              GET_VAR     S_97
                             mov     qword [rbp-32], 1
                             mov     qword [rbp-24], 0
-                            IS_FAIL_BRANCH  L_sn_103
+                            FAIL_BR     L_sn_103
                             SET_VAR     S_97
                             jmp     L_sn_103
 
@@ -1397,7 +1397,7 @@ L_sn_103:                   sub     rsp, 32
                             APPLY_FN_N  S_88, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_104
+                            FAIL_BR16   L_sf_104
                             jmp     L_sn_104
 L_sf_104:                   jmp     L_ppAscale_25
 
@@ -1424,7 +1424,7 @@ L_sn_107:                   sub     rsp, 32
                             APPLY_FN_N  S_88, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_108
+                            FAIL_BR16   L_sf_108
                             jmp     L_sn_108
 L_sf_108:                   jmp     L_ppAs1_26
 
@@ -1445,7 +1445,7 @@ L_sn_111:                   LOAD_NULVCL
 L_sn_112:                   GET_VAR     S_7
                             mov     qword [rbp-32], 1
                             mov     qword [rbp-24], 0
-                            IS_FAIL_BRANCH  L_sn_113
+                            FAIL_BR     L_sn_113
                             SET_VAR     S_7
                             jmp     L_sn_113
 
@@ -1453,7 +1453,7 @@ L_sn_112:                   GET_VAR     S_7
 L_sn_113:                   GET_VAR     S_8
                             mov     qword [rbp-32], 1
                             mov     qword [rbp-24], 0
-                            IS_FAIL_BRANCH  L_sn_114
+                            FAIL_BR     L_sn_114
                             SET_VAR     S_8
                             jmp     L_sn_114
 
@@ -1468,7 +1468,7 @@ L_sn_114:                   sub     rsp, 32
                             APPLY_FN_N  S_88, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_115
+                            FAIL_BR16   L_sf_115
                             jmp     L_sn_115
 L_sf_115:                   jmp     L_ppAutoMsg_27
 
@@ -1617,7 +1617,7 @@ L_ppAutoMsg_27:             GET_VAR     S_51
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_117
+                            FAIL_BR     L_sn_117
                             SET_OUTPUT
                             jmp     L_sn_117
 
@@ -1654,7 +1654,7 @@ L_sn_119:                   GET_VAR     S_111
                             APPLY_FN_N  S_22, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH  L_sn_120
+                            FAIL_BR     L_sn_120
                             SET_VAR     S_111
                             jmp     L_sn_120
 
@@ -1693,7 +1693,7 @@ L_sn_120:                   GET_VAR     S_113
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_121
+                            FAIL_BR     L_sn_121
                             SET_VAR     S_113
                             jmp     L_sn_121
 
@@ -1732,7 +1732,7 @@ L_sn_121:                   GET_VAR     S_116
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_122
+                            FAIL_BR     L_sn_122
                             SET_VAR     S_116
                             jmp     L_sn_122
 
@@ -1749,7 +1749,7 @@ L_sn_122:                   GET_VAR     S_118
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_123
+                            FAIL_BR     L_sn_123
                             SET_VAR     S_118
                             jmp     L_sn_123
 
@@ -1820,15 +1820,7 @@ L_sn_123:                   GET_VAR     S_119
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
                             STORE_ARG32 0
-                            sub     rsp, 32
-                            LOAD_STR    S_126
-                            STORE_ARG32 0
-                            LOAD_STR    S_125
-                            STORE_ARG32 16
-                            APPLY_FN_N  S_460, 2
-                            add     rsp, 32
-                            mov     [rbp-32], rax
-                            mov     [rbp-24], rdx
+                            ALT2    S_460, S_126, S_125
                             STORE_ARG32 16
                             APPLY_FN_N  S_459, 2
                             add     rsp, 32
@@ -1836,15 +1828,7 @@ L_sn_123:                   GET_VAR     S_119
                             mov     [rbp-24], rdx
                             STORE_ARG32 0
                             sub     rsp, 32
-                            sub     rsp, 32
-                            LOAD_STR    S_124
-                            STORE_ARG32 0
-                            LOAD_STR    S_123
-                            STORE_ARG32 16
-                            APPLY_FN_N  S_460, 2
-                            add     rsp, 32
-                            mov     [rbp-32], rax
-                            mov     [rbp-24], rdx
+                            ALT2    S_460, S_124, S_123
                             STORE_ARG32 0
                             lea     rdi, [rel S_121]
                             call    stmt_get
@@ -1930,7 +1914,7 @@ L_sn_123:                   GET_VAR     S_119
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_124
+                            FAIL_BR     L_sn_124
                             SET_VAR     S_119
                             jmp     L_sn_124
 
@@ -2026,7 +2010,7 @@ L_sn_124:                   GET_VAR     S_127
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_125
+                            FAIL_BR     L_sn_125
                             SET_VAR     S_127
                             jmp     L_sn_125
 
@@ -2034,7 +2018,7 @@ L_sn_124:                   GET_VAR     S_127
 L_sn_125:                   GET_VAR     S_131
                             mov     qword [rbp-32], 1
                             mov     qword [rbp-24], 0
-                            IS_FAIL_BRANCH  L_sn_126
+                            FAIL_BR     L_sn_126
                             SET_VAR     S_131
                             jmp     L_sn_126
 
@@ -2042,7 +2026,7 @@ L_sn_125:                   GET_VAR     S_131
 L_sn_126:                   GET_VAR     S_136
                             mov     qword [rbp-32], 1
                             mov     qword [rbp-24], 0
-                            IS_FAIL_BRANCH  L_sn_127
+                            FAIL_BR     L_sn_127
                             SET_VAR     S_136
                             jmp     L_sn_127
 
@@ -2050,7 +2034,7 @@ L_sn_126:                   GET_VAR     S_136
 L_sn_127:                   GET_VAR     S_138
                             mov     qword [rbp-32], 1
                             mov     qword [rbp-24], 0
-                            IS_FAIL_BRANCH  L_sn_128
+                            FAIL_BR     L_sn_128
                             SET_VAR     S_138
                             jmp     L_sn_128
 
@@ -2066,7 +2050,7 @@ L_sn_128:                   GET_VAR     S_140
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_129
+                            FAIL_BR     L_sn_129
                             SET_VAR     S_140
                             jmp     L_sn_129
 
@@ -2082,7 +2066,7 @@ L_sn_129:                   GET_VAR     S_143
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_130
+                            FAIL_BR     L_sn_130
                             SET_VAR     S_143
                             jmp     L_sn_130
 
@@ -2101,7 +2085,7 @@ L_sn_130:                   GET_VAR     S_145
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_131
+                            FAIL_BR     L_sn_131
                             SET_VAR     S_145
                             jmp     L_sn_131
 
@@ -2136,15 +2120,7 @@ L_sn_131:                   GET_VAR     S_146
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
                             STORE_ARG32 0
-                            sub     rsp, 32
-                            LOAD_STR    S_124
-                            STORE_ARG32 0
-                            LOAD_STR    S_122
-                            STORE_ARG32 16
-                            APPLY_FN_N  S_460, 2
-                            add     rsp, 32
-                            mov     [rbp-32], rax
-                            mov     [rbp-24], rdx
+                            ALT2    S_460, S_124, S_122
                             STORE_ARG32 16
                             APPLY_FN_N  S_459, 2
                             add     rsp, 32
@@ -2216,15 +2192,7 @@ L_sn_131:                   GET_VAR     S_146
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
                             STORE_ARG32 0
-                            sub     rsp, 32
-                            LOAD_STR    S_124
-                            STORE_ARG32 0
-                            LOAD_STR    S_122
-                            STORE_ARG32 16
-                            APPLY_FN_N  S_460, 2
-                            add     rsp, 32
-                            mov     [rbp-32], rax
-                            mov     [rbp-24], rdx
+                            ALT2    S_460, S_124, S_122
                             STORE_ARG32 16
                             APPLY_FN_N  S_459, 2
                             add     rsp, 32
@@ -2274,7 +2242,7 @@ L_sn_131:                   GET_VAR     S_146
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_132
+                            FAIL_BR     L_sn_132
                             SET_VAR     S_146
                             jmp     L_sn_132
 
@@ -2314,7 +2282,7 @@ L_sn_132:                   GET_VAR     S_133
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_133
+                            FAIL_BR     L_sn_133
                             SET_VAR     S_133
                             jmp     L_sn_133
 
@@ -2331,15 +2299,7 @@ L_sn_134:                   GET_VAR     S_137
 ; ==============================================================================
 L_sn_135:                   GET_VAR     S_141
                             sub     rsp, 32
-                            sub     rsp, 32
-                            LOAD_STR    S_153
-                            STORE_ARG32 0
-                            LOAD_STR    S_152
-                            STORE_ARG32 16
-                            APPLY_FN_N  S_459, 2
-                            add     rsp, 32
-                            mov     [rbp-32], rax
-                            mov     [rbp-24], rdx
+                            CONC2   S_459, S_153, S_152
                             STORE_ARG32 0
                             LOAD_STR    S_151
                             STORE_ARG32 16
@@ -2347,22 +2307,14 @@ L_sn_135:                   GET_VAR     S_141
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_136
+                            FAIL_BR     L_sn_136
                             SET_VAR     S_141
                             jmp     L_sn_136
 
 ; ==============================================================================
 L_sn_136:                   GET_VAR     S_144
                             sub     rsp, 32
-                            sub     rsp, 32
-                            LOAD_STR    S_156
-                            STORE_ARG32 0
-                            LOAD_STR    S_155
-                            STORE_ARG32 16
-                            APPLY_FN_N  S_459, 2
-                            add     rsp, 32
-                            mov     [rbp-32], rax
-                            mov     [rbp-24], rdx
+                            CONC2   S_459, S_156, S_155
                             STORE_ARG32 0
                             LOAD_STR    S_154
                             STORE_ARG32 16
@@ -2370,7 +2322,7 @@ L_sn_136:                   GET_VAR     S_144
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_137
+                            FAIL_BR     L_sn_137
                             SET_VAR     S_144
                             jmp     L_sn_137
 
@@ -2383,15 +2335,7 @@ L_sn_137:                   GET_VAR     S_134
                             sub     rsp, 32
                             sub     rsp, 32
                             sub     rsp, 32
-                            sub     rsp, 32
-                            LOAD_STR    S_165
-                            STORE_ARG32 0
-                            LOAD_STR    S_164
-                            STORE_ARG32 16
-                            APPLY_FN_N  S_459, 2
-                            add     rsp, 32
-                            mov     [rbp-32], rax
-                            mov     [rbp-24], rdx
+                            CONC2   S_459, S_165, S_164
                             STORE_ARG32 0
                             LOAD_STR    S_163
                             STORE_ARG32 16
@@ -2441,7 +2385,7 @@ L_sn_137:                   GET_VAR     S_134
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_138
+                            FAIL_BR     L_sn_138
                             SET_VAR     S_134
                             jmp     L_sn_138
 
@@ -2548,7 +2492,7 @@ L_sn_162:                   GET_VAR     S_185
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_163
+                            FAIL_BR     L_sn_163
                             SET_VAR     S_185
                             jmp     L_sn_163
 
@@ -2608,7 +2552,7 @@ L_sn_163:                   GET_VAR     S_189
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_164
+                            FAIL_BR     L_sn_164
                             SET_VAR     S_189
                             jmp     L_sn_164
 
@@ -2616,7 +2560,7 @@ L_sn_163:                   GET_VAR     S_189
 L_sn_164:                   GET_VAR     S_191
                             mov     qword [rbp-32], 1
                             mov     qword [rbp-24], 0
-                            IS_FAIL_BRANCH  L_sn_165
+                            FAIL_BR     L_sn_165
                             SET_VAR     S_191
                             jmp     L_sn_165
 
@@ -2667,7 +2611,7 @@ L_sn_165:                   GET_VAR     S_193
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_166
+                            FAIL_BR     L_sn_166
                             SET_VAR     S_193
                             jmp     L_sn_166
 
@@ -2718,7 +2662,7 @@ L_sn_166:                   GET_VAR     S_195
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_167
+                            FAIL_BR     L_sn_167
                             SET_VAR     S_195
                             jmp     L_sn_167
 
@@ -2769,7 +2713,7 @@ L_sn_167:                   GET_VAR     S_197
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_168
+                            FAIL_BR     L_sn_168
                             SET_VAR     S_197
                             jmp     L_sn_168
 
@@ -2804,7 +2748,7 @@ L_sn_168:                   GET_VAR     S_199
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_169
+                            FAIL_BR     L_sn_169
                             SET_VAR     S_199
                             jmp     L_sn_169
 
@@ -2855,7 +2799,7 @@ L_sn_169:                   GET_VAR     S_201
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_170
+                            FAIL_BR     L_sn_170
                             SET_VAR     S_201
                             jmp     L_sn_170
 
@@ -2890,7 +2834,7 @@ L_sn_170:                   GET_VAR     S_202
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_171
+                            FAIL_BR     L_sn_171
                             SET_VAR     S_202
                             jmp     L_sn_171
 
@@ -2941,7 +2885,7 @@ L_sn_171:                   GET_VAR     S_204
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_172
+                            FAIL_BR     L_sn_172
                             SET_VAR     S_204
                             jmp     L_sn_172
 
@@ -2992,7 +2936,7 @@ L_sn_172:                   GET_VAR     S_205
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_173
+                            FAIL_BR     L_sn_173
                             SET_VAR     S_205
                             jmp     L_sn_173
 
@@ -3070,7 +3014,7 @@ L_sn_173:                   GET_VAR     S_207
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_174
+                            FAIL_BR     L_sn_174
                             SET_VAR     S_207
                             jmp     L_sn_174
 
@@ -3121,7 +3065,7 @@ L_sn_174:                   GET_VAR     S_210
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_175
+                            FAIL_BR     L_sn_175
                             SET_VAR     S_210
                             jmp     L_sn_175
 
@@ -3172,7 +3116,7 @@ L_sn_175:                   GET_VAR     S_212
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_176
+                            FAIL_BR     L_sn_176
                             SET_VAR     S_212
                             jmp     L_sn_176
 
@@ -3223,7 +3167,7 @@ L_sn_176:                   GET_VAR     S_214
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_177
+                            FAIL_BR     L_sn_177
                             SET_VAR     S_214
                             jmp     L_sn_177
 
@@ -3274,7 +3218,7 @@ L_sn_177:                   GET_VAR     S_216
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_178
+                            FAIL_BR     L_sn_178
                             SET_VAR     S_216
                             jmp     L_sn_178
 
@@ -3343,7 +3287,7 @@ L_sn_178:                   GET_VAR     S_218
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_179
+                            FAIL_BR     L_sn_179
                             SET_VAR     S_218
                             jmp     L_sn_179
 
@@ -3421,7 +3365,7 @@ L_sn_179:                   GET_VAR     S_220
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_180
+                            FAIL_BR     L_sn_180
                             SET_VAR     S_220
                             jmp     L_sn_180
 
@@ -3472,7 +3416,7 @@ L_sn_180:                   GET_VAR     S_223
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_181
+                            FAIL_BR     L_sn_181
                             SET_VAR     S_223
                             jmp     L_sn_181
 
@@ -3888,7 +3832,7 @@ L_sn_181:                   GET_VAR     S_225
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_182
+                            FAIL_BR     L_sn_182
                             SET_VAR     S_225
                             jmp     L_sn_182
 
@@ -3948,7 +3892,7 @@ L_sn_182:                   GET_VAR     S_226
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_183
+                            FAIL_BR     L_sn_183
                             SET_VAR     S_226
                             jmp     L_sn_183
 
@@ -4017,7 +3961,7 @@ L_sn_183:                   GET_VAR     S_230
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_184
+                            FAIL_BR     L_sn_184
                             SET_VAR     S_230
                             jmp     L_sn_184
 
@@ -4165,7 +4109,7 @@ L_sn_184:                   GET_VAR     S_231
                             APPLY_FN_N  S_120, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH  L_sn_185
+                            FAIL_BR     L_sn_185
                             SET_VAR     S_231
                             jmp     L_sn_185
 
@@ -4173,7 +4117,7 @@ L_sn_184:                   GET_VAR     S_231
 L_sn_185:                   GET_VAR     S_235
                             mov     qword [rbp-32], 1
                             mov     qword [rbp-24], 0
-                            IS_FAIL_BRANCH  L_sn_186
+                            FAIL_BR     L_sn_186
                             SET_VAR     S_235
                             jmp     L_sn_186
 
@@ -4181,7 +4125,7 @@ L_sn_185:                   GET_VAR     S_235
 L_sn_186:                   GET_VAR     S_240
                             mov     qword [rbp-32], 1
                             mov     qword [rbp-24], 0
-                            IS_FAIL_BRANCH  L_sn_187
+                            FAIL_BR     L_sn_187
                             SET_VAR     S_240
                             jmp     L_sn_187
 
@@ -4198,7 +4142,7 @@ L_sn_187:                   GET_VAR     S_238
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_188
+                            FAIL_BR     L_sn_188
                             SET_VAR     S_238
                             jmp     L_sn_188
 
@@ -4233,7 +4177,7 @@ L_sn_188:                   GET_VAR     S_243
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_189
+                            FAIL_BR     L_sn_189
                             SET_VAR     S_243
                             jmp     L_sn_189
 
@@ -4367,7 +4311,7 @@ L_sn_189:                   GET_VAR     S_247
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_190
+                            FAIL_BR     L_sn_190
                             SET_VAR     S_247
                             jmp     L_sn_190
 
@@ -4398,7 +4342,7 @@ L_sn_190:                   GET_VAR     S_250
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_191
+                            FAIL_BR     L_sn_191
                             SET_VAR     S_250
                             jmp     L_sn_191
 
@@ -4421,7 +4365,7 @@ L_sn_191:                   GET_VAR     S_252
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_192
+                            FAIL_BR     L_sn_192
                             SET_VAR     S_252
                             jmp     L_sn_192
 
@@ -4429,7 +4373,7 @@ L_sn_191:                   GET_VAR     S_252
 L_sn_192:                   GET_VAR     S_253
                             mov     qword [rbp-32], 1
                             mov     qword [rbp-24], 0
-                            IS_FAIL_BRANCH  L_sn_193
+                            FAIL_BR     L_sn_193
                             SET_VAR     S_253
                             jmp     L_sn_193
 
@@ -4731,7 +4675,7 @@ L_sn_193:                   GET_VAR     S_254
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_194
+                            FAIL_BR     L_sn_194
                             SET_VAR     S_254
                             jmp     L_sn_194
 
@@ -4764,7 +4708,7 @@ L_sn_194:                   GET_VAR     S_255
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_195
+                            FAIL_BR     L_sn_195
                             SET_VAR     S_255
                             jmp     L_sn_195
 
@@ -4880,7 +4824,7 @@ L_sn_195:                   GET_VAR     S_256
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_196
+                            FAIL_BR     L_sn_196
                             SET_VAR     S_256
                             jmp     L_sn_196
 
@@ -4920,7 +4864,7 @@ L_sn_196:                   GET_VAR     S_260
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_197
+                            FAIL_BR     L_sn_197
                             SET_VAR     S_260
                             jmp     L_sn_197
 
@@ -5057,7 +5001,7 @@ L_sn_197:                   GET_VAR     S_264
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_198
+                            FAIL_BR     L_sn_198
                             SET_VAR     S_264
                             jmp     L_sn_198
 
@@ -5080,7 +5024,7 @@ L_pp_29:                    sub     rsp, 16
                             APPLY_FN_N  S_24, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_200
+                            FAIL_BR16   L_sf_200
                             jmp     L_sn_200
 L_sf_200:                   GOTO_ALWAYS  L_SNO_END     ; RETURN
 
@@ -5095,7 +5039,7 @@ L_sn_200:                   GET_VAR     S_271
                             APPLY_FN_N  S_271, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH  L_sn_201
+                            FAIL_BR     L_sn_201
                             SET_VAR     S_271
                             jmp     L_sn_201
 
@@ -5110,7 +5054,7 @@ L_sn_201:                   GET_VAR     S_272
                             APPLY_FN_N  S_272, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH  L_sn_202
+                            FAIL_BR     L_sn_202
                             SET_VAR     S_272
                             jmp     L_sn_202
 
@@ -5125,7 +5069,7 @@ L_sn_202:                   GET_VAR     S_273
                             APPLY_FN_N  S_273, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH  L_sn_203
+                            FAIL_BR     L_sn_203
                             SET_VAR     S_273
                             jmp     L_sn_203
 
@@ -5140,7 +5084,7 @@ L_sn_203:                   GET_VAR     S_274
                             APPLY_FN_N  S_274, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH  L_sn_204
+                            FAIL_BR     L_sn_204
                             SET_VAR     S_274
                             jmp     L_sn_204
 
@@ -5246,7 +5190,7 @@ L_sn_204:                   GET_VAR     S_51
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_205
+                            FAIL_BR     L_sn_205
                             SET_OUTPUT
                             jmp     L_sn_205
 
@@ -5257,7 +5201,7 @@ L_sn_205:                   sub     rsp, 16
                             APPLY_FN_N  S_24, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_206
+                            FAIL_BR16   L_sf_206
                             jmp     L_COMPUTED_pp_t_30
 L_sf_206:                   GOTO_ALWAYS  L_SNO_END     ; RETURN
 
@@ -5266,7 +5210,7 @@ L_sn_206:
 L_pp_Parse_31:              GET_VAR     S_282
                             mov     qword [rbp-32], 1
                             mov     qword [rbp-24], 0
-                            IS_FAIL_BRANCH  L_sn_207
+                            FAIL_BR     L_sn_207
                             SET_VAR     S_282
                             jmp     L_pp_0_32
 
@@ -5302,7 +5246,7 @@ L_pp_1_33:                  GET_VAR     S_284
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sf_209
+                            FAIL_BR     L_sf_209
                             SET_VAR     S_284
                             jmp     L_sn_209
 L_sf_209:                   GOTO_ALWAYS  L_SNO_END     ; RETURN
@@ -5329,7 +5273,7 @@ L_pp_BuiltinVar_34:         sub     rsp, 16
                             APPLY_FN_N  S_287, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_211
+                            FAIL_BR16   L_sf_211
                             GOTO_ALWAYS  L_SNO_END     ; RETURN
 L_sf_211:                   jmp     L_error_35
 
@@ -5346,7 +5290,7 @@ L_pp_Function_36:           sub     rsp, 16
                             APPLY_FN_N  S_287, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_212
+                            FAIL_BR16   L_sf_212
                             GOTO_ALWAYS  L_SNO_END     ; RETURN
 L_sf_212:                   jmp     L_error_35
 
@@ -5363,7 +5307,7 @@ L_pp_Id_37:                 sub     rsp, 16
                             APPLY_FN_N  S_287, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_213
+                            FAIL_BR16   L_sf_213
                             GOTO_ALWAYS  L_SNO_END     ; RETURN
 L_sf_213:                   jmp     L_error_35
 
@@ -5380,7 +5324,7 @@ L_pp_Integer_38:            sub     rsp, 16
                             APPLY_FN_N  S_287, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_214
+                            FAIL_BR16   L_sf_214
                             GOTO_ALWAYS  L_SNO_END     ; RETURN
 L_sf_214:                   jmp     L_error_35
 
@@ -5397,7 +5341,7 @@ L_pp_Label_39:              sub     rsp, 16
                             APPLY_FN_N  S_287, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_215
+                            FAIL_BR16   L_sf_215
                             GOTO_ALWAYS  L_SNO_END     ; RETURN
 L_sf_215:                   jmp     L_error_35
 
@@ -5414,7 +5358,7 @@ L_pp_ProtKwd_40:            sub     rsp, 16
                             APPLY_FN_N  S_287, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_216
+                            FAIL_BR16   L_sf_216
                             GOTO_ALWAYS  L_SNO_END     ; RETURN
 L_sf_216:                   jmp     L_error_35
 
@@ -5431,7 +5375,7 @@ L_pp_Real_41:               sub     rsp, 16
                             APPLY_FN_N  S_287, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_217
+                            FAIL_BR16   L_sf_217
                             GOTO_ALWAYS  L_SNO_END     ; RETURN
 L_sf_217:                   jmp     L_error_35
 
@@ -5448,7 +5392,7 @@ L_pp_SpecialNm_42:          sub     rsp, 16
                             APPLY_FN_N  S_287, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_218
+                            FAIL_BR16   L_sf_218
                             GOTO_ALWAYS  L_SNO_END     ; RETURN
 L_sf_218:                   jmp     L_error_35
 
@@ -5465,7 +5409,7 @@ L_pp_String_43:             sub     rsp, 16
                             APPLY_FN_N  S_287, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_219
+                            FAIL_BR16   L_sf_219
                             GOTO_ALWAYS  L_SNO_END     ; RETURN
 L_sf_219:                   jmp     L_error_35
 
@@ -5482,7 +5426,7 @@ L_pp_UnprotKwd_44:          sub     rsp, 16
                             APPLY_FN_N  S_287, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_220
+                            FAIL_BR16   L_sf_220
                             GOTO_ALWAYS  L_SNO_END     ; RETURN
 L_sf_220:                   jmp     L_error_35
 
@@ -5499,7 +5443,7 @@ L_pp_45:                    sub     rsp, 16
                             APPLY_FN_N  S_287, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_221
+                            FAIL_BR16   L_sf_221
                             GOTO_ALWAYS  L_SNO_END     ; RETURN
 L_sf_221:                   jmp     L_error_35
 
@@ -5516,7 +5460,7 @@ L_pp_46:                    sub     rsp, 16
                             APPLY_FN_N  S_287, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_222
+                            FAIL_BR16   L_sf_222
                             GOTO_ALWAYS  L_SNO_END     ; RETURN
 L_sf_222:                   jmp     L_error_35
 
@@ -5533,7 +5477,7 @@ L_pp_S_47:                  sub     rsp, 16
                             APPLY_FN_N  S_287, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_223
+                            FAIL_BR16   L_sf_223
                             GOTO_ALWAYS  L_SNO_END     ; RETURN
 L_sf_223:                   jmp     L_error_35
 
@@ -5550,7 +5494,7 @@ L_pp_S_48:                  sub     rsp, 16
                             APPLY_FN_N  S_287, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_224
+                            FAIL_BR16   L_sf_224
                             GOTO_ALWAYS  L_SNO_END     ; RETURN
 L_sf_224:                   jmp     L_error_35
 
@@ -5567,7 +5511,7 @@ L_pp_F_49:                  sub     rsp, 16
                             APPLY_FN_N  S_287, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_225
+                            FAIL_BR16   L_sf_225
                             GOTO_ALWAYS  L_SNO_END     ; RETURN
 L_sf_225:                   jmp     L_error_35
 
@@ -5584,7 +5528,7 @@ L_pp_F_50:                  sub     rsp, 16
                             APPLY_FN_N  S_287, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_226
+                            FAIL_BR16   L_sf_226
                             GOTO_ALWAYS  L_SNO_END     ; RETURN
 L_sf_226:                   jmp     L_error_35
 
@@ -5603,7 +5547,7 @@ L_ppUnOp_51:                sub     rsp, 16
                             APPLY_FN_N  S_287, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sn_227
+                            FAIL_BR16   L_sn_227
                             GOTO_ALWAYS  L_SNO_END     ; RETURN
 
 ; ==============================================================================
@@ -5638,7 +5582,7 @@ L_ppBinOp_52:               sub     rsp, 16
                             APPLY_FN_N  S_287, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sn_230
+                            FAIL_BR16   L_sn_230
                             GOTO_ALWAYS  L_SNO_END     ; RETURN
 
 ; ==============================================================================
@@ -5698,7 +5642,7 @@ L_pp_53:                    sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sn_238
+                            FAIL_BR16   L_sn_238
                             jmp     L_ppUnOp_51
 
 ;  pp_# ========================================================================
@@ -5713,7 +5657,7 @@ L_pp_54:                    sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sn_239
+                            FAIL_BR16   L_sn_239
                             jmp     L_ppUnOp_51
 
 ; ==============================================================================
@@ -5727,7 +5671,7 @@ L_sn_239:                   sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_240
+                            FAIL_BR16   L_sf_240
                             jmp     L_ppBinOp_52
 L_sf_240:                   jmp     L_error_35
 
@@ -5743,7 +5687,7 @@ L_pp_55:                    sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sn_241
+                            FAIL_BR16   L_sn_241
                             jmp     L_ppUnOp_51
 
 ; ==============================================================================
@@ -5757,7 +5701,7 @@ L_sn_241:                   sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_242
+                            FAIL_BR16   L_sf_242
                             jmp     L_ppBinOp_52
 L_sf_242:                   jmp     L_error_35
 
@@ -5773,7 +5717,7 @@ L_pp_56:                    sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sn_243
+                            FAIL_BR16   L_sn_243
                             jmp     L_ppUnOp_51
 
 ; ==============================================================================
@@ -5787,7 +5731,7 @@ L_sn_243:                   sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_244
+                            FAIL_BR16   L_sf_244
                             jmp     L_ppBinOp_52
 L_sf_244:                   jmp     L_error_35
 
@@ -5803,7 +5747,7 @@ L_pp_57:                    sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sn_245
+                            FAIL_BR16   L_sn_245
                             jmp     L_ppUnOp_51
 
 ; ==============================================================================
@@ -5817,7 +5761,7 @@ L_sn_245:                   sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_246
+                            FAIL_BR16   L_sf_246
                             jmp     L_ppBinOp_52
 L_sf_246:                   jmp     L_error_35
 
@@ -5833,7 +5777,7 @@ L_pp_58:                    sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sn_247
+                            FAIL_BR16   L_sn_247
                             jmp     L_ppUnOp_51
 
 ; ==============================================================================
@@ -5847,7 +5791,7 @@ L_sn_247:                   sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_248
+                            FAIL_BR16   L_sf_248
                             jmp     L_ppBinOp_52
 L_sf_248:                   jmp     L_error_35
 
@@ -5863,7 +5807,7 @@ L_pp_59:                    sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sn_249
+                            FAIL_BR16   L_sn_249
                             jmp     L_ppUnOp_51
 
 ; ==============================================================================
@@ -5877,7 +5821,7 @@ L_sn_249:                   sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_250
+                            FAIL_BR16   L_sf_250
                             jmp     L_ppBinOp_52
 L_sf_250:                   jmp     L_error_35
 
@@ -5893,7 +5837,7 @@ L_pp_60:                    sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sn_251
+                            FAIL_BR16   L_sn_251
                             jmp     L_ppUnOp_51
 
 ; ==============================================================================
@@ -5907,7 +5851,7 @@ L_sn_251:                   sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_252
+                            FAIL_BR16   L_sf_252
                             jmp     L_ppBinOp_52
 L_sf_252:                   jmp     L_error_35
 
@@ -5923,7 +5867,7 @@ L_pp_61:                    sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sn_253
+                            FAIL_BR16   L_sn_253
                             jmp     L_ppUnOp_51
 
 ; ==============================================================================
@@ -5937,7 +5881,7 @@ L_sn_253:                   sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_254
+                            FAIL_BR16   L_sf_254
                             jmp     L_ppBinOp_52
 L_sf_254:                   jmp     L_error_35
 
@@ -5953,7 +5897,7 @@ L_pp_62:                    sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sn_255
+                            FAIL_BR16   L_sn_255
                             jmp     L_ppUnOp_51
 
 ; ==============================================================================
@@ -5967,7 +5911,7 @@ L_sn_255:                   sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_256
+                            FAIL_BR16   L_sf_256
                             jmp     L_ppBinOp_52
 L_sf_256:                   jmp     L_error_35
 
@@ -5983,7 +5927,7 @@ L_pp_63:                    sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sn_257
+                            FAIL_BR16   L_sn_257
                             jmp     L_ppUnOp_51
 
 ; ==============================================================================
@@ -5997,7 +5941,7 @@ L_sn_257:                   sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_258
+                            FAIL_BR16   L_sf_258
                             jmp     L_ppBinOp_52
 L_sf_258:                   jmp     L_error_35
 
@@ -6013,7 +5957,7 @@ L_pp_64:                    sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sn_259
+                            FAIL_BR16   L_sn_259
                             jmp     L_ppUnOp_51
 
 ; ==============================================================================
@@ -6027,7 +5971,7 @@ L_sn_259:                   sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_260
+                            FAIL_BR16   L_sf_260
                             jmp     L_ppBinOp_52
 L_sf_260:                   jmp     L_error_35
 
@@ -6043,7 +5987,7 @@ L_pp_65:                    sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sn_261
+                            FAIL_BR16   L_sn_261
                             jmp     L_ppUnOp_51
 
 ; ==============================================================================
@@ -6057,7 +6001,7 @@ L_sn_261:                   sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_262
+                            FAIL_BR16   L_sf_262
                             jmp     L_ppBinOp_52
 L_sf_262:                   jmp     L_error_35
 
@@ -6073,7 +6017,7 @@ L_pp_66:                    sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_263
+                            FAIL_BR16   L_sf_263
                             jmp     L_ppBinOp_52
 L_sf_263:                   jmp     L_error_35
 
@@ -6089,7 +6033,7 @@ L_pp_67:                    sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sn_264
+                            FAIL_BR16   L_sn_264
                             jmp     L_ppUnOp_51
 
 ; ==============================================================================
@@ -6103,7 +6047,7 @@ L_sn_264:                   sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_265
+                            FAIL_BR16   L_sf_265
                             jmp     L_ppBinOp_52
 L_sf_265:                   jmp     L_error_35
 
@@ -6206,7 +6150,7 @@ L_sn_272:                   sub     rsp, 16
 L_sn_273:                   GET_VAR     S_282
                             mov     qword [rbp-32], 1
                             mov     qword [rbp-24], 0
-                            IS_FAIL_BRANCH  L_sn_274
+                            FAIL_BR     L_sn_274
                             SET_VAR     S_282
                             jmp     L_sn_274
 
@@ -6219,7 +6163,7 @@ L_sn_274:                   GET_VAR     S_331
                             APPLY_FN_N  S_288, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH  L_sn_275
+                            FAIL_BR     L_sn_275
                             SET_VAR     S_331
                             jmp     L_sn_275
 
@@ -6227,7 +6171,7 @@ L_sn_274:                   GET_VAR     S_331
 L_sn_275:                   GET_VAR     S_332
                             mov     qword [rbp-32], 1
                             mov     qword [rbp-24], 0
-                            IS_FAIL_BRANCH  L_sn_276
+                            FAIL_BR     L_sn_276
                             SET_VAR     S_332
                             jmp     L_sn_276
 
@@ -6235,7 +6179,7 @@ L_sn_275:                   GET_VAR     S_332
 L_sn_276:                   GET_VAR     S_333
                             mov     qword [rbp-32], 1
                             mov     qword [rbp-24], 0
-                            IS_FAIL_BRANCH  L_sn_277
+                            FAIL_BR     L_sn_277
                             SET_VAR     S_333
                             jmp     L_sn_277
 
@@ -6248,7 +6192,7 @@ L_sn_277:                   GET_VAR     S_334
                             APPLY_FN_N  S_272, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH  L_sn_278
+                            FAIL_BR     L_sn_278
                             SET_VAR     S_334
                             jmp     L_sn_278
 
@@ -6256,7 +6200,7 @@ L_sn_277:                   GET_VAR     S_334
 L_sn_278:                   GET_VAR     S_335
                             mov     qword [rbp-32], 1
                             mov     qword [rbp-24], 0
-                            IS_FAIL_BRANCH  L_sn_279
+                            FAIL_BR     L_sn_279
                             SET_VAR     S_335
                             jmp     L_sn_279
 
@@ -6264,7 +6208,7 @@ L_sn_278:                   GET_VAR     S_335
 L_sn_279:                   GET_VAR     S_336
                             mov     qword [rbp-32], 1
                             mov     qword [rbp-24], 0
-                            IS_FAIL_BRANCH  L_sn_280
+                            FAIL_BR     L_sn_280
                             SET_VAR     S_336
                             jmp     L_sn_280
 
@@ -6272,7 +6216,7 @@ L_sn_279:                   GET_VAR     S_336
 L_sn_280:                   GET_VAR     S_337
                             mov     qword [rbp-32], 1
                             mov     qword [rbp-24], 0
-                            IS_FAIL_BRANCH  L_sn_281
+                            FAIL_BR     L_sn_281
                             SET_VAR     S_337
                             jmp     L_sn_281
 
@@ -6296,7 +6240,7 @@ L_sn_282:                   sub     rsp, 16
                             APPLY_FN_N  S_24, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_283
+                            FAIL_BR16   L_sf_283
                             jmp     L_sn_283
 L_sf_283:                   jmp     L_pp_Stmt7_71
 
@@ -6388,7 +6332,7 @@ L_sn_286:                   GET_VAR     S_282
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_287
+                            FAIL_BR     L_sn_287
                             SET_VAR     S_282
                             jmp     L_sn_287
 
@@ -6412,7 +6356,7 @@ L_sn_288:                   sub     rsp, 16
                             APPLY_FN_N  S_24, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_289
+                            FAIL_BR16   L_sf_289
                             jmp     L_sn_289
 L_sf_289:                   jmp     L_pp_Stmt5_72
 
@@ -6483,7 +6427,7 @@ L_sn_292:                   GET_VAR     S_282
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_293
+                            FAIL_BR     L_sn_293
                             SET_VAR     S_282
                             jmp     L_sn_293
 
@@ -6502,7 +6446,7 @@ L_sn_294:                   sub     rsp, 16
                             APPLY_FN_N  S_24, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_295
+                            FAIL_BR16   L_sf_295
                             jmp     L_sn_295
 L_sf_295:                   jmp     L_pp_Stmt7_71
 
@@ -6528,7 +6472,7 @@ L_sn_296:                   sub     rsp, 16
                             APPLY_FN_N  S_24, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_297
+                            FAIL_BR16   L_sf_297
                             jmp     L_sn_297
 L_sf_297:                   jmp     L_pp_Stmt7_71
 
@@ -6559,7 +6503,7 @@ L_pp_Stmt5_72:              sub     rsp, 16
                             APPLY_FN_N  S_24, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_300
+                            FAIL_BR16   L_sf_300
                             jmp     L_sn_300
 L_sf_300:                   jmp     L_pp_Stmt7_71
 
@@ -6611,7 +6555,7 @@ L_sn_304:                   sub     rsp, 16
                             APPLY_FN_N  S_24, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_305
+                            FAIL_BR16   L_sf_305
                             jmp     L_sn_305
 L_sf_305:                   jmp     L_pp_Stmt7_71
 
@@ -6666,7 +6610,7 @@ L_sn_308:                   GET_VAR     S_282
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_309
+                            FAIL_BR     L_sn_309
                             SET_VAR     S_282
                             jmp     L_sn_309
 
@@ -6692,7 +6636,7 @@ L_pp_Stmt7_71:              sub     rsp, 16
                             APPLY_FN_N  S_24, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_311
+                            FAIL_BR16   L_sf_311
                             jmp     L_sn_311
 L_sf_311:                   jmp     L_pp_Stmt9_73
 
@@ -6757,7 +6701,7 @@ L_sn_317:                   sub     rsp, 16
                             APPLY_FN_N  S_24, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_318
+                            FAIL_BR16   L_sf_318
                             jmp     L_sn_318
 L_sf_318:                   jmp     L_pp_Stmt9_73
 
@@ -6795,7 +6739,7 @@ L_pp_ExprList_74:           sub     rsp, 16
                             APPLY_FN_N  S_287, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sn_321
+                            FAIL_BR16   L_sn_321
                             GOTO_ALWAYS  L_SNO_END     ; RETURN
 
 ; ==============================================================================
@@ -6837,7 +6781,7 @@ L_pp_ExprList0_75:          GET_VAR     S_284
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sf_324
+                            FAIL_BR     L_sf_324
                             SET_VAR     S_284
                             jmp     L_sn_324
 L_sf_324:                   GOTO_ALWAYS  L_SNO_END     ; RETURN
@@ -6896,7 +6840,7 @@ L_pp_76:                    sub     rsp, 16
                             APPLY_FN_N  S_287, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sn_331
+                            FAIL_BR16   L_sn_331
                             GOTO_ALWAYS  L_SNO_END     ; RETURN
 
 ; ==============================================================================
@@ -6956,7 +6900,7 @@ L_pp_0_77:                  GET_VAR     S_284
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sf_337
+                            FAIL_BR     L_sf_337
                             SET_VAR     S_284
                             jmp     L_sn_337
 L_sf_337:                   jmp     L_COMPUTED_pp_1_78
@@ -7036,7 +6980,7 @@ L_pp_81:                    sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sn_347
+                            FAIL_BR16   L_sn_347
                             jmp     L_ppUnOp_51
 
 ; ==============================================================================
@@ -7053,7 +6997,7 @@ L_sn_347:                   sub     rsp, 16
                             APPLY_FN_N  S_287, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sn_348
+                            FAIL_BR16   L_sn_348
                             GOTO_ALWAYS  L_SNO_END     ; RETURN
 
 ; ==============================================================================
@@ -7095,7 +7039,7 @@ L_pp_0_82:                  GET_VAR     S_284
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sf_351
+                            FAIL_BR     L_sf_351
                             SET_VAR     S_284
                             jmp     L_sn_351
 L_sf_351:                   GOTO_ALWAYS  L_SNO_END     ; RETURN
@@ -7154,7 +7098,7 @@ L_pp_84:                    sub     rsp, 16
                             APPLY_FN_N  S_287, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sn_358
+                            FAIL_BR16   L_sn_358
                             GOTO_ALWAYS  L_SNO_END     ; RETURN
 
 ; ==============================================================================
@@ -7188,7 +7132,7 @@ L_pp_0_85:                  GET_VAR     S_284
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sf_360
+                            FAIL_BR     L_sf_360
                             SET_VAR     S_284
                             jmp     L_sn_360
 L_sf_360:                   GOTO_ALWAYS  L_SNO_END     ; RETURN
@@ -7240,7 +7184,7 @@ L_pp_87:                    sub     rsp, 16
                             APPLY_FN_N  S_287, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sn_363
+                            FAIL_BR16   L_sn_363
                             GOTO_ALWAYS  L_SNO_END     ; RETURN
 
 ; ==============================================================================
@@ -7282,7 +7226,7 @@ L_pp_0_88:                  GET_VAR     S_284
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sf_366
+                            FAIL_BR     L_sf_366
                             SET_VAR     S_284
                             jmp     L_sn_366
 L_sf_366:                   GOTO_ALWAYS  L_SNO_END     ; RETURN
@@ -7374,7 +7318,7 @@ L_pp_90:                    sub     rsp, 16
                             APPLY_FN_N  S_287, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sn_375
+                            FAIL_BR16   L_sn_375
                             GOTO_ALWAYS  L_SNO_END     ; RETURN
 
 ; ==============================================================================
@@ -7441,7 +7385,7 @@ L_pp_Call_91:               sub     rsp, 16
                             APPLY_FN_N  S_287, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sn_383
+                            FAIL_BR16   L_sn_383
                             GOTO_ALWAYS  L_SNO_END     ; RETURN
 
 ; ==============================================================================
@@ -7532,7 +7476,7 @@ L_ss_93:                    sub     rsp, 16
                             APPLY_FN_N  S_24, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_394
+                            FAIL_BR16   L_sf_394
                             jmp     L_sn_394
 L_sf_394:                   GOTO_ALWAYS  L_SNO_END     ; RETURN
 
@@ -7555,7 +7499,7 @@ L_sn_394:                   GET_VAR     S_357
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_395
+                            FAIL_BR     L_sn_395
                             SET_VAR     S_357
                             jmp     L_sn_395
 
@@ -7570,7 +7514,7 @@ L_sn_395:                   sub     rsp, 32
                             APPLY_FN_N  S_279, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_396
+                            FAIL_BR16   L_sf_396
                             jmp     L_sn_396
 L_sf_396:                   GOTO_ALWAYS  L_SNO_END     ; FRETURN
 
@@ -7585,7 +7529,7 @@ L_sn_396:                   GET_VAR     S_271
                             APPLY_FN_N  S_271, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH  L_sn_397
+                            FAIL_BR     L_sn_397
                             SET_VAR     S_271
                             jmp     L_sn_397
 
@@ -7600,7 +7544,7 @@ L_sn_397:                   GET_VAR     S_272
                             APPLY_FN_N  S_272, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH  L_sn_398
+                            FAIL_BR     L_sn_398
                             SET_VAR     S_272
                             jmp     L_sn_398
 
@@ -7615,7 +7559,7 @@ L_sn_398:                   GET_VAR     S_273
                             APPLY_FN_N  S_273, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH  L_sn_399
+                            FAIL_BR     L_sn_399
                             SET_VAR     S_273
                             jmp     L_sn_399
 
@@ -7630,7 +7574,7 @@ L_sn_399:                   GET_VAR     S_274
                             APPLY_FN_N  S_274, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH  L_sn_400
+                            FAIL_BR     L_sn_400
                             SET_VAR     S_274
                             jmp     L_sn_400
 
@@ -7736,7 +7680,7 @@ L_sn_400:                   GET_VAR     S_51
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_401
+                            FAIL_BR     L_sn_401
                             SET_OUTPUT
                             jmp     L_sn_401
 
@@ -7747,7 +7691,7 @@ L_sn_401:                   sub     rsp, 16
                             APPLY_FN_N  S_24, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_402
+                            FAIL_BR16   L_sf_402
                             jmp     L_COMPUTED_ss_t_94
 L_sf_402:                   GOTO_ALWAYS  L_SNO_END     ; RETURN
 
@@ -7763,7 +7707,7 @@ L_ss_BuiltinVar_95:         GET_VAR     S_288
                             APPLY_FN_N  S_148, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH  L_sn_403
+                            FAIL_BR     L_sn_403
                             SET_VAR     S_288
                             jmp     L_ss_atomic_96
 
@@ -7779,7 +7723,7 @@ L_ss_Function_97:           GET_VAR     S_288
                             APPLY_FN_N  S_148, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH  L_sn_404
+                            FAIL_BR     L_sn_404
                             SET_VAR     S_288
                             jmp     L_ss_atomic_96
 
@@ -7790,7 +7734,7 @@ L_ss_Id_98:                 GET_VAR     S_288
                             call    stmt_get
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_405
+                            FAIL_BR     L_sn_405
                             SET_VAR     S_288
                             jmp     L_ss_atomic_96
 
@@ -7801,14 +7745,14 @@ L_ss_Integer_99:            GET_VAR     S_288
                             call    stmt_get
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_406
+                            FAIL_BR     L_sn_406
                             SET_VAR     S_288
                             jmp     L_ss_atomic_96
 
 ;  ss_Label ====================================================================
 L_sn_406:
 L_ss_Label_100:             GET_VAR     S_272
-                            SETUP_SUBJECT_FROM16
+                            SUBJ_FROM16
                             jmp     P_407_α
 
 P_407_α:                    jmp     seq_l9_alpha                        ; SEQ
@@ -7860,7 +7804,7 @@ L_ss_Label0_101:            GET_VAR     S_288
                             APPLY_FN_N  S_148, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH  L_sn_408
+                            FAIL_BR     L_sn_408
                             SET_VAR     S_288
                             jmp     L_ss_atomic_96
 
@@ -7871,7 +7815,7 @@ L_ss_Label1_102:            GET_VAR     S_288
                             call    stmt_get
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_409
+                            FAIL_BR     L_sn_409
                             SET_VAR     S_288
                             jmp     L_ss_atomic_96
 
@@ -7887,7 +7831,7 @@ L_ss_ProtKwd_103:           GET_VAR     S_288
                             APPLY_FN_N  S_148, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH  L_sn_410
+                            FAIL_BR     L_sn_410
                             SET_VAR     S_288
                             jmp     L_ss_atomic_96
 
@@ -7898,7 +7842,7 @@ L_ss_Real_104:              GET_VAR     S_288
                             call    stmt_get
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_411
+                            FAIL_BR     L_sn_411
                             SET_VAR     S_288
                             jmp     L_ss_atomic_96
 
@@ -7914,7 +7858,7 @@ L_ss_SpecialNm_105:         GET_VAR     S_288
                             APPLY_FN_N  S_148, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH  L_sn_412
+                            FAIL_BR     L_sn_412
                             SET_VAR     S_288
                             jmp     L_ss_atomic_96
 
@@ -7925,7 +7869,7 @@ L_ss_String_106:            GET_VAR     S_288
                             call    stmt_get
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_413
+                            FAIL_BR     L_sn_413
                             SET_VAR     S_288
                             jmp     L_ss_atomic_96
 
@@ -7941,7 +7885,7 @@ L_ss_UnprotKwd_107:         GET_VAR     S_288
                             APPLY_FN_N  S_148, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH  L_sn_414
+                            FAIL_BR     L_sn_414
                             SET_VAR     S_288
                             jmp     L_ss_atomic_96
 
@@ -7960,7 +7904,7 @@ L_ss_atomic_96:             sub     rsp, 32
                             APPLY_FN_N  S_372, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_415
+                            FAIL_BR16   L_sf_415
                             GOTO_ALWAYS  L_SNO_END     ; RETURN
 L_sf_415:                   GOTO_ALWAYS  L_SNO_END     ; FRETURN
 
@@ -7993,7 +7937,7 @@ L_ss_108:                   GET_VAR     S_288
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sf_416
+                            FAIL_BR     L_sf_416
                             SET_VAR     S_288
                             GOTO_ALWAYS  L_SNO_END     ; RETURN
 L_sf_416:                   jmp     L_error_35
@@ -8027,7 +7971,7 @@ L_ss_109:                   GET_VAR     S_288
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sf_417
+                            FAIL_BR     L_sf_417
                             SET_VAR     S_288
                             GOTO_ALWAYS  L_SNO_END     ; RETURN
 L_sf_417:                   jmp     L_error_35
@@ -8061,7 +8005,7 @@ L_ss_S_110:                 GET_VAR     S_288
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sf_418
+                            FAIL_BR     L_sf_418
                             SET_VAR     S_288
                             GOTO_ALWAYS  L_SNO_END     ; RETURN
 L_sf_418:                   jmp     L_error_35
@@ -8095,7 +8039,7 @@ L_ss_S_111:                 GET_VAR     S_288
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sf_419
+                            FAIL_BR     L_sf_419
                             SET_VAR     S_288
                             GOTO_ALWAYS  L_SNO_END     ; RETURN
 L_sf_419:                   jmp     L_error_35
@@ -8129,7 +8073,7 @@ L_ss_F_112:                 GET_VAR     S_288
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sf_420
+                            FAIL_BR     L_sf_420
                             SET_VAR     S_288
                             GOTO_ALWAYS  L_SNO_END     ; RETURN
 L_sf_420:                   jmp     L_error_35
@@ -8163,7 +8107,7 @@ L_ss_F_113:                 GET_VAR     S_288
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sf_421
+                            FAIL_BR     L_sf_421
                             SET_VAR     S_288
                             GOTO_ALWAYS  L_SNO_END     ; RETURN
 L_sf_421:                   jmp     L_error_35
@@ -8192,7 +8136,7 @@ L_ssUnOp_114:               GET_VAR     S_288
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sf_422
+                            FAIL_BR     L_sf_422
                             SET_VAR     S_288
                             GOTO_ALWAYS  L_SNO_END     ; RETURN
 L_sf_422:                   GOTO_ALWAYS  L_SNO_END     ; FRETURN
@@ -8212,7 +8156,7 @@ L_ssBinOp_115:              GET_VAR     S_288
                             APPLY_FN_N  S_288, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH  L_sf_423
+                            FAIL_BR     L_sf_423
                             SET_VAR     S_288
                             jmp     L_sn_423
 L_sf_423:                   GOTO_ALWAYS  L_SNO_END     ; FRETURN
@@ -8267,7 +8211,7 @@ L_sn_423:                   GET_VAR     S_288
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sf_424
+                            FAIL_BR     L_sf_424
                             SET_VAR     S_288
                             GOTO_ALWAYS  L_SNO_END     ; RETURN
 L_sf_424:                   GOTO_ALWAYS  L_SNO_END     ; FRETURN
@@ -8284,7 +8228,7 @@ L_ss_116:                   sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sn_425
+                            FAIL_BR16   L_sn_425
                             jmp     L_ssUnOp_114
 
 ;  ss_# ========================================================================
@@ -8299,7 +8243,7 @@ L_ss_117:                   sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sn_426
+                            FAIL_BR16   L_sn_426
                             jmp     L_ssUnOp_114
 
 ; ==============================================================================
@@ -8313,7 +8257,7 @@ L_sn_426:                   sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_427
+                            FAIL_BR16   L_sf_427
                             jmp     L_ssBinOp_115
 L_sf_427:                   jmp     L_error_35
 
@@ -8329,7 +8273,7 @@ L_ss_118:                   sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sn_428
+                            FAIL_BR16   L_sn_428
                             jmp     L_ssUnOp_114
 
 ; ==============================================================================
@@ -8343,7 +8287,7 @@ L_sn_428:                   sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_429
+                            FAIL_BR16   L_sf_429
                             jmp     L_ssBinOp_115
 L_sf_429:                   jmp     L_error_35
 
@@ -8359,7 +8303,7 @@ L_ss_119:                   sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sn_430
+                            FAIL_BR16   L_sn_430
                             jmp     L_ssUnOp_114
 
 ; ==============================================================================
@@ -8373,7 +8317,7 @@ L_sn_430:                   sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_431
+                            FAIL_BR16   L_sf_431
                             jmp     L_ssBinOp_115
 L_sf_431:                   jmp     L_error_35
 
@@ -8389,7 +8333,7 @@ L_ss_120:                   sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sn_432
+                            FAIL_BR16   L_sn_432
                             jmp     L_ssUnOp_114
 
 ; ==============================================================================
@@ -8403,7 +8347,7 @@ L_sn_432:                   sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_433
+                            FAIL_BR16   L_sf_433
                             jmp     L_ssBinOp_115
 L_sf_433:                   jmp     L_error_35
 
@@ -8419,7 +8363,7 @@ L_ss_121:                   sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sn_434
+                            FAIL_BR16   L_sn_434
                             jmp     L_ssUnOp_114
 
 ; ==============================================================================
@@ -8433,7 +8377,7 @@ L_sn_434:                   sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_435
+                            FAIL_BR16   L_sf_435
                             jmp     L_ssBinOp_115
 L_sf_435:                   jmp     L_error_35
 
@@ -8449,7 +8393,7 @@ L_ss_122:                   sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sn_436
+                            FAIL_BR16   L_sn_436
                             jmp     L_ssUnOp_114
 
 ; ==============================================================================
@@ -8463,7 +8407,7 @@ L_sn_436:                   sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_437
+                            FAIL_BR16   L_sf_437
                             jmp     L_ssBinOp_115
 L_sf_437:                   jmp     L_error_35
 
@@ -8479,7 +8423,7 @@ L_ss_123:                   sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sn_438
+                            FAIL_BR16   L_sn_438
                             jmp     L_ssUnOp_114
 
 ; ==============================================================================
@@ -8493,7 +8437,7 @@ L_sn_438:                   sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_439
+                            FAIL_BR16   L_sf_439
                             jmp     L_ssBinOp_115
 L_sf_439:                   jmp     L_error_35
 
@@ -8509,7 +8453,7 @@ L_ss_124:                   sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sn_440
+                            FAIL_BR16   L_sn_440
                             jmp     L_ssUnOp_114
 
 ; ==============================================================================
@@ -8523,7 +8467,7 @@ L_sn_440:                   sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_441
+                            FAIL_BR16   L_sf_441
                             jmp     L_ssBinOp_115
 L_sf_441:                   jmp     L_error_35
 
@@ -8539,7 +8483,7 @@ L_ss_125:                   sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sn_442
+                            FAIL_BR16   L_sn_442
                             jmp     L_ssUnOp_114
 
 ; ==============================================================================
@@ -8553,7 +8497,7 @@ L_sn_442:                   sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_443
+                            FAIL_BR16   L_sf_443
                             jmp     L_ssBinOp_115
 L_sf_443:                   jmp     L_error_35
 
@@ -8569,7 +8513,7 @@ L_ss_126:                   sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sn_444
+                            FAIL_BR16   L_sn_444
                             jmp     L_ssUnOp_114
 
 ; ==============================================================================
@@ -8583,7 +8527,7 @@ L_sn_444:                   sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_445
+                            FAIL_BR16   L_sf_445
                             jmp     L_ssBinOp_115
 L_sf_445:                   jmp     L_error_35
 
@@ -8599,7 +8543,7 @@ L_ss_127:                   sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sn_446
+                            FAIL_BR16   L_sn_446
                             jmp     L_ssUnOp_114
 
 ; ==============================================================================
@@ -8613,7 +8557,7 @@ L_sn_446:                   sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_447
+                            FAIL_BR16   L_sf_447
                             jmp     L_ssBinOp_115
 L_sf_447:                   jmp     L_error_35
 
@@ -8629,7 +8573,7 @@ L_ss_128:                   sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sn_448
+                            FAIL_BR16   L_sn_448
                             jmp     L_ssUnOp_114
 
 ; ==============================================================================
@@ -8643,7 +8587,7 @@ L_sn_448:                   sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_449
+                            FAIL_BR16   L_sf_449
                             jmp     L_ssBinOp_115
 L_sf_449:                   jmp     L_error_35
 
@@ -8659,7 +8603,7 @@ L_ss_129:                   sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_450
+                            FAIL_BR16   L_sf_450
                             jmp     L_ssBinOp_115
 L_sf_450:                   jmp     L_error_35
 
@@ -8675,7 +8619,7 @@ L_ss_130:                   sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sn_451
+                            FAIL_BR16   L_sn_451
                             jmp     L_ssUnOp_114
 
 ; ==============================================================================
@@ -8689,7 +8633,7 @@ L_sn_451:                   sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_452
+                            FAIL_BR16   L_sf_452
                             jmp     L_ssBinOp_115
 L_sf_452:                   jmp     L_error_35
 
@@ -8708,7 +8652,7 @@ L_ss_ExprList_131:          GET_VAR     S_288
                             APPLY_FN_N  S_288, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH  L_sf_453
+                            FAIL_BR     L_sf_453
                             SET_VAR     S_288
                             jmp     L_sn_453
 L_sf_453:                   GOTO_ALWAYS  L_SNO_END     ; FRETURN
@@ -8744,7 +8688,7 @@ L_ss_ExprList0_132:         GET_VAR     S_284
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sf_455
+                            FAIL_BR     L_sf_455
                             SET_VAR     S_284
                             jmp     L_sn_455
 L_sf_455:                   GOTO_ALWAYS  L_SNO_END     ; RETURN
@@ -8780,7 +8724,7 @@ L_sn_455:                   GET_VAR     S_288
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sf_456
+                            FAIL_BR     L_sf_456
                             SET_VAR     S_288
                             jmp     L_ss_ExprList0_132
 L_sf_456:                   GOTO_ALWAYS  L_SNO_END     ; FRETURN
@@ -8806,7 +8750,7 @@ L_ss_133:                   GET_VAR     S_288
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sf_457
+                            FAIL_BR     L_sf_457
                             SET_VAR     S_288
                             jmp     L_sn_457
 L_sf_457:                   GOTO_ALWAYS  L_SNO_END     ; FRETURN
@@ -8842,7 +8786,7 @@ L_ss_0_134:                 GET_VAR     S_284
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sf_459
+                            FAIL_BR     L_sf_459
                             SET_VAR     S_284
                             jmp     L_sn_459
 L_sf_459:                   jmp     L_COMPUTED_ss_1_135
@@ -8878,7 +8822,7 @@ L_sn_459:                   GET_VAR     S_288
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sf_460
+                            FAIL_BR     L_sf_460
                             SET_VAR     S_288
                             jmp     L_COMPUTED_ss_0_136
 L_sf_460:                   GOTO_ALWAYS  L_SNO_END     ; FRETURN
@@ -8898,7 +8842,7 @@ L_ss_1_137:                 GET_VAR     S_288
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_461
+                            FAIL_BR     L_sn_461
                             SET_VAR     S_288
                             GOTO_ALWAYS  L_SNO_END     ; RETURN
 
@@ -8914,7 +8858,7 @@ L_ss_138:                   sub     rsp, 32
                             APPLY_FN_N  S_311, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sn_462
+                            FAIL_BR16   L_sn_462
                             jmp     L_ssUnOp_114
 
 ; ==============================================================================
@@ -8931,7 +8875,7 @@ L_sn_462:                   GET_VAR     S_288
                             APPLY_FN_N  S_288, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH  L_sf_463
+                            FAIL_BR     L_sf_463
                             SET_VAR     S_288
                             jmp     L_sn_463
 L_sf_463:                   GOTO_ALWAYS  L_SNO_END     ; FRETURN
@@ -8967,7 +8911,7 @@ L_ss_0_139:                 GET_VAR     S_284
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sf_465
+                            FAIL_BR     L_sf_465
                             SET_VAR     S_284
                             jmp     L_sn_465
 L_sf_465:                   GOTO_ALWAYS  L_SNO_END     ; RETURN
@@ -9003,7 +8947,7 @@ L_sn_465:                   GET_VAR     S_288
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sf_466
+                            FAIL_BR     L_sf_466
                             SET_VAR     S_288
                             jmp     L_COMPUTED_ss_0_140
 L_sf_466:                   GOTO_ALWAYS  L_SNO_END     ; FRETURN
@@ -9023,7 +8967,7 @@ L_ss_141:                   GET_VAR     S_288
                             APPLY_FN_N  S_288, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH  L_sf_467
+                            FAIL_BR     L_sf_467
                             SET_VAR     S_288
                             jmp     L_sn_467
 L_sf_467:                   GOTO_ALWAYS  L_SNO_END     ; FRETURN
@@ -9059,7 +9003,7 @@ L_ss_0_142:                 GET_VAR     S_284
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sf_469
+                            FAIL_BR     L_sf_469
                             SET_VAR     S_284
                             jmp     L_sn_469
 L_sf_469:                   GOTO_ALWAYS  L_SNO_END     ; RETURN
@@ -9095,7 +9039,7 @@ L_sn_469:                   GET_VAR     S_288
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sf_470
+                            FAIL_BR     L_sf_470
                             SET_VAR     S_288
                             jmp     L_COMPUTED_ss_0_143
 L_sf_470:                   GOTO_ALWAYS  L_SNO_END     ; FRETURN
@@ -9115,7 +9059,7 @@ L_ss_144:                   GET_VAR     S_288
                             APPLY_FN_N  S_288, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH  L_sf_471
+                            FAIL_BR     L_sf_471
                             SET_VAR     S_288
                             jmp     L_sn_471
 L_sf_471:                   GOTO_ALWAYS  L_SNO_END     ; FRETURN
@@ -9151,7 +9095,7 @@ L_ss_0_145:                 GET_VAR     S_284
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sf_473
+                            FAIL_BR     L_sf_473
                             SET_VAR     S_284
                             jmp     L_sn_473
 L_sf_473:                   GOTO_ALWAYS  L_SNO_END     ; RETURN
@@ -9195,7 +9139,7 @@ L_sn_473:                   GET_VAR     S_288
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sf_474
+                            FAIL_BR     L_sf_474
                             SET_VAR     S_288
                             jmp     L_COMPUTED_ss_0_146
 L_sf_474:                   GOTO_ALWAYS  L_SNO_END     ; FRETURN
@@ -9229,7 +9173,7 @@ L_ss_147:                   GET_VAR     S_288
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sf_475
+                            FAIL_BR     L_sf_475
                             SET_VAR     S_288
                             GOTO_ALWAYS  L_SNO_END     ; RETURN
 L_sf_475:                   GOTO_ALWAYS  L_SNO_END     ; FRETURN
@@ -9277,7 +9221,7 @@ L_ss_Call_148:              GET_VAR     S_288
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sf_476
+                            FAIL_BR     L_sf_476
                             SET_VAR     S_288
                             GOTO_ALWAYS  L_SNO_END     ; RETURN
 L_sf_476:                   GOTO_ALWAYS  L_SNO_END     ; FRETURN
@@ -9311,7 +9255,7 @@ L_bVisit_150:               sub     rsp, 32
                             APPLY_FN_N  S_418, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_479
+                            FAIL_BR16   L_sf_479
                             jmp     L_sn_479
 L_sf_479:                   GOTO_ALWAYS  L_SNO_END     ; RETURN
 
@@ -9351,7 +9295,7 @@ L_bVisit_1_151:             GET_VAR     S_284
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sf_481
+                            FAIL_BR     L_sf_481
                             SET_VAR     S_284
                             jmp     L_sn_481
 L_sf_481:                   GOTO_ALWAYS  L_SNO_END     ; RETURN
@@ -9393,7 +9337,7 @@ L_findRefs_153:             sub     rsp, 16
                             APPLY_FN_N  S_24, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_486
+                            FAIL_BR16   L_sf_486
                             jmp     L_sn_486
 L_sf_486:                   GOTO_ALWAYS  L_SNO_END     ; RETURN
 
@@ -9413,7 +9357,7 @@ L_sn_486:                   sub     rsp, 32
                             APPLY_FN_N  S_25, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_487
+                            FAIL_BR16   L_sf_487
                             jmp     L_sn_487
 L_sf_487:                   jmp     L_findRefs_1_154
 
@@ -9453,7 +9397,7 @@ L_findRefs_0_155:           GET_VAR     S_273
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sf_489
+                            FAIL_BR     L_sf_489
                             SET_VAR     S_273
                             jmp     L_sn_489
 L_sf_489:                   GOTO_ALWAYS  L_SNO_END     ; FRETURN
@@ -9508,7 +9452,7 @@ L_findRefs_1_154:           sub     rsp, 32
                             add     rsp, 32
                             mov     [rbp-16], rax
                             mov     [rbp-8], rdx
-                            IS_FAIL_BRANCH16  L_sf_491
+                            FAIL_BR16   L_sf_491
                             jmp     L_sn_491
 L_sf_491:                   jmp     L_findRefs_2_156
 
@@ -9523,7 +9467,7 @@ L_sn_491:                   GET_VAR     S_272
                             APPLY_FN_N  S_288, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH  L_sn_492
+                            FAIL_BR     L_sn_492
                             SET_VAR     S_272
                             jmp     L_findRefs_9_157
 
@@ -9544,7 +9488,7 @@ L_findRefs_2_156:           sub     rsp, 32
                             APPLY_FN_N  S_25, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_493
+                            FAIL_BR16   L_sf_493
                             jmp     L_sn_493
 L_sf_493:                   GOTO_ALWAYS  L_SNO_END     ; RETURN
 
@@ -9559,14 +9503,14 @@ L_sn_493:                   GET_VAR     S_272
                             APPLY_FN_N  S_272, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH  L_sn_494
+                            FAIL_BR     L_sn_494
                             SET_VAR     S_272
                             jmp     L_findRefs_9_157
 
 ;  findRefs_9 ==================================================================
 L_sn_494:
 L_findRefs_9_157:           GET_VAR     S_272
-                            SETUP_SUBJECT_FROM16
+                            SUBJ_FROM16
                             jmp     P_495_α
 
 P_495_α:                    jmp     seq_l12_alpha                       ; SEQ
@@ -9633,7 +9577,7 @@ L_sn_495:                   GET_VAR     S_424
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_496
+                            FAIL_BR     L_sn_496
                             SET_VAR     S_424
                             GOTO_ALWAYS  L_SNO_END     ; FRETURN
 
@@ -9659,7 +9603,7 @@ L_sn_496:                   GET_VAR     S_424
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_497
+                            FAIL_BR     L_sn_497
                             SET_VAR     S_424
                             GOTO_ALWAYS  L_SNO_END     ; FRETURN
 
@@ -9690,7 +9634,7 @@ L_refs_159:                 GET_VAR     S_274
                             APPLY_FN_N  S_274, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH  L_sn_500
+                            FAIL_BR     L_sn_500
                             SET_VAR     S_274
                             jmp     L_sn_500
 
@@ -9730,7 +9674,7 @@ L_refs_0_160:               GET_VAR     S_273
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sf_502
+                            FAIL_BR     L_sf_502
                             SET_VAR     S_273
                             jmp     L_sn_502
 L_sf_502:                   GOTO_ALWAYS  L_SNO_END     ; RETURN
@@ -9751,7 +9695,7 @@ L_sn_502:                   sub     rsp, 32
                             APPLY_FN_N  S_25, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_503
+                            FAIL_BR16   L_sf_503
                             jmp     L_sn_503
 L_sf_503:                   jmp     L_refs_0_160
 
@@ -9759,7 +9703,7 @@ L_sf_503:                   jmp     L_refs_0_160
 L_sn_503:                   GET_VAR     S_239
                             mov     qword [rbp-32], 1
                             mov     qword [rbp-24], 0
-                            IS_FAIL_BRANCH  L_sn_504
+                            FAIL_BR     L_sn_504
                             SET_VAR     S_239
                             jmp     L_sn_504
 
@@ -9775,7 +9719,7 @@ L_sn_504:                   sub     rsp, 16
                             APPLY_FN_N  S_25, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_505
+                            FAIL_BR16   L_sf_505
                             jmp     L_sn_505
 L_sf_505:                   jmp     L_refs_0_160
 
@@ -9795,7 +9739,7 @@ L_sn_505:                   sub     rsp, 32
                             APPLY_FN_N  S_25, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_506
+                            FAIL_BR16   L_sf_506
                             jmp     L_sn_506
 L_sf_506:                   jmp     L_refs_0_160
 
@@ -9815,7 +9759,7 @@ L_sn_506:                   sub     rsp, 32
                             APPLY_FN_N  S_25, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sn_507
+                            FAIL_BR16   L_sn_507
                             jmp     L_refs_1_161
 
 ; ==============================================================================
@@ -9834,7 +9778,7 @@ L_sn_507:                   sub     rsp, 32
                             APPLY_FN_N  S_25, 2
                             add     rsp, 32
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_508
+                            FAIL_BR16   L_sf_508
                             jmp     L_refs_1_161
 L_sf_508:                   jmp     L_refs_0_160
 
@@ -9848,7 +9792,7 @@ L_refs_1_161:               GET_VAR     S_438
                             APPLY_FN_N  S_288, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH  L_sn_509
+                            FAIL_BR     L_sn_509
                             SET_VAR     S_438
                             jmp     L_sn_509
 
@@ -9925,7 +9869,7 @@ L_sn_511:                   GET_VAR     S_51
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_512
+                            FAIL_BR     L_sn_512
                             SET_OUTPUT
                             jmp     L_refs_0_160
 
@@ -9968,7 +9912,7 @@ L_sn_514:                   GET_VAR     S_443
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_515
+                            FAIL_BR     L_sn_515
                             SET_VAR     S_443
                             jmp     L_sn_515
 
@@ -9979,7 +9923,7 @@ L_main00_162:               GET_VAR     S_445
                             call    stmt_get
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sf_516
+                            FAIL_BR     L_sf_516
                             SET_VAR     S_445
                             jmp     L_sn_516
 L_sf_516:                   GOTO_ALWAYS  L_SNO_END     ; END
@@ -9990,7 +9934,7 @@ L_main01_163:               GET_VAR     S_447
 
 ; ==============================================================================
 L_sn_517:                   GET_VAR     S_445
-                            SETUP_SUBJECT_FROM16
+                            SUBJ_FROM16
                             jmp     P_518_α
 
 P_518_α:                    jmp     seq_l15_alpha                       ; SEQ
@@ -10018,7 +9962,7 @@ L_sn_518:                   GET_VAR     S_51
                             call    stmt_get
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_519
+                            FAIL_BR     L_sn_519
                             SET_OUTPUT
                             jmp     L_main00_162
 
@@ -10051,7 +9995,7 @@ L_main02_164:               GET_VAR     S_447
                             add     rsp, 32
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_520
+                            FAIL_BR     L_sn_520
                             SET_VAR     S_447
                             jmp     L_sn_520
 
@@ -10061,14 +10005,14 @@ L_sn_520:                   GET_VAR     S_445
                             call    stmt_get
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sf_521
+                            FAIL_BR     L_sf_521
                             SET_VAR     S_445
                             jmp     L_sn_521
 L_sf_521:                   jmp     L_main05_165
 
 ; ==============================================================================
 L_sn_521:                   GET_VAR     S_445
-                            SETUP_SUBJECT_FROM16
+                            SUBJ_FROM16
                             jmp     P_522_α
 
 P_522_α:                    jmp     seq_l17_alpha                       ; SEQ
@@ -10092,7 +10036,7 @@ P_522_ω:                    jmp     L_sn_522
 
 ; ==============================================================================
 L_sn_522:                   GET_VAR     S_447
-                            SETUP_SUBJECT_FROM16
+                            SUBJ_FROM16
                             jmp     P_523_α
 
 P_523_α:                    jmp     seq_l19_alpha                       ; SEQ
@@ -10133,7 +10077,7 @@ L_sn_523:                   sub     rsp, 16
                             APPLY_FN_N  S_24, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_524
+                            FAIL_BR16   L_sf_524
                             jmp     L_sn_524
 L_sf_524:                   jmp     L_mainErr2_167
 
@@ -10149,7 +10093,7 @@ L_sn_524:                   sub     rsp, 16
 ;  main05 ======================================================================
 L_sn_525:
 L_main05_165:               GET_VAR     S_447
-                            SETUP_SUBJECT_FROM16
+                            SUBJ_FROM16
                             jmp     P_526_α
 
 P_526_α:                    jmp     seq_l22_alpha                       ; SEQ
@@ -10190,7 +10134,7 @@ L_sn_526:                   sub     rsp, 16
                             APPLY_FN_N  S_24, 1
                             add     rsp, 16
                             STORE_RESULT
-                            IS_FAIL_BRANCH16  L_sf_527
+                            FAIL_BR16   L_sf_527
                             jmp     L_sn_527
 L_sf_527:                   jmp     L_mainErr2_167
 
@@ -10207,7 +10151,7 @@ L_sn_527:                   sub     rsp, 16
 L_sn_528:
 L_mainErr1_166:             GET_VAR     S_51
                             LOAD_STR    S_454
-                            IS_FAIL_BRANCH  L_sn_529
+                            FAIL_BR     L_sn_529
                             SET_OUTPUT
                             jmp     L_sn_529
 
@@ -10217,7 +10161,7 @@ L_sn_529:                   GET_VAR     S_51
                             call    stmt_get
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_530
+                            FAIL_BR     L_sn_530
                             SET_OUTPUT
                             GOTO_ALWAYS  L_SNO_END     ; END
 
@@ -10225,7 +10169,7 @@ L_sn_529:                   GET_VAR     S_51
 L_sn_530:
 L_mainErr2_167:             GET_VAR     S_51
                             LOAD_STR    S_456
-                            IS_FAIL_BRANCH  L_sn_531
+                            FAIL_BR     L_sn_531
                             SET_OUTPUT
                             jmp     L_sn_531
 
@@ -10235,7 +10179,7 @@ L_sn_531:                   GET_VAR     S_51
                             call    stmt_get
                             mov     [rbp-32], rax
                             mov     [rbp-24], rdx
-                            IS_FAIL_BRANCH  L_sn_532
+                            FAIL_BR     L_sn_532
                             SET_OUTPUT
                             GOTO_ALWAYS  L_SNO_END     ; END
 L_sn_532:                   GOTO_ALWAYS  L_SNO_END
