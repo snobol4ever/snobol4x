@@ -1976,7 +1976,7 @@ static void asm_emit_program(Program *prog) {
 
         /* STMT_SEP first (visual separator). Then queue label — it will fold
          * onto the first real instruction of this statement. */
-        A("\n    STMT_SEP\n");
+        A("\n%*sSTMT_SEP\n", COL_W, "");
         if (s->label) {
             asmL(prog_label_nasm(s->label));
             { int _id = prog_label_id(s->label);

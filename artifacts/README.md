@@ -439,3 +439,10 @@ session115 | 2026-03-16 | 6d5919daa03d3c56646b5f0a165f86ee | 15859 lines | compi
   display column 28. ALFC fixed to use emit_to_col instead of %-28s printf
   padding. STMT_SEP/PORT_SEP/directives exempt from alignment.
 - **Invariants:** 106/106 C crosscheck PASS, 26/26 ASM crosscheck PASS
+
+## beauty_prog_session166.s
+- **Session:** 166
+- **Lines:** 13664
+- **Status:** assembles clean (nasm -f elf64 -I src/runtime/asm/)
+- **Change:** STMT_SEP shifted to column 28 (instruction column); was 4-space indent
+- **Invariants:** 106/106 C crosscheck PASS, 26/26 ASM crosscheck PASS
