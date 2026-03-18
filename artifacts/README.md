@@ -317,3 +317,11 @@ session115 | 2026-03-16 | 6d5919daa03d3c56646b5f0a165f86ee | 15859 lines | compi
 
 ### artifacts/asm/stmt_goto.s  (Sprint A10 — step 3)
 - status: PASS — N=1; LOOP: OUTPUT=N; N+1; GT(N,3):F(LOOP) via ASM
+
+### artifacts/asm/beauty_prog_session154.s  (Sprint A10 — M-ASM-BEAUTY in progress)
+- status: ASSEMBLES CLEAN — beauty.sno compiled via sno2c -asm, 6091 lines
+- nasm: clean (zero errors)
+- link: links clean against snobol4_stmt_rt.o + runtime
+- runs: hangs — pattern-match stmts fall through (Case 2 not yet wired to Byrd box)
+- next: stmt_setup_subject() shim + jmp root_alpha per pattern stmt
+- assemble: nasm -f elf64 beauty_prog_session154.s -o beauty_prog.o
