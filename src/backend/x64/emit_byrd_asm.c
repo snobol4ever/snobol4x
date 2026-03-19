@@ -2754,8 +2754,11 @@ static void asm_emit_program(Program *prog) {
 
         /* Case 1: pattern-free assignment or expression */
         if (!s->pattern) {
-            /* Evaluate subject (the LHS or expression) */
-            if (s->subject) {
+            /* Evaluate subject (the LHS or expression).
+             * Skip for indirect-assignment ($X=val): has_eq + E_INDR/E_DOL subject.
+             * The indirect handler below evaluates the inner name expression itself. */
+            if (s->subject &&
+                !(s->has_eq && (s->subject->kind == E_INDR || s->subject->kind == E_DOL))) {
                 int may_fail = prog_emit_expr(s->subject, -16);
                 /* If subject may fail AND there are S/F targets, dispatch */
                 if (may_fail && !s->has_eq && (id_s >= 0 || id_f >= 0)) {
@@ -2780,10 +2783,14 @@ static void asm_emit_program(Program *prog) {
                 /* For keyword LHS (&VAR), NV_SET_fn expects bare name "ANCHOR" not "&ANCHOR" */
                 const char *subj_name = s->subject->sval ? s->subject->sval : "";
                 /* (E_KW: sval is already the bare keyword name e.g. "ANCHOR") */
-                /* Null RHS: X = (no replacement or E_NULV) → clear variable */
+                /* Null RHS: X = (no replacement or E_NULV) → clear variable.
+                 * OUTPUT = (null RHS) → print a blank line (emit NULVCL → SET_OUTPUT). */
                 if (!s->replacement ||
                     (s->replacement->kind == E_NULV)) {
-                    if (!is_output) {
+                    if (is_output) {
+                        A("    LOAD_NULVCL\n");
+                        A("    SET_OUTPUT\n");
+                    } else {
                         const char *vlab = prog_str_intern(subj_name);
                         A("    ASSIGN_NULL %s\n", vlab);
                     }
@@ -2817,11 +2824,16 @@ static void asm_emit_program(Program *prog) {
                     emit_jmp(tgt_f, next_lbl);
                 }
             } else if (s->has_eq && s->subject &&
-                       s->subject->kind == E_DOL) {
-                /* $expr = val  — indirect assignment */
+                       (s->subject->kind == E_DOL || s->subject->kind == E_INDR)) {
+                /* $expr = val  — indirect assignment.
+                 * Parser uses E_INDR (right=operand) for $X in subject position.
+                 * E_DOL (left=operand) is the binary capture op; support both. */
                 const char *fail_target = id_f >= 0 ? sfail_lbl : next_lbl;
                 /* Eval the name expression → [rbp-16/8] */
-                prog_emit_expr(s->subject->left ? s->subject->left : s->subject->right, -16);
+                EXPR_t *indir_name = (s->subject->kind == E_INDR)
+                    ? s->subject->right
+                    : (s->subject->left ? s->subject->left : s->subject->right);
+                prog_emit_expr(indir_name, -16);
                 /* Eval the RHS → [rbp-32/24] */
                 if (!s->replacement || s->replacement->kind == E_NULV) {
                     /* null RHS for indirect: load NULVCL into [rbp-32/24] */

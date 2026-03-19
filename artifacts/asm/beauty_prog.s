@@ -2462,100 +2462,706 @@ Ln_137:                     GET_VAR     S_Functions
                             jmp         Ln_138
 
 ; ======================================================================================================================
-Ln_138:                     LOAD_NULVCL
+Ln_138:                     LOAD_STR    S_EQ
+                            mov         [rbp-16], rax
+                            mov         [rbp-8],  rdx
+                            mov         qword [rbp-32], 1
+                            mov         qword [rbp-24], 0
+                            mov         [conc_tmp0_rax], rax
+                            mov         [conc_tmp0_rdx], rdx
+                            LOAD_STR    S_EQ
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            mov         [conc_tmp0_rax], rax
+                            mov         [conc_tmp0_rdx], rdx
+                            mov         qword [rbp-32], 1
+                            mov         qword [rbp-24], 0
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            FAIL_BR     Ln_139
+                            SET_VAR_INDIR
 
-
-; ======================================================================================================================
-Ln_139:                     LOAD_NULVCL
-
-
-; ======================================================================================================================
-Ln_140:                     LOAD_NULVCL
-
-
-; ======================================================================================================================
-Ln_141:                     LOAD_NULVCL
-
-
-; ======================================================================================================================
-Ln_142:                     LOAD_NULVCL
-
-
-; ======================================================================================================================
-Ln_143:                     LOAD_NULVCL
-
-
-; ======================================================================================================================
-Ln_144:                     LOAD_NULVCL
-
-
-; ======================================================================================================================
-Ln_145:                     LOAD_NULVCL
-
-
-; ======================================================================================================================
-Ln_146:                     LOAD_NULVCL
-
+                            jmp         Ln_139
 
 ; ======================================================================================================================
-Ln_147:                     LOAD_NULVCL
+Ln_139:                     LOAD_STR    S_QM
+                            mov         [rbp-16], rax
+                            mov         [rbp-8],  rdx
+                            mov         qword [rbp-32], 1
+                            mov         qword [rbp-24], 0
+                            mov         [conc_tmp0_rax], rax
+                            mov         [conc_tmp0_rdx], rdx
+                            LOAD_STR    S_QM
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            mov         [conc_tmp0_rax], rax
+                            mov         [conc_tmp0_rdx], rdx
+                            mov         qword [rbp-32], 1
+                            mov         qword [rbp-24], 0
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            FAIL_BR     Ln_140
+                            SET_VAR_INDIR
 
-
-; ======================================================================================================================
-Ln_148:                     LOAD_NULVCL
-
-
-; ======================================================================================================================
-Ln_149:                     LOAD_NULVCL
-
-
-; ======================================================================================================================
-Ln_150:                     LOAD_NULVCL
-
-
-; ======================================================================================================================
-Ln_151:                     LOAD_NULVCL
-
-
-; ======================================================================================================================
-Ln_152:                     LOAD_NULVCL
-
-
-; ======================================================================================================================
-Ln_153:                     LOAD_NULVCL
-
-
-; ======================================================================================================================
-Ln_154:                     LOAD_NULVCL
-
-
-; ======================================================================================================================
-Ln_155:                     LOAD_NULVCL
-
+                            jmp         Ln_140
 
 ; ======================================================================================================================
-Ln_156:                     LOAD_NULVCL
+Ln_140:                     LOAD_STR    S_OR
+                            mov         [rbp-16], rax
+                            mov         [rbp-8],  rdx
+                            mov         qword [rbp-32], 1
+                            mov         qword [rbp-24], 0
+                            mov         [conc_tmp0_rax], rax
+                            mov         [conc_tmp0_rdx], rdx
+                            LOAD_STR    S_OR
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            mov         [conc_tmp0_rax], rax
+                            mov         [conc_tmp0_rdx], rdx
+                            mov         qword [rbp-32], 1
+                            mov         qword [rbp-24], 0
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            FAIL_BR     Ln_141
+                            SET_VAR_INDIR
 
+                            jmp         Ln_141
 
 ; ======================================================================================================================
-Ln_157:                     LOAD_NULVCL
+Ln_141:                     LOAD_STR    S_PL
+                            mov         [rbp-16], rax
+                            mov         [rbp-8],  rdx
+                            mov         qword [rbp-32], 1
+                            mov         qword [rbp-24], 0
+                            mov         [conc_tmp0_rax], rax
+                            mov         [conc_tmp0_rdx], rdx
+                            LOAD_STR    S_PL
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            mov         [conc_tmp0_rax], rax
+                            mov         [conc_tmp0_rdx], rdx
+                            mov         qword [rbp-32], 1
+                            mov         qword [rbp-24], 0
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            FAIL_BR     Ln_142
+                            SET_VAR_INDIR
 
+                            jmp         Ln_142
 
 ; ======================================================================================================================
-Ln_158:                     LOAD_NULVCL
+Ln_142:                     LOAD_STR    S_MI
+                            mov         [rbp-16], rax
+                            mov         [rbp-8],  rdx
+                            mov         qword [rbp-32], 1
+                            mov         qword [rbp-24], 0
+                            mov         [conc_tmp0_rax], rax
+                            mov         [conc_tmp0_rdx], rdx
+                            LOAD_STR    S_MI
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            mov         [conc_tmp0_rax], rax
+                            mov         [conc_tmp0_rdx], rdx
+                            mov         qword [rbp-32], 1
+                            mov         qword [rbp-24], 0
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            FAIL_BR     Ln_143
+                            SET_VAR_INDIR
 
+                            jmp         Ln_143
 
 ; ======================================================================================================================
-Ln_159:                     LOAD_NULVCL
+Ln_143:                     LOAD_STR    S_SL
+                            mov         [rbp-16], rax
+                            mov         [rbp-8],  rdx
+                            mov         qword [rbp-32], 1
+                            mov         qword [rbp-24], 0
+                            mov         [conc_tmp0_rax], rax
+                            mov         [conc_tmp0_rdx], rdx
+                            LOAD_STR    S_SL
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            mov         [conc_tmp0_rax], rax
+                            mov         [conc_tmp0_rdx], rdx
+                            mov         qword [rbp-32], 1
+                            mov         qword [rbp-24], 0
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            FAIL_BR     Ln_144
+                            SET_VAR_INDIR
 
+                            jmp         Ln_144
 
 ; ======================================================================================================================
-Ln_160:                     LOAD_NULVCL
+Ln_144:                     LOAD_STR    S_ST
+                            mov         [rbp-16], rax
+                            mov         [rbp-8],  rdx
+                            mov         qword [rbp-32], 1
+                            mov         qword [rbp-24], 0
+                            mov         [conc_tmp0_rax], rax
+                            mov         [conc_tmp0_rdx], rdx
+                            LOAD_STR    S_ST
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            mov         [conc_tmp0_rax], rax
+                            mov         [conc_tmp0_rdx], rdx
+                            mov         qword [rbp-32], 1
+                            mov         qword [rbp-24], 0
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            FAIL_BR     Ln_145
+                            SET_VAR_INDIR
 
+                            jmp         Ln_145
 
 ; ======================================================================================================================
-Ln_161:                     LOAD_NULVCL
+Ln_145:                     LOAD_STR    S_CA
+                            mov         [rbp-16], rax
+                            mov         [rbp-8],  rdx
+                            mov         qword [rbp-32], 1
+                            mov         qword [rbp-24], 0
+                            mov         [conc_tmp0_rax], rax
+                            mov         [conc_tmp0_rdx], rdx
+                            LOAD_STR    S_CA
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            mov         [conc_tmp0_rax], rax
+                            mov         [conc_tmp0_rdx], rdx
+                            mov         qword [rbp-32], 1
+                            mov         qword [rbp-24], 0
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            FAIL_BR     Ln_146
+                            SET_VAR_INDIR
 
+                            jmp         Ln_146
+
+; ======================================================================================================================
+Ln_146:                     LOAD_STR    S_BG
+                            mov         [rbp-16], rax
+                            mov         [rbp-8],  rdx
+                            mov         qword [rbp-32], 1
+                            mov         qword [rbp-24], 0
+                            mov         [conc_tmp0_rax], rax
+                            mov         [conc_tmp0_rdx], rdx
+                            LOAD_STR    S_BG
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            mov         [conc_tmp0_rax], rax
+                            mov         [conc_tmp0_rdx], rdx
+                            mov         qword [rbp-32], 1
+                            mov         qword [rbp-24], 0
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            FAIL_BR     Ln_147
+                            SET_VAR_INDIR
+
+                            jmp         Ln_147
+
+; ======================================================================================================================
+Ln_147:                     LOAD_STR    S_ST_ST
+                            mov         [rbp-16], rax
+                            mov         [rbp-8],  rdx
+                            mov         qword [rbp-32], 1
+                            mov         qword [rbp-24], 0
+                            mov         [conc_tmp0_rax], rax
+                            mov         [conc_tmp0_rdx], rdx
+                            LOAD_STR    S_ST_ST
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            mov         [conc_tmp0_rax], rax
+                            mov         [conc_tmp0_rdx], rdx
+                            mov         qword [rbp-32], 1
+                            mov         qword [rbp-24], 0
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            FAIL_BR     Ln_148
+                            SET_VAR_INDIR
+
+                            jmp         Ln_148
+
+; ======================================================================================================================
+Ln_148:                     LOAD_STR    S_DL
+                            mov         [rbp-16], rax
+                            mov         [rbp-8],  rdx
+                            mov         qword [rbp-32], 1
+                            mov         qword [rbp-24], 0
+                            mov         [conc_tmp0_rax], rax
+                            mov         [conc_tmp0_rdx], rdx
+                            LOAD_STR    S_DL
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            mov         [conc_tmp0_rax], rax
+                            mov         [conc_tmp0_rdx], rdx
+                            mov         qword [rbp-32], 1
+                            mov         qword [rbp-24], 0
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            FAIL_BR     Ln_149
+                            SET_VAR_INDIR
+
+                            jmp         Ln_149
+
+; ======================================================================================================================
+Ln_149:                     LOAD_STR    S_DT
+                            mov         [rbp-16], rax
+                            mov         [rbp-8],  rdx
+                            mov         qword [rbp-32], 1
+                            mov         qword [rbp-24], 0
+                            mov         [conc_tmp0_rax], rax
+                            mov         [conc_tmp0_rdx], rdx
+                            LOAD_STR    S_DT
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            mov         [conc_tmp0_rax], rax
+                            mov         [conc_tmp0_rdx], rdx
+                            mov         qword [rbp-32], 1
+                            mov         qword [rbp-24], 0
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            FAIL_BR     Ln_150
+                            SET_VAR_INDIR
+
+                            jmp         Ln_150
+
+; ======================================================================================================================
+Ln_150:                     LOAD_STR    S_AM
+                            mov         [rbp-16], rax
+                            mov         [rbp-8],  rdx
+                            mov         qword [rbp-32], 1
+                            mov         qword [rbp-24], 0
+                            mov         [conc_tmp0_rax], rax
+                            mov         [conc_tmp0_rdx], rdx
+                            LOAD_STR    S_AM
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            mov         [conc_tmp0_rax], rax
+                            mov         [conc_tmp0_rdx], rdx
+                            mov         qword [rbp-32], 1
+                            mov         qword [rbp-24], 0
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            FAIL_BR     Ln_151
+                            SET_VAR_INDIR
+
+                            jmp         Ln_151
+
+; ======================================================================================================================
+Ln_151:                     LOAD_STR    S_AT
+                            mov         [rbp-16], rax
+                            mov         [rbp-8],  rdx
+                            mov         qword [rbp-32], 1
+                            mov         qword [rbp-24], 0
+                            mov         [conc_tmp0_rax], rax
+                            mov         [conc_tmp0_rdx], rdx
+                            LOAD_STR    S_AT
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            mov         [conc_tmp0_rax], rax
+                            mov         [conc_tmp0_rdx], rdx
+                            mov         qword [rbp-32], 1
+                            mov         qword [rbp-24], 0
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            FAIL_BR     Ln_152
+                            SET_VAR_INDIR
+
+                            jmp         Ln_152
+
+; ======================================================================================================================
+Ln_152:                     LOAD_STR    S_HS
+                            mov         [rbp-16], rax
+                            mov         [rbp-8],  rdx
+                            mov         qword [rbp-32], 1
+                            mov         qword [rbp-24], 0
+                            mov         [conc_tmp0_rax], rax
+                            mov         [conc_tmp0_rdx], rdx
+                            LOAD_STR    S_HS
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            mov         [conc_tmp0_rax], rax
+                            mov         [conc_tmp0_rdx], rdx
+                            mov         qword [rbp-32], 1
+                            mov         qword [rbp-24], 0
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            FAIL_BR     Ln_153
+                            SET_VAR_INDIR
+
+                            jmp         Ln_153
+
+; ======================================================================================================================
+Ln_153:                     LOAD_STR    S_PC
+                            mov         [rbp-16], rax
+                            mov         [rbp-8],  rdx
+                            mov         qword [rbp-32], 1
+                            mov         qword [rbp-24], 0
+                            mov         [conc_tmp0_rax], rax
+                            mov         [conc_tmp0_rdx], rdx
+                            LOAD_STR    S_PC
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            mov         [conc_tmp0_rax], rax
+                            mov         [conc_tmp0_rdx], rdx
+                            mov         qword [rbp-32], 1
+                            mov         qword [rbp-24], 0
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            FAIL_BR     Ln_154
+                            SET_VAR_INDIR
+
+                            jmp         Ln_154
+
+; ======================================================================================================================
+Ln_154:                     LOAD_STR    S_TL
+                            mov         [rbp-16], rax
+                            mov         [rbp-8],  rdx
+                            mov         qword [rbp-32], 1
+                            mov         qword [rbp-24], 0
+                            mov         [conc_tmp0_rax], rax
+                            mov         [conc_tmp0_rdx], rdx
+                            LOAD_STR    S_TL
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            mov         [conc_tmp0_rax], rax
+                            mov         [conc_tmp0_rdx], rdx
+                            mov         qword [rbp-32], 1
+                            mov         qword [rbp-24], 0
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            FAIL_BR     Ln_155
+                            SET_VAR_INDIR
+
+                            jmp         Ln_155
+
+; ======================================================================================================================
+Ln_155:                     LOAD_STR    S_CM
+                            mov         [rbp-16], rax
+                            mov         [rbp-8],  rdx
+                            mov         qword [rbp-32], 1
+                            mov         qword [rbp-24], 0
+                            mov         [conc_tmp0_rax], rax
+                            mov         [conc_tmp0_rdx], rdx
+                            LOAD_STR    S_CM
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            mov         [conc_tmp0_rax], rax
+                            mov         [conc_tmp0_rdx], rdx
+                            mov         qword [rbp-32], 1
+                            mov         qword [rbp-24], 0
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            FAIL_BR     Ln_156
+                            SET_VAR_INDIR
+
+                            jmp         Ln_156
+
+; ======================================================================================================================
+Ln_156:                     LOAD_STR    S_LP
+                            mov         [rbp-16], rax
+                            mov         [rbp-8],  rdx
+                            LOAD_STR    S_LP
+                            mov         [conc_tmp0_rax], rax
+                            mov         [conc_tmp0_rdx], rdx
+                            mov         qword [rbp-32], 1
+                            mov         qword [rbp-24], 0
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            FAIL_BR     Ln_157
+                            SET_VAR_INDIR
+
+                            jmp         Ln_157
+
+; ======================================================================================================================
+Ln_157:                     LOAD_STR    S_LB
+                            mov         [rbp-16], rax
+                            mov         [rbp-8],  rdx
+                            LOAD_STR    S_LB
+                            mov         [conc_tmp0_rax], rax
+                            mov         [conc_tmp0_rdx], rdx
+                            mov         qword [rbp-32], 1
+                            mov         qword [rbp-24], 0
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            FAIL_BR     Ln_158
+                            SET_VAR_INDIR
+
+                            jmp         Ln_158
+
+; ======================================================================================================================
+Ln_158:                     LOAD_STR    S_LT_181
+                            mov         [rbp-16], rax
+                            mov         [rbp-8],  rdx
+                            LOAD_STR    S_LT_181
+                            mov         [conc_tmp0_rax], rax
+                            mov         [conc_tmp0_rdx], rdx
+                            mov         qword [rbp-32], 1
+                            mov         qword [rbp-24], 0
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            FAIL_BR     Ln_159
+                            SET_VAR_INDIR
+
+                            jmp         Ln_159
+
+; ======================================================================================================================
+Ln_159:                     LOAD_STR    S_RP
+                            mov         [rbp-16], rax
+                            mov         [rbp-8],  rdx
+                            mov         qword [rbp-32], 1
+                            mov         qword [rbp-24], 0
+                            mov         [conc_tmp0_rax], rax
+                            mov         [conc_tmp0_rdx], rdx
+                            LOAD_STR    S_RP
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            FAIL_BR     Ln_160
+                            SET_VAR_INDIR
+
+                            jmp         Ln_160
+
+; ======================================================================================================================
+Ln_160:                     LOAD_STR    S_RB
+                            mov         [rbp-16], rax
+                            mov         [rbp-8],  rdx
+                            mov         qword [rbp-32], 1
+                            mov         qword [rbp-24], 0
+                            mov         [conc_tmp0_rax], rax
+                            mov         [conc_tmp0_rdx], rdx
+                            LOAD_STR    S_RB
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            FAIL_BR     Ln_161
+                            SET_VAR_INDIR
+
+                            jmp         Ln_161
+
+; ======================================================================================================================
+Ln_161:                     LOAD_STR    S_GT
+                            mov         [rbp-16], rax
+                            mov         [rbp-8],  rdx
+                            mov         qword [rbp-32], 1
+                            mov         qword [rbp-24], 0
+                            mov         [conc_tmp0_rax], rax
+                            mov         [conc_tmp0_rdx], rdx
+                            LOAD_STR    S_GT
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            FAIL_BR     Ln_162
+                            SET_VAR_INDIR
+
+                            jmp         Ln_162
 
 ; ======================================================================================================================
 Ln_162:                     GET_VAR     S_ExprList

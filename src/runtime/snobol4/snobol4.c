@@ -1716,7 +1716,7 @@ static DESCR_t coerce_numeric(DESCR_t v) {
         const char *s = v.s ? v.s : "";
         while (*s == ' ') s++;
         if (*s == '+' || *s == '-') s++;
-        if (!*s) return v;  /* empty */
+        if (!*s) return INTVAL(0);  /* empty string coerces to integer 0 */
         const char *p = s;
         while (*p >= '0' && *p <= '9') p++;
         /* skip trailing spaces */
