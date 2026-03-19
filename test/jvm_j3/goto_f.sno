@@ -1,0 +1,5 @@
+        X = 'hello'
+        IDENT(X, 'world')  :S(YES) F(NO)
+YES     OUTPUT = 'equal'   :S(DONE)
+NO      OUTPUT = 'not equal'
+DONE    END

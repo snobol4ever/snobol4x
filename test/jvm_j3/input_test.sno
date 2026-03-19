@@ -1,0 +1,3 @@
+LOOP    LINE = INPUT  :F(DONE)
+        OUTPUT = LINE  :S(LOOP)
+DONE    END

@@ -7,6 +7,7 @@
 
 ; Runtime fields
 .field static sno_stdout Ljava/io/PrintStream;
+.field static sno_input_br Ljava/io/BufferedReader;
 .field static sno_kw_TRIM I
 .field static sno_kw_ANCHOR I
 .field static sno_vars Ljava/util/HashMap;

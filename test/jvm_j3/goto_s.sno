@@ -1,0 +1,5 @@
+        X = '5'
+        OUTPUT = X  :S(DONE)
+        OUTPUT = 'should not reach'
+DONE    OUTPUT = 'success branch'
+END

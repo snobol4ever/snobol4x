@@ -1,0 +1,3 @@
+        X = 'hello'
+        OUTPUT = SIZE(X)
+END

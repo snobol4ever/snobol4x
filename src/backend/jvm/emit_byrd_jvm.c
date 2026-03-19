@@ -217,6 +217,7 @@ static void jvm_emit_expr(EXPR_t *e);
 /* jvm_emit_to_double — safe numeric coercion helper.
  * Pops String, pushes double. Empty string/null → 0.0 (SNOBOL4 semantics). */
 static int jvm_need_sno_parse_helper = 0;
+static int jvm_need_input_helper = 0;
 
 static void jvm_emit_to_double(void) {
     /* Stack: String → double.  Empty/null → 0.0 */
@@ -313,7 +314,12 @@ static void jvm_emit_expr(EXPR_t *e) {
         /* Variable reference — load from sno_vars HashMap (supports indirect write) */
         if (!e->sval) { JI("ldc", "\"\""); break; }
         if (strcasecmp(e->sval, "INPUT") == 0) {
-            JI("ldc", "\"\"");
+            /* INPUT — reads one line from stdin; returns null on EOF (→ failure) */
+            char irdesc[512];
+            snprintf(irdesc, sizeof irdesc,
+                "%s/sno_input_read()Ljava/lang/String;", jvm_classname);
+            JI("invokestatic", irdesc);
+            jvm_need_input_helper = 1;
             break;
         }
         /* Read via sno_indr_get(name) — HashMap is always authoritative */
@@ -520,6 +526,76 @@ static void jvm_emit_expr(EXPR_t *e) {
             J("%s:\n", adone);
             break;
         }
+        /* SIZE(str) → length as decimal string */
+        if (strcasecmp(fname, "SIZE") == 0 && e->args && e->args[0]) {
+            jvm_emit_expr(e->args[0]);
+            JI("invokevirtual", "java/lang/String/length()I");
+            JI("i2l", "");
+            JI("invokestatic", "java/lang/Long/toString(J)Ljava/lang/String;");
+            break;
+        }
+        /* DUPL(str, n) → str repeated n times (Java 11+ String.repeat) */
+        if (strcasecmp(fname, "DUPL") == 0 && e->args && e->args[0] && e->args[1]) {
+            jvm_emit_expr(e->args[0]);
+            jvm_emit_expr(e->args[1]);
+            jvm_emit_to_double();
+            JI("d2i", "");
+            JI("invokevirtual", "java/lang/String/repeat(I)Ljava/lang/String;");
+            break;
+        }
+        /* REMDR(a, b) → a mod b as decimal string */
+        if (strcasecmp(fname, "REMDR") == 0 && e->args && e->args[0] && e->args[1]) {
+            jvm_emit_expr(e->args[0]);
+            jvm_emit_to_double(); JI("d2l", "");
+            jvm_emit_expr(e->args[1]);
+            jvm_emit_to_double(); JI("d2l", "");
+            JI("lrem", "");
+            JI("invokestatic", "java/lang/Long/toString(J)Ljava/lang/String;");
+            break;
+        }
+        /* IDENT(a,b) → succeeds (returns a) if a equals b, fails (null) otherwise */
+        if (strcasecmp(fname, "IDENT") == 0 && e->args && e->args[0]) {
+            static int _identlbl = 0;
+            char ifail[32], idone[32];
+            snprintf(ifail, sizeof ifail, "Lident_f_%d", _identlbl);
+            snprintf(idone, sizeof idone, "Lident_d_%d", _identlbl++);
+            jvm_emit_expr(e->args[0]);
+            if (e->args[1]) {
+                jvm_emit_expr(e->args[1]);
+            } else {
+                JI("ldc", "\"\"");
+            }
+            JI("invokevirtual", "java/lang/String/equals(Ljava/lang/Object;)Z");
+            JI("ifeq", ifail);
+            /* success: push arg0 again */
+            jvm_emit_expr(e->args[0]);
+            JI("goto", idone);
+            J("%s:\n", ifail);
+            JI("aconst_null", "");
+            J("%s:\n", idone);
+            break;
+        }
+        /* DIFFER(a,b) → succeeds (returns a) if a differs from b, fails (null) if equal */
+        if (strcasecmp(fname, "DIFFER") == 0 && e->args && e->args[0]) {
+            static int _difflbl = 0;
+            char dfail[32], ddone[32];
+            snprintf(dfail, sizeof dfail, "Ldiff_f_%d", _difflbl);
+            snprintf(ddone, sizeof ddone, "Ldiff_d_%d", _difflbl++);
+            jvm_emit_expr(e->args[0]);
+            if (e->args[1]) {
+                jvm_emit_expr(e->args[1]);
+            } else {
+                JI("ldc", "\"\"");
+            }
+            JI("invokevirtual", "java/lang/String/equals(Ljava/lang/Object;)Z");
+            JI("ifne", dfail);
+            jvm_emit_expr(e->args[0]);
+            JI("goto", ddone);
+            J("%s:\n", dfail);
+            JI("aconst_null", "");
+            J("%s:\n", ddone);
+            break;
+        }
         /* Unrecognised function — stub as empty string */
         JI("ldc", "\"\"");
         break;
@@ -593,23 +669,45 @@ static void jvm_emit_stmt(STMT_t *s, int stmt_idx) {
             /* VAR = expr → sno_var_put(name, val) into HashMap */
             char nameesc[256];
             jvm_escape_string(subj, nameesc, sizeof nameesc);
-            JI("ldc", nameesc);
-            if (!s->replacement || s->replacement->kind == E_NULV) {
-                JI("ldc", "\"\"");
+
+            /* Check if RHS is INPUT — may return null (EOF = failure) */
+            int rhs_is_input = (s->replacement &&
+                                s->replacement->kind == E_VART &&
+                                s->replacement->sval &&
+                                strcasecmp(s->replacement->sval, "INPUT") == 0);
+
+            if (rhs_is_input && s->go && s->go->onfailure && s->go->onfailure[0]) {
+                /* Emit INPUT call first, dup, ifnull → :F, then store */
+                jvm_emit_expr(s->replacement);   /* → String | null */
+                JI("dup", "");
+                char flbl[128]; snprintf(flbl, sizeof flbl, "L_%s", s->go->onfailure);
+                JI("ifnull", flbl);
+                /* non-null: store via sno_var_put(name, val) */
+                /* Stack: val — need to push name first: swap trick */
+                JI("ldc", nameesc);
+                JI("swap", "");
+                char vpdesc2[512];
+                snprintf(vpdesc2, sizeof vpdesc2, "%s/sno_var_put(Ljava/lang/String;Ljava/lang/String;)V", jvm_classname);
+                JI("invokestatic", vpdesc2);
             } else {
-                jvm_emit_expr(s->replacement);
+                JI("ldc", nameesc);
+                if (!s->replacement || s->replacement->kind == E_NULV) {
+                    JI("ldc", "\"\"");
+                } else {
+                    jvm_emit_expr(s->replacement);
+                }
+                char vpdesc[512];
+                snprintf(vpdesc, sizeof vpdesc, "%s/sno_var_put(Ljava/lang/String;Ljava/lang/String;)V", jvm_classname);
+                JI("invokestatic", vpdesc);
             }
-            char vpdesc[512];
-            snprintf(vpdesc, sizeof vpdesc, "%s/sno_var_put(Ljava/lang/String;Ljava/lang/String;)V", jvm_classname);
-            JI("invokestatic", vpdesc);
         }
 
-        /* :S/:F / unconditional goto */
+        /* :S goto (always unconditional for non-INPUT assigns) */
         if (s->go && s->go->onsuccess && s->go->onsuccess[0]) {
             char glbl[128]; snprintf(glbl, sizeof glbl, "L_%s", s->go->onsuccess);
             JI("goto", glbl);
         }
-        /* else fall through to next statement */
+        /* :F fallthrough (no-op — already jumped or falling through) */
         return;
     }
 
@@ -638,9 +736,23 @@ static void jvm_emit_stmt(STMT_t *s, int stmt_idx) {
 
     /* Case 2: expression-only statement (no =, no pattern) — just evaluate */
     if (!s->has_eq && !s->pattern && s->subject) {
-        /* Evaluate subject expression for side effects — discard result */
         jvm_emit_expr(s->subject);
-        JI("pop", "");
+        /* Result may be null (IDENT/DIFFER failure) */
+        if (s->go && s->go->onfailure && s->go->onfailure[0]) {
+            /* Test for null → :F (pop null before jump, clean stack) */
+            static int _ef_lbl = 0;
+            char enotnull[32];
+            snprintf(enotnull, sizeof enotnull, "Lef_nn_%d", _ef_lbl++);
+            char flbl[128]; snprintf(flbl, sizeof flbl, "L_%s", s->go->onfailure);
+            JI("dup", "");
+            JI("ifnonnull", enotnull);
+            JI("pop", "");   /* discard null */
+            JI("goto", flbl);
+            J("%s:\n", enotnull);
+            JI("pop", "");   /* discard non-null result */
+        } else {
+            JI("pop", "");  /* discard result (no :F needed) */
+        }
         if (s->go && s->go->onsuccess && s->go->onsuccess[0]) {
             char glbl[128]; snprintf(glbl, sizeof glbl, "L_%s", s->go->onsuccess);
             JI("goto", glbl);
@@ -803,6 +915,32 @@ static void jvm_emit_runtime_helpers(void) {
         jvm_need_varmap = 0;
         jvm_need_indr_helpers = 0;
     }
+
+    /* sno_input_read() → String | null
+     * Reads one line from stdin (stripping trailing newline).
+     * Returns null on EOF — maps to SNOBOL4 INPUT failure. */
+    if (jvm_need_input_helper) {
+        J(".method static sno_input_read()Ljava/lang/String;\n");
+        J("    .limit stack 6\n");
+        J("    .limit locals 1\n");
+        /* Lazy-init sno_input_br */
+        J("    getstatic       %s/sno_input_br Ljava/io/BufferedReader;\n", jvm_classname);
+        J("    ifnonnull       Lir_ready\n");
+        J("    new             java/io/BufferedReader\n");
+        J("    dup\n");
+        J("    new             java/io/InputStreamReader\n");
+        J("    dup\n");
+        J("    getstatic       java/lang/System/in Ljava/io/InputStream;\n");
+        J("    invokespecial   java/io/InputStreamReader/<init>(Ljava/io/InputStream;)V\n");
+        J("    invokespecial   java/io/BufferedReader/<init>(Ljava/io/Reader;)V\n");
+        J("    putstatic       %s/sno_input_br Ljava/io/BufferedReader;\n", jvm_classname);
+        J("Lir_ready:\n");
+        J("    getstatic       %s/sno_input_br Ljava/io/BufferedReader;\n", jvm_classname);
+        J("    invokevirtual   java/io/BufferedReader/readLine()Ljava/lang/String;\n");
+        J("    areturn\n");
+        J(".end method\n\n");
+        jvm_need_input_helper = 0;
+    }
 }
 
 
@@ -815,6 +953,7 @@ static void jvm_emit_header(Program *prog) {
     /* static field: PrintStream for OUTPUT */
     J("; Runtime fields\n");
     J(".field static sno_stdout Ljava/io/PrintStream;\n");
+    J(".field static sno_input_br Ljava/io/BufferedReader;\n");
 
     /* Keyword int fields (J2) */
     J(".field static sno_kw_TRIM I\n");
@@ -888,6 +1027,7 @@ void jvm_emit(Program *prog, FILE *out, const char *filename) {
     jvm_out = out;
     jvm_nvar = 0;
     jvm_need_sno_parse_helper = 0;
+    jvm_need_input_helper = 0;
     jvm_need_kw_helpers   = 1;  /* always emit for J2 — callers may use &KEYWORD */
     jvm_need_indr_helpers = 1;  /* always emit for J2 — indirect assign/get */
     jvm_need_varmap       = 1;
