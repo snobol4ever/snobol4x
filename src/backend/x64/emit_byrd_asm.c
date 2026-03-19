@@ -3309,9 +3309,13 @@ static void asm_emit_program(Program *prog) {
                  * E_DOL (left=operand) is the binary capture op; support both. */
                 const char *fail_target = id_f >= 0 ? sfail_lbl : next_lbl;
                 /* Eval the name expression → [rbp-16/8] */
-                EXPR_t *indir_name = (s->subject->kind == E_INDR)
-                    ? s->subject->right
-                    : (s->subject->left ? s->subject->left : s->subject->right);
+                /* SNOBOL4 parser puts operand in ->right for E_INDR.
+                 * Snocone sc_lower puts it in ->left.  Accept either. */
+                EXPR_t *indir_name;
+                if (s->subject->kind == E_INDR)
+                    indir_name = s->subject->right ? s->subject->right : s->subject->left;
+                else
+                    indir_name = s->subject->left  ? s->subject->left  : s->subject->right;
                 prog_emit_expr(indir_name, -16);
                 /* Eval the RHS → [rbp-32/24] */
                 if (!s->replacement || s->replacement->kind == E_NULV) {

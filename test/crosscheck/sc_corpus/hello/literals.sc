@@ -1,0 +1,26 @@
+# literals.sc - String and numeric literal coercion.
+# Tests: null string, integer/real OUTPUT coercion, string concat,
+#        arithmetic precedence, single- and double-quoted literals.
+OUTPUT = ''
+OUTPUT = ""
+OUTPUT = "Hello World!"
+OUTPUT = 0
+OUTPUT = 1
+OUTPUT = -1
+OUTPUT = 1.0
+OUTPUT = '1'
+OUTPUT = '1'
+OUTPUT = '1.0'
+OUTPUT = "I'm here"
+OUTPUT = '"Quote of the day"'
+OUTPUT = '' + ''
+OUTPUT = '' + 1
+OUTPUT = 1 + ''
+OUTPUT = '' || ''
+OUTPUT = '' || 'Z'
+OUTPUT = 'A' || ''
+OUTPUT = 'A' || 'Z'
+OUTPUT = 1 + 2
+OUTPUT = 1 + 2 * 3
+OUTPUT = (1 + 2) * 3
+OUTPUT = 1 + (2 * 3)
