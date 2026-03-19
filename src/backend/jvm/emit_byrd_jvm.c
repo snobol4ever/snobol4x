@@ -1534,8 +1534,10 @@ static void jvm_emit_stmt(STMT_t *s, int stmt_idx) {
         int loc_subj   = 6;
         int loc_cursor = 7;
         int loc_len    = 8;
-        /* capture locals start at 9, allocated per capture node */
-        int loc_cap_base = 9;
+        /* slot 9: dedicated retry cursor-save (scan loop saves here before each attempt) */
+        int loc_retry_save = 9;
+        /* capture locals start at 10, allocated per capture node */
+        int loc_cap_base = 10;
 
         /* The outer retry loop label (scan mode: try each cursor position) */
         char lbl_retry[64], lbl_success[64], lbl_fail[64];
@@ -1543,7 +1545,7 @@ static void jvm_emit_stmt(STMT_t *s, int stmt_idx) {
         snprintf(lbl_success, sizeof lbl_success, "Jpat%d_success", uid);
         snprintf(lbl_fail,    sizeof lbl_fail,    "Jpat%d_fail",    uid);
 
-        JC("--- pattern match statement ---");
+        J("; --- pattern match statement ---\n");
 
         /* Load subject into local 6 */
         jvm_emit_expr(s->subject);
@@ -1560,6 +1562,9 @@ static void jvm_emit_stmt(STMT_t *s, int stmt_idx) {
 
         /* --- RETRY LOOP: try match at current cursor position --- */
         J("%s:\n", lbl_retry);
+        /* save cursor at start of each attempt (for scan advance) */
+        J("    iload %d\n", loc_cursor);
+        J("    istore %d\n", loc_retry_save);
 
         /* Emit the pattern tree.  On tree-level success → lbl_success.
          * On tree-level failure → advance cursor or goto lbl_fail. */
