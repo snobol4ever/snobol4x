@@ -1208,9 +1208,17 @@ static void emit_asm_node(EXPR_t *pat,
                              alpha, beta, gamma, omega,
                              cursor, subj, subj_len_sym);
             } else {
-                A("\n; UNRESOLVED named pattern ref: %s → ω\n", varname);
-                asmL(alpha);
-                ALF(beta, "jmp     %s\n", omega);
+                /* Dynamic string variable: match subject against runtime value
+                 * of the variable using stmt_match_var.  Same β/restore as LIT. */
+                int vuid = asm_uid();
+                char saved[64]; snprintf(saved, sizeof saved, "litvar%d_saved", vuid);
+                bss_add(saved);
+                const char *vlab = prog_str_intern(varname);
+                A("\n; E_VART %s → LIT_VAR (stmt_match_var)\n", varname);
+                ALF(alpha, "LIT_VAR_ALPHA %s, %s, %s, %s, %s\n",
+                    vlab, saved, cursor, gamma, omega);
+                ALF(beta,  "LIT_VAR_BETA  %s, %s, %s\n",
+                    saved, cursor, omega);
             }
         }
         break;
@@ -1368,8 +1376,10 @@ static void emit_asm_node(EXPR_t *pat,
         break;
 
     case E_ATP: {
-        /* @VAR — cursor-position capture: store cursor as integer into VAR, always succeed */
-        const char *varname = pat->sval ? pat->sval : "";
+        /* @VAR — cursor-position capture: store cursor as integer into VAR, always succeed.
+         * Parser builds @VAR as unop(E_ATP, E_VART("VAR")), so varname is in left->sval. */
+        const char *varname = (pat->left && pat->left->sval) ? pat->left->sval
+                            : (pat->sval ? pat->sval : "");
         const char *varlab  = prog_str_intern(varname);
         ALFC(alpha, "@VAR α", "AT_ALPHA        %s, %s, %s, %s\n",
              varlab, cursor, gamma, omega);
@@ -3273,7 +3283,7 @@ static void asm_emit_program(Program *prog) {
                 if (!s->replacement ||
                     (s->replacement->kind == E_NULV)) {
                     if (is_output) {
-                        A("    LOAD_NULVCL\n");
+                        A("    LOAD_NULVCL32\n");
                         A("    SET_OUTPUT\n");
                     } else {
                         const char *vlab = prog_str_intern(subj_name);
@@ -3393,6 +3403,51 @@ static void asm_emit_program(Program *prog) {
 
         /* -- Byrd box inline: alpha/beta → gamma/omega -- */
         A("\n");
+        /* Collect capture varnames reachable from THIS statement's pattern —
+         * including captures inside named patterns called by this stmt.
+         * cap_vars[] is global (dry-run pre-registered all stmts + named bodies).
+         * We must not emit SET_CAPTURE for caps that belong to OTHER stmts' inline
+         * patterns but were never touched by this match. */
+        #define MAX_STMT_CAPS 64
+        const char *stmt_cap_names[MAX_STMT_CAPS];
+        int stmt_cap_count = 0;
+        {
+            /* Track which named-pattern indices we've already walked (cycle guard) */
+            int np_visited[128] = {0};
+            /* Iterative tree walk collecting E_DOL / E_NAM right-child varnames.
+             * When we see E_VART/E_INDR that refers to a named pattern, recurse
+             * into that named pattern's body too. */
+            EXPR_t *stk[512]; int top = 0;
+            if (s->pattern) stk[top++] = s->pattern;
+            while (top > 0) {
+                EXPR_t *e = stk[--top];
+                if (!e) continue;
+                if ((e->kind == E_DOL || e->kind == E_NAM) &&
+                    e->right && e->right->sval &&
+                    stmt_cap_count < MAX_STMT_CAPS)
+                    stmt_cap_names[stmt_cap_count++] = e->right->sval;
+                /* Follow named pattern references */
+                if (e->kind == E_VART || e->kind == E_INDR) {
+                    const char *vn = e->sval ? e->sval
+                                   : (e->left && e->left->sval ? e->left->sval : NULL);
+                    if (vn) {
+                        for (int ni = 0; ni < asm_named_count; ni++) {
+                            if (!np_visited[ni] && ni < 128 &&
+                                strcasecmp(asm_named[ni].varname, vn) == 0) {
+                                np_visited[ni] = 1;
+                                if (asm_named[ni].pat && top < 510)
+                                    stk[top++] = asm_named[ni].pat;
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (e->left  && top < 511) stk[top++] = e->left;
+                if (e->right && top < 511) stk[top++] = e->right;
+                for (int _i = 0; _i < e->nargs && top < 510; _i++)
+                    if (e->args[_i]) stk[top++] = e->args[_i];
+            }
+        }
         emit_asm_node(s->pattern,
                       pat_alpha, pat_beta,
                       pat_gamma, pat_omega,
@@ -3402,12 +3457,18 @@ static void asm_emit_program(Program *prog) {
 
         /* -- gamma: match succeeded -- */
         asmL(pat_gamma);
-        /* Materialise DOL/NAM captures into SNOBOL4 variables */
+        /* Materialise DOL/NAM captures — only those reachable from this stmt. */
         for (int ci = 0; ci < cap_var_count; ci++) {
+            int found = 0;
+            for (int si = 0; si < stmt_cap_count; si++)
+                if (strcasecmp(cap_vars[ci].varname, stmt_cap_names[si]) == 0)
+                    { found = 1; break; }
+            if (!found) continue;
             const char *vnlab = prog_str_intern(cap_vars[ci].varname);
             A("    SET_CAPTURE %s, %s, %s\n",
               vnlab, cap_vars[ci].buf_sym, cap_vars[ci].len_sym);
         }
+        #undef MAX_STMT_CAPS
         if (s->has_eq && s->subject && s->subject->kind == E_VART) {
             /* apply replacement → subject variable (splice: prefix+repl+suffix) */
             const char *vlab = prog_str_intern(s->subject->sval);
@@ -3427,9 +3488,8 @@ static void asm_emit_program(Program *prog) {
          * Unanchored: advance scan_start by 1, retry if not past subject end. */
         asmL(pat_omega);
         {
-            /* scan_fail = F-target if explicit :F(), else unconditional target if :(L), else fall-through */
-            const char *fail_dest = tgt_f ? tgt_f : (tgt_u ? tgt_u : NULL);
-            const char *scan_fail = fail_dest ? prog_label_nasm(fail_dest) : next_lbl;
+            const char *scan_fail_tgt = tgt_f ? tgt_f : tgt_u;
+            const char *scan_fail = scan_fail_tgt ? prog_label_nasm(scan_fail_tgt) : next_lbl;
             /* &ANCHOR check: if kw_anchor != 0, skip retry entirely */
             A("    cmp     qword [rel kw_anchor], 0\n");
             A("    jne     %s\n", scan_fail);

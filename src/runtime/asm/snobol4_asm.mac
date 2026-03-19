@@ -559,6 +559,29 @@
 %endmacro
 
 ; =============================================================================
+; LIT_VAR_ALPHA varlab, saved, cursor, gamma, omega
+;   α port: match subject at cursor against the runtime string value of variable varlab.
+;   Uses stmt_match_var(varname) which fetches the var, does memcmp, advances cursor.
+;   saved = .bss qword for cursor save (for β restore on backtrack).
+; =============================================================================
+%macro LIT_VAR_ALPHA 5        ; varlab, saved, cursor, gamma, omega
+    mov     rax, [%3]
+    mov     [%2], rax
+    lea     rdi, [rel %1]
+    call    stmt_match_var
+    test    eax, eax
+    jz      %5
+    jmp     %4
+%endmacro
+
+; LIT_VAR_BETA saved, cursor, omega
+%macro LIT_VAR_BETA 3         ; saved, cursor, omega
+    mov     rax, [%1]
+    mov     [%2], rax
+    jmp     %3
+%endmacro
+
+; =============================================================================
 ; POS_ALPHA n, cursor, gamma, omega
 ; =============================================================================
 %macro POS_ALPHA 4            ; n, cursor, gamma, omega

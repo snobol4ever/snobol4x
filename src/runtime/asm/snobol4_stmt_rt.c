@@ -238,6 +238,10 @@ DESCR_t stmt_input(void) {
 /* ---- string concatenation ---- */
 
 DESCR_t stmt_concat(DESCR_t a, DESCR_t b) {
+    /* Propagate failure: if either argument is FAILDESCR, the concat fails.
+     * This ensures DIFFER(X,Y) CONCAT rest fails when X==Y. */
+    if (IS_FAIL_fn(a)) return FAILDESCR;
+    if (IS_FAIL_fn(b)) return FAILDESCR;
     /* Both must be string-ish; convert integers to string first */
     const char *sa = VARVAL_fn(a);
     const char *sb = VARVAL_fn(b);
