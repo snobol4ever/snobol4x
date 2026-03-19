@@ -79,10 +79,14 @@ int stmt_is_fail(DESCR_t v) {
 /* ---- variable get / set ---- */
 
 DESCR_t stmt_get(const char *name) {
+    /* Strip leading & so &KEYWORD routes to NV_GET_fn("KEYWORD") */
+    if (name && name[0] == '&') name++;
     return NV_GET_fn(name);
 }
 
 void stmt_set(const char *name, DESCR_t v) {
+    /* Strip leading & so &KEYWORD routes to NV_SET_fn("KEYWORD") */
+    if (name && name[0] == '&') name++;
     NV_SET_fn(name, v);
 }
 
