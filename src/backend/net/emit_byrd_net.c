@@ -267,7 +267,7 @@ static void net_emit_expr(EXPR_t *e) {
         const char *fn = e->sval ? e->sval : "";
         /* SIZE(x) — returns length string, always succeeds */
         if (strcasecmp(fn, "SIZE") == 0) {
-            net_emit_expr(e->left);
+            net_emit_expr(e->nargs >= 1 ? e->args[0] : NULL);
             N("    call       string %s::sno_size(string)\n", net_classname);
             N("    ldc.i4.1\n");
             N("    stloc.0\n");
@@ -282,12 +282,12 @@ static void net_emit_expr(EXPR_t *e) {
         else if (strcasecmp(fn, "EQ") == 0) cmp_helper = "sno_eq";
         else if (strcasecmp(fn, "NE") == 0) cmp_helper = "sno_ne";
         if (cmp_helper) {
-            net_emit_expr(e->left);
-            net_emit_expr(e->right);
+            net_emit_expr(e->nargs >= 1 ? e->args[0] : NULL);
+            net_emit_expr(e->nargs >= 2 ? e->args[1] : NULL);
             N("    call       int32 %s::%s(string, string)\n", net_classname, cmp_helper);
             N("    stloc.0\n");
             /* push right-arg value as expression result */
-            net_emit_expr(e->right);
+            net_emit_expr(e->nargs >= 2 ? e->args[1] : NULL);
             break;
         }
         /* String equality: IDENT DIFFER */
@@ -295,8 +295,8 @@ static void net_emit_expr(EXPR_t *e) {
         if      (strcasecmp(fn, "IDENT")  == 0) str_helper = "sno_ident";
         else if (strcasecmp(fn, "DIFFER") == 0) str_helper = "sno_differ";
         if (str_helper) {
-            net_emit_expr(e->left);
-            net_emit_expr(e->right);
+            net_emit_expr(e->nargs >= 1 ? e->args[0] : NULL);
+            net_emit_expr(e->nargs >= 2 ? e->args[1] : NULL);
             N("    call       int32 %s::%s(string, string)\n", net_classname, str_helper);
             N("    stloc.0\n");
             net_ldstr("");
