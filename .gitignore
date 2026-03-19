@@ -26,3 +26,4 @@ beauty_full_bin_wip_*
 src/sno2c/sno2c
 artifacts/asm/*_bin
 scratch/
+sno2c
