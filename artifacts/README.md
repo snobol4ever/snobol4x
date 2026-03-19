@@ -81,3 +81,15 @@ the state of `emit_byrd.c` at session114. Kept for historical reference; `beauty
 |------|------|--------|
 | roman.s | roman numeral converter | assembles; output placeholder |
 | wordcount.s | word count program | assembles with warning |
+
+---
+
+## Session 195 — JVM backend (2026-03-19)
+
+| Artifact | md5 | lines | status |
+|----------|-----|-------|--------|
+| artifacts/jvm/hello.j | 204412d41015788277c30a6ecbcd7e8f | 31 | assembles clean |
+| artifacts/jvm/multi.j | 1a904881f5152e4ab42ac7fb51d622d9 | 37 | assembles clean |
+| artifacts/jvm/literals.j | c9419f5bd4ca01a00acfcf1683e73ec7 | 362 | assembles clean |
+
+Sprint: J1 complete → M-JVM-LIT ✅. Active bug: none. Next: J2 (assign/ + arith/).
