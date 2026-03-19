@@ -1785,12 +1785,24 @@ static void emit_asm_named_def(const AsmNamedPat *np,
         A("; %s — user function α entry (%d param%s)\n",
           np->alpha_lbl, np->nparams, np->nparams==1?"":"s");
 
-        /* α label */
+        /* α — establish own stack frame.
+         * The call site (Byrd-box save side) has already pushed:
+         *   old ret_γ, old ret_ω, old param values  onto the C stack.
+         * We now open a fresh rbp frame so [rbp-8/16/32/48] are private
+         * to THIS invocation.  γ/ω (Byrd-box restore side) tear it down
+         * before dispatching via the ret_ slots the call site filled.
+         *
+         * Near-term bridge to Technique 2 (ARCH.md §Near-Term Bridge):
+         *   call site push  = Byrd-box α (save)
+         *   this frame      = per-invocation DATA block (on C stack)
+         *   γ/ω pop + jmp  = Byrd-box γ/ω (restore)
+         * sub rsp,56: three DESCR_t temps × 16 bytes + 8 align = 56. */
         asmL(np->alpha_lbl);
+        A("    push    rbp\n");
+        A("    mov     rbp, rsp\n");
+        A("    sub     rsp, 56\n");
 
-        /* Load args from call-site arg slots into param variables.
-         * Save/restore of old param values is handled by each call site
-         * using per-call-uid .bss slots — no work needed here. */
+        /* Load args from .bss arg slots into param variables. */
         for (int i = 0; i < np->nparams; i++) {
             char arg_slot_t[LBUF2 + 16], arg_slot_p[LBUF2 + 16];
             snprintf(arg_slot_t, sizeof arg_slot_t, "fn_%s_arg_%d_t", safe, i);
@@ -1806,15 +1818,21 @@ static void emit_asm_named_def(const AsmNamedPat *np,
 
         emit_sep_minor("γ/ω");
 
-        /* γ: success return — jump via ret_γ */
+        /* γ — Byrd-box restore side (success / RETURN).
+         * Tear down this invocation's frame before dispatching to caller. */
         char gamma_lbl[LBUF2], omega_lbl[LBUF2];
         snprintf(gamma_lbl, sizeof gamma_lbl, "fn_%s_gamma", safe);
         snprintf(omega_lbl, sizeof omega_lbl, "fn_%s_omega", safe);
         asmL(gamma_lbl);
+        A("    add     rsp, 56\n");
+        A("    pop     rbp\n");
         A("    jmp     [%s]\n", np->ret_gamma);
 
-        /* ω: fail return (FRETURN) — jump via ret_ω */
+        /* ω — Byrd-box restore side (failure / FRETURN).
+         * Same frame teardown, different dispatch slot. */
         asmL(omega_lbl);
+        A("    add     rsp, 56\n");
+        A("    pop     rbp\n");
         A("    jmp     [%s]\n", np->ret_omega);
         return;
     }
@@ -3111,13 +3129,20 @@ static void emit_jmp(const char *tgt, const char *fallthrough) {
         if (fallthrough) A("    jmp     %s\n", fallthrough);
         return;
     }
-    /* If inside a user function, RETURN → ret_γ (success); FRETURN/NRETURN → ret_ω (fail) */
+    /* If inside a user function, RETURN → fn_NAME_gamma (teardown frame, then ret_γ).
+     * FRETURN/NRETURN → fn_NAME_omega (teardown frame, then ret_ω).
+     * Must go via the named gamma/omega labels — not directly to [ret_slot] —
+     * so the per-invocation stack frame (push rbp/sub rsp,56 at α) is torn down
+     * before the call-site's ucall_ret_g pop sequence runs. */
     if (current_fn && (strcasecmp(tgt,"RETURN")==0 ||
                        strcasecmp(tgt,"FRETURN")==0 ||
                        strcasecmp(tgt,"NRETURN")==0)) {
-        const char *slot = (strcasecmp(tgt,"RETURN")==0)
-                           ? current_fn->ret_gamma : current_fn->ret_omega;
-        A("    jmp     [%s]     ; %s\n", slot, tgt);
+        char lbl[ASM_NAMED_NAMELEN + 32];
+        if (strcasecmp(tgt,"RETURN")==0)
+            snprintf(lbl, sizeof lbl, "fn_%s_gamma", current_fn->safe);
+        else
+            snprintf(lbl, sizeof lbl, "fn_%s_omega", current_fn->safe);
+        A("    jmp     %s     ; %s\n", lbl, tgt);
         return;
     }
     if (is_special_goto(tgt)) { A("    GOTO_ALWAYS  L_SNO_END     ; %s\n", tgt); return; }
@@ -3137,9 +3162,12 @@ static void prog_emit_goto(const char *target, const char *fallthrough) {
     if (strcasecmp(target,"RETURN")==0 || strcasecmp(target,"FRETURN")==0 ||
         strcasecmp(target,"NRETURN")==0 || strcasecmp(target,"SRETURN")==0) {
         if (current_fn) {
-            const char *slot = (strcasecmp(target,"RETURN")==0 || strcasecmp(target,"SRETURN")==0)
-                               ? current_fn->ret_gamma : current_fn->ret_omega;
-            A("    jmp     [%s]     ; %s\n", slot, target);
+            char lbl[ASM_NAMED_NAMELEN + 32];
+            if (strcasecmp(target,"RETURN")==0 || strcasecmp(target,"SRETURN")==0)
+                snprintf(lbl, sizeof lbl, "fn_%s_gamma", current_fn->safe);
+            else
+                snprintf(lbl, sizeof lbl, "fn_%s_omega", current_fn->safe);
+            A("    jmp     %s     ; %s\n", lbl, target);
         } else {
             A("    GOTO_ALWAYS  L_SNO_END     ; %s\n", target);
         }
@@ -3162,6 +3190,12 @@ static void prog_labels_reset(void) {
 
 static int prog_label_id(const char *lbl) {
     if (!lbl || !*lbl) return -1;
+    /* Special SNOBOL4 goto targets are handled by emit_jmp/prog_emit_goto directly.
+     * Never register them as program labels — they must not become stubs. */
+    if (strcasecmp(lbl,"RETURN")==0  || strcasecmp(lbl,"FRETURN")==0 ||
+        strcasecmp(lbl,"NRETURN")==0 || strcasecmp(lbl,"SRETURN")==0 ||
+        strcasecmp(lbl,"END")==0)
+        return -1;
     for (int i = 0; i < prog_label_count; i++)
         if (strcmp(prog_labels[i], lbl) == 0) return i;
     if (prog_label_count >= MAX_PROG_LABELS) return -1;
@@ -3808,22 +3842,36 @@ static void asm_emit_program(Program *prog) {
         emit_jmp(tgt_s ? tgt_s : tgt_u, next_lbl);
 
         /* -- omega: match failed at this scan_start position --
-         * Anchored (&ANCHOR != 0): go directly to F-target, no retry.
-         * Unanchored: advance scan_start by 1, retry if not past subject end. */
+         * When scan_fail_tgt is RETURN/FRETURN inside a user function, the
+         * conditional branches need a plain label — emit a local trampoline
+         * that routes through fn_NAME_gamma/omega for frame teardown. */
         asmL(pat_omega);
         {
             const char *scan_fail_tgt = tgt_f ? tgt_f : tgt_u;
-            const char *scan_fail = scan_fail_tgt ? prog_label_nasm(scan_fail_tgt) : next_lbl;
-            /* &ANCHOR check: if kw_anchor != 0, skip retry entirely */
+            const char *scan_fail;
+            char tramp[LBUF];
+            int need_tramp = (current_fn && scan_fail_tgt
+                              && is_special_goto(scan_fail_tgt)
+                              && strcasecmp(scan_fail_tgt,"END") != 0);
+            if (need_tramp) {
+                static int tramp_uid = 0;
+                snprintf(tramp, sizeof tramp, "scan_fail_tramp_%d", tramp_uid++);
+                scan_fail = tramp;
+            } else {
+                scan_fail = scan_fail_tgt ? prog_label_nasm(scan_fail_tgt) : next_lbl;
+            }
             A("    cmp     qword [rel kw_anchor], 0\n");
             A("    jne     %s\n", scan_fail);
-            /* Unanchored retry: advance scan_start, retry if not exhausted */
             A("    mov     rax, [%s]\n", scan_start);
             A("    inc     rax\n");
             A("    cmp     rax, [subject_len_val]\n");
             A("    jg      %s\n", scan_fail);
             A("    mov     [%s], rax\n", scan_start);
             A("    jmp     %s\n", scan_retry);
+            if (need_tramp) {
+                A("%s:\n", tramp);
+                emit_jmp(scan_fail_tgt, next_lbl);
+            }
         }
         emit_jmp(tgt_f ? tgt_f : tgt_u, next_lbl);
 
