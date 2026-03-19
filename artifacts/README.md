@@ -3,6 +3,17 @@
 One canonical file per artifact. Git history is the archive — no numbered session copies.
 Overwrite and commit when the artifact changes. `git log -p artifacts/asm/beauty_prog.s` shows full evolution.
 
+## Ownership — never cross these boundaries
+
+| Directory | Owned by | Session may NOT write |
+|-----------|----------|-----------------------|
+| `artifacts/asm/` | ASM backend session | JVM session, NET session |
+| `artifacts/jvm/` | JVM backend session | ASM session, NET session |
+| `artifacts/net/` | NET backend session | ASM session, JVM session |
+| `artifacts/c/`   | C backend session   | all others |
+
+Toolchain verification (e.g. "does jasmin.jar work?") goes to `/tmp/` — never to another backend's artifact directory.
+
 ```
 artifacts/
   asm/
@@ -10,8 +21,12 @@ artifacts/
     fixtures/            ← sprint oracle .s files (one per node type / milestone)
     samples/             ← sample programs (roman, wordcount)
   c/                     ← C backend generated output (.c files)
-  jvm/                   ← JVM bytecode (future)
-  net/                   ← .NET MSIL (future)
+  jvm/
+    hello.j              ← hello.sno via -jvm  (canonical J1+ artifact)
+    multi.j              ← multi.sno via -jvm
+    literals.j           ← literals.sno via -jvm
+  net/
+    hello_prog.il        ← hello/null program via -net (canonical N0+ artifact)
 ```
 
 ---
