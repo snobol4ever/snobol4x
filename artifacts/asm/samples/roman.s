@@ -13,8 +13,10 @@ extern  stmt_setup_subject, stmt_apply_replacement
 extern  stmt_apply_replacement_splice
 extern  stmt_set_capture, stmt_match_var
 extern  stmt_pos_var, stmt_rpos_var
-extern  stmt_break_var, stmt_span_var, stmt_any_var
-extern  stmt_breakx
+extern  stmt_span_var, stmt_break_var
+extern  stmt_breakx_var, stmt_breakx_lit
+extern  stmt_any_var, stmt_notany_var
+extern  stmt_at_capture
 extern  kw_anchor
 global  cursor, subject_data, subject_len_val
 

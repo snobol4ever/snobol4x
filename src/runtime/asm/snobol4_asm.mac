@@ -488,6 +488,14 @@
 %endmacro
 
 ; =============================================================================
+; STORE_RESULT16 — save rax/rdx to [rbp-16/8] (subject/lhs slot)
+; =============================================================================
+%macro STORE_RESULT16 0
+    mov     [rbp-16], rax
+    mov     [rbp-8],  rdx
+%endmacro
+
+; =============================================================================
 ; SAVE_DESCR — save rax/rdx DESCR_t into [rbp-32/24] (same as STORE_RESULT,
 ; named SAVE_DESCR for pre-call staging context — semantically clearer)
 ; =============================================================================
@@ -605,57 +613,21 @@
 %endmacro
 
 ; =============================================================================
-; BREAKX_ALPHA cslab, cslen, saved, cursor, subj, subj_len, gamma, omega
-;   Like BREAK but succeeds at end-of-string (zero-or-more non-charset chars).
-;   Calls stmt_breakx(cslab, cslen) → result always >= 0 (never fails).
+; SPAN_ALPHA_VAR varlab, saved, cursor, subj, subj_len, gamma, omega
+;   SPAN with variable charset — calls stmt_span_var, returns new cursor or -1
 ; =============================================================================
-%macro BREAKX_ALPHA 8         ; cslab, cslen, saved, cursor, subj, subj_len, gamma, omega
-    mov     rax, [%4]
-    mov     [%3], rax
-    lea     rdi, [rel %1]
-    mov     rsi, %2
-    call    stmt_breakx
-    jmp     %7
-%endmacro
-
-%macro BREAKX_BETA 3          ; saved, cursor, omega
-    mov     rax, [%1]
-    mov     [%2], rax
-    jmp     %3
-%endmacro
-
-; =============================================================================
-; BREAK_ALPHA_VAR varlab, saved, cursor, gamma, omega
-;   BREAK with runtime charset from variable. Calls stmt_break_var.
-; =============================================================================
-%macro BREAK_ALPHA_VAR 5      ; varlab, saved, cursor, gamma, omega
+%macro SPAN_ALPHA_VAR 7       ; varlab, saved, cursor, subj, subj_len, gamma, omega
     mov     rax, [%3]
     mov     [%2], rax
     lea     rdi, [rel %1]
-    call    stmt_break_var
-    cmp     rax, -1
-    je      %5
-    jmp     %4
-%endmacro
-
-%macro BREAK_BETA_VAR 3       ; saved, cursor, omega
-    mov     rax, [%1]
-    mov     [%2], rax
-    jmp     %3
-%endmacro
-
-; =============================================================================
-; SPAN_ALPHA_VAR varlab, saved, cursor, gamma, omega
-;   SPAN with runtime charset from variable. Calls stmt_span_var.
-; =============================================================================
-%macro SPAN_ALPHA_VAR 5       ; varlab, saved, cursor, gamma, omega
-    mov     rax, [%3]
-    mov     [%2], rax
-    lea     rdi, [rel %1]
+    mov     rsi, [%3]
+    lea     rdx, [rel %4]
+    mov     rcx, [%5]
     call    stmt_span_var
-    test    eax, eax
-    jz      %5
-    jmp     %4
+    cmp     rax, -1
+    je      %7
+    mov     [%3], rax
+    jmp     %6
 %endmacro
 
 %macro SPAN_BETA_VAR 3        ; saved, cursor, omega
@@ -665,23 +637,140 @@
 %endmacro
 
 ; =============================================================================
-; ANY_ALPHA_VAR varlab, saved, cursor, gamma, omega
-;   ANY with runtime charset from variable. Calls stmt_any_var.
+; BREAK_ALPHA_VAR varlab, saved, cursor, subj, subj_len, gamma, omega
+;   BREAK with variable charset — calls stmt_break_var
 ; =============================================================================
-%macro ANY_ALPHA_VAR 5        ; varlab, saved, cursor, gamma, omega
+%macro BREAK_ALPHA_VAR 7      ; varlab, saved, cursor, subj, subj_len, gamma, omega
     mov     rax, [%3]
     mov     [%2], rax
     lea     rdi, [rel %1]
+    mov     rsi, [%3]
+    lea     rdx, [rel %4]
+    mov     rcx, [%5]
+    call    stmt_break_var
+    cmp     rax, -1
+    je      %7
+    mov     [%3], rax
+    jmp     %6
+%endmacro
+
+%macro BREAK_BETA_VAR 3       ; saved, cursor, omega
+    mov     rax, [%1]
+    mov     [%2], rax
+    jmp     %3
+%endmacro
+
+; =============================================================================
+; BREAKX_ALPHA_VAR varlab, saved, cursor, subj, subj_len, gamma, omega
+;   BREAKX with variable charset — fails on zero advance
+; =============================================================================
+%macro BREAKX_ALPHA_VAR 7     ; varlab, saved, cursor, subj, subj_len, gamma, omega
+    mov     rax, [%3]
+    mov     [%2], rax
+    lea     rdi, [rel %1]
+    mov     rsi, [%3]
+    lea     rdx, [rel %4]
+    mov     rcx, [%5]
+    call    stmt_breakx_var
+    cmp     rax, -1
+    je      %7
+    mov     [%3], rax
+    jmp     %6
+%endmacro
+
+%macro BREAKX_BETA_VAR 3      ; saved, cursor, omega
+    mov     rax, [%1]
+    mov     [%2], rax
+    jmp     %3
+%endmacro
+
+; =============================================================================
+; BREAKX_ALPHA_LIT cslab, saved, cursor, subj, subj_len, gamma, omega
+;   BREAKX with literal charset — fails on zero advance
+; =============================================================================
+%macro BREAKX_ALPHA_LIT 7     ; cslab, saved, cursor, subj, subj_len, gamma, omega
+    mov     rax, [%3]
+    mov     [%2], rax
+    lea     rdi, [rel %1]
+    mov     rsi, [%3]
+    lea     rdx, [rel %4]
+    mov     rcx, [%5]
+    call    stmt_breakx_lit
+    cmp     rax, -1
+    je      %7
+    mov     [%3], rax
+    jmp     %6
+%endmacro
+
+%macro BREAKX_BETA_LIT 3      ; saved, cursor, omega
+    mov     rax, [%1]
+    mov     [%2], rax
+    jmp     %3
+%endmacro
+
+; =============================================================================
+; ANY_ALPHA_VAR varlab, saved, cursor, subj, subj_len, gamma, omega
+; =============================================================================
+%macro ANY_ALPHA_VAR 7        ; varlab, saved, cursor, subj, subj_len, gamma, omega
+    mov     rax, [%3]
+    mov     [%2], rax
+    lea     rdi, [rel %1]
+    mov     rsi, [%3]
+    lea     rdx, [rel %4]
+    mov     rcx, [%5]
     call    stmt_any_var
     test    eax, eax
-    jz      %5
-    jmp     %4
+    jz      %7
+    mov     rax, [%3]
+    inc     rax
+    mov     [%3], rax
+    jmp     %6
 %endmacro
 
 %macro ANY_BETA_VAR 3         ; saved, cursor, omega
     mov     rax, [%1]
     mov     [%2], rax
     jmp     %3
+%endmacro
+
+; =============================================================================
+; NOTANY_ALPHA_VAR varlab, saved, cursor, subj, subj_len, gamma, omega
+; =============================================================================
+%macro NOTANY_ALPHA_VAR 7     ; varlab, saved, cursor, subj, subj_len, gamma, omega
+    mov     rax, [%3]
+    mov     [%2], rax
+    lea     rdi, [rel %1]
+    mov     rsi, [%3]
+    lea     rdx, [rel %4]
+    mov     rcx, [%5]
+    call    stmt_notany_var
+    test    eax, eax
+    jz      %7
+    mov     rax, [%3]
+    inc     rax
+    mov     [%3], rax
+    jmp     %6
+%endmacro
+
+%macro NOTANY_BETA_VAR 3      ; saved, cursor, omega
+    mov     rax, [%1]
+    mov     [%2], rax
+    jmp     %3
+%endmacro
+
+; =============================================================================
+; AT_ALPHA varlab, cursor, gamma, omega
+;   @VAR cursor-position capture: store cursor as integer into VAR, always succeed
+; =============================================================================
+%macro AT_ALPHA 4             ; varlab, cursor, gamma, omega
+    lea     rdi, [rel %1]
+    mov     rsi, [%2]
+    call    stmt_at_capture
+    jmp     %3
+%endmacro
+
+%macro AT_BETA 1              ; omega
+    jmp     %1
 %endmacro
 
 ; =============================================================================

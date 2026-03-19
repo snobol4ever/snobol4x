@@ -115,6 +115,94 @@ int stmt_rpos_var(const char *varname, int64_t cursor, int64_t subj_len) {
     return (cursor == subj_len - n) ? 1 : 0;
 }
 
+/* ---- SPAN(variable) — scan chars IN charset, return new cursor or -1 ---- */
+/* Returns new cursor (≥1 advance) on match, -1 on fail.                    */
+int64_t stmt_span_var(const char *varname, int64_t cursor,
+                      const char *subj, int64_t subj_len) {
+    DESCR_t v = NV_GET_fn(varname);
+    const char *cs = VARVAL_fn(v);
+    if (!cs || cursor >= subj_len) return -1;
+    int64_t pos = cursor;
+    while (pos < subj_len) {
+        char c = subj[pos];
+        if (!strchr(cs, c)) break;
+        pos++;
+    }
+    if (pos == cursor) return -1;   /* no chars matched */
+    return pos;
+}
+
+/* ---- BREAK(variable) — scan chars NOT IN charset, return new cursor or -1 */
+int64_t stmt_break_var(const char *varname, int64_t cursor,
+                       const char *subj, int64_t subj_len) {
+    DESCR_t v = NV_GET_fn(varname);
+    const char *cs = VARVAL_fn(v);
+    if (!cs) cs = "";
+    int64_t pos = cursor;
+    while (pos < subj_len) {
+        char c = subj[pos];
+        if (strchr(cs, c)) break;
+        pos++;
+    }
+    if (pos >= subj_len) return -1;  /* never hit delimiter — fail */
+    return pos;                       /* zero advance OK: cursor already at delimiter */
+}
+
+/* ---- BREAKX(variable) — like BREAK but fails on zero advance ---- */
+int64_t stmt_breakx_var(const char *varname, int64_t cursor,
+                        const char *subj, int64_t subj_len) {
+    DESCR_t v = NV_GET_fn(varname);
+    const char *cs = VARVAL_fn(v);
+    if (!cs) cs = "";
+    int64_t pos = cursor;
+    while (pos < subj_len) {
+        char c = subj[pos];
+        if (strchr(cs, c)) break;
+        pos++;
+    }
+    if (pos >= subj_len) return -1;
+    if (pos == cursor)   return -1;  /* BREAKX: zero advance fails */
+    return pos;
+}
+
+/* ---- BREAKX(literal) — same, literal charset ---- */
+int64_t stmt_breakx_lit(const char *cs, int64_t cursor,
+                        const char *subj, int64_t subj_len) {
+    if (!cs) cs = "";
+    int64_t pos = cursor;
+    while (pos < subj_len) {
+        char c = subj[pos];
+        if (strchr(cs, c)) break;
+        pos++;
+    }
+    if (pos >= subj_len) return -1;
+    if (pos == cursor)   return -1;
+    return pos;
+}
+
+/* ---- ANY(variable) — match one char IN charset, return 1/0 ---- */
+int stmt_any_var(const char *varname, int64_t cursor,
+                 const char *subj, int64_t subj_len) {
+    DESCR_t v = NV_GET_fn(varname);
+    const char *cs = VARVAL_fn(v);
+    if (!cs || cursor >= subj_len) return 0;
+    return strchr(cs, subj[cursor]) ? 1 : 0;
+}
+
+/* ---- NOTANY(variable) — match one char NOT IN charset, return 1/0 ---- */
+int stmt_notany_var(const char *varname, int64_t cursor,
+                    const char *subj, int64_t subj_len) {
+    DESCR_t v = NV_GET_fn(varname);
+    const char *cs = VARVAL_fn(v);
+    if (!cs || cursor >= subj_len) return 0;
+    return strchr(cs, subj[cursor]) ? 0 : 1;
+}
+
+/* ---- @VAR — cursor position capture: store cursor as integer into VAR ---- */
+void stmt_at_capture(const char *varname, int64_t cursor) {
+    NV_SET_fn(varname, INTVAL(cursor));
+}
+
 /* ---- fail test ---- */
 
 int stmt_is_fail(DESCR_t v) {
@@ -334,92 +422,3 @@ void stmt_set_capture(const char *varname, const char *buf, uint64_t len) {
     NV_SET_fn(varname, STRVAL(s));
 }
 
-/* ---- BREAK(variable) / SPAN(variable) / ANY(variable) — runtime charset ---- */
-
-/* stmt_break_var: advance cursor past chars NOT in charset string held by varname.
- * Returns number of chars consumed (>=0); 0 means no advance (BREAK succeeds
- * immediately if first char is a break char, or at end-of-subject).
- * Returns -1 if subject is already exhausted (fail). */
-int64_t stmt_break_var(const char *varname) {
-    DESCR_t v = NV_GET_fn(varname);
-    const char *cs = VARVAL_fn(v);
-    if (!cs) cs = "";
-    size_t cslen = strlen(cs);
-    int64_t start = (int64_t)cursor;
-    int64_t slen  = (int64_t)subject_len_val;
-    int64_t pos   = start;
-    while (pos < slen) {
-        unsigned char c = (unsigned char)subject_data[pos];
-        int hit = 0;
-        for (size_t k = 0; k < cslen; k++) {
-            if ((unsigned char)cs[k] == c) { hit = 1; break; }
-        }
-        if (hit) break;   /* found a break char — stop */
-        pos++;
-    }
-    if (pos == start && pos >= slen) return -1; /* exhausted, no progress */
-    cursor = (uint64_t)pos;
-    return pos - start;
-}
-
-/* stmt_span_var: advance cursor through chars IN charset string held by varname.
- * Returns 1 on success (at least one char matched), 0 on failure. */
-int stmt_span_var(const char *varname) {
-    DESCR_t v = NV_GET_fn(varname);
-    const char *cs = VARVAL_fn(v);
-    if (!cs) cs = "";
-    size_t cslen = strlen(cs);
-    int64_t start = (int64_t)cursor;
-    int64_t slen  = (int64_t)subject_len_val;
-    int64_t pos   = start;
-    while (pos < slen) {
-        unsigned char c = (unsigned char)subject_data[pos];
-        int hit = 0;
-        for (size_t k = 0; k < cslen; k++) {
-            if ((unsigned char)cs[k] == c) { hit = 1; break; }
-        }
-        if (!hit) break;
-        pos++;
-    }
-    if (pos == start) return 0; /* no chars matched */
-    cursor = (uint64_t)pos;
-    return 1;
-}
-
-/* stmt_any_var: match exactly one char IN charset string held by varname.
- * Returns 1 on success, 0 on failure. */
-int stmt_any_var(const char *varname) {
-    DESCR_t v = NV_GET_fn(varname);
-    const char *cs = VARVAL_fn(v);
-    if (!cs) cs = "";
-    size_t cslen = strlen(cs);
-    if ((int64_t)cursor >= (int64_t)subject_len_val) return 0;
-    unsigned char c = (unsigned char)subject_data[cursor];
-    for (size_t k = 0; k < cslen; k++) {
-        if ((unsigned char)cs[k] == c) { cursor++; return 1; }
-    }
-    return 0;
-}
-
-
-/* ---- BREAKX(literal) — like BREAK but succeeds at end-of-string ---- */
-
-/* stmt_breakx: matches zero or more chars NOT in charset cs[0..cslen-1].
- * Unlike BREAK, succeeds even at end-of-subject (returns 0 chars consumed).
- * Returns chars consumed (always >= 0). */
-int64_t stmt_breakx(const char *cs, int64_t cslen) {
-    int64_t start = (int64_t)cursor;
-    int64_t slen  = (int64_t)subject_len_val;
-    int64_t pos   = start;
-    while (pos < slen) {
-        unsigned char c = (unsigned char)subject_data[pos];
-        int hit = 0;
-        for (int64_t k = 0; k < cslen; k++) {
-            if ((unsigned char)cs[k] == c) { hit = 1; break; }
-        }
-        if (hit) break;
-        pos++;
-    }
-    cursor = (uint64_t)pos;
-    return pos - start;
-}

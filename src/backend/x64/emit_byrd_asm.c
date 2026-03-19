@@ -862,6 +862,89 @@ static void emit_asm_break(const char *charset, int cslen,
 }
 
 /* -----------------------------------------------------------------------
+ * Variable-charset emitters — SPAN/BREAK/ANY/NOTANY with E_VART arg
+ * ----------------------------------------------------------------------- */
+
+static void emit_asm_span_var(const char *varlab,
+                               const char *alpha, const char *beta,
+                               const char *gamma, const char *omega,
+                               const char *cursor,
+                               const char *subj, const char *subj_len_sym) {
+    char saved[LBUF];
+    snprintf(saved, LBUF, "span%d_saved", asm_uid());
+    bss_add(saved);
+    ALFC(alpha, "SPAN(var) α", "SPAN_ALPHA_VAR %s, %s, %s, %s, %s, %s, %s\n",
+         varlab, saved, cursor, subj, subj_len_sym, gamma, omega);
+    ALFC(beta,  "SPAN(var) β", "SPAN_BETA_VAR  %s, %s, %s\n", saved, cursor, omega);
+}
+
+static void emit_asm_break_var(const char *varlab,
+                                const char *alpha, const char *beta,
+                                const char *gamma, const char *omega,
+                                const char *cursor,
+                                const char *subj, const char *subj_len_sym) {
+    char saved[LBUF];
+    snprintf(saved, LBUF, "brk%d_saved", asm_uid());
+    bss_add(saved);
+    ALFC(alpha, "BREAK(var) α", "BREAK_ALPHA_VAR %s, %s, %s, %s, %s, %s, %s\n",
+         varlab, saved, cursor, subj, subj_len_sym, gamma, omega);
+    ALFC(beta,  "BREAK(var) β", "BREAK_BETA_VAR  %s, %s, %s\n", saved, cursor, omega);
+}
+
+static void emit_asm_breakx_var(const char *varlab,
+                                 const char *alpha, const char *beta,
+                                 const char *gamma, const char *omega,
+                                 const char *cursor,
+                                 const char *subj, const char *subj_len_sym) {
+    char saved[LBUF];
+    snprintf(saved, LBUF, "brkx%d_saved", asm_uid());
+    bss_add(saved);
+    ALFC(alpha, "BREAKX(var) α", "BREAKX_ALPHA_VAR %s, %s, %s, %s, %s, %s, %s\n",
+         varlab, saved, cursor, subj, subj_len_sym, gamma, omega);
+    ALFC(beta,  "BREAKX(var) β", "BREAKX_BETA_VAR  %s, %s, %s\n", saved, cursor, omega);
+}
+
+static void emit_asm_breakx_lit(const char *charset, int cslen,
+                                 const char *alpha, const char *beta,
+                                 const char *gamma, const char *omega,
+                                 const char *cursor,
+                                 const char *subj, const char *subj_len_sym) {
+    char saved[LBUF];
+    snprintf(saved, LBUF, "brkx%d_saved", asm_uid());
+    bss_add(saved);
+    const char *clabel = lit_intern(charset, cslen);
+    ALFC(alpha, "BREAKX(lit) α", "BREAKX_ALPHA_LIT %s, %s, %s, %s, %s, %s, %s\n",
+         clabel, saved, cursor, subj, subj_len_sym, gamma, omega);
+    ALFC(beta,  "BREAKX(lit) β", "BREAKX_BETA_LIT  %s, %s, %s\n", saved, cursor, omega);
+}
+
+static void emit_asm_any_var(const char *varlab,
+                              const char *alpha, const char *beta,
+                              const char *gamma, const char *omega,
+                              const char *cursor,
+                              const char *subj, const char *subj_len_sym) {
+    char saved[LBUF];
+    snprintf(saved, LBUF, "any%d_saved", asm_uid());
+    bss_add(saved);
+    ALFC(alpha, "ANY(var) α", "ANY_ALPHA_VAR   %s, %s, %s, %s, %s, %s, %s\n",
+         varlab, saved, cursor, subj, subj_len_sym, gamma, omega);
+    ALFC(beta,  "ANY(var) β", "ANY_BETA_VAR    %s, %s, %s\n", saved, cursor, omega);
+}
+
+static void emit_asm_notany_var(const char *varlab,
+                                 const char *alpha, const char *beta,
+                                 const char *gamma, const char *omega,
+                                 const char *cursor,
+                                 const char *subj, const char *subj_len_sym) {
+    char saved[LBUF];
+    snprintf(saved, LBUF, "nany%d_saved", asm_uid());
+    bss_add(saved);
+    ALFC(alpha, "NOTANY(var) α", "NOTANY_ALPHA_VAR %s, %s, %s, %s, %s, %s, %s\n",
+         varlab, saved, cursor, subj, subj_len_sym, gamma, omega);
+    ALFC(beta,  "NOTANY(var) β", "NOTANY_BETA_VAR  %s, %s, %s\n", saved, cursor, omega);
+}
+
+/* -----------------------------------------------------------------------
  * emit_asm_len — LEN(N)  (Sprint A14)
  * ----------------------------------------------------------------------- */
 
@@ -1117,9 +1200,18 @@ static void emit_asm_node(EXPR_t *pat,
         if (np) {
             emit_asm_named_ref(np, alpha, beta, gamma, omega);
         } else {
-            A("\n; UNRESOLVED named pattern ref: %s → ω\n", varname);
-            asmL(alpha);
-            ALF(beta, "jmp     %s\n", omega);
+            /* Fall back to plain-string variable registry (PAT = 'literal') */
+            const AsmStrVar *sv = asm_str_var_lookup(varname);
+            if (sv && sv->sval) {
+                A("\n; E_VART *%s → inline LIT '%s'\n", varname, sv->sval);
+                emit_asm_lit(sv->sval, (int)strlen(sv->sval),
+                             alpha, beta, gamma, omega,
+                             cursor, subj, subj_len_sym);
+            } else {
+                A("\n; UNRESOLVED named pattern ref: %s → ω\n", varname);
+                asmL(alpha);
+                ALF(beta, "jmp     %s\n", omega);
+            }
         }
         break;
     }
@@ -1204,12 +1296,7 @@ static void emit_asm_node(EXPR_t *pat,
         } else if (pat->sval && strcasecmp(pat->sval, "ANY") == 0 && pat->nargs == 1) {
             EXPR_t *arg = pat->args[0];
             if (arg->kind == E_VART && arg->sval) {
-                const char *vlab = prog_str_intern(arg->sval);
-                char saved[128]; snprintf(saved, sizeof saved, "any_var%d_saved", depth);
-                bss_add(saved);
-                ALFC(alpha, "ANY_VAR α", "ANY_ALPHA_VAR %s, %s, %s, %s, %s\n",
-                     vlab, saved, cursor, gamma, omega);
-                ALFC(beta,  "ANY_VAR β", "ANY_BETA_VAR  %s, %s, %s\n", saved, cursor, omega);
+                emit_asm_any_var(prog_str_intern(arg->sval), alpha, beta, gamma, omega, cursor, subj, subj_len_sym);
             } else {
                 const char *cs = (arg->kind == E_QLIT && arg->sval) ? arg->sval : "";
                 int cslen = (arg->kind == E_QLIT && arg->sval) ? (int)strlen(arg->sval) : 0;
@@ -1217,18 +1304,17 @@ static void emit_asm_node(EXPR_t *pat,
             }
         } else if (pat->sval && strcasecmp(pat->sval, "NOTANY") == 0 && pat->nargs == 1) {
             EXPR_t *arg = pat->args[0];
-            const char *cs = (arg->kind == E_QLIT && arg->sval) ? arg->sval : "";
-            int cslen = (arg->kind == E_QLIT && arg->sval) ? (int)strlen(arg->sval) : 0;
-            emit_asm_notany(cs, cslen, alpha, beta, gamma, omega, cursor, subj, subj_len_sym);
+            if (arg->kind == E_VART && arg->sval) {
+                emit_asm_notany_var(prog_str_intern(arg->sval), alpha, beta, gamma, omega, cursor, subj, subj_len_sym);
+            } else {
+                const char *cs = (arg->kind == E_QLIT && arg->sval) ? arg->sval : "";
+                int cslen = (arg->kind == E_QLIT && arg->sval) ? (int)strlen(arg->sval) : 0;
+                emit_asm_notany(cs, cslen, alpha, beta, gamma, omega, cursor, subj, subj_len_sym);
+            }
         } else if (pat->sval && strcasecmp(pat->sval, "SPAN") == 0 && pat->nargs == 1) {
             EXPR_t *arg = pat->args[0];
             if (arg->kind == E_VART && arg->sval) {
-                const char *vlab = prog_str_intern(arg->sval);
-                char saved[128]; snprintf(saved, sizeof saved, "span_var%d_saved", depth);
-                bss_add(saved);
-                ALFC(alpha, "SPAN_VAR α", "SPAN_ALPHA_VAR %s, %s, %s, %s, %s\n",
-                     vlab, saved, cursor, gamma, omega);
-                ALFC(beta,  "SPAN_VAR β", "SPAN_BETA_VAR  %s, %s, %s\n", saved, cursor, omega);
+                emit_asm_span_var(prog_str_intern(arg->sval), alpha, beta, gamma, omega, cursor, subj, subj_len_sym);
             } else {
                 const char *cs = (arg->kind == E_QLIT && arg->sval) ? arg->sval : "";
                 int cslen = (arg->kind == E_QLIT && arg->sval) ? (int)strlen(arg->sval) : 0;
@@ -1237,12 +1323,7 @@ static void emit_asm_node(EXPR_t *pat,
         } else if (pat->sval && strcasecmp(pat->sval, "BREAK") == 0 && pat->nargs == 1) {
             EXPR_t *arg = pat->args[0];
             if (arg->kind == E_VART && arg->sval) {
-                const char *vlab = prog_str_intern(arg->sval);
-                char saved[128]; snprintf(saved, sizeof saved, "brk_var%d_saved", depth);
-                bss_add(saved);
-                ALFC(alpha, "BREAK_VAR α", "BREAK_ALPHA_VAR %s, %s, %s, %s, %s\n",
-                     vlab, saved, cursor, gamma, omega);
-                ALFC(beta,  "BREAK_VAR β", "BREAK_BETA_VAR  %s, %s, %s\n", saved, cursor, omega);
+                emit_asm_break_var(prog_str_intern(arg->sval), alpha, beta, gamma, omega, cursor, subj, subj_len_sym);
             } else {
                 const char *cs = (arg->kind == E_QLIT && arg->sval) ? arg->sval : "";
                 int cslen = (arg->kind == E_QLIT && arg->sval) ? (int)strlen(arg->sval) : 0;
@@ -1250,14 +1331,13 @@ static void emit_asm_node(EXPR_t *pat,
             }
         } else if (pat->sval && strcasecmp(pat->sval, "BREAKX") == 0 && pat->nargs == 1) {
             EXPR_t *arg = pat->args[0];
-            const char *cs    = (arg->kind == E_QLIT && arg->sval) ? arg->sval : "";
-            int         cslen = (arg->kind == E_QLIT && arg->sval) ? (int)strlen(arg->sval) : 0;
-            const char *cslab = lit_intern(cs, cslen);
-            char saved[128]; snprintf(saved, sizeof saved, "brkx%d_saved", depth);
-            bss_add(saved);
-            ALFC(alpha, "BREAKX α", "BREAKX_ALPHA %s, %d, %s, %s, %s, %s, %s, %s\n",
-                 cslab, cslen, saved, cursor, subj, subj_len_sym, gamma, omega);
-            ALFC(beta,  "BREAKX β", "BREAKX_BETA  %s, %s, %s\n", saved, cursor, omega);
+            if (arg->kind == E_VART && arg->sval) {
+                emit_asm_breakx_var(prog_str_intern(arg->sval), alpha, beta, gamma, omega, cursor, subj, subj_len_sym);
+            } else {
+                const char *cs = (arg->kind == E_QLIT && arg->sval) ? arg->sval : "";
+                int cslen = (arg->kind == E_QLIT && arg->sval) ? (int)strlen(arg->sval) : 0;
+                emit_asm_breakx_lit(cs, cslen, alpha, beta, gamma, omega, cursor, subj, subj_len_sym);
+            }
         } else if (pat->sval && strcasecmp(pat->sval, "LEN") == 0 && pat->nargs == 1) {
             EXPR_t *arg = pat->args[0];
             long n = (arg->kind == E_ILIT) ? arg->ival : 0;
@@ -1286,6 +1366,16 @@ static void emit_asm_node(EXPR_t *pat,
             ALF(beta, "jmp     %s\n", omega);
         }
         break;
+
+    case E_ATP: {
+        /* @VAR — cursor-position capture: store cursor as integer into VAR, always succeed */
+        const char *varname = pat->sval ? pat->sval : "";
+        const char *varlab  = prog_str_intern(varname);
+        ALFC(alpha, "@VAR α", "AT_ALPHA        %s, %s, %s, %s\n",
+             varlab, cursor, gamma, omega);
+        ALFC(beta,  "@VAR β", "AT_BETA         %s\n", omega);
+        break;
+    }
 
     default:
         A("\n; UNIMPLEMENTED node kind %d → ω\n", pat->kind);
@@ -1689,9 +1779,8 @@ static int expr_has_pattern_fn(EXPR_t *e) {
     if (!e) return 0;
     /* E_FNC nodes that are pattern builtins make this a pattern expr */
     if (e->kind == E_FNC) return 1;
-    /* E_DOL (. capture operator) and E_NAM (unary . name-of) are pattern ops */
-    if (e->kind == E_DOL) return 1;
-    if (e->kind == E_NAM) return 1;
+    /* E_NAM (. capture) and E_DOL ($ capture) wrap a pattern child */
+    if (e->kind == E_NAM || e->kind == E_DOL) return 1;
     if (expr_has_pattern_fn(e->left))  return 1;
     if (expr_has_pattern_fn(e->right)) return 1;
     for (int i = 0; i < e->nargs; i++)
@@ -2484,7 +2573,9 @@ static int prog_emit_expr(EXPR_t *e, int rbp_off) {
             A("    add     rsp, %d\n", arr_bytes);
         }
         /* Result in rax/rdx → store to target slot */
-        if (rbp_off == -32 || rbp_off == -16) {
+        if (rbp_off == -16) {
+            A("    STORE_RESULT16\n");
+        } else if (rbp_off == -32) {
             A("    STORE_RESULT\n");
         } else {
             A("    mov     [rbp%+d], rax\n", rbp_off);
@@ -3043,8 +3134,10 @@ static void asm_emit_program(Program *prog) {
     A("    extern  stmt_apply_replacement_splice\n");
     A("    extern  stmt_set_capture, stmt_match_var\n");
     A("    extern  stmt_pos_var, stmt_rpos_var\n");
-    A("    extern  stmt_break_var, stmt_span_var, stmt_any_var\n");
-    A("    extern  stmt_breakx\n");
+    A("    extern  stmt_span_var, stmt_break_var\n");
+    A("    extern  stmt_breakx_var, stmt_breakx_lit\n");
+    A("    extern  stmt_any_var, stmt_notany_var\n");
+    A("    extern  stmt_at_capture\n");
     A("    extern  kw_anchor\n");
     A("    global  cursor, subject_data, subject_len_val\n");
     A("\n");

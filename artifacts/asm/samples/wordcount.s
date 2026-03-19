@@ -13,8 +13,10 @@ extern  stmt_setup_subject, stmt_apply_replacement
 extern  stmt_apply_replacement_splice
 extern  stmt_set_capture, stmt_match_var
 extern  stmt_pos_var, stmt_rpos_var
-extern  stmt_break_var, stmt_span_var, stmt_any_var
-extern  stmt_breakx
+extern  stmt_span_var, stmt_break_var
+extern  stmt_breakx_var, stmt_breakx_lit
+extern  stmt_any_var, stmt_notany_var
+extern  stmt_at_capture
 extern  kw_anchor
 global  cursor, subject_data, subject_len_val
 
@@ -25,8 +27,8 @@ subject_len_val          resq 1
 P_WPAT_ret_γ            resq 1
 P_WPAT_ret_ω            resq 1
 scan_start_5             resq 1
-brk_var2_saved           resq 1
-span_var2_saved          resq 1
+brk2_saved               resq 1
+span3_saved              resq 1
 conc_tmp0_rax            resq 1
 conc_tmp0_rdx            resq 1
 subject_data             resb 65536
@@ -176,10 +178,10 @@ section .text
 ; P_WPAT_α (α entry)
 P_WPAT_α:                   jmp         seq_l1_alpha ; SEQ
 P_WPAT_β:                   jmp         seq_r1_beta
-seq_l1_alpha:               BREAK_ALPHA_VAR S_WORD, brk_var2_saved, cursor, seq_r1_alpha, patdef_WPAT_omega ; BREAK_VAR α
-seq_l1_beta:                BREAK_BETA_VAR brk_var2_saved, cursor, patdef_WPAT_omega ; BREAK_VAR β
-seq_r1_alpha:               SPAN_ALPHA_VAR S_WORD, span_var2_saved, cursor, patdef_WPAT_gamma, seq_l1_beta ; SPAN_VAR α
-seq_r1_beta:                SPAN_BETA_VAR span_var2_saved, cursor, seq_l1_beta ; SPAN_VAR β
+seq_l1_alpha:               BREAK_ALPHA_VAR S_WORD, brk2_saved, cursor, subject_data, subject_len_val, seq_r1_alpha, patdef_WPAT_omega ; BREAK(var) α
+seq_l1_beta:                BREAK_BETA_VAR brk2_saved, cursor, patdef_WPAT_omega ; BREAK(var) β
+seq_r1_alpha:               SPAN_ALPHA_VAR S_WORD, span3_saved, cursor, subject_data, subject_len_val, patdef_WPAT_gamma, seq_l1_beta ; SPAN(var) α
+seq_r1_beta:                SPAN_BETA_VAR span3_saved, cursor, seq_l1_beta ; SPAN(var) β
 ;  γ/ω ---------------------------------------------------------------------------------------------------------------
 patdef_WPAT_gamma:
                             jmp         [P_WPAT_ret_γ]
