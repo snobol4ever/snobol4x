@@ -5,24 +5,141 @@
 .class public Null
 .super java/lang/Object
 
-; Runtime field: System.out cached at class load
+; Runtime fields
 .field static sno_stdout Ljava/io/PrintStream;
+.field static sno_kw_TRIM I
+.field static sno_kw_ANCHOR I
+.field static sno_vars Ljava/util/HashMap;
 
 .method static <clinit>()V
-    .limit stack 1
+    .limit stack 4
     .limit locals 0
     getstatic       java/lang/System/out Ljava/io/PrintStream;
     putstatic       Null/sno_stdout Ljava/io/PrintStream;
+    iconst_0
+    putstatic       Null/sno_kw_TRIM I
+    iconst_0
+    putstatic       Null/sno_kw_ANCHOR I
+    new java/util/HashMap
+    dup
+    invokespecial java/util/HashMap/<init>()V
+    putstatic       Null/sno_vars Ljava/util/HashMap;
     return
 .end method
 
 .method public static main([Ljava/lang/String;)V
-    .limit stack 8
+    .limit stack 16
     .limit locals 32
 
 ; === END =============================================================
 L_END:
-                        nop
+    nop
 ; program end
-                        return
+    return
 .end method
+.method static sno_kw_get(Ljava/lang/String;)Ljava/lang/String;
+    .limit stack 4
+    .limit locals 1
+    aload_0
+    ldc "ALPHABET"
+    invokevirtual java/lang/String/equalsIgnoreCase(Ljava/lang/String;)Z
+    ifeq Lkwg_not_alphabet
+    new java/lang/StringBuilder
+    dup
+    invokespecial java/lang/StringBuilder/<init>()V
+    ldc 0
+    istore_0
+Lkwg_alpha_loop:
+    iload_0
+    sipush 256
+    if_icmpge Lkwg_alpha_done
+    iload_0
+    i2c
+    invokevirtual java/lang/StringBuilder/append(C)Ljava/lang/StringBuilder;
+    iinc 0 1
+    goto Lkwg_alpha_loop
+Lkwg_alpha_done:
+    invokevirtual java/lang/StringBuilder/toString()Ljava/lang/String;
+    areturn
+Lkwg_not_alphabet:
+    aload_0
+    ldc "TRIM"
+    invokevirtual java/lang/String/equalsIgnoreCase(Ljava/lang/String;)Z
+    ifeq Lkwg_not_trim
+    getstatic Null/sno_kw_TRIM I
+    invokestatic java/lang/Integer/toString(I)Ljava/lang/String;
+    areturn
+Lkwg_not_trim:
+    aload_0
+    ldc "ANCHOR"
+    invokevirtual java/lang/String/equalsIgnoreCase(Ljava/lang/String;)Z
+    ifeq Lkwg_not_anchor
+    getstatic Null/sno_kw_ANCHOR I
+    invokestatic java/lang/Integer/toString(I)Ljava/lang/String;
+    areturn
+Lkwg_not_anchor:
+    ldc ""
+    areturn
+.end method
+
+.method static sno_kw_set(Ljava/lang/String;Ljava/lang/String;)V
+    .limit stack 4
+    .limit locals 2
+    aload_0
+    ldc "TRIM"
+    invokevirtual java/lang/String/equalsIgnoreCase(Ljava/lang/String;)Z
+    ifeq Lkws_not_trim
+    aload_1
+    invokestatic java/lang/Integer/parseInt(Ljava/lang/String;)I
+    putstatic Null/sno_kw_TRIM I
+    return
+Lkws_not_trim:
+    aload_0
+    ldc "ANCHOR"
+    invokevirtual java/lang/String/equalsIgnoreCase(Ljava/lang/String;)Z
+    ifeq Lkws_not_anchor
+    aload_1
+    invokestatic java/lang/Integer/parseInt(Ljava/lang/String;)I
+    putstatic Null/sno_kw_ANCHOR I
+    return
+Lkws_not_anchor:
+    return
+.end method
+
+.method static sno_var_put(Ljava/lang/String;Ljava/lang/String;)V
+    .limit stack 4
+    .limit locals 2
+    getstatic Null/sno_vars Ljava/util/HashMap;
+    aload_0
+    aload_1
+    invokevirtual java/util/HashMap/put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+    pop
+    return
+.end method
+
+.method static sno_indr_get(Ljava/lang/String;)Ljava/lang/String;
+    .limit stack 4
+    .limit locals 1
+    getstatic Null/sno_vars Ljava/util/HashMap;
+    aload_0
+    invokevirtual java/util/HashMap/get(Ljava/lang/Object;)Ljava/lang/Object;
+    checkcast java/lang/String
+    dup
+    ifnonnull Lsig_done
+    pop
+    ldc ""
+Lsig_done:
+    areturn
+.end method
+
+.method static sno_indr_set(Ljava/lang/String;Ljava/lang/String;)V
+    .limit stack 4
+    .limit locals 2
+    getstatic Null/sno_vars Ljava/util/HashMap;
+    aload_0
+    aload_1
+    invokevirtual java/util/HashMap/put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+    pop
+    return
+.end method
+

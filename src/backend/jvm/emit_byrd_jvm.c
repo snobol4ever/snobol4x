@@ -298,32 +298,39 @@ static void jvm_emit_expr(EXPR_t *e) {
         /* Null/empty string */
         JI("ldc", "\"\"");
         break;
+    case E_KW: {
+        /* &KEYWORD — read from sno_kw_get() helper */
+        if (!e->sval) { JI("ldc", "\"\""); break; }
+        char kwesc[128];
+        jvm_escape_string(e->sval, kwesc, sizeof kwesc);
+        JI("ldc", kwesc);
+        char kgdesc[512];
+        snprintf(kgdesc, sizeof kgdesc, "%s/sno_kw_get(Ljava/lang/String;)Ljava/lang/String;", jvm_classname);
+        JI("invokestatic", kgdesc);
+        break;
+    }
     case E_VART: {
-        /* Variable reference — load static field */
+        /* Variable reference — load from sno_vars HashMap (supports indirect write) */
         if (!e->sval) { JI("ldc", "\"\""); break; }
         if (strcasecmp(e->sval, "INPUT") == 0) {
-            /* INPUT: read a line from stdin — simplified for J1 */
             JI("ldc", "\"\"");
             break;
         }
-        char fld[256];
-        jvm_field_name(e->sval, fld, sizeof fld);
-        char desc[512];
-        snprintf(desc, sizeof desc, "%s/%s Ljava/lang/String;", jvm_classname, fld);
-        JI("getstatic", desc);
-        /* Unset variable is null → treat as empty string */
-        JI("dup", "");
-        char nonull[64];
-        /* if non-null skip, else pop+push "" */
-        static int _nulllbl = 0;
-        char skip[32], done[32];
-        snprintf(skip, sizeof skip, "Lnv_%d", _nulllbl);
-        snprintf(done, sizeof done, "Lnvd_%d", _nulllbl++);
-        JI("ifnonnull", skip);
-        JI("pop", "");
-        JI("ldc", "\"\"");
-        J("%s:\n", skip);
-        (void)nonull; (void)done;
+        /* Read via sno_indr_get(name) — HashMap is always authoritative */
+        char nameesc[256];
+        jvm_escape_string(e->sval, nameesc, sizeof nameesc);
+        JI("ldc", nameesc);
+        char igdesc[512];
+        snprintf(igdesc, sizeof igdesc, "%s/sno_indr_get(Ljava/lang/String;)Ljava/lang/String;", jvm_classname);
+        JI("invokestatic", igdesc);
+        break;
+    }
+    case E_INDR: {
+        /* $expr — indirect variable read: evaluate expr → string → lookup in sno_vars map */
+        jvm_emit_expr(e->right ? e->right : e->left);
+        char ivdesc[512];
+        snprintf(ivdesc, sizeof ivdesc, "%s/sno_indr_get(Ljava/lang/String;)Ljava/lang/String;", jvm_classname);
+        JI("invokestatic", ivdesc);
         break;
     }
     case E_ADD:
@@ -556,6 +563,7 @@ static void jvm_emit_stmt(STMT_t *s, int stmt_idx) {
 
         const char *subj = s->subject->sval ? s->subject->sval : "";
         int is_output = strcasecmp(subj, "OUTPUT") == 0;
+        int is_kw     = (s->subject->kind == E_KW);
 
         if (is_output) {
             /* OUTPUT = expr → System.out.println(expr) */
@@ -568,17 +576,32 @@ static void jvm_emit_stmt(STMT_t *s, int stmt_idx) {
                 jvm_emit_expr(s->replacement);
             }
             JI("invokevirtual", "java/io/PrintStream/println(Ljava/lang/String;)V");
-        } else {
-            /* VAR = expr → putstatic */
+        } else if (is_kw) {
+            /* &KEYWORD = expr → sno_kw_set(name, val) */
+            char kwesc[128];
+            jvm_escape_string(subj, kwesc, sizeof kwesc);
+            JI("ldc", kwesc);
             if (!s->replacement || s->replacement->kind == E_NULV) {
                 JI("ldc", "\"\"");
             } else {
                 jvm_emit_expr(s->replacement);
             }
-            char fld[256], desc[512];
-            jvm_field_name(subj, fld, sizeof fld);
-            snprintf(desc, sizeof desc, "%s/%s Ljava/lang/String;", jvm_classname, fld);
-            JI("putstatic", desc);
+            char ksdesc[512];
+            snprintf(ksdesc, sizeof ksdesc, "%s/sno_kw_set(Ljava/lang/String;Ljava/lang/String;)V", jvm_classname);
+            JI("invokestatic", ksdesc);
+        } else {
+            /* VAR = expr → sno_var_put(name, val) into HashMap */
+            char nameesc[256];
+            jvm_escape_string(subj, nameesc, sizeof nameesc);
+            JI("ldc", nameesc);
+            if (!s->replacement || s->replacement->kind == E_NULV) {
+                JI("ldc", "\"\"");
+            } else {
+                jvm_emit_expr(s->replacement);
+            }
+            char vpdesc[512];
+            snprintf(vpdesc, sizeof vpdesc, "%s/sno_var_put(Ljava/lang/String;Ljava/lang/String;)V", jvm_classname);
+            JI("invokestatic", vpdesc);
         }
 
         /* :S/:F / unconditional goto */
@@ -587,6 +610,29 @@ static void jvm_emit_stmt(STMT_t *s, int stmt_idx) {
             JI("goto", glbl);
         }
         /* else fall through to next statement */
+        return;
+    }
+
+    /* Case 3: indirect assignment — $expr = val */
+    if (s->has_eq && s->subject && s->subject->kind == E_INDR && !s->pattern) {
+        /* Evaluate the indirect target name */
+        EXPR_t *indr_operand = s->subject->right ? s->subject->right : s->subject->left;
+        jvm_emit_expr(indr_operand);   /* → String: the variable name */
+        /* Evaluate RHS value */
+        if (!s->replacement || s->replacement->kind == E_NULV) {
+            JI("ldc", "\"\"");
+        } else {
+            jvm_emit_expr(s->replacement);
+        }
+        /* sno_indr_set(name_str, value_str) */
+        char isdesc[512];
+        snprintf(isdesc, sizeof isdesc, "%s/sno_indr_set(Ljava/lang/String;Ljava/lang/String;)V", jvm_classname);
+        JI("invokestatic", isdesc);
+
+        if (s->go && s->go->onsuccess && s->go->onsuccess[0]) {
+            char glbl[128]; snprintf(glbl, sizeof glbl, "L_%s", s->go->onsuccess);
+            JI("goto", glbl);
+        }
         return;
     }
 
@@ -608,8 +654,158 @@ static void jvm_emit_stmt(STMT_t *s, int stmt_idx) {
 }
 
 /* -----------------------------------------------------------------------
- * Header — class declaration, static fields, clinit
+ * Runtime helper methods — emitted once per program
  * ----------------------------------------------------------------------- */
+
+/* Track which helpers are needed */
+static int jvm_need_kw_helpers   = 0;
+static int jvm_need_indr_helpers = 0;
+static int jvm_need_varmap       = 0;
+
+static void jvm_emit_runtime_helpers(void) {
+    /* sno_kw_get(String name) → String
+     * Returns value of SNOBOL4 keyword &name.
+     * For J2: ALPHABET=256-char string, TRIM/ANCHOR/FULLSCAN/STCOUNT/STLIMIT = integers.
+     * Unrecognised keyword → "" (unset). */
+    if (jvm_need_kw_helpers) {
+        J(".method static sno_kw_get(Ljava/lang/String;)Ljava/lang/String;\n");
+        J("    .limit stack 4\n");
+        J("    .limit locals 1\n");
+        /* &ALPHABET */
+        J("    aload_0\n");
+        J("    ldc \"ALPHABET\"\n");
+        J("    invokevirtual java/lang/String/equalsIgnoreCase(Ljava/lang/String;)Z\n");
+        J("    ifeq Lkwg_not_alphabet\n");
+        /* Build the 256-char alphabet string via StringBuilder */
+        J("    new java/lang/StringBuilder\n");
+        J("    dup\n");
+        J("    invokespecial java/lang/StringBuilder/<init>()V\n");
+        J("    ldc 0\n"); /* using iconst */
+        J("    istore_0\n");  /* reuse local 0 as counter */
+        J("Lkwg_alpha_loop:\n");
+        J("    iload_0\n");
+        J("    sipush 256\n");
+        J("    if_icmpge Lkwg_alpha_done\n");
+        J("    iload_0\n");
+        J("    i2c\n");
+        J("    invokevirtual java/lang/StringBuilder/append(C)Ljava/lang/StringBuilder;\n");
+        J("    iinc 0 1\n");
+        J("    goto Lkwg_alpha_loop\n");
+        J("Lkwg_alpha_done:\n");
+        J("    invokevirtual java/lang/StringBuilder/toString()Ljava/lang/String;\n");
+        J("    areturn\n");
+        J("Lkwg_not_alphabet:\n");
+        /* &TRIM / &ANCHOR / &FULLSCAN: stored in sno_kw_* static int fields */
+        J("    aload_0\n");
+        J("    ldc \"TRIM\"\n");
+        J("    invokevirtual java/lang/String/equalsIgnoreCase(Ljava/lang/String;)Z\n");
+        J("    ifeq Lkwg_not_trim\n");
+        char trdesc[512];
+        snprintf(trdesc, sizeof trdesc, "%s/sno_kw_TRIM I", jvm_classname);
+        J("    getstatic %s\n", trdesc);
+        J("    invokestatic java/lang/Integer/toString(I)Ljava/lang/String;\n");
+        J("    areturn\n");
+        J("Lkwg_not_trim:\n");
+        J("    aload_0\n");
+        J("    ldc \"ANCHOR\"\n");
+        J("    invokevirtual java/lang/String/equalsIgnoreCase(Ljava/lang/String;)Z\n");
+        J("    ifeq Lkwg_not_anchor\n");
+        char andesc[512];
+        snprintf(andesc, sizeof andesc, "%s/sno_kw_ANCHOR I", jvm_classname);
+        J("    getstatic %s\n", andesc);
+        J("    invokestatic java/lang/Integer/toString(I)Ljava/lang/String;\n");
+        J("    areturn\n");
+        J("Lkwg_not_anchor:\n");
+        /* Unknown keyword → "" */
+        J("    ldc \"\"\n");
+        J("    areturn\n");
+        J(".end method\n\n");
+
+        /* sno_kw_set(String name, String val) → void */
+        J(".method static sno_kw_set(Ljava/lang/String;Ljava/lang/String;)V\n");
+        J("    .limit stack 4\n");
+        J("    .limit locals 2\n");
+        J("    aload_0\n");
+        J("    ldc \"TRIM\"\n");
+        J("    invokevirtual java/lang/String/equalsIgnoreCase(Ljava/lang/String;)Z\n");
+        J("    ifeq Lkws_not_trim\n");
+        J("    aload_1\n");
+        J("    invokestatic java/lang/Integer/parseInt(Ljava/lang/String;)I\n");
+        snprintf(trdesc, sizeof trdesc, "%s/sno_kw_TRIM I", jvm_classname);
+        J("    putstatic %s\n", trdesc);
+        J("    return\n");
+        J("Lkws_not_trim:\n");
+        J("    aload_0\n");
+        J("    ldc \"ANCHOR\"\n");
+        J("    invokevirtual java/lang/String/equalsIgnoreCase(Ljava/lang/String;)Z\n");
+        J("    ifeq Lkws_not_anchor\n");
+        J("    aload_1\n");
+        J("    invokestatic java/lang/Integer/parseInt(Ljava/lang/String;)I\n");
+        snprintf(andesc, sizeof andesc, "%s/sno_kw_ANCHOR I", jvm_classname);
+        J("    putstatic %s\n", andesc);
+        J("    return\n");
+        J("Lkws_not_anchor:\n");
+        J("    return\n");
+        J(".end method\n\n");
+
+        jvm_need_kw_helpers = 0;
+    }
+
+    if (jvm_need_varmap || jvm_need_indr_helpers) {
+        /* sno_var_put(String name, String val) → void
+         * Stores val into sno_vars HashMap for indirect access. */
+        J(".method static sno_var_put(Ljava/lang/String;Ljava/lang/String;)V\n");
+        J("    .limit stack 4\n");
+        J("    .limit locals 2\n");
+        char vmdesc[512];
+        snprintf(vmdesc, sizeof vmdesc, "%s/sno_vars Ljava/util/HashMap;", jvm_classname);
+        J("    getstatic %s\n", vmdesc);
+        J("    aload_0\n");
+        J("    aload_1\n");
+        J("    invokevirtual java/util/HashMap/put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;\n");
+        J("    pop\n");
+        J("    return\n");
+        J(".end method\n\n");
+
+        /* sno_indr_get(String name) → String
+         * Look up variable whose name is the string value of name. */
+        J(".method static sno_indr_get(Ljava/lang/String;)Ljava/lang/String;\n");
+        J("    .limit stack 4\n");
+        J("    .limit locals 1\n");
+        snprintf(vmdesc, sizeof vmdesc, "%s/sno_vars Ljava/util/HashMap;", jvm_classname);
+        J("    getstatic %s\n", vmdesc);
+        J("    aload_0\n");
+        J("    invokevirtual java/util/HashMap/get(Ljava/lang/Object;)Ljava/lang/Object;\n");
+        J("    checkcast java/lang/String\n");
+        J("    dup\n");
+        J("    ifnonnull Lsig_done\n");
+        J("    pop\n");
+        J("    ldc \"\"\n");
+        J("Lsig_done:\n");
+        J("    areturn\n");
+        J(".end method\n\n");
+
+        /* sno_indr_set(String name, String val) → void
+         * Store val into the variable named by the string value of name.
+         * Updates sno_vars map. */
+        J(".method static sno_indr_set(Ljava/lang/String;Ljava/lang/String;)V\n");
+        J("    .limit stack 4\n");
+        J("    .limit locals 2\n");
+        snprintf(vmdesc, sizeof vmdesc, "%s/sno_vars Ljava/util/HashMap;", jvm_classname);
+        J("    getstatic %s\n", vmdesc);
+        J("    aload_0\n");
+        J("    aload_1\n");
+        J("    invokevirtual java/util/HashMap/put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;\n");
+        J("    pop\n");
+        J("    return\n");
+        J(".end method\n\n");
+
+        jvm_need_varmap = 0;
+        jvm_need_indr_helpers = 0;
+    }
+}
+
+
 
 static void jvm_emit_header(Program *prog) {
     J(".class public %s\n", jvm_classname);
@@ -620,6 +816,13 @@ static void jvm_emit_header(Program *prog) {
     J("; Runtime fields\n");
     J(".field static sno_stdout Ljava/io/PrintStream;\n");
 
+    /* Keyword int fields (J2) */
+    J(".field static sno_kw_TRIM I\n");
+    J(".field static sno_kw_ANCHOR I\n");
+
+    /* Dynamic variable map for indirect assignment (J2) */
+    J(".field static sno_vars Ljava/util/HashMap;\n");
+
     /* static fields for SNOBOL4 variables */
     for (int i = 0; i < jvm_nvar; i++) {
         char fld[256];
@@ -628,21 +831,36 @@ static void jvm_emit_header(Program *prog) {
     }
     J("\n");
 
-    /* static initialiser: cache System.out, init vars to "" */
+    /* static initialiser: cache System.out, init vars to "", init map */
     J(".method static <clinit>()V\n");
-    /* stack needs room for getstatic + putstatic per var */
-    int clinit_stack = 1 + jvm_nvar;
-    if (clinit_stack < 2) clinit_stack = 2;
+    /* stack: need 4 for HashMap init + put operations */
+    int clinit_stack = 4 + jvm_nvar * 3;
+    if (clinit_stack < 4) clinit_stack = 4;
     J("    .limit stack %d\n", clinit_stack);
     J("    .limit locals 0\n");
     J("    getstatic       java/lang/System/out Ljava/io/PrintStream;\n");
     J("    putstatic       %s/sno_stdout Ljava/io/PrintStream;\n", jvm_classname);
-    /* init variables to empty string */
+    /* init keyword ints to 0 */
+    J("    iconst_0\n");
+    J("    putstatic       %s/sno_kw_TRIM I\n", jvm_classname);
+    J("    iconst_0\n");
+    J("    putstatic       %s/sno_kw_ANCHOR I\n", jvm_classname);
+    /* init sno_vars HashMap */
+    J("    new java/util/HashMap\n");
+    J("    dup\n");
+    J("    invokespecial java/util/HashMap/<init>()V\n");
+    J("    putstatic       %s/sno_vars Ljava/util/HashMap;\n", jvm_classname);
+    /* init variables to empty string and pre-populate map */
     for (int i = 0; i < jvm_nvar; i++) {
         char fld[256];
         jvm_field_name(jvm_vars[i], fld, sizeof fld);
         J("    ldc             \"\"\n");
         J("    putstatic       %s/%s Ljava/lang/String;\n", jvm_classname, fld);
+        J("    getstatic       %s/sno_vars Ljava/util/HashMap;\n", jvm_classname);
+        J("    ldc             \"%s\"\n", jvm_vars[i]);
+        J("    ldc             \"\"\n");
+        J("    invokevirtual   java/util/HashMap/put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;\n");
+        J("    pop\n");
     }
     J("    return\n");
     J(".end method\n");
@@ -670,6 +888,9 @@ void jvm_emit(Program *prog, FILE *out, const char *filename) {
     jvm_out = out;
     jvm_nvar = 0;
     jvm_need_sno_parse_helper = 0;
+    jvm_need_kw_helpers   = 1;  /* always emit for J2 — callers may use &KEYWORD */
+    jvm_need_indr_helpers = 1;  /* always emit for J2 — indirect assign/get */
+    jvm_need_varmap       = 1;
     jvm_set_classname(filename);
 
     if (prog && prog->head)
@@ -699,6 +920,7 @@ void jvm_emit(Program *prog, FILE *out, const char *filename) {
 
     jvm_emit_main_close();
     jvm_emit_parse_helper();
+    jvm_emit_runtime_helpers();
 
     /* Free collected var names */
     for (int i = 0; i < jvm_nvar; i++) { free(jvm_vars[i]); jvm_vars[i] = NULL; }
