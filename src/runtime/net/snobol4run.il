@@ -49,21 +49,13 @@
 
   // -----------------------------------------------------------------------
   // sno_input — read a line from stdin (INPUT keyword)
-  //   returns "" on EOF (SNOBOL4 INPUT failure signalled by empty string +
-  //   caller checks success flag)
+  //   returns null on EOF  (caller must check: null → statement fails)
+  //   returns "" for blank line (success, empty string)
   // -----------------------------------------------------------------------
   .method public static string sno_input() cil managed
   {
     .maxstack 1
-    .locals init (string V_0)
     call       string [mscorlib]System.Console::ReadLine()
-    stloc.0
-    ldloc.0
-    brtrue     INPUT_OK
-    ldstr      ""
-    ret
-  INPUT_OK:
-    ldloc.0
     ret
   }
 

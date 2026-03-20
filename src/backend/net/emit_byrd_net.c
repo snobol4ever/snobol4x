@@ -253,13 +253,27 @@ static int net_is_output(const char *name) {
     return name && strcasecmp(name, "OUTPUT") == 0;
 }
 
+static int net_is_input(const char *name) {
+    return name && strcasecmp(name, "INPUT") == 0;
+}
+
+/* Current statement fail label — set by stmt emitter so net_emit_expr
+ * can emit an inline null-check when it encounters INPUT (EOF → fail). */
+static char net_cur_stmt_fail_label[128];
+static int  net_input_uid = 0;
+
 /* -----------------------------------------------------------------------
  * Expr scanner — collect all variable refs before emitting
  * ----------------------------------------------------------------------- */
 
 static void scan_expr_vars(EXPR_t *e) {
     if (!e) return;
-    if (e->kind == E_VART && e->sval && !net_is_output(e->sval))
+    if (e->kind == E_VART && e->sval && !net_is_output(e->sval)
+            && !net_is_input(e->sval))
+        net_var_register(e->sval);
+    /* E_NAM (. capture) and E_DOL ($ capture): sval = target variable name */
+    if ((e->kind == E_NAM || e->kind == E_DOL) && e->sval
+            && !net_is_output(e->sval) && !net_is_input(e->sval))
         net_var_register(e->sval);
     for (int i = 0; i < expr_nargs(e); i++)
         scan_expr_vars(expr_arg(e, i));
@@ -270,7 +284,8 @@ static void scan_prog_vars(Program *prog) {
     for (STMT_t *s = prog->head; s; s = s->next) {
         /* subject variable (LHS of assignment) */
         if (s->subject && s->subject->kind == E_VART && s->subject->sval
-                && !net_is_output(s->subject->sval))
+                && !net_is_output(s->subject->sval)
+                && !net_is_input(s->subject->sval))
             net_var_register(s->subject->sval);
         scan_expr_vars(s->subject);
         scan_expr_vars(s->pattern);
@@ -339,6 +354,37 @@ static void net_emit_expr(EXPR_t *e) {
         if (net_is_output(e->sval)) {
             /* reading OUTPUT not common but handle gracefully */
             net_ldstr("");
+            break;
+        }
+        if (net_is_input(e->sval)) {
+            /* INPUT — call sno_input(); null → EOF → statement fails.
+             * Stack convention: on success, leaves string on stack.
+             * On EOF, branches directly to fail label (or pops + pushes ""
+             * if no fail label available), keeping stack depth consistent. */
+            int uid = net_input_uid++;
+            char inp_ok[64];
+            snprintf(inp_ok, sizeof inp_ok, "Ninp%d_ok", uid);
+            N("    call       string [snobol4run]Snobol4Run::sno_input()\n");
+            N("    dup\n");
+            N("    brtrue     %s\n", inp_ok);
+            /* null = EOF path: pop null off stack, set fail flag */
+            N("    pop\n");
+            N("    ldc.i4.0\n");
+            N("    stloc.0\n");
+            if (net_cur_stmt_fail_label[0]) {
+                /* Branch to fail — stack depth is 0 here (null was popped),
+                 * fail label entry must also expect depth 0 (it's a stmt top) */
+                N("    br         L_%s\n", net_cur_stmt_fail_label);
+            }
+            /* If no fail label: fall through with stack empty — stsfld below
+             * would underflow, but that only happens with no :F and EOF, which
+             * means program would have no way to handle it anyway. */
+            /* Pad stack to match success path depth (1) so verifier is happy */
+            N("    ldstr      \"\"\n");
+            N("  %s:\n", inp_ok);
+            /* Success path falls here: string (non-null) already on stack.
+             * EOF path falls here with "" — stsfld stores it but flag=0 means
+             * subsequent :F branch will exit. */
             break;
         }
         char fn[256];
@@ -666,6 +712,8 @@ static void net_emit_branch_fail(const char *target) {
 
 /* net_pat_uid defined via macro above */
 static char net_pat_abort_label[128];
+/* ARB backtrack label — set by ARB emitter, used by SEQ to wire continuation omega */
+static char net_arb_incr_label[128];
 
 /* Int32 slot load/store */
 static void net_ldloc_i(int idx) {
@@ -736,10 +784,18 @@ static void net_emit_pat_node(EXPR_t *pat,
             mids[i] = malloc(64);
             snprintf(mids[i], 64, "Nn%d_seq_m%d", uid, i);
         }
+        const char *seq_omega = omega;  /* may be overridden after ARB */
         for (int i = 0; i < nkids; i++) {
             const char *kg = (i < nkids - 1) ? mids[i] : gamma;
-            net_emit_pat_node(expr_arg(pat, i), kg, omega,
+            net_arb_incr_label[0] = '\0';
+            net_emit_pat_node(expr_arg(pat, i), kg, seq_omega,
                               loc_subj, loc_cursor, loc_len, p_next_int, p_next_str);
+            /* If this child was ARB, subsequent children should use ARB's
+             * increment label as their omega (backtrack into ARB). */
+            if (net_arb_incr_label[0]) {
+                seq_omega = net_arb_incr_label;
+                net_arb_incr_label[0] = '\0';
+            }
             if (i < nkids - 1) N("  %s:\n", mids[i]);
         }
         for (int i = 0; i < nkids - 1; i++) free(mids[i]);
@@ -787,8 +843,12 @@ static void net_emit_pat_node(EXPR_t *pat,
         net_ldloc_i(loc_subj); net_ldloc_i(loc_before);
         net_ldloc_i(loc_cursor); net_ldloc_i(loc_before); N("    sub\n");
         N("    callvirt   instance string [mscorlib]System.String::Substring(int32, int32)\n");
-        { char fn[256]; net_field_name(fn, sizeof fn, varname);
-          N("    stsfld     string %s::%s\n", net_classname, fn); }
+        if (net_is_output(varname)) {
+            N("    call       void [mscorlib]System.Console::WriteLine(string)\n");
+        } else {
+            char fn[256]; net_field_name(fn, sizeof fn, varname);
+            N("    stsfld     string %s::%s\n", net_classname, fn);
+        }
         N("    br         %s\n", gamma);
         break;
     }
@@ -803,8 +863,12 @@ static void net_emit_pat_node(EXPR_t *pat,
         net_ldloc_i(loc_subj); net_ldloc_i(loc_before);
         net_ldloc_i(loc_cursor); net_ldloc_i(loc_before); N("    sub\n");
         N("    callvirt   instance string [mscorlib]System.String::Substring(int32, int32)\n");
-        { char fn[256]; net_field_name(fn, sizeof fn, varname);
-          N("    stsfld     string %s::%s\n", net_classname, fn); }
+        if (net_is_output(varname)) {
+            N("    call       void [mscorlib]System.Console::WriteLine(string)\n");
+        } else {
+            char fn[256]; net_field_name(fn, sizeof fn, varname);
+            N("    stsfld     string %s::%s\n", net_classname, fn);
+        }
         N("    br         %s\n", gamma);
         break;
     }
@@ -987,7 +1051,48 @@ static void net_emit_pat_node(EXPR_t *pat,
             net_ldloc_i(loc_len); net_stloc_i(loc_cursor);
             N("    br         %s\n", gamma); break;
         }
-        if (strcasecmp(fname, "ARB") == 0) { N("    br         %s\n", gamma); break; }
+        if (strcasecmp(fname, "ARB") == 0) {
+            /* ARB: minimum-first via sno_arb helper.
+             * We use an internal loop label so we do not redefine the
+             * caller's omega label (which would be a duplicate).
+             * Strategy: ARB saves cursor, tries 0..N chars; each time it
+             * succeeds (goto gamma). The continuation's omega goes to an
+             * "increment" label inside ARB. Caller's omega is the final fail.
+             * To avoid redefining caller's omega, we redirect it via a private
+             * fail label that falls through to the caller's omega. */
+            int loc_arb_save = (*p_next_int)++;
+            int loc_arb_try  = (*p_next_int)++;
+            char arb_loop[64], arb_incr[64], arb_fail[64];
+            snprintf(arb_loop, sizeof arb_loop, "Nn%d_arb_lp",  uid);
+            snprintf(arb_incr, sizeof arb_incr, "Nn%d_arb_inc", uid);
+            snprintf(arb_fail, sizeof arb_fail, "Nn%d_arb_fx",  uid);
+            net_ldloc_i(loc_cursor); net_stloc_i(loc_arb_save);
+            N("    ldc.i4.0\n"); net_stloc_i(loc_arb_try);
+            N("  %s:\n", arb_loop);
+            net_ldloc_i(loc_arb_save); net_ldloc_i(loc_arb_try); N("    add\n");
+            net_ldloc_i(loc_len); N("    bgt        %s\n", arb_fail);
+            net_ldloc_i(loc_arb_save); net_ldloc_i(loc_arb_try); N("    add\n");
+            net_stloc_i(loc_cursor);
+            N("    br         %s\n", gamma);
+            /* arb_incr: continuation failed, try one more char */
+            N("  %s:\n", arb_incr);
+            net_ldloc_i(loc_arb_try); N("    ldc.i4.1\n"); N("    add\n"); net_stloc_i(loc_arb_try);
+            N("    br         %s\n", arb_loop);
+            /* arb_fail: exhausted — caller's omega */
+            N("  %s:\n", arb_fail);
+            N("    br         %s\n", omega);
+            /* NOTE: caller must use arb_incr as omega for the continuation.
+             * This requires SEQ to detect ARB and rewire. For now emit arb_incr
+             * as the omega label that the continuation will jump to on fail. */
+            /* Caller's omega label is overloaded — we emit it as alias to arb_incr
+             * so the continuation jumps back here. But we can't redefine omega.
+             * WORKAROUND: emit omega as a label that falls into arb_incr. */
+            /* This is a structural limitation — ARB backtracking requires
+             * the SEQ emitter cooperation. For now accept that omega is not
+             * wired back; pattern will work only for ARB at end of pattern. */
+            snprintf(net_arb_incr_label, sizeof net_arb_incr_label, "%s", arb_incr);
+            break;
+        }
         if (strcasecmp(fname, "FAIL")  == 0 || strcasecmp(fname, "ABORT")   == 0) {
             N("    br         %s\n", net_pat_abort_label[0] ? net_pat_abort_label : omega); break;
         }
@@ -1002,7 +1107,29 @@ static void net_emit_pat_node(EXPR_t *pat,
     case E_VART: {
         const char *vname = pat->sval ? pat->sval : "";
         if (strcasecmp(vname, "REM")     == 0) { net_ldloc_i(loc_len); net_stloc_i(loc_cursor); N("    br %s\n", gamma); break; }
-        if (strcasecmp(vname, "ARB")     == 0) { N("    br         %s\n", gamma); break; }
+        if (strcasecmp(vname, "ARB") == 0) {
+            int loc_arb_save = (*p_next_int)++;
+            int loc_arb_try  = (*p_next_int)++;
+            char arb_loop[64], arb_incr[64], arb_fail[64];
+            snprintf(arb_loop, sizeof arb_loop, "Nn%d_varb_lp",  uid);
+            snprintf(arb_incr, sizeof arb_incr, "Nn%d_varb_inc", uid);
+            snprintf(arb_fail, sizeof arb_fail, "Nn%d_varb_fx",  uid);
+            net_ldloc_i(loc_cursor); net_stloc_i(loc_arb_save);
+            N("    ldc.i4.0\n"); net_stloc_i(loc_arb_try);
+            N("  %s:\n", arb_loop);
+            net_ldloc_i(loc_arb_save); net_ldloc_i(loc_arb_try); N("    add\n");
+            net_ldloc_i(loc_len); N("    bgt        %s\n", arb_fail);
+            net_ldloc_i(loc_arb_save); net_ldloc_i(loc_arb_try); N("    add\n");
+            net_stloc_i(loc_cursor);
+            N("    br         %s\n", gamma);
+            N("  %s:\n", arb_incr);
+            net_ldloc_i(loc_arb_try); N("    ldc.i4.1\n"); N("    add\n"); net_stloc_i(loc_arb_try);
+            N("    br         %s\n", arb_loop);
+            N("  %s:\n", arb_fail);
+            N("    br         %s\n", omega);
+            snprintf(net_arb_incr_label, sizeof net_arb_incr_label, "%s", arb_incr);
+            break;
+        }
         if (strcasecmp(vname, "SUCCEED") == 0) { N("    br         %s\n", gamma); break; }
         if (strcasecmp(vname, "FENCE")   == 0) { N("    br         %s\n", gamma); break; }
         if (strcasecmp(vname, "FAIL")    == 0 || strcasecmp(vname, "ABORT") == 0) {
@@ -1056,6 +1183,7 @@ static void net_emit_one_stmt(STMT_t *s, const char *next_lbl) {
     const char *tgt_s = s->go ? s->go->onsuccess : NULL;
     const char *tgt_f = s->go ? s->go->onfailure : NULL;
     const char *tgt_u = s->go ? s->go->uncond    : NULL;
+    net_cur_stmt_fail_label[0] = '\0';  /* reset per-stmt */
 
     /* Emit statement label if present */
     if (s->label) {
@@ -1076,12 +1204,28 @@ static void net_emit_one_stmt(STMT_t *s, const char *next_lbl) {
         int is_out = net_is_output(s->subject->sval);
         EXPR_t *rhs = s->replacement;
 
+        /* Set fail label so INPUT inside rhs can branch directly on EOF */
+        if (tgt_f)
+            snprintf(net_cur_stmt_fail_label, sizeof net_cur_stmt_fail_label, "%s", tgt_f);
+        else
+            net_cur_stmt_fail_label[0] = '\0';
+
         /* eval RHS onto stack */
         net_emit_expr(rhs);
+        net_cur_stmt_fail_label[0] = '\0';  /* reset after expr */
 
         if (is_out) {
             /* OUTPUT = expr → Console.WriteLine */
             N("    call       void [mscorlib]System.Console::WriteLine(string)\n");
+        } else if (s->subject->kind == E_KW) {
+            /* &KEYWORD = expr — write to known keyword field */
+            const char *kw = s->subject->sval ? s->subject->sval : "";
+            if (strcasecmp(kw, "ANCHOR") == 0)
+                N("    stsfld     string %s::kw_anchor\n", net_classname);
+            else if (strcasecmp(kw, "TRIM") == 0)
+                N("    pop\n");  /* &TRIM: ignore for now (plain pop) */
+            else
+                N("    pop\n");  /* unknown keyword: discard */
         } else {
             /* VAR = expr → stsfld */
             char fn[256];
