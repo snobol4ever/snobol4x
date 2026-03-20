@@ -448,10 +448,19 @@ static void net_emit_expr(EXPR_t *e) {
         break;
     }
     case E_CONC:
-        /* string concatenation: eval both sides, String.Concat */
-        net_emit_expr(e->left);
-        net_emit_expr(e->right);
-        N("    call       string [mscorlib]System.String::Concat(string, string)\n");
+        /* string concatenation: eval all arms, fold with String.Concat */
+        if (e->nargs > 0) {
+            net_emit_expr(e->args[0]);
+            for (int i = 1; i < e->nargs; i++) {
+                net_emit_expr(e->args[i]);
+                N("    call       string [mscorlib]System.String::Concat(string, string)\n");
+            }
+        } else {
+            /* legacy binary fallback */
+            net_emit_expr(e->left);
+            net_emit_expr(e->right);
+            N("    call       string [mscorlib]System.String::Concat(string, string)\n");
+        }
         break;
     case E_ADD:
         net_emit_expr(e->left);
@@ -586,21 +595,54 @@ static void net_emit_pat_node(EXPR_t *pat,
     }
 
     case E_CONC: {
-        char lmid[64]; snprintf(lmid, sizeof lmid, "Nn%d_seq_mid", uid);
-        net_emit_pat_node(pat->left,  lmid,  omega,  loc_subj, loc_cursor, loc_len, p_next_int, p_next_str);
-        N("  %s:\n", lmid);
-        net_emit_pat_node(pat->right, gamma, omega, loc_subj, loc_cursor, loc_len, p_next_int, p_next_str);
+        /* Sequence: chain gamma/omega through each arm in order */
+        int nkids = (pat->nargs > 0) ? pat->nargs : 2;
+        if (nkids == 1) {
+            EXPR_t *only = pat->nargs > 0 ? pat->args[0] : pat->left;
+            net_emit_pat_node(only, gamma, omega, loc_subj, loc_cursor, loc_len, p_next_int, p_next_str);
+            break;
+        }
+        /* mid labels between consecutive arms */
+        char **mids = malloc(nkids * sizeof(char *));
+        for (int i = 0; i < nkids - 1; i++) {
+            mids[i] = malloc(64);
+            snprintf(mids[i], 64, "Nn%d_seq_m%d", uid, i);
+        }
+        mids[nkids - 1] = NULL; /* unused sentinel */
+        for (int i = 0; i < nkids; i++) {
+            EXPR_t *kid = (pat->nargs > 0) ? pat->args[i]
+                        : (i == 0 ? pat->left : pat->right);
+            const char *kid_gamma = (i < nkids - 1) ? mids[i] : gamma;
+            net_emit_pat_node(kid, kid_gamma, omega, loc_subj, loc_cursor, loc_len, p_next_int, p_next_str);
+            if (i < nkids - 1) N("  %s:\n", mids[i]);
+        }
+        for (int i = 0; i < nkids; i++) free(mids[i]);
+        free(mids);
         break;
     }
 
     case E_OR: {
-        int loc_save = (*p_next_int)++;  /* int32: saved cursor */
-        char lbl_right[64]; snprintf(lbl_right, sizeof lbl_right, "Nn%d_alt_r", uid);
+        /* Alternation: try each arm; restore cursor on failure, try next */
+        int nkids = (pat->nargs > 0) ? pat->nargs : 2;
+        int loc_save = (*p_next_int)++;
         net_ldloc_i(loc_cursor); net_stloc_i(loc_save);
-        net_emit_pat_node(pat->left, gamma, lbl_right, loc_subj, loc_cursor, loc_len, p_next_int, p_next_str);
-        N("  %s:\n", lbl_right);
-        net_ldloc_i(loc_save); net_stloc_i(loc_cursor);
-        net_emit_pat_node(pat->right, gamma, omega, loc_subj, loc_cursor, loc_len, p_next_int, p_next_str);
+        for (int i = 0; i < nkids; i++) {
+            EXPR_t *kid = (pat->nargs > 0) ? pat->args[i]
+                        : (i == 0 ? pat->left : pat->right);
+            char lbl_next[64];
+            const char *kid_omega;
+            if (i < nkids - 1) {
+                snprintf(lbl_next, sizeof lbl_next, "Nn%d_alt_n%d", uid, i);
+                kid_omega = lbl_next;
+            } else {
+                kid_omega = omega;
+            }
+            net_emit_pat_node(kid, gamma, kid_omega, loc_subj, loc_cursor, loc_len, p_next_int, p_next_str);
+            if (i < nkids - 1) {
+                N("  %s:\n", lbl_next);
+                net_ldloc_i(loc_save); net_stloc_i(loc_cursor);
+            }
+        }
         break;
     }
 
