@@ -152,7 +152,7 @@ static inline char *intern_n(const char *s, int n) {
 void     snoc_add_include_dir(const char *d);
 Program *snoc_parse(FILE *f, const char *filename);
 EXPR_t  *parse_expr_from_str(const char *src);
-void     snoc_emit(Program *prog, FILE *out);
+void     c_emit(Program *prog, FILE *out);
 
 /* ---- Byrd box emitter (emit_byrd.c) ---- */
 void byrd_fn_scope_reset(void);

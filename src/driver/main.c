@@ -132,7 +132,7 @@ int main(int argc, char *argv[]) {
     else if (net_mode)
         net_emit(prog, out, infile);
     else
-        snoc_emit(prog, out);
+        c_emit(prog, out);
 
     if (infile)  fclose(in);
     if (outfile) fclose(out);
