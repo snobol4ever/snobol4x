@@ -94,11 +94,11 @@ static const NetFnDef *net_find_fn(const char *name);
 static int net_pat_uid_early = 0;  /* uid counter used before pattern section */
 #define net_pat_uid net_pat_uid_early
 
-static FILE *net_out;
+static FILE *out;
 static int   net_col = 0;
 
 static void nc(char c) {
-    fputc(c, net_out);
+    fputc(c, out);
     if (c == '\n') net_col = 0;
     else if ((c & 0xC0) != 0x80) net_col++;
 }
@@ -114,7 +114,7 @@ static void npad(int col) {
 static void N(const char *fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
-    vfprintf(net_out, fmt, ap);
+    vfprintf(out, fmt, ap);
     va_end(ap);
     const char *p = fmt;
     while (*p) { if (*p == '\n') net_col = 0; p++; }
@@ -169,16 +169,16 @@ static void net_set_classname(const char *filename) {
  * ----------------------------------------------------------------------- */
 
 #define MAX_VARS 512
-static char *net_vars[MAX_VARS];
-static int   net_nvar = 0;
+static char *vars[MAX_VARS];
+static int   nvar = 0;
 
 static void net_var_register(const char *name) {
     if (!name || !name[0]) return;
     /* case-insensitive dedup */
-    for (int i = 0; i < net_nvar; i++)
-        if (strcasecmp(net_vars[i], name) == 0) return;
-    if (net_nvar < MAX_VARS)
-        net_vars[net_nvar++] = strdup(name);
+    for (int i = 0; i < nvar; i++)
+        if (strcasecmp(vars[i], name) == 0) return;
+    if (nvar < MAX_VARS)
+        vars[nvar++] = strdup(name);
 }
 
 /* -----------------------------------------------------------------------
@@ -186,29 +186,29 @@ static void net_var_register(const char *name) {
  * When E_VART appears in pattern context, inline-expand stored pattern tree.
  * ----------------------------------------------------------------------- */
 #define NET_NAMED_PAT_MAX 64
-typedef struct { char varname[128]; EXPR_t *pat; } NetNamedPat;
-static NetNamedPat net_named_pats[NET_NAMED_PAT_MAX];
-static int         net_named_pat_count = 0;
+typedef struct { char varname[128]; EXPR_t *pat; } NamedPat;
+static NamedPat named_pats[NET_NAMED_PAT_MAX];
+static int         named_pat_count = 0;
 
-static void net_named_pat_reset(void) { net_named_pat_count = 0; }
+static void net_named_pat_reset(void) { named_pat_count = 0; }
 
-static void net_named_pat_register(const char *varname, EXPR_t *pat) {
-    for (int i = 0; i < net_named_pat_count; i++) {
-        if (strcasecmp(net_named_pats[i].varname, varname) == 0) {
-            if (pat) net_named_pats[i].pat = pat;
+static void named_pat_register(const char *varname, EXPR_t *pat) {
+    for (int i = 0; i < named_pat_count; i++) {
+        if (strcasecmp(named_pats[i].varname, varname) == 0) {
+            if (pat) named_pats[i].pat = pat;
             return;
         }
     }
-    if (net_named_pat_count >= NET_NAMED_PAT_MAX) return;
-    NetNamedPat *e = &net_named_pats[net_named_pat_count++];
+    if (named_pat_count >= NET_NAMED_PAT_MAX) return;
+    NamedPat *e = &named_pats[named_pat_count++];
     snprintf(e->varname, sizeof e->varname, "%s", varname);
     e->pat = pat;
 }
 
-static const NetNamedPat *net_named_pat_lookup(const char *varname) {
-    for (int i = 0; i < net_named_pat_count; i++)
-        if (strcasecmp(net_named_pats[i].varname, varname) == 0)
-            return &net_named_pats[i];
+static const NamedPat *net_named_pat_lookup(const char *varname) {
+    for (int i = 0; i < named_pat_count; i++)
+        if (strcasecmp(named_pats[i].varname, varname) == 0)
+            return &named_pats[i];
     return NULL;
 }
 
@@ -234,7 +234,7 @@ static void net_scan_named_patterns(Program *prog) {
         if (s->subject && s->subject->kind == E_VART && s->subject->sval &&
             s->has_eq && s->replacement && !s->pattern) {
             if (net_expr_is_pattern_expr(s->replacement))
-                net_named_pat_register(s->subject->sval, s->replacement);
+                named_pat_register(s->subject->sval, s->replacement);
         }
     }
 }
@@ -1137,7 +1137,7 @@ static void net_emit_pat_node(EXPR_t *pat,
         }
         /* Check named-pattern registry — inline expand if registered */
         {
-            const NetNamedPat *np = net_named_pat_lookup(vname);
+            const NamedPat *np = net_named_pat_lookup(vname);
             if (np && np->pat) {
                 net_emit_pat_node(np->pat, gamma, omega,
                                   loc_subj, loc_cursor, loc_len, p_next_int, p_next_str);
@@ -1179,7 +1179,7 @@ static void net_emit_pat_node(EXPR_t *pat,
  * Statement emitter — N-R1: assignments + OUTPUT + goto
  * ----------------------------------------------------------------------- */
 
-static void net_emit_one_stmt(STMT_t *s, const char *next_lbl) {
+static void emit_stmt(STMT_t *s, const char *next_lbl) {
     const char *tgt_s = s->go ? s->go->onsuccess : NULL;
     const char *tgt_f = s->go ? s->go->onfailure : NULL;
     const char *tgt_u = s->go ? s->go->uncond    : NULL;
@@ -1511,7 +1511,7 @@ static void net_emit_stmts(Program *prog) {
         N("    ldstr      \"1\"\n");
         N("    call       string [snobol4lib]Snobol4Lib::sno_add(string, string)\n");
         N("    stsfld     string %s::kw_stno\n", net_classname);
-        net_emit_one_stmt(s, next_lbl);
+        emit_stmt(s, next_lbl);
     }
 }
 
@@ -1534,11 +1534,11 @@ static void net_emit_header(Program *prog) {
     N("\n");
 
     /* Emit one static string field per SNOBOL4 variable */
-    if (net_nvar > 0) {
+    if (nvar > 0) {
         NC("SNOBOL4 variable fields");
-        for (int i = 0; i < net_nvar; i++) {
+        for (int i = 0; i < nvar; i++) {
             char fn[256];
-            net_field_name(fn, sizeof fn, net_vars[i]);
+            net_field_name(fn, sizeof fn, vars[i]);
             N("  .field static string %s\n", fn);
         }
         N("\n");
@@ -1554,9 +1554,9 @@ static void net_emit_header(Program *prog) {
         N("  .method static void .cctor() cil managed\n");
         N("  {\n");
         N("    .maxstack 2\n");
-        for (int i = 0; i < net_nvar; i++) {
+        for (int i = 0; i < nvar; i++) {
             char fn[256];
-            net_field_name(fn, sizeof fn, net_vars[i]);
+            net_field_name(fn, sizeof fn, vars[i]);
             N("    ldstr      \"\"\n");
             N("    stsfld     string %s::%s\n", net_classname, fn);
         }
@@ -1845,7 +1845,7 @@ static void net_emit_fn_method(const NetFnDef *fn, Program *prog, int fn_idx) {
         N("    ldstr      \"1\"\n");
         N("    call       string [snobol4lib]Snobol4Lib::sno_add(string, string)\n");
         N("    stsfld     string %s::kw_stno\n", net_classname);
-        net_emit_one_stmt(s, next_lbl);
+        emit_stmt(s, next_lbl);
         si++;
     }
     net_cur_fn = saved_fn;
@@ -1907,8 +1907,8 @@ static void net_emit_footer(void) {
  * ----------------------------------------------------------------------- */
 
 void net_emit(Program *prog, FILE *out, const char *filename) {
-    net_out = out;
-    net_nvar = 0;
+    out = out;
+    nvar = 0;
     net_set_classname(filename);
 
     /* Multi-pass: scan functions first (registers vars), then vars, named patterns */
@@ -1929,6 +1929,6 @@ void net_emit(Program *prog, FILE *out, const char *filename) {
     net_emit_footer();
 
     /* free registered variable names */
-    for (int i = 0; i < net_nvar; i++) { free(net_vars[i]); net_vars[i] = NULL; }
-    net_nvar = 0;
+    for (int i = 0; i < nvar; i++) { free(vars[i]); vars[i] = NULL; }
+    nvar = 0;
 }

@@ -37,7 +37,7 @@
  * Output helpers
  * ----------------------------------------------------------------------- */
 
-static FILE *asm_out;
+static FILE *out;
 
 /* Column alignment — every instruction starts at COL_W.
  * out_col tracks the current column (0 = start of line).
@@ -81,7 +81,7 @@ static void emit_sep_major(const char *tag) {
     int n;
     /* flush any existing pending_sep that was never consumed */
     if (pending_sep[0]) {
-        fprintf(asm_out, "\n; %s\n", pending_sep);
+        fprintf(out, "\n; %s\n", pending_sep);
         out_col = 0;
         pending_sep[0] = '\0';
     }
@@ -95,7 +95,7 @@ static void emit_sep_major(const char *tag) {
     for (int i = 0; i < eq_count && rem > 1; i++, p++, rem--) *p = '=';
     *p = '\0';
     /* Emit leading blank line immediately */
-    fprintf(asm_out, "\n");
+    fprintf(out, "\n");
     out_col = 0;
     /* NOTE: no second \n here — sep line itself provides the visual break,
      * and asmL will emit the label immediately after pending_sep is consumed. */
@@ -104,7 +104,7 @@ static void emit_sep_major(const char *tag) {
 /* flush_pending_sep — called when no label follows: emit sep at col 1 */
 static void flush_pending_sep(void) {
     if (pending_sep[0]) {
-        fprintf(asm_out, "; %s\n", pending_sep);
+        fprintf(out, "; %s\n", pending_sep);
         out_col = 0;
         pending_sep[0] = '\0';
     }
@@ -114,17 +114,17 @@ static void flush_pending_sep(void) {
  * Used for: γ/ω trampoline boundary within named pattern defs. */
 static void emit_sep_minor(const char *tag) {
     int used = 2;
-    fprintf(asm_out, "; ");
+    fprintf(out, "; ");
     if (tag && tag[0]) {
-        used += fprintf(asm_out, " %s ", tag);
+        used += fprintf(out, " %s ", tag);
     }
-    for (int i = used; i < SEP_W; i++) fputc('-', asm_out);
-    fputc('\n', asm_out);
+    for (int i = used; i < SEP_W; i++) fputc('-', out);
+    fputc('\n', out);
     out_col = 0;
 }
 
 static void oc_char(char c) {
-    fputc(c, asm_out);
+    fputc(c, out);
     if (c == '\n') out_col = 0;
     /* Count only non-continuation UTF-8 bytes as display columns */
     else if ((c & 0xC0) != 0x80) out_col++;
@@ -339,8 +339,8 @@ static void A(const char *fmt, ...) {
  * UID counter — never resets so labels never collide across patterns
  * ----------------------------------------------------------------------- */
 
-static int asm_uid_ctr = 0;
-static int asm_uid(void) { return asm_uid_ctr++; }
+static int uid_ctr = 0;
+static int next_uid(void) { return uid_ctr++; }
 
 /* Separate counter for user-function call sites — independent of main uid stream.
  * This allows pre-scanning all ucall slots before .bss is emitted. */
@@ -390,24 +390,24 @@ static void asm_expand_name(const char *src, char *dst, int dstlen) {
  * ----------------------------------------------------------------------- */
 
 #define MAX_BSS 512
-static char *bss_slots[MAX_BSS];
-static int   bss_count = 0;
+static char *vars[MAX_BSS];
+static int   nvar = 0;
 
-static void bss_reset(void) { bss_count = 0; }
+static void var_reset(void) { nvar = 0; }
 
-static void bss_add(const char *name) {
+static void var_register(const char *name) {
     /* deduplicate */
-    for (int i = 0; i < bss_count; i++)
-        if (strcmp(bss_slots[i], name) == 0) return;
-    if (bss_count < MAX_BSS)
-        bss_slots[bss_count++] = strdup(name);
+    for (int i = 0; i < nvar; i++)
+        if (strcmp(vars[i], name) == 0) return;
+    if (nvar < MAX_BSS)
+        vars[nvar++] = strdup(name);
 }
 
 static void bss_emit(void) {
-    if (bss_count == 0) return;
+    if (nvar == 0) return;
     A("\nsection .bss\n");
-    for (int i = 0; i < bss_count; i++)
-        A("%-24s resq 1\n", bss_slots[i]);
+    for (int i = 0; i < nvar; i++)
+        A("%-24s resq 1\n", vars[i]);
 }
 
 /* -----------------------------------------------------------------------
@@ -565,7 +565,7 @@ static void emit_asm_lit(const char *s, int n,
                           const char *subj, const char *subj_len_sym) {
     char saved[LBUF];
     snprintf(saved, LBUF, "%s_saved", alpha);
-    bss_add(saved);
+    var_register(saved);
 
     if (n == 1) {
         ALFC(alpha, "LIT α", "LIT_ALPHA1  %d, %s, %s, %s, %s, %s, %s\n",
@@ -618,7 +618,7 @@ static void emit_asm_rpos_var(const char *varlab,
 
 /* -----------------------------------------------------------------------
  * Forward declarations for named pattern machinery
- * (full definitions are after emit_asm_node, which uses them)
+ * (full definitions are after emit_pat_node, which uses them)
  * ----------------------------------------------------------------------- */
 
 typedef struct AsmNamedPat AsmNamedPat;
@@ -652,8 +652,8 @@ struct AsmNamedPat {
     char body_label[ASM_NAMED_NAMELEN + 16]; /* NASM label of function body entry */
 };
 
-static const AsmNamedPat *asm_named_lookup(const char *varname);
-static const AsmNamedPat *asm_named_lookup_fn(const char *varname);
+static const AsmNamedPat *named_pat_lookup(const char *varname);
+static const AsmNamedPat *named_pat_lookup_fn(const char *varname);
 static void emit_asm_named_ref(const AsmNamedPat *np,
                                 const char *alpha, const char *beta,
                                 const char *gamma, const char *omega);
@@ -667,10 +667,10 @@ static const char *prog_str_intern(const char *s);
 static const char *prog_label_nasm(const char *lbl);
 
 /* -----------------------------------------------------------------------
- * Forward declaration for recursive emit_asm_node
+ * Forward declaration for recursive emit_pat_node
  * ----------------------------------------------------------------------- */
 
-static void emit_asm_node(EXPR_t *pat,
+static void emit_pat_node(EXPR_t *pat,
                            const char *alpha, const char *beta,
                            const char *gamma, const char *omega,
                            const char *cursor,
@@ -695,7 +695,7 @@ static void emit_asm_seq(EXPR_t *left, EXPR_t *right,
                           const char *cursor,
                           const char *subj, const char *subj_len_sym,
                           int depth) {
-    int uid = asm_uid();
+    int uid = next_uid();
     char lα[LBUF], lβ[LBUF], rα[LBUF], rβ[LBUF];
     snprintf(lα, LBUF, "seq_l%d_alpha", uid);
     snprintf(lβ, LBUF, "seq_l%d_beta",  uid);
@@ -705,8 +705,8 @@ static void emit_asm_seq(EXPR_t *left, EXPR_t *right,
     ALFC(alpha, "SEQ", "jmp     %s\n", lα);
     ALF(beta, "jmp     %s\n", rβ);
 
-    emit_asm_node(left,  lα, lβ, rα, omega, cursor, subj, subj_len_sym, depth+1);
-    emit_asm_node(right, rα, rβ, gamma, lβ, cursor, subj, subj_len_sym, depth+1);
+    emit_pat_node(left,  lα, lβ, rα, omega, cursor, subj, subj_len_sym, depth+1);
+    emit_pat_node(right, rα, rβ, gamma, lβ, cursor, subj, subj_len_sym, depth+1);
 }
 
 /* -----------------------------------------------------------------------
@@ -727,7 +727,7 @@ static void emit_asm_alt(EXPR_t *left, EXPR_t *right,
                           const char *cursor,
                           const char *subj, const char *subj_len_sym,
                           int depth) {
-    int uid = asm_uid();
+    int uid = next_uid();
     char lα[LBUF], lβ[LBUF], rα[LBUF], rβ[LBUF];
     char cursor_save[LBUF], restore_lbl[LBUF];
     snprintf(lα,           LBUF, "alt_l%d_alpha",   uid);
@@ -736,7 +736,7 @@ static void emit_asm_alt(EXPR_t *left, EXPR_t *right,
     snprintf(rβ,           LBUF, "alt_r%d_beta",    uid);
     snprintf(cursor_save,  LBUF, "alt%d_cur_save",  uid);
     snprintf(restore_lbl,  LBUF, "alt%d_restore",   uid);
-    bss_add(cursor_save);
+    var_register(cursor_save);
 
     char left_omega_tramp[LBUF];
     snprintf(left_omega_tramp, LBUF, "alt%d_left_omega", uid);
@@ -745,13 +745,13 @@ static void emit_asm_alt(EXPR_t *left, EXPR_t *right,
          "ALT_ALPHA   %s, %s, %s\n", cursor_save, cursor, lα);
     ALFC(beta,  "ALT β — resume right", "SEQ_BETA    %s\n", rβ);
 
-    emit_asm_node(left, lα, lβ, gamma, left_omega_tramp,
+    emit_pat_node(left, lα, lβ, gamma, left_omega_tramp,
                   cursor, subj, subj_len_sym, depth+1);
 
     ALFC(left_omega_tramp, "ALT left_ω — restore cursor, enter right",
          "ALT_OMEGA   %s, %s, %s\n", cursor_save, cursor, rα);
 
-    emit_asm_node(right, rα, rβ, gamma, omega,
+    emit_pat_node(right, rα, rβ, gamma, omega,
                   cursor, subj, subj_len_sym, depth+1);
 }
 
@@ -771,7 +771,7 @@ static void emit_asm_arbno(EXPR_t *child,
                             const char *cursor,
                             const char *subj, const char *subj_len_sym,
                             int depth) {
-    int uid = asm_uid();
+    int uid = next_uid();
     char stk[LBUF], dep[LBUF], cα[LBUF], cβ[LBUF];
     char child_ok[LBUF], child_fail[LBUF], cur_before[LBUF];
     char push_lbl[LBUF], pop_lbl[LBUF];
@@ -787,8 +787,8 @@ static void emit_asm_arbno(EXPR_t *child,
     snprintf(pop_lbl,    LBUF, "arb%d_pop",          uid);
 
     /* stk needs 64 slots — we emit it specially */
-    bss_add(dep);
-    bss_add(cur_before);
+    var_register(dep);
+    var_register(cur_before);
     /* stk: emit as resq 64 — we track this separately */
     /* We'll add it to a special multi-slot list */
     static char arbno_stack_decls[512][LBUF + 16];
@@ -837,13 +837,13 @@ static void emit_asm_arbno(EXPR_t *child,
     /* child_fail: ω */
     ALFC(child_fail, "ARBNO child_fail", "jmp     %s\n", omega);
 
-    emit_asm_node(child, cα, cβ, child_ok, child_fail,
+    emit_pat_node(child, cα, cβ, child_ok, child_fail,
                   cursor, subj, subj_len_sym, depth+1);
 
     /* Patch: we need to emit the resq 64 for stk in section .bss.
      * We use a hack: emit it as a comment-tagged entry so bss_emit
-     * can handle it. We store it directly since bss_add only does resq 1. */
-    /* Replace the bss_add approach: use a global extra-bss list */
+     * can handle it. We store it directly since var_register only does resq 1. */
+    /* Replace the var_register approach: use a global extra-bss list */
     extern char asm_extra_bss[][LBUF + 16];
     extern int  asm_extra_bss_count;
     if (asm_extra_bss_count < 64) {
@@ -862,9 +862,9 @@ static void emit_asm_any(const char *charset, int cslen,
                           const char *cursor,
                           const char *subj, const char *subj_len_sym) {
     char saved[LBUF];
-    int uid = asm_uid();
+    int uid = next_uid();
     snprintf(saved, LBUF, "any%d_saved", uid);
-    bss_add(saved);
+    var_register(saved);
     const char *clabel = lit_intern(charset, cslen);
 
     ALFC(alpha, "ANY α", "ANY_ALPHA   %s, %d, %s, %s, %s, %s, %s, %s\n",
@@ -882,9 +882,9 @@ static void emit_asm_notany(const char *charset, int cslen,
                              const char *cursor,
                              const char *subj, const char *subj_len_sym) {
     char saved[LBUF];
-    int uid = asm_uid();
+    int uid = next_uid();
     snprintf(saved, LBUF, "nany%d_saved", uid);
-    bss_add(saved);
+    var_register(saved);
     const char *clabel = lit_intern(charset, cslen);
 
     ALFC(alpha, "NOTANY α", "NOTANY_ALPHA %s, %d, %s, %s, %s, %s, %s, %s\n",
@@ -902,9 +902,9 @@ static void emit_asm_span(const char *charset, int cslen,
                            const char *cursor,
                            const char *subj, const char *subj_len_sym) {
     char saved[LBUF];
-    int uid = asm_uid();
+    int uid = next_uid();
     snprintf(saved, LBUF, "span%d_saved", uid);
-    bss_add(saved);
+    var_register(saved);
     const char *clabel = lit_intern(charset, cslen);
 
     ALFC(alpha, "SPAN α", "SPAN_ALPHA  %s, %d, %s, %s, %s, %s, %s, %s\n",
@@ -918,9 +918,9 @@ static void emit_asm_break(const char *charset, int cslen,
                             const char *cursor,
                             const char *subj, const char *subj_len_sym) {
     char saved[LBUF];
-    int uid = asm_uid();
+    int uid = next_uid();
     snprintf(saved, LBUF, "brk%d_saved", uid);
-    bss_add(saved);
+    var_register(saved);
     const char *clabel = lit_intern(charset, cslen);
 
     ALFC(alpha, "BREAK α", "BREAK_ALPHA %s, %d, %s, %s, %s, %s, %s, %s\n",
@@ -938,8 +938,8 @@ static void emit_asm_span_var(const char *varlab,
                                const char *cursor,
                                const char *subj, const char *subj_len_sym) {
     char saved[LBUF];
-    snprintf(saved, LBUF, "span%d_saved", asm_uid());
-    bss_add(saved);
+    snprintf(saved, LBUF, "span%d_saved", next_uid());
+    var_register(saved);
     ALFC(alpha, "SPAN(var) α", "SPAN_ALPHA_VAR %s, %s, %s, %s, %s, %s, %s\n",
          varlab, saved, cursor, subj, subj_len_sym, gamma, omega);
     ALFC(beta,  "SPAN(var) β", "SPAN_BETA_VAR  %s, %s, %s\n", saved, cursor, omega);
@@ -951,8 +951,8 @@ static void emit_asm_break_var(const char *varlab,
                                 const char *cursor,
                                 const char *subj, const char *subj_len_sym) {
     char saved[LBUF];
-    snprintf(saved, LBUF, "brk%d_saved", asm_uid());
-    bss_add(saved);
+    snprintf(saved, LBUF, "brk%d_saved", next_uid());
+    var_register(saved);
     ALFC(alpha, "BREAK(var) α", "BREAK_ALPHA_VAR %s, %s, %s, %s, %s, %s, %s\n",
          varlab, saved, cursor, subj, subj_len_sym, gamma, omega);
     ALFC(beta,  "BREAK(var) β", "BREAK_BETA_VAR  %s, %s, %s\n", saved, cursor, omega);
@@ -964,8 +964,8 @@ static void emit_asm_breakx_var(const char *varlab,
                                  const char *cursor,
                                  const char *subj, const char *subj_len_sym) {
     char saved[LBUF];
-    snprintf(saved, LBUF, "brkx%d_saved", asm_uid());
-    bss_add(saved);
+    snprintf(saved, LBUF, "brkx%d_saved", next_uid());
+    var_register(saved);
     ALFC(alpha, "BREAKX(var) α", "BREAKX_ALPHA_VAR %s, %s, %s, %s, %s, %s, %s\n",
          varlab, saved, cursor, subj, subj_len_sym, gamma, omega);
     ALFC(beta,  "BREAKX(var) β", "BREAKX_BETA_VAR  %s, %s, %s\n", saved, cursor, omega);
@@ -977,8 +977,8 @@ static void emit_asm_breakx_lit(const char *charset, int cslen,
                                  const char *cursor,
                                  const char *subj, const char *subj_len_sym) {
     char saved[LBUF];
-    snprintf(saved, LBUF, "brkx%d_saved", asm_uid());
-    bss_add(saved);
+    snprintf(saved, LBUF, "brkx%d_saved", next_uid());
+    var_register(saved);
     const char *clabel = lit_intern(charset, cslen);
     ALFC(alpha, "BREAKX(lit) α", "BREAKX_ALPHA_LIT %s, %s, %s, %s, %s, %s, %s\n",
          clabel, saved, cursor, subj, subj_len_sym, gamma, omega);
@@ -991,8 +991,8 @@ static void emit_asm_any_var(const char *varlab,
                               const char *cursor,
                               const char *subj, const char *subj_len_sym) {
     char saved[LBUF];
-    snprintf(saved, LBUF, "any%d_saved", asm_uid());
-    bss_add(saved);
+    snprintf(saved, LBUF, "any%d_saved", next_uid());
+    var_register(saved);
     ALFC(alpha, "ANY(var) α", "ANY_ALPHA_VAR   %s, %s, %s, %s, %s, %s, %s\n",
          varlab, saved, cursor, subj, subj_len_sym, gamma, omega);
     ALFC(beta,  "ANY(var) β", "ANY_BETA_VAR    %s, %s, %s\n", saved, cursor, omega);
@@ -1004,8 +1004,8 @@ static void emit_asm_notany_var(const char *varlab,
                                  const char *cursor,
                                  const char *subj, const char *subj_len_sym) {
     char saved[LBUF];
-    snprintf(saved, LBUF, "nany%d_saved", asm_uid());
-    bss_add(saved);
+    snprintf(saved, LBUF, "nany%d_saved", next_uid());
+    var_register(saved);
     ALFC(alpha, "NOTANY(var) α", "NOTANY_ALPHA_VAR %s, %s, %s, %s, %s, %s, %s\n",
          varlab, saved, cursor, subj, subj_len_sym, gamma, omega);
     ALFC(beta,  "NOTANY(var) β", "NOTANY_BETA_VAR  %s, %s, %s\n", saved, cursor, omega);
@@ -1021,9 +1021,9 @@ static void emit_asm_len(long n,
                           const char *cursor,
                           const char *subj_len_sym) {
     char saved[LBUF];
-    int uid = asm_uid();
+    int uid = next_uid();
     snprintf(saved, LBUF, "len%d_saved", uid);
-    bss_add(saved);
+    var_register(saved);
 
     ALFC(alpha, "LEN(%ld)", "LEN_ALPHA   %ld, %s, %s, %s, %s, %s\n", n, saved, cursor, subj_len_sym, gamma, omega);
     ALFC(beta, "LEN β", "LEN_BETA    %s, %s, %s\n", saved, cursor, omega);
@@ -1038,9 +1038,9 @@ static void emit_asm_tab(long n,
                           const char *gamma, const char *omega,
                           const char *cursor) {
     char saved[LBUF];
-    int uid = asm_uid();
+    int uid = next_uid();
     snprintf(saved, LBUF, "tab%d_saved", uid);
-    bss_add(saved);
+    var_register(saved);
 
     ALFC(alpha, "TAB(%ld)", "TAB_ALPHA   %ld, %s, %s, %s, %s\n", n, saved, cursor, gamma, omega);
     ALFC(beta, "TAB β", "TAB_BETA    %s, %s, %s\n", saved, cursor, omega);
@@ -1056,9 +1056,9 @@ static void emit_asm_rtab(long n,
                            const char *cursor,
                            const char *subj_len_sym) {
     char saved[LBUF];
-    int uid = asm_uid();
+    int uid = next_uid();
     snprintf(saved, LBUF, "rtab%d_saved", uid);
-    bss_add(saved);
+    var_register(saved);
 
     ALFC(alpha, "RTAB(%ld)", "RTAB_ALPHA  %ld, %s, %s, %s, %s, %s\n", n, saved, cursor, subj_len_sym, gamma, omega);
     ALFC(beta, "RTAB β", "RTAB_BETA   %s, %s, %s\n", saved, cursor, omega);
@@ -1073,9 +1073,9 @@ static void emit_asm_rem(const char *alpha, const char *beta,
                           const char *cursor,
                           const char *subj_len_sym) {
     char saved[LBUF];
-    int uid = asm_uid();
+    int uid = next_uid();
     snprintf(saved, LBUF, "rem%d_saved", uid);
-    bss_add(saved);
+    var_register(saved);
 
     ALFC(alpha, "REM", "REM_ALPHA   %s, %s, %s, %s\n", saved, cursor, subj_len_sym, gamma);
     ALFC(beta, "REM β", "REM_BETA    %s, %s, %s\n", saved, cursor, omega);
@@ -1100,12 +1100,12 @@ static void emit_asm_arb(const char *alpha, const char *beta,
                           const char *cursor,
                           const char *subj_len_sym) {
     char arb_start[LBUF], arb_step[LBUF], chk[LBUF];
-    int uid = asm_uid();
+    int uid = next_uid();
     snprintf(arb_start, LBUF, "arb%d_start", uid);
     snprintf(arb_step,  LBUF, "arb%d_step",  uid);
     snprintf(chk,       LBUF, "arb%d_chk",   uid);
-    bss_add(arb_start);
-    bss_add(arb_step);
+    var_register(arb_start);
+    var_register(arb_step);
 
     ALFC(alpha, "ARB", "mov     rax, [%s]\n", cursor);
     A("    mov     [%s], rax\n", arb_start);
@@ -1152,7 +1152,7 @@ static void emit_asm_assign(EXPR_t *child, const char *varname,
                              const char *cursor,
                              const char *subj, const char *subj_len_sym,
                              int depth) {
-    int uid = asm_uid();
+    int uid = next_uid();
     char cα[LBUF], cβ[LBUF];
     char dol_gamma[LBUF], dol_omega[LBUF];
     char entry_cur[LBUF], cap_buf[LBUF], cap_len[LBUF];
@@ -1181,8 +1181,8 @@ static void emit_asm_assign(EXPR_t *child, const char *varname,
         snprintf(entry_cur, LBUF, "dol%d_entry", uid);
     }
 
-    /* bss_add is a no-op if already registered; harmless in single-pass mode */
-    bss_add(entry_cur);
+    /* var_register is a no-op if already registered; harmless in single-pass mode */
+    var_register(entry_cur);
 
     {
         char dol_hdr[LBUF];
@@ -1200,7 +1200,7 @@ static void emit_asm_assign(EXPR_t *child, const char *varname,
     ALFC(beta, "DOL β", "jmp     %s\n", cβ);
 
     /* Emit child subtree — child's γ goes to dol_gamma, child's ω to dol_omega */
-    emit_asm_node(child, cα, cβ, dol_gamma, dol_omega,
+    emit_pat_node(child, cα, cβ, dol_gamma, dol_omega,
                   cursor, subj, subj_len_sym, depth + 1);
 
     /* dol_γ: compute span, copy to cap_buf, proceed to outer γ — one macro call */
@@ -1213,10 +1213,10 @@ static void emit_asm_assign(EXPR_t *child, const char *varname,
 }
 
 /* -----------------------------------------------------------------------
- * emit_asm_node — recursive dispatch
+ * emit_pat_node — recursive dispatch
  * ----------------------------------------------------------------------- */
 
-static void emit_asm_node(EXPR_t *pat,
+static void emit_pat_node(EXPR_t *pat,
                            const char *alpha, const char *beta,
                            const char *gamma, const char *omega,
                            const char *cursor,
@@ -1234,7 +1234,7 @@ static void emit_asm_node(EXPR_t *pat,
     case E_CONC: {
         int _nc = pat->nchildren;
         if (_nc == 0) break;
-        if (_nc == 1) { emit_asm_node(pat->children[0], alpha, beta, gamma, omega, cursor, subj, subj_len_sym, depth); break; }
+        if (_nc == 1) { emit_pat_node(pat->children[0], alpha, beta, gamma, omega, cursor, subj, subj_len_sym, depth); break; }
         if (_nc == 2) { emit_asm_seq(pat->children[0], pat->children[1], alpha, beta, gamma, omega, cursor, subj, subj_len_sym, depth); break; }
         /* >2: right-fold into heap-allocated binary nodes */
         EXPR_t **_nodes = malloc((size_t)(_nc - 1) * sizeof(EXPR_t *));
@@ -1250,7 +1250,7 @@ static void emit_asm_node(EXPR_t *pat,
             _nodes[_n]->nchildren = 2;
             _right = _nodes[_n];
         }
-        emit_asm_node(_right, alpha, beta, gamma, omega, cursor, subj, subj_len_sym, depth);
+        emit_pat_node(_right, alpha, beta, gamma, omega, cursor, subj, subj_len_sym, depth);
         for (int _i = 0; _i < _nc - 1; _i++) free(_nodes[_i]);
         free(_nodes); free(_kids);
         break;
@@ -1259,7 +1259,7 @@ static void emit_asm_node(EXPR_t *pat,
     case E_OR: {
         int _nc = pat->nchildren;
         if (_nc == 0) break;
-        if (_nc == 1) { emit_asm_node(pat->children[0], alpha, beta, gamma, omega, cursor, subj, subj_len_sym, depth); break; }
+        if (_nc == 1) { emit_pat_node(pat->children[0], alpha, beta, gamma, omega, cursor, subj, subj_len_sym, depth); break; }
         if (_nc == 2) { emit_asm_alt(pat->children[0], pat->children[1], alpha, beta, gamma, omega, cursor, subj, subj_len_sym, depth); break; }
         /* >2: right-fold into heap-allocated binary nodes */
         EXPR_t **_nodes = malloc((size_t)(_nc - 1) * sizeof(EXPR_t *));
@@ -1275,7 +1275,7 @@ static void emit_asm_node(EXPR_t *pat,
             _nodes[_n]->nchildren = 2;
             _right = _nodes[_n];
         }
-        emit_asm_node(_right, alpha, beta, gamma, omega, cursor, subj, subj_len_sym, depth);
+        emit_pat_node(_right, alpha, beta, gamma, omega, cursor, subj, subj_len_sym, depth);
         for (int _i = 0; _i < _nc - 1; _i++) free(_nodes[_i]);
         free(_nodes); free(_kids);
         break;
@@ -1301,7 +1301,7 @@ static void emit_asm_node(EXPR_t *pat,
             break;
         }
         /* Look up in the named-pattern registry */
-        const AsmNamedPat *np = asm_named_lookup(varname);
+        const AsmNamedPat *np = named_pat_lookup(varname);
         if (np) {
             emit_asm_named_ref(np, alpha, beta, gamma, omega);
         } else {
@@ -1315,9 +1315,9 @@ static void emit_asm_node(EXPR_t *pat,
             } else {
                 /* Dynamic string variable: match subject against runtime value
                  * of the variable using stmt_match_var.  Same β/restore as LIT. */
-                int vuid = asm_uid();
+                int vuid = next_uid();
                 char saved[64]; snprintf(saved, sizeof saved, "litvar%d_saved", vuid);
-                bss_add(saved);
+                var_register(saved);
                 const char *vlab = prog_str_intern(varname);
                 A("\n; E_VART %s → LIT_VAR (stmt_match_var)\n", varname);
                 ALF(alpha, "LIT_VAR_ALPHA %s, %s, %s, %s, %s\n",
@@ -1360,7 +1360,7 @@ static void emit_asm_node(EXPR_t *pat,
                               ? pat->children[0]->sval
                               : (pat->sval ? pat->sval : NULL);
         if (varname) {
-            const AsmNamedPat *np = asm_named_lookup(varname);
+            const AsmNamedPat *np = named_pat_lookup(varname);
             if (np) {
                 emit_asm_named_ref(np, alpha, beta, gamma, omega);
             } else {
@@ -1532,7 +1532,7 @@ static void ucall_bss_emit(void) {
 static void asm_prescan_ucall_expr(EXPR_t *e) {
     if (!e) return;
     if (e->kind == E_FNC && e->sval) {
-        const AsmNamedPat *ufn = asm_named_lookup_fn(e->sval);
+        const AsmNamedPat *ufn = named_pat_lookup_fn(e->sval);
         if (ufn) {
             int uid = ucall_uid();
             int na = e->nchildren;
@@ -1666,12 +1666,12 @@ static void cap_vars_emit_data_section(void) {
  * (AsmNamedPat struct defined above as forward decl)
  * ----------------------------------------------------------------------- */
 
-#define ASM_NAMED_MAX 64
+#define NAMED_PAT_MAX 64
 
-static AsmNamedPat asm_named[ASM_NAMED_MAX];
-static int         asm_named_count = 0;
+static AsmNamedPat named_pats[NAMED_PAT_MAX];
+static int         named_pat_count = 0;
 
-static void asm_named_reset(void) { asm_named_count = 0; }
+static void named_pat_reset(void) { named_pat_count = 0; }
 
 /* asm_str_vars — registry for plain-string variable assignments (VAR = 'literal').
  * Used by E_INDR (*VAR) when the variable holds a string, not a named pattern.
@@ -1707,15 +1707,15 @@ static void asm_safe_name(const char *src, char *dst, int dstlen) {
 }
 
 /* Register a named pattern — called during program scan */
-static AsmNamedPat *asm_named_register(const char *varname, EXPR_t *pat) {
+static AsmNamedPat *named_pat_register(const char *varname, EXPR_t *pat) {
     /* dedup */
-    for (int i = 0; i < asm_named_count; i++)
-        if (strcmp(asm_named[i].varname, varname) == 0) {
-            if (pat) asm_named[i].pat = pat; /* update expr if provided */
-            return &asm_named[i];
+    for (int i = 0; i < named_pat_count; i++)
+        if (strcmp(named_pats[i].varname, varname) == 0) {
+            if (pat) named_pats[i].pat = pat; /* update expr if provided */
+            return &named_pats[i];
         }
-    if (asm_named_count >= ASM_NAMED_MAX) return NULL;
-    AsmNamedPat *e = &asm_named[asm_named_count++];
+    if (named_pat_count >= NAMED_PAT_MAX) return NULL;
+    AsmNamedPat *e = &named_pats[named_pat_count++];
     snprintf(e->varname, ASM_NAMED_NAMELEN, "%s", varname);
     asm_safe_name(varname, e->safe, ASM_NAMED_NAMELEN);
     /* copy safe to temp to avoid GCC -Wrestrict false-positive (distinct fields) */
@@ -1735,17 +1735,17 @@ static AsmNamedPat *asm_named_register(const char *varname, EXPR_t *pat) {
     return e;
 }
 
-static const AsmNamedPat *asm_named_lookup(const char *varname) {
-    for (int i = 0; i < asm_named_count; i++)
-        if (strcasecmp(asm_named[i].varname, varname) == 0)
-            return &asm_named[i];
+static const AsmNamedPat *named_pat_lookup(const char *varname) {
+    for (int i = 0; i < named_pat_count; i++)
+        if (strcasecmp(named_pats[i].varname, varname) == 0)
+            return &named_pats[i];
     return NULL;
 }
 
-static const AsmNamedPat *asm_named_lookup_fn(const char *varname) {
-    for (int i = 0; i < asm_named_count; i++)
-        if (asm_named[i].is_fn && strcasecmp(asm_named[i].varname, varname) == 0)
-            return &asm_named[i];
+static const AsmNamedPat *named_pat_lookup_fn(const char *varname) {
+    for (int i = 0; i < named_pat_count; i++)
+        if (named_pats[i].is_fn && strcasecmp(named_pats[i].varname, varname) == 0)
+            return &named_pats[i];
     return NULL;
 }
 
@@ -1762,7 +1762,7 @@ static const AsmNamedPat *asm_named_lookup_fn(const char *varname) {
 static void emit_asm_named_ref(const AsmNamedPat *np,
                                 const char *alpha, const char *beta,
                                 const char *gamma, const char *omega) {
-    int uid = asm_uid();
+    int uid = next_uid();
     char glbl[LBUF], olbl[LBUF];
     snprintf(glbl, LBUF, "nref%d_gamma", uid);
     snprintf(olbl, LBUF, "nref%d_omega", uid);
@@ -1915,7 +1915,7 @@ static void emit_asm_named_def(const AsmNamedPat *np,
 
     /* α entry — initial match */
     A("; %s (α entry)\n", np->alpha_lbl);
-    emit_asm_node(np->pat,
+    emit_pat_node(np->pat,
                   np->alpha_lbl, np->beta_lbl,
                   inner_gamma, inner_omega,
                   cursor, subj, subj_len_sym,
@@ -2056,7 +2056,7 @@ static int parse_define_str(const char *def,
 }
 
 static void asm_scan_named_patterns(Program *prog) {
-    asm_named_reset();
+    named_pat_reset();
     asm_str_vars_reset();
     if (!prog) return;
     for (STMT_t *s = prog->head; s; s = s->next) {
@@ -2076,7 +2076,7 @@ static void asm_scan_named_patterns(Program *prog) {
             char locals[ASM_NAMED_MAXPARAMS][64];
             int nlocals = 0;
             if (parse_define_str(def_str, fname, sizeof fname, params, &nparams, locals, &nlocals)) {
-                AsmNamedPat *e = asm_named_register(fname, NULL);
+                AsmNamedPat *e = named_pat_register(fname, NULL);
                 if (e) {
                     e->is_fn = 1;
                     e->nparams = nparams;
@@ -2115,7 +2115,7 @@ static void asm_scan_named_patterns(Program *prog) {
         if (s->subject && s->subject->kind == E_VART &&
             s->has_eq && s->replacement && !s->pattern) {
             if (expr_is_pattern_expr(s->replacement)) {
-                asm_named_register(s->subject->sval, s->replacement);
+                named_pat_register(s->subject->sval, s->replacement);
             } else if (s->replacement->kind == E_QLIT && s->replacement->sval) {
                 /* Plain string assignment — register for *VAR indirect use */
                 asm_str_var_register(s->subject->sval, s->replacement->sval);
@@ -2141,7 +2141,7 @@ static void asm_emit_pattern(STMT_t *stmt) {
     }
 
     /* Reset state */
-    bss_reset();
+    var_reset();
     lit_reset();
     asm_extra_bss_count = 0;
 
@@ -2150,12 +2150,12 @@ static void asm_emit_pattern(STMT_t *stmt) {
     const char *subj_sym     = "subject_data";
     const char *subj_len_sym = "subject_len_val";
 
-    bss_add(cursor_sym);
+    var_register(cursor_sym);
 
     /* Register .bss slots for all named patterns' ret_ pointers */
-    for (int i = 0; i < asm_named_count; i++) {
-        bss_add(asm_named[i].ret_gamma);
-        bss_add(asm_named[i].ret_omega);
+    for (int i = 0; i < named_pat_count; i++) {
+        var_register(named_pats[i].ret_gamma);
+        var_register(named_pats[i].ret_omega);
     }
 
     /* Collect root pattern code + named pattern bodies into a temp buffer */
@@ -2163,8 +2163,8 @@ static void asm_emit_pattern(STMT_t *stmt) {
     FILE *code_f = open_memstream(&code_buf, &code_size);
     if (!code_f) { asm_emit_null_program(); return; }
 
-    FILE *real_out = asm_out;
-    asm_out = code_f;
+    FILE *real_out = out;
+    out = code_f;
 
     /* Determine subject from stmt->subject (E_QLIT) */
     const char *subj_str = "";
@@ -2175,20 +2175,20 @@ static void asm_emit_pattern(STMT_t *stmt) {
     }
 
     /* Emit the root pattern tree */
-    emit_asm_node(stmt->pattern,
+    emit_pat_node(stmt->pattern,
                   "root_alpha", "root_beta",
                   "match_success", "match_fail",
                   cursor_sym, subj_sym, subj_len_sym,
                   0);
 
     /* Emit named pattern bodies */
-    for (int i = 0; i < asm_named_count; i++)
-        emit_asm_named_def(&asm_named[i], cursor_sym, subj_sym, subj_len_sym);
+    for (int i = 0; i < named_pat_count; i++)
+        emit_asm_named_def(&named_pats[i], cursor_sym, subj_sym, subj_len_sym);
 
     fclose(code_f);
 
     /* Now write the full .s file in correct section order */
-    asm_out = real_out;
+    out = real_out;
 
     A("; generated by sno2c -asm\n");
     A("; assemble: nasm -f elf64 out.s -o out.o && ld out.o -o out\n");
@@ -2221,8 +2221,8 @@ static void asm_emit_pattern(STMT_t *stmt) {
     /* .bss */
     A("\nsection .bss\n");
     A("%-24s resq 1\n", subj_len_sym);
-    for (int i = 0; i < bss_count; i++)
-        A("%-24s resq 1\n", bss_slots[i]);
+    for (int i = 0; i < nvar; i++)
+        A("%-24s resq 1\n", vars[i]);
     extra_bss_emit();
 
     /* .text */
@@ -2281,8 +2281,8 @@ static void asm_scan_capture_vars(STMT_t *stmt) {
     if (!stmt || !stmt->pattern) return;
     asm_scan_expr_for_caps(stmt->pattern);
     /* Also scan named pattern bodies */
-    for (int i = 0; i < asm_named_count; i++)
-        asm_scan_expr_for_caps(asm_named[i].pat);
+    for (int i = 0; i < named_pat_count; i++)
+        asm_scan_expr_for_caps(named_pats[i].pat);
 }
 
 /* -----------------------------------------------------------------------
@@ -2296,7 +2296,7 @@ static void asm_scan_capture_vars(STMT_t *stmt) {
 static void asm_emit_body(STMT_t *stmt) {
     if (!stmt || !stmt->pattern) return;
 
-    bss_reset();
+    var_reset();
     lit_reset();
     cap_vars_reset();
     asm_extra_bss_count = 0;
@@ -2306,32 +2306,32 @@ static void asm_emit_body(STMT_t *stmt) {
     const char *subj_len_sym = "subject_len_val";
 
     /* Named-pattern ret_ slots always known up front */
-    for (int i = 0; i < asm_named_count; i++) {
-        bss_add(asm_named[i].ret_gamma);
-        bss_add(asm_named[i].ret_omega);
+    for (int i = 0; i < named_pat_count; i++) {
+        var_register(named_pats[i].ret_gamma);
+        var_register(named_pats[i].ret_omega);
     }
 
     /* ── Collection pass: redirect output to /dev/null, advance uid counter,
-     *    fire all bss_add / lit_intern / cap_var_register calls.
+     *    fire all var_register / lit_intern / cap_var_register calls.
      *    uid sequence is identical to the real pass that follows, so every
      *    derived name (lit_str_N, dol_entry_X, root_alpha_saved, …) is
      *    registered before we emit any section headers.            ── */
     FILE *devnull = fopen("/dev/null", "w");
-    FILE *real_out = asm_out;
-    asm_out = devnull;
+    FILE *real_out = out;
+    out = devnull;
 
-    int uid_before_dry = asm_uid_ctr;   /* save uid counter state */
+    int uid_before_dry = uid_ctr;   /* save uid counter state */
 
-    emit_asm_node(stmt->pattern,
+    emit_pat_node(stmt->pattern,
                   "root_alpha", "root_beta",
                   "match_success", "match_fail",
                   cursor_sym, subj_sym, subj_len_sym, 0);
-    for (int i = 0; i < asm_named_count; i++)
-        emit_asm_named_def(&asm_named[i], cursor_sym, subj_sym, subj_len_sym);
+    for (int i = 0; i < named_pat_count; i++)
+        emit_asm_named_def(&named_pats[i], cursor_sym, subj_sym, subj_len_sym);
 
     fclose(devnull);
-    asm_out = real_out;
-    asm_uid_ctr = uid_before_dry;       /* reset so real pass generates same labels */
+    out = real_out;
+    uid_ctr = uid_before_dry;       /* reset so real pass generates same labels */
 
     /* ── Emit pass: all symbols now registered; emit sections in order ── */
 
@@ -2370,11 +2370,11 @@ static void asm_emit_body(STMT_t *stmt) {
     }
 
     /* .bss — all slots collected during dry run */
-    int has_bss = bss_count > 0 || asm_extra_bss_count > 0 || cap_var_count > 0;
+    int has_bss = nvar > 0 || asm_extra_bss_count > 0 || cap_var_count > 0;
     if (has_bss) {
         A("\nsection .bss\n");
-        for (int i = 0; i < bss_count; i++)
-            A("%-24s resq 1\n", bss_slots[i]);
+        for (int i = 0; i < nvar; i++)
+            A("%-24s resq 1\n", vars[i]);
         extra_bss_emit();
         cap_vars_emit_bss();
     }
@@ -2383,13 +2383,13 @@ static void asm_emit_body(STMT_t *stmt) {
      *         so all generated labels are identical to the collected names  */
     A("\nsection .text\n");
 
-    emit_asm_node(stmt->pattern,
+    emit_pat_node(stmt->pattern,
                   "root_alpha", "root_beta",
                   "match_success", "match_fail",
                   cursor_sym, subj_sym, subj_len_sym, 0);
 
-    for (int i = 0; i < asm_named_count; i++)
-        emit_asm_named_def(&asm_named[i], cursor_sym, subj_sym, subj_len_sym);
+    for (int i = 0; i < named_pat_count; i++)
+        emit_asm_named_def(&named_pats[i], cursor_sym, subj_sym, subj_len_sym);
 }
 
 /* -----------------------------------------------------------------------
@@ -2595,7 +2595,7 @@ static int prog_emit_expr(EXPR_t *e, int rbp_off) {
         const char *fnlab = prog_str_intern(e->sval);
 
         /* Check if this is a user-defined Snocone function */
-        const AsmNamedPat *ufn = asm_named_lookup(e->sval);
+        const AsmNamedPat *ufn = named_pat_lookup(e->sval);
         if (ufn && ufn->is_fn) {
             /* User function call-site:
              *   1. Evaluate each arg → store into fn_FNAME_arg_N_t/p .bss slots
@@ -2972,7 +2972,7 @@ static int prog_emit_expr(EXPR_t *e, int rbp_off) {
          *
          * Naming: CAT for string concatenation, SEQ/ALT for pattern alternation.
          * E_CONC in prog_emit_expr is always value-context — pattern-context
-         * E_CONC is handled by emit_asm_node, not here. */
+         * E_CONC is handled by emit_pat_node, not here. */
 
         int left_is_str  = e->children[0]  && e->children[0]->kind  == E_QLIT;
         int left_is_var  = e->children[0]  && e->children[0]->kind  == E_VART;
@@ -3356,8 +3356,8 @@ static int prog_label_id(const char *lbl) {
  * TODO M-ASM-READABLE: post M-ASM-BEAUTY sprint to improve base quality. */
 static const char *prog_label_nasm(const char *lbl) {
     static char buf[256];
-    int id = prog_label_id(lbl);
-    if (id < 0) { snprintf(buf, sizeof buf, "L_unk_%d", id); return buf; }
+    int uid = prog_label_id(lbl);
+    if (uid < 0) { snprintf(buf, sizeof buf, "L_unk_%d", uid); return buf; }
     /* Build clean base: alnum only, runs of others → single _ */
     char base[128]; int bi = 0; int in_sep = 0;
     for (const char *p = lbl; *p && bi < 120; p++) {
@@ -3371,7 +3371,7 @@ static const char *prog_label_nasm(const char *lbl) {
     while (bi > 0 && base[bi-1] == '_') bi--;
     base[bi] = '\0';
     if (bi == 0) snprintf(base, sizeof base, "L");
-    snprintf(buf, sizeof buf, "L_%s_%d", base, id);
+    snprintf(buf, sizeof buf, "L_%s_%d", base, uid);
     return buf;
 }
 
@@ -3387,7 +3387,7 @@ static void asm_emit_program(Program *prog) {
     prog_str_reset();
     prog_flt_reset();
     prog_labels_reset();
-    bss_reset();
+    var_reset();
     lit_reset();
     asm_extra_bss_count = 0;
 
@@ -3428,48 +3428,48 @@ static void asm_emit_program(Program *prog) {
     /* Pass 2: collect .bss slots for pattern stmts (named-pat ret_ pointers).
      * In program mode, skip entries whose replacement is a plain value
      * (E_QLIT/E_ILIT/E_VART) — those are variable assignments, not patterns. */
-    bss_add("cursor");
-    bss_add("subject_len_val");
+    var_register("cursor");
+    var_register("subject_len_val");
     /* subject_data is a byte array — emitted separately in .bss */
 
-    for (int i = 0; i < asm_named_count; i++) {
-        if (asm_named[i].is_fn) {
+    for (int i = 0; i < named_pat_count; i++) {
+        if (named_pats[i].is_fn) {
             /* User function: ret_γ/ret_ω return-address slots */
-            bss_add(asm_named[i].ret_gamma);
-            bss_add(asm_named[i].ret_omega);
+            var_register(named_pats[i].ret_gamma);
+            var_register(named_pats[i].ret_omega);
             /* Per-param save slots (old value backup) and arg slots (call-site input) */
-            for (int pi = 0; pi < asm_named[i].nparams; pi++) {
+            for (int pi = 0; pi < named_pats[i].nparams; pi++) {
                 char pname_safe[ASM_NAMED_NAMELEN];
-                asm_expand_name(asm_named[i].param_names[pi], pname_safe, sizeof pname_safe);
+                asm_expand_name(named_pats[i].param_names[pi], pname_safe, sizeof pname_safe);
                 if (!pname_safe[0]) snprintf(pname_safe, sizeof pname_safe, "p%d", pi);
                 char save_slot[LBUF2 + 16], arg_slot[LBUF2 + 16];
                 snprintf(save_slot, sizeof save_slot, "fn_%s_save_%s",
-                         asm_named[i].safe, pname_safe);
+                         named_pats[i].safe, pname_safe);
                 snprintf(arg_slot,  sizeof arg_slot,  "fn_%s_arg_%d",
-                         asm_named[i].safe, pi);
+                         named_pats[i].safe, pi);
                 /* save_slot holds a DESCR_t (2 qwords): _t = type, _p = ptr */
                 char save_slot_t[LBUF2 + 32], save_slot_p[LBUF2 + 32];
                 snprintf(save_slot_t, sizeof save_slot_t, "%s_t", save_slot);
                 snprintf(save_slot_p, sizeof save_slot_p, "%s_p", save_slot);
-                bss_add(save_slot_t);
-                bss_add(save_slot_p);
+                var_register(save_slot_t);
+                var_register(save_slot_p);
                 /* arg_slot holds a DESCR_t (2 qwords): _t = type, _p = ptr */
                 char arg_slot_t[LBUF2 + 32], arg_slot_p[LBUF2 + 32];
                 snprintf(arg_slot_t, sizeof arg_slot_t, "%s_t", arg_slot);
                 snprintf(arg_slot_p, sizeof arg_slot_p, "%s_p", arg_slot);
-                bss_add(arg_slot_t);
-                bss_add(arg_slot_p);
+                var_register(arg_slot_t);
+                var_register(arg_slot_p);
             }
             continue;
         }
-        if (asm_named[i].pat) {
-            EKind rk = asm_named[i].pat->kind;
+        if (named_pats[i].pat) {
+            EKind rk = named_pats[i].pat->kind;
             if (rk == E_QLIT || rk == E_ILIT || rk == E_FLIT || rk == E_NULV ||
                 rk == E_VART || rk == E_KW)
                 continue; /* plain value assignment — not a real named pattern */
         }
-        bss_add(asm_named[i].ret_gamma);
-        bss_add(asm_named[i].ret_omega);
+        var_register(named_pats[i].ret_gamma);
+        var_register(named_pats[i].ret_omega);
     }
 
     /* Register scan_start_N bss slots for every pattern-match statement.
@@ -3481,43 +3481,43 @@ static void asm_emit_program(Program *prog) {
             int this_uid = p2_uid++;
             if (!sp->pattern) continue;
             char ss[64]; snprintf(ss, sizeof ss, "scan_start_%d", this_uid);
-            bss_add(ss);
+            var_register(ss);
         }
     }
 
     /* ---- Pass 3: dry-run all pattern emissions to collect bss/lit slots ----
      * Mirrors asm_emit_body dry-run. Redirects output to /dev/null,
-     * runs emit_asm_node for every pattern stmt, then restores.
+     * runs emit_pat_node for every pattern stmt, then restores.
      * This ensures span_saved/lit_str slots are registered before .bss/.data. */
     {
         FILE *devnull = fopen("/dev/null", "w");
-        FILE *real_out_p3 = asm_out;
-        asm_out = devnull;
-        int uid_save = asm_uid_ctr;
+        FILE *real_out_p3 = out;
+        out = devnull;
+        int uid_save = uid_ctr;
         /* Walk statements using the same uid sequence as the real pass */
         int dry_stmt_uid = 0;
         for (STMT_t *sp = prog->head; sp; sp = sp->next) {
             if (sp->is_end) break;
             int dry_uid = dry_stmt_uid++;
             if (!sp->pattern) continue;
-            /* Use real label names so bss_add registers the correct slot names */
+            /* Use real label names so var_register registers the correct slot names */
             char dry_alpha[64]; snprintf(dry_alpha, sizeof dry_alpha, "P_%d_α", dry_uid);
             char dry_beta[64];  snprintf(dry_beta,  sizeof dry_beta,  "P_%d_β", dry_uid);
             char dry_gamma[64]; snprintf(dry_gamma, sizeof dry_gamma, "P_%d_γ", dry_uid);
             char dry_omega[64]; snprintf(dry_omega, sizeof dry_omega, "P_%d_ω", dry_uid);
-            emit_asm_node(sp->pattern,
+            emit_pat_node(sp->pattern,
                           dry_alpha, dry_beta, dry_gamma, dry_omega,
                           "cursor", "subject_data", "subject_len_val", 0);
         }
         /* also dry-run named pattern bodies */
-        for (int i = 0; i < asm_named_count; i++) {
-            EKind rk = asm_named[i].pat ? asm_named[i].pat->kind : E_NULV;
+        for (int i = 0; i < named_pat_count; i++) {
+            EKind rk = named_pats[i].pat ? named_pats[i].pat->kind : E_NULV;
             if (rk==E_QLIT||rk==E_ILIT||rk==E_FLIT||rk==E_NULV||rk==E_VART||rk==E_KW) continue;
-            emit_asm_named_def(&asm_named[i], "cursor","subject_data","subject_len_val");
+            emit_asm_named_def(&named_pats[i], "cursor","subject_data","subject_len_val");
         }
         fclose(devnull);
-        asm_out = real_out_p3;
-        asm_uid_ctr = uid_save; /* reset so real pass generates same labels */
+        out = real_out_p3;
+        uid_ctr = uid_save; /* reset so real pass generates same labels */
     }
 
     /* ---- emit header ---- */
@@ -3559,8 +3559,8 @@ static void asm_emit_program(Program *prog) {
     /* Always emit .bss — subject_data is always needed for pattern stmts */
     flush_pending_label();
     A("section .bss\n");
-    for (int i = 0; i < bss_count; i++)
-        A("%-24s resq 1\n", bss_slots[i]);
+    for (int i = 0; i < nvar; i++)
+        A("%-24s resq 1\n", vars[i]);
     /* Byrd box scratch slots (saved_cursor, arbno stack, etc.) */
     extra_bss_emit();
     /* Per-call-uid user-function save slots (recursion-safe) */
@@ -3606,7 +3606,7 @@ static void asm_emit_program(Program *prog) {
               if (_id >= 0) prog_label_defined[_id] = 1; }
 
             /* current_fn tracking: entering a user function body */
-            const AsmNamedPat *fn_entry = asm_named_lookup(s->label);
+            const AsmNamedPat *fn_entry = named_pat_lookup(s->label);
             if (fn_entry && fn_entry->is_fn) {
                 current_fn = fn_entry;
             }
@@ -3898,7 +3898,7 @@ static void asm_emit_program(Program *prog) {
                 A("    add     rsp, 32\\n");
                 /* Pass val: need r8=val_type, r9=val_ptr — but SysV only has 6 reg args.
                  * stmt_aset takes (arr DESCR_t, key DESCR_t, val DESCR_t) = 6 int64 regs:
-                 * rdi=arr.v, rsi=arr.u, rdx=key.v, rcx=key.u, r8=val.v, r9=val.u */
+                 * rdi=arr.v, rsi=arr.uid, rdx=key.v, rcx=key.uid, r8=val.v, r9=val.uid */
                 A("    mov     r8,  [rbp-32]\\n");   /* val type */
                 A("    mov     r9,  [rbp-24]\\n");   /* val ptr  */
                 A("    call    stmt_aset\\n");
@@ -3929,7 +3929,7 @@ static void asm_emit_program(Program *prog) {
          *   4. pat_N_omega:     — match failed
          *      emit_jmp F-target
          *
-         * The Byrd box code is emitted inline via emit_asm_node().
+         * The Byrd box code is emitted inline via emit_pat_node().
          */
 
         /* Greek suffixes: internal Byrd box ports — not exportable as linker symbols.
@@ -3950,7 +3950,7 @@ static void asm_emit_program(Program *prog) {
          * On gamma: match succeeded from scan_start_N. */
         char scan_start[64]; snprintf(scan_start, sizeof scan_start, "scan_start_%d", uid);
         char scan_retry[64]; snprintf(scan_retry, sizeof scan_retry, "scan_retry_%d", uid);
-        bss_add(scan_start);
+        var_register(scan_start);
         /* reset scan_start to 0 (subject_data cursor already 0 from SUBJ_FROM16) */
         A("    mov     qword [%s], 0\n", scan_start);
 
@@ -3990,12 +3990,12 @@ static void asm_emit_program(Program *prog) {
                     const char *vn = e->sval ? e->sval
                                    : (e->children[0] && e->children[0]->sval ? e->children[0]->sval : NULL);
                     if (vn) {
-                        for (int ni = 0; ni < asm_named_count; ni++) {
+                        for (int ni = 0; ni < named_pat_count; ni++) {
                             if (!np_visited[ni] && ni < 128 &&
-                                strcasecmp(asm_named[ni].varname, vn) == 0) {
+                                strcasecmp(named_pats[ni].varname, vn) == 0) {
                                 np_visited[ni] = 1;
-                                if (asm_named[ni].pat && top < 510)
-                                    stk[top++] = asm_named[ni].pat;
+                                if (named_pats[ni].pat && top < 510)
+                                    stk[top++] = named_pats[ni].pat;
                                 break;
                             }
                         }
@@ -4005,7 +4005,7 @@ static void asm_emit_program(Program *prog) {
                     if (e->children[_i]) stk[top++] = e->children[_i];
             }
         }
-        emit_asm_node(s->pattern,
+        emit_pat_node(s->pattern,
                       pat_alpha, pat_beta,
                       pat_gamma, pat_omega,
                       "cursor", "subject_data", "subject_len_val",
@@ -4103,12 +4103,12 @@ static void asm_emit_program(Program *prog) {
     /* ---- Named pattern bodies — must be in .text (executable) ---- */
     flush_pending_sep(); emit_sep_major("NAMED PATTERN BODIES");
     A("section .text\n");
-    for (int i = 0; i < asm_named_count; i++) {
-        if (asm_named[i].pat) {
-            EKind rk = asm_named[i].pat->kind;
+    for (int i = 0; i < named_pat_count; i++) {
+        if (named_pats[i].pat) {
+            EKind rk = named_pats[i].pat->kind;
             if (rk==E_QLIT||rk==E_ILIT||rk==E_FLIT||rk==E_NULV||rk==E_VART||rk==E_KW) continue;
         }
-        emit_asm_named_def(&asm_named[i],
+        emit_asm_named_def(&named_pats[i],
                            "cursor","subject_data","subject_len_val");
     }
 
@@ -4134,7 +4134,7 @@ static void asm_emit_program(Program *prog) {
 }
 
 void asm_emit(Program *prog, FILE *f) {
-    asm_out = f;
+    out = f;
 
     /* Pass 1: scan for named pattern assignments */
     asm_scan_named_patterns(prog);
