@@ -647,6 +647,8 @@ struct AsmNamedPat {
     int  is_fn;                              /* 1 = user Snocone procedure */
     int  nparams;
     char param_names[ASM_NAMED_MAXPARAMS][64]; /* parameter variable names */
+    int  nlocals;
+    char local_names[ASM_NAMED_MAXPARAMS][64]; /* local variable names (after ')' in prototype) */
     char body_label[ASM_NAMED_NAMELEN + 16]; /* NASM label of function body entry */
 };
 
@@ -1689,8 +1691,10 @@ static AsmNamedPat *asm_named_register(const char *varname, EXPR_t *pat) {
     e->pat = pat;
     e->is_fn = 0;
     e->nparams = 0;
+    e->nlocals = 0;
     e->body_label[0] = '\0';
     memset(e->param_names, 0, sizeof e->param_names);
+    memset(e->local_names, 0, sizeof e->local_names);
     return e;
 }
 
@@ -1813,6 +1817,25 @@ static void emit_asm_named_def(const AsmNamedPat *np,
             A("    mov     rdx, [%s]\n", arg_slot_p);
             A("    call    stmt_set\n");
         }
+        /* Clear locals + function return-value variable to null at each call
+         * entry (SNOBOL4 semantics: locals and retval are always null at entry).
+         * The function return-value variable has the same name as the function. */
+        A("    LOAD_NULVCL\n");   /* sets [rbp-16]=type, [rbp-8]=ptr once */
+        {
+            /* Clear return-value variable (function name) */
+            const char *fnlab_clr = prog_str_intern(np->varname);
+            A("    lea     rdi, [rel %s]\n", fnlab_clr);
+            A("    mov     rsi, [rbp-16]\n");
+            A("    mov     rdx, [rbp-8]\n");
+            A("    call    stmt_set\n");
+        }
+        for (int i = 0; i < np->nlocals; i++) {
+            const char *llab = prog_str_intern(np->local_names[i]);
+            A("    lea     rdi, [rel %s]\n", llab);
+            A("    mov     rsi, [rbp-16]\n");
+            A("    mov     rdx, [rbp-8]\n");
+            A("    call    stmt_set\n");
+        }
         /* Jump to function body */
         A("    jmp     %s\n", prog_label_nasm(np->body_label));
 
@@ -1928,13 +1951,18 @@ static int expr_is_pattern_expr(EXPR_t *e) {
 
 /* Parse "fname(arg1,arg2,...)" from a DEFINE string literal.
  * Writes function name into fname_out (fname_max bytes),
- * param names into params[][] (nparams_out count).
+ * param names into params[][] (nparams_out count),
+ * local names into locals[][] (nlocals_out count).
+ * SNOBOL4 prototype: 'fname(p1,p2)l1,l2'  — params inside (), locals after ')'.
  * Returns 1 on success, 0 on parse failure. */
 static int parse_define_str(const char *def,
                              char *fname_out, int fname_max,
                              char params[ASM_NAMED_MAXPARAMS][64],
-                             int *nparams_out) {
+                             int *nparams_out,
+                             char locals[ASM_NAMED_MAXPARAMS][64],
+                             int *nlocals_out) {
     *nparams_out = 0;
+    *nlocals_out = 0;
     /* Copy up to '(' into fname */
     const char *p = def;
     int fi = 0;
@@ -1962,6 +1990,22 @@ static int parse_define_str(const char *def,
         }
         if (*p == ',') p++;
     }
+    if (*p == ')') p++; /* skip ')' */
+    /* Parse locals: comma-separated names after ')' */
+    while (*p) {
+        while (*p == ' ' || *p == '\t' || *p == ',') p++;
+        if (!*p) break;
+        int li = 0;
+        while (*p && *p != ',' && li < 63)
+            locals[*nlocals_out][li++] = *p++;
+        while (li > 0 && (locals[*nlocals_out][li-1]==' '||
+                           locals[*nlocals_out][li-1]=='\t')) li--;
+        locals[*nlocals_out][li] = '\0';
+        if (li > 0) {
+            (*nlocals_out)++;
+            if (*nlocals_out >= ASM_NAMED_MAXPARAMS) break;
+        }
+    }
     return 1;
 }
 
@@ -1983,13 +2027,18 @@ static void asm_scan_named_patterns(Program *prog) {
             char fname[128];
             char params[ASM_NAMED_MAXPARAMS][64];
             int nparams = 0;
-            if (parse_define_str(def_str, fname, sizeof fname, params, &nparams)) {
+            char locals[ASM_NAMED_MAXPARAMS][64];
+            int nlocals = 0;
+            if (parse_define_str(def_str, fname, sizeof fname, params, &nparams, locals, &nlocals)) {
                 AsmNamedPat *e = asm_named_register(fname, NULL);
                 if (e) {
                     e->is_fn = 1;
                     e->nparams = nparams;
                     for (int i = 0; i < nparams; i++)
                         snprintf(e->param_names[i], 64, "%s", params[i]);
+                    e->nlocals = nlocals;
+                    for (int i = 0; i < nlocals; i++)
+                        snprintf(e->local_names[i], 64, "%s", locals[i]);
                     /* Default body_label = fname; overridden by 2nd arg if present */
                     snprintf(e->body_label, sizeof e->body_label, "%s", fname);
                     /* Two-arg DEFINE('fname(args)', .entryLabel):
@@ -2516,36 +2565,33 @@ static int prog_emit_expr(EXPR_t *e, int rbp_off) {
             snprintf(ret_omega_lbl, LBUF, "ucall%d_ret_o", call_uid);
 
             int actual_args = (na < ufn->nparams) ? na : ufn->nparams;
+            int actual_locals = ufn->nlocals;
 
             /* Recursion-safe calling convention using the C stack.
-             *
-             * Layout pushed before jmp (grows down, pushed in this order):
-             *   [rsp+0]          old ret_γ  (8 bytes)
-             *   [rsp+8]          old ret_ω  (8 bytes)
-             *   [rsp+16+ai*16]   old param[ai].type  (8 bytes) × actual_args
-             *   [rsp+16+ai*16+8] old param[ai].ptr   (8 bytes) × actual_args
-             *
-             * Total stack delta = 16 + actual_args*16 bytes.
-             * Stack must be 16-byte aligned before the jmp (no implicit return
-             * addr since this is jmp not call).  We push an even number of
-             * 8-byte words; main() opens with sub rsp,N so rsp is already
-             * 16-aligned; we push 2+2*actual_args qwords.  If that count is
-             * odd we add an extra alignment pad.
-             *
-             * At the return labels (ucall_ret_g / ucall_ret_o) rsp still points
-             * to the bottom of our saved frame because the callee uses its own
-             * stack frame (push rbp / sub rsp).
+             * Saves params AND locals before jmp, restores at both return labels.
+             * n_pushed = 2 (ret addrs) + (actual_args + actual_locals) * 2 qwords.
              */
-            int n_pushed = 2 + actual_args * 2;   /* qwords pushed */
+            int n_pushed = 2 + (actual_args + actual_locals) * 2;
             int extra_align = (n_pushed % 2) ? 1 : 0;
             if (extra_align) A("    sub     rsp, 8          ; align pad\n");
 
-            /* Step 1: save old param variable values onto the stack */
+            /* Step 1: save old param variable values onto the stack (reverse order) */
             for (int ai = actual_args - 1; ai >= 0; ai--) {
                 const char *plab = prog_str_intern(ufn->param_names[ai]);
                 A("    GET_VAR     %s\n", plab);
-                A("    push    qword [rbp-8]\n");   /* ptr  (high qword of DESCR) */
-                A("    push    qword [rbp-16]\n");  /* type (low  qword of DESCR) */
+                A("    push    qword [rbp-8]\n");
+                A("    push    qword [rbp-16]\n");
+            }
+
+            /* Step 1b: save old local variable values onto the stack (reverse order).
+             * SNOBOL4 locals (declared after ')' in DEFINE prototype) are global
+             * variables — they must be saved/restored exactly like params so that
+             * recursive calls don't clobber the caller's locals. */
+            for (int li = actual_locals - 1; li >= 0; li--) {
+                const char *llab = prog_str_intern(ufn->local_names[li]);
+                A("    GET_VAR     %s\n", llab);
+                A("    push    qword [rbp-8]\n");
+                A("    push    qword [rbp-16]\n");
             }
 
             /* Step 2: save old ret addresses onto the stack */
@@ -2591,14 +2637,21 @@ static int prog_emit_expr(EXPR_t *e, int rbp_off) {
 
             /* Step 5a: gamma return */
             A("%s:\n", ret_gamma_lbl);
-            /* Restore old ret addresses from stack */
             A("    pop     qword [%s]\n", ufn->ret_gamma);
             A("    pop     qword [%s]\n", ufn->ret_omega);
+            /* Restore old local values from stack (forward order — pushed in reverse) */
+            for (int li = 0; li < actual_locals; li++) {
+                const char *llab = prog_str_intern(ufn->local_names[li]);
+                A("    pop     rsi\n");
+                A("    pop     rdx\n");
+                A("    lea     rdi, [rel %s]\n", llab);
+                A("    call    stmt_set\n");
+            }
             /* Restore old param values from stack */
             for (int ai = 0; ai < actual_args; ai++) {
                 const char *plab = prog_str_intern(ufn->param_names[ai]);
-                A("    pop     rsi\n");              /* type */
-                A("    pop     rdx\n");              /* ptr  */
+                A("    pop     rsi\n");
+                A("    pop     rdx\n");
                 A("    lea     rdi, [rel %s]\n", plab);
                 A("    call    stmt_set\n");
             }
@@ -2623,6 +2676,14 @@ static int prog_emit_expr(EXPR_t *e, int rbp_off) {
             A("%s:\n", ret_omega_lbl);
             A("    pop     qword [%s]\n", ufn->ret_gamma);
             A("    pop     qword [%s]\n", ufn->ret_omega);
+            /* Restore old local values from stack */
+            for (int li = 0; li < actual_locals; li++) {
+                const char *llab = prog_str_intern(ufn->local_names[li]);
+                A("    pop     rsi\n");
+                A("    pop     rdx\n");
+                A("    lea     rdi, [rel %s]\n", llab);
+                A("    call    stmt_set\n");
+            }
             for (int ai = 0; ai < actual_args; ai++) {
                 const char *plab = prog_str_intern(ufn->param_names[ai]);
                 A("    pop     rsi\n");

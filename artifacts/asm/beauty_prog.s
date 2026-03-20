@@ -7162,6 +7162,24 @@ Ln_209:                     mov         edi, 438
                             GET_VAR     S_x
                             push        qword [rbp-8]
                             push        qword [rbp-16]
+                            GET_VAR     S_v
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_t
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_s
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_n
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_i
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_c
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
                             push        qword [P_pp_ret_ω]
                             push        qword [P_pp_ret_γ]
                             GET_VAR     S_c
@@ -7190,6 +7208,30 @@ ucall0_ret_g:
                             pop         qword [P_pp_ret_ω]
                             pop         rsi
                             pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
                             lea         rdi, [rel S_x]
                             call        stmt_set
                             GET_VAR     S_pp
@@ -7209,6 +7251,30 @@ ucall0_has_val:
 ucall0_ret_o:
                             pop         qword [P_pp_ret_γ]
                             pop         qword [P_pp_ret_ω]
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
                             pop         rsi
                             pop         rdx
                             lea         rdi, [rel S_x]
@@ -7486,6 +7552,24 @@ Ln_228:                     mov         edi, 460
                             GET_VAR     S_x
                             push        qword [rbp-8]
                             push        qword [rbp-16]
+                            GET_VAR     S_v
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_t
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_s
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_n
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_i
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_c
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
                             push        qword [P_pp_ret_ω]
                             push        qword [P_pp_ret_γ]
                             GET_VAR     S_c
@@ -7511,6 +7595,30 @@ ucall1_ret_g:
                             pop         qword [P_pp_ret_ω]
                             pop         rsi
                             pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
                             lea         rdi, [rel S_x]
                             call        stmt_set
                             GET_VAR     S_pp
@@ -7530,6 +7638,30 @@ ucall1_has_val:
 ucall1_ret_o:
                             pop         qword [P_pp_ret_γ]
                             pop         qword [P_pp_ret_ω]
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
                             pop         rsi
                             pop         rdx
                             lea         rdi, [rel S_x]
@@ -7577,6 +7709,24 @@ Ln_230:                     mov         edi, 462
                             GET_VAR     S_x
                             push        qword [rbp-8]
                             push        qword [rbp-16]
+                            GET_VAR     S_v
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_t
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_s
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_n
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_i
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_c
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
                             push        qword [P_pp_ret_ω]
                             push        qword [P_pp_ret_γ]
                             GET_VAR     S_c
@@ -7602,6 +7752,30 @@ ucall2_ret_g:
                             pop         qword [P_pp_ret_ω]
                             pop         rsi
                             pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
                             lea         rdi, [rel S_x]
                             call        stmt_set
                             GET_VAR     S_pp
@@ -7621,6 +7795,30 @@ ucall2_has_val:
 ucall2_ret_o:
                             pop         qword [P_pp_ret_γ]
                             pop         qword [P_pp_ret_ω]
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
                             pop         rsi
                             pop         rdx
                             lea         rdi, [rel S_x]
@@ -7662,6 +7860,24 @@ Ln_236:                     mov         edi, 468
                             GET_VAR     S_x
                             push        qword [rbp-8]
                             push        qword [rbp-16]
+                            GET_VAR     S_v
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_t
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_s
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_n
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_i
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_c
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
                             push        qword [P_pp_ret_ω]
                             push        qword [P_pp_ret_γ]
                             GET_VAR     S_c
@@ -7687,6 +7903,30 @@ ucall3_ret_g:
                             pop         qword [P_pp_ret_ω]
                             pop         rsi
                             pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
                             lea         rdi, [rel S_x]
                             call        stmt_set
                             GET_VAR     S_pp
@@ -7706,6 +7946,30 @@ ucall3_has_val:
 ucall3_ret_o:
                             pop         qword [P_pp_ret_γ]
                             pop         qword [P_pp_ret_ω]
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
                             pop         rsi
                             pop         rdx
                             lea         rdi, [rel S_x]
@@ -8314,6 +8578,24 @@ Ln_287:                     mov         edi, 523
                             GET_VAR     S_x
                             push        qword [rbp-8]
                             push        qword [rbp-16]
+                            GET_VAR     S_v
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_t
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_s
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_n
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_i
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_c
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
                             push        qword [P_pp_ret_ω]
                             push        qword [P_pp_ret_γ]
                             lea         rdi, [rel S_ppSubj]
@@ -8332,6 +8614,30 @@ Ln_287:                     mov         edi, 523
 ucall4_ret_g:
                             pop         qword [P_pp_ret_γ]
                             pop         qword [P_pp_ret_ω]
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
                             pop         rsi
                             pop         rdx
                             lea         rdi, [rel S_x]
@@ -8353,6 +8659,30 @@ ucall4_has_val:
 ucall4_ret_o:
                             pop         qword [P_pp_ret_γ]
                             pop         qword [P_pp_ret_ω]
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
                             pop         rsi
                             pop         rdx
                             lea         rdi, [rel S_x]
@@ -8471,6 +8801,24 @@ Ln_293:                     mov         edi, 529
                             GET_VAR     S_x
                             push        qword [rbp-8]
                             push        qword [rbp-16]
+                            GET_VAR     S_v
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_t
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_s
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_n
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_i
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_c
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
                             push        qword [P_pp_ret_ω]
                             push        qword [P_pp_ret_γ]
                             lea         rdi, [rel S_ppPatrn]
@@ -8489,6 +8837,30 @@ Ln_293:                     mov         edi, 529
 ucall5_ret_g:
                             pop         qword [P_pp_ret_γ]
                             pop         qword [P_pp_ret_ω]
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
                             pop         rsi
                             pop         rdx
                             lea         rdi, [rel S_x]
@@ -8510,6 +8882,30 @@ ucall5_has_val:
 ucall5_ret_o:
                             pop         qword [P_pp_ret_γ]
                             pop         qword [P_pp_ret_ω]
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
                             pop         rsi
                             pop         rdx
                             lea         rdi, [rel S_x]
@@ -8554,6 +8950,24 @@ Ln_298:                     mov         edi, 534
                             GET_VAR     S_x
                             push        qword [rbp-8]
                             push        qword [rbp-16]
+                            GET_VAR     S_v
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_t
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_s
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_n
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_i
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_c
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
                             push        qword [P_pp_ret_ω]
                             push        qword [P_pp_ret_γ]
                             lea         rdi, [rel S_ppRepl]
@@ -8572,6 +8986,30 @@ Ln_298:                     mov         edi, 534
 ucall6_ret_g:
                             pop         qword [P_pp_ret_γ]
                             pop         qword [P_pp_ret_ω]
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
                             pop         rsi
                             pop         rdx
                             lea         rdi, [rel S_x]
@@ -8593,6 +9031,30 @@ ucall6_has_val:
 ucall6_ret_o:
                             pop         qword [P_pp_ret_γ]
                             pop         qword [P_pp_ret_ω]
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
                             pop         rsi
                             pop         rdx
                             lea         rdi, [rel S_x]
@@ -8757,6 +9219,24 @@ Ln_309:                     mov         edi, 545
                             GET_VAR     S_x
                             push        qword [rbp-8]
                             push        qword [rbp-16]
+                            GET_VAR     S_v
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_t
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_s
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_n
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_i
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_c
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
                             push        qword [P_pp_ret_ω]
                             push        qword [P_pp_ret_γ]
                             lea         rdi, [rel S_ppRepl]
@@ -8775,6 +9255,30 @@ Ln_309:                     mov         edi, 545
 ucall7_ret_g:
                             pop         qword [P_pp_ret_γ]
                             pop         qword [P_pp_ret_ω]
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
                             pop         rsi
                             pop         rdx
                             lea         rdi, [rel S_x]
@@ -8796,6 +9300,30 @@ ucall7_has_val:
 ucall7_ret_o:
                             pop         qword [P_pp_ret_γ]
                             pop         qword [P_pp_ret_ω]
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
                             pop         rsi
                             pop         rdx
                             lea         rdi, [rel S_x]
@@ -8876,6 +9404,24 @@ Ln_316:                     mov         edi, 552
                             GET_VAR     S_x
                             push        qword [rbp-8]
                             push        qword [rbp-16]
+                            GET_VAR     S_v
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_t
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_s
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_n
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_i
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_c
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
                             push        qword [P_pp_ret_ω]
                             push        qword [P_pp_ret_γ]
                             lea         rdi, [rel S_ppGo1]
@@ -8894,6 +9440,30 @@ Ln_316:                     mov         edi, 552
 ucall8_ret_g:
                             pop         qword [P_pp_ret_γ]
                             pop         qword [P_pp_ret_ω]
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
                             pop         rsi
                             pop         rdx
                             lea         rdi, [rel S_x]
@@ -8915,6 +9485,30 @@ ucall8_has_val:
 ucall8_ret_o:
                             pop         qword [P_pp_ret_γ]
                             pop         qword [P_pp_ret_ω]
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
                             pop         rsi
                             pop         rdx
                             lea         rdi, [rel S_x]
@@ -8941,6 +9535,24 @@ Ln_318:                     mov         edi, 554
                             GET_VAR     S_x
                             push        qword [rbp-8]
                             push        qword [rbp-16]
+                            GET_VAR     S_v
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_t
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_s
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_n
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_i
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_c
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
                             push        qword [P_pp_ret_ω]
                             push        qword [P_pp_ret_γ]
                             lea         rdi, [rel S_ppGo2]
@@ -8959,6 +9571,30 @@ Ln_318:                     mov         edi, 554
 ucall9_ret_g:
                             pop         qword [P_pp_ret_γ]
                             pop         qword [P_pp_ret_ω]
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
                             pop         rsi
                             pop         rdx
                             lea         rdi, [rel S_x]
@@ -8980,6 +9616,30 @@ ucall9_has_val:
 ucall9_ret_o:
                             pop         qword [P_pp_ret_γ]
                             pop         qword [P_pp_ret_ω]
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
                             pop         rsi
                             pop         rdx
                             lea         rdi, [rel S_x]
@@ -9034,6 +9694,24 @@ Ln_321:                     mov         edi, 558
                             GET_VAR     S_x
                             push        qword [rbp-8]
                             push        qword [rbp-16]
+                            GET_VAR     S_v
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_t
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_s
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_n
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_i
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_c
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
                             push        qword [P_pp_ret_ω]
                             push        qword [P_pp_ret_γ]
                             GET_VAR     S_c
@@ -9059,6 +9737,30 @@ ucall10_ret_g:
                             pop         qword [P_pp_ret_ω]
                             pop         rsi
                             pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
                             lea         rdi, [rel S_x]
                             call        stmt_set
                             GET_VAR     S_pp
@@ -9078,6 +9780,30 @@ ucall10_has_val:
 ucall10_ret_o:
                             pop         qword [P_pp_ret_γ]
                             pop         qword [P_pp_ret_ω]
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
                             pop         rsi
                             pop         rdx
                             lea         rdi, [rel S_x]
@@ -9144,6 +9870,24 @@ Ln_329:                     mov         edi, 566
                             GET_VAR     S_x
                             push        qword [rbp-8]
                             push        qword [rbp-16]
+                            GET_VAR     S_v
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_t
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_s
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_n
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_i
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_c
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
                             push        qword [P_pp_ret_ω]
                             push        qword [P_pp_ret_γ]
                             GET_VAR     S_c
@@ -9172,6 +9916,30 @@ ucall11_ret_g:
                             pop         qword [P_pp_ret_ω]
                             pop         rsi
                             pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
                             lea         rdi, [rel S_x]
                             call        stmt_set
                             GET_VAR     S_pp
@@ -9191,6 +9959,30 @@ ucall11_has_val:
 ucall11_ret_o:
                             pop         qword [P_pp_ret_γ]
                             pop         qword [P_pp_ret_ω]
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
                             pop         rsi
                             pop         rdx
                             lea         rdi, [rel S_x]
@@ -9256,6 +10048,24 @@ Ln_334:                     mov         edi, 572
                             GET_VAR     S_x
                             push        qword [rbp-8]
                             push        qword [rbp-16]
+                            GET_VAR     S_v
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_t
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_s
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_n
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_i
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_c
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
                             push        qword [P_pp_ret_ω]
                             push        qword [P_pp_ret_γ]
                             GET_VAR     S_c
@@ -9281,6 +10091,30 @@ ucall12_ret_g:
                             pop         qword [P_pp_ret_ω]
                             pop         rsi
                             pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
                             lea         rdi, [rel S_x]
                             call        stmt_set
                             GET_VAR     S_pp
@@ -9300,6 +10134,30 @@ ucall12_has_val:
 ucall12_ret_o:
                             pop         qword [P_pp_ret_γ]
                             pop         qword [P_pp_ret_ω]
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
                             pop         rsi
                             pop         rdx
                             lea         rdi, [rel S_x]
@@ -9367,6 +10225,24 @@ Ln_342:                     mov         edi, 580
                             GET_VAR     S_x
                             push        qword [rbp-8]
                             push        qword [rbp-16]
+                            GET_VAR     S_v
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_t
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_s
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_n
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_i
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_c
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
                             push        qword [P_pp_ret_ω]
                             push        qword [P_pp_ret_γ]
                             GET_VAR     S_c
@@ -9395,6 +10271,30 @@ ucall13_ret_g:
                             pop         qword [P_pp_ret_ω]
                             pop         rsi
                             pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
                             lea         rdi, [rel S_x]
                             call        stmt_set
                             GET_VAR     S_pp
@@ -9414,6 +10314,30 @@ ucall13_has_val:
 ucall13_ret_o:
                             pop         qword [P_pp_ret_γ]
                             pop         qword [P_pp_ret_ω]
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
                             pop         rsi
                             pop         rdx
                             lea         rdi, [rel S_x]
@@ -9486,6 +10410,24 @@ Ln_348:                     mov         edi, 587
                             GET_VAR     S_x
                             push        qword [rbp-8]
                             push        qword [rbp-16]
+                            GET_VAR     S_v
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_t
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_s
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_n
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_i
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_c
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
                             push        qword [P_pp_ret_ω]
                             push        qword [P_pp_ret_γ]
                             GET_VAR     S_c
@@ -9511,6 +10453,30 @@ ucall14_ret_g:
                             pop         qword [P_pp_ret_ω]
                             pop         rsi
                             pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
                             lea         rdi, [rel S_x]
                             call        stmt_set
                             GET_VAR     S_pp
@@ -9530,6 +10496,30 @@ ucall14_has_val:
 ucall14_ret_o:
                             pop         qword [P_pp_ret_γ]
                             pop         qword [P_pp_ret_ω]
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
                             pop         rsi
                             pop         rdx
                             lea         rdi, [rel S_x]
@@ -9596,6 +10586,24 @@ Ln_356:                     mov         edi, 595
                             GET_VAR     S_x
                             push        qword [rbp-8]
                             push        qword [rbp-16]
+                            GET_VAR     S_v
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_t
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_s
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_n
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_i
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_c
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
                             push        qword [P_pp_ret_ω]
                             push        qword [P_pp_ret_γ]
                             GET_VAR     S_c
@@ -9624,6 +10632,30 @@ ucall15_ret_g:
                             pop         qword [P_pp_ret_ω]
                             pop         rsi
                             pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
                             lea         rdi, [rel S_x]
                             call        stmt_set
                             GET_VAR     S_pp
@@ -9643,6 +10675,30 @@ ucall15_has_val:
 ucall15_ret_o:
                             pop         qword [P_pp_ret_γ]
                             pop         qword [P_pp_ret_ω]
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
                             pop         rsi
                             pop         rdx
                             lea         rdi, [rel S_x]
@@ -9716,6 +10772,24 @@ Ln_360:                     mov         edi, 600
                             GET_VAR     S_x
                             push        qword [rbp-8]
                             push        qword [rbp-16]
+                            GET_VAR     S_v
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_t
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_s
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_n
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_i
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_c
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
                             push        qword [P_pp_ret_ω]
                             push        qword [P_pp_ret_γ]
                             GET_VAR     S_c
@@ -9744,6 +10818,30 @@ ucall16_ret_g:
                             pop         qword [P_pp_ret_ω]
                             pop         rsi
                             pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
                             lea         rdi, [rel S_x]
                             call        stmt_set
                             GET_VAR     S_pp
@@ -9763,6 +10861,30 @@ ucall16_has_val:
 ucall16_ret_o:
                             pop         qword [P_pp_ret_γ]
                             pop         qword [P_pp_ret_ω]
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
                             pop         rsi
                             pop         rdx
                             lea         rdi, [rel S_x]
@@ -9826,6 +10948,24 @@ Ln_363:                     mov         edi, 604
                             GET_VAR     S_x
                             push        qword [rbp-8]
                             push        qword [rbp-16]
+                            GET_VAR     S_v
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_t
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_s
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_n
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_i
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_c
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
                             push        qword [P_pp_ret_ω]
                             push        qword [P_pp_ret_γ]
                             GET_VAR     S_c
@@ -9851,6 +10991,30 @@ ucall17_ret_g:
                             pop         qword [P_pp_ret_ω]
                             pop         rsi
                             pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
                             lea         rdi, [rel S_x]
                             call        stmt_set
                             GET_VAR     S_pp
@@ -9870,6 +11034,30 @@ ucall17_has_val:
 ucall17_ret_o:
                             pop         qword [P_pp_ret_γ]
                             pop         qword [P_pp_ret_ω]
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
                             pop         rsi
                             pop         rdx
                             lea         rdi, [rel S_x]
@@ -9925,6 +11113,24 @@ Ln_369:                     mov         edi, 610
                             GET_VAR     S_x
                             push        qword [rbp-8]
                             push        qword [rbp-16]
+                            GET_VAR     S_v
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_t
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_s
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_n
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_i
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_c
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
                             push        qword [P_pp_ret_ω]
                             push        qword [P_pp_ret_γ]
                             GET_VAR     S_c
@@ -9953,6 +11159,30 @@ ucall18_ret_g:
                             pop         qword [P_pp_ret_ω]
                             pop         rsi
                             pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
                             lea         rdi, [rel S_x]
                             call        stmt_set
                             GET_VAR     S_pp
@@ -9972,6 +11202,30 @@ ucall18_has_val:
 ucall18_ret_o:
                             pop         qword [P_pp_ret_γ]
                             pop         qword [P_pp_ret_ω]
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
                             pop         rsi
                             pop         rdx
                             lea         rdi, [rel S_x]
@@ -10068,6 +11322,24 @@ Ln_378:                     mov         edi, 620
                             GET_VAR     S_x
                             push        qword [rbp-8]
                             push        qword [rbp-16]
+                            GET_VAR     S_v
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_t
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_s
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_n
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_i
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_c
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
                             push        qword [P_pp_ret_ω]
                             push        qword [P_pp_ret_γ]
                             GET_VAR     S_c
@@ -10093,6 +11365,30 @@ ucall19_ret_g:
                             pop         qword [P_pp_ret_ω]
                             pop         rsi
                             pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
                             lea         rdi, [rel S_x]
                             call        stmt_set
                             GET_VAR     S_pp
@@ -10112,6 +11408,30 @@ ucall19_has_val:
 ucall19_ret_o:
                             pop         qword [P_pp_ret_γ]
                             pop         qword [P_pp_ret_ω]
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
                             pop         rsi
                             pop         rdx
                             lea         rdi, [rel S_x]
@@ -10175,6 +11495,24 @@ Ln_383:                     mov         edi, 626
                             GET_VAR     S_x
                             push        qword [rbp-8]
                             push        qword [rbp-16]
+                            GET_VAR     S_v
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_t
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_s
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_n
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_i
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_c
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
                             push        qword [P_pp_ret_ω]
                             push        qword [P_pp_ret_γ]
                             GET_VAR     S_c
@@ -10200,6 +11538,30 @@ ucall20_ret_g:
                             pop         qword [P_pp_ret_ω]
                             pop         rsi
                             pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
                             lea         rdi, [rel S_x]
                             call        stmt_set
                             GET_VAR     S_pp
@@ -10219,6 +11581,30 @@ ucall20_has_val:
 ucall20_ret_o:
                             pop         qword [P_pp_ret_γ]
                             pop         qword [P_pp_ret_ω]
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
                             pop         rsi
                             pop         rdx
                             lea         rdi, [rel S_x]
@@ -10254,6 +11640,24 @@ Ln_387:                     mov         edi, 630
                             GET_VAR     S_x
                             push        qword [rbp-8]
                             push        qword [rbp-16]
+                            GET_VAR     S_v
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_t
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_s
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_n
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_i
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_c
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
                             push        qword [P_pp_ret_ω]
                             push        qword [P_pp_ret_γ]
                             GET_VAR     S_c
@@ -10279,6 +11683,30 @@ ucall21_ret_g:
                             pop         qword [P_pp_ret_ω]
                             pop         rsi
                             pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
                             lea         rdi, [rel S_x]
                             call        stmt_set
                             GET_VAR     S_pp
@@ -10298,6 +11726,30 @@ ucall21_has_val:
 ucall21_ret_o:
                             pop         qword [P_pp_ret_γ]
                             pop         qword [P_pp_ret_ω]
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
                             pop         rsi
                             pop         rdx
                             lea         rdi, [rel S_x]
@@ -13032,6 +14484,24 @@ Ln_524:                     mov         edi, 792
                             GET_VAR     S_x
                             push        qword [rbp-8]
                             push        qword [rbp-16]
+                            GET_VAR     S_v
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_t
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_s
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_n
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_i
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_c
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
                             push        qword [P_pp_ret_ω]
                             push        qword [P_pp_ret_γ]
                             lea         rdi, [rel S_sno]
@@ -13050,6 +14520,30 @@ Ln_524:                     mov         edi, 792
 ucall22_ret_g:
                             pop         qword [P_pp_ret_γ]
                             pop         qword [P_pp_ret_ω]
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
                             pop         rsi
                             pop         rdx
                             lea         rdi, [rel S_x]
@@ -13071,6 +14565,30 @@ ucall22_has_val:
 ucall22_ret_o:
                             pop         qword [P_pp_ret_γ]
                             pop         qword [P_pp_ret_ω]
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
                             pop         rsi
                             pop         rdx
                             lea         rdi, [rel S_x]
@@ -13161,6 +14679,24 @@ Ln_527:                     mov         edi, 795
                             GET_VAR     S_x
                             push        qword [rbp-8]
                             push        qword [rbp-16]
+                            GET_VAR     S_v
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_t
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_s
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_n
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_i
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
+                            GET_VAR     S_c
+                            push        qword [rbp-8]
+                            push        qword [rbp-16]
                             push        qword [P_pp_ret_ω]
                             push        qword [P_pp_ret_γ]
                             lea         rdi, [rel S_sno]
@@ -13179,6 +14715,30 @@ Ln_527:                     mov         edi, 795
 ucall23_ret_g:
                             pop         qword [P_pp_ret_γ]
                             pop         qword [P_pp_ret_ω]
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
                             pop         rsi
                             pop         rdx
                             lea         rdi, [rel S_x]
@@ -13200,6 +14760,30 @@ ucall23_has_val:
 ucall23_ret_o:
                             pop         qword [P_pp_ret_γ]
                             pop         qword [P_pp_ret_ω]
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_c]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_i]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_n]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_s]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_t]
+                            call        stmt_set
+                            pop         rsi
+                            pop         rdx
+                            lea         rdi, [rel S_v]
+                            call        stmt_set
                             pop         rsi
                             pop         rdx
                             lea         rdi, [rel S_x]
@@ -15719,6 +17303,35 @@ P_pp_α:                     push        rbp
                             lea         rdi, [rel S_x]
                             mov         rsi, [fn_pp_arg_0_t]
                             mov         rdx, [fn_pp_arg_0_p]
+                            call        stmt_set
+                            LOAD_NULVCL
+                            lea         rdi, [rel S_pp]
+                            mov         rsi, [rbp-16]
+                            mov         rdx, [rbp-8]
+                            call        stmt_set
+                            lea         rdi, [rel S_c]
+                            mov         rsi, [rbp-16]
+                            mov         rdx, [rbp-8]
+                            call        stmt_set
+                            lea         rdi, [rel S_i]
+                            mov         rsi, [rbp-16]
+                            mov         rdx, [rbp-8]
+                            call        stmt_set
+                            lea         rdi, [rel S_n]
+                            mov         rsi, [rbp-16]
+                            mov         rdx, [rbp-8]
+                            call        stmt_set
+                            lea         rdi, [rel S_s]
+                            mov         rsi, [rbp-16]
+                            mov         rdx, [rbp-8]
+                            call        stmt_set
+                            lea         rdi, [rel S_t]
+                            mov         rsi, [rbp-16]
+                            mov         rdx, [rbp-8]
+                            call        stmt_set
+                            lea         rdi, [rel S_v]
+                            mov         rsi, [rbp-16]
+                            mov         rdx, [rbp-8]
                             call        stmt_set
                             jmp         L_pp_29
 ;  γ/ω ---------------------------------------------------------------------------------------------------------------

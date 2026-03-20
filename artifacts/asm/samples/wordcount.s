@@ -201,9 +201,7 @@ patdef_WPAT_gamma:
 patdef_WPAT_omega:          jmp         [P_WPAT_ret_ω]
 
 section .text
-L_END_3:  ; STUB → _SNO_END (dangling or computed goto)
 ;  STUB LABELS =========================================================================================================
-                            GOTO_ALWAYS L_SNO_END
 
 section .data
 S_TRIM               db 84, 82, 73, 77, 0  ; "TRIM"
