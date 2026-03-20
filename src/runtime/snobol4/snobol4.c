@@ -303,8 +303,12 @@ static DESCR_t _b_ARRAY(DESCR_t *a, int n) {
     }
     int sz = (int)to_int(a[0]);
     if (sz < 1) return FAILDESCR;
-    /* Optional second arg: initial value (ignored for now) */
-    return ARRAY_VAL(array_new(1, sz));
+    ARBLK_t *arr = array_new(1, sz);
+    /* Optional second arg: initial fill value */
+    if (n >= 2) {
+        for (int i = 0; i < sz; i++) arr->data[i] = a[1];
+    }
+    return ARRAY_VAL(arr);
 }
 
 /* TABLE(initial_size, increment) — both args optional */
@@ -675,6 +679,56 @@ static DESCR_t _b_PAT_FENCE(DESCR_t *a, int n)   { return n>=1 ? pat_fence_p(a[0
 static DESCR_t _b_PAT_ALT(DESCR_t *a, int n)     { return n>=2 ? pat_alt(a[0], a[1])  : (n>=1 ? a[0] : FAILDESCR); }
 static DESCR_t _b_PAT_CONCAT(DESCR_t *a, int n)  { return n>=2 ? pat_cat(a[0], a[1])  : (n>=1 ? a[0] : FAILDESCR); }
 
+/* PROTOTYPE(array_or_table) — returns dimension string e.g. "3" or "2,3" */
+static DESCR_t _b_PROTOTYPE(DESCR_t *a, int n) {
+    if (n < 1) return FAILDESCR;
+    DESCR_t v = a[0];
+    if (v.v == DT_A && v.arr) {
+        ARBLK_t *arr = v.arr;
+        char buf[128];
+        if (arr->ndim > 1) {
+            /* 2D: ndim repurposed as cols; rows = hi-lo+1 */
+            int rows = arr->hi - arr->lo + 1;
+            int cols = arr->ndim;  /* stored as cols count */
+            snprintf(buf, sizeof(buf), "%d,%d", rows, cols);
+        } else {
+            int sz = arr->hi - arr->lo + 1;
+            snprintf(buf, sizeof(buf), "%d", sz);
+        }
+        return STRVAL(GC_strdup(buf));
+    }
+    if (v.v == DT_T) {
+        /* TABLE prototype returns empty string per SNOBOL4 */
+        return STRVAL("");
+    }
+    return FAILDESCR;
+}
+
+/* ITEM(arr, i1 [, i2, ...]) — programmatic subscript, equivalent to arr<i1,i2,...> */
+static DESCR_t _b_ITEM(DESCR_t *a, int n) {
+    if (n < 2) return FAILDESCR;
+    DESCR_t arr = a[0];
+    if (arr.v == DT_T) {
+        const char *k = VARVAL_fn(a[1]);
+        return table_get(arr.tbl, k ? k : "");
+    }
+    if (arr.v == DT_A) {
+        int i = (int)to_int(a[1]);
+        if (n == 2) return array_get(arr.arr, i);
+        int j = (int)to_int(a[2]);
+        return array_get2(arr.arr, i, j);
+    }
+    return FAILDESCR;
+}
+
+/* VALUE(varname) — returns current value of named variable */
+static DESCR_t _b_VALUE(DESCR_t *a, int n) {
+    if (n < 1) return FAILDESCR;
+    const char *name = VARVAL_fn(a[0]);
+    if (!name) return FAILDESCR;
+    return NV_GET_fn(name);
+}
+
 void SNO_INIT_fn(void) {
     GC_INIT();
     /* Build &ALPHABET: all 256 chars in order */
@@ -730,6 +784,9 @@ void SNO_INIT_fn(void) {
     register_fn("ARRAY",   _b_ARRAY,   1, 2);
     register_fn("TABLE",   _b_TABLE,   0, 2);
     register_fn("CONVERT", _b_CONVERT, 2, 2);
+    register_fn("PROTOTYPE", _b_PROTOTYPE, 1, 1);
+    register_fn("ITEM",    _b_ITEM,    2, 9);
+    register_fn("VALUE",   _b_VALUE,   1, 1);
     register_fn("COPY",    _b_COPY,    1, 1);
     register_fn("EVAL",  _b_EVAL,  1, 1);
     register_fn("OPSYN", _b_OPSYN, 2, 3);

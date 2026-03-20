@@ -3860,6 +3860,53 @@ static void asm_emit_program(Program *prog) {
                     asmL(sfail_lbl);
                     emit_jmp(tgt_f, next_lbl);
                 }
+            } else if (s->has_eq && s->subject &&
+                       s->subject->kind == E_FNC &&
+                       s->subject->sval &&
+                       strcasecmp(s->subject->sval, "ITEM") == 0 &&
+                       s->subject->nchildren >= 2) {
+                /* item(arr, key) = val  →  stmt_aset(arr, key, val)
+                 * Same calling convention as E_IDX write path. */
+                const char *fail_target = id_f >= 0 ? sfail_lbl : next_lbl;
+                EXPR_t *arr_expr = s->subject->children[0];
+                EXPR_t *key_expr = s->subject->children[1];
+
+                /* Evaluate arr → push */
+                prog_emit_expr(arr_expr, -16);
+                A("    push    qword [rbp-8]\\n");   /* arr ptr  */
+                A("    push    qword [rbp-16]\\n");  /* arr type */
+                /* Evaluate key → push */
+                prog_emit_expr(key_expr, -16);
+                A("    push    qword [rbp-8]\\n");   /* key ptr  */
+                A("    push    qword [rbp-16]\\n");  /* key type */
+                /* Evaluate val → [rbp-32/24] */
+                if (!s->replacement || s->replacement->kind == E_NULV) {
+                    A("    mov     qword [rbp-32], 1\\n");
+                    A("    mov     qword [rbp-24], 0\\n");
+                } else {
+                    prog_emit_expr(s->replacement, -32);
+                    A("    FAIL_BR     %s\\n", fail_target);
+                }
+                /* stmt_aset(arr, key, val): arr→rdi:rsi, key→rdx:rcx, val→r8:r9 */
+                A("    mov     r8,  [rbp-24]\\n");   /* val ptr  */
+                A("    mov     r9,  [rbp-32]\\n");   /* val type — NOTE: r9=type for r8:r9 pair */
+                /* Swap so r8=type r9=ptr per our convention — check stmt_aset sig */
+                A("    mov     rdx, [rsp+8]\\n");    /* key type */
+                A("    mov     rcx, [rsp]\\n");      /* key ptr  */
+                A("    mov     rdi, [rsp+24]\\n");   /* arr type */
+                A("    mov     rsi, [rsp+16]\\n");   /* arr ptr  */
+                A("    add     rsp, 32\\n");
+                /* Pass val: need r8=val_type, r9=val_ptr — but SysV only has 6 reg args.
+                 * stmt_aset takes (arr DESCR_t, key DESCR_t, val DESCR_t) = 6 int64 regs:
+                 * rdi=arr.v, rsi=arr.u, rdx=key.v, rcx=key.u, r8=val.v, r9=val.u */
+                A("    mov     r8,  [rbp-32]\\n");   /* val type */
+                A("    mov     r9,  [rbp-24]\\n");   /* val ptr  */
+                A("    call    stmt_aset\\n");
+                emit_jmp(tgt_s ? tgt_s : tgt_u, next_lbl);
+                if (id_f >= 0) {
+                    asmL(sfail_lbl);
+                    emit_jmp(tgt_f, next_lbl);
+                }
             } else {
                 /* expression-only or complex case: just evaluate and branch */
                 if (id_u >= 0) emit_jmp(tgt_u, next_lbl);
