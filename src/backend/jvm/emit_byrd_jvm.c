@@ -523,15 +523,34 @@ static void jvm_emit_expr(EXPR_t *e) {
         break;
     }
     case E_CONC: {
-        /* String concatenation: StringBuilder — n-ary, fold all children */
+        /* String concatenation: StringBuilder — n-ary, fold all children.
+         * Null propagation: if any child returns null (failure), discard
+         * the StringBuilder and return null to propagate the failure. */
+        static int _conc_uid = 0;
+        int conc_id = _conc_uid++;
+        char conc_done[64];
+        snprintf(conc_done, sizeof conc_done, "Lconc_done_%d", conc_id);
         JI("new", "java/lang/StringBuilder");
         JI("dup", "");
         JI("invokespecial", "java/lang/StringBuilder/<init>()V");
         for (int _ci = 0; _ci < e->nchildren; _ci++) {
             jvm_emit_expr(e->children[_ci]);
+            /* stack: ..., sb, child_val */
+            /* null check: if child is null, pop child + sb, push null */
+            char conc_ok[64];
+            snprintf(conc_ok, sizeof conc_ok, "Lconc_ok_%d_%d", conc_id, _ci);
+            JI("dup", "");                    /* ..., sb, child_val, child_val */
+            JI("ifnonnull", conc_ok);         /* if non-null, continue */
+            /* child is null -- discard child_val, pop sb, push null */
+            JI("pop", "");                    /* ..., sb */
+            JI("pop", "");                    /* ... */
+            JI("aconst_null", "");            /* ..., null */
+            JI("goto", conc_done);
+            J("%s:\n", conc_ok);
             JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
         }
         JI("invokevirtual", "java/lang/StringBuilder/toString()Ljava/lang/String;");
+        J("%s:\n", conc_done);
         break;
     }
     case E_MNS: {
@@ -702,7 +721,9 @@ static void jvm_emit_expr(EXPR_t *e) {
             J("%s:\n", idone);
             break;
         }
-        /* DIFFER(a,b) → succeeds (returns a) if a differs from b, fails (null) if equal */
+        /* DIFFER(a,b) → succeeds (returns "") if a differs from b, fails (null) if equal.
+         * CSNOBOL4 semantics: DIFFER is a predicate — returns empty string on success,
+         * not the first argument. Verified against CSNOBOL4 2.3.3. */
         if (strcasecmp(fname, "DIFFER") == 0 && e->children && e->children[0]) {
             static int _difflbl = 0;
             char dfail[32], ddone[32];
@@ -716,7 +737,7 @@ static void jvm_emit_expr(EXPR_t *e) {
             }
             JI("invokevirtual", "java/lang/String/equals(Ljava/lang/Object;)Z");
             JI("ifne", dfail);
-            jvm_emit_expr(e->children[0]);
+            JI("ldc", "\"\"");   /* success: return empty string (predicate semantics) */
             JI("goto", ddone);
             J("%s:\n", dfail);
             JI("aconst_null", "");
@@ -2238,7 +2259,17 @@ static void jvm_emit_stmt(STMT_t *s, int stmt_idx) {
                     JI("getstatic", desc);
                     JI("swap", "");
                     JI("invokevirtual", "java/io/PrintStream/println(Ljava/lang/String;)V");
+                    /* :S/:uncond goto fires on success (after println) */
+                    if (s->go && s->go->uncond && s->go->uncond[0]) {
+                        jvm_emit_goto(s->go->uncond);
+                    } else if (s->go && s->go->onsuccess && s->go->onsuccess[0]) {
+                        jvm_emit_goto(s->go->onsuccess);
+                    }
                     J("%s:\n", onfail);
+                    /* unconditional goto also fires on failure path */
+                    if (s->go && s->go->uncond && s->go->uncond[0]) {
+                        jvm_emit_goto(s->go->uncond);
+                    }
                 }
             }
         } else if (is_kw) {
@@ -2275,7 +2306,17 @@ static void jvm_emit_stmt(STMT_t *s, int stmt_idx) {
                 snprintf(jvm_cur_stmt_fail_label, sizeof jvm_cur_stmt_fail_label, "%s", saved_fail);
                 JI("dup", "");
                 char flbl[128]; snprintf(flbl, sizeof flbl, "L_%s", s->go->onfailure);
-                JI("ifnull", flbl);
+                /* ifnull would leave 1 item on stack at flbl; use ifnonnull+pop+goto
+                 * so :F target always receives empty stack (consistent with other :F paths) */
+                {
+                    static int _inp_ok_uid = 0;
+                    char inp_ok_lbl[64];
+                    snprintf(inp_ok_lbl, sizeof inp_ok_lbl, "Linp_ok_%d", _inp_ok_uid++);
+                    JI("ifnonnull", inp_ok_lbl);
+                    JI("pop", "");    /* discard null — stack now empty */
+                    JI("goto", flbl);
+                    J("%s:\n", inp_ok_lbl);
+                }
                 /* non-null: store via sno_var_put(name, val) */
                 /* Stack: val — need to push name first: swap trick */
                 JI("ldc", nameesc);
@@ -2320,11 +2361,13 @@ static void jvm_emit_stmt(STMT_t *s, int stmt_idx) {
             }
         }
 
-        /* :S goto (always unconditional for non-INPUT assigns) */
-        if (s->go && s->go->uncond && s->go->uncond[0]) {
-            jvm_emit_goto(s->go->uncond);
-        } else if (s->go && s->go->onsuccess && s->go->onsuccess[0]) {
-            jvm_emit_goto(s->go->onsuccess);
+        /* :S goto for non-OUTPUT assigns (OUTPUT emits its own :S inline above) */
+        if (!is_output) {
+            if (s->go && s->go->uncond && s->go->uncond[0]) {
+                jvm_emit_goto(s->go->uncond);
+            } else if (s->go && s->go->onsuccess && s->go->onsuccess[0]) {
+                jvm_emit_goto(s->go->onsuccess);
+            }
         }
         /* :F fallthrough (no-op — already jumped or falling through) */
         return;
