@@ -7,7 +7,9 @@
 set -euo pipefail
 
 BINARY=./beauty_full_bin
-CORPUS=/home/claude/snobol4corpus/crosscheck/beauty
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TINY="$(cd "$SCRIPT_DIR/../.." && pwd)"
+CORPUS="${CORPUS:-$TINY/../snobol4corpus/crosscheck/beauty}"
 
 if [[ ! -x "$BINARY" ]]; then
     echo "ERROR: $BINARY not found or not executable. Build it first." >&2

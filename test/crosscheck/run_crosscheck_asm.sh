@@ -23,7 +23,7 @@ TINY="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 SNO2C="${SNO2C:-$TINY/sno2c}"
 HARNESS_O="${HARNESS_O:-src/runtime/asm/snobol4_asm_harness.o}"
-CORPUS="${CORPUS:-/home/snobol4corpus/crosscheck}"
+CORPUS="${CORPUS:-$(cd "$TINY/../snobol4corpus/crosscheck" && pwd)}"
 
 STOP_ON_FAIL=0
 for arg in "$@"; do

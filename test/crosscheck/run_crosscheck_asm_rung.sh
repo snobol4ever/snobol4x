@@ -24,7 +24,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TINY="$(cd "$SCRIPT_DIR/../.." && pwd)"
 SNO2C="${SNO2C:-$TINY/sno2c}"
 RT="$TINY/src/runtime"
-INC="${INC:-/home/claude/snobol4corpus/programs/inc}"
+INC="${INC:-$TINY/../snobol4corpus/programs/inc}"
 STOP_ON_FAIL="${STOP_ON_FAIL:-0}"
 
 GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[0;33m'; RESET='\033[0m'

@@ -266,12 +266,14 @@ CNODE_t *build_expr(CArena *a, EXPR_t *e) {
         return build_expr(a, e->children[0]);
 
     case E_IDX: {
+        /* children[0]=array expr, children[1..n-1]=subscripts */
         CNODE_t *head = cn_raw(a, "INDEX_fn(");
         CNODE_t *obj  = build_expr(a, e->children[0]);
-        CNODE_t *idx  = build_expr(a, e->children[0]);
-        for (int i = 1; i < e->nchildren; i++)
+        /* build subscript list from children[1..] only */
+        CNODE_t *idx  = (e->nchildren > 1) ? build_expr(a, e->children[1]) : cn_raw(a, "");
+        for (int i = 2; i < e->nchildren; i++)
             idx = cn_seq(a, idx, cn_seq(a, cn_raw(a,","), build_expr(a, e->children[i])));
-        char close[32]; snprintf(close, sizeof close, "},%d)", e->nchildren);
+        char close[32]; snprintf(close, sizeof close, "},%d)", e->nchildren - 1);
         return cn_seq(a, head,
                cn_seq(a, obj,
                cn_seq(a, cn_raw(a, ",(DESCR_t[]){"),

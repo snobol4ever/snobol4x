@@ -25,8 +25,8 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TINY="$(cd "$SCRIPT_DIR/../.." && pwd)"
-CORPUS="${CORPUS:-/home/claude/snobol4corpus/crosscheck}"
-HARNESS_REPO="${HARNESS_REPO:-/home/claude/snobol4harness}"
+CORPUS="${CORPUS:-$(cd "$TINY/../snobol4corpus/crosscheck" && pwd)}"
+HARNESS_REPO="${HARNESS_REPO:-$TINY/../snobol4harness}"
 STOP_ON_FAIL="${STOP_ON_FAIL:-0}"
 export NET_CACHE="${NET_CACHE:-/tmp/snobol4x_net_cache}"
 export TINY_REPO="$TINY"

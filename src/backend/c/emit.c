@@ -337,12 +337,12 @@ static void emit_expr(EXPR_t *e) {
         break;
 
     case E_IDX:
-        /* postfix subscript: expr[i] — e.g. c(x)[i] */
+        /* postfix subscript: expr<i,j,...> — children[0]=array expr, children[1..n-1]=subscripts */
         E("INDEX_fn("); emit_expr(e->children[0]); E(",(DESCR_t[]){");
-        for (int i=0; i<e->nchildren; i++) {
-            if (i) { E(","); } emit_expr(e->children[i]);
+        for (int i=1; i<e->nchildren; i++) {
+            if (i>1) { E(","); } emit_expr(e->children[i]);
         }
-        E("},%d)", e->nchildren);
+        E("},%d)", e->nchildren - 1);
         break;
 
     case E_ATP:
@@ -537,34 +537,36 @@ static void emit_assign_target(EXPR_t *lhs, const char *rhs_str) {
     if (!lhs) return;
     if (lhs->kind == E_VART) {
         E("set(%s, %s);\n", cs(lhs->sval), rhs_str);
-        E("NV_SET_fn(\"%s\", %s);\n", lhs->sval, cs(lhs->sval)); /* all vars are natural/hashed */
+        E("NV_SET_fn(\"%s\", %s);\n", lhs->sval, cs(lhs->sval));
     } else if (lhs->kind == E_ARY) {
+        /* var<i,...> = x  — sval is array var name, children are subscripts */
         E("aset(%s,(DESCR_t[]){", cs(lhs->sval));
         for (int i=0; i<lhs->nchildren; i++) {
-            if (i) { E(","); } emit_expr(lhs->children[i]);
+            if (i) E(",");
+            PP_EXPR(lhs->children[i], 0);
         }
         E("},%d,%s);\n", lhs->nchildren, rhs_str);
     } else if (lhs->kind == E_KW) {
         E("kw_set(\"%s\",%s);\n", lhs->sval, rhs_str);
     } else if (lhs->kind == E_IDX) {
-        /* v<i> = x  or  v[i] = x  →  aset(get(_v), {i}, nargs, x) */
-        E("aset(");
-        emit_expr(lhs->children[0]);
+        /* expr<i,...> = x  — children[0]=array expr, children[1..n-1]=subscripts */
+        E("aset("); PP_EXPR(lhs->children[0], 0);
         E(",(DESCR_t[]){");
-        for (int i=0; i<lhs->nchildren; i++) {
-            if (i) { E(","); } emit_expr(lhs->children[i]);
+        for (int i=1; i<lhs->nchildren; i++) {
+            if (i>1) E(",");
+            PP_EXPR(lhs->children[i], 0);
         }
-        E("},%d,%s);\n", lhs->nchildren, rhs_str);
+        E("},%d,%s);\n", lhs->nchildren - 1, rhs_str);
     } else if (lhs->kind == E_INDR) {
-        /* $X = val: old tree right=operand, new flat tree children[0]=operand */
-        EXPR_t *indir_op = lhs->children[1] ? lhs->children[1] : lhs->children[0];
-        E("iset("); emit_expr(indir_op); E(",%s);\n", rhs_str);
+        /* $X = val: flat tree children[0]=operand */
+        E("iset("); PP_EXPR(lhs->children[0], 0); E(",%s);\n", rhs_str);
     } else if (lhs->kind == E_FNC && lhs->nchildren == 1) {
-        /* field accessor lvalue: val(n) = x  →  FIELD_SET_fn(n, "val", x) */
-        E("FIELD_SET_fn("); emit_expr(lhs->children[0]); E(", \"%s\", %s);\n", lhs->sval, rhs_str);
+        /* field accessor lvalue: val(n) = x  ->  FIELD_SET_fn(n, "val", x) */
+        E("FIELD_SET_fn("); PP_EXPR(lhs->children[0], 0);
+        E(", \"%s\", %s);\n", lhs->sval, rhs_str);
     } else {
         /* complex lvalue: evaluate and assign indirectly */
-        E("iset("); emit_expr(lhs); E(",%s);\n", rhs_str);
+        E("iset("); PP_EXPR(lhs, 0); E(",%s);\n", rhs_str);
     }
 }
 
