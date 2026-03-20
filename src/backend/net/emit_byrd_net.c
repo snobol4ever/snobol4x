@@ -11,16 +11,22 @@
  *
  * Sprint map:
  *   N-R0  M-NET-HELLO   — skeleton: null program → exit 0          ✅ session195
- *   N-R1  M-NET-LIT     — OUTPUT = 'hello' correct                 ← NOW
- *   N-R2  M-NET-ASSIGN  — variable assign + arithmetic
- *   N-R3  M-NET-GOTO    — :S/:F branching
- *   N-R4  M-NET-PATTERN — Byrd boxes in CIL: LIT/SEQ/ALT/ARBNO
- *   N-R5  M-NET-CAPTURE — . and $ capture
+ *   N-R1  M-NET-LIT     — OUTPUT = 'hello' correct                 ✅ N-197
+ *   N-R2  M-NET-ASSIGN  — variable assign + arithmetic             ✅ N-199
+ *   N-R3  M-NET-GOTO    — :S/:F branching                         ✅ N-199
+ *   N-R4  M-NET-PATTERN — Byrd boxes in CIL: LIT/SEQ/ALT/ARBNO   ✅ N-200
+ *   N-R5  M-NET-CAPTURE — . and $ capture                         <- NOW (N-201)
  *   M-NET-R1            — hello/ output/ assign/ arith/ PASS
  *   M-NET-R2            — control/ patterns/ capture/ PASS
  *   M-NET-R3            — strings/ keywords/ PASS
  *   M-NET-R4            — functions/ data/ PASS
  *   M-NET-CROSSCHECK    — 106/106 corpus PASS
+ *
+ * Runtime DLL architecture (N-201):
+ *   snobol4lib.dll  [snobol4lib]Snobol4Lib -- all sno_* helpers (no longer inlined)
+ *   snobol4run.dll  [snobol4run]Snobol4Run -- keyword state, I/O
+ *   Source: src/runtime/net/snobol4lib.il + snobol4run.il
+ *   Compile once; every .il references extern assemblies -- much faster ilasm per prog.
  *
  * Design:
  *   Each SNOBOL4 program becomes one CIL class with a static main().
@@ -257,7 +263,7 @@ static void net_emit_expr(EXPR_t *e) {
     case E_KW:
         /* &ALPHABET → call sno_alphabet(); &STNO → statement counter; others → "" stub */
         if (e->sval && strcasecmp(e->sval, "ALPHABET") == 0) {
-            N("    call       string %s::sno_alphabet()\n", net_classname);
+            N("    call       string [snobol4lib]Snobol4Lib::sno_alphabet()\n");
         } else if (e->sval && strcasecmp(e->sval, "STNO") == 0) {
             N("    ldsfld     string %s::kw_stno\n", net_classname);
         } else {
@@ -270,7 +276,7 @@ static void net_emit_expr(EXPR_t *e) {
         /* SIZE(x) — returns length string, always succeeds */
         if (strcasecmp(fn, "SIZE") == 0) {
             net_emit_expr(e->nargs >= 1 ? e->args[0] : NULL);
-            N("    call       string %s::sno_size(string)\n", net_classname);
+            N("    call       string [snobol4lib]Snobol4Lib::sno_size(string)\n");
             N("    ldc.i4.1\n");
             N("    stloc.0\n");
             break;
@@ -286,7 +292,7 @@ static void net_emit_expr(EXPR_t *e) {
         if (cmp_helper) {
             net_emit_expr(e->nargs >= 1 ? e->args[0] : NULL);
             net_emit_expr(e->nargs >= 2 ? e->args[1] : NULL);
-            N("    call       int32 %s::%s(string, string)\n", net_classname, cmp_helper);
+            N("    call       int32 [snobol4lib]Snobol4Lib::%s(string, string)\n", cmp_helper);
             N("    stloc.0\n");
             /* push right-arg value as expression result */
             net_emit_expr(e->nargs >= 2 ? e->args[1] : NULL);
@@ -299,7 +305,7 @@ static void net_emit_expr(EXPR_t *e) {
         if (str_helper) {
             net_emit_expr(e->nargs >= 1 ? e->args[0] : NULL);
             net_emit_expr(e->nargs >= 2 ? e->args[1] : NULL);
-            N("    call       int32 %s::%s(string, string)\n", net_classname, str_helper);
+            N("    call       int32 [snobol4lib]Snobol4Lib::%s(string, string)\n", str_helper);
             N("    stloc.0\n");
             net_ldstr("");
             break;
@@ -307,7 +313,7 @@ static void net_emit_expr(EXPR_t *e) {
         /* DATATYPE(x) — returns "string", "integer", or "real" */
         if (strcasecmp(fn, "DATATYPE") == 0) {
             net_emit_expr(e->nargs >= 1 ? e->args[0] : NULL);
-            N("    call       string %s::sno_datatype(string)\n", net_classname);
+            N("    call       string [snobol4lib]Snobol4Lib::sno_datatype(string)\n");
             N("    ldc.i4.1\n");
             N("    stloc.0\n");
             break;
@@ -323,7 +329,7 @@ static void net_emit_expr(EXPR_t *e) {
         if (lcmp_helper) {
             net_emit_expr(e->nargs >= 1 ? e->args[0] : NULL);
             net_emit_expr(e->nargs >= 2 ? e->args[1] : NULL);
-            N("    call       int32 %s::%s(string, string)\n", net_classname, lcmp_helper);
+            N("    call       int32 [snobol4lib]Snobol4Lib::%s(string, string)\n", lcmp_helper);
             N("    stloc.0\n");
             net_ldstr("");
             break;
@@ -342,27 +348,27 @@ static void net_emit_expr(EXPR_t *e) {
     case E_ADD:
         net_emit_expr(e->left);
         net_emit_expr(e->right);
-        N("    call       string %s::sno_add(string, string)\n", net_classname);
+        N("    call       string [snobol4lib]Snobol4Lib::sno_add(string, string)\n");
         break;
     case E_SUB:
         net_emit_expr(e->left);
         net_emit_expr(e->right);
-        N("    call       string %s::sno_sub(string, string)\n", net_classname);
+        N("    call       string [snobol4lib]Snobol4Lib::sno_sub(string, string)\n");
         break;
     case E_MPY:
         net_emit_expr(e->left);
         net_emit_expr(e->right);
-        N("    call       string %s::sno_mpy(string, string)\n", net_classname);
+        N("    call       string [snobol4lib]Snobol4Lib::sno_mpy(string, string)\n");
         break;
     case E_DIV:
         net_emit_expr(e->left);
         net_emit_expr(e->right);
-        N("    call       string %s::sno_div(string, string)\n", net_classname);
+        N("    call       string [snobol4lib]Snobol4Lib::sno_div(string, string)\n");
         break;
     case E_MNS:
         /* unary minus */
         net_emit_expr(e->left ? e->left : e->right);
-        N("    call       string %s::sno_neg(string)\n", net_classname);
+        N("    call       string [snobol4lib]Snobol4Lib::sno_neg(string)\n");
         break;
     default:
         /* unhandled — push empty string stub */
@@ -924,359 +930,13 @@ static void net_emit_stmts(Program *prog) {
         /* increment &STNO before each statement */
         N("    ldsfld     string %s::kw_stno\n", net_classname);
         N("    ldstr      \"1\"\n");
-        N("    call       string %s::sno_add(string, string)\n", net_classname);
+        N("    call       string [snobol4lib]Snobol4Lib::sno_add(string, string)\n");
         N("    stsfld     string %s::kw_stno\n", net_classname);
         net_emit_one_stmt(s, next_lbl);
     }
 }
 
-/* -----------------------------------------------------------------------
- * SNOBOL4 arithmetic helpers emitted into each class
- *
- * SNOBOL4 numeric coercion rules:
- *   - empty string coerces to 0
- *   - strings that look like integers → integer arithmetic, result is integer string
- *   - strings that look like reals → real arithmetic, result printed as SNOBOL4 real
- *   - SNOBOL4 real format: integer-valued reals print with trailing dot (e.g. "1.")
- *
- * We implement each op as a static CIL method on the class using try/catch
- * to handle parse failures (fall back to 0).
- * We use float64 (double) arithmetic throughout for generality; then format
- * the result as integer-string if result is whole, or with "." suffix if
- * it was already integer-valued in input.
- * ----------------------------------------------------------------------- */
-
-/* Emit a single CIL helper: sno_parse_dbl — parses a string to float64,
- * empty/unparseable → 0.0 */
-static void net_emit_helper_parse(void) {
-    N("  .method private static float64 sno_parse_dbl(string s) cil managed\n");
-    N("  {\n");
-    N("    .maxstack 2\n");
-    N("    .locals init (float64 V_0, bool V_1)\n");
-    N("    ldarg.0\n");
-    N("    ldloca.s V_0\n");
-    N("    call       bool [mscorlib]System.Double::TryParse(string, float64&)\n");
-    N("    pop\n");
-    N("    ldloc.0\n");
-    N("    ret\n");
-    N("  }\n\n");
-}
-
-/* Emit sno_fmt_num — formats a float64 as SNOBOL4 numeric string.
- * integer-valued → no decimal (e.g. 3 → "3"), except when we want "1." for
- * real context.  Here we mirror the SNOBOL4 convention: integer arithmetic
- * with integer inputs → no dot; any real input → dot notation. */
-static void net_emit_helper_fmt(void) {
-    /* sno_fmt_int: just call Int32 conversion for integer results */
-    N("  .method private static string sno_fmt_dbl(float64 v) cil managed\n");
-    N("  {\n");
-    N("    .maxstack 3\n");
-    N("    .locals init (float64 V_0, int64 V_1)\n");
-    N("    ldarg.0\n");
-    N("    stloc.0\n");
-    /* check if v == floor(v) */
-    N("    ldloc.0\n");
-    N("    conv.i8\n");
-    N("    stloc.1\n");
-    N("    ldloc.0\n");
-    N("    ldloc.1\n");
-    N("    conv.r8\n");
-    N("    beq        IS_INT\n");
-    /* real — use G format */
-    N("    ldloc.0\n");
-    N("    box        [mscorlib]System.Double\n");
-    N("    callvirt   instance string object::ToString()\n");
-    N("    ret\n");
-    N("  IS_INT:\n");
-    N("    ldloc.1\n");
-    N("    box        [mscorlib]System.Int64\n");
-    N("    callvirt   instance string object::ToString()\n");
-    N("    ret\n");
-    N("  }\n\n");
-}
-
-/* sno_add(a,b): SNOBOL4 add — numeric if both can be coerced (empty→0), else concat.
- * SNOBOL4 rule: if EITHER operand is non-numeric non-empty → concat.
- * Empty string is numeric (= 0). */
-static void net_emit_helper_add(void) {
-    N("  .method private static string sno_add(string a, string b) cil managed\n");
-    N("  {\n");
-    N("    .maxstack 4\n");
-    N("    .locals init (float64 V_0, float64 V_1, bool V_2, bool V_3, string V_4, string V_5)\n");
-    /* Trim a and b — empty/whitespace coerce to "0" for numeric test */
-    N("    ldarg.0\n");
-    N("    callvirt   instance string [mscorlib]System.String::Trim()\n");
-    N("    stloc.s V_4\n");
-    N("    ldarg.1\n");
-    N("    callvirt   instance string [mscorlib]System.String::Trim()\n");
-    N("    stloc.s V_5\n");
-    /* if trimmed a == "" → treat as "0" for parse attempt */
-    N("    ldloc.s V_4\n");
-    N("    ldstr      \"\"\n");
-    N("    call       bool [mscorlib]System.String::op_Equality(string, string)\n");
-    N("    brfalse    SNO_ADD_PARSE_A\n");
-    N("    ldstr      \"0\"\n");
-    N("    stloc.s V_4\n");
-    N("  SNO_ADD_PARSE_A:\n");
-    N("    ldloc.s V_4\n");
-    N("    ldloca.s V_0\n");
-    N("    call       bool [mscorlib]System.Double::TryParse(string, float64&)\n");
-    N("    stloc.2\n");
-    /* if trimmed b == "" → treat as "0" */
-    N("    ldloc.s V_5\n");
-    N("    ldstr      \"\"\n");
-    N("    call       bool [mscorlib]System.String::op_Equality(string, string)\n");
-    N("    brfalse    SNO_ADD_PARSE_B\n");
-    N("    ldstr      \"0\"\n");
-    N("    stloc.s V_5\n");
-    N("  SNO_ADD_PARSE_B:\n");
-    N("    ldloc.s V_5\n");
-    N("    ldloca.s V_1\n");
-    N("    call       bool [mscorlib]System.Double::TryParse(string, float64&)\n");
-    N("    stloc.3\n");
-    /* both numeric? → add */
-    N("    ldloc.2\n");
-    N("    ldloc.3\n");
-    N("    and\n");
-    N("    brfalse    SNO_ADD_CONCAT\n");
-    N("    ldloc.0\n");
-    N("    ldloc.1\n");
-    N("    add\n");
-    N("    call       string %s::sno_fmt_dbl(float64)\n", net_classname);
-    N("    ret\n");
-    N("  SNO_ADD_CONCAT:\n");
-    N("    ldarg.0\n");
-    N("    ldarg.1\n");
-    N("    call       string [mscorlib]System.String::Concat(string, string)\n");
-    N("    ret\n");
-    N("  }\n\n");
-}
-
-/* sno_sub, sno_mpy, sno_div — numeric only (no concat fallback for these) */
-static void net_emit_helper_binop(const char *name, const char *op) {
-    N("  .method private static string %s(string a, string b) cil managed\n", name);
-    N("  {\n");
-    N("    .maxstack 3\n");
-    N("    .locals init (float64 V_0, float64 V_1)\n");
-    N("    ldarg.0\n");
-    N("    call       float64 %s::sno_parse_dbl(string)\n", net_classname);
-    N("    stloc.0\n");
-    N("    ldarg.1\n");
-    N("    call       float64 %s::sno_parse_dbl(string)\n", net_classname);
-    N("    stloc.1\n");
-    N("    ldloc.0\n");
-    N("    ldloc.1\n");
-    N("    %s\n", op);
-    N("    call       string %s::sno_fmt_dbl(float64)\n", net_classname);
-    N("    ret\n");
-    N("  }\n\n");
-}
-
-static void net_emit_helper_neg(void) {
-    N("  .method private static string sno_neg(string a) cil managed\n");
-    N("  {\n");
-    N("    .maxstack 2\n");
-    N("    ldarg.0\n");
-    N("    call       float64 %s::sno_parse_dbl(string)\n", net_classname);
-    N("    neg\n");
-    N("    call       string %s::sno_fmt_dbl(float64)\n", net_classname);
-    N("    ret\n");
-    N("  }\n\n");
-}
-
-/* sno_gt(a,b): numeric GT — returns b (right operand) on success, "" on fail.
- * Sets local 0 success flag inside CIL caller via convention:
- * helper returns non-empty string on success, "" on fail.
- * Caller sets local 0 from ldloc analysis... simpler: we use a two-value return
- * convention where the helper itself takes/sets no flags — instead we check the
- * returned string: if it is "" that could be ambiguous. Better: return "1" on
- * success and use brfalse/brtrue on int returned.
- * 
- * CIL design: sno_cmp(a,b,op_int) → returns int32: 1=success,0=fail.
- * The stmt emitter pops the int, stores to local 0. Avoids ambiguous empty string.
- */
-static void net_emit_helper_cmp(const char *name, const char *cil_brop) {
-    /* name: "sno_gt", cil_brop: "bgt" etc. Returns int32 1 or 0. */
-    N("  .method private static int32 %s(string a, string b) cil managed\n", name);
-    N("  {\n");
-    N("    .maxstack 4\n");
-    N("    .locals init (float64 V_0, float64 V_1)\n");
-    N("    ldarg.0\n");
-    N("    call       float64 %s::sno_parse_dbl(string)\n", net_classname);
-    N("    stloc.0\n");
-    N("    ldarg.1\n");
-    N("    call       float64 %s::sno_parse_dbl(string)\n", net_classname);
-    N("    stloc.1\n");
-    N("    ldloc.0\n");
-    N("    ldloc.1\n");
-    N("    %s         CMP_TRUE\n", cil_brop);
-    N("    ldc.i4.0\n");
-    N("    ret\n");
-    N("  CMP_TRUE:\n");
-    N("    ldc.i4.1\n");
-    N("    ret\n");
-    N("  }\n\n");
-}
-
-/* sno_ident(a,b): string equality — 1 if identical, 0 if different */
-static void net_emit_helper_ident(void) {
-    N("  .method private static int32 sno_ident(string a, string b) cil managed\n");
-    N("  {\n");
-    N("    .maxstack 2\n");
-    N("    ldarg.0\n");
-    N("    ldarg.1\n");
-    N("    call       bool [mscorlib]System.String::op_Equality(string, string)\n");
-    N("    ret\n");  /* bool is int32 on CLI */
-    N("  }\n\n");
-}
-
-/* sno_differ(a,b): 1 if NOT identical */
-static void net_emit_helper_differ(void) {
-    N("  .method private static int32 sno_differ(string a, string b) cil managed\n");
-    N("  {\n");
-    N("    .maxstack 2\n");
-    N("    ldarg.0\n");
-    N("    ldarg.1\n");
-    N("    call       bool [mscorlib]System.String::op_Inequality(string, string)\n");
-    N("    ret\n");
-    N("  }\n\n");
-}
-
-/* sno_size(a): returns length as integer string, always succeeds (sets flag=1) */
-static void net_emit_helper_size(void) {
-    N("  .method private static string sno_size(string a) cil managed\n");
-    N("  {\n");
-    N("    .maxstack 2\n");
-    N("    ldarg.0\n");
-    N("    callvirt   instance int32 [mscorlib]System.String::get_Length()\n");
-    N("    box        [mscorlib]System.Int32\n");
-    N("    callvirt   instance string object::ToString()\n");
-    N("    ret\n");
-    N("  }\n\n");
-}
-
-/* sno_litmatch(subj,pat): 1 if subj contains pat, 0 otherwise */
-static void net_emit_helper_litmatch(void) {
-    N("  .method private static int32 sno_litmatch(string subj, string pat) cil managed\n");
-    N("  {\n");
-    N("    .maxstack 2\n");
-    N("    ldarg.0\n");
-    N("    ldarg.1\n");
-    N("    callvirt   instance bool [mscorlib]System.String::Contains(string)\n");
-    N("    ret\n");
-    N("  }\n\n");
-}
-
-/* &ALPHABET — 256-char string of all bytes 0..255 */
-static void net_emit_helper_alphabet(void) {
-    N("  .method private static string sno_alphabet() cil managed\n");
-    N("  {\n");
-    N("    .maxstack 3\n");
-    N("    .locals init (char[] V_0, int32 V_1)\n");
-    N("    ldc.i4     256\n");
-    N("    newarr     [mscorlib]System.Char\n");
-    N("    stloc.0\n");
-    N("    ldc.i4.0\n");
-    N("    stloc.1\n");
-    N("  ALPHA_LOOP:\n");
-    N("    ldloc.1\n");
-    N("    ldc.i4     256\n");
-    N("    bge        ALPHA_DONE\n");
-    N("    ldloc.0\n");
-    N("    ldloc.1\n");
-    N("    ldloc.1\n");
-    N("    conv.u2\n");
-    N("    stelem.i2\n");
-    N("    ldloc.1\n");
-    N("    ldc.i4.1\n");
-    N("    add\n");
-    N("    stloc.1\n");
-    N("    br         ALPHA_LOOP\n");
-    N("  ALPHA_DONE:\n");
-    N("    ldloc.0\n");
-    N("    newobj     instance void [mscorlib]System.String::.ctor(char[])\n");
-    N("    ret\n");
-    N("  }\n\n");
-}
-
-static void net_emit_helper_datatype(void) {
-    N("  .method private static string sno_datatype(string s) cil managed\n");
-    N("  {\n");
-    N("    .maxstack 3\n");
-    N("    .locals init (float64 V_0, int64 V_1, bool V_2)\n");
-    /* try integer first */
-    N("    ldarg.0\n");
-    N("    ldloca.s V_0\n");
-    N("    call       bool [mscorlib]System.Double::TryParse(string, float64&)\n");
-    N("    stloc.2\n");
-    N("    ldloc.2\n");
-    N("    brfalse    DT_STRING\n");
-    /* it's numeric — check if whole number */
-    N("    ldloc.0\n");
-    N("    conv.i8\n");
-    N("    stloc.1\n");
-    N("    ldloc.0\n");
-    N("    ldloc.1\n");
-    N("    conv.r8\n");
-    N("    beq        DT_INTEGER\n");
-    N("    ldstr      \"real\"\n");
-    N("    ret\n");
-    N("  DT_INTEGER:\n");
-    N("    ldstr      \"integer\"\n");
-    N("    ret\n");
-    N("  DT_STRING:\n");
-    N("    ldstr      \"string\"\n");
-    N("    ret\n");
-    N("  }\n\n");
-}
-
-static void net_emit_helper_lcmp(const char *name, const char *brop) {
-    /* lexical string compare — uses String.Compare ordinal */
-    N("  .method private static int32 %s(string a, string b) cil managed\n", name);
-    N("  {\n");
-    N("    .maxstack 3\n");
-    N("    ldarg.0\n");
-    N("    ldarg.1\n");
-    N("    ldc.i4.4\n");  /* StringComparison.Ordinal = 4 */
-    N("    call       int32 [mscorlib]System.String::Compare(string, string, valuetype [mscorlib]System.StringComparison)\n");
-    N("    ldc.i4.0\n");
-    N("    %s         LCMP_TRUE\n", brop);
-    N("    ldc.i4.0\n");
-    N("    ret\n");
-    N("  LCMP_TRUE:\n");
-    N("    ldc.i4.1\n");
-    N("    ret\n");
-    N("  }\n\n");
-}
-
-static void net_emit_sno_helpers(void) {
-    net_emit_helper_parse();
-    net_emit_helper_fmt();
-    net_emit_helper_add();
-    net_emit_helper_binop("sno_sub", "sub");
-    net_emit_helper_binop("sno_mpy", "mul");
-    net_emit_helper_binop("sno_div", "div");
-    net_emit_helper_neg();
-    /* comparison helpers — return int32 1/0 */
-    net_emit_helper_cmp("sno_gt",  "bgt");
-    net_emit_helper_cmp("sno_lt",  "blt");
-    net_emit_helper_cmp("sno_ge",  "bge");
-    net_emit_helper_cmp("sno_le",  "ble");
-    net_emit_helper_cmp("sno_eq",  "beq");
-    net_emit_helper_cmp("sno_ne",  "bne.un");
-    net_emit_helper_ident();
-    net_emit_helper_differ();
-    net_emit_helper_size();
-    net_emit_helper_litmatch();
-    net_emit_helper_alphabet();
-    net_emit_helper_datatype();
-    net_emit_helper_lcmp("sno_lgt", "bgt");
-    net_emit_helper_lcmp("sno_llt", "blt");
-    net_emit_helper_lcmp("sno_lge", "bge");
-    net_emit_helper_lcmp("sno_lle", "ble");
-    net_emit_helper_lcmp("sno_leq", "beq");
-    net_emit_helper_lcmp("sno_lne", "bne.un");
-}
+/* helpers live in snobol4lib.dll — see src/runtime/net/snobol4lib.il */
 
 /* -----------------------------------------------------------------------
  * Header / footer emitters
@@ -1284,6 +944,8 @@ static void net_emit_sno_helpers(void) {
 
 static void net_emit_header(Program *prog) {
     N(".assembly extern mscorlib {}\n");
+    N(".assembly extern snobol4lib {}\n");
+    N(".assembly extern snobol4run {}\n");
     N(".assembly %s {}\n", net_classname);
     N(".module %s.exe\n", net_classname);
     N("\n");
@@ -1328,9 +990,7 @@ static void net_emit_header(Program *prog) {
     }
 
     (void)prog; /* suppress unused warning; prog used by scan_prog_vars above */
-
-    /* ---- SNOBOL4 runtime arithmetic helpers ---- */
-    net_emit_sno_helpers();
+    /* helpers live in snobol4lib.dll — see src/runtime/net/snobol4lib.il */
 }
 
 static void net_emit_main_open(void) {

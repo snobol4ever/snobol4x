@@ -34,6 +34,23 @@ mkdir -p "$CACHE_DIR"
 
 GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[0;33m'; RESET='\033[0m'
 
+# -----------------------------------------------------------------------
+# Compile Snobol4Lib.dll and Snobol4Run.dll once into CACHE_DIR
+# -----------------------------------------------------------------------
+RT_IL="$TINY/src/runtime/net"
+for dll in snobol4lib snobol4run; do
+    src_il="$RT_IL/${dll}.il"
+    dst_dll="$CACHE_DIR/${dll}.dll"
+    src_stamp="$CACHE_DIR/${dll}.src.stamp"
+    src_md5="$(md5sum "$src_il" | cut -d' ' -f1)"
+    cached_md5="$(cat "$src_stamp" 2>/dev/null || echo '')"
+    if [ "$src_md5" != "$cached_md5" ] || [ ! -f "$dst_dll" ]; then
+        ilasm "$src_il" /dll /output:"$dst_dll" >/dev/null 2>&1
+        echo "$src_md5" > "$src_stamp"
+    fi
+done
+export MONO_PATH="$CACHE_DIR"
+
 pass=0; fail=0; skip=0
 pids=()   # background ilasm pids
 jobs=()   # parallel job descriptors: "sno|il|exe|ref"
