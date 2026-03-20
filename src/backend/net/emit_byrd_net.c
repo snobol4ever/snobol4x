@@ -707,8 +707,8 @@ static void emit_branch_fail(const char *target) {
  *   V_4 = pat_len (int32)
  *   V_5 = pat_mstart (int32)
  *
- * p_next_int: int32 slot counter, starts at 6
- * p_next_str: string slot counter, starts at 20
+ * cap_slot: int32 slot counter, starts at 6
+ * str_slot: string slot counter, starts at 20
  * ----------------------------------------------------------------------- */
 
 /* uid_ctr / next_uid() defined above */
@@ -738,15 +738,15 @@ static void stloc_s(int idx) { N("    stloc.s    V_%d\n", idx); }
 /* Forward declaration */
 static void emit_pat_node(EXPR_t *pat,
                                const char *gamma, const char *omega,
-                               int loc_subj, int loc_cursor, int loc_len,
-                               int *p_next_int, int *p_next_str);
+                               int subj, int cursor, int subj_len,
+                               int *cap_slot, int *str_slot);
 
 static void pat_emit_expr(EXPR_t *e) { emit_expr(e); }
 
 static void emit_pat_node(EXPR_t *pat,
                                const char *gamma, const char *omega,
-                               int loc_subj, int loc_cursor, int loc_len,
-                               int *p_next_int, int *p_next_str) {
+                               int subj, int cursor, int subj_len,
+                               int *cap_slot, int *str_slot) {
     if (!pat) { N("    br         %s\n", gamma); return; }
 
     int uid = next_uid();
@@ -757,16 +757,16 @@ static void emit_pat_node(EXPR_t *pat,
         const char *s = pat->sval ? pat->sval : "";
         int slen = (int)strlen(s);
         /* cursor + slen <= len? */
-        ldloc_i(loc_cursor); N("    ldc.i4     %d\n", slen); N("    add\n");
-        ldloc_i(loc_len); N("    bgt        %s\n", omega);
+        ldloc_i(cursor); N("    ldc.i4     %d\n", slen); N("    add\n");
+        ldloc_i(subj_len); N("    bgt        %s\n", omega);
         /* subject.Substring(cursor, slen) == lit? */
-        ldloc_i(loc_subj); ldloc_i(loc_cursor); N("    ldc.i4     %d\n", slen);
+        ldloc_i(subj); ldloc_i(cursor); N("    ldc.i4     %d\n", slen);
         N("    callvirt   instance string [mscorlib]System.String::Substring(int32, int32)\n");
         N("    ldstr      \"%s\"\n", s);
         N("    call       bool [mscorlib]System.String::op_Equality(string, string)\n");
         N("    brfalse    %s\n", omega);
-        ldloc_i(loc_cursor); N("    ldc.i4     %d\n", slen); N("    add\n");
-        stloc_i(loc_cursor);
+        ldloc_i(cursor); N("    ldc.i4     %d\n", slen); N("    add\n");
+        stloc_i(cursor);
         N("    br         %s\n", gamma);
         break;
     }
@@ -777,7 +777,7 @@ static void emit_pat_node(EXPR_t *pat,
         if (nkids == 0) { N("    br         %s\n", gamma); break; }
         if (nkids == 1) {
             emit_pat_node(expr_arg(pat, 0), gamma, omega,
-                              loc_subj, loc_cursor, loc_len, p_next_int, p_next_str);
+                              subj, cursor, subj_len, cap_slot, str_slot);
             break;
         }
         char **mids = malloc(nkids * sizeof(char *));
@@ -790,7 +790,7 @@ static void emit_pat_node(EXPR_t *pat,
             const char *kg = (i < nkids - 1) ? mids[i] : gamma;
             arb_incr_label[0] = '\0';
             emit_pat_node(expr_arg(pat, i), kg, seq_omega,
-                              loc_subj, loc_cursor, loc_len, p_next_int, p_next_str);
+                              subj, cursor, subj_len, cap_slot, str_slot);
             /* If this child was ARB, subsequent children should use ARB's
              * increment label as their omega (backtrack into ARB). */
             if (arb_incr_label[0]) {
@@ -810,39 +810,39 @@ static void emit_pat_node(EXPR_t *pat,
         if (nkids == 0) { N("    br         %s\n", omega); break; }
         if (nkids == 1) {
             emit_pat_node(expr_arg(pat, 0), gamma, omega,
-                              loc_subj, loc_cursor, loc_len, p_next_int, p_next_str);
+                              subj, cursor, subj_len, cap_slot, str_slot);
             break;
         }
-        int loc_save = (*p_next_int)++;
-        ldloc_i(loc_cursor); stloc_i(loc_save);
+        int loc_save = (*cap_slot)++;
+        ldloc_i(cursor); stloc_i(loc_save);
         for (int i = 0; i < nkids; i++) {
             const char *kid_omega;
-            char lbl_next[64];
+            char next_lbl[64];
             if (i < nkids - 1) {
-                snprintf(lbl_next, sizeof lbl_next, "Nn%d_alt_β%d", uid, i);
-                kid_omega = lbl_next;
+                snprintf(next_lbl, sizeof next_lbl, "Nn%d_alt_β%d", uid, i);
+                kid_omega = next_lbl;
             } else {
                 kid_omega = omega;
             }
             emit_pat_node(expr_arg(pat, i), gamma, kid_omega,
-                              loc_subj, loc_cursor, loc_len, p_next_int, p_next_str);
+                              subj, cursor, subj_len, cap_slot, str_slot);
             if (i < nkids - 1) {
-                N("  %s:\n", lbl_next);
-                ldloc_i(loc_save); stloc_i(loc_cursor);
+                N("  %s:\n", next_lbl);
+                ldloc_i(loc_save); stloc_i(cursor);
             }
         }
         break;
     }
 
     case E_NAM: {
-        int loc_before = (*p_next_int)++;  /* int32: cursor before capture */
-        char lbl_ok[64]; snprintf(lbl_ok, sizeof lbl_ok, "Nn%d_nam_γ", uid);
-        ldloc_i(loc_cursor); stloc_i(loc_before);
-        emit_pat_node(expr_left(pat), lbl_ok, omega, loc_subj, loc_cursor, loc_len, p_next_int, p_next_str);
-        N("  %s:\n", lbl_ok);
+        int cursor_before = (*cap_slot)++;  /* int32: cursor before capture */
+        char gamma_lbl[64]; snprintf(gamma_lbl, sizeof gamma_lbl, "Nn%d_nam_γ", uid);
+        ldloc_i(cursor); stloc_i(cursor_before);
+        emit_pat_node(expr_left(pat), gamma_lbl, omega, subj, cursor, subj_len, cap_slot, str_slot);
+        N("  %s:\n", gamma_lbl);
         const char *varname = (expr_right(pat) && expr_right(pat)->sval) ? expr_right(pat)->sval : "";
-        ldloc_i(loc_subj); ldloc_i(loc_before);
-        ldloc_i(loc_cursor); ldloc_i(loc_before); N("    sub\n");
+        ldloc_i(subj); ldloc_i(cursor_before);
+        ldloc_i(cursor); ldloc_i(cursor_before); N("    sub\n");
         N("    callvirt   instance string [mscorlib]System.String::Substring(int32, int32)\n");
         if (is_output(varname)) {
             N("    call       void [mscorlib]System.Console::WriteLine(string)\n");
@@ -855,14 +855,14 @@ static void emit_pat_node(EXPR_t *pat,
     }
 
     case E_DOL: {
-        int loc_before = (*p_next_int)++;
-        char lbl_ok[64]; snprintf(lbl_ok, sizeof lbl_ok, "Nn%d_dol_γ", uid);
-        ldloc_i(loc_cursor); stloc_i(loc_before);
-        emit_pat_node(expr_left(pat), lbl_ok, omega, loc_subj, loc_cursor, loc_len, p_next_int, p_next_str);
-        N("  %s:\n", lbl_ok);
+        int cursor_before = (*cap_slot)++;
+        char gamma_lbl[64]; snprintf(gamma_lbl, sizeof gamma_lbl, "Nn%d_dol_γ", uid);
+        ldloc_i(cursor); stloc_i(cursor_before);
+        emit_pat_node(expr_left(pat), gamma_lbl, omega, subj, cursor, subj_len, cap_slot, str_slot);
+        N("  %s:\n", gamma_lbl);
         const char *varname = (expr_right(pat) && expr_right(pat)->sval) ? expr_right(pat)->sval : "";
-        ldloc_i(loc_subj); ldloc_i(loc_before);
-        ldloc_i(loc_cursor); ldloc_i(loc_before); N("    sub\n");
+        ldloc_i(subj); ldloc_i(cursor_before);
+        ldloc_i(cursor); ldloc_i(cursor_before); N("    sub\n");
         N("    callvirt   instance string [mscorlib]System.String::Substring(int32, int32)\n");
         if (is_output(varname)) {
             N("    call       void [mscorlib]System.Console::WriteLine(string)\n");
@@ -879,31 +879,31 @@ static void emit_pat_node(EXPR_t *pat,
         EXPR_t *arg0 = (expr_nargs(pat) >= 1) ? expr_arg(pat, 0) : NULL;
 
         if (strcasecmp(fname, "ARBNO") == 0) {
-            int loc_save = (*p_next_int)++;
-            char lbl_loop[64], lbl_done[64], lbl_cok[64], lbl_cfail[64];
-            snprintf(lbl_loop,  sizeof lbl_loop,  "Nn%d_arb_β", uid);
-            snprintf(lbl_done,  sizeof lbl_done,  "Nn%d_arb_γ", uid);
-            snprintf(lbl_cok,   sizeof lbl_cok,   "Nn%d_arb_child_γ",  uid);
-            snprintf(lbl_cfail, sizeof lbl_cfail,  "Nn%d_arb_child_ω",   uid);
+            int loc_save = (*cap_slot)++;
+            char loop_lbl[64], done_lbl[64], child_gamma_lbl[64], child_omega_lbl[64];
+            snprintf(loop_lbl,  sizeof loop_lbl,  "Nn%d_arb_β", uid);
+            snprintf(done_lbl,  sizeof done_lbl,  "Nn%d_arb_γ", uid);
+            snprintf(child_gamma_lbl,   sizeof child_gamma_lbl,   "Nn%d_arb_child_γ",  uid);
+            snprintf(child_omega_lbl, sizeof child_omega_lbl,  "Nn%d_arb_child_ω",   uid);
             EXPR_t *child = arg0;
-            N("  %s:\n", lbl_loop);
-            ldloc_i(loc_cursor); stloc_i(loc_save);
-            emit_pat_node(child, lbl_cok, lbl_cfail, loc_subj, loc_cursor, loc_len, p_next_int, p_next_str);
-            N("  %s:\n", lbl_cok);
-            ldloc_i(loc_cursor); ldloc_i(loc_save);
-            N("    beq        %s\n", lbl_done);
-            N("    br         %s\n", lbl_loop);
-            N("  %s:\n", lbl_cfail);
-            ldloc_i(loc_save); stloc_i(loc_cursor);
-            N("  %s:\n", lbl_done);
+            N("  %s:\n", loop_lbl);
+            ldloc_i(cursor); stloc_i(loc_save);
+            emit_pat_node(child, child_gamma_lbl, child_omega_lbl, subj, cursor, subj_len, cap_slot, str_slot);
+            N("  %s:\n", child_gamma_lbl);
+            ldloc_i(cursor); ldloc_i(loc_save);
+            N("    beq        %s\n", done_lbl);
+            N("    br         %s\n", loop_lbl);
+            N("  %s:\n", child_omega_lbl);
+            ldloc_i(loc_save); stloc_i(cursor);
+            N("  %s:\n", done_lbl);
             N("    br         %s\n", gamma);
             break;
         }
 
         if (strcasecmp(fname, "ANY") == 0) {
-            int loc_ch = (*p_next_str)++;   /* string: single-char string */
-            ldloc_i(loc_cursor); ldloc_i(loc_len); N("    bge        %s\n", omega);
-            ldloc_i(loc_subj); ldloc_i(loc_cursor);
+            int loc_ch = (*str_slot)++;   /* string: single-char string */
+            ldloc_i(cursor); ldloc_i(subj_len); N("    bge        %s\n", omega);
+            ldloc_i(subj); ldloc_i(cursor);
             N("    callvirt   instance char [mscorlib]System.String::get_Chars(int32)\n");
             N("    call       string [mscorlib]System.Char::ToString(char)\n");
             stloc_s(loc_ch);
@@ -911,15 +911,15 @@ static void emit_pat_node(EXPR_t *pat,
             ldloc_s(loc_ch);
             N("    callvirt   instance bool [mscorlib]System.String::Contains(string)\n");
             N("    brfalse    %s\n", omega);
-            ldloc_i(loc_cursor); N("    ldc.i4.1\n"); N("    add\n"); stloc_i(loc_cursor);
+            ldloc_i(cursor); N("    ldc.i4.1\n"); N("    add\n"); stloc_i(cursor);
             N("    br         %s\n", gamma);
             break;
         }
 
         if (strcasecmp(fname, "NOTANY") == 0) {
-            int loc_ch = (*p_next_str)++;
-            ldloc_i(loc_cursor); ldloc_i(loc_len); N("    bge        %s\n", omega);
-            ldloc_i(loc_subj); ldloc_i(loc_cursor);
+            int loc_ch = (*str_slot)++;
+            ldloc_i(cursor); ldloc_i(subj_len); N("    bge        %s\n", omega);
+            ldloc_i(subj); ldloc_i(cursor);
             N("    callvirt   instance char [mscorlib]System.String::get_Chars(int32)\n");
             N("    call       string [mscorlib]System.Char::ToString(char)\n");
             stloc_s(loc_ch);
@@ -927,129 +927,129 @@ static void emit_pat_node(EXPR_t *pat,
             ldloc_s(loc_ch);
             N("    callvirt   instance bool [mscorlib]System.String::Contains(string)\n");
             N("    brtrue     %s\n", omega);
-            ldloc_i(loc_cursor); N("    ldc.i4.1\n"); N("    add\n"); stloc_i(loc_cursor);
+            ldloc_i(cursor); N("    ldc.i4.1\n"); N("    add\n"); stloc_i(cursor);
             N("    br         %s\n", gamma);
             break;
         }
 
         if (strcasecmp(fname, "SPAN") == 0) {
-            int loc_cs = (*p_next_str)++;   /* string: charset */
-            int loc_ch = (*p_next_str)++;   /* string: char */
-            char lbl_loop[64], lbl_done[64];
-            snprintf(lbl_loop, sizeof lbl_loop, "Nn%d_span_loop", uid);
-            snprintf(lbl_done, sizeof lbl_done, "Nn%d_span_γ", uid);
+            int loc_cs = (*str_slot)++;   /* string: charset */
+            int loc_ch = (*str_slot)++;   /* string: char */
+            char loop_lbl[64], done_lbl[64];
+            snprintf(loop_lbl, sizeof loop_lbl, "Nn%d_span_loop", uid);
+            snprintf(done_lbl, sizeof done_lbl, "Nn%d_span_γ", uid);
             if (arg0) pat_emit_expr(arg0); else N("    ldstr      \"\"\n");
             stloc_s(loc_cs);
             /* must match at least 1 */
-            ldloc_i(loc_cursor); ldloc_i(loc_len); N("    bge        %s\n", omega);
-            ldloc_i(loc_subj); ldloc_i(loc_cursor);
+            ldloc_i(cursor); ldloc_i(subj_len); N("    bge        %s\n", omega);
+            ldloc_i(subj); ldloc_i(cursor);
             N("    callvirt   instance char [mscorlib]System.String::get_Chars(int32)\n");
             N("    call       string [mscorlib]System.Char::ToString(char)\n");
             stloc_s(loc_ch);
             ldloc_s(loc_cs); ldloc_s(loc_ch);
             N("    callvirt   instance bool [mscorlib]System.String::Contains(string)\n");
             N("    brfalse    %s\n", omega);
-            ldloc_i(loc_cursor); N("    ldc.i4.1\n"); N("    add\n"); stloc_i(loc_cursor);
-            N("  %s:\n", lbl_loop);
-            ldloc_i(loc_cursor); ldloc_i(loc_len); N("    bge        %s\n", lbl_done);
-            ldloc_i(loc_subj); ldloc_i(loc_cursor);
+            ldloc_i(cursor); N("    ldc.i4.1\n"); N("    add\n"); stloc_i(cursor);
+            N("  %s:\n", loop_lbl);
+            ldloc_i(cursor); ldloc_i(subj_len); N("    bge        %s\n", done_lbl);
+            ldloc_i(subj); ldloc_i(cursor);
             N("    callvirt   instance char [mscorlib]System.String::get_Chars(int32)\n");
             N("    call       string [mscorlib]System.Char::ToString(char)\n");
             stloc_s(loc_ch);
             ldloc_s(loc_cs); ldloc_s(loc_ch);
             N("    callvirt   instance bool [mscorlib]System.String::Contains(string)\n");
-            N("    brfalse    %s\n", lbl_done);
-            ldloc_i(loc_cursor); N("    ldc.i4.1\n"); N("    add\n"); stloc_i(loc_cursor);
-            N("    br         %s\n", lbl_loop);
-            N("  %s:\n", lbl_done);
+            N("    brfalse    %s\n", done_lbl);
+            ldloc_i(cursor); N("    ldc.i4.1\n"); N("    add\n"); stloc_i(cursor);
+            N("    br         %s\n", loop_lbl);
+            N("  %s:\n", done_lbl);
             N("    br         %s\n", gamma);
             break;
         }
 
         if (strcasecmp(fname, "BREAK") == 0) {
-            int loc_cs = (*p_next_str)++;
-            int loc_ch = (*p_next_str)++;
-            char lbl_loop[64], lbl_done[64];
-            snprintf(lbl_loop, sizeof lbl_loop, "Nn%d_break_loop", uid);
-            snprintf(lbl_done, sizeof lbl_done, "Nn%d_break_γ", uid);
+            int loc_cs = (*str_slot)++;
+            int loc_ch = (*str_slot)++;
+            char loop_lbl[64], done_lbl[64];
+            snprintf(loop_lbl, sizeof loop_lbl, "Nn%d_break_loop", uid);
+            snprintf(done_lbl, sizeof done_lbl, "Nn%d_break_γ", uid);
             if (arg0) pat_emit_expr(arg0); else N("    ldstr      \"\"\n");
             stloc_s(loc_cs);
-            N("  %s:\n", lbl_loop);
-            ldloc_i(loc_cursor); ldloc_i(loc_len); N("    bge        %s\n", omega);
-            ldloc_i(loc_subj); ldloc_i(loc_cursor);
+            N("  %s:\n", loop_lbl);
+            ldloc_i(cursor); ldloc_i(subj_len); N("    bge        %s\n", omega);
+            ldloc_i(subj); ldloc_i(cursor);
             N("    callvirt   instance char [mscorlib]System.String::get_Chars(int32)\n");
             N("    call       string [mscorlib]System.Char::ToString(char)\n");
             stloc_s(loc_ch);
             ldloc_s(loc_cs); ldloc_s(loc_ch);
             N("    callvirt   instance bool [mscorlib]System.String::Contains(string)\n");
-            N("    brtrue     %s\n", lbl_done);
-            ldloc_i(loc_cursor); N("    ldc.i4.1\n"); N("    add\n"); stloc_i(loc_cursor);
-            N("    br         %s\n", lbl_loop);
-            N("  %s:\n", lbl_done);
+            N("    brtrue     %s\n", done_lbl);
+            ldloc_i(cursor); N("    ldc.i4.1\n"); N("    add\n"); stloc_i(cursor);
+            N("    br         %s\n", loop_lbl);
+            N("  %s:\n", done_lbl);
             N("    br         %s\n", gamma);
             break;
         }
 
         if (strcasecmp(fname, "LEN") == 0) {
-            int loc_n = (*p_next_int)++;
+            int loc_n = (*cap_slot)++;
             if (arg0) pat_emit_expr(arg0); else N("    ldstr      \"0\"\n");
             N("    call       int32 [mscorlib]System.Int32::Parse(string)\n");
             stloc_i(loc_n);
-            ldloc_i(loc_cursor); ldloc_i(loc_n); N("    add\n");
-            ldloc_i(loc_len); N("    bgt        %s\n", omega);
-            ldloc_i(loc_cursor); ldloc_i(loc_n); N("    add\n"); stloc_i(loc_cursor);
+            ldloc_i(cursor); ldloc_i(loc_n); N("    add\n");
+            ldloc_i(subj_len); N("    bgt        %s\n", omega);
+            ldloc_i(cursor); ldloc_i(loc_n); N("    add\n"); stloc_i(cursor);
             N("    br         %s\n", gamma);
             break;
         }
 
         if (strcasecmp(fname, "POS") == 0) {
-            int loc_n = (*p_next_int)++;
+            int loc_n = (*cap_slot)++;
             if (arg0) pat_emit_expr(arg0); else N("    ldstr      \"0\"\n");
             N("    call       int32 [mscorlib]System.Int32::Parse(string)\n");
             stloc_i(loc_n);
-            ldloc_i(loc_cursor); ldloc_i(loc_n); N("    bne.un     %s\n", omega);
+            ldloc_i(cursor); ldloc_i(loc_n); N("    bne.un     %s\n", omega);
             N("    br         %s\n", gamma);
             break;
         }
 
         if (strcasecmp(fname, "RPOS") == 0) {
-            int loc_n = (*p_next_int)++;
+            int loc_n = (*cap_slot)++;
             if (arg0) pat_emit_expr(arg0); else N("    ldstr      \"0\"\n");
             N("    call       int32 [mscorlib]System.Int32::Parse(string)\n");
             stloc_i(loc_n);
-            ldloc_i(loc_len); ldloc_i(loc_n); N("    sub\n");
-            ldloc_i(loc_cursor); N("    bne.un     %s\n", omega);
+            ldloc_i(subj_len); ldloc_i(loc_n); N("    sub\n");
+            ldloc_i(cursor); N("    bne.un     %s\n", omega);
             N("    br         %s\n", gamma);
             break;
         }
 
         if (strcasecmp(fname, "TAB") == 0) {
-            int loc_n = (*p_next_int)++;
+            int loc_n = (*cap_slot)++;
             if (arg0) pat_emit_expr(arg0); else N("    ldstr      \"0\"\n");
             N("    call       int32 [mscorlib]System.Int32::Parse(string)\n");
             stloc_i(loc_n);
-            ldloc_i(loc_cursor); ldloc_i(loc_n); N("    bgt        %s\n", omega);
-            ldloc_i(loc_n); ldloc_i(loc_len); N("    bgt        %s\n", omega);
-            ldloc_i(loc_n); stloc_i(loc_cursor);
+            ldloc_i(cursor); ldloc_i(loc_n); N("    bgt        %s\n", omega);
+            ldloc_i(loc_n); ldloc_i(subj_len); N("    bgt        %s\n", omega);
+            ldloc_i(loc_n); stloc_i(cursor);
             N("    br         %s\n", gamma);
             break;
         }
 
         if (strcasecmp(fname, "RTAB") == 0) {
-            int loc_n   = (*p_next_int)++;
-            int loc_tgt = (*p_next_int)++;
+            int loc_n   = (*cap_slot)++;
+            int loc_tgt = (*cap_slot)++;
             if (arg0) pat_emit_expr(arg0); else N("    ldstr      \"0\"\n");
             N("    call       int32 [mscorlib]System.Int32::Parse(string)\n");
             stloc_i(loc_n);
-            ldloc_i(loc_len); ldloc_i(loc_n); N("    sub\n"); stloc_i(loc_tgt);
-            ldloc_i(loc_cursor); ldloc_i(loc_tgt); N("    bgt        %s\n", omega);
-            ldloc_i(loc_tgt); stloc_i(loc_cursor);
+            ldloc_i(subj_len); ldloc_i(loc_n); N("    sub\n"); stloc_i(loc_tgt);
+            ldloc_i(cursor); ldloc_i(loc_tgt); N("    bgt        %s\n", omega);
+            ldloc_i(loc_tgt); stloc_i(cursor);
             N("    br         %s\n", gamma);
             break;
         }
 
         if (strcasecmp(fname, "REM") == 0) {
-            ldloc_i(loc_len); stloc_i(loc_cursor);
+            ldloc_i(subj_len); stloc_i(cursor);
             N("    br         %s\n", gamma); break;
         }
         if (strcasecmp(fname, "ARB") == 0) {
@@ -1061,19 +1061,19 @@ static void emit_pat_node(EXPR_t *pat,
              * "increment" label inside ARB. Caller's omega is the final fail.
              * To avoid redefining caller's omega, we redirect it via a private
              * fail label that falls through to the caller's omega. */
-            int loc_arb_save = (*p_next_int)++;
-            int loc_arb_try  = (*p_next_int)++;
+            int loc_arb_save = (*cap_slot)++;
+            int loc_arb_try  = (*cap_slot)++;
             char arb_loop[64], arb_incr[64], arb_fail[64];
             snprintf(arb_loop, sizeof arb_loop, "Nn%d_arb_β",  uid);
             snprintf(arb_incr, sizeof arb_incr, "Nn%d_arb_β_inc", uid);
             snprintf(arb_fail, sizeof arb_fail, "Nn%d_arb_ω",  uid);
-            ldloc_i(loc_cursor); stloc_i(loc_arb_save);
+            ldloc_i(cursor); stloc_i(loc_arb_save);
             N("    ldc.i4.0\n"); stloc_i(loc_arb_try);
             N("  %s:\n", arb_loop);
             ldloc_i(loc_arb_save); ldloc_i(loc_arb_try); N("    add\n");
-            ldloc_i(loc_len); N("    bgt        %s\n", arb_fail);
+            ldloc_i(subj_len); N("    bgt        %s\n", arb_fail);
             ldloc_i(loc_arb_save); ldloc_i(loc_arb_try); N("    add\n");
-            stloc_i(loc_cursor);
+            stloc_i(cursor);
             N("    br         %s\n", gamma);
             /* arb_incr: continuation failed, try one more char */
             N("  %s:\n", arb_incr);
@@ -1107,21 +1107,21 @@ static void emit_pat_node(EXPR_t *pat,
 
     case E_VART: {
         const char *vname = pat->sval ? pat->sval : "";
-        if (strcasecmp(vname, "REM")     == 0) { ldloc_i(loc_len); stloc_i(loc_cursor); N("    br %s\n", gamma); break; }
+        if (strcasecmp(vname, "REM")     == 0) { ldloc_i(subj_len); stloc_i(cursor); N("    br %s\n", gamma); break; }
         if (strcasecmp(vname, "ARB") == 0) {
-            int loc_arb_save = (*p_next_int)++;
-            int loc_arb_try  = (*p_next_int)++;
+            int loc_arb_save = (*cap_slot)++;
+            int loc_arb_try  = (*cap_slot)++;
             char arb_loop[64], arb_incr[64], arb_fail[64];
             snprintf(arb_loop, sizeof arb_loop, "Nn%d_varb_β",  uid);
             snprintf(arb_incr, sizeof arb_incr, "Nn%d_varb_β_inc", uid);
             snprintf(arb_fail, sizeof arb_fail, "Nn%d_varb_ω",  uid);
-            ldloc_i(loc_cursor); stloc_i(loc_arb_save);
+            ldloc_i(cursor); stloc_i(loc_arb_save);
             N("    ldc.i4.0\n"); stloc_i(loc_arb_try);
             N("  %s:\n", arb_loop);
             ldloc_i(loc_arb_save); ldloc_i(loc_arb_try); N("    add\n");
-            ldloc_i(loc_len); N("    bgt        %s\n", arb_fail);
+            ldloc_i(subj_len); N("    bgt        %s\n", arb_fail);
             ldloc_i(loc_arb_save); ldloc_i(loc_arb_try); N("    add\n");
-            stloc_i(loc_cursor);
+            stloc_i(cursor);
             N("    br         %s\n", gamma);
             N("  %s:\n", arb_incr);
             ldloc_i(loc_arb_try); N("    ldc.i4.1\n"); N("    add\n"); stloc_i(loc_arb_try);
@@ -1141,28 +1141,28 @@ static void emit_pat_node(EXPR_t *pat,
             const NamedPat *np = named_pat_lookup(vname);
             if (np && np->pat) {
                 emit_pat_node(np->pat, gamma, omega,
-                                  loc_subj, loc_cursor, loc_len, p_next_int, p_next_str);
+                                  subj, cursor, subj_len, cap_slot, str_slot);
                 break;
             }
         }
         /* Otherwise: load variable's string value, match as literal */
         {
-            int loc_lit  = (*p_next_str)++;
-            int loc_llen = (*p_next_int)++;
+            int loc_lit  = (*str_slot)++;
+            int loc_llen = (*cap_slot)++;
             char fn[256]; field_name(fn, sizeof fn, vname);
             N("    ldsfld     string %s::%s\n", classname, fn);
             stloc_s(loc_lit);
             ldloc_s(loc_lit);
             N("    callvirt   instance int32 [mscorlib]System.String::get_Length()\n");
             stloc_i(loc_llen);
-            ldloc_i(loc_cursor); ldloc_i(loc_llen); N("    add\n");
-            ldloc_i(loc_len); N("    bgt        %s\n", omega);
-            ldloc_i(loc_subj); ldloc_i(loc_cursor); ldloc_i(loc_llen);
+            ldloc_i(cursor); ldloc_i(loc_llen); N("    add\n");
+            ldloc_i(subj_len); N("    bgt        %s\n", omega);
+            ldloc_i(subj); ldloc_i(cursor); ldloc_i(loc_llen);
             N("    callvirt   instance string [mscorlib]System.String::Substring(int32, int32)\n");
             ldloc_s(loc_lit);
             N("    call       bool [mscorlib]System.String::op_Equality(string, string)\n");
             N("    brfalse    %s\n", omega);
-            ldloc_i(loc_cursor); ldloc_i(loc_llen); N("    add\n"); stloc_i(loc_cursor);
+            ldloc_i(cursor); ldloc_i(loc_llen); N("    add\n"); stloc_i(cursor);
             N("    br         %s\n", gamma);
         }
         break;
@@ -1286,16 +1286,16 @@ static void emit_stmt(STMT_t *s, const char *next_lbl) {
         static int prepl_uid = 0;
         int suid = prepl_uid++;
 
-        char lbl_tok[64], lbl_tfail[64], lbl_retry[64], lbl_end[64];
-        snprintf(lbl_tok,   sizeof lbl_tok,   "Npr%d_tree_γ",   suid);
-        snprintf(lbl_tfail, sizeof lbl_tfail,  "Npr%d_ω",  suid);
-        snprintf(lbl_retry, sizeof lbl_retry,  "Npr%d_β", suid);
-        snprintf(lbl_end,   sizeof lbl_end,    "Npr%d_γ",   suid);
+        char tree_gamma_lbl[64], tree_omega_lbl[64], retry_lbl[64], end_lbl[64];
+        snprintf(tree_gamma_lbl,   sizeof tree_gamma_lbl,   "Npr%d_tree_γ",   suid);
+        snprintf(tree_omega_lbl, sizeof tree_omega_lbl,  "Npr%d_ω",  suid);
+        snprintf(retry_lbl, sizeof retry_lbl,  "Npr%d_β", suid);
+        snprintf(end_lbl,   sizeof end_lbl,    "Npr%d_γ",   suid);
         snprintf(pat_abort_label, sizeof pat_abort_label, "Npr%d_abort", suid);
 
-        int loc_subj   = 2;
-        int loc_cursor = 3;
-        int loc_len    = 4;
+        int subj   = 2;
+        int cursor = 3;
+        int subj_len    = 4;
         int loc_mstart = 5;
         int next_int = 6;
         int next_str = 20;
@@ -1309,15 +1309,15 @@ static void emit_stmt(STMT_t *s, const char *next_lbl) {
         N("    ldc.i4.0\n");
         N("    stloc.s    V_3\n");
 
-        N("  %s:\n", lbl_retry);
+        N("  %s:\n", retry_lbl);
         N("    ldloc.s    V_3\n");
         N("    stloc.s    V_5\n");
 
-        emit_pat_node(s->pattern, lbl_tok, lbl_tfail,
-                          loc_subj, loc_cursor, loc_len, &next_int, &next_str);
+        emit_pat_node(s->pattern, tree_gamma_lbl, tree_omega_lbl,
+                          subj, cursor, subj_len, &next_int, &next_str);
 
         /* fail path */
-        N("  %s:\n", lbl_tfail);
+        N("  %s:\n", tree_omega_lbl);
         N("    ldsfld     string %s::kw_anchor\n", classname);
         N("    ldstr      \"0\"\n");
         N("    call       bool [mscorlib]System.String::op_Equality(string, string)\n");
@@ -1328,16 +1328,16 @@ static void emit_stmt(STMT_t *s, const char *next_lbl) {
         N("    stloc.s    V_3\n");
         N("    ldloc.s    V_3\n");
         N("    ldloc.s    V_4\n");
-        N("    ble        %s\n", lbl_retry);
+        N("    ble        %s\n", retry_lbl);
         N("  %s:\n", pat_abort_label);
         N("    ldc.i4.0\n");
         N("    stloc.0\n");
         if (tgt_f) emit_branch_fail(tgt_f);
         else if (tgt_u) emit_goto(tgt_u, next_lbl);
-        N("    br         %s\n", lbl_end);
+        N("    br         %s\n", end_lbl);
 
         /* success path — replace matched region in subject */
-        N("  %s:\n", lbl_tok);
+        N("  %s:\n", tree_gamma_lbl);
         N("    ldc.i4.1\n");
         N("    stloc.0\n");
         /* Build: prefix + replacement + suffix */
@@ -1369,7 +1369,7 @@ static void emit_stmt(STMT_t *s, const char *next_lbl) {
             if (tgt_s) emit_branch_success(tgt_s);
             if (tgt_f) emit_branch_fail(tgt_f);
         }
-        N("  %s:\n", lbl_end);
+        N("  %s:\n", end_lbl);
         return;
     }
 
@@ -1378,40 +1378,40 @@ static void emit_stmt(STMT_t *s, const char *next_lbl) {
         static int pat_stmt_uid = 0;
         int suid = pat_stmt_uid++;
 
-        char lbl_tok[64], lbl_tfail[64], lbl_retry[64];
-        snprintf(lbl_tok,   sizeof lbl_tok,   "Npat%d_tree_γ",   suid);
-        snprintf(lbl_tfail, sizeof lbl_tfail,  "Npat%d_ω",  suid);
-        snprintf(lbl_retry, sizeof lbl_retry,  "Npat%d_β", suid);
+        char tree_gamma_lbl[64], tree_omega_lbl[64], retry_lbl[64];
+        snprintf(tree_gamma_lbl,   sizeof tree_gamma_lbl,   "Npat%d_tree_γ",   suid);
+        snprintf(tree_omega_lbl, sizeof tree_omega_lbl,  "Npat%d_ω",  suid);
+        snprintf(retry_lbl, sizeof retry_lbl,  "Npat%d_β", suid);
         snprintf(pat_abort_label, sizeof pat_abort_label, "Npat%d_abort", suid);
 
         /* locals: V_0=success, V_1=unused,
          *         V_2=subj(string), V_3=cursor(int32), V_4=len(int32),
          *         V_5=mstart(int32), V_6..=pattern temporaries */
-        int loc_subj   = 2;
-        int loc_cursor = 3;
-        int loc_len    = 4;
+        int subj   = 2;
+        int cursor = 3;
+        int subj_len    = 4;
         int loc_mstart = 5;
         int next_int = 6;   /* int32 slots: V_6..V_19 */
         int next_str = 20;  /* string slots: V_20..V_29 */
 
         /* load subject */
         emit_expr(s->subject);
-        N("    stloc.s    V_2\n");   /* loc_subj */
+        N("    stloc.s    V_2\n");   /* subj */
         N("    ldloc.s    V_2\n");
         N("    callvirt   instance int32 [mscorlib]System.String::get_Length()\n");
-        N("    stloc.s    V_4\n");   /* loc_len */
+        N("    stloc.s    V_4\n");   /* subj_len */
         N("    ldc.i4.0\n");
-        N("    stloc.s    V_3\n");   /* loc_cursor = 0 */
+        N("    stloc.s    V_3\n");   /* cursor = 0 */
 
         /* retry loop: scan start position */
-        N("  %s:\n", lbl_retry);
+        N("  %s:\n", retry_lbl);
         N("    ldloc.s    V_3\n");
         N("    stloc.s    V_5\n");   /* mstart = cursor */
 
-        emit_pat_node(s->pattern, lbl_tok, lbl_tfail,
-                          loc_subj, loc_cursor, loc_len, &next_int, &next_str);
+        emit_pat_node(s->pattern, tree_gamma_lbl, tree_omega_lbl,
+                          subj, cursor, subj_len, &next_int, &next_str);
 
-        N("  %s:\n", lbl_tfail);
+        N("  %s:\n", tree_omega_lbl);
         /* if anchor, fail; else advance start and retry */
         N("    ldsfld     string %s::kw_anchor\n", classname);
         N("    ldstr      \"0\"\n");
@@ -1423,7 +1423,7 @@ static void emit_stmt(STMT_t *s, const char *next_lbl) {
         N("    stloc.s    V_3\n");  /* cursor = mstart+1 */
         N("    ldloc.s    V_3\n");
         N("    ldloc.s    V_4\n");
-        N("    ble        %s\n", lbl_retry);
+        N("    ble        %s\n", retry_lbl);
         /* fell off end — fail */
         N("  %s:\n", pat_abort_label);
         N("    ldc.i4.0\n");
@@ -1433,9 +1433,9 @@ static void emit_stmt(STMT_t *s, const char *next_lbl) {
         /* fall through on fail */
         /* jump past success block */
         {
-            char lbl_end[64]; snprintf(lbl_end, sizeof lbl_end, "Npat%d_γ", suid);
-            N("    br         %s\n", lbl_end);
-            N("  %s:\n", lbl_tok);
+            char end_lbl[64]; snprintf(end_lbl, sizeof end_lbl, "Npat%d_γ", suid);
+            N("    br         %s\n", end_lbl);
+            N("  %s:\n", tree_gamma_lbl);
             N("    ldc.i4.1\n");
             N("    stloc.0\n");
             if (tgt_u) emit_goto(tgt_u, next_lbl);
@@ -1443,7 +1443,7 @@ static void emit_stmt(STMT_t *s, const char *next_lbl) {
                 if (tgt_s) emit_branch_success(tgt_s);
                 if (tgt_f) emit_branch_fail(tgt_f);
             }
-            N("  %s:\n", lbl_end);
+            N("  %s:\n", end_lbl);
         }
         return;
     }

@@ -563,18 +563,18 @@ static void emit_lit(const char *s, int n,
                           const char *alpha, const char *beta,
                           const char *gamma, const char *omega,
                           const char *cursor,
-                          const char *subj, const char *subj_len_sym) {
+                          const char *subj, const char *subj_len) {
     char saved[LBUF];
     snprintf(saved, LBUF, "%s_saved", alpha);
     var_register(saved);
 
     if (n == 1) {
         ALFC(alpha, "LIT α", "LIT_ALPHA1  %d, %s, %s, %s, %s, %s, %s\n",
-            (unsigned char)s[0], saved, cursor, subj, subj_len_sym, gamma, omega);
+            (unsigned char)s[0], saved, cursor, subj, subj_len, gamma, omega);
     } else {
         const char *lstr = lit_intern(s, n);
         ALFC(alpha, "LIT α", "LIT_ALPHA   %s, %d, %s, %s, %s, %s, %s, %s\n",
-            lstr, n, saved, cursor, subj, subj_len_sym, gamma, omega);
+            lstr, n, saved, cursor, subj, subj_len, gamma, omega);
     }
     ALFC(beta, "LIT β", "LIT_BETA    %s, %s, %s\n", saved, cursor, omega);
 }
@@ -603,8 +603,8 @@ static void emit_rpos(long n,
                            const char *alpha, const char *beta,
                            const char *gamma, const char *omega,
                            const char *cursor,
-                           const char *subj_len_sym) {
-    ALFC(alpha, "RPOS(%ld)", "RPOS_ALPHA  %ld, %s, %s, %s, %s\n", n, cursor, subj_len_sym, gamma, omega);
+                           const char *subj_len) {
+    ALFC(alpha, "RPOS(%ld)", "RPOS_ALPHA  %ld, %s, %s, %s, %s\n", n, cursor, subj_len, gamma, omega);
     ALF(beta,  "RPOS_BETA   %s, %s\n", cursor, omega);
 }
 
@@ -612,8 +612,8 @@ static void emit_rpos_var(const char *varlab,
                                const char *alpha, const char *beta,
                                const char *gamma, const char *omega,
                                const char *cursor,
-                               const char *subj_len_sym) {
-    ALFC(alpha, "RPOS(var)", "RPOS_ALPHA_VAR %s, %s, %s, %s, %s\n", varlab, cursor, subj_len_sym, gamma, omega);
+                               const char *subj_len) {
+    ALFC(alpha, "RPOS(var)", "RPOS_ALPHA_VAR %s, %s, %s, %s, %s\n", varlab, cursor, subj_len, gamma, omega);
     ALF(beta,  "RPOS_BETA   %s, %s\n", cursor, omega);
 }
 
@@ -675,7 +675,7 @@ static void emit_pat_node(EXPR_t *pat,
                            const char *alpha, const char *beta,
                            const char *gamma, const char *omega,
                            const char *cursor,
-                           const char *subj, const char *subj_len_sym,
+                           const char *subj, const char *subj_len,
                            int depth);
 
 /* -----------------------------------------------------------------------
@@ -694,7 +694,7 @@ static void emit_seq(EXPR_t *left, EXPR_t *right,
                           const char *alpha, const char *beta,
                           const char *gamma, const char *omega,
                           const char *cursor,
-                          const char *subj, const char *subj_len_sym,
+                          const char *subj, const char *subj_len,
                           int depth) {
     int uid = next_uid();
     char lα[LBUF], lβ[LBUF], rα[LBUF], rβ[LBUF];
@@ -706,8 +706,8 @@ static void emit_seq(EXPR_t *left, EXPR_t *right,
     ALFC(alpha, "SEQ", "jmp     %s\n", lα);
     ALF(beta, "jmp     %s\n", rβ);
 
-    emit_pat_node(left,  lα, lβ, rα, omega, cursor, subj, subj_len_sym, depth+1);
-    emit_pat_node(right, rα, rβ, gamma, lβ, cursor, subj, subj_len_sym, depth+1);
+    emit_pat_node(left,  lα, lβ, rα, omega, cursor, subj, subj_len, depth+1);
+    emit_pat_node(right, rα, rβ, gamma, lβ, cursor, subj, subj_len, depth+1);
 }
 
 /* -----------------------------------------------------------------------
@@ -726,7 +726,7 @@ static void emit_alt(EXPR_t *left, EXPR_t *right,
                           const char *alpha, const char *beta,
                           const char *gamma, const char *omega,
                           const char *cursor,
-                          const char *subj, const char *subj_len_sym,
+                          const char *subj, const char *subj_len,
                           int depth) {
     int uid = next_uid();
     char lα[LBUF], lβ[LBUF], rα[LBUF], rβ[LBUF];
@@ -747,13 +747,13 @@ static void emit_alt(EXPR_t *left, EXPR_t *right,
     ALFC(beta,  "ALT β — resume right", "SEQ_BETA    %s\n", rβ);
 
     emit_pat_node(left, lα, lβ, gamma, left_omega_tramp,
-                  cursor, subj, subj_len_sym, depth+1);
+                  cursor, subj, subj_len, depth+1);
 
     ALFC(left_omega_tramp, "ALT left_ω — restore cursor, enter right",
          "ALT_OMEGA   %s, %s, %s\n", cursor_save, cursor, rα);
 
     emit_pat_node(right, rα, rβ, gamma, omega,
-                  cursor, subj, subj_len_sym, depth+1);
+                  cursor, subj, subj_len, depth+1);
 }
 
 /* -----------------------------------------------------------------------
@@ -770,7 +770,7 @@ static void emit_arbno(EXPR_t *child,
                             const char *alpha, const char *beta,
                             const char *gamma, const char *omega,
                             const char *cursor,
-                            const char *subj, const char *subj_len_sym,
+                            const char *subj, const char *subj_len,
                             int depth) {
     int uid = next_uid();
     char stk[LBUF], dep[LBUF], cα[LBUF], cβ[LBUF];
@@ -839,7 +839,7 @@ static void emit_arbno(EXPR_t *child,
     ALFC(child_fail, "ARBNO child_fail", "jmp     %s\n", omega);
 
     emit_pat_node(child, cα, cβ, child_ok, child_fail,
-                  cursor, subj, subj_len_sym, depth+1);
+                  cursor, subj, subj_len, depth+1);
 
     /* Patch: we need to emit the resq 64 for stk in section .bss.
      * We use a hack: emit it as a comment-tagged entry so bss_emit
@@ -861,7 +861,7 @@ static void emit_any(const char *charset, int cslen,
                           const char *alpha, const char *beta,
                           const char *gamma, const char *omega,
                           const char *cursor,
-                          const char *subj, const char *subj_len_sym) {
+                          const char *subj, const char *subj_len) {
     char saved[LBUF];
     int uid = next_uid();
     snprintf(saved, LBUF, "any%d_saved", uid);
@@ -869,7 +869,7 @@ static void emit_any(const char *charset, int cslen,
     const char *clabel = lit_intern(charset, cslen);
 
     ALFC(alpha, "ANY α", "ANY_ALPHA   %s, %d, %s, %s, %s, %s, %s, %s\n",
-      clabel, cslen, saved, cursor, subj, subj_len_sym, gamma, omega);
+      clabel, cslen, saved, cursor, subj, subj_len, gamma, omega);
     ALFC(beta, "ANY β", "ANY_BETA    %s, %s, %s\n", saved, cursor, omega);
 }
 
@@ -881,7 +881,7 @@ static void emit_notany(const char *charset, int cslen,
                              const char *alpha, const char *beta,
                              const char *gamma, const char *omega,
                              const char *cursor,
-                             const char *subj, const char *subj_len_sym) {
+                             const char *subj, const char *subj_len) {
     char saved[LBUF];
     int uid = next_uid();
     snprintf(saved, LBUF, "nany%d_saved", uid);
@@ -889,7 +889,7 @@ static void emit_notany(const char *charset, int cslen,
     const char *clabel = lit_intern(charset, cslen);
 
     ALFC(alpha, "NOTANY α", "NOTANY_ALPHA %s, %d, %s, %s, %s, %s, %s, %s\n",
-      clabel, cslen, saved, cursor, subj, subj_len_sym, gamma, omega);
+      clabel, cslen, saved, cursor, subj, subj_len, gamma, omega);
     ALFC(beta, "NOTANY β", "NOTANY_BETA  %s, %s, %s\n", saved, cursor, omega);
 }
 
@@ -901,7 +901,7 @@ static void emit_span(const char *charset, int cslen,
                            const char *alpha, const char *beta,
                            const char *gamma, const char *omega,
                            const char *cursor,
-                           const char *subj, const char *subj_len_sym) {
+                           const char *subj, const char *subj_len) {
     char saved[LBUF];
     int uid = next_uid();
     snprintf(saved, LBUF, "span%d_saved", uid);
@@ -909,7 +909,7 @@ static void emit_span(const char *charset, int cslen,
     const char *clabel = lit_intern(charset, cslen);
 
     ALFC(alpha, "SPAN α", "SPAN_ALPHA  %s, %d, %s, %s, %s, %s, %s, %s\n",
-      clabel, cslen, saved, cursor, subj, subj_len_sym, gamma, omega);
+      clabel, cslen, saved, cursor, subj, subj_len, gamma, omega);
     ALFC(beta, "SPAN β", "SPAN_BETA   %s, %s, %s\n", saved, cursor, omega);
 }
 
@@ -917,7 +917,7 @@ static void emit_break(const char *charset, int cslen,
                             const char *alpha, const char *beta,
                             const char *gamma, const char *omega,
                             const char *cursor,
-                            const char *subj, const char *subj_len_sym) {
+                            const char *subj, const char *subj_len) {
     char saved[LBUF];
     int uid = next_uid();
     snprintf(saved, LBUF, "brk%d_saved", uid);
@@ -925,7 +925,7 @@ static void emit_break(const char *charset, int cslen,
     const char *clabel = lit_intern(charset, cslen);
 
     ALFC(alpha, "BREAK α", "BREAK_ALPHA %s, %d, %s, %s, %s, %s, %s, %s\n",
-      clabel, cslen, saved, cursor, subj, subj_len_sym, gamma, omega);
+      clabel, cslen, saved, cursor, subj, subj_len, gamma, omega);
     ALFC(beta, "BREAK β", "BREAK_BETA  %s, %s, %s\n", saved, cursor, omega);
 }
 
@@ -937,12 +937,12 @@ static void emit_span_var(const char *varlab,
                                const char *alpha, const char *beta,
                                const char *gamma, const char *omega,
                                const char *cursor,
-                               const char *subj, const char *subj_len_sym) {
+                               const char *subj, const char *subj_len) {
     char saved[LBUF];
     snprintf(saved, LBUF, "span%d_saved", next_uid());
     var_register(saved);
     ALFC(alpha, "SPAN(var) α", "SPAN_ALPHA_VAR %s, %s, %s, %s, %s, %s, %s\n",
-         varlab, saved, cursor, subj, subj_len_sym, gamma, omega);
+         varlab, saved, cursor, subj, subj_len, gamma, omega);
     ALFC(beta,  "SPAN(var) β", "SPAN_BETA_VAR  %s, %s, %s\n", saved, cursor, omega);
 }
 
@@ -950,12 +950,12 @@ static void emit_break_var(const char *varlab,
                                 const char *alpha, const char *beta,
                                 const char *gamma, const char *omega,
                                 const char *cursor,
-                                const char *subj, const char *subj_len_sym) {
+                                const char *subj, const char *subj_len) {
     char saved[LBUF];
     snprintf(saved, LBUF, "brk%d_saved", next_uid());
     var_register(saved);
     ALFC(alpha, "BREAK(var) α", "BREAK_ALPHA_VAR %s, %s, %s, %s, %s, %s, %s\n",
-         varlab, saved, cursor, subj, subj_len_sym, gamma, omega);
+         varlab, saved, cursor, subj, subj_len, gamma, omega);
     ALFC(beta,  "BREAK(var) β", "BREAK_BETA_VAR  %s, %s, %s\n", saved, cursor, omega);
 }
 
@@ -963,12 +963,12 @@ static void emit_breakx_var(const char *varlab,
                                  const char *alpha, const char *beta,
                                  const char *gamma, const char *omega,
                                  const char *cursor,
-                                 const char *subj, const char *subj_len_sym) {
+                                 const char *subj, const char *subj_len) {
     char saved[LBUF];
     snprintf(saved, LBUF, "brkx%d_saved", next_uid());
     var_register(saved);
     ALFC(alpha, "BREAKX(var) α", "BREAKX_ALPHA_VAR %s, %s, %s, %s, %s, %s, %s\n",
-         varlab, saved, cursor, subj, subj_len_sym, gamma, omega);
+         varlab, saved, cursor, subj, subj_len, gamma, omega);
     ALFC(beta,  "BREAKX(var) β", "BREAKX_BETA_VAR  %s, %s, %s\n", saved, cursor, omega);
 }
 
@@ -976,13 +976,13 @@ static void emit_breakx_lit(const char *charset, int cslen,
                                  const char *alpha, const char *beta,
                                  const char *gamma, const char *omega,
                                  const char *cursor,
-                                 const char *subj, const char *subj_len_sym) {
+                                 const char *subj, const char *subj_len) {
     char saved[LBUF];
     snprintf(saved, LBUF, "brkx%d_saved", next_uid());
     var_register(saved);
     const char *clabel = lit_intern(charset, cslen);
     ALFC(alpha, "BREAKX(lit) α", "BREAKX_ALPHA_LIT %s, %s, %s, %s, %s, %s, %s\n",
-         clabel, saved, cursor, subj, subj_len_sym, gamma, omega);
+         clabel, saved, cursor, subj, subj_len, gamma, omega);
     ALFC(beta,  "BREAKX(lit) β", "BREAKX_BETA_LIT  %s, %s, %s\n", saved, cursor, omega);
 }
 
@@ -990,12 +990,12 @@ static void emit_any_var(const char *varlab,
                               const char *alpha, const char *beta,
                               const char *gamma, const char *omega,
                               const char *cursor,
-                              const char *subj, const char *subj_len_sym) {
+                              const char *subj, const char *subj_len) {
     char saved[LBUF];
     snprintf(saved, LBUF, "any%d_saved", next_uid());
     var_register(saved);
     ALFC(alpha, "ANY(var) α", "ANY_ALPHA_VAR   %s, %s, %s, %s, %s, %s, %s\n",
-         varlab, saved, cursor, subj, subj_len_sym, gamma, omega);
+         varlab, saved, cursor, subj, subj_len, gamma, omega);
     ALFC(beta,  "ANY(var) β", "ANY_BETA_VAR    %s, %s, %s\n", saved, cursor, omega);
 }
 
@@ -1003,12 +1003,12 @@ static void emit_notany_var(const char *varlab,
                                  const char *alpha, const char *beta,
                                  const char *gamma, const char *omega,
                                  const char *cursor,
-                                 const char *subj, const char *subj_len_sym) {
+                                 const char *subj, const char *subj_len) {
     char saved[LBUF];
     snprintf(saved, LBUF, "nany%d_saved", next_uid());
     var_register(saved);
     ALFC(alpha, "NOTANY(var) α", "NOTANY_ALPHA_VAR %s, %s, %s, %s, %s, %s, %s\n",
-         varlab, saved, cursor, subj, subj_len_sym, gamma, omega);
+         varlab, saved, cursor, subj, subj_len, gamma, omega);
     ALFC(beta,  "NOTANY(var) β", "NOTANY_BETA_VAR  %s, %s, %s\n", saved, cursor, omega);
 }
 
@@ -1020,13 +1020,13 @@ static void emit_len(long n,
                           const char *alpha, const char *beta,
                           const char *gamma, const char *omega,
                           const char *cursor,
-                          const char *subj_len_sym) {
+                          const char *subj_len) {
     char saved[LBUF];
     int uid = next_uid();
     snprintf(saved, LBUF, "len%d_saved", uid);
     var_register(saved);
 
-    ALFC(alpha, "LEN(%ld)", "LEN_ALPHA   %ld, %s, %s, %s, %s, %s\n", n, saved, cursor, subj_len_sym, gamma, omega);
+    ALFC(alpha, "LEN(%ld)", "LEN_ALPHA   %ld, %s, %s, %s, %s, %s\n", n, saved, cursor, subj_len, gamma, omega);
     ALFC(beta, "LEN β", "LEN_BETA    %s, %s, %s\n", saved, cursor, omega);
 }
 
@@ -1055,13 +1055,13 @@ static void emit_rtab(long n,
                            const char *alpha, const char *beta,
                            const char *gamma, const char *omega,
                            const char *cursor,
-                           const char *subj_len_sym) {
+                           const char *subj_len) {
     char saved[LBUF];
     int uid = next_uid();
     snprintf(saved, LBUF, "rtab%d_saved", uid);
     var_register(saved);
 
-    ALFC(alpha, "RTAB(%ld)", "RTAB_ALPHA  %ld, %s, %s, %s, %s, %s\n", n, saved, cursor, subj_len_sym, gamma, omega);
+    ALFC(alpha, "RTAB(%ld)", "RTAB_ALPHA  %ld, %s, %s, %s, %s, %s\n", n, saved, cursor, subj_len, gamma, omega);
     ALFC(beta, "RTAB β", "RTAB_BETA   %s, %s, %s\n", saved, cursor, omega);
 }
 
@@ -1072,13 +1072,13 @@ static void emit_rtab(long n,
 static void emit_rem(const char *alpha, const char *beta,
                           const char *gamma, const char *omega,
                           const char *cursor,
-                          const char *subj_len_sym) {
+                          const char *subj_len) {
     char saved[LBUF];
     int uid = next_uid();
     snprintf(saved, LBUF, "rem%d_saved", uid);
     var_register(saved);
 
-    ALFC(alpha, "REM", "REM_ALPHA   %s, %s, %s, %s\n", saved, cursor, subj_len_sym, gamma);
+    ALFC(alpha, "REM", "REM_ALPHA   %s, %s, %s, %s\n", saved, cursor, subj_len, gamma);
     ALFC(beta, "REM β", "REM_BETA    %s, %s, %s\n", saved, cursor, omega);
 }
 
@@ -1099,7 +1099,7 @@ static void emit_rem(const char *alpha, const char *beta,
 static void emit_arb(const char *alpha, const char *beta,
                           const char *gamma, const char *omega,
                           const char *cursor,
-                          const char *subj_len_sym) {
+                          const char *subj_len) {
     char arb_start[LBUF], arb_step[LBUF], chk[LBUF];
     int uid = next_uid();
     snprintf(arb_start, LBUF, "arb%d_start", uid);
@@ -1120,7 +1120,7 @@ static void emit_arb(const char *alpha, const char *beta,
     /* check start + step <= subj_len */
     A("    mov     rbx, [%s]\n", arb_start);
     A("    add     rbx, rax\n");
-    A("    cmp     rbx, [%s]\n", subj_len_sym);
+    A("    cmp     rbx, [%s]\n", subj_len);
     asmJg(omega);
     A("    mov     [%s], rbx\n", cursor);
     asmJ(gamma);
@@ -1151,7 +1151,7 @@ static void emit_imm(EXPR_t *child, const char *varname,
                              const char *alpha, const char *beta,
                              const char *gamma, const char *omega,
                              const char *cursor,
-                             const char *subj, const char *subj_len_sym,
+                             const char *subj, const char *subj_len,
                              int depth) {
     int uid = next_uid();
     char cα[LBUF], cβ[LBUF];
@@ -1202,7 +1202,7 @@ static void emit_imm(EXPR_t *child, const char *varname,
 
     /* Emit child subtree — child's γ goes to dol_gamma, child's ω to dol_omega */
     emit_pat_node(child, cα, cβ, dol_gamma, dol_omega,
-                  cursor, subj, subj_len_sym, depth + 1);
+                  cursor, subj, subj_len, depth + 1);
 
     /* dol_γ: compute span, copy to cap_buf, proceed to outer γ — one macro call */
     ALFC(dol_gamma, "DOL γ — capture span",
@@ -1221,7 +1221,7 @@ static void emit_pat_node(EXPR_t *pat,
                            const char *alpha, const char *beta,
                            const char *gamma, const char *omega,
                            const char *cursor,
-                           const char *subj, const char *subj_len_sym,
+                           const char *subj, const char *subj_len,
                            int depth) {
     if (!pat) return;
 
@@ -1229,14 +1229,14 @@ static void emit_pat_node(EXPR_t *pat,
     case E_QLIT:
         emit_lit(pat->sval, (int)strlen(pat->sval),
                      alpha, beta, gamma, omega,
-                     cursor, subj, subj_len_sym);
+                     cursor, subj, subj_len);
         break;
 
     case E_CONC: {
         int _nc = pat->nchildren;
         if (_nc == 0) break;
-        if (_nc == 1) { emit_pat_node(pat->children[0], alpha, beta, gamma, omega, cursor, subj, subj_len_sym, depth); break; }
-        if (_nc == 2) { emit_seq(pat->children[0], pat->children[1], alpha, beta, gamma, omega, cursor, subj, subj_len_sym, depth); break; }
+        if (_nc == 1) { emit_pat_node(pat->children[0], alpha, beta, gamma, omega, cursor, subj, subj_len, depth); break; }
+        if (_nc == 2) { emit_seq(pat->children[0], pat->children[1], alpha, beta, gamma, omega, cursor, subj, subj_len, depth); break; }
         /* >2: right-fold into heap-allocated binary nodes */
         EXPR_t **_nodes = malloc((size_t)(_nc - 1) * sizeof(EXPR_t *));
         EXPR_t **_kids  = malloc((size_t)(_nc - 1) * 2 * sizeof(EXPR_t *));
@@ -1251,7 +1251,7 @@ static void emit_pat_node(EXPR_t *pat,
             _nodes[_n]->nchildren = 2;
             _right = _nodes[_n];
         }
-        emit_pat_node(_right, alpha, beta, gamma, omega, cursor, subj, subj_len_sym, depth);
+        emit_pat_node(_right, alpha, beta, gamma, omega, cursor, subj, subj_len, depth);
         for (int _i = 0; _i < _nc - 1; _i++) free(_nodes[_i]);
         free(_nodes); free(_kids);
         break;
@@ -1260,8 +1260,8 @@ static void emit_pat_node(EXPR_t *pat,
     case E_OR: {
         int _nc = pat->nchildren;
         if (_nc == 0) break;
-        if (_nc == 1) { emit_pat_node(pat->children[0], alpha, beta, gamma, omega, cursor, subj, subj_len_sym, depth); break; }
-        if (_nc == 2) { emit_alt(pat->children[0], pat->children[1], alpha, beta, gamma, omega, cursor, subj, subj_len_sym, depth); break; }
+        if (_nc == 1) { emit_pat_node(pat->children[0], alpha, beta, gamma, omega, cursor, subj, subj_len, depth); break; }
+        if (_nc == 2) { emit_alt(pat->children[0], pat->children[1], alpha, beta, gamma, omega, cursor, subj, subj_len, depth); break; }
         /* >2: right-fold into heap-allocated binary nodes */
         EXPR_t **_nodes = malloc((size_t)(_nc - 1) * sizeof(EXPR_t *));
         EXPR_t **_kids  = malloc((size_t)(_nc - 1) * 2 * sizeof(EXPR_t *));
@@ -1276,7 +1276,7 @@ static void emit_pat_node(EXPR_t *pat,
             _nodes[_n]->nchildren = 2;
             _right = _nodes[_n];
         }
-        emit_pat_node(_right, alpha, beta, gamma, omega, cursor, subj, subj_len_sym, depth);
+        emit_pat_node(_right, alpha, beta, gamma, omega, cursor, subj, subj_len, depth);
         for (int _i = 0; _i < _nc - 1; _i++) free(_nodes[_i]);
         free(_nodes); free(_kids);
         break;
@@ -1288,11 +1288,11 @@ static void emit_pat_node(EXPR_t *pat,
          * parens. Intercept them before the named-pattern lookup. */
         const char *varname = pat->sval ? pat->sval : "";
         if (strcasecmp(varname, "REM") == 0) {
-            emit_rem(alpha, beta, gamma, omega, cursor, subj_len_sym);
+            emit_rem(alpha, beta, gamma, omega, cursor, subj_len);
             break;
         }
         if (strcasecmp(varname, "ARB") == 0) {
-            emit_arb(alpha, beta, gamma, omega, cursor, subj_len_sym);
+            emit_arb(alpha, beta, gamma, omega, cursor, subj_len);
             break;
         }
         if (strcasecmp(varname, "FAIL") == 0) {
@@ -1312,7 +1312,7 @@ static void emit_pat_node(EXPR_t *pat,
                 A("\n; E_VART *%s → inline LIT '%s'\n", varname, sv->sval);
                 emit_lit(sv->sval, (int)strlen(sv->sval),
                              alpha, beta, gamma, omega,
-                             cursor, subj, subj_len_sym);
+                             cursor, subj, subj_len);
             } else {
                 /* Dynamic string variable: match subject against runtime value
                  * of the variable using stmt_match_var.  Same β/restore as LIT. */
@@ -1337,7 +1337,7 @@ static void emit_pat_node(EXPR_t *pat,
                               ? pat->children[1]->sval : "cap";
         emit_imm(pat->children[0], varname,
                         alpha, beta, gamma, omega,
-                        cursor, subj, subj_len_sym, depth);
+                        cursor, subj, subj_len, depth);
         break;
     }
 
@@ -1347,7 +1347,7 @@ static void emit_pat_node(EXPR_t *pat,
                               ? pat->children[1]->sval : "cap";
         emit_imm(pat->children[0], varname,
                         alpha, beta, gamma, omega,
-                        cursor, subj, subj_len_sym, depth);
+                        cursor, subj, subj_len, depth);
         break;
     }
 
@@ -1371,7 +1371,7 @@ static void emit_pat_node(EXPR_t *pat,
                     A("\n; E_INDR *%s → inline LIT '%s'\n", varname, sv->sval);
                     emit_lit(sv->sval, (int)strlen(sv->sval),
                                  alpha, beta, gamma, omega,
-                                 cursor, subj, subj_len_sym);
+                                 cursor, subj, subj_len);
                 } else {
                     A("\n; E_INDR unresolved: %s → ω\n", varname);
                     asmL(alpha); ALF(beta, "jmp     %s\n", omega);
@@ -1398,64 +1398,64 @@ static void emit_pat_node(EXPR_t *pat,
             EXPR_t *arg = pat->children[0];
             if (arg->kind == E_VART && arg->sval) {
                 const char *varlab = str_intern(arg->sval);
-                emit_rpos_var(varlab, alpha, beta, gamma, omega, cursor, subj_len_sym);
+                emit_rpos_var(varlab, alpha, beta, gamma, omega, cursor, subj_len);
             } else {
                 long n = (arg->kind == E_ILIT) ? arg->ival : 0;
-                emit_rpos(n, alpha, beta, gamma, omega, cursor, subj_len_sym);
+                emit_rpos(n, alpha, beta, gamma, omega, cursor, subj_len);
             }
         } else if (pat->sval && strcasecmp(pat->sval, "ARBNO") == 0 && pat->nchildren == 1) {
             emit_arbno(pat->children[0],
                            alpha, beta, gamma, omega,
-                           cursor, subj, subj_len_sym, depth);
+                           cursor, subj, subj_len, depth);
         } else if (pat->sval && strcasecmp(pat->sval, "ANY") == 0 && pat->nchildren == 1) {
             EXPR_t *arg = pat->children[0];
             if (arg->kind == E_VART && arg->sval) {
-                emit_any_var(str_intern(arg->sval), alpha, beta, gamma, omega, cursor, subj, subj_len_sym);
+                emit_any_var(str_intern(arg->sval), alpha, beta, gamma, omega, cursor, subj, subj_len);
             } else {
                 const char *cs = (arg->kind == E_QLIT && arg->sval) ? arg->sval : "";
                 int cslen = (arg->kind == E_QLIT && arg->sval) ? (int)strlen(arg->sval) : 0;
-                emit_any(cs, cslen, alpha, beta, gamma, omega, cursor, subj, subj_len_sym);
+                emit_any(cs, cslen, alpha, beta, gamma, omega, cursor, subj, subj_len);
             }
         } else if (pat->sval && strcasecmp(pat->sval, "NOTANY") == 0 && pat->nchildren == 1) {
             EXPR_t *arg = pat->children[0];
             if (arg->kind == E_VART && arg->sval) {
-                emit_notany_var(str_intern(arg->sval), alpha, beta, gamma, omega, cursor, subj, subj_len_sym);
+                emit_notany_var(str_intern(arg->sval), alpha, beta, gamma, omega, cursor, subj, subj_len);
             } else {
                 const char *cs = (arg->kind == E_QLIT && arg->sval) ? arg->sval : "";
                 int cslen = (arg->kind == E_QLIT && arg->sval) ? (int)strlen(arg->sval) : 0;
-                emit_notany(cs, cslen, alpha, beta, gamma, omega, cursor, subj, subj_len_sym);
+                emit_notany(cs, cslen, alpha, beta, gamma, omega, cursor, subj, subj_len);
             }
         } else if (pat->sval && strcasecmp(pat->sval, "SPAN") == 0 && pat->nchildren == 1) {
             EXPR_t *arg = pat->children[0];
             if (arg->kind == E_VART && arg->sval) {
-                emit_span_var(str_intern(arg->sval), alpha, beta, gamma, omega, cursor, subj, subj_len_sym);
+                emit_span_var(str_intern(arg->sval), alpha, beta, gamma, omega, cursor, subj, subj_len);
             } else {
                 const char *cs = (arg->kind == E_QLIT && arg->sval) ? arg->sval : "";
                 int cslen = (arg->kind == E_QLIT && arg->sval) ? (int)strlen(arg->sval) : 0;
-                emit_span(cs, cslen, alpha, beta, gamma, omega, cursor, subj, subj_len_sym);
+                emit_span(cs, cslen, alpha, beta, gamma, omega, cursor, subj, subj_len);
             }
         } else if (pat->sval && strcasecmp(pat->sval, "BREAK") == 0 && pat->nchildren == 1) {
             EXPR_t *arg = pat->children[0];
             if (arg->kind == E_VART && arg->sval) {
-                emit_break_var(str_intern(arg->sval), alpha, beta, gamma, omega, cursor, subj, subj_len_sym);
+                emit_break_var(str_intern(arg->sval), alpha, beta, gamma, omega, cursor, subj, subj_len);
             } else {
                 const char *cs = (arg->kind == E_QLIT && arg->sval) ? arg->sval : "";
                 int cslen = (arg->kind == E_QLIT && arg->sval) ? (int)strlen(arg->sval) : 0;
-                emit_break(cs, cslen, alpha, beta, gamma, omega, cursor, subj, subj_len_sym);
+                emit_break(cs, cslen, alpha, beta, gamma, omega, cursor, subj, subj_len);
             }
         } else if (pat->sval && strcasecmp(pat->sval, "BREAKX") == 0 && pat->nchildren == 1) {
             EXPR_t *arg = pat->children[0];
             if (arg->kind == E_VART && arg->sval) {
-                emit_breakx_var(str_intern(arg->sval), alpha, beta, gamma, omega, cursor, subj, subj_len_sym);
+                emit_breakx_var(str_intern(arg->sval), alpha, beta, gamma, omega, cursor, subj, subj_len);
             } else {
                 const char *cs = (arg->kind == E_QLIT && arg->sval) ? arg->sval : "";
                 int cslen = (arg->kind == E_QLIT && arg->sval) ? (int)strlen(arg->sval) : 0;
-                emit_breakx_lit(cs, cslen, alpha, beta, gamma, omega, cursor, subj, subj_len_sym);
+                emit_breakx_lit(cs, cslen, alpha, beta, gamma, omega, cursor, subj, subj_len);
             }
         } else if (pat->sval && strcasecmp(pat->sval, "LEN") == 0 && pat->nchildren == 1) {
             EXPR_t *arg = pat->children[0];
             long n = (arg->kind == E_ILIT) ? arg->ival : 0;
-            emit_len(n, alpha, beta, gamma, omega, cursor, subj_len_sym);
+            emit_len(n, alpha, beta, gamma, omega, cursor, subj_len);
         } else if (pat->sval && strcasecmp(pat->sval, "TAB") == 0 && pat->nchildren == 1) {
             EXPR_t *arg = pat->children[0];
             long n = (arg->kind == E_ILIT) ? arg->ival : 0;
@@ -1463,11 +1463,11 @@ static void emit_pat_node(EXPR_t *pat,
         } else if (pat->sval && strcasecmp(pat->sval, "RTAB") == 0 && pat->nchildren == 1) {
             EXPR_t *arg = pat->children[0];
             long n = (arg->kind == E_ILIT) ? arg->ival : 0;
-            emit_rtab(n, alpha, beta, gamma, omega, cursor, subj_len_sym);
+            emit_rtab(n, alpha, beta, gamma, omega, cursor, subj_len);
         } else if (pat->sval && strcasecmp(pat->sval, "REM") == 0 && pat->nchildren == 0) {
-            emit_rem(alpha, beta, gamma, omega, cursor, subj_len_sym);
+            emit_rem(alpha, beta, gamma, omega, cursor, subj_len);
         } else if (pat->sval && strcasecmp(pat->sval, "ARB") == 0 && pat->nchildren == 0) {
-            emit_arb(alpha, beta, gamma, omega, cursor, subj_len_sym);
+            emit_arb(alpha, beta, gamma, omega, cursor, subj_len);
         } else if (pat->sval && strcasecmp(pat->sval, "FAIL") == 0) {
             /* FAIL always fails — alpha and beta both jump to omega */
             A("\n; FAIL  α=%s\n", alpha);
@@ -1810,7 +1810,7 @@ static void emit_named_ref(const NamedPat *np,
 static void emit_named_def(const NamedPat *np,
                                 const char *cursor,
                                 const char *subj,
-                                const char *subj_len_sym) {
+                                const char *subj_len) {
     /* User-defined function (Snocone procedure): is_fn=1
      * α port: save old param var values → param_save slots,
      *         load arg descriptors from call-site stack → param vars,
@@ -1919,7 +1919,7 @@ static void emit_named_def(const NamedPat *np,
     emit_pat_node(np->pat,
                   np->alpha_lbl, np->beta_lbl,
                   inner_gamma, inner_omega,
-                  cursor, subj, subj_len_sym,
+                  cursor, subj, subj_len,
                   1);
 
     /* Minor separator before γ/ω trampolines */
@@ -2149,7 +2149,7 @@ static void emit_pattern(STMT_t *stmt) {
     /* Fixed names */
     const char *cursor_sym   = "cursor";
     const char *subj_sym     = "subject_data";
-    const char *subj_len_sym = "subject_len_val";
+    const char *subj_len_label = "subject_len_val";
 
     var_register(cursor_sym);
 
@@ -2179,12 +2179,12 @@ static void emit_pattern(STMT_t *stmt) {
     emit_pat_node(stmt->pattern,
                   "root_alpha", "root_beta",
                   "match_success", "match_fail",
-                  cursor_sym, subj_sym, subj_len_sym,
+                  cursor_sym, subj_sym, subj_len_label,
                   0);
 
     /* Emit named pattern bodies */
     for (int i = 0; i < named_pat_count; i++)
-        emit_named_def(&named_pats[i], cursor_sym, subj_sym, subj_len_sym);
+        emit_named_def(&named_pats[i], cursor_sym, subj_sym, subj_len_label);
 
     fclose(code_f);
 
@@ -2221,7 +2221,7 @@ static void emit_pattern(STMT_t *stmt) {
 
     /* .bss */
     A("\nsection .bss\n");
-    A("%-24s resq 1\n", subj_len_sym);
+    A("%-24s resq 1\n", subj_len_label);
     for (int i = 0; i < nvar; i++)
         A("%-24s resq 1\n", vars[i]);
     extra_bss_emit();
@@ -2230,7 +2230,7 @@ static void emit_pattern(STMT_t *stmt) {
     A("\nsection .text\n");
     A("_start:\n");
     A("    ; init\n");
-    A("    mov     qword [%s], %d\n", subj_len_sym, subj_len);
+    A("    mov     qword [%s], %d\n", subj_len_label, subj_len);
     A("    mov     qword [%s], 0\n", cursor_sym);
     A("    jmp     root_alpha\n");
 
@@ -2294,8 +2294,8 @@ static void scan_capture_vars(STMT_t *stmt) {
  * No open_memstream / two-pass needed.
  * ----------------------------------------------------------------------- */
 
-static void emit_stmt(STMT_t *stmt) {
-    if (!stmt || !stmt->pattern) return;
+static void emit_stmt(STMT_t *s) {
+    if (!s || !s->pattern) return;
 
     var_reset();
     lit_reset();
@@ -2304,7 +2304,7 @@ static void emit_stmt(STMT_t *stmt) {
 
     const char *cursor_sym   = "cursor";
     const char *subj_sym     = "subject_data";
-    const char *subj_len_sym = "subject_len_val";
+    const char *subj_len_label = "subject_len_val";
 
     /* Named-pattern ret_ slots always known up front */
     for (int i = 0; i < named_pat_count; i++) {
@@ -2323,12 +2323,12 @@ static void emit_stmt(STMT_t *stmt) {
 
     int uid_before_dry = uid_ctr;   /* save uid counter state */
 
-    emit_pat_node(stmt->pattern,
+    emit_pat_node(s->pattern,
                   "root_alpha", "root_beta",
                   "match_success", "match_fail",
-                  cursor_sym, subj_sym, subj_len_sym, 0);
+                  cursor_sym, subj_sym, subj_len_label, 0);
     for (int i = 0; i < named_pat_count; i++)
-        emit_named_def(&named_pats[i], cursor_sym, subj_sym, subj_len_sym);
+        emit_named_def(&named_pats[i], cursor_sym, subj_sym, subj_len_label);
 
     fclose(devnull);
     out = real_out;
@@ -2384,13 +2384,13 @@ static void emit_stmt(STMT_t *stmt) {
      *         so all generated labels are identical to the collected names  */
     A("\nsection .text\n");
 
-    emit_pat_node(stmt->pattern,
+    emit_pat_node(s->pattern,
                   "root_alpha", "root_beta",
                   "match_success", "match_fail",
-                  cursor_sym, subj_sym, subj_len_sym, 0);
+                  cursor_sym, subj_sym, subj_len_label, 0);
 
     for (int i = 0; i < named_pat_count; i++)
-        emit_named_def(&named_pats[i], cursor_sym, subj_sym, subj_len_sym);
+        emit_named_def(&named_pats[i], cursor_sym, subj_sym, subj_len_label);
 }
 
 /* -----------------------------------------------------------------------
