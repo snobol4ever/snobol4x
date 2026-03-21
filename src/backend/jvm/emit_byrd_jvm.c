@@ -2257,10 +2257,20 @@ static void emit_stmt(STMT_t *s, int stmt_uid) {
                         JI("goto", onfail);
                     }
                     J("%s:\n", onok);
-                    /* stack: non-null String — println it */
+                    /* stack: non-null String — dup so monitor_write can use it after println */
+                    JI("dup", "");
                     JI("getstatic", desc);
                     JI("swap", "");
                     JI("invokevirtual", "java/io/PrintStream/println(Ljava/lang/String;)V");
+                    /* stack now: [val_dup] — send to monitor */
+                    {
+                        char mondesc[512];
+                        snprintf(mondesc, sizeof mondesc,
+                            "%s/sno_monitor_write(Ljava/lang/String;Ljava/lang/String;)V", classname);
+                        J("    ldc \"OUTPUT\"\n");
+                        J("    swap\n");
+                        JI("invokestatic", mondesc);
+                    }
                     /* :S/:uncond goto fires on success (after println) */
                     if (s->go && s->go->uncond && s->go->uncond[0]) {
                         emit_goto(s->go->uncond);

@@ -1216,8 +1216,16 @@ static void emit_stmt(STMT_t *s, const char *next_lbl) {
         cur_stmt_fail_label[0] = '\0';  /* reset after expr */
 
         if (is_out) {
-            /* OUTPUT = expr → Console.WriteLine */
+            /* OUTPUT = expr → Console.WriteLine + monitor
+             * Stack on entry: [val]
+             * dup → [val, val]; WriteLine pops one → [val]
+             * stloc V_20; ldstr "OUTPUT"; ldloc V_20 → net_monitor_write("OUTPUT", val) */
+            N("    dup\n");
             N("    call       void [mscorlib]System.Console::WriteLine(string)\n");
+            N("    stloc.s    V_20\n");
+            N("    ldstr      \"OUTPUT\"\n");
+            N("    ldloc.s    V_20\n");
+            N("    call       void %s::net_monitor_write(string, string)\n", classname);
         } else if (s->subject->kind == E_KW) {
             /* &KEYWORD = expr — write to known keyword field */
             const char *kw = s->subject->sval ? s->subject->sval : "";
@@ -1228,10 +1236,17 @@ static void emit_stmt(STMT_t *s, const char *next_lbl) {
             else
                 N("    pop\n");  /* unknown keyword: discard */
         } else {
-            /* VAR = expr → stsfld */
+            /* VAR = expr → stsfld + monitor */
             char fn[256];
             field_name(fn, sizeof fn, s->subject->sval);
+            /* dup: stsfld pops one copy, monitor gets the other */
+            N("    dup\n");
             N("    stsfld     string %s::%s\n", classname, fn);
+            /* stack: [val] — now call net_monitor_write(name, val) */
+            N("    stloc.s    V_20\n");   /* stash val; stack empty */
+            N("    ldstr      \"%s\"\n", s->subject->sval);  /* [name] */
+            N("    ldloc.s    V_20\n");                       /* [name, val] */
+            N("    call       void %s::net_monitor_write(string, string)\n", classname);
         }
 
         /* success: set flag=1 */
@@ -1548,13 +1563,14 @@ static void emit_header(Program *prog) {
     N("  .field static string kw_stno\n");
     N("  .field static string kw_anchor\n");
     N("  .field static class [mscorlib]System.Collections.Generic.Dictionary`2<string,string> sno_vars\n");
+    N("  .field static class [mscorlib]System.IO.StreamWriter sno_monitor_out\n");
     N("\n");
 
     /* Static initialiser: set all variables to "" */
     {
         N("  .method static void .cctor() cil managed\n");
         N("  {\n");
-        N("    .maxstack 2\n");
+        N("    .maxstack 4\n");
         for (int i = 0; i < nvar; i++) {
             char fn[256];
             field_name(fn, sizeof fn, vars[i]);
@@ -1567,6 +1583,23 @@ static void emit_header(Program *prog) {
         N("    stsfld     string %s::kw_anchor\n", classname);
         N("    newobj     instance void class [mscorlib]System.Collections.Generic.Dictionary`2<string,string>::.ctor()\n");
         N("    stsfld     class [mscorlib]System.Collections.Generic.Dictionary`2<string,string> %s::sno_vars\n", classname);
+        /* open MONITOR_FIFO if set */
+        N("    ldstr      \"MONITOR_FIFO\"\n");
+        N("    call       string [mscorlib]System.Environment::GetEnvironmentVariable(string)\n");
+        N("    dup\n");
+        N("    brfalse    Ncctor_no_mon\n");
+        N("    ldc.i4.1\n");   /* append=true */
+        N("    newobj     instance void [mscorlib]System.IO.StreamWriter::.ctor(string, bool)\n");
+        N("    dup\n");
+        N("    ldc.i4.1\n");
+        N("    callvirt   instance void [mscorlib]System.IO.TextWriter::set_AutoFlush(bool)\n");
+        N("    stsfld     class [mscorlib]System.IO.StreamWriter %s::sno_monitor_out\n", classname);
+        N("    br         Ncctor_mon_done\n");
+        N("  Ncctor_no_mon:\n");
+        N("    pop\n");
+        N("    ldnull\n");
+        N("    stsfld     class [mscorlib]System.IO.StreamWriter %s::sno_monitor_out\n", classname);
+        N("  Ncctor_mon_done:\n");
         N("    ret\n");
         N("  }\n");
         N("\n");
@@ -1617,6 +1650,41 @@ static void emit_header(Program *prog) {
     N("  Nis_done:\n");
     N("    ret\n");
     N("  }\n\n");
+
+    /* net_monitor_write(string name, string val) -> void
+     * Writes  VAR name "val"\n  to sno_monitor_out if non-null. */
+    N("  .method static void net_monitor_write(string name, string val) cil managed\n");
+    N("  {\n");
+    N("    .maxstack 3\n");
+    N("    .locals init (class [mscorlib]System.IO.StreamWriter V_mon)\n");
+    N("    ldsfld     class [mscorlib]System.IO.StreamWriter %s::sno_monitor_out\n", classname);
+    N("    stloc      V_mon\n");
+    N("    ldloc      V_mon\n");
+    N("    brfalse    Nmw_done\n");
+    /* Write "VAR " */
+    N("    ldloc      V_mon\n");
+    N("    ldstr      \"VAR \"\n");
+    N("    callvirt   instance void [mscorlib]System.IO.TextWriter::Write(string)\n");
+    /* Write name */
+    N("    ldloc      V_mon\n");
+    N("    ldarg.0\n");
+    N("    callvirt   instance void [mscorlib]System.IO.TextWriter::Write(string)\n");
+    /* Write " \"" */
+    N("    ldloc      V_mon\n");
+    N("    ldstr      \" \\\"\"\n");
+    N("    callvirt   instance void [mscorlib]System.IO.TextWriter::Write(string)\n");
+    /* Write val */
+    N("    ldloc      V_mon\n");
+    N("    ldarg.1\n");
+    N("    callvirt   instance void [mscorlib]System.IO.TextWriter::Write(string)\n");
+    /* WriteLine "\"" (adds newline) */
+    N("    ldloc      V_mon\n");
+    N("    ldstr      \"\\\"\"\n");
+    N("    callvirt   instance void [mscorlib]System.IO.TextWriter::WriteLine(string)\n");
+    N("  Nmw_done:\n");
+    N("    ret\n");
+    N("  }\n\n");
+
     (void)prog;
 }
 

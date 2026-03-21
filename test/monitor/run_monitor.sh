@@ -19,21 +19,24 @@ SNO_BASE=$(basename "$SNO" .sno)
 # Step 1: inject traces
 python3 "$MDIR/inject_traces.py" "$SNO" "$CONF" > "$TMP/instr.sno"
 
-# Step 2: FIFOs + collectors
+# Step 2: FIFOs + collectors (timeout 30s each to avoid hang on dead participant)
 for p in csn spl asm jvm net; do
     mkfifo "$TMP/$p.fifo"
-    cat "$TMP/$p.fifo" > "$TMP/$p.trace" &
+    timeout 30 cat "$TMP/$p.fifo" > "$TMP/$p.trace" &
 done
+
+# Disable pipefail around participant launches — segfaults must not kill the harness
+set +e
 
 # Step 3: CSNOBOL4
 MONITOR_FIFO="$TMP/csn.fifo" MONITOR_SO="$SO" \
     snobol4 -f -P256k -I"$INC" "$TMP/instr.sno" \
-    < /dev/null > "$TMP/csn.out" 2>"$TMP/csn.stderr" || true
+    < /dev/null > "$TMP/csn.out" 2>"$TMP/csn.stderr"
 
 # Step 4: SPITBOL (uses monitor_ipc_spitbol.so — SPITBOL scblk ABI, not CSNOBOL4)
 SNOLIB="$X64_DIR" MONITOR_FIFO="$TMP/spl.fifo" MONITOR_SO="$X64_DIR/monitor_ipc_spitbol.so" \
     "$X64_DIR/bootsbl" "$TMP/instr.sno" \
-    < /dev/null > "$TMP/spl.out" 2>"$TMP/spl.stderr" || true
+    < /dev/null > "$TMP/spl.out" 2>"$TMP/spl.stderr"
 
 # Step 5: ASM
 gcc -O0 -g -c "$RT/asm/snobol4_stmt_rt.c"    -I"$RT/snobol4" -I"$RT" -I"$DIR/src/frontend/snobol4" -w -o "$TMP/stmt_rt.o"
@@ -49,7 +52,7 @@ MONITOR_FIFO="$TMP/asm.fifo" \
     "$TMP/prog_asm" < /dev/null > "$TMP/asm.out" 2>"$TMP/asm.stderr" || true
 
 # Step 6: NET
-SNO2C_NET="${SNO2C_NET:-/home/claude/sno2c_net}"
+SNO2C_NET="${SNO2C_NET:-$DIR/sno2c}"
 NET_CACHE="${NET_CACHE:-/tmp/snobol4x_net_cache}"
 mkdir -p "$NET_CACHE"
 for dll in snobol4lib.dll snobol4run.dll; do
@@ -67,7 +70,7 @@ MONITOR_FIFO="$TMP/net.fifo" \
     mono "$exe" < /dev/null > "$TMP/net.out" 2>"$TMP/net.stderr" || true
 
 # Step 7: JVM
-SNO2C_JVM="${SNO2C_JVM:-/home/claude/sno2c_jvm}"
+SNO2C_JVM="${SNO2C_JVM:-$DIR/sno2c}"
 JASMIN="${JASMIN:-$DIR/src/backend/jvm/jasmin.jar}"
 JVM_CACHE="${JVM_CACHE:-/tmp/snobol4x_jvm_cache}"
 mkdir -p "$JVM_CACHE"
