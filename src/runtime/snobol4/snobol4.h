@@ -259,6 +259,7 @@ int    STACK_DEPTH_fn(void);
 typedef DESCR_t (*FNCPTR_t)(DESCR_t *args, int nargs);
 
 void    DEFINE_fn(const char *spec, FNCPTR_t fn);  /* DEFINE_fn('name(a,b)local1,local2') */
+void    register_fn_alias(const char *newname, const char *oldname); /* OPSYN alias */
 DESCR_t  APPLY_fn(const char *name, DESCR_t *args, int nargs);  /* APPLY(name,...) */
 int     FNCEX_fn(const char *name);
 

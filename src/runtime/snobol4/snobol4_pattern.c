@@ -1292,14 +1292,16 @@ DESCR_t EVAL_fn(DESCR_t expr) {
     return _ev_expr(&ctx);
 }
 
-/* opsyn — OPSYN(new, old, type) */
+/* opsyn — OPSYN(new, old, type)
+ * Register 'new' as an alias for the function named 'old'.
+ * type arg selects arity context (unary=1, binary=2, function=0) but
+ * runtime dispatch is name-based so we just copy the FNCBLK entry. */
 DESCR_t opsyn(DESCR_t newname, DESCR_t oldname, DESCR_t type) {
     (void)type;
-    /* Register new as an alias for old */
-    const char *nm = VARVAL_fn(newname);
+    const char *nm  = VARVAL_fn(newname);
     const char *old = VARVAL_fn(oldname);
-    /* For now just a no-op — full OPSYN is complex */
-    (void)nm; (void)old;
+    if (!nm || !old) return FAILDESCR;
+    register_fn_alias(nm, old);
     return NULVCL;
 }
 

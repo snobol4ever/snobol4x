@@ -3897,8 +3897,24 @@ static void emit_program(Program *prog) {
                     emit_jmp(tgt_f, next_lbl);
                 }
             } else {
-                /* expression-only or complex case: just evaluate and branch */
-                if (id_u >= 0) emit_jmp(tgt_u, next_lbl);
+                /* expression-only or complex case: just evaluate and branch.
+                 * Must use tgt_u (not id_u >= 0) — special gotos like FRETURN/RETURN/END
+                 * have id == -1 (not in label registry) but emit_jmp handles them correctly
+                 * via fn_NAME_gamma/omega when cur_fn != NULL.
+                 * Also handle S/F-only branches (no unconditional) for completeness. */
+                if (tgt_u) {
+                    emit_jmp(tgt_u, next_lbl);
+                } else {
+                    if (tgt_s || tgt_f) {
+                        /* No expression to evaluate — statement always succeeds (null subject).
+                         * Treat as success: take S branch, or fall to F/next. */
+                        emit_jmp(tgt_s ? tgt_s : NULL, next_lbl);
+                        if (tgt_f && (id_f >= 0 || is_special_goto(tgt_f))) {
+                            /* failure path unreachable here — null subject always succeeds */
+                            (void)tgt_f;
+                        }
+                    }
+                }
             }
             asmL(next_lbl);
             continue;

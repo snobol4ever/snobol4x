@@ -1625,6 +1625,48 @@ void DEFINE_fn(const char *spec, FNCPTR_t fn) {
     _func_buckets[h] = fe;
 }
 
+/* register_fn_alias — OPSYN support: make newname an alias for oldname.
+ * Copies the FNCBLK_t entry for oldname into a new entry for newname,
+ * so APPLY_fn(newname,...) dispatches identically to APPLY_fn(oldname,...).
+ * If oldname is not found, newname is registered as a no-op (NULVCL). */
+void register_fn_alias(const char *newname, const char *oldname) {
+    _func_init();
+    /* Find the old entry */
+    FNCBLK_t *old_entry = NULL;
+    unsigned ho = _func_hash(oldname);
+    for (FNCBLK_t *e = _func_buckets[ho]; e; e = e->next) {
+        if (strcasecmp(e->name, oldname) == 0) { old_entry = e; break; }
+    }
+    /* Build new entry */
+    FNCBLK_t *fe = GC_malloc(sizeof(FNCBLK_t));
+    fe->name    = GC_strdup(newname);
+    if (old_entry) {
+        fe->spec    = old_entry->spec;
+        fe->fn      = old_entry->fn;
+        fe->nparams = old_entry->nparams;
+        fe->params  = old_entry->params;
+        fe->nlocals = old_entry->nlocals;
+        fe->locals  = old_entry->locals;
+    } else {
+        fe->spec = GC_strdup(newname); fe->fn = NULL;
+        fe->nparams = 0; fe->params = NULL;
+        fe->nlocals = 0; fe->locals = NULL;
+    }
+    fe->next = NULL;
+    unsigned hn = _func_hash(newname);
+    /* Replace if already present */
+    for (FNCBLK_t *e = _func_buckets[hn]; e; e = e->next) {
+        if (strcasecmp(e->name, newname) == 0) {
+            e->spec = fe->spec; e->fn = fe->fn;
+            e->nparams = fe->nparams; e->params = fe->params;
+            e->nlocals = fe->nlocals; e->locals = fe->locals;
+            return;
+        }
+    }
+    fe->next = _func_buckets[hn];
+    _func_buckets[hn] = fe;
+}
+
 DESCR_t APPLY_fn(const char *name, DESCR_t *args, int nargs) {
     _func_init();
     if (!name) return NULVCL;
