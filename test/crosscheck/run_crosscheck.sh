@@ -4,7 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TINY="$(cd "$SCRIPT_DIR/../.." && pwd)"
-CORPUS="${CORPUS:-$(cd "$TINY/../snobol4corpus/crosscheck" && pwd)}"
+CORPUS="${CORPUS:-$(cd "$TINY/../../snobol4corpus/crosscheck" 2>/dev/null && pwd || echo /home/claude/snobol4corpus/crosscheck)}"
 SNO2C="$TINY/sno2c"
 RT="$TINY/src/runtime"
 SNO2C_INC="$TINY/src/frontend/snobol4"

@@ -150,8 +150,53 @@
 
   .method public static string sno_div(string a, string b) cil managed
   {
+    // SNOBOL4: integer / integer = integer (truncating toward zero)
+    // real / anything = real
+    .maxstack 4
+    .locals init (int64 V_0, int64 V_1, float64 V_2, float64 V_3, bool V_4, bool V_5)
+    // Try parsing a as int64
+    ldarg.0
+    ldloca.s V_0
+    call       bool [mscorlib]System.Int64::TryParse(string, int64&)
+    stloc.s V_4
+    ldarg.1
+    ldloca.s V_1
+    call       bool [mscorlib]System.Int64::TryParse(string, int64&)
+    stloc.s V_5
+    // Both integers?
+    ldloc.s V_4
+    ldloc.s V_5
+    and
+    brfalse    DIV_FLOAT
+    // Integer division — truncate toward zero
+    ldloc.0
+    ldloc.1
+    div
+    box        [mscorlib]System.Int64
+    callvirt   instance string object::ToString()
+    ret
+  DIV_FLOAT:
+    ldarg.0
+    call       float64 [snobol4lib]Snobol4Lib::sno_parse_dbl(string)
+    stloc.2
+    ldarg.1
+    call       float64 [snobol4lib]Snobol4Lib::sno_parse_dbl(string)
+    stloc.3
+    ldloc.2
+    ldloc.3
+    div
+    call       string [snobol4lib]Snobol4Lib::sno_fmt_dbl(float64)
+    ret
+  }
+
+  // -----------------------------------------------------------------------
+  // sno_pow - exponentiation (a ** b)
+  // SNOBOL4: integer ** integer = integer when result is whole, else real
+  // -----------------------------------------------------------------------
+  .method public static string sno_pow(string a, string b) cil managed
+  {
     .maxstack 3
-    .locals init (float64 V_0, float64 V_1)
+    .locals init (float64 V_0, float64 V_1, float64 V_2)
     ldarg.0
     call       float64 [snobol4lib]Snobol4Lib::sno_parse_dbl(string)
     stloc.0
@@ -160,7 +205,9 @@
     stloc.1
     ldloc.0
     ldloc.1
-    div
+    call       float64 [mscorlib]System.Math::Pow(float64, float64)
+    stloc.2
+    ldloc.2
     call       string [snobol4lib]Snobol4Lib::sno_fmt_dbl(float64)
     ret
   }
