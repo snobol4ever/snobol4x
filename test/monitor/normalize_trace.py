@@ -111,12 +111,19 @@ def parse_csn_line(line):
 # Skip all VAR lines before first STNO (init noise).
 # ---------------------------------------------------------------------------
 
-RE_ASM_VAR  = re.compile(r'^VAR\s+(\S+)\s+"(.*)"$')
+RE_ASM_VAR  = re.compile(r'^VAR\s+(\S+)\s+(?:"|\\u0022)(.*?)(?:"|\\u0022)$')
 RE_ASM_STNO = re.compile(r'^STNO\s+\d+$')
 
 def parse_asm_lines(lines):
-    """Parse ASM comm_var stream. Returns list of (kind, name, value) events."""
-    past_init = False
+    """Parse ASM/JVM/NET comm_var stream. Returns list of (kind, name, value) events.
+
+    STNO gating: ASM emits runtime init VAR lines before STNO 1 (INC library
+    constants).  Skip those.  JVM/NET emit no STNO — their stream starts clean,
+    so if no STNO is present at all, accept everything from the start.
+    """
+    lines = list(lines)
+    has_stno = any(RE_ASM_STNO.match(l.strip()) for l in lines)
+    past_init = not has_stno   # if no STNO, accept from line 1
     events = []
     for line in lines:
         s = line.strip()
@@ -142,6 +149,7 @@ def normalize_csn(lines, include_rules, exclude_rules, ignore_rules):
         if ev is None:
             continue
         kind, name, value = ev
+        name = name.upper()   # fold: SPITBOL lowercase vs CSNOBOL4 uppercase
         if not is_included(name, include_rules, exclude_rules):
             continue
         if should_ignore(name, value, ignore_rules):
@@ -159,6 +167,7 @@ def normalize_asm(lines, include_rules, exclude_rules, ignore_rules):
     raw_events = parse_asm_lines(lines)
     events = []
     for kind, name, value in raw_events:
+        name = name.upper()   # fold for consistency with CSN
         if not is_included(name, include_rules, exclude_rules):
             continue
         if should_ignore(name, value, ignore_rules):
