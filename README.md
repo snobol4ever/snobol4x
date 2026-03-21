@@ -143,9 +143,22 @@ bash test/crosscheck/run_crosscheck.sh
 # ASM backend (STOP_ON_FAIL=0 shows all results)
 STOP_ON_FAIL=0 bash test/crosscheck/run_crosscheck_asm_corpus.sh
 
-# JVM backend
+# JVM backend — full corpus
 JASMIN=src/backend/jvm/jasmin.jar
 bash test/crosscheck/run_crosscheck_jvm.sh
+
+# JVM backend — manual per-rung (e.g. patterns rung)
+JASMIN=src/backend/jvm/jasmin.jar
+PDIR=../snobol4corpus/crosscheck/patterns
+for sno in $PDIR/*.sno; do
+  base=$(basename $sno .sno); TMPD=$(mktemp -d)
+  ./sno2c -jvm "$sno" > $TMPD/p.j 2>/dev/null
+  java -jar $JASMIN $TMPD/p.j -d $TMPD/ 2>/dev/null
+  cls=$(ls $TMPD/*.class 2>/dev/null | head -1 | xargs basename 2>/dev/null | sed 's/.class//')
+  got=$(java -cp $TMPD $cls 2>/dev/null); exp=$(cat "${sno%.sno}.ref" 2>/dev/null)
+  rm -rf $TMPD
+  [ "$got" = "$exp" ] && echo "PASS $base" || echo "FAIL $base"
+done
 
 # NET backend
 bash test/crosscheck/run_crosscheck_net.sh
@@ -192,6 +205,7 @@ src/
 test/
   crosscheck/         106-program corpus + .ref oracle outputs
   sprint_asm/         ASM regression suite
+  jvm_j3/             JVM sprint J3 smoke tests
   rebus/              Rebus round-trip tests
   smoke/              Quick sanity tests
 artifacts/
@@ -271,6 +285,7 @@ Sprint state lives in [snobol4ever/.github](https://github.com/snobol4ever/.gith
 
 - **PLAN.md** — milestone dashboard, 4D feature matrix
 - **TINY.md** — snobol4x sprint state, invariants, next actions per session
+- **JVM.md** — JVM backend sprint state
 - **MONITOR.md** — five-way monitor design and sprint detail
 - **SESSIONS_ARCHIVE.md** — full session history, append-only
 
