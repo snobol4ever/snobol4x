@@ -765,16 +765,14 @@ Ln_10:                      mov         edi, 80
                             LOAD_STR    S_MI_MI
                             mov         [conc_tmp0_rax], rax
                             mov         [conc_tmp0_rdx], rdx
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
+                            LOAD_STR    S_13
                             mov         [conc_tmp0_rax], rax
                             mov         [conc_tmp0_rdx], rdx
                             sub         rsp, 32
                             LOAD_STR    S_EQ
                             mov         [conc_tmp0_rax], rax
                             mov         [conc_tmp0_rdx], rdx
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
+                            LOAD_STR    S_13
                             mov         rcx, rdx
                             mov         rdx, rax
                             mov         rdi, [conc_tmp0_rax]
@@ -783,8 +781,7 @@ Ln_10:                      mov         edi, 80
                             mov         [rbp-32], rax
                             mov         [rbp-24], rdx
                             STORE_ARG32 0
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
+                            LOAD_STR    S_13
                             STORE_ARG32 16
                             APPLY_FN_N  S_ALT, 2
                             add         rsp, 32
@@ -1837,8 +1834,7 @@ Ln_67:                      mov         edi, 150
 ; ======================================================================================================================
 Ln_68:                      mov         edi, 152
                             call        comm_stno
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
+                            LOAD_STR    S_BREAK
                             mov         [conc_tmp0_rax], rax
                             mov         [conc_tmp0_rdx], rdx
                             lea         rdi, [rel S_ppGSfx]
@@ -1859,8 +1855,7 @@ Ln_68:                      mov         edi, 152
 ; ======================================================================================================================
 Ln_69:                      mov         edi, 153
                             call        comm_stno
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
+                            LOAD_STR    S_13
                             FAIL_BR     Ln_70
                             SET_VAR     S_ppTrimPat
                             jmp         Ln_70
@@ -1911,8 +1906,7 @@ Ln_72:                      mov         edi, 157
 Ln_73:                      mov         edi, 158
                             call        comm_stno
                             sub         rsp, 64
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
+                            LOAD_STR    S_ppTmp
                             STORE_ARG32 0
                             LOAD_INT    3
                             STORE_ARG32 16
@@ -3069,8 +3063,7 @@ L_ppAutoMsg_27:             mov         edi, 210
 Ln_117:                     mov         edi, 216
                             call        comm_stno
                             sub         rsp, 64
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
+                            LOAD_STR    S_INPUT
                             STORE_ARG32 0
                             LOAD_INT    1
                             STORE_ARG32 16
@@ -4598,8 +4591,7 @@ Ln_163:                     mov         edi, 297
                             mov         qword [rbp-32], 1
                             mov         qword [rbp-24], 0
                             STORE_ARG32 0
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
+                            LOAD_STR    S_epsilon
                             STORE_ARG32 16
                             APPLY_FN_N  S_ALT, 2
                             add         rsp, 32
@@ -5718,12 +5710,10 @@ Ln_181:                     mov         edi, 324
                             mov         [rbp-24], rdx
                             STORE_ARG32 0
                             sub         rsp, 32
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
+                            LOAD_STR    S_13
                             STORE_ARG32 0
                             sub         rsp, 32
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
+                            LOAD_STR    S_13
                             STORE_ARG32 0
                             sub         rsp, 32
                             LOAD_STR    S_AM
@@ -6357,27 +6347,21 @@ Ln_184:                     mov         edi, 347
                             mov         [rbp-24], rdx
                             STORE_ARG32 0
                             sub         rsp, 32
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
+                            LOAD_STR    S_13
                             STORE_ARG32 0
                             sub         rsp, 32
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
+                            LOAD_STR    S_13
                             STORE_ARG32 0
                             sub         rsp, 32
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
+                            LOAD_STR    S_13
                             STORE_ARG32 0
                             sub         rsp, 32
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
+                            LOAD_STR    S_13
                             STORE_ARG32 0
                             sub         rsp, 32
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
+                            LOAD_STR    S_13
                             STORE_ARG32 0
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
+                            LOAD_STR    S_13
                             STORE_ARG32 16
                             APPLY_FN_N  S_ALT, 2
                             add         rsp, 32
@@ -6429,8 +6413,7 @@ Ln_184:                     mov         edi, 347
 ; ======================================================================================================================
 Ln_185:                     mov         edi, 366
                             call        comm_stno
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
+                            LOAD_STR    S_13
                             FAIL_BR     Ln_186
                             SET_VAR     S_SGoto
                             jmp         Ln_186
@@ -6438,8 +6421,7 @@ Ln_185:                     mov         edi, 366
 ; ======================================================================================================================
 Ln_186:                     mov         edi, 367
                             call        comm_stno
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
+                            LOAD_STR    S_13
                             FAIL_BR     Ln_187
                             SET_VAR     S_FGoto
                             jmp         Ln_187
@@ -6466,8 +6448,7 @@ Ln_187:                     mov         edi, 368
 Ln_188:                     mov         edi, 369
                             call        comm_stno
                             sub         rsp, 32
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
+                            LOAD_STR    S_13
                             mov         [conc_tmp0_rax], rax
                             mov         [conc_tmp0_rdx], rdx
                             mov         qword [rbp-32], 1
@@ -6480,8 +6461,7 @@ Ln_188:                     mov         edi, 369
                             mov         [rbp-32], rax
                             mov         [rbp-24], rdx
                             STORE_ARG32 0
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
+                            LOAD_STR    S_13
                             mov         [conc_tmp0_rax], rax
                             mov         [conc_tmp0_rdx], rdx
                             mov         qword [rbp-32], 1
@@ -6526,8 +6506,7 @@ Ln_189:                     mov         edi, 371
                             mov         qword [rbp-24], 0
                             mov         [conc_tmp0_rax], rax
                             mov         [conc_tmp0_rdx], rdx
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
+                            LOAD_STR    S_epsilon
                             mov         rcx, rdx
                             mov         rdx, rax
                             mov         rdi, [conc_tmp0_rax]
@@ -6593,8 +6572,7 @@ Ln_189:                     mov         edi, 371
                             mov         [rbp-32], rax
                             mov         [rbp-24], rdx
                             STORE_ARG32 0
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
+                            LOAD_STR    S_epsilon
                             STORE_ARG32 16
                             APPLY_FN_N  S_ALT, 2
                             add         rsp, 32
@@ -6703,8 +6681,7 @@ Ln_191:                     mov         edi, 379
 ; ======================================================================================================================
 Ln_192:                     mov         edi, 380
                             call        comm_stno
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
+                            LOAD_STR    S_BREAK
                             FAIL_BR     Ln_193
                             SET_VAR     S_Label
                             jmp         Ln_193
@@ -6727,8 +6704,7 @@ Ln_193:                     mov         edi, 381
                             mov         [conc_tmp0_rdx], rdx
                             sub         rsp, 16
                             sub         rsp, 32
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
+                            LOAD_STR    S_epsilon
                             mov         [conc_tmp0_rax], rax
                             mov         [conc_tmp0_rdx], rdx
                             mov         qword [rbp-32], 1
@@ -6736,8 +6712,7 @@ Ln_193:                     mov         edi, 381
                             mov         [conc_tmp0_rax], rax
                             mov         [conc_tmp0_rdx], rdx
                             sub         rsp, 32
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
+                            LOAD_STR    S_EQ
                             mov         [conc_tmp0_rax], rax
                             mov         [conc_tmp0_rdx], rdx
                             mov         qword [rbp-32], 1
@@ -6761,12 +6736,10 @@ Ln_193:                     mov         edi, 381
                             mov         [rbp-32], rax
                             mov         [rbp-24], rdx
                             STORE_ARG32 0
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
+                            LOAD_STR    S_EQ
                             mov         [conc_tmp0_rax], rax
                             mov         [conc_tmp0_rdx], rdx
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
+                            LOAD_STR    S_epsilon
                             mov         rcx, rdx
                             mov         rdx, rax
                             mov         rdi, [conc_tmp0_rax]
@@ -6819,8 +6792,7 @@ Ln_193:                     mov         edi, 381
                             mov         [conc_tmp0_rax], rax
                             mov         [conc_tmp0_rdx], rdx
                             sub         rsp, 32
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
+                            LOAD_STR    S_EQ
                             mov         [conc_tmp0_rax], rax
                             mov         [conc_tmp0_rdx], rdx
                             mov         qword [rbp-32], 1
@@ -6844,12 +6816,10 @@ Ln_193:                     mov         edi, 381
                             mov         [rbp-32], rax
                             mov         [rbp-24], rdx
                             STORE_ARG32 0
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
+                            LOAD_STR    S_EQ
                             mov         [conc_tmp0_rax], rax
                             mov         [conc_tmp0_rdx], rdx
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
+                            LOAD_STR    S_epsilon
                             mov         rcx, rdx
                             mov         rdx, rax
                             mov         rdi, [conc_tmp0_rax]
@@ -6870,70 +6840,15 @@ Ln_193:                     mov         edi, 381
                             mov         [rbp-32], rax
                             mov         [rbp-24], rdx
                             STORE_ARG32 0
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
+                            LOAD_STR    S_epsilon
                             mov         [conc_tmp0_rax], rax
                             mov         [conc_tmp0_rdx], rdx
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
+                            LOAD_STR    S_epsilon
                             mov         rcx, rdx
                             mov         rdx, rax
                             mov         rdi, [conc_tmp0_rax]
                             mov         rsi, [conc_tmp0_rdx]
                             call        stmt_concat
-                            mov         [rbp-32], rax
-                            mov         [rbp-24], rdx
-                            STORE_ARG32 16
-                            APPLY_FN_N  S_ALT, 2
-                            add         rsp, 32
-                            mov         [rbp-32], rax
-                            mov         [rbp-24], rdx
-                            STORE_ARG32 0
-                            APPLY_FN_N  S_FENCE, 1
-                            add         rsp, 16
-                            STORE_RESULT
-                            mov         rcx, rdx
-                            mov         rdx, rax
-                            mov         rdi, [conc_tmp0_rax]
-                            mov         rsi, [conc_tmp0_rdx]
-                            call        stmt_concat
-                            mov         [rbp-32], rax
-                            mov         [rbp-24], rdx
-                            mov         rcx, rdx
-                            mov         rdx, rax
-                            mov         rdi, [conc_tmp0_rax]
-                            mov         rsi, [conc_tmp0_rdx]
-                            call        stmt_concat
-                            mov         [rbp-32], rax
-                            mov         [rbp-24], rdx
-                            STORE_ARG32 0
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
-                            mov         [conc_tmp0_rax], rax
-                            mov         [conc_tmp0_rdx], rdx
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
-                            mov         [conc_tmp0_rax], rax
-                            mov         [conc_tmp0_rdx], rdx
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
-                            mov         rcx, rdx
-                            mov         rdx, rax
-                            mov         rdi, [conc_tmp0_rax]
-                            mov         rsi, [conc_tmp0_rdx]
-                            call        stmt_concat
-                            mov         [rbp-32], rax
-                            mov         [rbp-24], rdx
-                            mov         rcx, rdx
-                            mov         rdx, rax
-                            mov         rdi, [conc_tmp0_rax]
-                            mov         rsi, [conc_tmp0_rdx]
-                            call        stmt_concat
-                            mov         [rbp-32], rax
-                            mov         [rbp-24], rdx
-                            STORE_ARG32 16
-                            APPLY_FN_N  S_ALT, 2
-                            add         rsp, 32
                             mov         [rbp-32], rax
                             mov         [rbp-24], rdx
                             STORE_ARG32 16
@@ -6960,20 +6875,66 @@ Ln_193:                     mov         edi, 381
                             mov         [rbp-32], rax
                             mov         [rbp-24], rdx
                             STORE_ARG32 0
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
+                            LOAD_STR    S_epsilon
                             mov         [conc_tmp0_rax], rax
                             mov         [conc_tmp0_rdx], rdx
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
+                            LOAD_STR    S_epsilon
                             mov         [conc_tmp0_rax], rax
                             mov         [conc_tmp0_rdx], rdx
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
+                            LOAD_STR    S_epsilon
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            STORE_ARG32 16
+                            APPLY_FN_N  S_ALT, 2
+                            add         rsp, 32
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            STORE_ARG32 16
+                            APPLY_FN_N  S_ALT, 2
+                            add         rsp, 32
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            STORE_ARG32 0
+                            APPLY_FN_N  S_FENCE, 1
+                            add         rsp, 16
+                            STORE_RESULT
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            mov         rdi, [conc_tmp0_rax]
+                            mov         rsi, [conc_tmp0_rdx]
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            STORE_ARG32 0
+                            LOAD_STR    S_epsilon
                             mov         [conc_tmp0_rax], rax
                             mov         [conc_tmp0_rdx], rdx
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
+                            LOAD_STR    S_epsilon
+                            mov         [conc_tmp0_rax], rax
+                            mov         [conc_tmp0_rdx], rdx
+                            LOAD_STR    S_epsilon
+                            mov         [conc_tmp0_rax], rax
+                            mov         [conc_tmp0_rdx], rdx
+                            LOAD_STR    S_epsilon
                             mov         rcx, rdx
                             mov         rdx, rax
                             mov         rdi, [conc_tmp0_rax]
@@ -7007,12 +6968,10 @@ Ln_193:                     mov         edi, 381
                             mov         qword [rbp-32], 1
                             mov         qword [rbp-24], 0
                             STORE_ARG32 0
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
+                            LOAD_STR    S_epsilon
                             mov         [conc_tmp0_rax], rax
                             mov         [conc_tmp0_rdx], rdx
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
+                            LOAD_STR    S_epsilon
                             mov         rcx, rdx
                             mov         rdx, rax
                             mov         rdi, [conc_tmp0_rax]
@@ -7103,8 +7062,7 @@ Ln_195:                     mov         edi, 403
                             mov         [conc_tmp0_rdx], rdx
                             sub         rsp, 16
                             sub         rsp, 32
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
+                            LOAD_STR    S_13
                             mov         [conc_tmp0_rax], rax
                             mov         [conc_tmp0_rdx], rdx
                             mov         qword [rbp-32], 1
@@ -7131,8 +7089,7 @@ Ln_195:                     mov         edi, 403
                             mov         [rbp-24], rdx
                             STORE_ARG32 0
                             sub         rsp, 32
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
+                            LOAD_STR    S_13
                             mov         [conc_tmp0_rax], rax
                             mov         [conc_tmp0_rdx], rdx
                             mov         qword [rbp-32], 1
@@ -10431,6 +10388,7 @@ ucall18_ret_o:
                             call        stmt_set
                             LOAD_FAILDESCR32
 ucall18_done:
+                            jmp         fn_pp_gamma     ; RETURN
 
 Ln_229:
 ;  ppBinOp =============================================================================================================
@@ -10890,6 +10848,7 @@ ucall21_ret_o:
                             call        stmt_set
                             LOAD_FAILDESCR32
 ucall21_done:
+                            jmp         fn_pp_gamma     ; RETURN
 
 Ln_237:
 ;  pp_! ================================================================================================================
@@ -11448,6 +11407,7 @@ Ln_267:                     mov         edi, 501
                             APPLY_FN_N  S_Gen, 1
                             add         rsp, 16
                             STORE_RESULT
+                            jmp         fn_pp_gamma     ; RETURN
 
 Ln_268:
 ;  pp_Control ==========================================================================================================
@@ -11501,6 +11461,7 @@ Ln_270:                     mov         edi, 505
                             APPLY_FN_N  S_Gen, 1
                             add         rsp, 16
                             STORE_RESULT
+                            jmp         fn_pp_gamma     ; RETURN
 
 Ln_271:
 ;  pp_Stmt =============================================================================================================
@@ -13089,6 +13050,7 @@ Ln_319:
 L_pp_Stmt9_73:              mov         edi, 555
                             call        comm_stno
                             CALL1_VAR   S_Gen, S_nl
+                            jmp         fn_pp_gamma     ; RETURN
 
 Ln_320:
 ;  pp_ExprList =========================================================================================================
@@ -14126,6 +14088,7 @@ Ln_344:                     mov         edi, 582
 Ln_345:                     mov         edi, 583
                             call        comm_stno
                             CALL1_STR   S_Gen, S_RP
+                            jmp         fn_pp_gamma     ; RETURN
 
 Ln_346:
 ;  pp_| ================================================================================================================
@@ -15887,6 +15850,7 @@ Ln_380:                     mov         edi, 622
 Ln_381:                     mov         edi, 623
                             call        comm_stno
                             CALL1_STR   S_Gen, S_RP
+                            jmp         fn_pp_gamma     ; RETURN
 
 Ln_382:
 ;  pp_Call =============================================================================================================
@@ -16356,6 +16320,7 @@ Ln_389:                     mov         edi, 632
 Ln_390:                     mov         edi, 633
                             call        comm_stno
                             CALL1_STR   S_Gen, S_RP
+                            jmp         fn_pp_gamma     ; RETURN
 
 Ln_391:
 ;  ppEnd ===============================================================================================================
@@ -21969,8 +21934,7 @@ Ln_489:                     mov         edi, 750
                             mov         rcx, [rbp-24]
                             mov         [fn_bVisit_arg_0_t], rax
                             mov         [fn_bVisit_arg_0_p], rcx
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
+                            LOAD_STR    S_findRefs
                             mov         rax, [rbp-32]
                             mov         rcx, [rbp-24]
                             mov         [fn_bVisit_arg_1_t], rax
@@ -22842,8 +22806,7 @@ Ln_510:                     mov         edi, 772
                             mov         rcx, [rbp-24]
                             mov         [fn_bVisit_arg_0_t], rax
                             mov         [fn_bVisit_arg_0_p], rcx
-                            mov         qword [rbp-32], 1
-                            mov         qword [rbp-24], 0
+                            LOAD_STR    S_findRefs
                             mov         rax, [rbp-32]
                             mov         rcx, [rbp-24]
                             mov         [fn_bVisit_arg_1_t], rax
@@ -23528,6 +23491,7 @@ ucall76_ret_o:
                             call        stmt_set
                             LOAD_FAILDESCR32
 ucall76_done:
+                            GOTO_ALWAYS L_SNO_END     ; END
 
 Ln_528:
 ;  mainErr1 ============================================================================================================
