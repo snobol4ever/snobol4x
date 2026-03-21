@@ -1331,6 +1331,11 @@ void NV_SET_fn(const char *name, DESCR_t val) {
     comm_var(name, val);
     /* Special I/O variables */
     if (strcmp(name, "OUTPUT") == 0) { output_val(val); return; }
+    if (strcmp(name, "TERMINAL") == 0) {
+        const char *s = (val.v == DT_S) ? (const char *)val.i : "";
+        fprintf(stderr, "%s\n", s);
+        return;
+    }
     /* Unprotected keywords backed by C globals */
     if (strcmp(name, "STLIMIT")  == 0) { kw_stlimit  = (val.v==DT_I)?val.i:(int64_t)to_real(val); return; }
     if (strcmp(name, "ANCHOR")   == 0) { kw_anchor   = (val.v==DT_I)?val.i:(int64_t)to_real(val); return; }
