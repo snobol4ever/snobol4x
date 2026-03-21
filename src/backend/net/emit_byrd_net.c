@@ -92,6 +92,22 @@ static char net_fn_return_lbl[128];
 static char net_fn_freturn_lbl[128];
 static const NetFnDef *net_find_fn(const char *name);
 static int net_pat_uid_early = 0;  /* uid counter used before pattern section */
+
+/* DATA type support */
+#define NET_DATA_MAX     32
+typedef struct {
+    char type_name[NET_FN_NAMELEN];
+    char fields[NET_FN_ARGMAX][NET_FN_NAMELEN];
+    int  nfields;
+} NetDataType;
+static NetDataType net_data_types[NET_DATA_MAX];
+static int         net_data_type_count = 0;
+static const NetDataType *net_find_data_type(const char *name);
+static const NetDataType *net_find_data_field(const char *field);
+
+/* Deferred helper emission flags */
+static int net_need_array_helpers = 0;
+static int net_need_data_helpers  = 0;
 #define net_pat_uid net_pat_uid_early
 
 static FILE *net_out;
@@ -446,10 +462,33 @@ static void net_emit_expr(EXPR_t *e) {
             net_ldstr("");
             break;
         }
-        /* DATATYPE(x) — returns "string", "integer", or "real" */
+        /* DATATYPE(x) — returns user DATA type name, or "string"/"integer"/"real" */
         if (strcasecmp(fn, "DATATYPE") == 0) {
+            net_need_array_helpers = 1;
+            int uid = net_pat_uid++;
+            char lbl_prim[64], lbl_done[64];
+            snprintf(lbl_prim, sizeof lbl_prim, "Ndt%d_prim", uid);
+            snprintf(lbl_done, sizeof lbl_done, "Ndt%d_done", uid);
+            /* Evaluate arg, dup it so we can use it twice */
             net_emit_expr(expr_arg(e, 0));
+            N("    dup\n");                   /* stack: arg arg */
+            net_ldstr("__type__");            /* stack: arg arg "__type__" */
+            N("    call       string %s::net_array_get(string, string)\n", net_classname);
+            /* stack: arg type_or_empty */
+            N("    dup\n");
+            N("    ldstr      \"\"\n");
+            N("    call       bool [mscorlib]System.String::op_Equality(string, string)\n");
+            N("    brtrue     %s\n", lbl_prim);
+            /* non-empty __type__: discard original arg, keep type string */
+            N("    stloc.s    V_22\n");       /* save type string */
+            N("    pop\n");                   /* discard original arg */
+            N("    ldloc.s    V_22\n");
+            N("    br         %s\n", lbl_done);
+            N("  %s:\n", lbl_prim);
+            N("    pop\n");                   /* discard empty type string */
+            /* original arg still on stack */
             N("    call       string [snobol4lib]Snobol4Lib::sno_datatype(string)\n");
+            N("  %s:\n", lbl_done);
             N("    ldc.i4.1\n");
             N("    stloc.0\n");
             break;
@@ -574,6 +613,78 @@ static void net_emit_expr(EXPR_t *e) {
             N("    stloc.0\n");
             break;
         }
+        /* ARRAY(n) — create indexed array, return an array-id string */
+        if (strcasecmp(fn, "ARRAY") == 0) {
+            net_need_array_helpers = 1;
+            EXPR_t *a0 = expr_arg(e, 0);
+            if (a0) net_emit_expr(a0); else net_ldstr("1");
+            N("    call       string %s::net_array_new(string)\n", net_classname);
+            N("    ldc.i4.1\n");
+            N("    stloc.0\n");
+            break;
+        }
+        /* TABLE([n]) — create associative table, return a table-id string */
+        if (strcasecmp(fn, "TABLE") == 0) {
+            net_need_array_helpers = 1;
+            net_ldstr("0");
+            N("    call       string %s::net_array_new(string)\n", net_classname);
+            N("    ldc.i4.1\n");
+            N("    stloc.0\n");
+            break;
+        }
+        /* DATA('proto') — register a data type, return "" */
+        if (strcasecmp(fn, "DATA") == 0) {
+            net_need_data_helpers = 1;
+            EXPR_t *a0 = expr_arg(e, 0);
+            if (a0) net_emit_expr(a0); else net_ldstr("");
+            N("    call       void %s::net_data_define(string)\n", net_classname);
+            net_ldstr("");
+            N("    ldc.i4.1\n");
+            N("    stloc.0\n");
+            break;
+        }
+        /* DATA type constructor call: typename(field1val, ...) */
+        {
+            const NetDataType *dt = net_find_data_type(fn);
+            if (dt) {
+                net_need_data_helpers  = 1;
+                net_need_array_helpers = 1;
+                /* allocate new array (size=0 → plain table) */
+                net_ldstr("0");
+                N("    call       string %s::net_array_new(string)\n", net_classname);
+                /* store each field */
+                for (int fi = 0; fi < dt->nfields; fi++) {
+                    N("    dup\n");
+                    net_ldstr(dt->fields[fi]);
+                    EXPR_t *fv = expr_arg(e, fi);
+                    if (fv) net_emit_expr(fv); else net_ldstr("");
+                    N("    call       void %s::net_array_put(string, string, string)\n", net_classname);
+                }
+                /* store __type__ */
+                N("    dup\n");
+                net_ldstr("__type__");
+                net_ldstr(fn);
+                N("    call       void %s::net_array_put(string, string, string)\n", net_classname);
+                N("    ldc.i4.1\n");
+                N("    stloc.0\n");
+                break;
+            }
+        }
+        /* DATA field accessor: fieldname(instance) → field value */
+        {
+            const NetDataType *ft = net_find_data_field(fn);
+            if (ft) {
+                net_need_data_helpers  = 1;
+                net_need_array_helpers = 1;
+                EXPR_t *inst = expr_arg(e, 0);
+                if (inst) net_emit_expr(inst); else net_ldstr("");
+                net_ldstr(fn);
+                N("    call       string %s::net_array_get(string, string)\n", net_classname);
+                N("    ldc.i4.1\n");
+                N("    stloc.0\n");
+                break;
+            }
+        }
         /* User-defined function call */
         {
             const NetFnDef *ufn = net_find_fn(fn);
@@ -655,6 +766,29 @@ static void net_emit_expr(EXPR_t *e) {
         net_emit_expr(expr_arg(e, 0));
         N("    call       string [snobol4lib]Snobol4Lib::sno_neg(string)\n");
         break;
+    case E_ARY: {
+        /* varname<subscript> — indexed array/table read */
+        net_need_array_helpers = 1;
+        char fn_ary[256];
+        net_field_name(fn_ary, sizeof fn_ary, e->sval ? e->sval : "");
+        N("    ldsfld     string %s::%s\n", net_classname, fn_ary);
+        EXPR_t *sub_ary = (e->nchildren > 0 && e->children) ? e->children[0] : NULL;
+        if (sub_ary) net_emit_expr(sub_ary); else net_ldstr("1");
+        N("    call       string %s::net_array_get(string, string)\n", net_classname);
+        break;
+    }
+    case E_IDX: {
+        /* expr[subscript] — subscript on expression value (TABLE or DATA) */
+        net_need_array_helpers = 1;
+        if (e->nchildren >= 1 && e->children && e->children[0])
+            net_emit_expr(e->children[0]);
+        else net_ldstr("");
+        if (e->nchildren >= 2 && e->children && e->children[1])
+            net_emit_expr(e->children[1]);
+        else net_ldstr("0");
+        N("    call       string %s::net_array_get(string, string)\n", net_classname);
+        break;
+    }
     default:
         /* unhandled — push empty string stub */
         NC("unhandled expr kind — stub");
@@ -1455,6 +1589,69 @@ static void net_emit_one_stmt(STMT_t *s, const char *next_lbl) {
         return;
     }
 
+    /* Case 1c: array/table subscript assignment — A<I> = expr or T<'key'> = expr */
+    if (s->has_eq && s->subject &&
+        (s->subject->kind == E_ARY || s->subject->kind == E_IDX) &&
+        !s->pattern) {
+        net_need_array_helpers = 1;
+        if (s->subject->kind == E_ARY) {
+            /* push array-id from the variable holding the array */
+            char fn_ary[256];
+            net_field_name(fn_ary, sizeof fn_ary, s->subject->sval ? s->subject->sval : "");
+            N("    ldsfld     string %s::%s\n", net_classname, fn_ary);
+            /* push subscript */
+            EXPR_t *sub = (s->subject->nchildren > 0 && s->subject->children)
+                          ? s->subject->children[0] : NULL;
+            if (sub) net_emit_expr(sub); else net_ldstr("1");
+        } else { /* E_IDX */
+            if (s->subject->nchildren >= 1 && s->subject->children && s->subject->children[0])
+                net_emit_expr(s->subject->children[0]);
+            else net_ldstr("");
+            if (s->subject->nchildren >= 2 && s->subject->children && s->subject->children[1])
+                net_emit_expr(s->subject->children[1]);
+            else net_ldstr("0");
+        }
+        /* push value */
+        if (!s->replacement || s->replacement->kind == E_NULV) net_ldstr("");
+        else net_emit_expr(s->replacement);
+        N("    call       void %s::net_array_put(string, string, string)\n", net_classname);
+        N("    ldc.i4.1\n");
+        N("    stloc.0\n");
+        if (tgt_u) net_emit_goto(tgt_u, next_lbl);
+        else {
+            if (tgt_s) net_emit_branch_success(tgt_s);
+            if (tgt_f) net_emit_branch_fail(tgt_f);
+        }
+        return;
+    }
+
+    /* Case 1d: DATA field setter — fieldname(instance) = val */
+    if (s->has_eq && s->subject && s->subject->kind == E_FNC && !s->pattern) {
+        const char *sfname = s->subject->sval ? s->subject->sval : "";
+        const NetDataType *ft = net_find_data_field(sfname);
+        if (ft) {
+            net_need_data_helpers  = 1;
+            net_need_array_helpers = 1;
+            /* push instance-id */
+            EXPR_t *inst = expr_arg(s->subject, 0);
+            if (inst) net_emit_expr(inst); else net_ldstr("");
+            /* push field name */
+            net_ldstr(sfname);
+            /* push value */
+            if (!s->replacement || s->replacement->kind == E_NULV) net_ldstr("");
+            else net_emit_expr(s->replacement);
+            N("    call       void %s::net_array_put(string, string, string)\n", net_classname);
+            N("    ldc.i4.1\n");
+            N("    stloc.0\n");
+            if (tgt_u) net_emit_goto(tgt_u, next_lbl);
+            else {
+                if (tgt_s) net_emit_branch_success(tgt_s);
+                if (tgt_f) net_emit_branch_fail(tgt_f);
+            }
+            return;
+        }
+    }
+
     /* Case 2: bare expression predicate — no has_eq, subject only, no pattern */
     if (!s->has_eq && s->subject && !s->pattern) {
         /* Evaluate subject as expression — sets local 0 (success flag) via E_FNC */
@@ -1736,6 +1933,7 @@ static void net_emit_header(Program *prog) {
     N("  .field static string kw_stno\n");
     N("  .field static string kw_anchor\n");
     N("  .field static class [mscorlib]System.Collections.Generic.Dictionary`2<string,string> sno_vars\n");
+    N("  .field static class [mscorlib]System.Collections.Generic.Dictionary`2<string,class [mscorlib]System.Collections.Generic.Dictionary`2<string,string>> sno_arrays\n");
     N("\n");
 
     /* Static initialiser: set all variables to "" */
@@ -1755,6 +1953,8 @@ static void net_emit_header(Program *prog) {
         N("    stsfld     string %s::kw_anchor\n", net_classname);
         N("    newobj     instance void class [mscorlib]System.Collections.Generic.Dictionary`2<string,string>::.ctor()\n");
         N("    stsfld     class [mscorlib]System.Collections.Generic.Dictionary`2<string,string> %s::sno_vars\n", net_classname);
+        N("    newobj     instance void class [mscorlib]System.Collections.Generic.Dictionary`2<string,class [mscorlib]System.Collections.Generic.Dictionary`2<string,string>>::.ctor()\n");
+        N("    stsfld     class [mscorlib]System.Collections.Generic.Dictionary`2<string,class [mscorlib]System.Collections.Generic.Dictionary`2<string,string>> %s::sno_arrays\n", net_classname);
         N("    ret\n");
         N("  }\n");
         N("\n");
@@ -1856,6 +2056,22 @@ static const NetFnDef *net_find_fn(const char *name) {
     return NULL;
 }
 
+static const NetDataType *net_find_data_type(const char *name) {
+    for (int i = 0; i < net_data_type_count; i++)
+        if (net_data_types[i].type_name[0] && strcasecmp(net_data_types[i].type_name, name) == 0)
+            return &net_data_types[i];
+    return NULL;
+}
+
+static const NetDataType *net_find_data_field(const char *field) {
+    for (int i = 0; i < net_data_type_count; i++)
+        for (int j = 0; j < net_data_types[i].nfields; j++)
+            if (net_data_types[i].fields[j][0] &&
+                strcasecmp(net_data_types[i].fields[j], field) == 0)
+                return &net_data_types[i];
+    return NULL;
+}
+
 /* Parse DEFINE prototype string "fname(a,b)l1,l2" into NetFnDef. */
 static int net_parse_proto(const char *proto, NetFnDef *fn) {
     fn->nargs = 0; fn->nlocals = 0;
@@ -1907,10 +2123,44 @@ static const char *net_flatten_str(EXPR_t *e, char *buf, int sz) {
 
 static void net_scan_fndefs(Program *prog) {
     net_fn_count = 0;
+    net_data_type_count = 0;
     if (!prog) return;
     for (STMT_t *s = prog->head; s; s = s->next) {
         if (!s->subject || s->subject->kind != E_FNC) continue;
-        if (!s->subject->sval || strcasecmp(s->subject->sval, "DEFINE") != 0) continue;
+        const char *sname = s->subject->sval ? s->subject->sval : "";
+        /* Collect DATA type definitions */
+        if (strcasecmp(sname, "DATA") == 0) {
+            if (expr_nargs(s->subject) < 1) continue;
+            char pbuf[256];
+            const char *proto = net_flatten_str(expr_arg(s->subject, 0), pbuf, sizeof pbuf);
+            if (!proto || net_data_type_count >= NET_DATA_MAX) continue;
+            NetDataType *dt = &net_data_types[net_data_type_count];
+            memset(dt, 0, sizeof *dt);
+            int pi = 0, ti = 0;
+            while (proto[pi] && proto[pi] != '(' && ti < NET_FN_NAMELEN-1)
+                dt->type_name[ti++] = proto[pi++];
+            dt->type_name[ti] = '\0';
+            while (ti > 0 && (dt->type_name[ti-1]==' '||dt->type_name[ti-1]=='\t'))
+                dt->type_name[--ti] = '\0';
+            if (proto[pi] == '(') {
+                pi++;
+                while (proto[pi] && proto[pi] != ')') {
+                    while (proto[pi]==' '||proto[pi]=='\t') pi++;
+                    if (proto[pi]==')'||!proto[pi]) break;
+                    int j = 0; char fb[NET_FN_NAMELEN];
+                    while (proto[pi] && proto[pi]!=',' && proto[pi]!=')' && j < NET_FN_NAMELEN-1)
+                        fb[j++] = proto[pi++];
+                    while (j > 0 && (fb[j-1]==' '||fb[j-1]=='\t')) j--;
+                    fb[j] = '\0';
+                    if (j > 0 && dt->nfields < NET_FN_ARGMAX)
+                        snprintf(dt->fields[dt->nfields++], NET_FN_NAMELEN, "%s", fb);
+                    if (proto[pi]==',') pi++;
+                }
+            }
+            net_data_type_count++;
+            continue;
+        }
+        if (strcasecmp(sname, "DEFINE") != 0) continue;
         if (expr_nargs(s->subject) < 1) continue;
         char pbuf[256];
         const char *proto = net_flatten_str(expr_arg(s->subject, 0), pbuf, sizeof pbuf);
@@ -2087,6 +2337,94 @@ static void net_emit_fn_methods(Program *prog) {
         net_emit_fn_method(&net_fn_table[i], prog, i);
 }
 
+/* Emit CIL helper methods for ARRAY/TABLE/DATA support */
+static void net_emit_array_helpers(void) {
+    /* Shorthand for the sno_arrays field type */
+    const char *AFT = "class [mscorlib]System.Collections.Generic.Dictionary`2<string,class [mscorlib]System.Collections.Generic.Dictionary`2<string,string>>";
+    const char *IFT = "class [mscorlib]System.Collections.Generic.Dictionary`2<string,string>";
+
+    if (net_need_array_helpers) {
+        /* net_array_new(string size) : string
+         * Creates a new inner Dictionary<string,string>, stores it in sno_arrays
+         * keyed by its hash code string, returns that key as the array-id. */
+        N("  .method static string net_array_new(string) cil managed\n");
+        N("  {\n");
+        N("    .maxstack 4\n");
+        N("    .locals init (%s V_0, string V_1, int32 V_2)\n", IFT);
+        N("    newobj     instance void %s::.ctor()\n", IFT);
+        N("    stloc.0\n");
+        /* id = RuntimeHelpers.GetHashCode(map) boxed to string */
+        N("    ldloc.0\n");
+        N("    call       int32 [mscorlib]System.Runtime.CompilerServices.RuntimeHelpers::GetHashCode(object)\n");
+        N("    stloc.2\n");
+        N("    ldloca.s   V_2\n");
+        N("    call       instance string [mscorlib]System.Int32::ToString()\n");
+        N("    stloc.1\n");
+        /* sno_arrays[id] = map */
+        N("    ldsfld     %s %s::sno_arrays\n", AFT, net_classname);
+        N("    ldloc.1\n");
+        N("    ldloc.0\n");
+        N("    callvirt   instance void %s::set_Item(!0, !1)\n", AFT);
+        N("    ldloc.1\n");
+        N("    ret\n");
+        N("  }\n\n");
+
+        /* net_array_get(string array_id, string key) : string */
+        N("  .method static string net_array_get(string, string) cil managed\n");
+        N("  {\n");
+        N("    .maxstack 4\n");
+        N("    .locals init (%s V_0, string V_1)\n", IFT);
+        N("    ldsfld     %s %s::sno_arrays\n", AFT, net_classname);
+        N("    ldarg.0\n");
+        N("    ldloca.s   V_0\n");
+        N("    callvirt   instance bool %s::TryGetValue(!0, !1&)\n", AFT);
+        N("    brfalse    Nag_miss\n");
+        N("    ldloc.0\n");
+        N("    ldarg.1\n");
+        N("    ldloca.s   V_1\n");
+        N("    callvirt   instance bool %s::TryGetValue(!0, !1&)\n", IFT);
+        N("    brfalse    Nag_miss\n");
+        N("    ldloc.1\n");
+        N("    ret\n");
+        N("  Nag_miss:\n");
+        N("    ldstr      \"\"\n");
+        N("    ret\n");
+        N("  }\n\n");
+
+        /* net_array_put(string array_id, string key, string val) : void */
+        N("  .method static void net_array_put(string, string, string) cil managed\n");
+        N("  {\n");
+        N("    .maxstack 4\n");
+        N("    .locals init (%s V_0)\n", IFT);
+        N("    ldsfld     %s %s::sno_arrays\n", AFT, net_classname);
+        N("    ldarg.0\n");
+        N("    ldloca.s   V_0\n");
+        N("    callvirt   instance bool %s::TryGetValue(!0, !1&)\n", AFT);
+        N("    brfalse    Nap_done\n");
+        N("    ldloc.0\n");
+        N("    ldarg.1\n");
+        N("    ldarg.2\n");
+        N("    callvirt   instance void %s::set_Item(!0, !1)\n", IFT);
+        N("  Nap_done:\n");
+        N("    ret\n");
+        N("  }\n\n");
+
+        net_need_array_helpers = 0;
+    }
+
+    if (net_need_data_helpers) {
+        /* net_data_define(string proto) : void
+         * proto = "typename(field1,field2,...)" — no-op at runtime, type is pre-parsed */
+        N("  .method static void net_data_define(string) cil managed\n");
+        N("  {\n");
+        N("    .maxstack 1\n");
+        N("    ret\n");
+        N("  }\n\n");
+
+        net_need_data_helpers = 0;
+    }
+}
+
 static void net_emit_footer(void) {
     N("} // end class %s\n", net_classname);
 }
@@ -2115,6 +2453,7 @@ void net_emit(Program *prog, FILE *out, const char *filename) {
     net_emit_stmts(prog);
     net_emit_main_close();
     net_emit_fn_methods(prog);
+    net_emit_array_helpers();
     net_emit_footer();
 
     /* free registered variable names */
