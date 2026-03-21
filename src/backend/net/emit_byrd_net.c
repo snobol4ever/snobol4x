@@ -291,6 +291,10 @@ static void scan_expr_vars(EXPR_t *e) {
     if ((e->kind == E_NAM || e->kind == E_DOL) && e->sval
             && !net_is_output(e->sval) && !net_is_input(e->sval))
         net_var_register(e->sval);
+    /* E_ATP (@VAR): varname in children[0]->sval */
+    if (e->kind == E_ATP && expr_left(e) && expr_left(e)->sval
+            && !net_is_output(expr_left(e)->sval) && !net_is_input(expr_left(e)->sval))
+        net_var_register(expr_left(e)->sval);
     for (int i = 0; i < expr_nargs(e); i++)
         scan_expr_vars(expr_arg(e, i));
 }
@@ -327,6 +331,42 @@ static void net_ldstr(const char *s) {
 /* -----------------------------------------------------------------------
  * Expr emitter — leaves one string on the CIL eval stack
  * ----------------------------------------------------------------------- */
+
+/* net_expr_can_fail: returns 1 if expression can set local 0 = 0 (failure).
+ * Used by E_CONC to decide whether to emit a goal-directed short-circuit check.
+ * Only predicate/comparison functions actually fail — pattern constructors and
+ * string functions always succeed and must NOT be treated as failing. */
+static int net_expr_can_fail(EXPR_t *e) {
+    if (!e) return 0;
+    if (e->kind == E_FNC && e->sval) {
+        /* Predicate functions that can fail (return int32 success flag) */
+        const char *fn = e->sval;
+        if (strcasecmp(fn, "DIFFER") == 0) return 1;
+        if (strcasecmp(fn, "IDENT")  == 0) return 1;
+        if (strcasecmp(fn, "GT")     == 0) return 1;
+        if (strcasecmp(fn, "LT")     == 0) return 1;
+        if (strcasecmp(fn, "GE")     == 0) return 1;
+        if (strcasecmp(fn, "LE")     == 0) return 1;
+        if (strcasecmp(fn, "EQ")     == 0) return 1;
+        if (strcasecmp(fn, "NE")     == 0) return 1;
+        if (strcasecmp(fn, "LGT")    == 0) return 1;
+        if (strcasecmp(fn, "LLT")    == 0) return 1;
+        if (strcasecmp(fn, "LGE")    == 0) return 1;
+        if (strcasecmp(fn, "LLE")    == 0) return 1;
+        if (strcasecmp(fn, "LEQ")    == 0) return 1;
+        if (strcasecmp(fn, "LNE")    == 0) return 1;
+        if (strcasecmp(fn, "INTEGER") == 0) return 1;
+        /* User-defined functions: checked via net_find_fn */
+        if (net_find_fn(fn)) return 1;
+        /* Pattern constructors and string functions: always succeed */
+        return 0;
+    }
+    if (e->kind == E_CONC) {
+        for (int i = 0; i < e->nchildren; i++)
+            if (net_expr_can_fail(e->children[i])) return 1;
+    }
+    return 0;
+}
 
 static void net_emit_expr(EXPR_t *e) {
     if (!e) {
@@ -718,18 +758,52 @@ static void net_emit_expr(EXPR_t *e) {
         net_ldstr("");
         break;
     }
-    case E_CONC:
-        /* string concatenation: eval all arms, fold with String.Concat */
-        if (expr_nargs(e) > 0) {
-            net_emit_expr(expr_arg(e, 0));
-            for (int i = 1; i < expr_nargs(e); i++) {
-                net_emit_expr(expr_arg(e, i));
-                N("    call       string [mscorlib]System.String::Concat(string, string)\n");
+    case E_CONC: {
+        /* String concatenation with goal-directed short-circuit.
+         * After each child that can set local 0 = 0 (failure), check and branch
+         * to the statement fail label WITHOUT leaving any string on the stack.
+         * Stack discipline: after the check+branch the stack depth is the same
+         * as it was before this E_CONC started (zero strings contributed).
+         * On success path: one accumulated string remains on stack (as expected).
+         *
+         * CIL stack balance rule: every branch target must have consistent depth.
+         * Fail path: pop all accumulated strings, branch with depth unchanged.
+         * Success path: one string on stack (the concat result).
+         */
+        static int _cconc_uid = 0;
+        int conc_id = _cconc_uid++;
+        if (expr_nargs(e) == 0) { net_ldstr(""); break; }
+        /* depth_on_stack: how many strings we have accumulated on the eval stack
+         * when we reach a fail check.  We must pop this many before branching. */
+        net_emit_expr(expr_arg(e, 0));
+        /* depth = 1 (one string from first child) */
+        if (net_expr_can_fail(expr_arg(e, 0)) && net_cur_stmt_fail_label[0]) {
+            char lbl_ok[64]; snprintf(lbl_ok, sizeof lbl_ok, "Ncc%d_ok0", conc_id);
+            N("    ldloc.0\n");
+            N("    brtrue     %s\n", lbl_ok);
+            /* fail: 1 string on stack — pop it, then branch with depth=0 */
+            N("    pop\n");
+            N("    br         L_%s\n", net_cur_stmt_fail_label);
+            N("  %s:\n", lbl_ok);
+        }
+        for (int i = 1; i < expr_nargs(e); i++) {
+            net_emit_expr(expr_arg(e, i));
+            /* stack: accumulated(1) + new_child(1) = 2 strings before Concat */
+            if (net_expr_can_fail(expr_arg(e, i)) && net_cur_stmt_fail_label[0]) {
+                char lbl_ok[64]; snprintf(lbl_ok, sizeof lbl_ok, "Ncc%d_ok%d", conc_id, i);
+                N("    ldloc.0\n");
+                N("    brtrue     %s\n", lbl_ok);
+                /* fail: 2 strings on stack (accumulated + new child) — pop both */
+                N("    pop\n");
+                N("    pop\n");
+                N("    br         L_%s\n", net_cur_stmt_fail_label);
+                N("  %s:\n", lbl_ok);
             }
-        } else {
-            net_ldstr("");
+            N("    call       string [mscorlib]System.String::Concat(string, string)\n");
+            /* after Concat: 1 string on stack */
         }
         break;
+    }
     case E_OR:
         /* Pattern alternation used as an expression value (e.g. P = 'a' | 'b').
          * The string value is a placeholder — pattern matching uses the structural
@@ -1474,8 +1548,10 @@ static void net_emit_pat_node(EXPR_t *pat,
     case E_ATP: {
         /* @VAR — capture current cursor position (0-based) into var.
          * Zero-width: does not advance cursor. Always succeeds.
-         * Stores integer string of current cursor position.          */
-        const char *varname = pat->sval ? pat->sval : "";
+         * Stores integer string of current cursor position.
+         * Parser builds @VAR as unop(E_ATP, E_VART("VAR")), varname in children[0]->sval. */
+        const char *varname = (expr_left(pat) && expr_left(pat)->sval) ? expr_left(pat)->sval
+                            : (pat->sval ? pat->sval : "");
         /* Convert cursor (int32) to string via Int32.ToString() */
         net_ldloc_i(loc_cursor);
         N("    box        [mscorlib]System.Int32\n");
@@ -1527,11 +1603,19 @@ static void net_emit_one_stmt(STMT_t *s, const char *next_lbl) {
         int is_out = net_is_output(s->subject->sval);
         EXPR_t *rhs = s->replacement;
 
-        /* Set fail label so INPUT inside rhs can branch directly on EOF */
-        if (tgt_f)
+        /* Set fail label so INPUT/CONC inside rhs can branch directly on failure.
+         * When tgt_f is NULL, generate a local skip label so that a failing
+         * sub-expression in the RHS (e.g. DIFFER()) can still abort the assignment. */
+        static int _asgn_uid = 0;
+        char local_fail_lbl[64];
+        int need_local_fail = 0;
+        if (tgt_f) {
             snprintf(net_cur_stmt_fail_label, sizeof net_cur_stmt_fail_label, "%s", tgt_f);
-        else
-            net_cur_stmt_fail_label[0] = '\0';
+        } else {
+            snprintf(local_fail_lbl, sizeof local_fail_lbl, "Nasgn%d_skip", _asgn_uid++);
+            snprintf(net_cur_stmt_fail_label, sizeof net_cur_stmt_fail_label, "%s", local_fail_lbl);
+            need_local_fail = 1;
+        }
 
         /* eval RHS onto stack */
         net_emit_expr(rhs);
@@ -1566,6 +1650,9 @@ static void net_emit_one_stmt(STMT_t *s, const char *next_lbl) {
             if (tgt_s) net_emit_branch_success(tgt_s);
             if (tgt_f) net_emit_branch_fail(tgt_f);
         }
+        /* emit local skip label if we generated one for RHS failure */
+        if (need_local_fail)
+            N("  L_%s:\n", local_fail_lbl);
         return;
     }
 

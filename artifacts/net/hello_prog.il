@@ -3,168 +3,89 @@
     // Run:      mono <file>.exe
 
 .assembly extern mscorlib {}
-.assembly Hello {}
-.module Hello.exe
+.assembly extern snobol4lib {}
+.assembly extern snobol4run {}
+.assembly Null {}
+.module Null.exe
 
-.class public auto ansi beforefieldinit Hello
+.class public auto ansi beforefieldinit Null
        extends [mscorlib]System.Object
 {
 
-  .method private static float64 sno_parse_dbl(string s) cil managed
+  .field static string kw_stno
+  .field static string kw_anchor
+  .field static class [mscorlib]System.Collections.Generic.Dictionary`2<string,string> sno_vars
+  .field static class [mscorlib]System.Collections.Generic.Dictionary`2<string,class [mscorlib]System.Collections.Generic.Dictionary`2<string,string>> sno_arrays
+
+  .method static void .cctor() cil managed
   {
     .maxstack 2
-    .locals init (float64 V_0, bool V_1)
-    ldarg.0
-    ldloca.s V_0
-    call       bool [mscorlib]System.Double::TryParse(string, float64&)
-    pop
-    ldloc.0
+    ldstr      "0"
+    stsfld     string Null::kw_stno
+    ldstr      "0"
+    stsfld     string Null::kw_anchor
+    newobj     instance void class [mscorlib]System.Collections.Generic.Dictionary`2<string,string>::.ctor()
+    stsfld     class [mscorlib]System.Collections.Generic.Dictionary`2<string,string> Null::sno_vars
+    newobj     instance void class [mscorlib]System.Collections.Generic.Dictionary`2<string,class [mscorlib]System.Collections.Generic.Dictionary`2<string,string>>::.ctor()
+    stsfld     class [mscorlib]System.Collections.Generic.Dictionary`2<string,class [mscorlib]System.Collections.Generic.Dictionary`2<string,string>> Null::sno_arrays
     ret
   }
 
-  .method private static string sno_fmt_dbl(float64 v) cil managed
-  {
-    .maxstack 3
-    .locals init (float64 V_0, int64 V_1)
-    ldarg.0
-    stloc.0
-    ldloc.0
-    conv.i8
-    stloc.1
-    ldloc.0
-    ldloc.1
-    conv.r8
-    beq        IS_INT
-    ldloc.0
-    box        [mscorlib]System.Double
-    callvirt   instance string object::ToString()
-    ret
-  IS_INT:
-    ldloc.1
-    box        [mscorlib]System.Int64
-    callvirt   instance string object::ToString()
-    ret
-  }
-
-  .method private static string sno_add(string a, string b) cil managed
+  .method static string net_indr_get(string name) cil managed
   {
     .maxstack 4
-    .locals init (float64 V_0, float64 V_1, bool V_2, bool V_3, string V_4, string V_5)
+    .locals init (string V_0)
+    ldsfld     class [mscorlib]System.Collections.Generic.Dictionary`2<string,string> Null::sno_vars
     ldarg.0
-    callvirt   instance string [mscorlib]System.String::Trim()
-    stloc.s V_4
-    ldarg.1
-    callvirt   instance string [mscorlib]System.String::Trim()
-    stloc.s V_5
-    ldloc.s V_4
+    ldloca.s   V_0
+    callvirt   instance bool class [mscorlib]System.Collections.Generic.Dictionary`2<string,string>::TryGetValue(!0, !1&)
+    brfalse    Nig_miss
+    ldloc.0
+    ret
+  Nig_miss:
     ldstr      ""
-    call       bool [mscorlib]System.String::op_Equality(string, string)
-    brfalse    SNO_ADD_PARSE_A
-    ldstr      "0"
-    stloc.s V_4
-  SNO_ADD_PARSE_A:
-    ldloc.s V_4
-    ldloca.s V_0
-    call       bool [mscorlib]System.Double::TryParse(string, float64&)
-    stloc.2
-    ldloc.s V_5
-    ldstr      ""
-    call       bool [mscorlib]System.String::op_Equality(string, string)
-    brfalse    SNO_ADD_PARSE_B
-    ldstr      "0"
-    stloc.s V_5
-  SNO_ADD_PARSE_B:
-    ldloc.s V_5
-    ldloca.s V_1
-    call       bool [mscorlib]System.Double::TryParse(string, float64&)
-    stloc.3
-    ldloc.2
-    ldloc.3
-    and
-    brfalse    SNO_ADD_CONCAT
-    ldloc.0
-    ldloc.1
-    add
-    call       string Hello::sno_fmt_dbl(float64)
-    ret
-  SNO_ADD_CONCAT:
-    ldarg.0
-    ldarg.1
-    call       string [mscorlib]System.String::Concat(string, string)
     ret
   }
 
-  .method private static string sno_sub(string a, string b) cil managed
+  .method static void net_indr_set(string name, string val) cil managed
   {
-    .maxstack 3
-    .locals init (float64 V_0, float64 V_1)
+    .maxstack 5
+    ldsfld     class [mscorlib]System.Collections.Generic.Dictionary`2<string,string> Null::sno_vars
     ldarg.0
-    call       float64 Hello::sno_parse_dbl(string)
-    stloc.0
     ldarg.1
-    call       float64 Hello::sno_parse_dbl(string)
-    stloc.1
-    ldloc.0
-    ldloc.1
-    sub
-    call       string Hello::sno_fmt_dbl(float64)
-    ret
-  }
-
-  .method private static string sno_mpy(string a, string b) cil managed
-  {
-    .maxstack 3
-    .locals init (float64 V_0, float64 V_1)
+    callvirt   instance void class [mscorlib]System.Collections.Generic.Dictionary`2<string,string>::set_Item(!0, !1)
+    ldtoken    Null
+    call       class [mscorlib]System.Type [mscorlib]System.Type::GetTypeFromHandle(valuetype [mscorlib]System.RuntimeTypeHandle)
     ldarg.0
-    call       float64 Hello::sno_parse_dbl(string)
-    stloc.0
+    callvirt   instance string [mscorlib]System.String::ToUpper()
+    ldc.i4     56
+    callvirt   instance class [mscorlib]System.Reflection.FieldInfo [mscorlib]System.Type::GetField(string, valuetype [mscorlib]System.Reflection.BindingFlags)
+    dup
+    brfalse    Nis_nofld
+    ldnull
     ldarg.1
-    call       float64 Hello::sno_parse_dbl(string)
-    stloc.1
-    ldloc.0
-    ldloc.1
-    mul
-    call       string Hello::sno_fmt_dbl(float64)
-    ret
-  }
-
-  .method private static string sno_div(string a, string b) cil managed
-  {
-    .maxstack 3
-    .locals init (float64 V_0, float64 V_1)
-    ldarg.0
-    call       float64 Hello::sno_parse_dbl(string)
-    stloc.0
-    ldarg.1
-    call       float64 Hello::sno_parse_dbl(string)
-    stloc.1
-    ldloc.0
-    ldloc.1
-    div
-    call       string Hello::sno_fmt_dbl(float64)
-    ret
-  }
-
-  .method private static string sno_neg(string a) cil managed
-  {
-    .maxstack 2
-    ldarg.0
-    call       float64 Hello::sno_parse_dbl(string)
-    neg
-    call       string Hello::sno_fmt_dbl(float64)
+    callvirt   instance void [mscorlib]System.Reflection.FieldInfo::SetValue(object, object)
+    br         Nis_done
+  Nis_nofld:
+    pop
+  Nis_done:
     ret
   }
 
   .method public static void main(string[] args) cil managed
   {
     .entrypoint
-    .maxstack 8
-    .locals init (int32 V_0)  // V_0 = success flag
+    .maxstack 16
+    .locals init (int32 V_0, int32 V_1,
+                  string V_2, int32 V_3, int32 V_4, int32 V_5,
+                  int32 V_6,  int32 V_7,  int32 V_8,  int32 V_9,
+                  int32 V_10, int32 V_11, int32 V_12, int32 V_13,
+                  int32 V_14, int32 V_15, int32 V_16, int32 V_17,
+                  int32 V_18, int32 V_19,
+                  string V_20, string V_21, string V_22, string V_23,
+                  string V_24, string V_25, string V_26, string V_27,
+                  string V_28, string V_29)
 
-    ldstr      "HELLO WORLD"
-    call       void [mscorlib]System.Console::WriteLine(string)
-    ldc.i4.1
-    stloc.0
 
     // --- END statement ---
 
@@ -174,4 +95,4 @@
                         ret
   }
 
-} // end class Hello
+} // end class Null
