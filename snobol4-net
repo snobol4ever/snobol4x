@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# snobol4-net — compile + run a .sno file via snobol4x NET backend
+# Usage: snobol4-net <file.sno>
+# MONITOR_FIFO env var: if set, trace events written there via NET runtime
+set -euo pipefail
+
+SNO="${1:?Usage: snobol4-net <file.sno>}"
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SNO2C="${SNO2C_NET:-/home/claude/sno2c_net}"
+NET_CACHE="${NET_CACHE:-/tmp/snobol4x_net_cache}"
+RUNTIME_NET="$DIR/src/runtime/net"
+
+mkdir -p "$NET_CACHE"
+
+# Copy runtime DLLs into cache dir
+for dll in snobol4lib.dll snobol4run.dll; do
+    src="$RUNTIME_NET/$dll"
+    dst="$NET_CACHE/$dll"
+    if [[ -f "$src" ]] && { [[ ! -f "$dst" ]] || ! diff -q "$src" "$dst" >/dev/null 2>&1; }; then
+        cp "$src" "$dst"
+    fi
+done
+
+base="$(basename "$SNO" .sno)"
+dir_hash="$(echo "$SNO" | md5sum | cut -c1-8)"
+key="${base}_${dir_hash}"
+il="$NET_CACHE/${key}.il"
+exe="$NET_CACHE/${key}.exe"
+stamp="$NET_CACHE/${key}.stamp"
+
+"$SNO2C" -net "$SNO" > "$il" 2>/dev/null
+
+il_md5="$(md5sum "$il" | cut -d' ' -f1)"
+cached_md5="$(cat "$stamp" 2>/dev/null || echo '')"
+
+if [[ "$il_md5" != "$cached_md5" ]] || [[ ! -f "$exe" ]]; then
+    ilasm "$il" /output:"$exe" >/dev/null 2>&1
+    echo "$il_md5" > "$stamp"
+fi
+
+exec mono "$exe"

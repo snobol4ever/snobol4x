@@ -172,31 +172,43 @@ def normalize_asm(lines, include_rules, exclude_rules, ignore_rules):
 # ---------------------------------------------------------------------------
 
 def main():
-    if len(sys.argv) < 6:
-        print('Usage: normalize_trace.py <conf> <csn_trace> <asm_trace> <csn_norm> <asm_norm>',
+    # Two calling conventions:
+    #   2-way (legacy): conf csn_in asm_in csn_out asm_out
+    #   5-way:          conf csn_in spl_in asm_in jvm_in net_in
+    #                        csn_out spl_out asm_out jvm_out net_out
+    if len(sys.argv) not in (6, 12):
+        print('Usage (2-way): normalize_trace.py <conf> <csn> <asm> <csn_out> <asm_out>',
               file=sys.stderr)
+        print('Usage (5-way): normalize_trace.py <conf> <csn> <spl> <asm> <jvm> <net> '
+              '<csn_out> <spl_out> <asm_out> <jvm_out> <net_out>', file=sys.stderr)
         sys.exit(1)
 
     conf_path = sys.argv[1]
-    csn_in    = sys.argv[2]
-    asm_in    = sys.argv[3]
-    csn_out   = sys.argv[4]
-    asm_out   = sys.argv[5]
-
     include_rules, exclude_rules, ignore_rules = load_conf(conf_path)
 
-    with open(csn_in) as f:
-        csn_lines = f.readlines()
-    with open(asm_in) as f:
-        asm_lines = f.readlines()
+    if len(sys.argv) == 6:
+        # 2-way legacy
+        pairs = [
+            (sys.argv[2], sys.argv[4], normalize_csn),
+            (sys.argv[3], sys.argv[5], normalize_asm),
+        ]
+    else:
+        # 5-way: inputs at [2..6], outputs at [7..11]
+        # csn and spl use CSN format; asm/jvm/net use ASM/comm_var format
+        pairs = [
+            (sys.argv[2],  sys.argv[7],  normalize_csn),   # csn
+            (sys.argv[3],  sys.argv[8],  normalize_csn),   # spl (same MONCALL format)
+            (sys.argv[4],  sys.argv[9],  normalize_asm),   # asm
+            (sys.argv[5],  sys.argv[10], normalize_asm),   # jvm
+            (sys.argv[6],  sys.argv[11], normalize_asm),   # net
+        ]
 
-    csn_events = normalize_csn(csn_lines, include_rules, exclude_rules, ignore_rules)
-    asm_events = normalize_asm(asm_lines, include_rules, exclude_rules, ignore_rules)
-
-    with open(csn_out, 'w') as f:
-        f.write('\n'.join(csn_events) + ('\n' if csn_events else ''))
-    with open(asm_out, 'w') as f:
-        f.write('\n'.join(asm_events) + ('\n' if asm_events else ''))
+    for in_path, out_path, norm_fn in pairs:
+        with open(in_path) as f:
+            lines = f.readlines()
+        events = norm_fn(lines, include_rules, exclude_rules, ignore_rules)
+        with open(out_path, 'w') as f:
+            f.write('\n'.join(events) + ('\n' if events else ''))
 
 
 if __name__ == '__main__':

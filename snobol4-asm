@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# snobol4-asm — compile + run a .sno file via snobol4x ASM backend
+# Usage: snobol4-asm <file.sno>
+# MONITOR_FIFO env var: if set, trace events written there via comm_var()
+set -euo pipefail
+
+SNO="${1:?Usage: snobol4-asm <file.sno>}"
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RT="$DIR/src/runtime"
+INC="${INC:-/home/claude/snobol4corpus/programs/inc}"
+SNO2C="${SNO2C:-$DIR/sno2c}"
+WORK=$(mktemp -d /tmp/snobol4_asm_XXXXXX)
+trap 'rm -rf "$WORK"' EXIT
+
+# Precompile runtime
+gcc -O0 -g -c "$RT/asm/snobol4_stmt_rt.c"    -I"$RT/snobol4" -I"$RT" -I"$DIR/src/frontend/snobol4" -w -o "$WORK/stmt_rt.o"
+gcc -O0 -g -c "$RT/snobol4/snobol4.c"         -I"$RT/snobol4" -I"$RT" -I"$DIR/src/frontend/snobol4" -w -o "$WORK/snobol4.o"
+gcc -O0 -g -c "$RT/mock/mock_includes.c"       -I"$RT/snobol4" -I"$RT" -I"$DIR/src/frontend/snobol4" -w -o "$WORK/mock_includes.o"
+gcc -O0 -g -c "$RT/snobol4/snobol4_pattern.c" -I"$RT/snobol4" -I"$RT" -I"$DIR/src/frontend/snobol4" -w -o "$WORK/pat.o"
+gcc -O0 -g -c "$RT/engine/engine.c"            -I"$RT/snobol4" -I"$RT" -I"$DIR/src/frontend/snobol4" -w -o "$WORK/eng.o"
+
+"$SNO2C" -asm "$SNO" > "$WORK/prog.s" 2>/dev/null
+nasm -f elf64 -I"$RT/asm/" "$WORK/prog.s" -o "$WORK/prog.o" 2>/dev/null
+gcc -no-pie "$WORK/prog.o" "$WORK/stmt_rt.o" "$WORK/snobol4.o" \
+    "$WORK/mock_includes.o" "$WORK/pat.o" "$WORK/eng.o" \
+    -lgc -lm -o "$WORK/prog_asm" 2>/dev/null
+
+exec "$WORK/prog_asm"
