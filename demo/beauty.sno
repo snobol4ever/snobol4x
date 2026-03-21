@@ -1,0 +1,801 @@
+*-----------------------------------------------------------------------------------------------------------
+* Program:       SNOBOL4 Beautifier
+* Author:        Lon Cherryholmes
+* First Created: 2002/12/10
+* Last Modified: 2005/01/16
+* Version:       0.25
+*
+START
+-INCLUDE 'global.sno'
+-INCLUDE 'is.sno'
+-INCLUDE 'FENCE.sno'
+-INCLUDE 'io.sno'
+-INCLUDE 'case.sno'
+-INCLUDE 'assign.sno'
+-INCLUDE 'match.sno'
+-INCLUDE 'counter.sno'
+-INCLUDE 'stack.sno'
+-INCLUDE 'tree.sno'
+-INCLUDE 'ShiftReduce.sno'
+-INCLUDE 'TDump.sno'
+-INCLUDE 'Gen.sno'
+-INCLUDE 'Qize.sno'
+-INCLUDE 'ReadWrite.sno'
+-INCLUDE 'XDump.sno'
+-INCLUDE 'semantic.sno'
+-INCLUDE 'omega.sno'
+-INCLUDE 'trace.sno'
+
+                  &FULLSCAN      =  1
+                  &MAXLNGTH      =  524288
+*
+*                 Four tab-stops defined for the pretty-print routine.
+*                 ppStop[1] - subject field start column
+*                 ppStop[2] - pattern or = field start column
+*                 ppStop[3] - replacement object start column
+*                 ppStop[4] - goto field start column
+*                 ppSmBump  - extra indent when inside multi-line nesting
+*                 ppLgBump  - extra width budget when no goto field present
+*
+*                 Five profiles derived from corpus analysis (401 programs, quintiles):
+*
+*                 Profile     s1   s2   s3   s4  SmBump LgBump  Typical use
+*                 --micro     11   26   29   55     3     21    Gimpel snippets, tiny utilities
+*                 --small     13   28   31   60     4     24    Small programs <100 lines
+*                 --medium    15   30   33   80     5     42    Moderate programs, mixed style
+*                 --large     17   32   35   96     6     54    Large programs, dense goto
+*                 --wide      19   34   37  110     7     68    TZ grammars, pattern-heavy libs
+*
+*                 Default profile: --medium
+*
+*                 Individual overrides (applied after profile, all optional):
+*                   --s1=N       ppStop[1]
+*                   --s2=N       ppStop[2]
+*                   --s3=N       ppStop[3]
+*                   --s4=N       ppStop[4]
+*                   --smbump=N   ppSmBump
+*                   --lgbump=N   ppLgBump
+*
+*                 Examples:
+*                   snobol4 beauty.sno --small < prog.sno
+*                   snobol4 beauty.sno --large --s4=90 < prog.sno
+*                   snobol4 beauty.sno --s1=11 --s4=66 < prog.sno
+*
+                  ppStop         =  ARRAY('1:4')
+*
+*                 Set medium defaults.
+*
+                  ppStop[1]      =  15
+                  ppStop[2]      =  30
+                  ppStop[3]      =  33
+                  ppStop[4]      =  80
+                  ppSmBump       =  5
+                  ppLgBump       =  42
+*
+*                 Parse HOST(0) for --name=value or bare --flag tokens.
+*                 Profile switches load all six values; individual overrides
+*                 then adjust any subset.  Last --profile wins.
+*
+                  ppArgs         =  HOST(0)
+                  ppTokPat       =  '--' (BREAK('= ') | REM) . ppTokName
++                                   ('=' (BREAK(' ') | REM) . ppTokVal | '' . ppTokVal)
+ppArgLoop        ppArgs          POS(0) SPAN(' ') =
+                  DIFFER(ppArgs)                                                    :F(ppArgDone)
+                  ppArgs         ppTokPat =                                         :F(ppArgDone)
+                  IDENT(ppTokName, 'micro')                                         :F(ppArgP2)
+                  ppStop[1]      =  11
+                  ppStop[2]      =  26
+                  ppStop[3]      =  29
+                  ppStop[4]      =  55
+                  ppSmBump       =  3
+                  ppLgBump       =  21                                              :(ppArgLoop)
+ppArgP2          IDENT(ppTokName, 'small')                                          :F(ppArgP3)
+                  ppStop[1]      =  13
+                  ppStop[2]      =  28
+                  ppStop[3]      =  31
+                  ppStop[4]      =  60
+                  ppSmBump       =  4
+                  ppLgBump       =  24                                              :(ppArgLoop)
+ppArgP3          IDENT(ppTokName, 'medium')                                         :F(ppArgP4)
+                  ppStop[1]      =  15
+                  ppStop[2]      =  30
+                  ppStop[3]      =  33
+                  ppStop[4]      =  80
+                  ppSmBump       =  5
+                  ppLgBump       =  42                                              :(ppArgLoop)
+ppArgP4          IDENT(ppTokName, 'large')                                          :F(ppArgP5)
+                  ppStop[1]      =  17
+                  ppStop[2]      =  32
+                  ppStop[3]      =  35
+                  ppStop[4]      =  96
+                  ppSmBump       =  6
+                  ppLgBump       =  54                                              :(ppArgLoop)
+ppArgP5          IDENT(ppTokName, 'wide')                                           :F(ppArgChk1)
+                  ppStop[1]      =  19
+                  ppStop[2]      =  34
+                  ppStop[3]      =  37
+                  ppStop[4]      =  110
+                  ppSmBump       =  7
+                  ppLgBump       =  68                                              :(ppArgLoop)
+ppArgChk1        IDENT(ppTokName, 's1')                                             :F(ppArgChk2)
+                  ppStop[1]      =  +ppTokVal                                       :(ppArgLoop)
+ppArgChk2        IDENT(ppTokName, 's2')                                             :F(ppArgChk3)
+                  ppStop[2]      =  +ppTokVal                                       :(ppArgLoop)
+ppArgChk3        IDENT(ppTokName, 's3')                                             :F(ppArgChk4)
+                  ppStop[3]      =  +ppTokVal                                       :(ppArgLoop)
+ppArgChk4        IDENT(ppTokName, 's4')                                             :F(ppArgChk5)
+                  ppStop[4]      =  +ppTokVal                                       :(ppArgLoop)
+ppArgChk5        IDENT(ppTokName, 'smbump')                                         :F(ppArgChk6)
+                  ppSmBump       =  +ppTokVal                                       :(ppArgLoop)
+ppArgChk6        IDENT(ppTokName, 'lgbump')                                         :F(ppArgUnk)
+                  ppLgBump       =  +ppTokVal                                       :(ppArgLoop)
+ppArgUnk         IDENT(ppTokName, 'auto')                                          :F(ppArgWarn)
+                  ppAutoMode     =  1                                             :(ppArgLoop)
+ppArgWarn        OUTPUT         =  '* Warning: unknown switch --' ppTokName         :(ppArgLoop)
+ppArgDone
+*---------------- -------------- -- ----------------------------------------------- ------------------------
+*                 --auto: two-pass mode.
+*                 Pass 1: spool stdin to temp file; measure p90 content width
+*                         of statements that carry a goto field.
+*                         Derive s4 = p90 + 6, then scale s1/s2/s3/smbump/lgbump.
+*                 Pass 2: reassign INPUT from temp file; run normal beauty loop.
+*
+*                 Only entered when --auto flag was set in arg loop.
+*
+                  DIFFER(ppAutoMode)                                               :F(ppAutoSkip)
+*
+*                 Measurement patterns (same logic as test_measure_final.sno)
+*
+                  ppTab          =  CHAR(9)
+                  ppGSfx         =  (SPAN(' ' ppTab) | '') ':'
++                                   (ANY('SF') | '') (ANY('(<') | '') REM
+                  ppGPat         =  BREAK(':') . ppGCon ppGSfx
+                  ppTrimPat      =  (SPAN(' ' ppTab) RPOS(0)) . ppDrop
+*
+                  ppNg           =  0
+                  ppWArr         =  ARRAY(2000)
+                  ppTmpFile      =  '/tmp/beauty_auto_' HOST(1) '.sno'
+                  output__(.ppTmp, 3, '', ppTmpFile)
+*
+ppAutoR          ppLn           =  INPUT                                          :F(ppAutoSort)
+                 ppTmp          =  ppLn
+                 ppLn           POS(0) ANY('*-')                                  :S(ppAutoR)
+                 ppLn           POS(0) ANY('+.')                                  :S(ppAutoCont)
+                 DIFFER(ppStmt)                                                   :F(ppAutoNew)
+                 ppStmt         ppGPat                                            :F(ppAutoNew)
+                 ppGConT        =  ppGCon
+                 ppGConT        ppTrimPat =
+                 ppW            =  SIZE(ppGConT)
+                 DIFFER(ppW, 0)                                                   :F(ppAutoNew)
+                 ppNg           =  ppNg + 1
+                 ppWArr[ppNg]   =  ppW
+ppAutoNew        ppStmt         =  ppLn                                           :(ppAutoR)
+ppAutoCont       ppStmt         =  ppStmt ' ' ppLn                                :(ppAutoR)
+*
+*                 Insertion sort ascending
+ppAutoSort       ENDFILE(3)
+                 ppI            =  1
+ppAS1            ppI            =  LT(ppI, ppNg) ppI + 1                          :F(ppAutoCalc)
+                 ppJ            =  ppI
+                 ppKey          =  ppWArr[ppJ]
+ppAS2            ppJ1           =  ppJ - 1
+                 LT(ppJ1, 1)                                                      :S(ppASins)
+                 LT(ppKey, ppWArr[ppJ1])                                          :F(ppASins)
+                 ppWArr[ppJ]    =  ppWArr[ppJ1]
+                 ppJ            =  ppJ1                                           :(ppAS2)
+ppASins          ppWArr[ppJ]    =  ppKey                                          :(ppAS1)
+*
+*                 Derive stops from p90
+ppAutoCalc       ppP90i         =  (ppNg * 9) / 10
+                 LT(ppP90i, 1)                                                    :F(ppAP90ok)
+                 ppP90i         =  1
+ppAP90ok         ppP90          =  ppWArr[ppP90i]
+                 LT(ppP90, 20)                                                    :F(ppAscale)
+                 ppP90          =  20
+ppAscale
+*                 s4 = p90 + 6, min 40
+                 ppStop[4]      =  ppP90 + 6
+                 LT(ppStop[4], 40)                                                :F(ppAs1)
+                 ppStop[4]      =  40
+*                 s1 scales 11..19 across s4 range 40..110
+ppAs1            ppStop[1]      =  11 + (ppStop[4] - 40) * 8 / 70
+*                 s2 = s1 + 15, s3 = s2 + 3
+                 ppStop[2]      =  ppStop[1] + 15
+                 ppStop[3]      =  ppStop[2] + 3
+*                 smbump 3..7, lgbump = s4 - s3 - 5 min 10
+                 ppSmBump       =  3 + (ppStop[4] - 40) * 4 / 70
+                 ppLgBump       =  ppStop[4] - ppStop[3] - 5
+                 LT(ppLgBump, 10)                                                 :F(ppAutoMsg)
+                 ppLgBump       =  10
+ppAutoMsg        OUTPUT         =  '* --auto: n=' ppNg ' p90=' ppP90
++                                  ' s1=' ppStop[1] ' s2=' ppStop[2]
++                                  ' s3=' ppStop[3] ' s4=' ppStop[4]
++                                  ' smbump=' ppSmBump ' lgbump=' ppLgBump
+*
+*                 Reopen temp file as INPUT for pass 2
+                 input__(.INPUT, 1, '', ppTmpFile)
+ppAutoSkip
+*---------------- -------------- -- ----------------------------------------------- ------------------------
+*                 Parser patterns:
+*
+                  Integer     =  SPAN(digits)
+                  DQ          =  '"' BREAK('"' nl) '"'
+                  SQ          =  "'" BREAK("'" nl) "'"
+                  String      =  *SQ | *DQ
+                  Real        =  (  SPAN(digits)
++                                      ('.' FENCE(SPAN(digits) | epsilon) | epsilon)
++                                      ('E' | 'e')
++                                      ('+' | '-' | epsilon)
++                                      SPAN(digits)
++                                   |  SPAN(digits) '.' FENCE(SPAN(digits) | epsilon)
++                                   )
+                  Id          =  ANY(&UCASE &LCASE)
++                                   FENCE(SPAN('.' digits &UCASE '_' &LCASE) | epsilon)
+                  Function    =  SPAN('.' digits &UCASE '_' &LCASE)
++                                $  tx $ *match(Functions, TxInList)
+                  BuiltinVar  =  SPAN('.' digits &UCASE '_' &LCASE)
++                                $  tx $ *match(BuiltinVars, TxInList)
+                  SpecialNm   =  SPAN('.' digits &UCASE '_' &LCASE)
++                                $  tx $ *match(SpecialNms, TxInList)
+                  ProtKwd     =  '&' SPAN(&UCASE &LCASE) $ tx $ *match(ProtKwds, TxInList)
+                  UnprotKwd   =  '&' SPAN(&UCASE &LCASE) $ tx $ *match(UnprotKwds, TxInList)
+
+                  Gray        =  *White | epsilon
+                  White       =  (  SPAN(' ' tab)
++                                      FENCE(nl ('+' | '.') FENCE(SPAN(' ' tab) | epsilon) | epsilon)
++                                   |  nl ('+' | '.') FENCE(SPAN(' ' tab) | epsilon)
++                                   )
+
+                  TxInList    =  (POS(0) | ' ') *upr(tx) (' ' | RPOS(0))
+                  SpecialNms  =  'ABORT CONTINUE END FRETURN NRETURN RETURN SCONTINUE START'
+                  BuiltinVars =  'ABORT ARB BAL FAIL FENCE INPUT OUTPUT REM TERMINAL'
+                  ProtKwds    =  'ABORT ALPHABET ARB BAL FAIL FENCE FILE FNCLEVEL '
++                                   'LASTFILE LASTLINE LASTNO LCASE LINE REM RTNTYPE '
++                                   'STCOUNT STNO SUCCEED UCASE'
+                  UnprotKwds  =  'ABEND ANCHOR CASE CODE COMPARE DUMP ERRLIMIT '
++                                   'ERRTEXT ERRTYPE FTRACE INPUT MAXLNGTH OUTPUT '
++                                   'PROFILE STLIMIT TRACE TRIM FULLSCAN'
+                  Functions   =  'ANY APPLY ARBNO ARG ARRAY ATAN BACKSPACE BREAK BREAKX '
++                                   'CHAR CHOP CLEAR CODE COLLECT CONVERT COPY COS DATA '
++                                   'DATATYPE DATE DEFINE DETACH DIFFER DUMP DUPL EJECT '
++                                   'ENDFILE EQ EVAL EXIT EXP FENCE FIELD GE GT HOST '
++                                   'IDENT INPUT INTEGER ITEM LE LEN LEQ LGE LGT LLE '
++                                   'LLT LN LNE LOAD LOCAL LPAD LT NE NOTANY OPSYN OUTPUT '
++                                   'POS PROTOTYPE REMDR REPLACE REVERSE REWIND RPAD RPOS '
++                                   'RSORT RTAB SET SETEXIT SIN SIZE SORT SPAN SQRT STOPTR '
++                                   'SUBSTR TAB TABLE TAN TIME TRACE TRIM UNLOAD'
+
+                  $'='           =  *White '=' *White
+                  $'?'           =  *White '?' *White
+                  $'|'           =  *White '|' *White
+                  $'+'           =  *White '+' *White
+                  $'-'           =  *White '-' *White
+                  $'/'           =  *White '/' *White
+                  $'*'           =  *White '*' *White
+                  $'^'           =  *White '^' *White
+                  $'!'           =  *White '!' *White
+                  $'**'          =  *White '**' *White
+                  $'$'           =  *White '$' *White
+                  $'.'           =  *White '.' *White
+                  $'&'           =  *White '&' *White
+                  $'@'           =  *White '@' *White
+                  $'#'           =  *White '#' *White
+                  $'%'           =  *White '%' *White
+                  $'~'           =  *White '~' *White
+                  $','           =  *Gray ',' *Gray
+                  $'('           =  '(' *Gray
+                  $'['           =  '[' *Gray
+                  $'<'           =  '<' *Gray
+                  $')'           =  *Gray ')'
+                  $']'           =  *Gray ']'
+                  $'>'           =  *Gray '>'
+
+                  ExprList    =  nPush()
++                                   *XList
++                                   ("'ExprList'" & '*(GT(nTop(), 1) nTop())')
++                                   nPop()
+                  XList       =  nInc() (*Expr | epsilon ~ '') FENCE($',' *XList | epsilon)
+                  Expr        =  *Expr0
+                  Expr0       =  *Expr1 FENCE($'=' *Expr0 ("'='" & 2) | epsilon)
+                  Expr1       =  *Expr2 FENCE($'?' *Expr1 ("'?'" & 2) | epsilon)
+                  Expr2       =  *Expr3 FENCE($'&' *Expr2 ("'&'" & 2) | epsilon)
+                  Expr3       =  nPush() *X3 ("'|'" & '*(GT(nTop(), 1) nTop())') nPop()
+                  X3          =  nInc() *Expr4 FENCE($'|' *X3 | epsilon)
+                  Expr4       =  nPush() *X4 ("'..'" & '*(GT(nTop(), 1) nTop())') nPop()
+                  X4          =  nInc() *Expr5 FENCE(*White *X4 | epsilon)
+                  Expr5       =  *Expr6 FENCE($'@' *Expr5 ("'@'" & 2) | epsilon)
+                  Expr6       =  *Expr7
++                                   FENCE(
++                                      $'+' *Expr6 ("'+'" & 2) | $'-' *Expr6 ("'-'" & 2) | epsilon
++                                   )
+                  Expr7       =  *Expr8 FENCE($'#' *Expr7 ("'#'" & 2) | epsilon)
+                  Expr8       =  *Expr9 FENCE($'/' *Expr8 ("'/'" & 2) | epsilon)
+                  Expr9       =  *Expr10 FENCE($'*' *Expr9 ("'*'" & 2) | epsilon)
+                  Expr10      =  *Expr11 FENCE($'%' *Expr10 ("'%'" & 2) | epsilon)
+                  Expr11      =  *Expr12
++                                   FENCE(($'^' | $'!' | $'**') *Expr11 ("'^'" & 2) | epsilon)
+                  Expr12      =  *Expr13
++                                   FENCE(
++                                      $'$' *Expr12 ("'$'" & 2)
++                                   |  $'.' *Expr12 ("'.'" & 2)
++                                   |  epsilon
++                                   )
+                  Expr13      =  *Expr14 FENCE($'~' *Expr13 ("'~'" & 2) | epsilon)
+                  Expr14      =  '@' *Expr14 ("'@'" & 1)
++                                |  '~' *Expr14 ("'~'" & 1)
++                                |  '?' *Expr14 ("'?'" & 1)
++                                |  *ProtKwd ~ 'ProtKwd'
++                                |  *UnprotKwd ~ 'UnprotKwd'
++                                |  '&' *Expr14 ("'&'" & 1)
++                                |  '+' *Expr14 ("'+'" & 1)
++                                |  '-' *Expr14 ("'-'" & 1)
++                                |  '*' *Expr14 ("'*'" & 1)
++                                |  '$' *Expr14 ("'$'" & 1)
++                                |  '.' *Expr14 ("'.'" & 1)
++                                |  '!' *Expr14 ("'!'" & 1)
++                                |  '%' *Expr14 ("'%'" & 1)
++                                |  '/' *Expr14 ("'/'" & 1)
++                                |  '#' *Expr14 ("'#'" & 1)
++                                |  '=' *Expr14 ("'='" & 1)
++                                |  '|' *Expr14 ("'|'" & 1)
++                                |  *Expr15
+                  Expr15      =  *Expr17
++                                   FENCE(nPush() *Expr16 ("'[]'" & 'nTop() + 1') nPop() | epsilon)
+                  Expr16      =  nInc()
++                                   ($'[' *ExprList $']' | $'<' *ExprList $'>')
++                                   FENCE(*Expr16 | epsilon)
+                  Expr17      =  FENCE(
++                                      nPush()
++                                      $'('
++                                      *Expr
++                                      (  $',' *XList ("','" & 'nTop() + 1')
++                                      |  epsilon ("'()'" & 1)
++                                      )
++                                      $')'
++                                      nPop()
++                                   |  *Function ~ 'Function' $'(' *ExprList $')' ("'Call'" & 2)
++                                   |  *Id ~ 'Id' $'(' *ExprList $')' ("'Call'" & 2)
++                                   |  *BuiltinVar ~ 'BuiltinVar'
++                                   |  *SpecialNm ~ 'SpecialNm'
++                                   |  *Id ~ 'Id'
++                                   |  *String ~ 'String'
++                                   |  *Real ~ 'Real'
++                                   |  *Integer ~ 'Integer'
++                                   )
+
+                  SGoto       =  ('S' | 's') . *assign(.SorF, *'S')
+                  FGoto       =  ('F' | 'f') . *assign(.SorF, *'F')
+                  SorF        =  *SGoto | *FGoto
+                  Target      =  $'(' . *assign(.Brackets, *'()') *Expr $')'
++                                |  $'<' . *assign(.Brackets, *'<>') *Expr $'>'
+                  Goto        =  *Gray ':'
++                                   *Gray
++                                   FENCE(
++                                      *Target ("*(':' Brackets)" & 1) epsilon ~ ''
++                                   |  *SorF *Target ("*(':' SorF Brackets)" & 1)
++                                      FENCE(*Gray *SorF *Target ("*(':' SorF Brackets)" & 1) | epsilon ~ '')
++                                   )
+                  Control     =  '-' BREAK(nl ';')
+                  Comment     =  '*' BREAK(nl)
+                  Label       =  BREAK(' ' tab nl ';') ~ 'Label'
+                  Stmt        =  *Label
++                                   (  *White
++                                      *Expr14
++                                      FENCE(
++                                         epsilon ~ ''
++                                         *White
++                                         ('=' ~ '=' *White *Expr | '=' ~ '=' epsilon ~ '')
++                                      |  ($'?' | *White)
++                                         *Expr1
++                                         FENCE(
++                                            *White
++                                            ('=' ~ '=' *White *Expr | '=' ~ '=' epsilon ~ '')
++                                         |  epsilon ~ '' epsilon ~ ''
++                                         )
++                                      |  epsilon ~ '' epsilon ~ '' epsilon ~ ''
++                                      )
++                                   |  epsilon ~ '' epsilon ~ '' epsilon ~ '' epsilon ~ ''
++                                   )
++                                   FENCE(*Goto | epsilon ~ '' epsilon ~ '')
++                                   *Gray
+
+                  Commands    =  *Command FENCE(*Commands | epsilon)
+                  Command     =  nInc()
++                                   FENCE(
++                                      *Comment ~ 'Comment' ("'Comment'" & 1) nl
++                                   |  *Control ~ 'Control' ("'Control'" & 1) (nl | ';')
++                                   |  *Stmt ("'Stmt'" & 7) (nl | ';')
++                                   )
+
+                  Parse       =  nPush()
++                                   ARBNO(*Command)
++                                   ("'Parse'" & 'nTop()')
++                                   nPop()
+
+                  Compiland   =  nPush()
++                                   ARBNO(*Command)
++                                   ("'Parse'" & 'nTop()')
++                                   (icase('END') (' ' BREAK(nl) nl | nl) ARBNO(BREAK(nl) nl) | epsilon)
++                                   nPop()
+
+*================ ============== == =============================================== ========================
+*                 Pretty-print routine.
+*                 null = pp(x=tree)
+*                 Recursive routine given a tree, to output SNOBOL4 code.
+*
+                  DEFINE('pp(x)c,i,n,s,t,v')                                        :(ppEnd)
+pp                DIFFER(x)                                                         :F(RETURN)
+                  t              =  t(x)
+                  v              =  v(x)
+                  n              =  n(x)
+                  c              =  c(x)
+                  OUTPUT         =  GT(doDebug, 0) 'pp(' t ')' ', sz = ' level '+' SIZE(v) ', v = ' v
+                  DIFFER(t)                                                         :S($('pp_' t))F(RETURN)
+*---------------- -------------- -- ----------------------------------------------- ------------------------
+pp_Parse       ppWidth        =  ppStop[4]                                       :(pp_0)
+pp_0              i              =  0
+pp_1              i              =  LT(i, n) i + 1                                  :F(RETURN)
+                  pp(c[i])                                                          :(pp_1)
+*---------------- -------------- -- ----------------------------------------------- ------------------------
+pp_BuiltinVar  Gen(ss(x))                                                        :S(RETURN)F(error)
+pp_Function    Gen(ss(x))                                                        :S(RETURN)F(error)
+pp_Id          Gen(ss(x))                                                        :S(RETURN)F(error)
+pp_Integer     Gen(ss(x))                                                        :S(RETURN)F(error)
+pp_Label       Gen(ss(x))                                                        :S(RETURN)F(error)
+pp_ProtKwd     Gen(ss(x))                                                        :S(RETURN)F(error)
+pp_Real        Gen(ss(x))                                                        :S(RETURN)F(error)
+pp_SpecialNm   Gen(ss(x))                                                        :S(RETURN)F(error)
+pp_String      Gen(ss(x))                                                        :S(RETURN)F(error)
+pp_UnprotKwd   Gen(ss(x))                                                        :S(RETURN)F(error)
+*---------------- -------------- -- ----------------------------------------------- ------------------------
+pp_:()            Gen(ss(x))                                                        :S(RETURN)F(error)
+pp_:<>            Gen(ss(x))                                                        :S(RETURN)F(error)
+pp_:S()           Gen(ss(x))                                                        :S(RETURN)F(error)
+pp_:S<>           Gen(ss(x))                                                        :S(RETURN)F(error)
+pp_:F()           Gen(ss(x))                                                        :S(RETURN)F(error)
+pp_:F<>           Gen(ss(x))                                                        :S(RETURN)F(error)
+*---------------- -------------- -- ----------------------------------------------- ------------------------
+ppUnOp            Gen(ss(x, ppWidth - GetLevel()))                                  :S(RETURN)
+                  Gen(t)
+                  pp(c[1])                                                          :(RETURN)
+ppBinOp           Gen(ss(x, ppWidth - GetLevel()))                                  :S(RETURN)
+                  pp(c[1])
+                  Gen(nl)
+                  DecLevel()
+                  Gen(t)
+                  IncLevel()
+                  GenTab()
+                  pp(c[2])                                                          :(RETURN)
+*---------------- -------------- -- ----------------------------------------------- ------------------------
+pp_!              EQ(n, 1)                                                          :S(ppUnOp)
+pp_#              EQ(n, 1)                                                          :S(ppUnOp)
+                  EQ(n, 2)                                                          :S(ppBinOp)F(error)
+pp_$              EQ(n, 1)                                                          :S(ppUnOp)
+                  EQ(n, 2)                                                          :S(ppBinOp)F(error)
+pp_%              EQ(n, 1)                                                          :S(ppUnOp)
+                  EQ(n, 2)                                                          :S(ppBinOp)F(error)
+pp_&              EQ(n, 1)                                                          :S(ppUnOp)
+                  EQ(n, 2)                                                          :S(ppBinOp)F(error)
+pp_*              EQ(n, 1)                                                          :S(ppUnOp)
+                  EQ(n, 2)                                                          :S(ppBinOp)F(error)
+pp_+              EQ(n, 1)                                                          :S(ppUnOp)
+                  EQ(n, 2)                                                          :S(ppBinOp)F(error)
+pp_-              EQ(n, 1)                                                          :S(ppUnOp)
+                  EQ(n, 2)                                                          :S(ppBinOp)F(error)
+pp_.              EQ(n, 1)                                                          :S(ppUnOp)
+                  EQ(n, 2)                                                          :S(ppBinOp)F(error)
+pp_/              EQ(n, 1)                                                          :S(ppUnOp)
+                  EQ(n, 2)                                                          :S(ppBinOp)F(error)
+pp_=              EQ(n, 1)                                                          :S(ppUnOp)
+                  EQ(n, 2)                                                          :S(ppBinOp)F(error)
+pp_?              EQ(n, 1)                                                          :S(ppUnOp)
+                  EQ(n, 2)                                                          :S(ppBinOp)F(error)
+pp_@              EQ(n, 1)                                                          :S(ppUnOp)
+                  EQ(n, 2)                                                          :S(ppBinOp)F(error)
+pp_^              EQ(n, 2)                                                          :S(ppBinOp)F(error)
+pp_~              EQ(n, 1)                                                          :S(ppUnOp)
+                  EQ(n, 2)                                                          :S(ppBinOp)F(error)
+*---------------- -------------- -- ----------------------------------------------- ------------------------
+pp_Comment     SetLevel(0)
+                  GenSetCont()
+                  Gen(v(c[1]) nl)                                                   :(RETURN)
+*---------------- -------------- -- ----------------------------------------------- ------------------------
+pp_Control     SetLevel(0)
+                  GenSetCont()
+                  Gen(v(c[1]) nl)                                                   :(RETURN)
+*---------------- -------------- -- ----------------------------------------------- ------------------------
+pp_Stmt        SetLevel(0)
+                  GenSetCont('+')
+                  ppWidth        =  ppStop[4]
+                  ppLbl          =  ss(c[1])
+                  ppSubj         =  c[2]
+                  ppPatrn        =  c[3]
+                  ppAsgn         =  v(c[4])
+                  ppRepl         =  c[5]
+                  ppGo1          =  c[6]
+                  ppGo2          =  c[7]
+                  Gen(ppLbl)
+                  DIFFER(t(ppSubj))                                                 :F(pp_Stmt7)
+                  Gen(' ')
+                  GenTab(ppStop[1])
+                  SetLevel(ppStop[1])
+                  ppWidth        =  IDENT(t(ppPatrn)) IDENT(ppAsgn) IDENT(t(ppGo1)) ppStop[4] + ppLgBump
+                  pp(ppSubj)
+                  DIFFER(t(ppPatrn))                                                :F(pp_Stmt5)
+                  Gen(' ')
+                  GenTab(ppStop[2])
+                  SetLevel(ppStop[2])
+                  ppWidth        =  IDENT(ppAsgn) IDENT(t(ppGo1)) ppStop[4] + ppLgBump
+                  pp(ppPatrn)
+                  DIFFER(ppAsgn)                                                    :F(pp_Stmt7)
+                  Gen(' =')
+                  DIFFER(t(ppRepl))                                                 :F(pp_Stmt7)
+                  Gen(' ')
+                  pp(ppRepl)                                                        :(pp_Stmt7)
+pp_Stmt5       DIFFER(ppAsgn)                                                    :F(pp_Stmt7)
+                  Gen(' ')
+                  GenTab(ppStop[2])
+                  SetLevel(ppStop[2])
+                  Gen('=')
+                  DIFFER(t(ppRepl))                                                 :F(pp_Stmt7)
+                  Gen(' ')
+                  GenTab(ppStop[3])
+                  SetLevel(ppStop[3])
+                  ppWidth        =  IDENT(t(ppGo1)) ppStop[4] + ppLgBump
+                  pp(ppRepl)                                                        :(pp_Stmt7)
+pp_Stmt7       DIFFER(t(ppGo1))                                                  :F(pp_Stmt9)
+                  ppWidth        =  256
+                  Gen(' ')
+                  GenTab(ppStop[4])
+                  SetLevel(ppStop[4])
+                  Gen(':')
+                  pp(ppGo1)
+                  DIFFER(t(ppGo2))                                                  :F(pp_Stmt9)
+                  pp(ppGo2)                                                         :(pp_Stmt9)
+pp_Stmt9       Gen(nl)                                                           :(RETURN)
+*---------------- -------------- -- ----------------------------------------------- ------------------------
+pp_ExprList    Gen(ss(x, ppWidth - GetLevel()))                                  :S(RETURN)
+                  pp(c[1])
+                  i              =  1
+pp_ExprList0   i              =  LT(i, n) i + 1                                  :F(RETURN)
+                  Gen(nl)
+                  DecLevel()
+                  Gen(',')
+                  IncLevel()
+                  GenTab()
+                  pp(c[i])                                                          :(pp_ExprList0)
+*---------------- -------------- -- ----------------------------------------------- ------------------------
+pp_,              Gen(ss(x, ppWidth - GetLevel()))                                  :S(RETURN)
+                  Gen('(')
+                  IncLevel()
+                  GenTab()
+                  pp(c[1])
+                  i              =  1
+pp_,0             i              =  LT(i, n) i + 1                                  :F($'pp_,1')
+                  Gen(nl)
+                  DecLevel()
+                  Gen(',')
+                  IncLevel()
+                  GenTab()
+                  pp(c[i])                                                          :($'pp_,0')
+pp_,1             Gen(nl)
+                  DecLevel()
+                  Gen(')')                                                          :(RETURN)
+*---------------- -------------- -- ----------------------------------------------- ------------------------
+pp_|              EQ(n, 1)                                                          :S(ppUnOp)
+                  Gen(ss(x, ppWidth - GetLevel()))                                  :S(RETURN)
+                  pp(c[1])
+                  i              =  1
+pp_|0             i              =  LT(i, n) i + 1                                  :F(RETURN)
+                  Gen(nl)
+                  DecLevel()
+                  Gen('|')
+                  IncLevel()
+                  GenTab()
+                  pp(c[i])                                                          :($'pp_|0')
+*---------------- -------------- -- ----------------------------------------------- ------------------------
+pp_..             Gen(ss(x, ppWidth - GetLevel()))                                  :S(RETURN)
+                  i              =  0
+pp_..0            i              =  LT(i, n) i + 1                                  :F(RETURN)
+                  pp(c[i])
+                  (LT(i, n) Gen(nl))                                                :($'pp_..0')
+*---------------- -------------- -- ----------------------------------------------- ------------------------
+pp_[]             Gen(ss(x, ppWidth - GetLevel()))                                  :S(RETURN)
+                  pp(c[1])
+                  i              =  1
+pp_[]0            i              =  LT(i, n) i + 1                                  :F(RETURN)
+                  Gen('[')
+                  IncLevel()
+                  GenTab()
+                  pp(c[i])
+                  Gen(nl)
+                  DecLevel()
+                  Gen(']')
+                  (LT(i, n) Gen(nl))                                                :($'pp_[]0')
+*---------------- -------------- -- ----------------------------------------------- ------------------------
+pp_()             Gen(ss(x, ppWidth - GetLevel()))                                  :S(RETURN)
+                  Gen('(')
+                  IncLevel()
+                  GenTab()
+                  pp(c[1])
+                  Gen(nl)
+                  DecLevel()
+                  Gen(')')                                                          :(RETURN)
+*---------------- -------------- -- ----------------------------------------------- ------------------------
+pp_Call        Gen(ss(x, ppWidth - GetLevel()))                                  :S(RETURN)
+                  pp(c[1])
+                  Gen('(' nl)
+                  IncLevel()
+                  GenTab()
+                  pp(c[2])
+                  Gen(nl)
+                  DecLevel()
+                  Gen(')')                                                          :(RETURN)
+ppEnd
+*================ ============== == =============================================== ========================
+*                 Stringize Subject
+*                 string = ss(x=tree, len=integer)
+*                 Recursive function given a tree, to return SNOBOL4 code as a string.
+*
+                  DEFINE('ss(x,len)c,c1,c2,i,n,s,t,v')                              :(ssEnd)
+ss                DIFFER(x)                                                         :F(RETURN)
+                  len            =  IDENT(len) 1024
+                  GT(len, 0)                                                        :F(FRETURN)
+                  t              =  t(x)
+                  v              =  v(x)
+                  n              =  n(x)
+                  c              =  c(x)
+                  OUTPUT         =  GT(doDebug, 0) 'ss(' t ')' ', sz = ' level '+' SIZE(v) ', v = ' v
+                  DIFFER(t)                                                         :S($('ss_' t))F(RETURN)
+*---------------- -------------- -- ----------------------------------------------- ------------------------
+ss_BuiltinVar  ss             =  upr(v)                                          :(ss_atomic)
+ss_Function    ss             =  upr(v)                                          :(ss_atomic)
+ss_Id          ss             =  v                                               :(ss_atomic)
+ss_Integer     ss             =  v                                               :(ss_atomic)
+ss_Label       v              POS(0) *SpecialNm RPOS(0)                       :S(ss_Label0)F(ss_Label1)
+ss_Label0      ss             =  upr(v)                                          :(ss_atomic)
+ss_Label1      ss             =  v                                               :(ss_atomic)
+ss_ProtKwd     ss             =  upr(v)                                          :(ss_atomic)
+ss_Real        ss             =  v                                               :(ss_atomic)
+ss_SpecialNm   ss             =  upr(v)                                          :(ss_atomic)
+ss_String      ss             =  v                                               :(ss_atomic)
+ss_UnprotKwd   ss             =  upr(v)                                          :(ss_atomic)
+ss_atomic         LE(SIZE(ss), len)                                                 :S(RETURN)F(FRETURN)
+*---------------- -------------- -- ----------------------------------------------- ------------------------
+ss_:()            ss             =  '(' ss(c[1], len - 2) ')'                       :S(RETURN)F(error)
+ss_:<>            ss             =  '<' ss(c[1], len - 2) '>'                       :S(RETURN)F(error)
+ss_:S()           ss             =  'S(' ss(c[1], len - 3) ')'                      :S(RETURN)F(error)
+ss_:S<>           ss             =  'S<' ss(c[1], len - 3) '>'                      :S(RETURN)F(error)
+ss_:F()           ss             =  'F(' ss(c[1], len - 3) ')'                      :S(RETURN)F(error)
+ss_:F<>           ss             =  'F<' ss(c[1], len - 3) '>'                      :S(RETURN)F(error)
+*---------------- -------------- -- ----------------------------------------------- ------------------------
+ssUnOp            ss             =  t ss(c[1], len - SIZE(t))                       :S(RETURN)F(FRETURN)
+ssBinOp           ss             =  ss(c[1], len)                                   :F(FRETURN)
+                  ss             =  ss ' ' t ' ' ss(c[2], len - SIZE(ss) - SIZE(t) - 2) :S(RETURN)F(FRETURN)
+*---------------- -------------- -- ----------------------------------------------- ------------------------
+ss_!              EQ(n, 1)                                                          :S(ssUnOp)
+ss_#              EQ(n, 1)                                                          :S(ssUnOp)
+                  EQ(n, 2)                                                          :S(ssBinOp)F(error)
+ss_$              EQ(n, 1)                                                          :S(ssUnOp)
+                  EQ(n, 2)                                                          :S(ssBinOp)F(error)
+ss_%              EQ(n, 1)                                                          :S(ssUnOp)
+                  EQ(n, 2)                                                          :S(ssBinOp)F(error)
+ss_&              EQ(n, 1)                                                          :S(ssUnOp)
+                  EQ(n, 2)                                                          :S(ssBinOp)F(error)
+ss_*              EQ(n, 1)                                                          :S(ssUnOp)
+                  EQ(n, 2)                                                          :S(ssBinOp)F(error)
+ss_+              EQ(n, 1)                                                          :S(ssUnOp)
+                  EQ(n, 2)                                                          :S(ssBinOp)F(error)
+ss_-              EQ(n, 1)                                                          :S(ssUnOp)
+                  EQ(n, 2)                                                          :S(ssBinOp)F(error)
+ss_.              EQ(n, 1)                                                          :S(ssUnOp)
+                  EQ(n, 2)                                                          :S(ssBinOp)F(error)
+ss_/              EQ(n, 1)                                                          :S(ssUnOp)
+                  EQ(n, 2)                                                          :S(ssBinOp)F(error)
+ss_=              EQ(n, 1)                                                          :S(ssUnOp)
+                  EQ(n, 2)                                                          :S(ssBinOp)F(error)
+ss_?              EQ(n, 1)                                                          :S(ssUnOp)
+                  EQ(n, 2)                                                          :S(ssBinOp)F(error)
+ss_@              EQ(n, 1)                                                          :S(ssUnOp)
+                  EQ(n, 2)                                                          :S(ssBinOp)F(error)
+ss_^              EQ(n, 2)                                                          :S(ssBinOp)F(error)
+ss_~              EQ(n, 1)                                                          :S(ssUnOp)
+                  EQ(n, 2)                                                          :S(ssBinOp)F(error)
+*---------------- -------------- -- ----------------------------------------------- ------------------------
+ss_ExprList    ss             =  ss(c[1], len)                                   :F(FRETURN)
+                  i              =  1
+ss_ExprList0   i              =  LT(i, n) i + 1                                  :F(RETURN)
+                  ss             =  ss ', ' ss(c[i], len - SIZE(ss) - 2)            :S(ss_ExprList0)F(FRETURN)
+*---------------- -------------- -- ----------------------------------------------- ------------------------
+ss_,              ss             =  '(' ss(c[1], len - 4)                           :F(FRETURN)
+                  i              =  1
+ss_,0             i              =  LT(i, n) i + 1                                  :F($'ss_,1')
+                  ss             =  ss ', ' ss(c[i], len - SIZE(ss) - 3)            :S($'ss_,0')F(FRETURN)
+ss_,1             ss             =  ss ')'                                          :(RETURN)
+*---------------- -------------- -- ----------------------------------------------- ------------------------
+ss_|              EQ(n, 1)                                                          :S(ssUnOp)
+                  ss             =  ss(c[1], len)                                   :F(FRETURN)
+                  i              =  1
+ss_|0             i              =  LT(i, n) i + 1                                  :F(RETURN)
+                  ss             =  ss ' | ' ss(c[i], len - SIZE(ss) - 3)           :S($'ss_|0')F(FRETURN)
+*---------------- -------------- -- ----------------------------------------------- ------------------------
+ss_..             ss             =  ss(c[1], len)                                   :F(FRETURN)
+                  i              =  1
+ss_..0            i              =  LT(i, n) i + 1                                  :F(RETURN)
+                  ss             =  ss ' ' ss(c[i], len - SIZE(ss) - 1)             :S($'ss_..0')F(FRETURN)
+*---------------- -------------- -- ----------------------------------------------- ------------------------
+ss_[]             ss             =  ss(c[1], len)                                   :F(FRETURN)
+                  i              =  1
+ss_[]0            i              =  LT(i, n) i + 1                                  :F(RETURN)
+                  ss             =  ss '[' ss(c[i], len - SIZE(ss) - 2) ']'         :S($'ss_[]0')F(FRETURN)
+*---------------- -------------- -- ----------------------------------------------- ------------------------
+ss_()             ss             =  '(' ss(c[1], len - 2) ')'                       :S(RETURN)F(FRETURN)
+*---------------- -------------- -- ----------------------------------------------- ------------------------
+ss_Call        ss             =  ss(c[1]) '(' ss(c[2], len - SIZE(v) - 2) ')'    :S(RETURN)F(FRETURN)
+ssEnd
+*================ ============== == =============================================== ========================
+                  DEFINE('bVisit(x,fnc)i', 'bVisit_')                              :(bVisitEnd)
+bVisit_           APPLY(fnc, x)                                                     :F(RETURN)
+                  i              =  0
+bVisit_1          i              =  LT(i, n(x)) i + 1                               :F(RETURN)
+                  bVisit(c(x)[i], fnc)                                              :(bVisit_1)
+bVisitEnd
+*---------------- -------------- -- ----------------------------------------------- ------------------------
+                  DEFINE('findRefs(x)n,v')
+                  Refs        =                                                  :(findRefsEnd)
+findRefs          DIFFER(x)                                                         :F(RETURN)
+                  IDENT(t(x), 'Call')                                            :F(findRefs_1)
+                  n              =  1
+findRefs_0        n              =  LT(n, n(x)) n + 1                               :F(FRETURN)
+                  bVisit(c(x)[n], .findRefs)                                         :(findRefs_0)
+findRefs_1        (IDENT(t(x), '&') EQ(n(x), 1))                                    :F(findRefs_2)
+                  v              =  ss(x)                                           :(findRefs_9)
+findRefs_2        IDENT(t(x), 'Id')                                              :F(RETURN)
+                  v              =  v(x)                                            :(findRefs_9)
+findRefs_9        v              POS(0) SPAN('0123456789' &UCASE '_') RPOS(0)       :F(FRETURN)
+                  Refs        =  DIFFER(Refs) Refs ' ' v                   :S(FRETURN)
+                  Refs        =  IDENT(Refs) v                                :(FRETURN)
+findRefsEnd
+*---------------- -------------- -- ----------------------------------------------- ------------------------
+                  DEFINE('refs(p)c,n,s,subj')                                       :(refsEnd)
+refs              c              =  c(p)
+                  n              =  0
+refs_0            n              =  LT(n, n(p)) n + 1                               :F(RETURN)
+                  IDENT(t(c[n]), 'Stmt')                                         :F(refs_0)
+                  s              =  s + 1
+                  IDENT(t(c(c[n])[3]))                                              :F(refs_0)
+                  IDENT(t(c(c[n])[4]), '=')                                         :F(refs_0)
+                  IDENT(t(c(c[n])[2]), 'Id')                                     :S(refs_1)
+                  IDENT(t(c(c[n])[2]), '$')                                         :S(refs_1)F(refs_0)
+refs_1            subj           =  ss(c(c[n])[2])
+                  Refs        =
+                  bVisit(c(c[n])[5], .findRefs)
+                  OUTPUT         =  LPAD(s, 3, 0) ': ' RPAD(subj, 38) ' ' Refs   :(refs_0)
+refsEnd
+*================ ============== == =============================================== ========================
+*                 Main program.
+*                 Read a SNOBOL4 program.
+*                 Parse the SNOBOL4 program.
+*                 Generate a more beautiful SNOBOL4 program.
+*
+                  doDebug        =  0
+                  Space       =  SPAN(' ' tab) | epsilon
+main00            Line        =  INPUT                                           :F(END)
+main01            Src         =
+                  Line        POS(0) ANY('*-')                                   :F(main02)
+                  OUTPUT         =  Line                                         :(main00)
+main02            Src         =  Src Line nl
+                  Line        =  INPUT                                           :F(main05)
+                  Line        POS(0) ANY('.+')                                   :S(main02)
+                  Src         POS(0) *Parse *Space RPOS(0)                 :F(mainErr1)
+                  DIFFER(sno = Pop())                                               :F(mainErr2)
+                  pp(sno)                                                           :(main01)
+main05            Src         POS(0) *Parse *Space RPOS(0)                 :F(mainErr1)
+                  DIFFER(sno = Pop())                                               :F(mainErr2)
+                  pp(sno)                                                           :(END)
+mainErr1          OUTPUT         =  'Parse Error'
+                  OUTPUT         =  Src                                          :(END)
+mainErr2          OUTPUT         =  'Internal Error'
+                  OUTPUT         =  Src                                          :(END)
+*-INCLUDE 'debug.sno'
+END

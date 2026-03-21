@@ -1,0 +1,20 @@
+* roman.sno
+* Bottleneck: recursive functions, heavy identifier/function dispatch.
+* ROMAN('1776') called 100,000 times.
+    &TRIM = 1
+    &STLIMIT = 1000000000
+    DEFINE('ROMAN(N)T')                 :(ROMAN_END)
+ROMAN   N   RPOS(1)  LEN(1) . T  =         :F(RETURN)
+    '0,1I,2II,3III,4IV,5V,6VI,7VII,8VIII,9IX,'
++   T   BREAK(',') . T                  :F(FRETURN)
+    ROMAN = REPLACE(ROMAN(N), 'IVXLCDM', 'XLCDM**') T
++                                       :S(RETURN)F(FRETURN)
+ROMAN_END
+    T1 = TIME()
+    N = 0
+LOOP    R = ROMAN('1776')
+    N = LT(N, 100000) N + 1            :S(LOOP)
+    T2 = TIME()
+    OUTPUT = "result: " R
+    OUTPUT = "ms: " (T2 - T1)
+END

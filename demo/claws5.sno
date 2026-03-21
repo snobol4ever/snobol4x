@@ -1,0 +1,132 @@
+*------------------------------------------------------------------------------
+* claws5.sno — CLAWS5 POS-tagged corpus tokenizer
+* ENG 685, Lon Cherryholmes Sr.
+*
+* Python original (assignment3.py):
+*
+*   claws_info = (
+*       POS(0)
+*     + λ("mem = dict()")
+*     + ARBNO(
+*         ( SPAN(DIGITS) % "num" + σ('_CRD :_PUN')
+*         + λ("num = int(num)") + λ("mem[num] = dict()")
+*         | (NOTANY("_") + BREAK("_")) % "wrd"
+*         + σ('_')
+*         + (ANY(UCASE) + SPAN(DIGITS+UCASE)) % "tag"
+*         + λ("mem[num][wrd][tag] += 1")
+*         )
+*       + σ(' ')
+*       )
+*     + RPOS(0)
+*   )
+*
+* Input:  CLAWS5inTASA.dat
+* Output: sentno TAB word TAB tag  (one line per tagged token)
+*------------------------------------------------------------------------------
+
+               &TRIM      = 1
+               &ANCHOR    = 0
+               &FULLSCAN  = 1
+               DIGITS     = '0123456789'
+               UCASE      = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+               TAB        = CHAR(9)
+
+*--- Stack (from stack.sno) ---------------------------------------------------
+
+               DEFINE('InitStack()')
+               DEFINE('Push(x)')
+               DEFINE('Pop(var)')
+               DEFINE('Top()')
+               DATA('link(next,value)')                                        :(StackEnd)
+InitStack      $'@S'          =                                                :(RETURN)
+Push           $'@S'          =    link($'@S', x)
+               Push           =    IDENT(x)  .value($'@S')                     :S(NRETURN)
+               Push           =    DIFFER(x) .dummy                            :(NRETURN)
+Pop            DIFFER($'@S')                                                   :F(FRETURN)
+               IDENT(var)                                                      :F(Pop1)
+               Pop            =    value($'@S')
+               $'@S'          =    next($'@S')                                 :(RETURN)
+Pop1           Pop            =    .dummy
+               $var           =    value($'@S')
+               $'@S'          =    next($'@S')                                 :(NRETURN)
+Top            DIFFER($'@S')                                                   :F(FRETURN)
+               Top            =    .value($'@S')                               :(NRETURN)
+StackEnd
+
+*--- Counter (from counter.sno) -----------------------------------------------
+
+               DEFINE('InitCounter()')
+               DEFINE('PushCounter()')
+               DEFINE('IncCounter()')
+               DEFINE('TopCounter()')
+               DEFINE('PopCounter()')
+               DATA('link_counter(next,value)')                                :(CounterEnd)
+InitCounter    $'#N'          =                                                :(RETURN)
+PushCounter    $'#N'          =    link_counter($'#N', 0)
+               PushCounter    =    .dummy                                      :(NRETURN)
+IncCounter     value($'#N')   =    value($'#N') + 1
+               IncCounter     =    .dummy                                      :(NRETURN)
+TopCounter     TopCounter     =    DIFFER($'#N') value($'#N')                  :F(FRETURN)
+               OUTPUT         =    GT(xTrace, 4) TopCounter ' = TopCounter()'  :(RETURN)
+PopCounter     $'#N'          =    DIFFER($'#N') next($'#N')                   :F(FRETURN)
+               PopCounter     =    .dummy                                      :(NRETURN)
+CounterEnd
+
+*--- λ side-effects as zero-length pattern functions --------------------------
+*   Each returns via NRETURN so it advances the cursor by zero (like Python λ)
+
+               DEFINE('do_mem_init()')                                         :(do_mem_init_end)
+do_mem_init    mem            = TABLE()
+               sentno         = 0
+               do_mem_init    = .dummy                                         :(NRETURN)
+do_mem_init_end
+
+               DEFINE('do_new_sent()')                                         :(do_new_sent_end)
+do_new_sent    sentno         = num + 0
+               mem[sentno]    = TABLE()
+               do_new_sent    = .dummy                                         :(NRETURN)
+do_new_sent_end
+
+               DEFINE('do_add_tok()')                                          :(do_add_tok_end)
+do_add_tok     IDENT(DATATYPE(mem[sentno]), 'TABLE')                           :F(do_add_tok_out)
+               DIFFER(mem[sentno][wrd])                                        :F(do_add_tok_new)
+               DIFFER(mem[sentno][wrd][tag])                                   :F(do_add_tok_newtag)
+               mem[sentno][wrd][tag] = mem[sentno][wrd][tag] + 1               :(do_add_tok_out)
+do_add_tok_new
+               mem[sentno][wrd]      = TABLE()
+do_add_tok_newtag
+               mem[sentno][wrd][tag] = 1
+do_add_tok_out
+               OUTPUT         = sentno TAB wrd TAB tag
+               do_add_tok     = .dummy                                         :(NRETURN)
+do_add_tok_end
+
+*--- THE PATTERN — mirrors Python assignment3.py 99% -------------------------
+
+               claws_info  =  POS(0)
++                              *do_mem_init()
++                              ARBNO(
++                                   (  SPAN(DIGITS) . num
++                                      '_CRD :_PUN'
++                                      *do_new_sent()
++                                   |  (NOTANY('_') BREAK('_')) . wrd
++                                      '_'
++                                      (ANY(UCASE) SPAN(DIGITS UCASE)) . tag
++                                      *do_add_tok()
++                                   )
++                                   ' '
++                              )
++                              RPOS(0)
+
+*--- Main ---------------------------------------------------------------------
+
+               dummy          = InitStack()
+               dummy          = InitCounter()
+               buf            = ''
+
+rdloop         line           = INPUT                                          :F(scan)
+               buf            = buf line ' '                                   :(rdloop)
+
+scan           buf            claws_info                                       :S(END)
+               OUTPUT         = '*** no match'
+END

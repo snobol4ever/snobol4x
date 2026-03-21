@@ -1,0 +1,13 @@
+*     wordcount.sno - Count words in input.
+*     Tests: BREAK/SPAN word boundary detection, hyphenated and
+*            apostrophe-joined words (it's, well-known count as one word each).
+
+      &TRIM    =  1
+      NUMERALS =  '0123456789'
+      WORD     =  "'-" NUMERALS &UCASE &LCASE
+      WPAT     =  BREAK(WORD) SPAN(WORD)
+NEXTL LINE     =  INPUT                            :F(DONE)
+NEXTW LINE     ?  WPAT =                           :F(NEXTL)
+      N        =  N + 1                            :(NEXTW)
+DONE  OUTPUT   =  +N ' words'
+END

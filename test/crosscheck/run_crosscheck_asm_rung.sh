@@ -15,7 +15,7 @@
 #
 # Environment overrides:
 #   SNO2C   — path to sno2c binary     (default: ./sno2c)
-#   INC     — SNOBOL4 include dir      (default: /home/claude/snobol4corpus/programs/inc)
+#   INC     — SNOBOL4 include dir      (default: demo/inc)
 #   STOP_ON_FAIL=1  — stop at first failure (default: 0 = keep going)
 
 set -uo pipefail
@@ -24,7 +24,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TINY="$(cd "$SCRIPT_DIR/../.." && pwd)"
 SNO2C="${SNO2C:-$TINY/sno2c}"
 RT="$TINY/src/runtime"
-INC="${INC:-$TINY/../snobol4corpus/programs/inc}"
+INC="${INC:-$TINY/demo/inc}"
 STOP_ON_FAIL="${STOP_ON_FAIL:-0}"
 
 GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[0;33m'; RESET='\033[0m'

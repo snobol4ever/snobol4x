@@ -9,7 +9,7 @@
 #
 # Environment overrides:
 #   SNO2C        — path to sno2c binary     (default: ./sno2c)
-#   INC          — SNOBOL4 include dir      (default: /home/claude/snobol4corpus/programs/inc)
+#   INC          — SNOBOL4 include dir      (default: demo/inc)
 #   JASMIN       — path to jasmin.jar       (default: src/backend/jvm/jasmin.jar)
 #   STOP_ON_FAIL — stop at first failure    (default: 0)
 
@@ -18,7 +18,7 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TINY="$(cd "$SCRIPT_DIR/../.." && pwd)"
 SNO2C="${SNO2C:-$TINY/sno2c}"
-INC="${INC:-$TINY/../snobol4corpus/programs/inc}"
+INC="${INC:-$TINY/demo/inc}"
 JASMIN="${JASMIN:-$TINY/src/backend/jvm/jasmin.jar}"
 STOP_ON_FAIL="${STOP_ON_FAIL:-0}"
 TIMEOUT=10

@@ -1,0 +1,150 @@
+*------------------------------------------------------------------------------
+* treebank.sno — Penn Treebank S-expression parser
+* ENG 685, Lon Cherryholmes Sr.
+*
+* Python original (assignment3.py):
+*
+*   def push_list(v): stack.append(list()); stack[-1].append(v)
+*   def push_item(v): stack[-1].append(v)
+*   def pop_list():   stack[-2].append(tuple(stack.pop()))
+*   def pop_final(v): v = tuple(stack.pop())
+*
+*   group = σ('(') + word%tag + push_list(tag)
+*         + ARBNO(delim + (ζ(λ:group) | word%wrd + push_item(wrd)))
+*         + pop_list() + σ(')')
+*
+* Five functions over DATA('cell(hd,tl)') — Gimpel cons-cell linked lists.
+* Each inner list is built LIFO; pop_list/pop_final reverse into ARRAY so
+* a[1]=tag and a[2..n]=items in original push order.
+*
+* group() is a recursive DEFINE'd function (locals tag,wrd) so each recursive
+* invocation has its own bindings — matching Python λ closure semantics.
+* It consumes directly from the global variable buf.
+*------------------------------------------------------------------------------
+
+               &TRIM      = 1
+               &ANCHOR    = 0
+               &FULLSCAN  = 1
+               NL         = CHAR(10)
+               SPC        = ' '
+               SPCNL      = SPC NL
+
+               DATA('cell(hd,tl)')
+
+*--- Five list-stack functions ------------------------------------------------
+
+               DEFINE('do_push_list(v)')                                       :(do_push_list_end)
+do_push_list   stk            = cell(cell(v,), stk)
+               do_push_list   = .dummy                                         :(NRETURN)
+do_push_list_end
+
+               DEFINE('do_push_item(v)')                                       :(do_push_item_end)
+do_push_item   hd(stk)        = cell(v, hd(stk))
+               do_push_item   = .dummy                                         :(NRETURN)
+do_push_item_end
+
+               DEFINE('do_pop_list()p,n,i,a')                                 :(do_pop_list_end)
+do_pop_list    p              = hd(stk)
+               n              = 0
+do_pop_list_cnt
+               DIFFER(p)                                                       :F(do_pop_list_bld)
+               n              = n + 1
+               p              = tl(p)                                          :(do_pop_list_cnt)
+do_pop_list_bld
+               a              = ARRAY('1:' n)
+               p              = hd(stk)
+               i              = n + 1
+do_pop_list_fill
+               i              = GT(i, 1) i - 1                                :F(do_pop_list_mk)
+               a[i]           = hd(p)
+               p              = tl(p)                                          :(do_pop_list_fill)
+do_pop_list_mk
+               stk            = tl(stk)
+               hd(stk)        = cell(a, hd(stk))
+               do_pop_list    = .dummy                                         :(NRETURN)
+do_pop_list_end
+
+               DEFINE('do_pop_final(v)p,n,i,a')                               :(do_pop_final_end)
+do_pop_final   p              = hd(stk)
+               n              = 0
+do_pop_final_cnt
+               DIFFER(p)                                                       :F(do_pop_final_bld)
+               n              = n + 1
+               p              = tl(p)                                          :(do_pop_final_cnt)
+do_pop_final_bld
+               a              = ARRAY('1:' n)
+               p              = hd(stk)
+               i              = n + 1
+do_pop_final_fill
+               i              = GT(i, 1) i - 1                                :F(do_pop_final_mk)
+               a[i]           = hd(p)
+               p              = tl(p)                                          :(do_pop_final_fill)
+do_pop_final_mk
+               stk            = tl(stk)
+               $v             = a
+               do_pop_final   = .dummy                                         :(NRETURN)
+do_pop_final_end
+
+*--- group() — recursive descent, locals tag and wrd -------------------------
+
+               DEFINE('group()tag,wrd')                                        :(group_end)
+group          buf            POS(0) '(' =                                     :F(FRETURN)
+               buf            POS(0) word . tag =                             :F(FRETURN)
+               dummy          = do_push_list(tag)
+group_loop     buf            POS(0) SPAN(SPCNL) =                            :F(group_close)
+               buf            POS(0) '('                                       :S(group_recurse)
+               buf            POS(0) word . wrd =                             :F(group_close)
+               dummy          = do_push_item(wrd)                             :(group_loop)
+group_recurse  group()                                                         :S(group_loop)F(FRETURN)
+group_close    buf            POS(0) ')' =                                     :F(FRETURN)
+               dummy          = do_pop_list()
+               group          =                                                :(RETURN)
+group_end
+
+*--- Print helper -------------------------------------------------------------
+
+               DEFINE('print_node(a,depth)i,ch')                              :(print_node_end)
+print_node     IDENT(DATATYPE(a), 'STRING')                                    :S(print_leaf)
+               OUTPUT         = DUPL('  ', depth) '(' a[1]
+               i              = 1
+print_node_lp  i              = i + 1
+               ch             = a[i]                                           :F(print_node_cl)
+               dummy          = print_node(ch, depth + 1)                     :(print_node_lp)
+print_node_cl  OUTPUT         = DUPL('  ', depth) ')'                         :(RETURN)
+print_leaf     OUTPUT         = DUPL('  ', depth) a                           :(RETURN)
+print_node_end
+
+*--- word pattern (used in group) --------------------------------------------
+
+               word        =  NOTANY('( )' NL)
++                              BREAK('( )' NL)
+
+*--- Main --------------------------------------------------------------------
+
+               buf            = ''
+
+rdloop         line           = INPUT                                          :F(parse)
+               buf            = buf SPC line                                   :(rdloop)
+
+parse          buf            = buf SPC
+
+               stk            =
+               dummy          = do_push_list('BANK')
+
+sentloop       buf            POS(0) SPAN(SPCNL) =
+               buf            POS(0) '('                                       :F(parse_done)
+               dummy          = do_push_list('ROOT')
+               group()                                                         :F(parse_err)
+               dummy          = do_pop_list()                                  :(sentloop)
+
+parse_done     dummy          = do_pop_final('bank')
+
+               IDENT(DATATYPE(bank), 'ARRAY')                                 :F(END)
+               i              = 1
+print_lp       i              = i + 1
+               r              = bank[i]                                        :F(END)
+               dummy          = print_node(r, 0)                               :(print_lp)
+
+parse_err
+               OUTPUT         = '*** parse error near: ' SUBSTR(buf, 1, 40)
+END
