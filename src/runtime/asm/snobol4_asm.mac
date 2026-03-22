@@ -1910,3 +1910,64 @@
 ; =============================================================================
 ; END Session 167/171/172/174 high-level statement macros
 ; =============================================================================
+
+; =============================================================================
+; M-MACRO-BOX — B-241: ARBNO port macros
+;
+; ARBNO_ALPHA  dep, stk, cursor, gamma
+;   α port: initialize depth=0, push cursor onto stk[0], goto gamma (zero reps = success)
+;
+; ARBNO_BETA  dep, stk, cur_before, cursor, child_alpha, omega
+;   β port: pop stack; save cursor-before-rep; jump to child α (or ω if empty)
+;
+; ARBNO_CHILD_OK  dep, stk, cur_before, cursor, gamma, omega
+;   child_ok port: zero-advance guard; push new cursor; re-succeed (or ω if stalled)
+;
+; ARBNO_CHILD_FAIL  omega
+;   child_fail port: unconditional jump to ω
+;
+; All memory args are bare refs (no brackets) — macros add [brackets] themselves,
+; so they accept either a .bss label or an r12+N expression from bref().
+; =============================================================================
+
+%macro ARBNO_ALPHA 4          ; dep, stk, cursor, gamma
+    mov     qword [%1], 0
+    lea     rbx, [rel %2]
+    mov     rax, [%3]
+    mov     [rbx], rax
+    mov     qword [%1], 1
+    jmp     %4
+%endmacro
+
+%macro ARBNO_BETA 6           ; dep, stk, cur_before, cursor, child_alpha, omega
+    mov     rax, [%1]
+    test    rax, rax
+    jz      %6
+    dec     rax
+    mov     [%1], rax
+    lea     rbx, [rel %2]
+    mov     rcx, [rbx + rax*8]
+    mov     [%4], rcx
+    mov     [%3], rcx
+    jmp     %5
+%endmacro
+
+%macro ARBNO_CHILD_OK 6       ; dep, stk, cur_before, cursor, gamma, omega
+    mov     rax, [%4]
+    mov     rbx, [%3]
+    cmp     rax, rbx
+    je      %6
+    mov     rdx, [%1]
+    lea     rbx, [rel %2]
+    mov     [rbx + rdx*8], rax
+    inc     qword [%1]
+    jmp     %5
+%endmacro
+
+%macro ARBNO_CHILD_FAIL 1     ; omega
+    jmp     %1
+%endmacro
+
+; =============================================================================
+; END M-MACRO-BOX ARBNO macros
+; =============================================================================
