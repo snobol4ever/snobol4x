@@ -2,12 +2,22 @@ CC     = gcc
 CFLAGS = -Wall -Wno-unused-function -g -O0 \
          -I frontend/snobol4 \
          -I frontend/snocone \
+         -I frontend/prolog \
          -I backend/c \
          -I backend/x64
 
 FRONTEND_SNO = \
     frontend/snobol4/lex.c \
     frontend/snobol4/parse.c
+
+FRONTEND_PROLOG = \
+    frontend/prolog/prolog_atom.c \
+    frontend/prolog/prolog_lex.c \
+    frontend/prolog/prolog_parse.c \
+    frontend/prolog/prolog_unify.c \
+    frontend/prolog/prolog_lower.c \
+    frontend/prolog/prolog_emit.c \
+    frontend/prolog/prolog_builtin.c
 
 FRONTEND_SNOCONE = \
     frontend/snocone/snocone_lex.c \
@@ -32,7 +42,7 @@ BACKEND_JVM = \
 BACKEND_NET = \
     backend/net/emit_byrd_net.c
 
-SRCS = $(FRONTEND_SNO) $(FRONTEND_SNOCONE) $(BACKEND_C) $(BACKEND_X64) $(BACKEND_JVM) $(BACKEND_NET) $(DRIVER)
+SRCS = $(FRONTEND_SNO) $(FRONTEND_PROLOG) $(FRONTEND_SNOCONE) $(BACKEND_C) $(BACKEND_X64) $(BACKEND_JVM) $(BACKEND_NET) $(DRIVER)
 OBJS = $(SRCS:.c=.o)
 
 .PHONY: all clean

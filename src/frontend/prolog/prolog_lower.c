@@ -86,8 +86,10 @@ static EXPR_t *lower_term(Term *t) {
         case TT_ATOM: {
             /* ! -> E_CUT */
             if (t->atom_id == ATOM_CUT) return expr_new(E_CUT);
-            EXPR_t *e = expr_new(E_QLIT);
-            e->sval = strdup(prolog_atom_name(t->atom_id) ? prolog_atom_name(t->atom_id) : "");
+            /* Atom in a goal position -> E_FNC/0 (nl, true, fail, halt, etc.) */
+            EXPR_t *e = expr_new(E_FNC);
+            const char *nm = prolog_atom_name(t->atom_id);
+            e->sval = strdup(nm ? nm : "");
             return e;
         }
         case TT_INT: {
@@ -102,11 +104,15 @@ static EXPR_t *lower_term(Term *t) {
         }
         case TT_VAR: {
             EXPR_t *e = expr_new(E_VART);
+            int slot = t->saved_slot;  /* -1 = anonymous wildcard */
             char buf[32];
-            int slot = t->saved_slot >= 0 ? t->saved_slot : 0;
-            snprintf(buf, sizeof buf, "_V%d", slot);
+            if (slot < 0) {
+                snprintf(buf, sizeof buf, "_anon");
+            } else {
+                snprintf(buf, sizeof buf, "_V%d", slot);
+            }
             e->sval = strdup(buf);
-            e->ival = slot;
+            e->ival = slot;  /* -1 for wildcard, >=0 for real var */
             return e;
         }
         case TT_COMPOUND: {
@@ -173,59 +179,39 @@ static EXPR_t *lower_clause(PlClause *cl, PredKey key) {
     EXPR_t *ec = expr_new(E_CLAUSE);
     ec->sval = pred_str(key.functor, key.arity);
 
-    /* Count distinct variable slots: max saved_slot seen + 1 */
-    /* (The parser already assigned contiguous slots 0..n-1) */
-    /* Walk head args and body goals to find max slot */
+    /* Count distinct variable slots via full recursive Term walk */
     int max_slot = -1;
 
-    /* Helper: find max slot in a Term tree */
-    /* (inline recursive lambda via a small stack approach) */
-    /* We'll just count via the parser's VarScope — but we don't have it
-     * here.  Instead we walk the Term trees to find the maximum slot. */
-    /* Simple recursive approach: */
-    #define WALK_SLOTS(t_) do { \
-        Term *_wt = term_deref(t_); \
-        if (_wt && _wt->tag == TT_VAR && _wt->saved_slot > max_slot) \
-            max_slot = _wt->saved_slot; \
+    /* Recursive helper using explicit stack to avoid C VLA issues */
+    #define TERM_STACK_MAX 512
+    Term *stk[TERM_STACK_MAX];
+    int  stk_top = 0;
+
+    #define PUSH_TERM(t_) do { \
+        Term *_pt = term_deref(t_); \
+        if (_pt && stk_top < TERM_STACK_MAX) stk[stk_top++] = _pt; \
+    } while(0)
+
+    #define WALK_ALL(root_) do { \
+        stk_top = 0; \
+        PUSH_TERM(root_); \
+        while (stk_top > 0) { \
+            Term *_cur = stk[--stk_top]; \
+            if (!_cur) continue; \
+            if (_cur->tag == TT_VAR && _cur->saved_slot > max_slot) \
+                max_slot = _cur->saved_slot; \
+            if (_cur->tag == TT_COMPOUND) \
+                for (int _wi = 0; _wi < _cur->compound.arity; _wi++) \
+                    PUSH_TERM(_cur->compound.args[_wi]); \
+        } \
     } while(0)
 
     /* Walk head */
-    if (cl->head) {
-        Term *h = term_deref(cl->head);
-        if (h && h->tag == TT_COMPOUND) {
-            for (int i = 0; i < h->compound.arity; i++) {
-                /* Shallow walk — enough for slot counting in our corpus */
-                Term *a = term_deref(h->compound.args[i]);
-                if (a && a->tag == TT_VAR && a->saved_slot > max_slot)
-                    max_slot = a->saved_slot;
-                if (a && a->tag == TT_COMPOUND)
-                    for (int j = 0; j < a->compound.arity; j++) {
-                        Term *b = term_deref(a->compound.args[j]);
-                        if (b && b->tag == TT_VAR && b->saved_slot > max_slot)
-                            max_slot = b->saved_slot;
-                    }
-            }
-        }
-    }
-    /* Walk body */
-    for (int i = 0; i < cl->nbody; i++) {
-        Term *g = term_deref(cl->body[i]);
-        if (!g) continue;
-        if (g->tag == TT_VAR && g->saved_slot > max_slot)
-            max_slot = g->saved_slot;
-        if (g->tag == TT_COMPOUND)
-            for (int j = 0; j < g->compound.arity; j++) {
-                Term *a = term_deref(g->compound.args[j]);
-                if (a && a->tag == TT_VAR && a->saved_slot > max_slot)
-                    max_slot = a->saved_slot;
-                if (a && a->tag == TT_COMPOUND)
-                    for (int k = 0; k < a->compound.arity; k++) {
-                        Term *b = term_deref(a->compound.args[k]);
-                        if (b && b->tag == TT_VAR && b->saved_slot > max_slot)
-                            max_slot = b->saved_slot;
-                    }
-            }
-    }
+    if (cl->head) WALK_ALL(cl->head);
+
+    /* Walk each body goal */
+    for (int i = 0; i < cl->nbody; i++)
+        if (cl->body[i]) WALK_ALL(cl->body[i]);
     int n_vars = max_slot + 1;
     ec->ival = n_vars;              /* EnvLayout.n_vars */
     ec->dval = (double)key.arity;  /* EnvLayout.n_args */

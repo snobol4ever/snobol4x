@@ -1,28 +1,34 @@
 /*
  * main.c — sno2c driver
- * Usage: sno2c [-I dir] [-o out.c] [-trampoline] [-sc] input.sno|input.sc
+ * Usage: sno2c [-I dir] [-o out.c] [-trampoline] [-sc] [-pl] input.sno|input.sc|input.pl
  *
- * Sprint SC3: -sc flag (or .sc suffix) routes through the Snocone frontend
- * (snocone_lex -> snocone_parse per-stmt -> snocone_lower) instead of the SNOBOL4 frontend.
- * The resulting Program* is passed to the same snoc_emit / asm_emit backend.
+ * Sprint SC3: -sc flag (or .sc suffix) routes through the Snocone frontend.
+ * Sprint PL1: -pl flag (or .pl suffix) routes through the Prolog frontend
+ *   (prolog_lex -> prolog_parse -> prolog_lower -> prolog_emit).
+ *   Produces C with Byrd box α/β/γ/ω four-port clause selection.
  */
 #include "sno2c.h"
-#include "snocone_driver.h"   /* snocone_compile() — Snocone expression-only pipeline */
-#include "snocone_cf.h"       /* snocone_cf_compile() — full control-flow lowering (SC4-ASM) */
+#include "snocone_driver.h"   /* snocone_compile() */
+#include "snocone_cf.h"       /* snocone_cf_compile() */
+#include "prolog_atom.h"
+#include "prolog_parse.h"
+#include "prolog_lower.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-extern int trampoline_mode;  /* defined in emit.c */
-void asm_emit(Program *prog, FILE *f); /* defined in emit_byrd_asm.c */
-extern int asm_body_mode;    /* defined in emit_byrd_asm.c */
-void jvm_emit(Program *prog, FILE *f, const char *filename); /* emit_byrd_jvm.c */
-void net_emit(Program *prog, FILE *f, const char *filename); /* emit_byrd_net.c */
+extern int trampoline_mode;
+void asm_emit(Program *prog, FILE *f);
+extern int asm_body_mode;
+void jvm_emit(Program *prog, FILE *f, const char *filename);
+void net_emit(Program *prog, FILE *f, const char *filename);
+void pl_emit(Program *prog, FILE *f);   /* defined in prolog_emit.c */
 
-static int asm_mode = 0;    /* -asm flag: emit x64 NASM instead of C */
-static int jvm_mode = 0;    /* -jvm flag: emit JVM Jasmin text */
-static int net_mode = 0;    /* -net flag: emit .NET CIL text */
-static int sc_mode  = 0;    /* -sc  flag: Snocone frontend */
+static int asm_mode = 0;
+static int jvm_mode = 0;
+static int net_mode = 0;
+static int sc_mode  = 0;
+static int pl_mode  = 0;    /* -pl flag: Prolog frontend */
 /* Case folding (SPITBOL-compatible switch names):
  *   -F = fold identifiers to uppercase (DEFAULT; matches SPITBOL/CSNOBOL4 default).
  *   -f = do not fold (case-sensitive).
@@ -76,6 +82,8 @@ int main(int argc, char *argv[]) {
         } else if (!strcmp(argv[i],"-asm-body")) {
             asm_mode = 1;
             asm_body_mode = 1;
+        } else if (!strcmp(argv[i],"-pl")) {
+            pl_mode = 1;
         } else if (!strcmp(argv[i],"-sc")) {
             sc_mode = 1;
         } else if (!strcmp(argv[i],"-F")) {
@@ -93,11 +101,15 @@ int main(int argc, char *argv[]) {
     if (!sc_mode && ends_with(infile, ".sc"))
         sc_mode = 1;
 
+    /* Auto-detect Prolog by .pl suffix */
+    if (!pl_mode && ends_with(infile, ".pl"))
+        pl_mode = 1;
+
     FILE *in = stdin;
     if (infile) {
         in = fopen(infile,"r");
         if (!in) { perror(infile); return 1; }
-        if (!sc_mode) {
+        if (!sc_mode && !pl_mode) {
             /* SNOBOL4 frontend: add directory to include search path */
             char *dir = strdup(infile);
             char *sl  = strrchr(dir,'/');
@@ -115,7 +127,26 @@ int main(int argc, char *argv[]) {
 
     Program *prog;
 
-    if (sc_mode) {
+    if (pl_mode) {
+        /* ---- Prolog frontend (M-PROLOG-R1+) ----------------------------- */
+        char *src = read_all(in);
+        if (!src) { fprintf(stderr,"sno2c: read error\n"); return 1; }
+        prolog_atom_init();
+        PlProgram *pl_prog = prolog_parse(src, infile ? infile : "<stdin>");
+        free(src);
+        if (pl_prog->nerrors) {
+            fprintf(stderr,"sno2c: %d Prolog parse error(s)\n", pl_prog->nerrors);
+            return 1;
+        }
+        prog = prolog_lower(pl_prog);
+        prolog_program_free(pl_prog);
+        if (!prog) { return 1; }
+        /* Prolog always uses the C emitter (x64 ASM backend deferred to later milestone) */
+        pl_emit(prog, out);
+        if (infile)  fclose(in);
+        if (outfile) fclose(out);
+        return 0;
+    } else if (sc_mode) {
         /* ---- Snocone frontend ------------------------------------------ */
         char *src = read_all(in);
         if (!src) { fprintf(stderr,"sno2c: read error\n"); return 1; }
