@@ -6,20 +6,20 @@
  * SNOBOL4-style STMT_t nodes with goto fields for the ASM backend.
  */
 
-#ifndef SC_CF_H
-#define SC_CF_H
+#ifndef SNOCONE_CF_H
+#define SNOCONE_CF_H
 
 #include "sno2c.h"   /* Program, STMT_t, EXPR_t, expr_new, stmt_new, etc. */
 
 /*
- * sc_cf_compile(source, filename) → Program*
+ * snocone_cf_compile(source, filename) → Program*
  *
  * Compiles a complete Snocone source string to a Program* using the
  * full control-flow lowering pass (if/while/for/procedure/goto/return).
  *
- * Replaces sc_compile() from sc_driver.c for the ASM backend.
+ * Replaces snocone_compile() from sc_driver.c for the ASM backend.
  * Returns the compiled Program* (never NULL; partial on error).
  */
-Program *sc_cf_compile(const char *source, const char *filename);
+Program *snocone_cf_compile(const char *source, const char *filename);
 
-#endif /* SC_CF_H */
+#endif /* SNOCONE_CF_H */

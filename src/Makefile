@@ -10,11 +10,11 @@ FRONTEND_SNO = \
     frontend/snobol4/parse.c
 
 FRONTEND_SNOCONE = \
-    frontend/snocone/sc_lex.c \
-    frontend/snocone/sc_parse.c \
-    frontend/snocone/sc_lower.c \
-    frontend/snocone/sc_driver.c \
-    frontend/snocone/sc_cf.c
+    frontend/snocone/snocone_lex.c \
+    frontend/snocone/snocone_parse.c \
+    frontend/snocone/snocone_lower.c \
+    frontend/snocone/snocone_driver.c \
+    frontend/snocone/snocone_cf.c
 
 BACKEND_C = \
     backend/c/emit_cnode.c \

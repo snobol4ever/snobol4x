@@ -1,5 +1,5 @@
 /*
- * sc_lex.c -- Snocone lexer implementation
+ * snocone_lex.c -- Snocone lexer implementation
  *
  * Direct port of snobol4jvm/src/SNOBOL4clojure/snocone.clj.
  * Logic mirrors the Clojure functions one-to-one:
@@ -8,10 +8,10 @@
  *   split_semicolons()   <- split-semicolon
  *   scan_number()        <- scan-number
  *   tokenize_segment()   <- tokenize-segment
- *   sc_lex()             <- tokenize  (public entry point)
+ *   snocone_lex()             <- tokenize  (public entry point)
  */
 
-#include "sc_lex.h"
+#include "snocone_lex.h"
 
 #include <ctype.h>
 #include <stdlib.h>
@@ -22,76 +22,76 @@
  * Operator table -- longest-match (4-char first, then 3, 2, 1)
  * Mirrors Clojure ops-by-length sorted by descending length.
  * ------------------------------------------------------------------------- */
-typedef struct { const char *text; ScKind kind; } OpEntry;
+typedef struct { const char *text; SnoconeKind kind; } OpEntry;
 
 static const OpEntry OP_TABLE[] = {
     /* 4-char */
-    { ":!=:", SC_STR_NE    },
-    { ":<=:", SC_STR_LE    },
-    { ":>=:", SC_STR_GE    },
-    { ":==:", SC_STR_EQ    },
+    { ":!=:", SNOCONE_STR_NE    },
+    { ":<=:", SNOCONE_STR_LE    },
+    { ":>=:", SNOCONE_STR_GE    },
+    { ":==:", SNOCONE_STR_EQ    },
     /* 3-char */
-    { ":!:",  SC_STR_DIFFER },
-    { ":<:",  SC_STR_LT    },
-    { ":>:",  SC_STR_GT    },
+    { ":!:",  SNOCONE_STR_DIFFER },
+    { ":<:",  SNOCONE_STR_LT    },
+    { ":>:",  SNOCONE_STR_GT    },
     /* 2-char */
-    { "::",   SC_STR_IDENT },
-    { "||",   SC_OR        },
-    { "&&",   SC_CONCAT    },
-    { "==",   SC_EQ        },
-    { "!=",   SC_NE        },
-    { "<=",   SC_LE        },
-    { ">=",   SC_GE        },
-    { "**",   SC_CARET     },   /* SNOBOL4 ** same as ^ */
+    { "::",   SNOCONE_STR_IDENT },
+    { "||",   SNOCONE_OR        },
+    { "&&",   SNOCONE_CONCAT    },
+    { "==",   SNOCONE_EQ        },
+    { "!=",   SNOCONE_NE        },
+    { "<=",   SNOCONE_LE        },
+    { ">=",   SNOCONE_GE        },
+    { "**",   SNOCONE_CARET     },   /* SNOBOL4 ** same as ^ */
     /* 1-char */
-    { "=",    SC_ASSIGN    },
-    { "?",    SC_QUESTION  },
-    { "|",    SC_PIPE      },
-    { "+",    SC_PLUS      },
-    { "-",    SC_MINUS     },
-    { "/",    SC_SLASH     },
-    { "*",    SC_STAR      },
-    { "%",    SC_PERCENT   },
-    { "^",    SC_CARET     },
-    { ".",    SC_PERIOD    },
-    { "$",    SC_DOLLAR    },
-    { "&",    SC_AMPERSAND },
-    { "@",    SC_AT        },
-    { "~",    SC_TILDE     },
-    { "<",    SC_LT        },
-    { ">",    SC_GT        },
-    { "(",    SC_LPAREN    },
-    { ")",    SC_RPAREN    },
-    { "{",    SC_LBRACE    },
-    { "}",    SC_RBRACE    },
-    { "[",    SC_LBRACKET  },
-    { "]",    SC_RBRACKET  },
-    { ",",    SC_COMMA     },
-    { ";",    SC_SEMICOLON },
-    { ":",    SC_COLON     },
-    { NULL,   SC_UNKNOWN   }
+    { "=",    SNOCONE_ASSIGN    },
+    { "?",    SNOCONE_QUESTION  },
+    { "|",    SNOCONE_PIPE      },
+    { "+",    SNOCONE_PLUS      },
+    { "-",    SNOCONE_MINUS     },
+    { "/",    SNOCONE_SLASH     },
+    { "*",    SNOCONE_STAR      },
+    { "%",    SNOCONE_PERCENT   },
+    { "^",    SNOCONE_CARET     },
+    { ".",    SNOCONE_PERIOD    },
+    { "$",    SNOCONE_DOLLAR    },
+    { "&",    SNOCONE_AMPERSAND },
+    { "@",    SNOCONE_AT        },
+    { "~",    SNOCONE_TILDE     },
+    { "<",    SNOCONE_LT        },
+    { ">",    SNOCONE_GT        },
+    { "(",    SNOCONE_LPAREN    },
+    { ")",    SNOCONE_RPAREN    },
+    { "{",    SNOCONE_LBRACE    },
+    { "}",    SNOCONE_RBRACE    },
+    { "[",    SNOCONE_LBRACKET  },
+    { "]",    SNOCONE_RBRACKET  },
+    { ",",    SNOCONE_COMMA     },
+    { ";",    SNOCONE_SEMICOLON },
+    { ":",    SNOCONE_COLON     },
+    { NULL,   SNOCONE_UNKNOWN   }
 };
 
 /* ---------------------------------------------------------------------------
  * Keyword table -- mirrors Clojure keywords map
  * ------------------------------------------------------------------------- */
-typedef struct { const char *word; ScKind kind; } KwEntry;
+typedef struct { const char *word; SnoconeKind kind; } KwEntry;
 
 static const KwEntry KW_TABLE[] = {
-    { "if",        SC_KW_IF        },
-    { "then",      SC_KW_THEN      },
-    { "else",      SC_KW_ELSE      },
-    { "while",     SC_KW_WHILE     },
-    { "do",        SC_KW_DO        },
-    { "for",       SC_KW_FOR       },
-    { "return",    SC_KW_RETURN    },
-    { "freturn",   SC_KW_FRETURN   },
-    { "nreturn",   SC_KW_NRETURN   },
-    { "go",        SC_KW_GO        },
-    { "to",        SC_KW_TO        },
-    { "procedure", SC_KW_PROCEDURE },
-    { "struct",    SC_KW_STRUCT    },
-    { NULL,        SC_UNKNOWN      }
+    { "if",        SNOCONE_KW_IF        },
+    { "then",      SNOCONE_KW_THEN      },
+    { "else",      SNOCONE_KW_ELSE      },
+    { "while",     SNOCONE_KW_WHILE     },
+    { "do",        SNOCONE_KW_DO        },
+    { "for",       SNOCONE_KW_FOR       },
+    { "return",    SNOCONE_KW_RETURN    },
+    { "freturn",   SNOCONE_KW_FRETURN   },
+    { "nreturn",   SNOCONE_KW_NRETURN   },
+    { "go",        SNOCONE_KW_GO        },
+    { "to",        SNOCONE_KW_TO        },
+    { "procedure", SNOCONE_KW_PROCEDURE },
+    { "struct",    SNOCONE_KW_STRUCT    },
+    { NULL,        SNOCONE_UNKNOWN      }
 };
 
 /* ---------------------------------------------------------------------------
@@ -110,7 +110,7 @@ static int is_cont_char(char c)
  * Dynamic token buffer
  * ------------------------------------------------------------------------- */
 typedef struct {
-    ScToken *data;
+    SnoconeToken *data;
     int      len;
     int      cap;
 } TokBuf;
@@ -119,14 +119,14 @@ static void tb_init(TokBuf *b)
 {
     b->cap  = 64;
     b->len  = 0;
-    b->data = malloc(b->cap * sizeof(ScToken));
+    b->data = malloc(b->cap * sizeof(SnoconeToken));
 }
 
-static void tb_push(TokBuf *b, ScKind kind, const char *text, int tlen, int line)
+static void tb_push(TokBuf *b, SnoconeKind kind, const char *text, int tlen, int line)
 {
     if (b->len == b->cap) {
         b->cap *= 2;
-        b->data = realloc(b->data, b->cap * sizeof(ScToken));
+        b->data = realloc(b->data, b->cap * sizeof(SnoconeToken));
     }
     char *t = malloc(tlen + 1);
     memcpy(t, text, tlen);
@@ -185,7 +185,7 @@ static void tokenize_segment(const char *seg, int seg_len, int line_no, TokBuf *
             pos++;
             while (pos < seg_len && seg[pos] != quote) pos++;
             if (pos < seg_len) pos++;   /* consume closing quote */
-            tb_push(acc, SC_STRING, seg + start, pos - start, line_no);
+            tb_push(acc, SNOCONE_STRING, seg + start, pos - start, line_no);
             continue;
         }
 
@@ -219,7 +219,7 @@ static void tokenize_segment(const char *seg, int seg_len, int line_no, TokBuf *
                 while (pos < seg_len && isdigit((unsigned char)seg[pos])) pos++;
             }
 
-            tb_push(acc, is_real ? SC_REAL : SC_INTEGER,
+            tb_push(acc, is_real ? SNOCONE_REAL : SNOCONE_INTEGER,
                     seg + start, pos - start, line_no);
             continue;
         }
@@ -234,7 +234,7 @@ static void tokenize_segment(const char *seg, int seg_len, int line_no, TokBuf *
             int wlen = pos - start;
 
             /* keyword lookup */
-            ScKind kind = SC_IDENT;
+            SnoconeKind kind = SNOCONE_IDENT;
             for (int k = 0; KW_TABLE[k].word; k++) {
                 if ((int)strlen(KW_TABLE[k].word) == wlen &&
                     memcmp(KW_TABLE[k].word, seg + start, wlen) == 0)
@@ -262,7 +262,7 @@ static void tokenize_segment(const char *seg, int seg_len, int line_no, TokBuf *
                 }
             }
             if (!matched) {
-                tb_push(acc, SC_UNKNOWN, seg + pos, 1, line_no);
+                tb_push(acc, SNOCONE_UNKNOWN, seg + pos, 1, line_no);
                 pos++;
             }
         }
@@ -271,7 +271,7 @@ static void tokenize_segment(const char *seg, int seg_len, int line_no, TokBuf *
 
 /* ---------------------------------------------------------------------------
  * tokenize_logical_line -- split on unquoted ';', tokenize each segment,
- * append SC_NEWLINE after each non-blank segment.
+ * append SNOCONE_NEWLINE after each non-blank segment.
  * Mirrors Clojure split-semicolon + inner reduce in tokenize.
  * ------------------------------------------------------------------------- */
 static void tokenize_logical_line(const char *joined, int jlen,
@@ -296,7 +296,7 @@ static void tokenize_logical_line(const char *joined, int jlen,
                 tokenize_segment(joined + s, e - s, stmt_line, acc);
                 if (acc->len > before) {
                     /* append NEWLINE after tokens from this segment */
-                    tb_push(acc, SC_NEWLINE, "\n", 1, stmt_line);
+                    tb_push(acc, SNOCONE_NEWLINE, "\n", 1, stmt_line);
                 }
             }
             seg_start = i + 1;
@@ -306,10 +306,10 @@ static void tokenize_logical_line(const char *joined, int jlen,
 }
 
 /* ---------------------------------------------------------------------------
- * sc_lex -- public entry point
+ * snocone_lex -- public entry point
  * Mirrors Clojure tokenize: handles CRLF, continuation lines, #-comments.
  * ------------------------------------------------------------------------- */
-ScTokenArray sc_lex(const char *source)
+ScTokenArray snocone_lex(const char *source)
 {
     /* Split source into physical lines (handle CRLF) */
     /* Count lines first */
@@ -388,7 +388,7 @@ ScTokenArray sc_lex(const char *source)
     free(line_len);
 
     /* append EOF */
-    tb_push(&acc, SC_EOF, "", 0, n);
+    tb_push(&acc, SNOCONE_EOF, "", 0, n);
 
     ScTokenArray result;
     result.tokens = acc.data;
@@ -411,68 +411,68 @@ void sc_tokens_free(ScTokenArray *arr)
 /* ---------------------------------------------------------------------------
  * sc_kind_name -- for debugging / test output
  * ------------------------------------------------------------------------- */
-const char *sc_kind_name(ScKind kind)
+const char *sc_kind_name(SnoconeKind kind)
 {
     switch (kind) {
-    case SC_INTEGER:     return "INTEGER";
-    case SC_REAL:        return "REAL";
-    case SC_STRING:      return "STRING";
-    case SC_IDENT:       return "IDENT";
-    case SC_KW_IF:       return "KW_IF";
-    case SC_KW_THEN:     return "KW_THEN";
-    case SC_KW_ELSE:     return "KW_ELSE";
-    case SC_KW_WHILE:    return "KW_WHILE";
-    case SC_KW_DO:       return "KW_DO";
-    case SC_KW_FOR:      return "KW_FOR";
-    case SC_KW_RETURN:   return "KW_RETURN";
-    case SC_KW_FRETURN:  return "KW_FRETURN";
-    case SC_KW_NRETURN:  return "KW_NRETURN";
-    case SC_KW_GO:       return "KW_GO";
-    case SC_KW_TO:       return "KW_TO";
-    case SC_KW_PROCEDURE:return "KW_PROCEDURE";
-    case SC_KW_STRUCT:   return "KW_STRUCT";
-    case SC_LPAREN:      return "LPAREN";
-    case SC_RPAREN:      return "RPAREN";
-    case SC_LBRACE:      return "LBRACE";
-    case SC_RBRACE:      return "RBRACE";
-    case SC_LBRACKET:    return "LBRACKET";
-    case SC_RBRACKET:    return "RBRACKET";
-    case SC_COMMA:       return "COMMA";
-    case SC_SEMICOLON:   return "SEMICOLON";
-    case SC_COLON:       return "COLON";
-    case SC_ASSIGN:      return "ASSIGN";
-    case SC_QUESTION:    return "QUESTION";
-    case SC_PIPE:        return "PIPE";
-    case SC_OR:          return "OR";
-    case SC_CONCAT:      return "CONCAT";
-    case SC_EQ:          return "EQ";
-    case SC_NE:          return "NE";
-    case SC_LT:          return "LT";
-    case SC_GT:          return "GT";
-    case SC_LE:          return "LE";
-    case SC_GE:          return "GE";
-    case SC_STR_IDENT:   return "STR_IDENT";
-    case SC_STR_DIFFER:  return "STR_DIFFER";
-    case SC_STR_LT:      return "STR_LT";
-    case SC_STR_GT:      return "STR_GT";
-    case SC_STR_LE:      return "STR_LE";
-    case SC_STR_GE:      return "STR_GE";
-    case SC_STR_EQ:      return "STR_EQ";
-    case SC_STR_NE:      return "STR_NE";
-    case SC_PLUS:        return "PLUS";
-    case SC_MINUS:       return "MINUS";
-    case SC_SLASH:       return "SLASH";
-    case SC_STAR:        return "STAR";
-    case SC_PERCENT:     return "PERCENT";
-    case SC_CARET:       return "CARET";
-    case SC_PERIOD:      return "PERIOD";
-    case SC_DOLLAR:      return "DOLLAR";
-    case SC_AT:          return "AT";
-    case SC_AMPERSAND:   return "AMPERSAND";
-    case SC_TILDE:       return "TILDE";
-    case SC_NEWLINE:     return "NEWLINE";
-    case SC_EOF:         return "EOF";
-    case SC_UNKNOWN:     return "UNKNOWN";
+    case SNOCONE_INTEGER:     return "INTEGER";
+    case SNOCONE_REAL:        return "REAL";
+    case SNOCONE_STRING:      return "STRING";
+    case SNOCONE_IDENT:       return "IDENT";
+    case SNOCONE_KW_IF:       return "KW_IF";
+    case SNOCONE_KW_THEN:     return "KW_THEN";
+    case SNOCONE_KW_ELSE:     return "KW_ELSE";
+    case SNOCONE_KW_WHILE:    return "KW_WHILE";
+    case SNOCONE_KW_DO:       return "KW_DO";
+    case SNOCONE_KW_FOR:      return "KW_FOR";
+    case SNOCONE_KW_RETURN:   return "KW_RETURN";
+    case SNOCONE_KW_FRETURN:  return "KW_FRETURN";
+    case SNOCONE_KW_NRETURN:  return "KW_NRETURN";
+    case SNOCONE_KW_GO:       return "KW_GO";
+    case SNOCONE_KW_TO:       return "KW_TO";
+    case SNOCONE_KW_PROCEDURE:return "KW_PROCEDURE";
+    case SNOCONE_KW_STRUCT:   return "KW_STRUCT";
+    case SNOCONE_LPAREN:      return "LPAREN";
+    case SNOCONE_RPAREN:      return "RPAREN";
+    case SNOCONE_LBRACE:      return "LBRACE";
+    case SNOCONE_RBRACE:      return "RBRACE";
+    case SNOCONE_LBRACKET:    return "LBRACKET";
+    case SNOCONE_RBRACKET:    return "RBRACKET";
+    case SNOCONE_COMMA:       return "COMMA";
+    case SNOCONE_SEMICOLON:   return "SEMICOLON";
+    case SNOCONE_COLON:       return "COLON";
+    case SNOCONE_ASSIGN:      return "ASSIGN";
+    case SNOCONE_QUESTION:    return "QUESTION";
+    case SNOCONE_PIPE:        return "PIPE";
+    case SNOCONE_OR:          return "OR";
+    case SNOCONE_CONCAT:      return "CONCAT";
+    case SNOCONE_EQ:          return "EQ";
+    case SNOCONE_NE:          return "NE";
+    case SNOCONE_LT:          return "LT";
+    case SNOCONE_GT:          return "GT";
+    case SNOCONE_LE:          return "LE";
+    case SNOCONE_GE:          return "GE";
+    case SNOCONE_STR_IDENT:   return "STR_IDENT";
+    case SNOCONE_STR_DIFFER:  return "STR_DIFFER";
+    case SNOCONE_STR_LT:      return "STR_LT";
+    case SNOCONE_STR_GT:      return "STR_GT";
+    case SNOCONE_STR_LE:      return "STR_LE";
+    case SNOCONE_STR_GE:      return "STR_GE";
+    case SNOCONE_STR_EQ:      return "STR_EQ";
+    case SNOCONE_STR_NE:      return "STR_NE";
+    case SNOCONE_PLUS:        return "PLUS";
+    case SNOCONE_MINUS:       return "MINUS";
+    case SNOCONE_SLASH:       return "SLASH";
+    case SNOCONE_STAR:        return "STAR";
+    case SNOCONE_PERCENT:     return "PERCENT";
+    case SNOCONE_CARET:       return "CARET";
+    case SNOCONE_PERIOD:      return "PERIOD";
+    case SNOCONE_DOLLAR:      return "DOLLAR";
+    case SNOCONE_AT:          return "AT";
+    case SNOCONE_AMPERSAND:   return "AMPERSAND";
+    case SNOCONE_TILDE:       return "TILDE";
+    case SNOCONE_NEWLINE:     return "NEWLINE";
+    case SNOCONE_EOF:         return "EOF";
+    case SNOCONE_UNKNOWN:     return "UNKNOWN";
     default:             return "???";
     }
 }

@@ -1,14 +1,14 @@
 /*
  * sc_cf.c — Snocone control-flow lowering pass  (Sprint SC4-ASM)
  *
- * Walks the flat ScToken[] stream from sc_lex() and produces a Program*
+ * Walks the flat SnoconeToken[] stream from snocone_lex() and produces a Program*
  * whose STMT_t list uses SNOBOL4-style labeled gotos for all control flow.
  *
  * Mirrors the logic in snocone.sc: nclause() / dostmt() / funct() / dostruct()
  *
  * Architecture:
- *   sc_lex()  → ScTokenArray (flat token stream)
- *   sc_cf_compile() → Program* (STMT_t list with labels + go fields)
+ *   snocone_lex()  → ScTokenArray (flat token stream)
+ *   snocone_cf_compile() → Program* (STMT_t list with labels + go fields)
  *
  * Each Snocone control construct is lowered to labeled SNOBOL4 STMT_t nodes:
  *
@@ -45,14 +45,14 @@
  *
  *   expr  (expression clause)  →  [expr stmt, no goto]
  *
- * Expression clauses are compiled via sc_parse() + sc_lower() exactly as
- * before.  Control-flow keywords are consumed by this pass, not sc_parse.
+ * Expression clauses are compiled via snocone_parse() + snocone_lower() exactly as
+ * before.  Control-flow keywords are consumed by this pass, not snocone_parse.
  */
 
-#include "sc_cf.h"
-#include "sc_lex.h"
-#include "sc_parse.h"
-#include "sc_lower.h"
+#include "snocone_cf.h"
+#include "snocone_lex.h"
+#include "snocone_parse.h"
+#include "snocone_lower.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -63,7 +63,7 @@
  * ---------------------------------------------------------------------- */
 
 typedef struct {
-    const ScToken *toks;
+    const SnoconeToken *toks;
     int            count;
     int            pos;        /* current read position */
     const char    *filename;
@@ -84,10 +84,10 @@ static char *newlab(CfState *st) {
     return strdup(buf);
 }
 
-static const ScToken *cur(CfState *st) {
+static const SnoconeToken *cur(CfState *st) {
     if (st->pos < st->count) return &st->toks[st->pos];
     /* Return a synthetic EOF token */
-    static ScToken eof_tok = { SC_EOF, NULL, 0 };
+    static SnoconeToken eof_tok = { SNOCONE_EOF, NULL, 0 };
     return &eof_tok;
 }
 
@@ -98,8 +98,8 @@ static void advance(CfState *st) {
 /* Skip whitespace/newline tokens */
 static void skip_nl(CfState *st) {
     while (st->pos < st->count &&
-           (st->toks[st->pos].kind == SC_NEWLINE ||
-            st->toks[st->pos].kind == SC_SEMICOLON))
+           (st->toks[st->pos].kind == SNOCONE_NEWLINE ||
+            st->toks[st->pos].kind == SNOCONE_SEMICOLON))
         st->pos++;
 }
 
@@ -136,36 +136,36 @@ static void emit_end(CfState *st) {
 }
 
 /* -------------------------------------------------------------------------
- * Expression clause compilation (sc_parse + sc_lower on a token segment)
+ * Expression clause compilation (snocone_parse + snocone_lower on a token segment)
  * Consumes tokens up to but not including the next NEWLINE/SEMICOLON/EOF
  * or the stop_kind token.  Returns a STMT_t* (may be NULL for blank).
  *
  * The produced STMT_t has no label and no go — caller fills those in.
  * ---------------------------------------------------------------------- */
-static STMT_t *compile_expr_clause(CfState *st, ScKind stop_kind) {
+static STMT_t *compile_expr_clause(CfState *st, SnoconeKind stop_kind) {
     /* Collect tokens for this expression */
     int start = st->pos;
     while (st->pos < st->count) {
-        ScKind k = st->toks[st->pos].kind;
-        if (k == SC_NEWLINE || k == SC_SEMICOLON || k == SC_EOF) break;
-        if (stop_kind != SC_EOF && k == stop_kind) break;
+        SnoconeKind k = st->toks[st->pos].kind;
+        if (k == SNOCONE_NEWLINE || k == SNOCONE_SEMICOLON || k == SNOCONE_EOF) break;
+        if (stop_kind != SNOCONE_EOF && k == stop_kind) break;
         st->pos++;
     }
     int seg_len = st->pos - start;
     if (seg_len == 0) return NULL;
 
-    ScParseResult pr = sc_parse(st->toks + start, seg_len);
+    ScParseResult pr = snocone_parse(st->toks + start, seg_len);
     if (pr.count == 0) { sc_parse_free(&pr); return NULL; }
 
-    /* Wrap in a SC_NEWLINE sentinel for sc_lower */
+    /* Wrap in a SNOCONE_NEWLINE sentinel for snocone_lower */
     int cap = pr.count + 1;
     ScPToken *buf = malloc(cap * sizeof(ScPToken));
     memcpy(buf, pr.tokens, pr.count * sizeof(ScPToken));
     ScPToken nl; memset(&nl, 0, sizeof nl);
-    nl.kind = SC_NEWLINE; nl.text = (char *)"\n";
+    nl.kind = SNOCONE_NEWLINE; nl.text = (char *)"\n";
     buf[pr.count] = nl;
 
-    ScLowerResult lr = sc_lower(buf, cap, st->filename);
+    ScLowerResult lr = snocone_lower(buf, cap, st->filename);
     free(buf);
     sc_parse_free(&pr);
 
@@ -190,10 +190,10 @@ static void do_block(CfState *st);
 /* -------------------------------------------------------------------------
  * peek_kind — look at the current non-nl token kind
  * ---------------------------------------------------------------------- */
-static ScKind peek_kind(CfState *st) {
+static SnoconeKind peek_kind(CfState *st) {
     int save = st->pos;
     skip_nl(st);
-    ScKind k = cur(st)->kind;
+    SnoconeKind k = cur(st)->kind;
     st->pos = save;
     return k;
 }
@@ -201,7 +201,7 @@ static ScKind peek_kind(CfState *st) {
 /* -------------------------------------------------------------------------
  * consume_keyword — advance past a keyword if it matches
  * ---------------------------------------------------------------------- */
-static int consume_kw(CfState *st, ScKind k) {
+static int consume_kw(CfState *st, SnoconeKind k) {
     skip_nl(st);
     if (cur(st)->kind == k) { advance(st); return 1; }
     return 0;
@@ -212,12 +212,12 @@ static int consume_kw(CfState *st, ScKind k) {
  * On entry pos points at the open delimiter.  Returns token array for
  * the interior (not including delimiters), advances pos past close.
  * ---------------------------------------------------------------------- */
-static void collect_balanced(CfState *st, ScKind open, ScKind close,
-                              const ScToken **out_toks, int *out_count) {
+static void collect_balanced(CfState *st, SnoconeKind open, SnoconeKind close,
+                              const SnoconeToken **out_toks, int *out_count) {
     skip_nl(st);
     if (cur(st)->kind != open) {
         fprintf(stderr, "%s: expected '%c'\n", st->filename,
-                open == SC_LPAREN ? '(' : '{');
+                open == SNOCONE_LPAREN ? '(' : '{');
         st->nerrors++;
         *out_toks = NULL; *out_count = 0;
         return;
@@ -226,7 +226,7 @@ static void collect_balanced(CfState *st, ScKind open, ScKind close,
     int start = st->pos;
     int depth = 1;
     while (st->pos < st->count && depth > 0) {
-        ScKind k = st->toks[st->pos].kind;
+        SnoconeKind k = st->toks[st->pos].kind;
         if (k == open)  depth++;
         if (k == close) depth--;
         if (depth > 0) st->pos++;
@@ -240,21 +240,21 @@ static void collect_balanced(CfState *st, ScKind open, ScKind close,
  * compile_paren_expr — compile expression inside ( ... ) into a STMT_t
  * ---------------------------------------------------------------------- */
 static STMT_t *compile_paren_expr(CfState *st) {
-    const ScToken *inner; int inner_len;
-    collect_balanced(st, SC_LPAREN, SC_RPAREN, &inner, &inner_len);
+    const SnoconeToken *inner; int inner_len;
+    collect_balanced(st, SNOCONE_LPAREN, SNOCONE_RPAREN, &inner, &inner_len);
     if (!inner || inner_len == 0) return NULL;
 
-    ScParseResult pr = sc_parse(inner, inner_len);
+    ScParseResult pr = snocone_parse(inner, inner_len);
     if (pr.count == 0) { sc_parse_free(&pr); return NULL; }
 
     int cap = pr.count + 1;
     ScPToken *buf = malloc(cap * sizeof(ScPToken));
     memcpy(buf, pr.tokens, pr.count * sizeof(ScPToken));
     ScPToken nl; memset(&nl, 0, sizeof nl);
-    nl.kind = SC_NEWLINE; nl.text = (char *)"\n";
+    nl.kind = SNOCONE_NEWLINE; nl.text = (char *)"\n";
     buf[pr.count] = nl;
 
-    ScLowerResult lr = sc_lower(buf, cap, st->filename);
+    ScLowerResult lr = snocone_lower(buf, cap, st->filename);
     free(buf);
     sc_parse_free(&pr);
 
@@ -285,7 +285,7 @@ static void emit_cond(CfState *st, STMT_t *cond_s,
  * ---------------------------------------------------------------------- */
 static void do_body(CfState *st) {
     skip_nl(st);
-    if (cur(st)->kind == SC_LBRACE) {
+    if (cur(st)->kind == SNOCONE_LBRACE) {
         do_block(st);
     } else {
         do_stmt(st);
@@ -297,28 +297,28 @@ static void do_body(CfState *st) {
  * ---------------------------------------------------------------------- */
 static void do_block(CfState *st) {
     skip_nl(st);
-    if (cur(st)->kind != SC_LBRACE) { do_stmt(st); return; }
+    if (cur(st)->kind != SNOCONE_LBRACE) { do_stmt(st); return; }
     advance(st); /* consume { */
     skip_nl(st);
-    while (cur(st)->kind != SC_RBRACE && cur(st)->kind != SC_EOF) {
+    while (cur(st)->kind != SNOCONE_RBRACE && cur(st)->kind != SNOCONE_EOF) {
         do_stmt(st);
         skip_nl(st);
     }
-    if (cur(st)->kind == SC_RBRACE) advance(st); /* consume } */
+    if (cur(st)->kind == SNOCONE_RBRACE) advance(st); /* consume } */
 }
 
 /* -------------------------------------------------------------------------
  * do_return_stmt — handle return/freturn/nreturn
  * ---------------------------------------------------------------------- */
-static void do_return_stmt(CfState *st, ScKind ret_kind) {
+static void do_return_stmt(CfState *st, SnoconeKind ret_kind) {
     /* Consume optional expression on same line (before newline/semicolon/})  */
     skip_nl(st);
-    ScKind next = cur(st)->kind;
-    int has_expr = (next != SC_NEWLINE && next != SC_SEMICOLON &&
-                    next != SC_RBRACE  && next != SC_EOF);
+    SnoconeKind next = cur(st)->kind;
+    int has_expr = (next != SNOCONE_NEWLINE && next != SNOCONE_SEMICOLON &&
+                    next != SNOCONE_RBRACE  && next != SNOCONE_EOF);
 
-    if (has_expr && ret_kind != SC_KW_FRETURN) {
-        STMT_t *val_s = compile_expr_clause(st, SC_EOF);
+    if (has_expr && ret_kind != SNOCONE_KW_FRETURN) {
+        STMT_t *val_s = compile_expr_clause(st, SNOCONE_EOF);
         if (val_s) {
             /* Assign return value: fname = expr */
             if (st->fname && val_s->subject) {
@@ -341,8 +341,8 @@ static void do_return_stmt(CfState *st, ScKind ret_kind) {
     /* Emit the RETURN/FRETURN/NRETURN goto */
     STMT_t *ret_s = stmt_new();
     ret_s->go = sgoto_new();
-    const char *target = (ret_kind == SC_KW_FRETURN)  ? "FRETURN" :
-                         (ret_kind == SC_KW_NRETURN)   ? "NRETURN" :
+    const char *target = (ret_kind == SNOCONE_KW_FRETURN)  ? "FRETURN" :
+                         (ret_kind == SNOCONE_KW_NRETURN)   ? "NRETURN" :
                                                           "RETURN";
     ret_s->go->uncond = strdup(target);
     prog_append(st, ret_s);
@@ -355,7 +355,7 @@ static void do_procedure(CfState *st) {
     skip_nl(st);
 
     /* Read function name */
-    if (cur(st)->kind != SC_IDENT) {
+    if (cur(st)->kind != SNOCONE_IDENT) {
         fprintf(stderr, "%s: expected procedure name\n", st->filename);
         st->nerrors++; return;
     }
@@ -365,16 +365,16 @@ static void do_procedure(CfState *st) {
     /* Read argument list ( id, id, ... ) */
     char args_buf[256] = "";
     skip_nl(st);
-    if (cur(st)->kind == SC_LPAREN) {
+    if (cur(st)->kind == SNOCONE_LPAREN) {
         advance(st); /* consume ( */
         int first = 1;
         skip_nl(st);
-        while (cur(st)->kind != SC_RPAREN && cur(st)->kind != SC_EOF) {
+        while (cur(st)->kind != SNOCONE_RPAREN && cur(st)->kind != SNOCONE_EOF) {
             if (!first) {
-                if (cur(st)->kind == SC_COMMA) advance(st);
+                if (cur(st)->kind == SNOCONE_COMMA) advance(st);
                 skip_nl(st);
             }
-            if (cur(st)->kind == SC_IDENT) {
+            if (cur(st)->kind == SNOCONE_IDENT) {
                 if (!first) strncat(args_buf, ",", sizeof args_buf - strlen(args_buf) - 1);
                 strncat(args_buf, cur(st)->text, sizeof args_buf - strlen(args_buf) - 1);
                 advance(st);
@@ -382,23 +382,23 @@ static void do_procedure(CfState *st) {
             } else break;
             skip_nl(st);
         }
-        if (cur(st)->kind == SC_RPAREN) advance(st);
+        if (cur(st)->kind == SNOCONE_RPAREN) advance(st);
     }
 
     /* Local variable list: optional second paren group before { */
     char locals_buf[256] = "";
     skip_nl(st);
-    if (cur(st)->kind == SC_LPAREN) {
+    if (cur(st)->kind == SNOCONE_LPAREN) {
         /* second paren = locals (rare in snocone.sc but supported) */
         advance(st);
         int first = 1;
         skip_nl(st);
-        while (cur(st)->kind != SC_RPAREN && cur(st)->kind != SC_EOF) {
+        while (cur(st)->kind != SNOCONE_RPAREN && cur(st)->kind != SNOCONE_EOF) {
             if (!first) {
-                if (cur(st)->kind == SC_COMMA) advance(st);
+                if (cur(st)->kind == SNOCONE_COMMA) advance(st);
                 skip_nl(st);
             }
-            if (cur(st)->kind == SC_IDENT) {
+            if (cur(st)->kind == SNOCONE_IDENT) {
                 if (!first) strncat(locals_buf, ",", sizeof locals_buf - strlen(locals_buf) - 1);
                 strncat(locals_buf, cur(st)->text, sizeof locals_buf - strlen(locals_buf) - 1);
                 advance(st);
@@ -406,7 +406,7 @@ static void do_procedure(CfState *st) {
             } else break;
             skip_nl(st);
         }
-        if (cur(st)->kind == SC_RPAREN) advance(st);
+        if (cur(st)->kind == SNOCONE_RPAREN) advance(st);
     }
 
     /* Emit: goto fname.END (jump over function body) */
@@ -463,10 +463,10 @@ static void do_procedure(CfState *st) {
  * ---------------------------------------------------------------------- */
 static void do_stmt(CfState *st) {
     skip_nl(st);
-    ScKind k = cur(st)->kind;
+    SnoconeKind k = cur(st)->kind;
 
     /* ---- if ( cond ) body [ else body ] ---- */
-    if (k == SC_KW_IF) {
+    if (k == SNOCONE_KW_IF) {
         advance(st); /* consume 'if' */
         STMT_t *cond_s = compile_paren_expr(st);
 
@@ -478,23 +478,23 @@ static void do_stmt(CfState *st) {
 
         /* Consume optional 'then' keyword */
         skip_nl(st);
-        if (cur(st)->kind == SC_KW_THEN) advance(st);
+        if (cur(st)->kind == SNOCONE_KW_THEN) advance(st);
 
         /* True branch — if next token is '{' use block, otherwise
-         * compile a single expression stopping at SC_KW_ELSE so that
+         * compile a single expression stopping at SNOCONE_KW_ELSE so that
          * single-line  if (c) then S1 else S2  works correctly. */
         emit_label(st, lab_true);
         skip_nl(st);
-        if (cur(st)->kind == SC_LBRACE) {
+        if (cur(st)->kind == SNOCONE_LBRACE) {
             do_block(st);
         } else {
-            STMT_t *body_s = compile_expr_clause(st, SC_KW_ELSE);
+            STMT_t *body_s = compile_expr_clause(st, SNOCONE_KW_ELSE);
             if (body_s) prog_append(st, body_s);
         }
 
         /* Check for else */
         skip_nl(st);
-        int has_else = (cur(st)->kind == SC_KW_ELSE);
+        int has_else = (cur(st)->kind == SNOCONE_KW_ELSE);
         if (has_else) {
             emit_goto(st, lab_end);
             emit_label(st, lab_false);
@@ -510,7 +510,7 @@ static void do_stmt(CfState *st) {
     }
 
     /* ---- while ( cond ) body ---- */
-    if (k == SC_KW_WHILE) {
+    if (k == SNOCONE_KW_WHILE) {
         advance(st);
         char *lab_start = newlab(st);
         char *lab_body  = newlab(st);
@@ -523,7 +523,7 @@ static void do_stmt(CfState *st) {
         emit_label(st, lab_body);
         /* Consume optional 'do' keyword */
         skip_nl(st);
-        if (cur(st)->kind == SC_KW_DO) advance(st);
+        if (cur(st)->kind == SNOCONE_KW_DO) advance(st);
         do_body(st);
         emit_goto(st, lab_start);
         emit_label(st, lab_end);
@@ -533,7 +533,7 @@ static void do_stmt(CfState *st) {
     }
 
     /* ---- do body while ( cond ) ---- */
-    if (k == SC_KW_DO) {
+    if (k == SNOCONE_KW_DO) {
         advance(st);
         char *lab_start = newlab(st);
         char *lab_end   = newlab(st);
@@ -543,7 +543,7 @@ static void do_stmt(CfState *st) {
 
         /* expect 'while' */
         skip_nl(st);
-        if (cur(st)->kind == SC_KW_WHILE) {
+        if (cur(st)->kind == SNOCONE_KW_WHILE) {
             advance(st);
             STMT_t *cond_s = compile_paren_expr(st);
             /* on success loop back, on failure exit */
@@ -555,22 +555,22 @@ static void do_stmt(CfState *st) {
     }
 
     /* ---- for ( init ; cond ; step ) body ---- */
-    if (k == SC_KW_FOR) {
+    if (k == SNOCONE_KW_FOR) {
         advance(st);
         /* Collect three comma-separated expressions in parens */
         skip_nl(st);
-        if (cur(st)->kind != SC_LPAREN) { st->nerrors++; return; }
+        if (cur(st)->kind != SNOCONE_LPAREN) { st->nerrors++; return; }
         advance(st); /* consume ( */
 
         /* init */
-        STMT_t *init_s = compile_expr_clause(st, SC_SEMICOLON);
-        if (cur(st)->kind == SC_SEMICOLON) advance(st);
+        STMT_t *init_s = compile_expr_clause(st, SNOCONE_SEMICOLON);
+        if (cur(st)->kind == SNOCONE_SEMICOLON) advance(st);
         /* cond */
-        STMT_t *cond_s = compile_expr_clause(st, SC_SEMICOLON);
-        if (cur(st)->kind == SC_SEMICOLON) advance(st);
+        STMT_t *cond_s = compile_expr_clause(st, SNOCONE_SEMICOLON);
+        if (cur(st)->kind == SNOCONE_SEMICOLON) advance(st);
         /* step */
-        STMT_t *step_s = compile_expr_clause(st, SC_RPAREN);
-        if (cur(st)->kind == SC_RPAREN) advance(st);
+        STMT_t *step_s = compile_expr_clause(st, SNOCONE_RPAREN);
+        if (cur(st)->kind == SNOCONE_RPAREN) advance(st);
 
         char *lab_test = newlab(st);
         char *lab_body = newlab(st);
@@ -582,7 +582,7 @@ static void do_stmt(CfState *st) {
         emit_label(st, lab_body);
         /* Consume optional 'do' keyword */
         skip_nl(st);
-        if (cur(st)->kind == SC_KW_DO) advance(st);
+        if (cur(st)->kind == SNOCONE_KW_DO) advance(st);
         do_body(st);
         if (step_s) prog_append(st, step_s);
         emit_goto(st, lab_test);
@@ -593,11 +593,11 @@ static void do_stmt(CfState *st) {
     }
 
     /* ---- go to label ---- */
-    if (k == SC_KW_GO) {
+    if (k == SNOCONE_KW_GO) {
         advance(st);
-        consume_kw(st, SC_KW_TO); /* optional 'to' */
+        consume_kw(st, SNOCONE_KW_TO); /* optional 'to' */
         skip_nl(st);
-        if (cur(st)->kind == SC_IDENT) {
+        if (cur(st)->kind == SNOCONE_IDENT) {
             char *target = strdup(cur(st)->text);
             advance(st);
             emit_goto(st, target);
@@ -607,50 +607,50 @@ static void do_stmt(CfState *st) {
     }
 
     /* ---- procedure name ( args ) body ---- */
-    if (k == SC_KW_PROCEDURE) {
+    if (k == SNOCONE_KW_PROCEDURE) {
         advance(st);
         do_procedure(st);
         return;
     }
 
     /* ---- return / freturn / nreturn ---- */
-    if (k == SC_KW_RETURN || k == SC_KW_FRETURN || k == SC_KW_NRETURN) {
-        ScKind ret_kind = k;
+    if (k == SNOCONE_KW_RETURN || k == SNOCONE_KW_FRETURN || k == SNOCONE_KW_NRETURN) {
+        SnoconeKind ret_kind = k;
         advance(st);
         do_return_stmt(st, ret_kind);
         return;
     }
 
     /* ---- { block } ---- */
-    if (k == SC_LBRACE) {
+    if (k == SNOCONE_LBRACE) {
         do_block(st);
         return;
     }
 
     /* ---- } end-of-block (should be consumed by do_block) ---- */
-    if (k == SC_RBRACE) {
+    if (k == SNOCONE_RBRACE) {
         return; /* caller (do_block) will consume it */
     }
 
     /* ---- expression / assignment statement ---- */
-    if (k != SC_EOF && k != SC_NEWLINE && k != SC_SEMICOLON) {
-        STMT_t *s = compile_expr_clause(st, SC_EOF);
+    if (k != SNOCONE_EOF && k != SNOCONE_NEWLINE && k != SNOCONE_SEMICOLON) {
+        STMT_t *s = compile_expr_clause(st, SNOCONE_EOF);
         if (s) prog_append(st, s);
         /* consume trailing newline/semicolon */
         skip_nl(st);
         return;
     }
     /* blank line — skip */
-    if (k == SC_NEWLINE || k == SC_SEMICOLON) advance(st);
+    if (k == SNOCONE_NEWLINE || k == SNOCONE_SEMICOLON) advance(st);
 }
 
 /* -------------------------------------------------------------------------
- * sc_cf_compile — public entry point
+ * snocone_cf_compile — public entry point
  * ---------------------------------------------------------------------- */
-Program *sc_cf_compile(const char *source, const char *filename) {
+Program *snocone_cf_compile(const char *source, const char *filename) {
     if (!filename) filename = "<stdin>";
 
-    ScTokenArray ta = sc_lex(source);
+    ScTokenArray ta = snocone_lex(source);
 
     CfState st;
     memset(&st, 0, sizeof st);
@@ -663,7 +663,7 @@ Program *sc_cf_compile(const char *source, const char *filename) {
 
     /* Walk all top-level statements */
     skip_nl(&st);
-    while (cur(&st)->kind != SC_EOF) {
+    while (cur(&st)->kind != SNOCONE_EOF) {
         do_stmt(&st);
         skip_nl(&st);
     }
@@ -674,7 +674,7 @@ Program *sc_cf_compile(const char *source, const char *filename) {
     sc_tokens_free(&ta);
 
     if (st.nerrors > 0) {
-        fprintf(stderr, "sc_cf_compile: %d error(s) in %s\n",
+        fprintf(stderr, "snocone_cf_compile: %d error(s) in %s\n",
                 st.nerrors, filename);
         /* Return prog anyway — partial output is useful for debugging */
     }

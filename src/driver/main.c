@@ -3,12 +3,12 @@
  * Usage: sno2c [-I dir] [-o out.c] [-trampoline] [-sc] input.sno|input.sc
  *
  * Sprint SC3: -sc flag (or .sc suffix) routes through the Snocone frontend
- * (sc_lex → sc_parse per-stmt → sc_lower) instead of the SNOBOL4 frontend.
+ * (snocone_lex -> snocone_parse per-stmt -> snocone_lower) instead of the SNOBOL4 frontend.
  * The resulting Program* is passed to the same snoc_emit / asm_emit backend.
  */
 #include "sno2c.h"
-#include "sc_driver.h"   /* sc_compile() — Snocone expression-only pipeline */
-#include "sc_cf.h"       /* sc_cf_compile() — full control-flow lowering (SC4-ASM) */
+#include "snocone_driver.h"   /* snocone_compile() — Snocone expression-only pipeline */
+#include "snocone_cf.h"       /* snocone_cf_compile() — full control-flow lowering (SC4-ASM) */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -121,10 +121,10 @@ int main(int argc, char *argv[]) {
         if (!src) { fprintf(stderr,"sno2c: read error\n"); return 1; }
         if (asm_mode) {
             /* ASM backend: use full control-flow lowering (SC4-ASM) */
-            prog = sc_cf_compile(src, infile ? infile : "<stdin>");
+            prog = snocone_cf_compile(src, infile ? infile : "<stdin>");
         } else {
             /* C backend: expression-only pipeline (SC3, legacy) */
-            prog = sc_compile(src, infile ? infile : "<stdin>");
+            prog = snocone_compile(src, infile ? infile : "<stdin>");
         }
         free(src);
         if (!prog) { return 1; }

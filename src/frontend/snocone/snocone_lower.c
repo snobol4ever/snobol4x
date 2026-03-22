@@ -1,16 +1,16 @@
 /*
- * sc_lower.c -- Snocone postfix ScPToken[] → EXPR_t/STMT_t IR  (Sprint SC2)
+ * snocone_lower.c -- Snocone postfix ScPToken[] → EXPR_t/STMT_t IR  (Sprint SC2)
  *
  * Ported from:
  *   snobol4jvm  snocone_emitter.clj  (operator table, emit-binary logic)
  *   snobol4dotnet SnoconeParser.cs   (shunting-yard reference)
  *
- * The postfix stream from sc_parse() is a standard RPN expression.
- * We maintain an EXPR_t* operand stack.  When we hit SC_NEWLINE we
+ * The postfix stream from snocone_parse() is a standard RPN expression.
+ * We maintain an EXPR_t* operand stack.  When we hit SNOCONE_NEWLINE we
  * pop the top expression and assemble a STMT_t.
  *
  * Assignment detection:
- *   SC_ASSIGN in postfix: pop rhs, pop lhs.
+ *   SNOCONE_ASSIGN in postfix: pop rhs, pop lhs.
  *   If lhs is a simple E_VART or E_KW the STMT_t is:
  *       subject=lhs  replacement=rhs  (no pattern field)
  *   This matches OUTPUT = 'hello', x = expr, etc.
@@ -21,7 +21,7 @@
  *   which maps to STMT_t subject/pattern/replacement.  Not emitted here.
  */
 
-#include "sc_lower.h"
+#include "snocone_lower.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -37,11 +37,11 @@ typedef struct {
 } ExprStack;
 
 static void  es_push(ExprStack *s, EXPR_t *e) {
-    if (s->top >= STACK_MAX) { fprintf(stderr, "sc_lower: stack overflow\n"); exit(1); }
+    if (s->top >= STACK_MAX) { fprintf(stderr, "snocone_lower: stack overflow\n"); exit(1); }
     s->v[s->top++] = e;
 }
 static EXPR_t *es_pop(ExprStack *s) {
-    if (s->top <= 0) { fprintf(stderr, "sc_lower: stack underflow\n"); return expr_new(E_NULV); }
+    if (s->top <= 0) { fprintf(stderr, "snocone_lower: stack underflow\n"); return expr_new(E_NULV); }
     return s->v[--s->top];
 }
 static EXPR_t *es_peek(ExprStack *s) {
@@ -79,19 +79,19 @@ static int lower_token(const ScPToken *tok, ExprStack *s,
 
     /* ---- Operands ---- */
     switch ((int)tok->kind) {
-    case SC_INTEGER: {
+    case SNOCONE_INTEGER: {
         EXPR_t *e = expr_new(E_ILIT);
         e->ival   = strtol(tok->text, NULL, 10);
         es_push(s, e);
         return 0;
     }
-    case SC_REAL: {
+    case SNOCONE_REAL: {
         EXPR_t *e = expr_new(E_FLIT);
         e->dval   = strtod(tok->text, NULL);
         es_push(s, e);
         return 0;
     }
-    case SC_STRING: {
+    case SNOCONE_STRING: {
         EXPR_t *e = expr_new(E_QLIT);
         /* tok->text includes surrounding quotes — strip them */
         int len = (int)strlen(tok->text);
@@ -103,7 +103,7 @@ static int lower_token(const ScPToken *tok, ExprStack *s,
         es_push(s, e);
         return 0;
     }
-    case SC_IDENT: {
+    case SNOCONE_IDENT: {
         EXPR_t *e = expr_new(E_VART);
         e->sval   = strdup(tok->text);
         es_push(s, e);
@@ -111,12 +111,12 @@ static int lower_token(const ScPToken *tok, ExprStack *s,
     }
 
     /* ---- Binary arithmetic ---- */
-    case SC_PLUS: {
+    case SNOCONE_PLUS: {
         EXPR_t *r = es_pop(s), *l = es_pop(s);
         EXPR_t *e = expr_binary(E_ADD, l, r);
         es_push(s, e); return 0;
     }
-    case SC_MINUS:
+    case SNOCONE_MINUS:
         if (tok->is_unary) {
             EXPR_t *operand = es_pop(s);
             EXPR_t *e = expr_unary(E_MNS, operand);
@@ -126,7 +126,7 @@ static int lower_token(const ScPToken *tok, ExprStack *s,
             EXPR_t *e = expr_binary(E_SUB, l, r);
             es_push(s, e); return 0;
         }
-    case SC_STAR:
+    case SNOCONE_STAR:
         if (tok->is_unary) {
             /* unary * = indirect reference */
             EXPR_t *operand = es_pop(s);
@@ -137,44 +137,44 @@ static int lower_token(const ScPToken *tok, ExprStack *s,
             EXPR_t *e = expr_binary(E_MPY, l, r);
             es_push(s, e); return 0;
         }
-    case SC_SLASH: {
+    case SNOCONE_SLASH: {
         EXPR_t *r = es_pop(s), *l = es_pop(s);
         EXPR_t *e = expr_binary(E_DIV, l, r);
         es_push(s, e); return 0;
     }
-    case SC_CARET: {
+    case SNOCONE_CARET: {
         EXPR_t *r = es_pop(s), *l = es_pop(s);
         EXPR_t *e = expr_binary(E_EXPOP, l, r);
         es_push(s, e); return 0;
     }
 
     /* ---- String / pattern composition ---- */
-    case SC_CONCAT: {
+    case SNOCONE_CONCAT: {
         /* && blank concat → E_CONC */
         EXPR_t *r = es_pop(s), *l = es_pop(s);
         EXPR_t *e = expr_binary(E_CONC, l, r);
         es_push(s, e); return 0;
     }
-    case SC_PIPE: {
+    case SNOCONE_PIPE: {
         /* single | also string concat in SNOBOL4 context */
         EXPR_t *r = es_pop(s), *l = es_pop(s);
         EXPR_t *e = expr_binary(E_CONC, l, r);
         es_push(s, e); return 0;
     }
-    case SC_OR: {
+    case SNOCONE_OR: {
         /* || string concatenation (same as | and && in value context) → E_CONC */
         EXPR_t *r = es_pop(s), *l = es_pop(s);
         EXPR_t *e = expr_binary(E_CONC, l, r);
         es_push(s, e); return 0;
     }
-    case SC_PERIOD: {
+    case SNOCONE_PERIOD: {
         /* . conditional capture: expr . var → E_NAM(left=expr, right=var) */
         EXPR_t *var  = es_pop(s);
         EXPR_t *expr = es_pop(s);
         EXPR_t *e    = expr_binary(E_NAM, expr, var);
         es_push(s, e); return 0;
     }
-    case SC_DOLLAR:
+    case SNOCONE_DOLLAR:
         if (tok->is_unary) {
             /* unary $ = indirect lvalue (E_INDR used as assignment target) */
             EXPR_t *operand = es_pop(s);
@@ -187,13 +187,13 @@ static int lower_token(const ScPToken *tok, ExprStack *s,
             EXPR_t *e    = expr_binary(E_DOL, expr, var);
             es_push(s, e); return 0;
         }
-    case SC_AT: {
+    case SNOCONE_AT: {
         /* @var — cursor position capture */
         EXPR_t *var = es_pop(s);
         EXPR_t *e   = expr_unary(E_ATP, var);
         es_push(s, e); return 0;
     }
-    case SC_AMPERSAND: {
+    case SNOCONE_AMPERSAND: {
         /* unary & — keyword reference: &IDENT → E_KW */
         EXPR_t *operand = es_pop(s);
         EXPR_t *e = expr_new(E_KW);
@@ -203,13 +203,13 @@ static int lower_token(const ScPToken *tok, ExprStack *s,
         free(operand);
         es_push(s, e); return 0;
     }
-    case SC_TILDE: {
+    case SNOCONE_TILDE: {
         /* ~ logical negation → NOT(expr) */
         EXPR_t *operand = es_pop(s);
         es_push(s, make_fnc1("NOT", operand));
         return 0;
     }
-    case SC_QUESTION:
+    case SNOCONE_QUESTION:
         if (tok->is_unary) {
             /* unary ? = DIFFER(x) or just return x — treat as DIFFER(x,"") */
             EXPR_t *operand = es_pop(s);
@@ -222,69 +222,69 @@ static int lower_token(const ScPToken *tok, ExprStack *s,
         return 0;
 
     /* ---- Comparison operators → function calls ---- */
-    case SC_EQ: {
+    case SNOCONE_EQ: {
         EXPR_t *r = es_pop(s), *l = es_pop(s);
         es_push(s, make_fnc2("EQ", l, r)); return 0;
     }
-    case SC_NE: {
+    case SNOCONE_NE: {
         EXPR_t *r = es_pop(s), *l = es_pop(s);
         es_push(s, make_fnc2("NE", l, r)); return 0;
     }
-    case SC_LT: {
+    case SNOCONE_LT: {
         EXPR_t *r = es_pop(s), *l = es_pop(s);
         es_push(s, make_fnc2("LT", l, r)); return 0;
     }
-    case SC_GT: {
+    case SNOCONE_GT: {
         EXPR_t *r = es_pop(s), *l = es_pop(s);
         es_push(s, make_fnc2("GT", l, r)); return 0;
     }
-    case SC_LE: {
+    case SNOCONE_LE: {
         EXPR_t *r = es_pop(s), *l = es_pop(s);
         es_push(s, make_fnc2("LE", l, r)); return 0;
     }
-    case SC_GE: {
+    case SNOCONE_GE: {
         EXPR_t *r = es_pop(s), *l = es_pop(s);
         es_push(s, make_fnc2("GE", l, r)); return 0;
     }
-    case SC_STR_IDENT: {
+    case SNOCONE_STR_IDENT: {
         EXPR_t *r = es_pop(s), *l = es_pop(s);
         es_push(s, make_fnc2("IDENT", l, r)); return 0;
     }
-    case SC_STR_DIFFER: {
+    case SNOCONE_STR_DIFFER: {
         EXPR_t *r = es_pop(s), *l = es_pop(s);
         es_push(s, make_fnc2("DIFFER", l, r)); return 0;
     }
-    case SC_STR_LT: {
+    case SNOCONE_STR_LT: {
         EXPR_t *r = es_pop(s), *l = es_pop(s);
         es_push(s, make_fnc2("LLT", l, r)); return 0;
     }
-    case SC_STR_GT: {
+    case SNOCONE_STR_GT: {
         EXPR_t *r = es_pop(s), *l = es_pop(s);
         es_push(s, make_fnc2("LGT", l, r)); return 0;
     }
-    case SC_STR_LE: {
+    case SNOCONE_STR_LE: {
         EXPR_t *r = es_pop(s), *l = es_pop(s);
         es_push(s, make_fnc2("LLE", l, r)); return 0;
     }
-    case SC_STR_GE: {
+    case SNOCONE_STR_GE: {
         EXPR_t *r = es_pop(s), *l = es_pop(s);
         es_push(s, make_fnc2("LGE", l, r)); return 0;
     }
-    case SC_STR_EQ: {
+    case SNOCONE_STR_EQ: {
         EXPR_t *r = es_pop(s), *l = es_pop(s);
         es_push(s, make_fnc2("LEQ", l, r)); return 0;
     }
-    case SC_STR_NE: {
+    case SNOCONE_STR_NE: {
         EXPR_t *r = es_pop(s), *l = es_pop(s);
         es_push(s, make_fnc2("LNE", l, r)); return 0;
     }
-    case SC_PERCENT: {
+    case SNOCONE_PERCENT: {
         EXPR_t *r = es_pop(s), *l = es_pop(s);
         es_push(s, make_fnc2("REMDR", l, r)); return 0;
     }
 
     /* ---- Assignment: pop rhs, pop lhs, push E_ASGN ---- */
-    case SC_ASSIGN: {
+    case SNOCONE_ASSIGN: {
         EXPR_t *rhs = es_pop(s);
         EXPR_t *lhs = es_pop(s);
         EXPR_t *e   = expr_binary(E_ASGN, lhs, rhs);
@@ -293,7 +293,7 @@ static int lower_token(const ScPToken *tok, ExprStack *s,
     }
 
     /* ---- Function call: pop nargs args + name from stack ---- */
-    case SC_CALL: {
+    case SNOCONE_CALL: {
         int     nargs = tok->arg_count;
         EXPR_t *fn    = expr_new(E_FNC);
         /* args on stack postfix: arg0 pushed first → arg(n-1) on top */
@@ -311,7 +311,7 @@ static int lower_token(const ScPToken *tok, ExprStack *s,
     }
 
     /* ---- Array ref: a[i] → E_IDX ---- */
-    case SC_ARRAY_REF: {
+    case SNOCONE_ARRAY_REF: {
         int     nargs = tok->arg_count;
         EXPR_t *base  = expr_new(E_IDX);
         EXPR_t **tmp  = nargs > 0 ? malloc(nargs * sizeof(EXPR_t *)) : NULL;
@@ -328,31 +328,31 @@ static int lower_token(const ScPToken *tok, ExprStack *s,
     }
 
     /* ---- Statement terminators handled by caller ---- */
-    case SC_NEWLINE:
-    case SC_SEMICOLON:
-    case SC_EOF:
+    case SNOCONE_NEWLINE:
+    case SNOCONE_SEMICOLON:
+    case SNOCONE_EOF:
         /* handled in the main loop */
         return 0;
 
     /* ---- Keywords not relevant to expression lowering ---- */
-    case SC_KW_IF:
-    case SC_KW_ELSE:
-    case SC_KW_WHILE:
-    case SC_KW_DO:
-    case SC_KW_FOR:
-    case SC_KW_RETURN:
-    case SC_KW_FRETURN:
-    case SC_KW_NRETURN:
-    case SC_KW_GO:
-    case SC_KW_TO:
-    case SC_KW_PROCEDURE:
-    case SC_KW_STRUCT:
+    case SNOCONE_KW_IF:
+    case SNOCONE_KW_ELSE:
+    case SNOCONE_KW_WHILE:
+    case SNOCONE_KW_DO:
+    case SNOCONE_KW_FOR:
+    case SNOCONE_KW_RETURN:
+    case SNOCONE_KW_FRETURN:
+    case SNOCONE_KW_NRETURN:
+    case SNOCONE_KW_GO:
+    case SNOCONE_KW_TO:
+    case SNOCONE_KW_PROCEDURE:
+    case SNOCONE_KW_STRUCT:
         /* Control-flow keywords — Sprint SC3 will handle these via a
-         * higher-level pass over sc_parse output.  For now, skip. */
+         * higher-level pass over snocone_parse output.  For now, skip. */
         return 0;
 
     default:
-        fprintf(stderr, "sc_lower: unhandled token kind %d ('%s') at line %d\n",
+        fprintf(stderr, "snocone_lower: unhandled token kind %d ('%s') at line %d\n",
                 (int)tok->kind, tok->text ? tok->text : "", tok->line);
         (*nerrors)++;
         return -1;
@@ -360,7 +360,7 @@ static int lower_token(const ScPToken *tok, ExprStack *s,
 }
 
 /* ---------------------------------------------------------------------------
- * Assemble a STMT_t from the top of the stack after SC_NEWLINE
+ * Assemble a STMT_t from the top of the stack after SNOCONE_NEWLINE
  * ------------------------------------------------------------------------- */
 static STMT_t *assemble_stmt(ExprStack *s, int lineno) {
     EXPR_t *top = es_peek(s);
@@ -386,9 +386,9 @@ static STMT_t *assemble_stmt(ExprStack *s, int lineno) {
 }
 
 /* ---------------------------------------------------------------------------
- * sc_lower — main entry point
+ * snocone_lower — main entry point
  * ------------------------------------------------------------------------- */
-ScLowerResult sc_lower(const ScPToken *ptoks, int count, const char *filename) {
+ScLowerResult snocone_lower(const ScPToken *ptoks, int count, const char *filename) {
     ScLowerResult result = { NULL, 0 };
     Program *prog = calloc(1, sizeof(Program));
     result.prog   = prog;
@@ -399,7 +399,7 @@ ScLowerResult sc_lower(const ScPToken *ptoks, int count, const char *filename) {
     for (int i = 0; i < count; i++) {
         const ScPToken *tok = &ptoks[i];
 
-        if (tok->kind == SC_NEWLINE || tok->kind == SC_SEMICOLON) {
+        if (tok->kind == SNOCONE_NEWLINE || tok->kind == SNOCONE_SEMICOLON) {
             /* End of logical statement — assemble if anything on stack */
             if (stack.top > 0) {
                 STMT_t *st = assemble_stmt(&stack, last_line);
@@ -419,7 +419,7 @@ ScLowerResult sc_lower(const ScPToken *ptoks, int count, const char *filename) {
             continue;
         }
 
-        if (tok->kind == SC_EOF) break;
+        if (tok->kind == SNOCONE_EOF) break;
 
         last_line = tok->line ? tok->line : last_line;
         lower_token(tok, &stack, filename, &result.nerrors);
