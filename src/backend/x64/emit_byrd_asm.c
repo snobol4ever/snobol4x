@@ -3982,6 +3982,10 @@ static void emit_program(Program *prog) {
             if (s->has_eq && s->subject &&
                 (s->subject->kind == E_VART || s->subject->kind == E_KW)) {
                 int has_f_tgt = (id_f >= 0 || (tgt_f && is_special_goto(tgt_f)));
+                /* When stmt has unconditional goto and no :F target, failure on RHS
+                 * (e.g. NRETURN) must still reach the unconditional target, not fall
+                 * through to next_lbl.  We emit FAIL_BR to a local stub that jumps there. */
+                int has_u_only = (!has_f_tgt && tgt_u);
                 const char *fail_target = has_f_tgt ? sfail_lbl : next_lbl;
                 int is_output = strcasecmp(s->subject->sval, "OUTPUT") == 0;
                 /* For keyword LHS (&VAR), NV_SET_fn expects bare name "ANCHOR" not "&ANCHOR" */
@@ -4010,8 +4014,15 @@ static void emit_program(Program *prog) {
                 } else {
                     /* General path */
                     emit_expr(s->replacement, -32);
-                    /* stmt_is_fail check on RHS */
-                    A("    FAIL_BR     %s\n", fail_target);
+                    /* stmt_is_fail check on RHS.
+                     * When stmt has unconditional goto and no :F target, a failing RHS
+                     * (e.g. NRETURN) must still reach tgt_u — not fall to next_lbl.
+                     * Emit FAIL_BR to sfail_lbl stub which then jumps to tgt_u. */
+                    if (has_u_only) {
+                        A("    FAIL_BR     %s\n", sfail_lbl);
+                    } else {
+                        A("    FAIL_BR     %s\n", fail_target);
+                    }
                     /* Assign: if subject is OUTPUT, call stmt_output */
                     if (is_output) {
                         A("    SET_OUTPUT\n");
@@ -4026,6 +4037,10 @@ static void emit_program(Program *prog) {
                 if (has_f_tgt) {
                     asmL(sfail_lbl);
                     emit_jmp(tgt_f, next_lbl);
+                } else if (has_u_only) {
+                    /* NRETURN/fail on RHS with unconditional goto: still go to tgt_u */
+                    asmL(sfail_lbl);
+                    emit_jmp(tgt_u, next_lbl);
                 }
             } else if (s->has_eq && s->subject &&
                        (s->subject->kind == E_DOL || s->subject->kind == E_INDR)) {
@@ -4033,6 +4048,7 @@ static void emit_program(Program *prog) {
                  * Parser uses E_INDR (right=operand) for $X in subject position.
                  * E_DOL (left=operand) is the binary capture op; support both. */
                 int has_f_tgt = (id_f >= 0 || (tgt_f && is_special_goto(tgt_f)));
+                int has_u_only = (!has_f_tgt && tgt_u);
                 const char *fail_target = has_f_tgt ? sfail_lbl : next_lbl;
                 /* Eval the name expression → [rbp-16/8] */
                 /* SNOBOL4 parser puts operand in ->children[1] for E_INDR.
@@ -4050,13 +4066,16 @@ static void emit_program(Program *prog) {
                     A("    mov     qword [rbp-24], 0\n");
                 } else {
                     emit_expr(s->replacement, -32);
-                    A("    FAIL_BR     %s\n", fail_target);
+                    A("    FAIL_BR     %s\n", has_u_only ? sfail_lbl : fail_target);
                 }
                 A("    SET_VAR_INDIR\n");
                 emit_jmp(tgt_s ? tgt_s : tgt_u, next_lbl);
                 if (has_f_tgt) {
                     asmL(sfail_lbl);
                     emit_jmp(tgt_f, next_lbl);
+                } else if (has_u_only) {
+                    asmL(sfail_lbl);
+                    emit_jmp(tgt_u, next_lbl);
                 }
             } else if (s->has_eq && s->subject &&
                        s->subject->kind == E_IDX &&
@@ -4073,6 +4092,7 @@ static void emit_program(Program *prog) {
                  * RHS evaluation (which may clobber [rbp-16/8] and [rbp-32/24]).
                  */
                 int has_f_tgt_idx = (id_f >= 0 || (tgt_f && is_special_goto(tgt_f)));
+                int has_u_only_idx = (!has_f_tgt_idx && tgt_u);
                 const char *fail_target = has_f_tgt_idx ? sfail_lbl : next_lbl;
                 static int idx_uid_counter = 0;
                 int idx_uid = idx_uid_counter++;
@@ -4106,7 +4126,7 @@ static void emit_program(Program *prog) {
                     A("    mov     qword [rbp-24], 0\n");
                 } else {
                     emit_expr(s->replacement, -32);
-                    A("    FAIL_BR     %s\n", fail_target);
+                    A("    FAIL_BR     %s\n", has_u_only_idx ? sfail_lbl : fail_target);
                 }
                 /* Restore key (was at rsp+0..15) and arr (was at rsp+16..31) */
                 /* Stack layout (top→bottom): key_t, key_p, arr_t, arr_p
@@ -4123,6 +4143,9 @@ static void emit_program(Program *prog) {
                 if (has_f_tgt_idx) {
                     asmL(sfail_lbl);
                     emit_jmp(tgt_f, next_lbl);
+                } else if (has_u_only_idx) {
+                    asmL(sfail_lbl);
+                    emit_jmp(tgt_u, next_lbl);
                 }
             } else if (s->has_eq && s->subject &&
                        s->subject->kind == E_FNC &&
@@ -4130,6 +4153,7 @@ static void emit_program(Program *prog) {
                        s->subject->sval) {
                 /* field(obj) = val  →  stmt_field_set(obj, "field", val) */
                 int has_f_tgt_fnc = (id_f >= 0 || (tgt_f && is_special_goto(tgt_f)));
+                int has_u_only_fnc = (!has_f_tgt_fnc && tgt_u);
                 const char *fail_target = has_f_tgt_fnc ? sfail_lbl : next_lbl;
                 const char *flab = str_intern(s->subject->sval);
 
@@ -4143,7 +4167,7 @@ static void emit_program(Program *prog) {
                     A("    mov     qword [rbp-24], 0\n");
                 } else {
                     emit_expr(s->replacement, -32);
-                    A("    FAIL_BR     %s\n", fail_target);
+                    A("    FAIL_BR     %s\n", has_u_only_fnc ? sfail_lbl : fail_target);
                 }
                 /* Set up args: obj in rdi:rsi, field name in rdx, val in rcx:r8 */
                 A("    mov     rcx, [rbp-32]\n");   /* val type */
@@ -4157,6 +4181,9 @@ static void emit_program(Program *prog) {
                 if (has_f_tgt_fnc) {
                     asmL(sfail_lbl);
                     emit_jmp(tgt_f, next_lbl);
+                } else if (has_u_only_fnc) {
+                    asmL(sfail_lbl);
+                    emit_jmp(tgt_u, next_lbl);
                 }
             } else if (s->has_eq && s->subject &&
                        s->subject->kind == E_FNC &&
@@ -4165,6 +4192,7 @@ static void emit_program(Program *prog) {
                        s->subject->nchildren >= 2) {
                 /* item(arr, key) = val  →  stmt_aset(arr, key, val) */
                 int has_f_tgt_item = (id_f >= 0 || (tgt_f && is_special_goto(tgt_f)));
+                int has_u_only_item = (!has_f_tgt_item && tgt_u);
                 const char *fail_target = has_f_tgt_item ? sfail_lbl : next_lbl;
                 EXPR_t *arr_expr = s->subject->children[0];
                 EXPR_t *key_expr = s->subject->children[1];
@@ -4183,7 +4211,7 @@ static void emit_program(Program *prog) {
                     A("    mov     qword [rbp-24], 0\\n");
                 } else {
                     emit_expr(s->replacement, -32);
-                    A("    FAIL_BR     %s\\n", fail_target);
+                    A("    FAIL_BR     %s\\n", has_u_only_item ? sfail_lbl : fail_target);
                 }
                 /* stmt_aset(arr, key, val): arr→rdi:rsi, key→rdx:rcx, val→r8:r9 */
                 A("    mov     r8,  [rbp-24]\\n");   /* val ptr  */
@@ -4204,6 +4232,9 @@ static void emit_program(Program *prog) {
                 if (has_f_tgt_item) {
                     asmL(sfail_lbl);
                     emit_jmp(tgt_f, next_lbl);
+                } else if (has_u_only_item) {
+                    asmL(sfail_lbl);
+                    emit_jmp(tgt_u, next_lbl);
                 }
             } else {
                 /* expression-only or complex case: just evaluate and branch.

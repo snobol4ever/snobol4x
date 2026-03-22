@@ -66,16 +66,18 @@ PYEOF
 # ── Step 2: compile ASM ──────────────────────────────────────────────────
 for src in "$RT/asm/snobol4_stmt_rt.c" "$RT/snobol4/snobol4.c" \
            "$RT/mock/mock_includes.c"   "$RT/snobol4/snobol4_pattern.c" \
-           "$RT/engine/engine.c"; do
-    gcc -O0 -g -c "$src" -I"$RT/snobol4" -I"$RT" \
+           "$RT/engine/engine.c" \
+           "$RT/asm/blk_alloc.c" "$RT/asm/blk_reloc.c"; do
+    gcc -O0 -g -c "$src" -I"$RT/snobol4" -I"$RT" -I"$RT/asm" \
         -I"$DIR/src/frontend/snobol4" -w \
         -o "$TMP/$(basename "$src" .c).o" 2>/dev/null
 done
-"$DIR/sno2c" -asm -I"$INC" "$SNO" > "$TMP/prog.s" 2>/dev/null
+"$DIR/sno2c" -asm -I"$INC" "$TMP/instr.sno" > "$TMP/prog.s" 2>/dev/null
 nasm -f elf64 -I"$RT/asm/" "$TMP/prog.s" -o "$TMP/prog.o" 2>/dev/null
 gcc -no-pie "$TMP/prog.o" \
     "$TMP/snobol4_stmt_rt.o" "$TMP/snobol4.o" "$TMP/mock_includes.o" \
     "$TMP/snobol4_pattern.o" "$TMP/engine.o" \
+    "$TMP/blk_alloc.o" "$TMP/blk_reloc.o" \
     -lgc -lm -o "$TMP/prog_asm" 2>/dev/null
 
 # ── Step 3: compile NET ──────────────────────────────────────────────────
@@ -86,7 +88,7 @@ for dll in snobol4lib.dll snobol4run.dll; do
 done
 il="$NET_CACHE/${base}_${dh}.il"; exe="$NET_CACHE/${base}_${dh}.exe"
 stamp="$NET_CACHE/${base}_${dh}.stamp"
-"$DIR/sno2c" -net -I"$INC" "$SNO" > "$il" 2>/dev/null
+"$DIR/sno2c" -net -I"$INC" "$TMP/instr.sno" > "$il" 2>/dev/null
 il_md5="$(md5sum "$il" | cut -d' ' -f1)"
 if [[ "$(cat "$stamp" 2>/dev/null)" != "$il_md5" ]] || [[ ! -f "$exe" ]]; then
     ilasm "$il" /output:"$exe" >/dev/null 2>&1 && echo "$il_md5" > "$stamp"

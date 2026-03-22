@@ -104,7 +104,9 @@ group_end
 *--- Print helper -------------------------------------------------------------
 
                DEFINE('print_node(a,depth)i,ch')                              :(print_node_end)
-print_node     IDENT(DATATYPE(a), 'STRING')                                    :S(print_leaf)
+print_node     dt_a           = DATATYPE(a)
+               IDENT(dt_a, 'STRING')                                          :S(print_leaf)
+               IDENT(dt_a, 'string')                                          :S(print_leaf)
                OUTPUT         = DUPL('  ', depth) '(' a[1]
                i              = 1
 print_node_lp  i              = i + 1
@@ -116,8 +118,12 @@ print_node_end
 
 *--- word pattern (used in group) --------------------------------------------
 
-               word        =  NOTANY('( )' NL)
-+                              BREAK('( )' NL)
+*  Pre-build the break/notany character set so the pattern constructor
+*  receives a plain string variable rather than an inline concat expression.
+*  (Inline 'literal' NL concat inside NOTANY/BREAK fails in the ASM backend.)
+               WBRKS       =  '( )' NL
+               word        =  NOTANY(WBRKS)
++                              BREAK(WBRKS)
 
 *--- Main --------------------------------------------------------------------
 
@@ -139,7 +145,9 @@ sentloop       buf            POS(0) SPAN(SPCNL) =
 
 parse_done     dummy          = do_pop_final('bank')
 
-               IDENT(DATATYPE(bank), 'ARRAY')                                 :F(END)
+               dt             = DATATYPE(bank)
+               IDENT(dt, 'ARRAY')                                              :S(print_lp)
+               IDENT(dt, 'array')                                              :F(END)
                i              = 1
 print_lp       i              = i + 1
                r              = bank[i]                                        :F(END)
