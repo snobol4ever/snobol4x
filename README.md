@@ -302,3 +302,24 @@ Sprint state lives in [snobol4ever/.github](https://github.com/snobol4ever/.gith
   every labeled goto — written in session, committed, pushed
 
 
+---
+
+## Source Volume (G-VOLUME · M-VOL-X ✅ · 2026-03-22)
+
+> `wc -l` scan of `src/`. Generated artifacts (`.s` files, 36,890 lines across 28 files) excluded.
+> Categories are logical function — comparable across snobol4x, snobol4jvm, snobol4dotnet.
+> % of total = % of `src/` lines only.
+
+| Category | Files | Lines | Blank-stripped | % total |
+|----------|------:|------:|:--------------:|--------:|
+| Parser / lexer | 20 | 6,368 | 5,728 | 20.5% |
+| Code emitter | 11 | 17,291 | 15,936 | 55.6% |
+| Pattern engine | 10 | 1,588 | 1,421 | 5.1% |
+| Runtime / builtins | 7 | 4,614 | 4,120 | 14.8% |
+| Driver / CLI | 1 | 140 | 128 | 0.5% |
+| Extensions / plugins | 3 | 1,085 | 969 | 3.5% |
+| Tests | 47 | 6,265 | 5,495 | — |
+| Benchmarks | 12 | 1,603 | 1,541 | — |
+| Docs / Markdown | 2 | 1,080 | 814 | — |
+| **Total (src)** | **54** | **31,090** | **28,306** | **100%** |
+
