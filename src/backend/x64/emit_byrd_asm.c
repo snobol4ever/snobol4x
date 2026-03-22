@@ -3639,6 +3639,8 @@ static void label_register(const char *lbl) {
     label_id(lbl); /* ensure registered; discard return value */
 }
 
+static void emit_prolog_choice(EXPR_t *choice);  /* defined at end of file */
+
 static void emit_program(Program *prog) {
     if (!prog || !prog->head) { emit_null_program(); return; }
 
@@ -3878,6 +3880,17 @@ static void emit_program(Program *prog) {
             /* END statement — fall through to L_SNO_END at bottom */
             A("    GOTO_ALWAYS  L_SNO_END\n");
             break;
+        }
+
+        /* Prolog E_CHOICE: delegate entirely to Prolog emitter */
+        if (s->subject && s->subject->kind == E_CHOICE) {
+            emit_prolog_choice(s->subject);
+            continue;
+        }
+        /* Prolog directives (E_FNC from :- goal) — skip silently for now */
+        if (s->subject && (s->subject->kind == E_UNIFY ||
+                           s->subject->kind == E_CLAUSE)) {
+            continue;
         }
 
         int uid = stmt_uid++;
@@ -4556,3 +4569,201 @@ void asm_emit(Program *prog, FILE *f) {
         emit_program(prog);
     }
 }
+
+/* =========================================================================
+ * Prolog Byrd-Box emitter  (M-PROLOG-EMIT-NODES)
+ *
+ * Lowers E_CHOICE / E_CLAUSE / E_UNIFY / E_CUT IR nodes to x64 NASM.
+ *
+ * Byrd Box ports (per FRONTEND-PROLOG.md / Proebsting paper):
+ *   α (alpha) — try-head: attempt to unify call args with clause head args
+ *   β (beta)  — retry: try next clause on backtrack
+ *   γ (gamma) — succeed: clause body succeeded, return to caller
+ *   ω (omega) — fail: all clauses exhausted, signal failure to caller
+ *
+ * Calling convention (x64 System V):
+ *   rdi = pointer to caller's arg array (Term** args)
+ *   rsi = Trail*
+ *   rdx = ret_gamma label address (indirect call on success)
+ *   rcx = ret_omega label address (indirect call on failure)
+ *   rax = scratch / return value
+ *
+ * For Sprint 2 (M-PROLOG-EMIT-NODES) we emit structural scaffolding:
+ *   - global label  pred_NAME_ARITY  (entry = α port)
+ *   - per-clause α/β labels with trail-mark + head-unify stubs
+ *   - γ/ω port jumps via rdx/rcx
+ *   - cut seals β → ω
+ * Full unification codegen comes in M-PROLOG-HELLO.
+ * ======================================================================= */
+
+#include "../../frontend/prolog/prolog_atom.h"
+#include "../../frontend/prolog/prolog_runtime.h"
+
+/* -------------------------------------------------------------------------
+ * Name sanitisation (reuse asm_expand_name logic: replace / with _sl_ etc.)
+ * ---------------------------------------------------------------------- */
+static char _pl_safe_buf[256];
+static const char *pl_safe(const char *s) {
+    if (!s) return "unknown";
+    char *d = _pl_safe_buf;
+    int   n = 0;
+    for (const char *p = s; *p && n < 250; p++) {
+        char c = *p;
+        if (c == '/')  { *d++ = '_'; *d++ = 's'; *d++ = 'l'; *d++ = '_'; n += 4; }
+        else if (c == '.') { *d++ = '_'; *d++ = 'd'; *d++ = 't'; *d++ = '_'; n += 4; }
+        else if (c == '-') { *d++ = '_'; n++; }
+        else if (c == '!') { *d++ = '_'; *d++ = 'c'; *d++ = 't'; *d++ = '_'; n += 4; }
+        else { *d++ = c; n++; }
+    }
+    *d = '\0';
+    return _pl_safe_buf;
+}
+
+/* -------------------------------------------------------------------------
+ * emit_prolog_term_arg — emit code to push one Term* argument onto
+ * the stack as a QWORD constant address for stub purposes.
+ * Full codegen deferred to M-PROLOG-HELLO.
+ * ---------------------------------------------------------------------- */
+static void emit_prolog_term_stub(EXPR_t *e, const char *pred_safe,
+                                   int clause_idx, int arg_idx) {
+    if (!e) return;
+    /* Emit a comment describing the term for now */
+    switch (e->kind) {
+        case E_QLIT:
+            A("    ; arg[%d] = atom '%s'\n", arg_idx, e->sval ? e->sval : "");
+            break;
+        case E_ILIT:
+            A("    ; arg[%d] = int %ld\n", arg_idx, e->ival);
+            break;
+        case E_VART:
+            A("    ; arg[%d] = var slot %ld (%s)\n", arg_idx, e->ival,
+              e->sval ? e->sval : "");
+            break;
+        case E_FNC:
+            A("    ; arg[%d] = compound %s/%d\n", arg_idx,
+              e->sval ? e->sval : "?", e->nchildren);
+            break;
+        case E_UNIFY:
+            A("    ; goal: unify\n");
+            break;
+        case E_CUT:
+            A("    ; goal: cut (seal beta)\n");
+            A("    mov     rax, [rel pl_%s_c%d_beta_addr]\n",
+              pred_safe, clause_idx);
+            A("    mov     qword [rax], 0   ; seal beta -> omega\n");
+            break;
+        default:
+            A("    ; arg[%d] = <kind %d>\n", arg_idx, (int)e->kind);
+            break;
+    }
+}
+
+/* -------------------------------------------------------------------------
+ * emit_prolog_clause — emit α port for one clause
+ *
+ * Layout:
+ *   pred_NAME_ARITY_cN_alpha:      ; try this clause
+ *       ; save trail mark
+ *       ; unify head args (stubs for now)
+ *       ; execute body goals (stubs for now)
+ *       jmp [rdx]                  ; success -> caller's gamma
+ *   pred_NAME_ARITY_cN_beta:       ; retry (next clause or omega)
+ *       ; unwind trail
+ *       jmp pred_NAME_ARITY_c(N+1)_alpha  OR  pred_NAME_ARITY_omega
+ * ---------------------------------------------------------------------- */
+static void emit_prolog_clause(EXPR_t *clause, int idx, int total,
+                                const char *pred_safe, int arity) {
+    char alpha_lbl[128], beta_lbl[128], next_lbl[128];
+    snprintf(alpha_lbl, sizeof alpha_lbl, "pl_%s_c%d_alpha", pred_safe, idx);
+    snprintf(beta_lbl,  sizeof beta_lbl,  "pl_%s_c%d_beta",  pred_safe, idx);
+    if (idx + 1 < total)
+        snprintf(next_lbl, sizeof next_lbl, "pl_%s_c%d_alpha", pred_safe, idx+1);
+    else
+        snprintf(next_lbl, sizeof next_lbl, "pl_%s_omega",     pred_safe);
+
+    int n_vars = (int)clause->ival;
+
+    A("\n");
+    A("; --- clause %d / %d  (n_vars=%d, arity=%d) ---\n",
+      idx+1, total, n_vars, arity);
+
+    /* α port */
+    A("global %s\n", alpha_lbl);
+    A("%s:\n", alpha_lbl);
+    A("    push    rbp\n");
+    A("    mov     rbp, rsp\n");
+    if (n_vars > 0)
+        A("    sub     rsp, %d          ; env frame: %d var slots\n",
+          n_vars * 8, n_vars);
+
+    A("    ; === TRAIL MARK (E_TRAIL_MARK) ===\n");
+    A("    ; [trail mark slot saved in env frame]\n");
+
+    A("    ; === HEAD UNIFICATION (E_UNIFY stubs) ===\n");
+    /* Head args are children[0..arity-1] */
+    for (int i = 0; i < arity && i < clause->nchildren; i++)
+        emit_prolog_term_stub(clause->children[i], pred_safe, idx, i);
+
+    A("    ; === BODY GOALS ===\n");
+    /* Body goals are children[arity..nchildren-1] */
+    for (int i = arity; i < clause->nchildren; i++)
+        emit_prolog_term_stub(clause->children[i], pred_safe, idx, i - arity);
+
+    A("    ; === GAMMA (success) ===\n");
+    A("    mov     rsp, rbp\n");
+    A("    pop     rbp\n");
+    A("    jmp     rdx              ; call ret_gamma\n");
+
+    /* β port (retry) */
+    A("\n");
+    A("global %s\n", beta_lbl);
+    A("%s:\n", beta_lbl);
+    A("    ; === TRAIL UNWIND (E_TRAIL_UNWIND) ===\n");
+    A("    mov     rsp, rbp\n");
+    A("    pop     rbp\n");
+    A("    jmp     %s\n", next_lbl);
+}
+
+/* -------------------------------------------------------------------------
+ * emit_prolog_choice — emit one complete predicate (all clauses + ω port)
+ * ---------------------------------------------------------------------- */
+static void emit_prolog_choice(EXPR_t *choice) {
+    if (!choice || choice->kind != E_CHOICE) return;
+
+    const char *pred = choice->sval ? choice->sval : "unknown/0";
+    const char *safe = pl_safe(pred);
+
+    /* Parse arity from "name/N" */
+    int arity = 0;
+    const char *sl = strrchr(pred, '/');
+    if (sl) arity = atoi(sl + 1);
+
+    int nclauses = choice->nchildren;
+
+    A("\n");
+    emit_sep_major(pred);
+    A("; Prolog predicate %s  (%d clause%s)\n",
+      pred, nclauses, nclauses == 1 ? "" : "s");
+    A("\n");
+
+    /* Entry label = α of first clause */
+    A("global pl_%s\n", safe);
+    A("pl_%s:\n", safe);
+    A("    ; entry point — fall through to clause 1 alpha\n");
+    if (nclauses > 0)
+        A("    jmp     pl_%s_c0_alpha\n", safe);
+    else
+        A("    jmp     pl_%s_omega\n",    safe);
+
+    /* Emit each clause */
+    for (int i = 0; i < nclauses; i++)
+        emit_prolog_clause(choice->children[i], i, nclauses, safe, arity);
+
+    /* ω port — all clauses exhausted */
+    A("\n");
+    A("; --- omega port (all clauses exhausted) ---\n");
+    A("global pl_%s_omega\n", safe);
+    A("pl_%s_omega:\n", safe);
+    A("    jmp     rcx              ; call ret_omega\n");
+}
+/* ======================================================================= */
