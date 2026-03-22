@@ -370,7 +370,7 @@
 %endmacro
 
 ; LOAD_FAILDESCR32 — load failure descriptor (DT_FAIL=99) into [rbp-32]/[rbp-24]
-; Used by ucall omega return path so FAIL_BR after call site takes :F branch.
+; Used by ucall ω return path so FAIL_BR after call site takes :F branch.
 ; -----------------------------------------------------------------------------
 %macro LOAD_FAILDESCR32 0
     mov     qword [rbp-32], 99
@@ -480,10 +480,10 @@
 ;   subj_len       = flat .bss qword label
 ;   charset / lstr = .data label (lit_intern / cs_intern)
 ;   saved          = per-node .bss qword (caller declares in .bss section)
-;   gamma / omega  = target labels (passed as macro args)
+;   γ / ω  = target labels (passed as macro args)
 ;
-; Each α port: check → match → save cursor → advance → jmp gamma, else jmp omega
-; Each β port: restore cursor → jmp omega
+; Each α port: check → match → save cursor → advance → jmp γ, else jmp ω
+; Each β port: restore cursor → jmp ω
 ; =============================================================================
 
 ; =============================================================================
@@ -513,7 +513,7 @@
 %endmacro
 
 ; =============================================================================
-; LIT_ALPHA lstr, len, saved, cursor, subj, subj_len, gamma, omega
+; LIT_α lstr, len, saved, cursor, subj, subj_len, γ, ω
 ;   α port for a literal string match.
 ;   lstr    = .data label for the literal bytes
 ;   len     = literal length (integer constant)
@@ -521,58 +521,58 @@
 ;   cursor  = .bss qword
 ;   subj    = subject byte array label
 ;   subj_len= .bss qword
-;   gamma   = success target
-;   omega   = failure target
+;   γ   = success target
+;   ω   = failure target
 ; =============================================================================
-%macro LIT_ALPHA 8            ; lstr, len, saved, cursor, subj, subj_len, gamma, omega
+%macro LIT_α 8            ; lstr, len, saved, cursor, subj, subj_len, γ, ω
     mov     rax, [%4]         ; rax = cursor
     add     rax, %2           ; rax = cursor + len
     cmp     rax, [%6]         ; past end?
-    jg      %8                ; → omega
+    jg      %8                ; → ω
     lea     rsi, [rel %5]     ; rsi = &subject[0]
     mov     rcx, [%4]         ; rcx = cursor
     add     rsi, rcx          ; rsi = &subject[cursor]
     lea     rdi, [rel %1]     ; rdi = &lstr[0]
     mov     rcx, %2           ; rcx = len
     repe    cmpsb             ; compare
-    jne     %8                ; mismatch → omega
+    jne     %8                ; mismatch → ω
     mov     rax, [%4]         ; save original cursor
     mov     [%3], rax
     add     rax, %2           ; advance
     mov     [%4], rax
-    jmp     %7                ; → gamma
+    jmp     %7                ; → γ
 %endmacro
 
-; LIT_ALPHA1 lbyte, saved, cursor, subj, subj_len, gamma, omega
+; LIT_α1 lbyte, saved, cursor, subj, subj_len, γ, ω
 ;   Optimised single-byte literal — no repe cmpsb overhead
-%macro LIT_ALPHA1 7           ; byte_val, saved, cursor, subj, subj_len, gamma, omega
+%macro LIT_α1 7           ; byte_val, saved, cursor, subj, subj_len, γ, ω
     mov     rax, [%3]         ; rax = cursor
     cmp     rax, [%5]         ; at end?
-    jge     %7                ; → omega
+    jge     %7                ; → ω
     lea     rbx, [rel %4]     ; rbx = &subject[0]
     movzx   ecx, byte [rbx + rax]  ; ecx = subject[cursor]
     cmp     cl, %1            ; match byte?
-    jne     %7                ; → omega
+    jne     %7                ; → ω
     mov     [%2], rax         ; save cursor
     inc     rax
     mov     [%3], rax
-    jmp     %6                ; → gamma
+    jmp     %6                ; → γ
 %endmacro
 
-; LIT_BETA saved, cursor, omega
-%macro LIT_BETA 3             ; saved, cursor, omega
+; LIT_β saved, cursor, ω
+%macro LIT_β 3             ; saved, cursor, ω
     mov     rax, [%1]
     mov     [%2], rax
     jmp     %3
 %endmacro
 
 ; =============================================================================
-; LIT_VAR_ALPHA varlab, saved, cursor, gamma, omega
+; LIT_VAR_α varlab, saved, cursor, γ, ω
 ;   α port: match subject at cursor against the runtime string value of variable varlab.
 ;   Uses stmt_match_var(varname) which fetches the var, does memcmp, advances cursor.
 ;   saved = .bss qword for cursor save (for β restore on backtrack).
 ; =============================================================================
-%macro LIT_VAR_ALPHA 5        ; varlab, saved, cursor, gamma, omega
+%macro LIT_VAR_α 5        ; varlab, saved, cursor, γ, ω
     mov     rax, [%3]
     mov     [%2], rax
     lea     rdi, [rel %1]
@@ -582,30 +582,30 @@
     jmp     %4
 %endmacro
 
-; LIT_VAR_BETA saved, cursor, omega
-%macro LIT_VAR_BETA 3         ; saved, cursor, omega
+; LIT_VAR_β saved, cursor, ω
+%macro LIT_VAR_β 3         ; saved, cursor, ω
     mov     rax, [%1]
     mov     [%2], rax
     jmp     %3
 %endmacro
 
 ; =============================================================================
-; POS_ALPHA n, cursor, gamma, omega
+; POS_α n, cursor, γ, ω
 ; =============================================================================
-%macro POS_ALPHA 4            ; n, cursor, gamma, omega
+%macro POS_α 4            ; n, cursor, γ, ω
     cmp     qword [%2], %1
     jne     %4
     jmp     %3
 %endmacro
 
-; POS_BETA cursor, omega  (no saved needed — POS is pure test)
-%macro POS_BETA 2             ; cursor, omega
+; POS_β cursor, ω  (no saved needed — POS is pure test)
+%macro POS_β 2             ; cursor, ω
     jmp     %2
 %endmacro
 
-; POS_ALPHA_VAR varlab, cursor, gamma, omega
+; POS_α_VAR varlab, cursor, γ, ω
 ; =============================================================================
-%macro POS_ALPHA_VAR 4        ; varlab, cursor, gamma, omega
+%macro POS_α_VAR 4        ; varlab, cursor, γ, ω
     lea     rdi, [rel %1]
     mov     rsi, [%2]
     call    stmt_pos_var
@@ -615,9 +615,9 @@
 %endmacro
 
 ; =============================================================================
-; RPOS_ALPHA n, cursor, subj_len, gamma, omega
+; RPOS_α n, cursor, subj_len, γ, ω
 ; =============================================================================
-%macro RPOS_ALPHA 5           ; n, cursor, subj_len, gamma, omega
+%macro RPOS_α 5           ; n, cursor, subj_len, γ, ω
     mov     rax, [%3]
 %if %1 != 0
     sub     rax, %1
@@ -627,13 +627,13 @@
     jmp     %4
 %endmacro
 
-%macro RPOS_BETA 2            ; cursor, omega
+%macro RPOS_β 2            ; cursor, ω
     jmp     %2
 %endmacro
 
-; RPOS_ALPHA_VAR varlab, cursor, subj_len, gamma, omega
+; RPOS_α_VAR varlab, cursor, subj_len, γ, ω
 ; =============================================================================
-%macro RPOS_ALPHA_VAR 5       ; varlab, cursor, subj_len, gamma, omega
+%macro RPOS_α_VAR 5       ; varlab, cursor, subj_len, γ, ω
     lea     rdi, [rel %1]
     mov     rsi, [%2]
     mov     rdx, [%3]
@@ -644,10 +644,10 @@
 %endmacro
 
 ; =============================================================================
-; SPAN_ALPHA_VAR varlab, saved, cursor, subj, subj_len, gamma, omega
+; SPAN_α_VAR varlab, saved, cursor, subj, subj_len, γ, ω
 ;   SPAN with variable charset — calls stmt_span_var, returns new cursor or -1
 ; =============================================================================
-%macro SPAN_ALPHA_VAR 7       ; varlab, saved, cursor, subj, subj_len, gamma, omega
+%macro SPAN_α_VAR 7       ; varlab, saved, cursor, subj, subj_len, γ, ω
     mov     rax, [%3]
     mov     [%2], rax
     lea     rdi, [rel %1]
@@ -661,17 +661,17 @@
     jmp     %6
 %endmacro
 
-%macro SPAN_BETA_VAR 3        ; saved, cursor, omega
+%macro SPAN_β_VAR 3        ; saved, cursor, ω
     mov     rax, [%1]
     mov     [%2], rax
     jmp     %3
 %endmacro
 
 ; =============================================================================
-; BREAK_ALPHA_VAR varlab, saved, cursor, subj, subj_len, gamma, omega
+; BREAK_α_VAR varlab, saved, cursor, subj, subj_len, γ, ω
 ;   BREAK with variable charset — calls stmt_break_var
 ; =============================================================================
-%macro BREAK_ALPHA_VAR 7      ; varlab, saved, cursor, subj, subj_len, gamma, omega
+%macro BREAK_α_VAR 7      ; varlab, saved, cursor, subj, subj_len, γ, ω
     mov     rax, [%3]
     mov     [%2], rax
     lea     rdi, [rel %1]
@@ -685,17 +685,17 @@
     jmp     %6
 %endmacro
 
-%macro BREAK_BETA_VAR 3       ; saved, cursor, omega
+%macro BREAK_β_VAR 3       ; saved, cursor, ω
     mov     rax, [%1]
     mov     [%2], rax
     jmp     %3
 %endmacro
 
 ; =============================================================================
-; BREAKX_ALPHA_VAR varlab, saved, cursor, subj, subj_len, gamma, omega
+; BREAKX_α_VAR varlab, saved, cursor, subj, subj_len, γ, ω
 ;   BREAKX with variable charset — fails on zero advance
 ; =============================================================================
-%macro BREAKX_ALPHA_VAR 7     ; varlab, saved, cursor, subj, subj_len, gamma, omega
+%macro BREAKX_α_VAR 7     ; varlab, saved, cursor, subj, subj_len, γ, ω
     mov     rax, [%3]
     mov     [%2], rax
     lea     rdi, [rel %1]
@@ -709,17 +709,17 @@
     jmp     %6
 %endmacro
 
-%macro BREAKX_BETA_VAR 3      ; saved, cursor, omega
+%macro BREAKX_β_VAR 3      ; saved, cursor, ω
     mov     rax, [%1]
     mov     [%2], rax
     jmp     %3
 %endmacro
 
 ; =============================================================================
-; BREAKX_ALPHA_LIT cslab, saved, cursor, subj, subj_len, gamma, omega
+; BREAKX_α_LIT cslab, saved, cursor, subj, subj_len, γ, ω
 ;   BREAKX with literal charset — fails on zero advance
 ; =============================================================================
-%macro BREAKX_ALPHA_LIT 7     ; cslab, saved, cursor, subj, subj_len, gamma, omega
+%macro BREAKX_α_LIT 7     ; cslab, saved, cursor, subj, subj_len, γ, ω
     mov     rax, [%3]
     mov     [%2], rax
     lea     rdi, [rel %1]
@@ -733,16 +733,16 @@
     jmp     %6
 %endmacro
 
-%macro BREAKX_BETA_LIT 3      ; saved, cursor, omega
+%macro BREAKX_β_LIT 3      ; saved, cursor, ω
     mov     rax, [%1]
     mov     [%2], rax
     jmp     %3
 %endmacro
 
 ; =============================================================================
-; ANY_ALPHA_VAR varlab, saved, cursor, subj, subj_len, gamma, omega
+; ANY_α_VAR varlab, saved, cursor, subj, subj_len, γ, ω
 ; =============================================================================
-%macro ANY_ALPHA_VAR 7        ; varlab, saved, cursor, subj, subj_len, gamma, omega
+%macro ANY_α_VAR 7        ; varlab, saved, cursor, subj, subj_len, γ, ω
     mov     rax, [%3]
     mov     [%2], rax
     lea     rdi, [rel %1]
@@ -758,16 +758,16 @@
     jmp     %6
 %endmacro
 
-%macro ANY_BETA_VAR 3         ; saved, cursor, omega
+%macro ANY_β_VAR 3         ; saved, cursor, ω
     mov     rax, [%1]
     mov     [%2], rax
     jmp     %3
 %endmacro
 
 ; =============================================================================
-; NOTANY_ALPHA_VAR varlab, saved, cursor, subj, subj_len, gamma, omega
+; NOTANY_α_VAR varlab, saved, cursor, subj, subj_len, γ, ω
 ; =============================================================================
-%macro NOTANY_ALPHA_VAR 7     ; varlab, saved, cursor, subj, subj_len, gamma, omega
+%macro NOTANY_α_VAR 7     ; varlab, saved, cursor, subj, subj_len, γ, ω
     mov     rax, [%3]
     mov     [%2], rax
     lea     rdi, [rel %1]
@@ -783,32 +783,32 @@
     jmp     %6
 %endmacro
 
-%macro NOTANY_BETA_VAR 3      ; saved, cursor, omega
+%macro NOTANY_β_VAR 3      ; saved, cursor, ω
     mov     rax, [%1]
     mov     [%2], rax
     jmp     %3
 %endmacro
 
 ; =============================================================================
-; AT_ALPHA varlab, cursor, gamma, omega
+; AT_α varlab, cursor, γ, ω
 ;   @VAR cursor-position capture: store cursor as integer into VAR, always succeed
 ; =============================================================================
-%macro AT_ALPHA 4             ; varlab, cursor, gamma, omega
+%macro AT_α 4             ; varlab, cursor, γ, ω
     lea     rdi, [rel %1]
     mov     rsi, [%2]
     call    stmt_at_capture
     jmp     %3
 %endmacro
 
-%macro AT_BETA 1              ; omega
+%macro AT_β 1              ; ω
     jmp     %1
 %endmacro
 
 ; =============================================================================
-; ANY_ALPHA cslab, cslen, saved, cursor, subj, subj_len, gamma, omega
+; ANY_α cslab, cslen, saved, cursor, subj, subj_len, γ, ω
 ;   Match one char IN charset.  Inner scan loop is inlined.
 ; =============================================================================
-%macro ANY_ALPHA 8            ; cslab, cslen, saved, cursor, subj, subj_len, gamma, omega
+%macro ANY_α 8            ; cslab, cslen, saved, cursor, subj, subj_len, γ, ω
     mov     rax, [%4]
     cmp     rax, [%6]
     jge     %8
@@ -833,16 +833,16 @@
     jmp     %7
 %endmacro
 
-%macro ANY_BETA 3             ; saved, cursor, omega
+%macro ANY_β 3             ; saved, cursor, ω
     mov     rax, [%1]
     mov     [%2], rax
     jmp     %3
 %endmacro
 
 ; =============================================================================
-; NOTANY_ALPHA cslab, cslen, saved, cursor, subj, subj_len, gamma, omega
+; NOTANY_α cslab, cslen, saved, cursor, subj, subj_len, γ, ω
 ; =============================================================================
-%macro NOTANY_ALPHA 8         ; cslab, cslen, saved, cursor, subj, subj_len, gamma, omega
+%macro NOTANY_α 8         ; cslab, cslen, saved, cursor, subj, subj_len, γ, ω
     mov     rax, [%4]
     cmp     rax, [%6]
     jge     %8
@@ -867,27 +867,27 @@
     jmp     %7
 %endmacro
 
-%macro NOTANY_BETA 3          ; saved, cursor, omega
+%macro NOTANY_β 3          ; saved, cursor, ω
     mov     rax, [%1]
     mov     [%2], rax
     jmp     %3
 %endmacro
 
 ; =============================================================================
-; SPAN_ALPHA cslab, cslen, saved, cursor, subj, subj_len, gamma, omega
+; SPAN_α cslab, cslen, saved, cursor, subj, subj_len, γ, ω
 ;   Match longest run (≥1) of chars IN charset.
 ; =============================================================================
-%macro SPAN_ALPHA 8           ; cslab, cslen, saved, cursor, subj, subj_len, gamma, omega
+%macro SPAN_α 8           ; cslab, cslen, saved, cursor, subj, subj_len, γ, ω
     mov     rax, [%4]
     cmp     rax, [%6]
     jge     %8
     mov     [%3], rax
-    mov     r12, rax
+    mov     r13, rax
 %%span_outer:
-    cmp     r12, [%6]
+    cmp     r13, [%6]
     jge     %%span_done
     lea     rbx, [rel %5]
-    movzx   ecx, byte [rbx + r12]
+    movzx   ecx, byte [rbx + r13]
     lea     rsi, [rel %1]
     mov     rdx, %2
 %%span_scan:
@@ -900,35 +900,35 @@
     dec     rdx
     jmp     %%span_scan
 %%span_hit:
-    inc     r12
+    inc     r13
     jmp     %%span_outer
 %%span_done:
     mov     rbx, [%3]
-    cmp     r12, rbx
+    cmp     r13, rbx
     je      %8
-    mov     [%4], r12
+    mov     [%4], r13
     jmp     %7
 %endmacro
 
-%macro SPAN_BETA 3            ; saved, cursor, omega
+%macro SPAN_β 3            ; saved, cursor, ω
     mov     rax, [%1]
     mov     [%2], rax
     jmp     %3
 %endmacro
 
 ; =============================================================================
-; BREAK_ALPHA cslab, cslen, saved, cursor, subj, subj_len, gamma, omega
+; BREAK_α cslab, cslen, saved, cursor, subj, subj_len, γ, ω
 ;   Match longest run of chars NOT IN charset (stop AT delimiter).
 ; =============================================================================
-%macro BREAK_ALPHA 8          ; cslab, cslen, saved, cursor, subj, subj_len, gamma, omega
+%macro BREAK_α 8          ; cslab, cslen, saved, cursor, subj, subj_len, γ, ω
     mov     rax, [%4]
     mov     [%3], rax
-    mov     r12, rax
+    mov     r13, rax
 %%brk_outer:
-    cmp     r12, [%6]
+    cmp     r13, [%6]
     jge     %8
     lea     rbx, [rel %5]
-    movzx   ecx, byte [rbx + r12]
+    movzx   ecx, byte [rbx + r13]
     lea     rsi, [rel %1]
     mov     rdx, %2
 %%brk_scan:
@@ -941,23 +941,23 @@
     dec     rdx
     jmp     %%brk_scan
 %%brk_advance:
-    inc     r12
+    inc     r13
     jmp     %%brk_outer
 %%brk_hit:
-    mov     [%4], r12
+    mov     [%4], r13
     jmp     %7
 %endmacro
 
-%macro BREAK_BETA 3           ; saved, cursor, omega
+%macro BREAK_β 3           ; saved, cursor, ω
     mov     rax, [%1]
     mov     [%2], rax
     jmp     %3
 %endmacro
 
 ; =============================================================================
-; LEN_ALPHA n, saved, cursor, subj_len, gamma, omega
+; LEN_α n, saved, cursor, subj_len, γ, ω
 ; =============================================================================
-%macro LEN_ALPHA 6            ; n, saved, cursor, subj_len, gamma, omega
+%macro LEN_α 6            ; n, saved, cursor, subj_len, γ, ω
     mov     rax, [%3]
     mov     [%2], rax
     add     rax, %1
@@ -967,16 +967,16 @@
     jmp     %5
 %endmacro
 
-%macro LEN_BETA 3             ; saved, cursor, omega
+%macro LEN_β 3             ; saved, cursor, ω
     mov     rax, [%1]
     mov     [%2], rax
     jmp     %3
 %endmacro
 
 ; =============================================================================
-; TAB_ALPHA n, saved, cursor, gamma, omega
+; TAB_α n, saved, cursor, γ, ω
 ; =============================================================================
-%macro TAB_ALPHA 5            ; n, saved, cursor, gamma, omega
+%macro TAB_α 5            ; n, saved, cursor, γ, ω
     mov     rax, [%3]
     mov     [%2], rax
     cmp     rax, %1
@@ -985,16 +985,16 @@
     jmp     %4
 %endmacro
 
-%macro TAB_BETA 3             ; saved, cursor, omega
+%macro TAB_β 3             ; saved, cursor, ω
     mov     rax, [%1]
     mov     [%2], rax
     jmp     %3
 %endmacro
 
 ; =============================================================================
-; RTAB_ALPHA n, saved, cursor, subj_len, gamma, omega
+; RTAB_α n, saved, cursor, subj_len, γ, ω
 ; =============================================================================
-%macro RTAB_ALPHA 6           ; n, saved, cursor, subj_len, gamma, omega
+%macro RTAB_α 6           ; n, saved, cursor, subj_len, γ, ω
     mov     rax, [%3]
     mov     [%2], rax
     mov     rbx, [%4]
@@ -1005,17 +1005,17 @@
     jmp     %5
 %endmacro
 
-%macro RTAB_BETA 3            ; saved, cursor, omega
+%macro RTAB_β 3            ; saved, cursor, ω
     mov     rax, [%1]
     mov     [%2], rax
     jmp     %3
 %endmacro
 
 ; =============================================================================
-; REM_ALPHA saved, cursor, subj_len, gamma
-;   REM always succeeds — advances cursor to end.  No beta recovery needed.
+; REM_α saved, cursor, subj_len, γ
+;   REM always succeeds — advances cursor to end.  No β recovery needed.
 ; =============================================================================
-%macro REM_ALPHA 4            ; saved, cursor, subj_len, gamma
+%macro REM_α 4            ; saved, cursor, subj_len, γ
     mov     rax, [%2]
     mov     [%1], rax
     mov     rax, [%3]
@@ -1023,29 +1023,29 @@
     jmp     %4
 %endmacro
 
-%macro REM_BETA 3             ; saved, cursor, omega
+%macro REM_β 3             ; saved, cursor, ω
     mov     rax, [%1]
     mov     [%2], rax
     jmp     %3
 %endmacro
 
 ; =============================================================================
-; SEQ_ALPHA left_alpha
-; SEQ_BETA  right_beta
+; SEQ_α left_α
+; SEQ_β  right_β
 ;   SEQ wiring is pure label redirection — no instructions needed.
 ;   These macros emit only the jump, making the wiring explicit.
 ; =============================================================================
-%macro SEQ_ALPHA 1            ; left_alpha
+%macro SEQ_α 1            ; left_α
     jmp     %1
 %endmacro
 
-%macro SEQ_BETA 1             ; right_beta
+%macro SEQ_β 1             ; right_β
     jmp     %1
 %endmacro
 
 ; =============================================================================
 ; ALT_SAVE_CURSOR saved, cursor  — save cursor at ALT entry
-; ALT_RESTORE_CURSOR saved, cursor — restore at left-omega trampoline
+; ALT_RESTORE_CURSOR saved, cursor — restore at left-ω trampoline
 ; =============================================================================
 %macro ALT_SAVE_CURSOR 2      ; saved, cursor
     mov     rax, [%2]
@@ -1062,20 +1062,20 @@
 ; =============================================================================
 
 ; =============================================================================
-; DOL_SAVE entry_cur, cursor, child_alpha
+; DOL_SAVE entry_cur, cursor, child_α
 ;   α port of $ capture: save entry cursor, jump to child
 ; =============================================================================
-%macro DOL_SAVE 3             ; entry_cur, cursor, child_alpha
+%macro DOL_SAVE 3             ; entry_cur, cursor, child_α
     mov     rax, [%2]
     mov     [%1], rax
     jmp     %3
 %endmacro
 
 ; =============================================================================
-; DOL_CAPTURE entry_cur, cursor, cap_buf, cap_len, subj, gamma
-;   γ port of $ capture: compute span length, copy bytes, jump gamma
+; DOL_CAPTURE entry_cur, cursor, cap_buf, cap_len, subj, γ
+;   γ port of $ capture: compute span length, copy bytes, jump γ
 ; =============================================================================
-%macro DOL_CAPTURE 6          ; entry_cur, cursor, cap_buf, cap_len, subj, gamma
+%macro DOL_CAPTURE 6          ; entry_cur, cursor, cap_buf, cap_len, subj, γ
     mov     rax, [%2]         ; rax = cursor (end of match)
     mov     rbx, [%1]         ; rbx = entry cursor (start of match)
     sub     rax, rbx          ; rax = span length
@@ -1085,24 +1085,24 @@
     lea     rdi, [rel %3]     ; rdi = cap_buf
     mov     rcx, rax          ; rcx = length
     rep     movsb             ; copy span → cap_buf
-    jmp     %6                ; → gamma
+    jmp     %6                ; → γ
 %endmacro
 
 ; =============================================================================
-; ALT_ALPHA cursor_save, cursor, left_alpha
+; ALT_α cursor_save, cursor, left_α
 ;   Combined: save cursor + jump to left arm (α of ALT node)
 ; =============================================================================
-%macro ALT_ALPHA 3            ; cursor_save, cursor, left_alpha
+%macro ALT_α 3            ; cursor_save, cursor, left_α
     mov     rax, [%2]
     mov     [%1], rax
     jmp     %3
 %endmacro
 
 ; =============================================================================
-; ALT_OMEGA cursor_save, cursor, right_alpha
+; ALT_ω cursor_save, cursor, right_α
 ;   Combined: restore cursor + jump to right arm (left_ω trampoline)
 ; =============================================================================
-%macro ALT_OMEGA 3            ; cursor_save, cursor, right_alpha
+%macro ALT_ω 3            ; cursor_save, cursor, right_α
     mov     rax, [%1]
     mov     [%2], rax
     jmp     %3
@@ -1909,4 +1909,147 @@
 
 ; =============================================================================
 ; END Session 167/171/172/174 high-level statement macros
+; =============================================================================
+
+; =============================================================================
+; M-MACRO-BOX — B-241: ARBNO port macros
+;
+; ARBNO_α  dep, stk, cursor, γ
+;   α port: initialize depth=0, push cursor onto stk[0], goto γ (zero reps = success)
+;
+; ARBNO_β  dep, stk, cur_before, cursor, child_α, ω
+;   β port: pop stack; save cursor-before-rep; jump to child α (or ω if empty)
+;
+; ARBNO_α1  dep, stk, cur_before, cursor, γ, ω
+;   child_ok port: zero-advance guard; push new cursor; re-succeed (or ω if stalled)
+;
+; ARBNO_β1  ω
+;   child_fail port: unconditional jump to ω
+;
+; All memory args are bare refs (no brackets) — macros add [brackets] themselves,
+; so they accept either a .bss label or an r12+N expression from bref().
+; =============================================================================
+
+%macro ARBNO_α 4          ; dep, stk, cursor, γ
+    mov     qword [%1], 0
+    lea     rbx, [rel %2]
+    mov     rax, [%3]
+    mov     [rbx], rax
+    mov     qword [%1], 1
+    jmp     %4
+%endmacro
+
+%macro ARBNO_β 6           ; dep, stk, cur_before, cursor, child_α, ω
+    mov     rax, [%1]
+    test    rax, rax
+    jz      %6
+    dec     rax
+    mov     [%1], rax
+    lea     rbx, [rel %2]
+    mov     rcx, [rbx + rax*8]
+    mov     [%4], rcx
+    mov     [%3], rcx
+    jmp     %5
+%endmacro
+
+%macro ARBNO_α1 6       ; dep, stk, cur_before, cursor, γ, ω
+    mov     rax, [%4]
+    mov     rbx, [%3]
+    cmp     rax, rbx
+    je      %6
+    mov     rdx, [%1]
+    lea     rbx, [rel %2]
+    mov     [rbx + rdx*8], rax
+    inc     qword [%1]
+    jmp     %5
+%endmacro
+
+%macro ARBNO_β1 1     ; ω
+    jmp     %1
+%endmacro
+
+; =============================================================================
+; END M-MACRO-BOX ARBNO macros
+; =============================================================================
+
+; =============================================================================
+; M-MACRO-BOX B-242 additions
+;
+; ARB_α  arb_start, arb_step, cursor, γ
+;   α port: save cursor as start; step=0; goto γ (0-length match first)
+;
+; ARB_β  arb_start, arb_step, cursor, subj_len, γ, ω
+;   β port: inc step; bounds check start+step<=subj_len; advance cursor; goto γ or ω
+;
+; NAMED_PAT_γ  ret_γ
+;   γ trampoline for non-function named pattern: jmp [ret_γ]
+;
+; NAMED_PAT_ω  ret_ω
+;   ω trampoline for non-function named pattern: jmp [ret_ω]
+;
+; FN_α_INIT
+;   Start of function α: self-init r12 to static DATA template (pre-invoke)
+;   Arg: safe name of the box (used to derive box_<safe>_data_template label)
+;   This is a %macro taking 1 arg: the safe name string — emitted as a label ref.
+;
+; FN_γ  ret_γ
+;   γ trampoline for user-defined function: jmp [ret_γ]
+;
+; FN_ω  ret_ω
+;   ω trampoline for user-defined function: jmp [ret_ω]
+;
+; Note: bare `jmp` targets (no memory dereference) stay as bare jmp — per design.
+; Memory-indirect returns (jmp [ret_slot]) become FN_γ / FN_ω / NAMED_PAT_γ/OMEGA.
+; =============================================================================
+
+%macro ARB_α 4            ; arb_start, arb_step, cursor, γ
+    mov     rax, [%3]
+    mov     [%1], rax
+    mov     qword [%2], 0
+    jmp     %4
+%endmacro
+
+%macro ARB_β 6             ; arb_start, arb_step, cursor, subj_len, γ, ω
+    mov     rax, [%2]
+    inc     rax
+    mov     [%2], rax
+    mov     rbx, [%1]
+    add     rbx, rax
+    cmp     rbx, [%4]
+    jg      %6
+    mov     [%3], rbx
+    jmp     %5
+%endmacro
+
+%macro NAMED_PAT_γ 1      ; ret_γ  (memory slot holding return address)
+    jmp     [%1]
+%endmacro
+
+%macro NAMED_PAT_ω 1      ; ret_ω
+    jmp     [%1]
+%endmacro
+
+%macro FN_α_INIT 1        ; box_safe_name  (no-op: blk_alloc+memcpy done at call site)
+%endmacro
+
+%macro FN_SET_PARAM 1         ; param_varlab  (rdi=varlab, rsi/rdx=arg from arg slots)
+    lea     rdi, [rel %1]
+    call    stmt_set
+%endmacro
+
+%macro FN_CLEAR_VAR 1         ; varlab  (rdi=varlab, rsi/rdx already = NULVCL from r12 slots)
+    lea     rdi, [rel %1]
+    call    stmt_set
+%endmacro
+
+%macro FN_γ 1             ; ret_γ  (memory slot)
+    jmp     [%1]
+%endmacro
+
+%macro FN_ω 1             ; ret_ω  (memory slot)
+    jmp     [%1]
+%endmacro
+
+; =============================================================================
+; END M-MACRO-BOX B-242 additions
 ; =============================================================================

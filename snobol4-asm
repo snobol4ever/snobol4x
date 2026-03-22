@@ -18,11 +18,14 @@ gcc -O0 -g -c "$RT/snobol4/snobol4.c"         -I"$RT/snobol4" -I"$RT" -I"$DIR/sr
 gcc -O0 -g -c "$RT/mock/mock_includes.c"       -I"$RT/snobol4" -I"$RT" -I"$DIR/src/frontend/snobol4" -w -o "$WORK/mock_includes.o"
 gcc -O0 -g -c "$RT/snobol4/snobol4_pattern.c" -I"$RT/snobol4" -I"$RT" -I"$DIR/src/frontend/snobol4" -w -o "$WORK/pat.o"
 gcc -O0 -g -c "$RT/engine/engine.c"            -I"$RT/snobol4" -I"$RT" -I"$DIR/src/frontend/snobol4" -w -o "$WORK/eng.o"
+gcc -O0 -g -c "$RT/asm/blk_alloc.c"            -I"$RT/asm"                                            -w -o "$WORK/blk_alloc.o"
+gcc -O0 -g -c "$RT/asm/blk_reloc.c"            -I"$RT/asm"                                            -w -o "$WORK/blk_reloc.o"
 
 "$SNO2C" -asm "$SNO" > "$WORK/prog.s" 2>/dev/null
 nasm -f elf64 -I"$RT/asm/" "$WORK/prog.s" -o "$WORK/prog.o" 2>/dev/null
 gcc -no-pie "$WORK/prog.o" "$WORK/stmt_rt.o" "$WORK/snobol4.o" \
     "$WORK/mock_includes.o" "$WORK/pat.o" "$WORK/eng.o" \
+    "$WORK/blk_alloc.o" "$WORK/blk_reloc.o" \
     -lgc -lm -o "$WORK/prog_asm" 2>/dev/null
 
 exec "$WORK/prog_asm"

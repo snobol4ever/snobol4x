@@ -20,6 +20,7 @@ extern  stmt_at_capture
 extern  kw_anchor
 extern  stmt_aref, stmt_aset, stmt_field_set
 extern  comm_stno
+extern  blk_alloc, blk_free, memcpy  ; per-invocation DATA block runtime
 global  cursor, subject_data, subject_len_val
 
 section .note.GNU-stack noalloc noexec nowrite progbits
@@ -29,12 +30,11 @@ subject_len_val          resq 1
 P_WPAT_ret_γ            resq 1
 P_WPAT_ret_ω            resq 1
 scan_start_5             resq 1
-brk2_saved               resq 1
-span3_saved              resq 1
 conc_tmp0_rax            resq 1
 conc_tmp0_rdx            resq 1
 subject_data             resb 65536
 
+;  WPAT ================================================================================================================
 
 section .text
 main:
@@ -57,42 +57,38 @@ Ln_0:                       mov         edi, 6
 Ln_1:                       mov         edi, 7
                             call        comm_stno
                             LOAD_STR    S_XX_MI
-                            mov         [conc_tmp0_rax], rax
-                            mov         [conc_tmp0_rdx], rdx
+                            push        rdx
+                            push        rax
                             lea         rdi, [rel S_NUMERALS]
                             call        stmt_get
                             mov         [rbp-32], rax
                             mov         [rbp-24], rdx
-                            mov         [conc_tmp0_rax], rax
-                            mov         [conc_tmp0_rdx], rdx
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            pop         rdi
+                            pop         rsi
+                            call        stmt_concat
+                            push        rdx
+                            push        rax
                             lea         rdi, [rel S_UCASE]
                             call        stmt_get
                             mov         [rbp-32], rax
                             mov         [rbp-24], rdx
-                            mov         [conc_tmp0_rax], rax
-                            mov         [conc_tmp0_rdx], rdx
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            pop         rdi
+                            pop         rsi
+                            call        stmt_concat
+                            push        rdx
+                            push        rax
                             lea         rdi, [rel S_LCASE]
                             call        stmt_get
                             mov         [rbp-32], rax
                             mov         [rbp-24], rdx
                             mov         rcx, rdx
                             mov         rdx, rax
-                            mov         rdi, [conc_tmp0_rax]
-                            mov         rsi, [conc_tmp0_rdx]
-                            call        stmt_concat
-                            mov         [rbp-32], rax
-                            mov         [rbp-24], rdx
-                            mov         rcx, rdx
-                            mov         rdx, rax
-                            mov         rdi, [conc_tmp0_rax]
-                            mov         rsi, [conc_tmp0_rdx]
-                            call        stmt_concat
-                            mov         [rbp-32], rax
-                            mov         [rbp-24], rdx
-                            mov         rcx, rdx
-                            mov         rdx, rax
-                            mov         rdi, [conc_tmp0_rax]
-                            mov         rsi, [conc_tmp0_rdx]
+                            pop         rdi
+                            pop         rsi
                             call        stmt_concat
                             mov         [rbp-32], rax
                             mov         [rbp-24], rdx
@@ -104,13 +100,13 @@ Ln_1:                       mov         edi, 7
 Ln_2:                       mov         edi, 8
                             call        comm_stno
                             CALL1_VAR   S_BREAK, S_WORD
-                            mov         [conc_tmp0_rax], rax
-                            mov         [conc_tmp0_rdx], rdx
+                            push        rdx
+                            push        rax
                             CALL1_VAR   S_SPAN, S_WORD
                             mov         rcx, rdx
                             mov         rdx, rax
-                            mov         rdi, [conc_tmp0_rax]
-                            mov         rsi, [conc_tmp0_rdx]
+                            pop         rdi
+                            pop         rsi
                             call        stmt_concat
                             mov         [rbp-32], rax
                             mov         [rbp-24], rdx
@@ -145,20 +141,22 @@ scan_retry_5:
 
 
 P_5_α: ; REF(WPAT)
-                            lea         rax, [rel nref0_gamma]
+                            lea         rax, [rel nref0_γ]
                             mov         [P_WPAT_ret_γ], rax
-                            lea         rax, [rel nref0_omega]
+                            lea         rax, [rel nref0_ω]
                             mov         [P_WPAT_ret_ω], rax
+                            lea         r12, [rel box_WPAT_data_template]
                             jmp         P_WPAT_α
-P_5_β:                      lea         rax, [rel nref0_gamma] ; REF(%s)
+P_5_β:                      lea         rax, [rel nref0_γ] ; REF(%s)
                             mov         [P_WPAT_ret_γ], rax
-                            lea         rax, [rel nref0_omega]
+                            lea         rax, [rel nref0_ω]
                             mov         [P_WPAT_ret_ω], rax
+                            lea         r12, [rel box_WPAT_data_template]
                             jmp         P_WPAT_β
 
-nref0_gamma:
+nref0_γ:
                             jmp         P_5_γ
-nref0_omega:                jmp         P_5_ω
+nref0_ω:                    jmp         P_5_ω
 
 P_5_γ:                      mov         qword [rbp-32], 1
                             mov         qword [rbp-24], 0
@@ -200,21 +198,41 @@ section .text
 
 ;  NAMED PATTERN BODIES ================================================================================================
 
-; P_WPAT_α (α entry)
-P_WPAT_α:                   jmp         seq_l1_alpha ; SEQ
-P_WPAT_β:                   jmp         seq_r1_beta
-seq_l1_alpha:               BREAK_ALPHA_VAR S_WORD, brk2_saved, cursor, subject_data, subject_len_val, seq_r1_alpha, patdef_WPAT_omega ; BREAK(var) α
-seq_l1_beta:                BREAK_BETA_VAR brk2_saved, cursor, patdef_WPAT_omega ; BREAK(var) β
-seq_r1_alpha:               SPAN_ALPHA_VAR S_WORD, span3_saved, cursor, subject_data, subject_len_val, patdef_WPAT_gamma, seq_l1_beta ; SPAN(var) α
-seq_r1_beta:                SPAN_BETA_VAR span3_saved, cursor, seq_l1_beta ; SPAN(var) β
+; P_WPAT_α (α entry) [r12=DATA block]
+P_WPAT_α:                   jmp         seq_l1_α ; SEQ
+P_WPAT_β:                   jmp         seq_r1_β
+seq_l1_α:                   BREAK_α_VAR S_WORD, r12+16, cursor, subject_data, subject_len_val, seq_r1_α, patdef_WPAT_ω ; BREAK(var) α
+seq_l1_β:                   BREAK_β_VAR r12+16, cursor, patdef_WPAT_ω ; BREAK(var) β
+seq_r1_α:                   SPAN_α_VAR  S_WORD, r12+24, cursor, subject_data, subject_len_val, patdef_WPAT_γ, seq_l1_β ; SPAN(var) α
+seq_r1_β:                   SPAN_β_VAR  r12+24, cursor, seq_l1_β ; SPAN(var) β
 ;  γ/ω ---------------------------------------------------------------------------------------------------------------
-patdef_WPAT_gamma:
+patdef_WPAT_γ:              NAMED_PAT_γ P_WPAT_ret_γ ; named pat γ
+patdef_WPAT_ω:              NAMED_PAT_ω P_WPAT_ret_ω ; named pat ω
 ;  WPAT ================================================================================================================
-                            jmp         [P_WPAT_ret_γ]
-patdef_WPAT_omega:          jmp         [P_WPAT_ret_ω]
 
 section .text
 ;  STUB LABELS =========================================================================================================
+
+section .rodata
+global  box_WPAT_reloc_count, box_WPAT_reloc_table
+; --- box WPAT ---
+box_WPAT_reloc_count: dq 0
+box_WPAT_reloc_table:
+; (entries added by M-T2-INVOKE)
+
+;  BOX RELOCATION TABLES ===============================================================================================
+
+global  box_WPAT_data_template, box_WPAT_data_size
+section .data
+;  BOX DATA TEMPLATES ==================================================================================================
+                            align       8
+box_WPAT_data_size: dq 32
+box_WPAT_data_template:
+dq 0  ; [r12+0] = P_WPAT_ret_γ
+dq 0  ; [r12+8] = P_WPAT_ret_ω
+dq 0  ; [r12+16] = brk2_saved
+dq 0  ; [r12+24] = span3_saved
+
 
 section .data
 S_TRIM               db 84, 82, 73, 77, 0  ; "TRIM"

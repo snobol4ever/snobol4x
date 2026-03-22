@@ -387,16 +387,166 @@ static void expand_name(const char *src, char *dst, int dstlen) {
 }
 
 /* -----------------------------------------------------------------------
- * .bss slot registry
+ * Buffer size constants — needed by both BoxDataCtx and .bss registry
+ * ----------------------------------------------------------------------- */
+#define LBUF 320
+#define LBUF2 (LBUF * 2)
+#define NAME_LEN 320
+
+/* -----------------------------------------------------------------------
+ * M-T2-EMIT-SPLIT: per-box DATA layout registry
+ *
+ * When emitting a named box (pattern or function), vars that belong to
+ * that box move from flat .bss into a per-box DATA template section.
+ * The box's code accesses them as [r12+offset] instead of [var_name].
+ *
+ * Usage:
+ *   box_ctx_begin(safe_name)   — enter box context
+ *   box_var_register(name)     — register a var in the current box
+ *   bref(name)                 — returns "r12+N" or "name" if not in box
+ *   bref2(name)                — returns "[r12+N]" or "[name]"
+ *   box_ctx_end()              — leave box context
+ *   box_data_emit_section(s)   — emit the DATA template section for a box
+ *   box_data_size(safe_name)   — byte size of the DATA block
+ * ----------------------------------------------------------------------- */
+
+#define MAX_BOX_DATA_VARS 128
+#define MAX_BOXES 64
+
+typedef struct {
+    char safe[NAME_LEN];                    /* box safe name */
+    char vars[MAX_BOX_DATA_VARS][NAME_LEN]; /* var names in layout order */
+    int  nvar;                              /* number of vars */
+} BoxDataCtx;
+
+static BoxDataCtx box_data[MAX_BOXES];
+static int        box_data_count = 0;
+
+/* Currently active box context (-1 = none) */
+static int box_ctx_idx = -1;
+
+static BoxDataCtx *box_find(const char *safe) {
+    for (int i = 0; i < box_data_count; i++)
+        if (strcmp(box_data[i].safe, safe) == 0)
+            return &box_data[i];
+    return NULL;
+}
+
+static BoxDataCtx *box_get_or_create(const char *safe) {
+    BoxDataCtx *b = box_find(safe);
+    if (b) return b;
+    if (box_data_count >= MAX_BOXES) return NULL;
+    b = &box_data[box_data_count++];
+    snprintf(b->safe, sizeof b->safe, "%s", safe);
+    b->nvar = 0;
+    return b;
+}
+
+/* Enter box-emit context: subsequent var_register calls route to this box */
+static void box_ctx_begin(const char *safe) {
+    BoxDataCtx *b = box_get_or_create(safe);
+    if (!b) { box_ctx_idx = -1; return; }
+    box_ctx_idx = (int)(b - box_data);
+}
+
+static void box_ctx_end(void) { box_ctx_idx = -1; }
+
+/* Register a var in the active box context only (caller ensures box_ctx_idx >= 0) */
+static void box_var_register(const char *name) {
+    if (box_ctx_idx < 0) return;  /* safety: no active box — caller error */
+    BoxDataCtx *b = &box_data[box_ctx_idx];
+    for (int i = 0; i < b->nvar; i++)
+        if (strcmp(b->vars[i], name) == 0) return;
+    if (b->nvar < MAX_BOX_DATA_VARS)
+        snprintf(b->vars[b->nvar++], NAME_LEN, "%s", name);
+}
+
+/* Look up a var's byte offset in a box DATA block, or -1 if not found */
+static int box_var_offset(const char *safe, const char *name) {
+    const BoxDataCtx *b = box_find(safe);
+    if (!b) return -1;
+    for (int i = 0; i < b->nvar; i++)
+        if (strcmp(b->vars[i], name) == 0) return i * 8;
+    return -1;
+}
+
+/* Return byte size of a box's DATA block (0 if not found) */
+static int box_data_size(const char *safe) {
+    const BoxDataCtx *b = box_find(safe);
+    if (!b) return 0;
+    return b->nvar * 8;
+}
+
+/*
+ * bref/bref2 use a rotating pool of buffers so multiple calls in a single
+ * printf-style format string (e.g. A("ARB_α %s, %s\n", bref(a), bref(b)))
+ * don't alias each other.  8 slots is far more than any single emission uses.
+ */
+#define BREF_POOL 8
+static char _bref_pool[BREF_POOL][72];
+static int  _bref_slot = 0;
+
+/*
+ * bref — resolve a var reference to either "r12+N" or "var_name".
+ * When emitting inside a named box (box_ctx_idx >= 0), vars that belong
+ * to the box are addressed via r12.  All others fall back to their .bss name.
+ */
+static const char *bref(const char *name) {
+    if (box_ctx_idx >= 0) {
+        BoxDataCtx *b = &box_data[box_ctx_idx];
+        for (int i = 0; i < b->nvar; i++) {
+            if (strcmp(b->vars[i], name) == 0) {
+                char *buf = _bref_pool[_bref_slot++ % BREF_POOL];
+                snprintf(buf, 72, "r12+%d", i * 8);
+                return buf;
+            }
+        }
+    }
+    return name;
+}
+
+/*
+ * bref2 — like bref but wraps in brackets: returns "[r12+N]" or "[name]".
+ * Use this when the caller would write A("    mov rax, [%s]\n", bref2(v)).
+ */
+static const char *bref2(const char *name) {
+    const char *inner = bref(name);
+    char *buf = _bref_pool[_bref_slot++ % BREF_POOL];
+    snprintf(buf, 72, "[%s]", inner);
+    return buf;
+}
+
+/* Emit the DATA template section for a box (all qwords zero-initialized) */
+static void box_data_emit_section(const char *safe) {
+    const BoxDataCtx *b = box_find(safe);
+    if (!b || b->nvar == 0) return;
+    A("section .data\n");
+    A("    align 8\n");
+    A("box_%s_data_size: dq %d\n", safe, b->nvar * 8);
+    A("box_%s_data_template:\n", safe);
+    for (int i = 0; i < b->nvar; i++)
+        A("    dq 0  ; [r12+%d] = %s\n", i * 8, b->vars[i]);
+    A("\n");
+}
+
+static void box_data_reset(void) {
+    box_data_count = 0;
+    box_ctx_idx = -1;
+}
+
+/* -----------------------------------------------------------------------
+ * .bss slot registry — program-global (non-box) variables
  * ----------------------------------------------------------------------- */
 
 #define MAX_VARS 512
 static char *vars[MAX_VARS];
 static int   nvar = 0;
 
-static void var_reset(void) { nvar = 0; }
+static void var_reset(void) { nvar = 0; box_data_reset(); }
 
 static void var_register(const char *name) {
+    /* When inside a named box, route to per-box DATA layout */
+    if (box_ctx_idx >= 0) { box_var_register(name); return; }
     /* deduplicate */
     for (int i = 0; i < nvar; i++)
         if (strcmp(vars[i], name) == 0) return;
@@ -410,13 +560,6 @@ static void bss_emit(void) {
     for (int i = 0; i < nvar; i++)
         A("%-24s resq 1\n", vars[i]);
 }
-
-/* -----------------------------------------------------------------------
- * Buffer size constants — defined early, used throughout
- * ----------------------------------------------------------------------- */
-#define LBUF 320                 /* single label/name buffer */
-#define LBUF2 (LBUF * 2)        /* compound label: prefix + safe + suffix + safe */
-#define NAME_LEN 320    /* max expanded SNOBOL4 identifier length */
 
 /* -----------------------------------------------------------------------
  * .data string literals registry
@@ -555,8 +698,8 @@ static void asmJe(const char *lbl) {
 /* -----------------------------------------------------------------------
  * emit_lit — LIT node  (Sprint A14: one macro call per port)
  *
- *   α: LIT_ALPHA / LIT_ALPHA1   — one call site line
- *   β: LIT_BETA                 — one call site line
+ *   α: LIT_α / LIT_α1   — one call site line
+ *   β: LIT_β                 — one call site line
  * ----------------------------------------------------------------------- */
 
 static void emit_lit(const char *s, int n,
@@ -569,14 +712,14 @@ static void emit_lit(const char *s, int n,
     var_register(saved);
 
     if (n == 1) {
-        ALFC(alpha, "LIT α", "LIT_ALPHA1  %d, %s, %s, %s, %s, %s, %s\n",
-            (unsigned char)s[0], saved, cursor, subj, subj_len, gamma, omega);
+        ALFC(alpha, "LIT α", "LIT_α1  %d, %s, %s, %s, %s, %s, %s\n",
+            (unsigned char)s[0], bref(saved), cursor, subj, subj_len, gamma, omega);
     } else {
         const char *lstr = lit_intern(s, n);
-        ALFC(alpha, "LIT α", "LIT_ALPHA   %s, %d, %s, %s, %s, %s, %s, %s\n",
-            lstr, n, saved, cursor, subj, subj_len, gamma, omega);
+        ALFC(alpha, "LIT α", "LIT_α   %s, %d, %s, %s, %s, %s, %s, %s\n",
+            lstr, n, bref(saved), cursor, subj, subj_len, gamma, omega);
     }
-    ALFC(beta, "LIT β", "LIT_BETA    %s, %s, %s\n", saved, cursor, omega);
+    ALFC(beta, "LIT β", "LIT_β    %s, %s, %s\n", bref(saved), cursor, omega);
 }
 
 /* -----------------------------------------------------------------------
@@ -587,16 +730,16 @@ static void emit_pos(long n,
                           const char *alpha, const char *beta,
                           const char *gamma, const char *omega,
                           const char *cursor) {
-    ALFC(alpha, "POS(%ld)", "POS_ALPHA   %ld, %s, %s, %s\n", n, cursor, gamma, omega);
-    ALF(beta,  "POS_BETA    %s, %s\n", cursor, omega);
+    ALFC(alpha, "POS(%ld)", "POS_α   %ld, %s, %s, %s\n", n, cursor, gamma, omega);
+    ALF(beta,  "POS_β    %s, %s\n", cursor, omega);
 }
 
 static void emit_pos_var(const char *varlab,
                               const char *alpha, const char *beta,
                               const char *gamma, const char *omega,
                               const char *cursor) {
-    ALFC(alpha, "POS(var)", "POS_ALPHA_VAR %s, %s, %s, %s\n", varlab, cursor, gamma, omega);
-    ALF(beta,  "POS_BETA    %s, %s\n", cursor, omega);
+    ALFC(alpha, "POS(var)", "POS_α_VAR %s, %s, %s, %s\n", varlab, cursor, gamma, omega);
+    ALF(beta,  "POS_β    %s, %s\n", cursor, omega);
 }
 
 static void emit_rpos(long n,
@@ -604,8 +747,8 @@ static void emit_rpos(long n,
                            const char *gamma, const char *omega,
                            const char *cursor,
                            const char *subj_len) {
-    ALFC(alpha, "RPOS(%ld)", "RPOS_ALPHA  %ld, %s, %s, %s, %s\n", n, cursor, subj_len, gamma, omega);
-    ALF(beta,  "RPOS_BETA   %s, %s\n", cursor, omega);
+    ALFC(alpha, "RPOS(%ld)", "RPOS_α  %ld, %s, %s, %s, %s\n", n, cursor, subj_len, gamma, omega);
+    ALF(beta,  "RPOS_β   %s, %s\n", cursor, omega);
 }
 
 static void emit_rpos_var(const char *varlab,
@@ -613,8 +756,8 @@ static void emit_rpos_var(const char *varlab,
                                const char *gamma, const char *omega,
                                const char *cursor,
                                const char *subj_len) {
-    ALFC(alpha, "RPOS(var)", "RPOS_ALPHA_VAR %s, %s, %s, %s, %s\n", varlab, cursor, subj_len, gamma, omega);
-    ALF(beta,  "RPOS_BETA   %s, %s\n", cursor, omega);
+    ALFC(alpha, "RPOS(var)", "RPOS_α_VAR %s, %s, %s, %s, %s\n", varlab, cursor, subj_len, gamma, omega);
+    ALF(beta,  "RPOS_β   %s, %s\n", cursor, omega);
 }
 
 /* -----------------------------------------------------------------------
@@ -698,10 +841,10 @@ static void emit_seq(EXPR_t *left, EXPR_t *right,
                           int depth) {
     int uid = next_uid();
     char lα[LBUF], lβ[LBUF], rα[LBUF], rβ[LBUF];
-    snprintf(lα, LBUF, "seq_l%d_alpha", uid);
-    snprintf(lβ, LBUF, "seq_l%d_beta",  uid);
-    snprintf(rα, LBUF, "seq_r%d_alpha", uid);
-    snprintf(rβ, LBUF, "seq_r%d_beta",  uid);
+    snprintf(lα, LBUF, "seq_l%d_α", uid);
+    snprintf(lβ, LBUF, "seq_l%d_β",  uid);
+    snprintf(rα, LBUF, "seq_r%d_α", uid);
+    snprintf(rβ, LBUF, "seq_r%d_β",  uid);
 
     ALFC(alpha, "SEQ", "jmp     %s\n", lα);
     ALF(beta, "jmp     %s\n", rβ);
@@ -731,26 +874,26 @@ static void emit_alt(EXPR_t *left, EXPR_t *right,
     int uid = next_uid();
     char lα[LBUF], lβ[LBUF], rα[LBUF], rβ[LBUF];
     char cursor_save[LBUF], restore_lbl[LBUF];
-    snprintf(lα,           LBUF, "alt_l%d_alpha",   uid);
-    snprintf(lβ,           LBUF, "alt_l%d_beta",    uid);
-    snprintf(rα,           LBUF, "alt_r%d_alpha",   uid);
-    snprintf(rβ,           LBUF, "alt_r%d_beta",    uid);
+    snprintf(lα,           LBUF, "alt_l%d_α",   uid);
+    snprintf(lβ,           LBUF, "alt_l%d_β",    uid);
+    snprintf(rα,           LBUF, "alt_r%d_α",   uid);
+    snprintf(rβ,           LBUF, "alt_r%d_β",    uid);
     snprintf(cursor_save,  LBUF, "alt%d_cur_save",  uid);
     snprintf(restore_lbl,  LBUF, "alt%d_restore",   uid);
     var_register(cursor_save);
 
     char left_omega_tramp[LBUF];
-    snprintf(left_omega_tramp, LBUF, "alt%d_left_omega", uid);
+    snprintf(left_omega_tramp, LBUF, "alt%d_left_ω", uid);
 
     ALFC(alpha, "ALT α — save cursor, enter left",
-         "ALT_ALPHA   %s, %s, %s\n", cursor_save, cursor, lα);
-    ALFC(beta,  "ALT β — resume right", "SEQ_BETA    %s\n", rβ);
+         "ALT_α   %s, %s, %s\n", bref(cursor_save), cursor, lα);
+    ALFC(beta,  "ALT β — resume right", "SEQ_β    %s\n", rβ);
 
     emit_pat_node(left, lα, lβ, gamma, left_omega_tramp,
                   cursor, subj, subj_len, depth+1);
 
     ALFC(left_omega_tramp, "ALT left_ω — restore cursor, enter right",
-         "ALT_OMEGA   %s, %s, %s\n", cursor_save, cursor, rα);
+         "ALT_ω   %s, %s, %s\n", bref(cursor_save), cursor, rα);
 
     emit_pat_node(right, rα, rβ, gamma, omega,
                   cursor, subj, subj_len, depth+1);
@@ -780,8 +923,8 @@ static void emit_arbno(EXPR_t *child,
     snprintf(stk,        LBUF, "arb%d_stack",       uid);
     snprintf(dep,        LBUF, "arb%d_depth",        uid);
     snprintf(cur_before, LBUF, "arb%d_cur_before",   uid);
-    snprintf(cα,         LBUF, "arb%d_child_alpha",  uid);
-    snprintf(cβ,         LBUF, "arb%d_child_beta",   uid);
+    snprintf(cα,         LBUF, "arb%d_child_α",  uid);
+    snprintf(cβ,         LBUF, "arb%d_child_β",   uid);
     snprintf(child_ok,   LBUF, "arb%d_child_ok",     uid);
     snprintf(child_fail, LBUF, "arb%d_child_fail",   uid);
     snprintf(push_lbl,   LBUF, "arb%d_push",         uid);
@@ -802,41 +945,22 @@ static void emit_arbno(EXPR_t *child,
 
     A("\n");
 
-    /* α: header comment on label line, then initialize depth=0, push cursor, goto γ */
-    asmLC(alpha, "ARBNO");
-    A("    mov     qword [%s], 0\n", dep);
-    /* push cursor onto stack slot 0 */
-    A("    lea     rbx, [rel %s]\n", stk);
-    A("    mov     rax, [%s]\n", cursor);
-    A("    mov     [rbx], rax\n");
-    A("    mov     qword [%s], 1\n", dep);
-    asmJ(gamma);
+    /* α: init depth=0, push cursor onto stk[0], goto γ */
+    ALFC(alpha, "ARBNO α",
+         "ARBNO_α %s, %s, %s, %s\n", bref(dep), stk, cursor, gamma);
 
-    /* β: pop, save cursor-before-rep, try child */
-    ALFC(beta, "ARBNO", "mov     rax, [%s]\n", dep);
-    A("    test    rax, rax\n");
-    asmJe(omega);                  /* stack empty → ω */
-    A("    dec     rax\n");
-    A("    mov     [%s], rax\n", dep);
-    A("    lea     rbx, [rel %s]\n", stk);
-    A("    mov     rcx, [rbx + rax*8]\n");
-    A("    mov     [%s], rcx\n", cursor);        /* restore cursor */
-    A("    mov     [%s], rcx\n", cur_before);    /* save pre-rep cursor */
-    asmJ(cα);
+    /* β: pop, save cursor-before-rep, try child (or ω if empty) */
+    ALFC(beta, "ARBNO β",
+         "ARBNO_β  %s, %s, %s, %s, %s, %s\n",
+         bref(dep), stk, bref(cur_before), cursor, cα, omega);
 
     /* child_ok: zero-advance guard, push new cursor, re-succeed */
-    ALFC(child_ok, "ARBNO child_ok", "mov     rax, [%s]\n", cursor);
-    A("    mov     rbx, [%s]\n", cur_before);
-    A("    cmp     rax, rbx\n");
-    asmJe(omega);                  /* stalled → ω */
-    A("    mov     rdx, [%s]\n", dep);
-    A("    lea     rbx, [rel %s]\n", stk);
-    A("    mov     [rbx + rdx*8], rax\n");
-    A("    inc     qword [%s]\n", dep);
-    asmJ(gamma);
+    ALFC(child_ok, "ARBNO child_ok",
+         "ARBNO_α1 %s, %s, %s, %s, %s, %s\n",
+         bref(dep), stk, bref(cur_before), cursor, gamma, omega);
 
     /* child_fail: ω */
-    ALFC(child_fail, "ARBNO child_fail", "jmp     %s\n", omega);
+    ALFC(child_fail, "ARBNO β1", "ARBNO_β1 %s\n", omega);
 
     emit_pat_node(child, cα, cβ, child_ok, child_fail,
                   cursor, subj, subj_len, depth+1);
@@ -868,9 +992,9 @@ static void emit_any(const char *charset, int cslen,
     var_register(saved);
     const char *clabel = lit_intern(charset, cslen);
 
-    ALFC(alpha, "ANY α", "ANY_ALPHA   %s, %d, %s, %s, %s, %s, %s, %s\n",
-      clabel, cslen, saved, cursor, subj, subj_len, gamma, omega);
-    ALFC(beta, "ANY β", "ANY_BETA    %s, %s, %s\n", saved, cursor, omega);
+    ALFC(alpha, "ANY α", "ANY_α   %s, %d, %s, %s, %s, %s, %s, %s\n",
+      clabel, cslen, bref(saved), cursor, subj, subj_len, gamma, omega);
+    ALFC(beta, "ANY β", "ANY_β    %s, %s, %s\n", bref(saved), cursor, omega);
 }
 
 /* -----------------------------------------------------------------------
@@ -888,9 +1012,9 @@ static void emit_notany(const char *charset, int cslen,
     var_register(saved);
     const char *clabel = lit_intern(charset, cslen);
 
-    ALFC(alpha, "NOTANY α", "NOTANY_ALPHA %s, %d, %s, %s, %s, %s, %s, %s\n",
-      clabel, cslen, saved, cursor, subj, subj_len, gamma, omega);
-    ALFC(beta, "NOTANY β", "NOTANY_BETA  %s, %s, %s\n", saved, cursor, omega);
+    ALFC(alpha, "NOTANY α", "NOTANY_α %s, %d, %s, %s, %s, %s, %s, %s\n",
+      clabel, cslen, bref(saved), cursor, subj, subj_len, gamma, omega);
+    ALFC(beta, "NOTANY β", "NOTANY_β  %s, %s, %s\n", bref(saved), cursor, omega);
 }
 
 /* -----------------------------------------------------------------------
@@ -908,9 +1032,9 @@ static void emit_span(const char *charset, int cslen,
     var_register(saved);
     const char *clabel = lit_intern(charset, cslen);
 
-    ALFC(alpha, "SPAN α", "SPAN_ALPHA  %s, %d, %s, %s, %s, %s, %s, %s\n",
-      clabel, cslen, saved, cursor, subj, subj_len, gamma, omega);
-    ALFC(beta, "SPAN β", "SPAN_BETA   %s, %s, %s\n", saved, cursor, omega);
+    ALFC(alpha, "SPAN α", "SPAN_α  %s, %d, %s, %s, %s, %s, %s, %s\n",
+      clabel, cslen, bref(saved), cursor, subj, subj_len, gamma, omega);
+    ALFC(beta, "SPAN β", "SPAN_β   %s, %s, %s\n", bref(saved), cursor, omega);
 }
 
 static void emit_break(const char *charset, int cslen,
@@ -924,9 +1048,9 @@ static void emit_break(const char *charset, int cslen,
     var_register(saved);
     const char *clabel = lit_intern(charset, cslen);
 
-    ALFC(alpha, "BREAK α", "BREAK_ALPHA %s, %d, %s, %s, %s, %s, %s, %s\n",
-      clabel, cslen, saved, cursor, subj, subj_len, gamma, omega);
-    ALFC(beta, "BREAK β", "BREAK_BETA  %s, %s, %s\n", saved, cursor, omega);
+    ALFC(alpha, "BREAK α", "BREAK_α %s, %d, %s, %s, %s, %s, %s, %s\n",
+      clabel, cslen, bref(saved), cursor, subj, subj_len, gamma, omega);
+    ALFC(beta, "BREAK β", "BREAK_β  %s, %s, %s\n", bref(saved), cursor, omega);
 }
 
 /* -----------------------------------------------------------------------
@@ -941,9 +1065,9 @@ static void emit_span_var(const char *varlab,
     char saved[LBUF];
     snprintf(saved, LBUF, "span%d_saved", next_uid());
     var_register(saved);
-    ALFC(alpha, "SPAN(var) α", "SPAN_ALPHA_VAR %s, %s, %s, %s, %s, %s, %s\n",
-         varlab, saved, cursor, subj, subj_len, gamma, omega);
-    ALFC(beta,  "SPAN(var) β", "SPAN_BETA_VAR  %s, %s, %s\n", saved, cursor, omega);
+    ALFC(alpha, "SPAN(var) α", "SPAN_α_VAR %s, %s, %s, %s, %s, %s, %s\n",
+         varlab, bref(saved), cursor, subj, subj_len, gamma, omega);
+    ALFC(beta,  "SPAN(var) β", "SPAN_β_VAR  %s, %s, %s\n", bref(saved), cursor, omega);
 }
 
 static void emit_break_var(const char *varlab,
@@ -954,9 +1078,9 @@ static void emit_break_var(const char *varlab,
     char saved[LBUF];
     snprintf(saved, LBUF, "brk%d_saved", next_uid());
     var_register(saved);
-    ALFC(alpha, "BREAK(var) α", "BREAK_ALPHA_VAR %s, %s, %s, %s, %s, %s, %s\n",
-         varlab, saved, cursor, subj, subj_len, gamma, omega);
-    ALFC(beta,  "BREAK(var) β", "BREAK_BETA_VAR  %s, %s, %s\n", saved, cursor, omega);
+    ALFC(alpha, "BREAK(var) α", "BREAK_α_VAR %s, %s, %s, %s, %s, %s, %s\n",
+         varlab, bref(saved), cursor, subj, subj_len, gamma, omega);
+    ALFC(beta,  "BREAK(var) β", "BREAK_β_VAR  %s, %s, %s\n", bref(saved), cursor, omega);
 }
 
 static void emit_breakx_var(const char *varlab,
@@ -967,9 +1091,9 @@ static void emit_breakx_var(const char *varlab,
     char saved[LBUF];
     snprintf(saved, LBUF, "brkx%d_saved", next_uid());
     var_register(saved);
-    ALFC(alpha, "BREAKX(var) α", "BREAKX_ALPHA_VAR %s, %s, %s, %s, %s, %s, %s\n",
-         varlab, saved, cursor, subj, subj_len, gamma, omega);
-    ALFC(beta,  "BREAKX(var) β", "BREAKX_BETA_VAR  %s, %s, %s\n", saved, cursor, omega);
+    ALFC(alpha, "BREAKX(var) α", "BREAKX_α_VAR %s, %s, %s, %s, %s, %s, %s\n",
+         varlab, bref(saved), cursor, subj, subj_len, gamma, omega);
+    ALFC(beta,  "BREAKX(var) β", "BREAKX_β_VAR  %s, %s, %s\n", bref(saved), cursor, omega);
 }
 
 static void emit_breakx_lit(const char *charset, int cslen,
@@ -981,9 +1105,9 @@ static void emit_breakx_lit(const char *charset, int cslen,
     snprintf(saved, LBUF, "brkx%d_saved", next_uid());
     var_register(saved);
     const char *clabel = lit_intern(charset, cslen);
-    ALFC(alpha, "BREAKX(lit) α", "BREAKX_ALPHA_LIT %s, %s, %s, %s, %s, %s, %s\n",
-         clabel, saved, cursor, subj, subj_len, gamma, omega);
-    ALFC(beta,  "BREAKX(lit) β", "BREAKX_BETA_LIT  %s, %s, %s\n", saved, cursor, omega);
+    ALFC(alpha, "BREAKX(lit) α", "BREAKX_α_LIT %s, %s, %s, %s, %s, %s, %s\n",
+         clabel, bref(saved), cursor, subj, subj_len, gamma, omega);
+    ALFC(beta,  "BREAKX(lit) β", "BREAKX_β_LIT  %s, %s, %s\n", bref(saved), cursor, omega);
 }
 
 static void emit_any_var(const char *varlab,
@@ -994,9 +1118,9 @@ static void emit_any_var(const char *varlab,
     char saved[LBUF];
     snprintf(saved, LBUF, "any%d_saved", next_uid());
     var_register(saved);
-    ALFC(alpha, "ANY(var) α", "ANY_ALPHA_VAR   %s, %s, %s, %s, %s, %s, %s\n",
-         varlab, saved, cursor, subj, subj_len, gamma, omega);
-    ALFC(beta,  "ANY(var) β", "ANY_BETA_VAR    %s, %s, %s\n", saved, cursor, omega);
+    ALFC(alpha, "ANY(var) α", "ANY_α_VAR   %s, %s, %s, %s, %s, %s, %s\n",
+         varlab, bref(saved), cursor, subj, subj_len, gamma, omega);
+    ALFC(beta,  "ANY(var) β", "ANY_β_VAR    %s, %s, %s\n", bref(saved), cursor, omega);
 }
 
 static void emit_notany_var(const char *varlab,
@@ -1007,9 +1131,9 @@ static void emit_notany_var(const char *varlab,
     char saved[LBUF];
     snprintf(saved, LBUF, "nany%d_saved", next_uid());
     var_register(saved);
-    ALFC(alpha, "NOTANY(var) α", "NOTANY_ALPHA_VAR %s, %s, %s, %s, %s, %s, %s\n",
-         varlab, saved, cursor, subj, subj_len, gamma, omega);
-    ALFC(beta,  "NOTANY(var) β", "NOTANY_BETA_VAR  %s, %s, %s\n", saved, cursor, omega);
+    ALFC(alpha, "NOTANY(var) α", "NOTANY_α_VAR %s, %s, %s, %s, %s, %s, %s\n",
+         varlab, bref(saved), cursor, subj, subj_len, gamma, omega);
+    ALFC(beta,  "NOTANY(var) β", "NOTANY_β_VAR  %s, %s, %s\n", bref(saved), cursor, omega);
 }
 
 /* -----------------------------------------------------------------------
@@ -1026,8 +1150,8 @@ static void emit_len(long n,
     snprintf(saved, LBUF, "len%d_saved", uid);
     var_register(saved);
 
-    ALFC(alpha, "LEN(%ld)", "LEN_ALPHA   %ld, %s, %s, %s, %s, %s\n", n, saved, cursor, subj_len, gamma, omega);
-    ALFC(beta, "LEN β", "LEN_BETA    %s, %s, %s\n", saved, cursor, omega);
+    ALFC(alpha, "LEN(%ld)", "LEN_α   %ld, %s, %s, %s, %s, %s\n", n, bref(saved), cursor, subj_len, gamma, omega);
+    ALFC(beta, "LEN β", "LEN_β    %s, %s, %s\n", bref(saved), cursor, omega);
 }
 
 /* -----------------------------------------------------------------------
@@ -1043,8 +1167,8 @@ static void emit_tab(long n,
     snprintf(saved, LBUF, "tab%d_saved", uid);
     var_register(saved);
 
-    ALFC(alpha, "TAB(%ld)", "TAB_ALPHA   %ld, %s, %s, %s, %s\n", n, saved, cursor, gamma, omega);
-    ALFC(beta, "TAB β", "TAB_BETA    %s, %s, %s\n", saved, cursor, omega);
+    ALFC(alpha, "TAB(%ld)", "TAB_α   %ld, %s, %s, %s, %s\n", n, bref(saved), cursor, gamma, omega);
+    ALFC(beta, "TAB β", "TAB_β    %s, %s, %s\n", bref(saved), cursor, omega);
 }
 
 /* -----------------------------------------------------------------------
@@ -1061,8 +1185,8 @@ static void emit_rtab(long n,
     snprintf(saved, LBUF, "rtab%d_saved", uid);
     var_register(saved);
 
-    ALFC(alpha, "RTAB(%ld)", "RTAB_ALPHA  %ld, %s, %s, %s, %s, %s\n", n, saved, cursor, subj_len, gamma, omega);
-    ALFC(beta, "RTAB β", "RTAB_BETA   %s, %s, %s\n", saved, cursor, omega);
+    ALFC(alpha, "RTAB(%ld)", "RTAB_α  %ld, %s, %s, %s, %s, %s\n", n, bref(saved), cursor, subj_len, gamma, omega);
+    ALFC(beta, "RTAB β", "RTAB_β   %s, %s, %s\n", bref(saved), cursor, omega);
 }
 
 /* -----------------------------------------------------------------------
@@ -1078,8 +1202,8 @@ static void emit_rem(const char *alpha, const char *beta,
     snprintf(saved, LBUF, "rem%d_saved", uid);
     var_register(saved);
 
-    ALFC(alpha, "REM", "REM_ALPHA   %s, %s, %s, %s\n", saved, cursor, subj_len, gamma);
-    ALFC(beta, "REM β", "REM_BETA    %s, %s, %s\n", saved, cursor, omega);
+    ALFC(alpha, "REM", "REM_α   %s, %s, %s, %s\n", bref(saved), cursor, subj_len, gamma);
+    ALFC(beta, "REM β", "REM_β    %s, %s, %s\n", bref(saved), cursor, omega);
 }
 
 /* -----------------------------------------------------------------------
@@ -1108,22 +1232,11 @@ static void emit_arb(const char *alpha, const char *beta,
     var_register(arb_start);
     var_register(arb_step);
 
-    ALFC(alpha, "ARB", "mov     rax, [%s]\n", cursor);
-    A("    mov     [%s], rax\n", arb_start);
-    A("    mov     qword [%s], 0\n", arb_step);
-    /* cursor stays at start (0-length match first) */
-    asmJ(gamma);
+    ALFC(alpha, "ARB α", "ARB_α   %s, %s, %s, %s\n",
+         bref(arb_start), bref(arb_step), cursor, gamma);
 
-    ALFC(beta, "ARB", "mov     rax, [%s]\n", arb_step);
-    A("    inc     rax\n");
-    A("    mov     [%s], rax\n", arb_step);
-    /* check start + step <= subj_len */
-    A("    mov     rbx, [%s]\n", arb_start);
-    A("    add     rbx, rax\n");
-    A("    cmp     rbx, [%s]\n", subj_len);
-    asmJg(omega);
-    A("    mov     [%s], rbx\n", cursor);
-    asmJ(gamma);
+    ALFC(beta,  "ARB β", "ARB_β    %s, %s, %s, %s, %s, %s\n",
+         bref(arb_start), bref(arb_step), cursor, subj_len, gamma, omega);
     (void)chk;
 }
 
@@ -1163,10 +1276,10 @@ static void emit_imm(EXPR_t *child, const char *varname,
     expand_name(varname ? varname : "", safe, sizeof safe);
     if (!safe[0]) { safe[0]='v'; safe[1]='\0'; }
 
-    snprintf(cα,        LBUF, "dol%d_child_alpha", uid);
-    snprintf(cβ,        LBUF, "dol%d_child_beta",  uid);
-    snprintf(dol_gamma, LBUF, "dol%d_gamma",        uid);
-    snprintf(dol_omega, LBUF, "dol%d_omega",        uid);
+    snprintf(cα,        LBUF, "dol%d_child_α", uid);
+    snprintf(cβ,        LBUF, "dol%d_child_β",  uid);
+    snprintf(dol_gamma, LBUF, "dol%d_γ",        uid);
+    snprintf(dol_omega, LBUF, "dol%d_ω",        uid);
     snprintf(entry_cur, LBUF, "dol%d_entry",        uid);
 
     /* Per-variable capture buffers — register var and get its symbols */
@@ -1195,19 +1308,19 @@ static void emit_imm(EXPR_t *child, const char *varname,
 
     /* α instruction: save entry cursor, enter child — one macro call */
     ALFC("", "DOL α — save entry cursor",
-         "DOL_SAVE    %s, %s, %s\n", entry_cur, cursor, cα);
+         "DOL_SAVE    %s, %s, %s\n", bref(entry_cur), cursor, cα);
 
     /* β: transparent — backtrack into child */
     ALFC(beta, "DOL β", "jmp     %s\n", cβ);
 
-    /* Emit child subtree — child's γ goes to dol_gamma, child's ω to dol_omega */
+    /* Emit child subtree — child's γ goes to dol_γ, child's ω to dol_ω */
     emit_pat_node(child, cα, cβ, dol_gamma, dol_omega,
                   cursor, subj, subj_len, depth + 1);
 
     /* dol_γ: compute span, copy to cap_buf, proceed to outer γ — one macro call */
     ALFC(dol_gamma, "DOL γ — capture span",
          "DOL_CAPTURE %s, %s, %s, %s, %s, %s\n",
-         entry_cur, cursor, cap_buf, cap_len, subj, gamma);
+         bref(entry_cur), cursor, cap_buf, bref(cap_len), subj, gamma);
 
     /* dol_ω: child failed — no assignment, propagate failure */
     ALFC(dol_omega, "DOL ω — child failed", "jmp     %s\n", omega);
@@ -1321,10 +1434,10 @@ static void emit_pat_node(EXPR_t *pat,
                 var_register(saved);
                 const char *vlab = str_intern(varname);
                 A("\n; E_VART %s → LIT_VAR (stmt_match_var)\n", varname);
-                ALF(alpha, "LIT_VAR_ALPHA %s, %s, %s, %s, %s\n",
-                    vlab, saved, cursor, gamma, omega);
-                ALF(beta,  "LIT_VAR_BETA  %s, %s, %s\n",
-                    saved, cursor, omega);
+                ALF(alpha, "LIT_VAR_α %s, %s, %s, %s, %s\n",
+                    vlab, bref(saved), cursor, gamma, omega);
+                ALF(beta,  "LIT_VAR_β  %s, %s, %s\n",
+                    bref(saved), cursor, omega);
             }
         }
         break;
@@ -1487,9 +1600,9 @@ static void emit_pat_node(EXPR_t *pat,
         const char *varname = (pat->children[0] && pat->children[0]->sval) ? pat->children[0]->sval
                             : (pat->sval ? pat->sval : "");
         const char *varlab  = str_intern(varname);
-        ALFC(alpha, "@VAR α", "AT_ALPHA        %s, %s, %s, %s\n",
+        ALFC(alpha, "@VAR α", "AT_α        %s, %s, %s, %s\n",
              varlab, cursor, gamma, omega);
-        ALFC(beta,  "@VAR β", "AT_BETA         %s\n", omega);
+        ALFC(beta,  "@VAR β", "AT_β         %s\n", omega);
         break;
     }
 
@@ -1765,8 +1878,8 @@ static void emit_named_ref(const NamedPat *np,
                                 const char *gamma, const char *omega) {
     int uid = next_uid();
     char glbl[LBUF], olbl[LBUF];
-    snprintf(glbl, LBUF, "nref%d_gamma", uid);
-    snprintf(olbl, LBUF, "nref%d_omega", uid);
+    snprintf(glbl, LBUF, "nref%d_γ", uid);
+    snprintf(olbl, LBUF, "nref%d_ω", uid);
 
     {
         char ref_hdr[LBUF + 8];
@@ -1776,18 +1889,22 @@ static void emit_named_ref(const NamedPat *np,
         asmLC(alpha, ref_hdr);
     }
 
-    /* α instructions: load continuations, jump to named pattern α */
+    /* α instructions: load continuations, set r12 to data template, jump to α */
     A("    lea     rax, [rel %s]\n", glbl);
     A("    mov     [%s], rax\n", np->ret_gamma);
     A("    lea     rax, [rel %s]\n", olbl);
     A("    mov     [%s], rax\n", np->ret_omega);
+    if (!np->is_fn)
+        A("    lea     r12, [rel box_%s_data_template]\n", np->safe);
     A("    jmp     %s\n", np->alpha_lbl);
 
-    /* β: reload continuations (caller may have changed them), jump to β */
+    /* β: reload continuations, set r12, jump to β */
     ALFC(beta, "REF(%s)", "lea     rax, [rel %s]\n", glbl);
     A("    mov     [%s], rax\n", np->ret_gamma);
     A("    lea     rax, [rel %s]\n", olbl);
     A("    mov     [%s], rax\n", np->ret_omega);
+    if (!np->is_fn)
+        A("    lea     r12, [rel box_%s_data_template]\n", np->safe);
     A("    jmp     %s\n", np->beta_lbl);
 
     /* γ and ω trampolines — named pattern jumps here, we forward */
@@ -1823,78 +1940,88 @@ static void emit_named_def(const NamedPat *np,
         char safe[NAME_LEN];
         snprintf(safe, sizeof safe, "%s", np->safe);
 
+        /* Establish per-invocation DATA block context.  All var_register calls below
+         * route to the per-box DATA template instead of flat .bss. */
+        box_ctx_begin(safe);
+
+        /* Reserve first 48 bytes of DATA as DESCR_t scratch slots:
+         *   [r12+0 / r12+8]   = tmp1_t / tmp1_p  (was [rbp-16] / [rbp-8])
+         *   [r12+16/ r12+24]  = tmp2_t / tmp2_p  (was [rbp-32] / [rbp-24])
+         *   [r12+32/ r12+40]  = tmp3_t / tmp3_p  (was [rbp-48] / [rbp-40])
+         * These are the three DESCR_t temporaries that the near-term bridge
+         * allocated with sub rsp, 56. */
+        char t2_tmp1_t[NAME_LEN], t2_tmp1_p[NAME_LEN];
+        char t2_tmp2_t[NAME_LEN], t2_tmp2_p[NAME_LEN];
+        char t2_tmp3_t[NAME_LEN], t2_tmp3_p[NAME_LEN];
+        snprintf(t2_tmp1_t, sizeof t2_tmp1_t, "fn_%s_tmp1_t", safe);
+        snprintf(t2_tmp1_p, sizeof t2_tmp1_p, "fn_%s_tmp1_p", safe);
+        snprintf(t2_tmp2_t, sizeof t2_tmp2_t, "fn_%s_tmp2_t", safe);
+        snprintf(t2_tmp2_p, sizeof t2_tmp2_p, "fn_%s_tmp2_p", safe);
+        snprintf(t2_tmp3_t, sizeof t2_tmp3_t, "fn_%s_tmp3_t", safe);
+        snprintf(t2_tmp3_p, sizeof t2_tmp3_p, "fn_%s_tmp3_p", safe);
+        var_register(t2_tmp1_t); /* offset 0  — was [rbp-16] */
+        var_register(t2_tmp1_p); /* offset 8  — was [rbp-8]  */
+        var_register(t2_tmp2_t); /* offset 16 — was [rbp-32] */
+        var_register(t2_tmp2_p); /* offset 24 — was [rbp-24] */
+        var_register(t2_tmp3_t); /* offset 32 — was [rbp-48] */
+        var_register(t2_tmp3_p); /* offset 40 — was [rbp-40] */
+
         emit_sep_major(np->varname);
-        A("; %s — user function α entry (%d param%s)\n",
+        A("; %s — user function α entry (%d param%s) [r12=DATA block]\n",
           np->alpha_lbl, np->nparams, np->nparams==1?"":"s");
 
-        /* α — establish own stack frame.
-         * The call site (Byrd-box save side) has already pushed:
-         *   old ret_γ, old ret_ω, old param values  onto the C stack.
-         * We now open a fresh rbp frame so [rbp-8/16/32/48] are private
-         * to THIS invocation.  γ/ω (Byrd-box restore side) tear it down
-         * before dispatching via the ret_ slots the call site filled.
+        /* α entry: r12 points to this invocation's DATA block.
+         * M-T2-INVOKE will emit blk_alloc+memcpy+mov r12,new_data at call sites.
+         * Until then: self-initialize r12 to the static DATA template so that
+         * single-invocation (non-recursive) calls work correctly now.
+         * Recursive calls will corrupt the static template — fixed by M-T2-INVOKE.
          *
-         * Near-term bridge to Technique 2 (ARCH.md §Near-Term Bridge):
-         *   call site push  = Byrd-box α (save)
-         *   this frame      = per-invocation DATA block (on C stack)
-         *   γ/ω pop + jmp  = Byrd-box γ/ω (restore)
-         * sub rsp,56: three DESCR_t temps × 16 bytes + 8 align = 56. */
+         * The near-term bridge (push rbp / sub rsp, 56) is REMOVED.
+         * Scratch DESCR_t slots are now [r12+0/8], [r12+16/24], [r12+32/40]. */
         asmL(np->alpha_lbl);
-        A("    push    rbp\n");
-        A("    mov     rbp, rsp\n");
-        A("    sub     rsp, 56\n");
+        A("    FN_α_INIT %s\n", safe);
 
-        /* Load args from .bss arg slots into param variables. */
+        /* Load args from .bss arg slots into param variables */
         for (int i = 0; i < np->nparams; i++) {
             char arg_slot_t[LBUF2 + 16], arg_slot_p[LBUF2 + 16];
             snprintf(arg_slot_t, sizeof arg_slot_t, "fn_%s_arg_%d_t", safe, i);
             snprintf(arg_slot_p, sizeof arg_slot_p, "fn_%s_arg_%d_p", safe, i);
             const char *plab = str_intern(np->param_names[i]);
-            A("    lea     rdi, [rel %s]\n", plab);
             A("    mov     rsi, [%s]\n", arg_slot_t);
             A("    mov     rdx, [%s]\n", arg_slot_p);
-            A("    call    stmt_set\n");
+            A("    FN_SET_PARAM %s\n", plab);
         }
-        /* Clear locals + function return-value variable to null at each call
-         * entry (SNOBOL4 semantics: locals and retval are always null at entry).
-         * The function return-value variable has the same name as the function. */
-        A("    LOAD_NULVCL\n");   /* sets [rbp-16]=type, [rbp-8]=ptr once */
+        /* Clear locals + retval to NULVCL */
+        A("    LOAD_NULVCL\n");
+        A("    mov     [%s], rax\n", bref(t2_tmp1_t));
+        A("    mov     [%s], rdx\n", bref(t2_tmp1_p));
         {
-            /* Clear return-value variable (function name) */
             const char *fnlab_clr = str_intern(np->varname);
-            A("    lea     rdi, [rel %s]\n", fnlab_clr);
-            A("    mov     rsi, [rbp-16]\n");
-            A("    mov     rdx, [rbp-8]\n");
-            A("    call    stmt_set\n");
+            A("    mov     rsi, [%s]\n", bref(t2_tmp1_t));
+            A("    mov     rdx, [%s]\n", bref(t2_tmp1_p));
+            A("    FN_CLEAR_VAR %s\n", fnlab_clr);
         }
         for (int i = 0; i < np->nlocals; i++) {
             const char *llab = str_intern(np->local_names[i]);
-            A("    lea     rdi, [rel %s]\n", llab);
-            A("    mov     rsi, [rbp-16]\n");
-            A("    mov     rdx, [rbp-8]\n");
-            A("    call    stmt_set\n");
+            A("    mov     rsi, [%s]\n", bref(t2_tmp1_t));
+            A("    mov     rdx, [%s]\n", bref(t2_tmp1_p));
+            A("    FN_CLEAR_VAR %s\n", llab);
         }
-        /* Jump to function body */
         A("    jmp     %s\n", label_nasm(np->body_label));
 
         emit_sep_minor("γ/ω");
 
-        /* γ — Byrd-box restore side (success / RETURN).
-         * Tear down this invocation's frame before dispatching to caller. */
+        /* γ — return side (success / RETURN).
+         * No frame to tear down (stack-frame bridge removed).
+         * Caller's r12 is restored by M-T2-INVOKE after we return.
+         * (M-T2-INVOKE will emit blk_free + restore caller r12 at the return
+         *  labels.  For now we just dispatch via the ret slot.) */
         char gamma_lbl[LBUF2], omega_lbl[LBUF2];
-        snprintf(gamma_lbl, sizeof gamma_lbl, "fn_%s_gamma", safe);
-        snprintf(omega_lbl, sizeof omega_lbl, "fn_%s_omega", safe);
-        asmL(gamma_lbl);
-        A("    add     rsp, 56\n");
-        A("    pop     rbp\n");
-        A("    jmp     [%s]\n", np->ret_gamma);
-
-        /* ω — Byrd-box restore side (failure / FRETURN).
-         * Same frame teardown, different dispatch slot. */
-        asmL(omega_lbl);
-        A("    add     rsp, 56\n");
-        A("    pop     rbp\n");
-        A("    jmp     [%s]\n", np->ret_omega);
+        snprintf(gamma_lbl, sizeof gamma_lbl, "fn_%s_γ", safe);
+        snprintf(omega_lbl, sizeof omega_lbl, "fn_%s_ω", safe);
+        ALFC(gamma_lbl, "fn γ", "FN_γ %s\n", np->ret_gamma);
+        ALFC(omega_lbl, "fn ω", "FN_ω %s\n", np->ret_omega);
+        box_ctx_end();
         return;
     }
 
@@ -1906,16 +2033,24 @@ static void emit_named_def(const NamedPat *np,
         return;
     }
 
+    /* --- Non-function named pattern box --- */
+
+    /* T2: register ret_γ / ret_ω in per-box DATA layout (reserved for M-T2-INVOKE).
+     * They remain in .bss too — call sites and trampolines use .bss for now. */
+    box_ctx_begin(np->safe);
+    var_register(np->ret_gamma);
+    var_register(np->ret_omega);
+
     /* The named pattern's inner γ and ω connect back via the ret_ slots */
     char inner_gamma[LBUF2], inner_omega[LBUF2];
-    snprintf(inner_gamma, sizeof inner_gamma, "patdef_%s_gamma", np->safe);
-    snprintf(inner_omega, sizeof inner_omega, "patdef_%s_omega", np->safe);
+    snprintf(inner_gamma, sizeof inner_gamma, "patdef_%s_γ", np->safe);
+    snprintf(inner_omega, sizeof inner_omega, "patdef_%s_ω", np->safe);
 
     /* Major separator: named pattern header */
     emit_sep_major(np->varname);
 
     /* α entry — initial match */
-    A("; %s (α entry)\n", np->alpha_lbl);
+    A("; %s (α entry) [r12=DATA block]\n", np->alpha_lbl);
     emit_pat_node(np->pat,
                   np->alpha_lbl, np->beta_lbl,
                   inner_gamma, inner_omega,
@@ -1925,18 +2060,19 @@ static void emit_named_def(const NamedPat *np,
     /* Minor separator before γ/ω trampolines */
     emit_sep_minor("γ/ω");
 
-    /* γ trampoline: indirect jump to caller's continuation */
-    A("%s:\n", inner_gamma);
-    A("    jmp     [%s]\n", np->ret_gamma);
+    /* γ/ω trampolines */
+    ALFC(inner_gamma, "named pat γ", "NAMED_PAT_γ %s\n", np->ret_gamma);
+    ALFC(inner_omega, "named pat ω", "NAMED_PAT_ω %s\n", np->ret_omega);
 
-    /* ω trampoline */
-    asmL(inner_omega);
-    A("    jmp     [%s]\n", np->ret_omega);
+    box_ctx_end();
 }
 
 /* -----------------------------------------------------------------------
  * emit_null_program — Sprint A0 fallback
  * ----------------------------------------------------------------------- */
+
+/* Forward declaration — defined after emit_program() */
+static void emit_blk_reloc_tables(void);
 
 static void emit_null_program(void) {
     A("; generated by sno2c -asm\n");
@@ -2177,7 +2313,7 @@ static void emit_pattern(STMT_t *stmt) {
 
     /* Emit the root pattern tree */
     emit_pat_node(stmt->pattern,
-                  "root_alpha", "root_beta",
+                  "root_α", "root_β",
                   "match_success", "match_fail",
                   cursor_sym, subj_sym, subj_len_label,
                   0);
@@ -2232,7 +2368,7 @@ static void emit_pattern(STMT_t *stmt) {
     A("    ; init\n");
     A("    mov     qword [%s], %d\n", subj_len_label, subj_len);
     A("    mov     qword [%s], 0\n", cursor_sym);
-    A("    jmp     root_alpha\n");
+    A("    jmp     root_α\n");
 
     /* Paste collected pattern + named pattern code */
     A("%.*s", (int)code_size, code_buf);
@@ -2324,7 +2460,7 @@ static void emit_stmt(STMT_t *s) {
     int uid_before_dry = uid_ctr;   /* save uid counter state */
 
     emit_pat_node(s->pattern,
-                  "root_alpha", "root_beta",
+                  "root_α", "root_β",
                   "match_success", "match_fail",
                   cursor_sym, subj_sym, subj_len_label, 0);
     for (int i = 0; i < named_pat_count; i++)
@@ -2333,6 +2469,14 @@ static void emit_stmt(STMT_t *s) {
     fclose(devnull);
     out = real_out;
     uid_ctr = uid_before_dry;       /* reset so real pass generates same labels */
+
+    /* Body mode: box DATA vars must also appear in .bss — the harness has no
+     * per-box DATA template.  Flush all box DATA registrations into global .bss. */
+    for (int bi = 0; bi < box_data_count; bi++) {
+        BoxDataCtx *b = &box_data[bi];
+        for (int vi = 0; vi < b->nvar; vi++)
+            var_register(b->vars[vi]);  /* box_ctx_idx==-1 here → routes to .bss */
+    }
 
     /* ── Emit pass: all symbols now registered; emit sections in order ── */
 
@@ -2343,7 +2487,7 @@ static void emit_stmt(STMT_t *s) {
 
     A("%%include \"snobol4_asm.mac\"\n");
 
-    A("    global root_alpha, root_beta\n");
+    A("    global root_α, root_β\n");
     A("    extern cursor, subject_data, subject_len_val\n");
     A("    extern match_success, match_fail\n");
     A("    extern outer_cursor\n");
@@ -2385,7 +2529,7 @@ static void emit_stmt(STMT_t *s) {
     A("\nsection .text\n");
 
     emit_pat_node(s->pattern,
-                  "root_alpha", "root_beta",
+                  "root_α", "root_β",
                   "match_success", "match_fail",
                   cursor_sym, subj_sym, subj_len_label, 0);
 
@@ -2611,8 +2755,9 @@ static int emit_expr(EXPR_t *e, int rbp_off) {
             /* Recursion-safe calling convention using the C stack.
              * Saves params AND locals before jmp, restores at both return labels.
              * n_pushed = 2 (ret addrs) + (actual_args + actual_locals) * 2 qwords.
+             * +1 for push r12 (caller DATA block ptr save).
              */
-            int n_pushed = 2 + (actual_args + actual_locals) * 2;
+            int n_pushed = 2 + (actual_args + actual_locals) * 2 + 1;
             int extra_align = (n_pushed % 2) ? 1 : 0;
             if (extra_align) A("    sub     rsp, 8          ; align pad\n");
 
@@ -2635,6 +2780,9 @@ static int emit_expr(EXPR_t *e, int rbp_off) {
                 A("    push    qword [rbp-16]\n");
             }
 
+            /* push callee DATA block ptr (popped as rdi at return for blk_free) */
+            A("    push    r12\n");
+
             /* Step 2: save old ret addresses onto the stack */
             A("    push    qword [%s]\n", ufn->ret_omega);
             A("    push    qword [%s]\n", ufn->ret_gamma);
@@ -2652,6 +2800,14 @@ static int emit_expr(EXPR_t *e, int rbp_off) {
             }
 
             /* Step 4: install new return addresses and jump */
+            /* alloc fresh DATA block for this invocation */
+            A("    mov     rdi, [rel box_%s_data_size]\n", ufn->safe);
+            A("    call    blk_alloc\n");
+            A("    mov     rdi, rax\n");  /* dst = new DATA block */
+            A("    lea     rsi, [rel box_%s_data_template]\n", ufn->safe);
+            A("    mov     rdx, [rel box_%s_data_size]\n", ufn->safe);
+            A("    call    memcpy\n");
+            A("    mov     r12, rax\n");  /* r12 = new DATA ptr */
             A("    lea     rax, [rel %s]\n", ret_gamma_lbl);
             A("    mov     [%s], rax\n", ufn->ret_gamma);
             A("    lea     rax, [rel %s]\n", ret_omega_lbl);
@@ -2680,6 +2836,10 @@ static int emit_expr(EXPR_t *e, int rbp_off) {
             A("%s:\n", ret_gamma_lbl);
             A("    pop     qword [%s]\n", ufn->ret_gamma);
             A("    pop     qword [%s]\n", ufn->ret_omega);
+            /* pop callee DATA block ptr, free it */
+            A("    pop     rdi\n");
+            A("    mov     rsi, [rel box_%s_data_size]\n", ufn->safe);
+            A("    call    blk_free\n");
             /* Restore old local values from stack (forward order — pushed in reverse) */
             for (int li = 0; li < actual_locals; li++) {
                 const char *llab = str_intern(ufn->local_names[li]);
@@ -2717,6 +2877,10 @@ static int emit_expr(EXPR_t *e, int rbp_off) {
             A("%s:\n", ret_omega_lbl);
             A("    pop     qword [%s]\n", ufn->ret_gamma);
             A("    pop     qword [%s]\n", ufn->ret_omega);
+            /* pop callee DATA block ptr, free it */
+            A("    pop     rdi\n");
+            A("    mov     rsi, [rel box_%s_data_size]\n", ufn->safe);
+            A("    call    blk_free\n");
             /* Restore old local values from stack */
             for (int li = 0; li < actual_locals; li++) {
                 const char *llab = str_intern(ufn->local_names[li]);
@@ -2955,8 +3119,30 @@ static int emit_expr(EXPR_t *e, int rbp_off) {
             }
             return 1;
         }
-        /* n-ary: if >2 children, right-fold into heap-allocated binary nodes */
+        /*
+         * n-ary E_CONC (string concat): inline left-fold avoids slot aliasing.
+         * Each step: push accumulator, eval next child, pop+call stmt_concat.
+         * n-ary E_OR (pattern ALT): right-fold into binary nodes (unchanged).
+         */
+        if (e->nchildren > 2 && e->kind == E_CONC) {
+            int _nc = e->nchildren;
+            emit_expr(e->children[0], -32);
+            for (int _i = 1; _i < _nc; _i++) {
+                A("    push    rdx\n");
+                A("    push    rax\n");
+                emit_expr(e->children[_i], -32);
+                A("    mov     rcx, rdx\n");
+                A("    mov     rdx, rax\n");
+                A("    pop     rdi\n");
+                A("    pop     rsi\n");
+                A("    call    stmt_concat\n");
+            }
+            A("    mov     [rbp%+d], rax\n", rbp_off);
+            A("    mov     [rbp%+d], rdx\n", rbp_off + 8);
+            return 1;
+        }
         if (e->nchildren > 2) {
+            /* E_OR right-fold */
             int _nc = e->nchildren;
             EXPR_t **_nodes = malloc((size_t)(_nc-1)*sizeof(EXPR_t*));
             EXPR_t **_kids  = malloc((size_t)(_nc-1)*2*sizeof(EXPR_t*));
@@ -3024,15 +3210,16 @@ static int emit_expr(EXPR_t *e, int rbp_off) {
                     return 1;
                 }
             }
-            /* CAT generic fallback: evaluate both, call stmt_concat */
+            /* CAT generic fallback: push left result, eval right, pop+call.
+             * push/pop is stack-safe regardless of depth — conc_tmp0 aliased. */
             emit_expr(e->children[0], -32);
-            A("    mov     [conc_tmp0_rax], rax\n");
-            A("    mov     [conc_tmp0_rdx], rdx\n");
+            A("    push    rdx\n");
+            A("    push    rax\n");
             emit_expr(e->children[1], -32);
             A("    mov     rcx, rdx\n");
             A("    mov     rdx, rax\n");
-            A("    mov     rdi, [conc_tmp0_rax]\n");
-            A("    mov     rsi, [conc_tmp0_rdx]\n");
+            A("    pop     rdi\n");
+            A("    pop     rsi\n");
             A("    call    stmt_concat\n");
             A("    mov     [rbp%+d], rax\n", rbp_off);
             A("    mov     [rbp%+d], rdx\n", rbp_off + 8);
@@ -3358,9 +3545,9 @@ static void emit_jmp(const char *tgt, const char *fallthrough) {
                        strcasecmp(tgt,"NRETURN")==0)) {
         char lbl[NAME_LEN + 32];
         if (strcasecmp(tgt,"RETURN")==0)
-            snprintf(lbl, sizeof lbl, "fn_%s_gamma", cur_fn->safe);
+            snprintf(lbl, sizeof lbl, "fn_%s_γ", cur_fn->safe);
         else
-            snprintf(lbl, sizeof lbl, "fn_%s_omega", cur_fn->safe);
+            snprintf(lbl, sizeof lbl, "fn_%s_ω", cur_fn->safe);
         A("    jmp     %s     ; %s\n", lbl, tgt);
         return;
     }
@@ -3383,9 +3570,9 @@ static void prog_emit_goto(const char *target, const char *fallthrough) {
         if (cur_fn) {
             char lbl[NAME_LEN + 32];
             if (strcasecmp(target,"RETURN")==0 || strcasecmp(target,"SRETURN")==0)
-                snprintf(lbl, sizeof lbl, "fn_%s_gamma", cur_fn->safe);
+                snprintf(lbl, sizeof lbl, "fn_%s_γ", cur_fn->safe);
             else
-                snprintf(lbl, sizeof lbl, "fn_%s_omega", cur_fn->safe);
+                snprintf(lbl, sizeof lbl, "fn_%s_ω", cur_fn->safe);
             A("    jmp     %s     ; %s\n", lbl, target);
         } else {
             A("    GOTO_ALWAYS  L_SNO_END     ; %s\n", target);
@@ -3500,17 +3687,38 @@ static void emit_program(Program *prog) {
 
     /* Pass 2: collect .bss slots for pattern stmts (named-pat ret_ pointers).
      * In program mode, skip entries whose replacement is a plain value
-     * (E_QLIT/E_ILIT/E_VART) — those are variable assignments, not patterns. */
+     * (E_QLIT/E_ILIT/E_VART) — those are variable assignments, not patterns.
+     *
+     * ret_γ/ret_ω for named patterns and fn tmp slots go into per-box DATA.
+     * arg_slots and save_slots remain in .bss (call-site communication). */
     var_register("cursor");
     var_register("subject_len_val");
     /* subject_data is a byte array — emitted separately in .bss */
 
     for (int i = 0; i < named_pat_count; i++) {
         if (named_pats[i].is_fn) {
-            /* User function: ret_γ/ret_ω return-address slots */
+            /* User function:
+             * ret_γ/ret_ω go into per-box DATA layout.
+             * arg_slots remain in .bss (call-site sets them before jmp α). */
+            box_ctx_begin(named_pats[i].safe);
             var_register(named_pats[i].ret_gamma);
             var_register(named_pats[i].ret_omega);
-            /* Per-param save slots (old value backup) and arg slots (call-site input) */
+            /* Also reserve the 6 DESCR_t scratch slots in DATA (tmp1/tmp2/tmp3) */
+            {
+                char t[NAME_LEN], p[NAME_LEN];
+                snprintf(t, NAME_LEN, "fn_%s_tmp1_t", named_pats[i].safe); var_register(t);
+                snprintf(p, NAME_LEN, "fn_%s_tmp1_p", named_pats[i].safe); var_register(p);
+                snprintf(t, NAME_LEN, "fn_%s_tmp2_t", named_pats[i].safe); var_register(t);
+                snprintf(p, NAME_LEN, "fn_%s_tmp2_p", named_pats[i].safe); var_register(p);
+                snprintf(t, NAME_LEN, "fn_%s_tmp3_t", named_pats[i].safe); var_register(t);
+                snprintf(p, NAME_LEN, "fn_%s_tmp3_p", named_pats[i].safe); var_register(p);
+            }
+            box_ctx_end();
+            /* Also register ret_γ/ret_ω in .bss — fn_gamma/fn_omega jmp still uses them */
+            var_register(named_pats[i].ret_gamma);
+            var_register(named_pats[i].ret_omega);
+            /* Per-param save slots (old value backup) and arg slots (call-site input)
+             * stay in .bss — they are the call-site communication channel. */
             for (int pi = 0; pi < named_pats[i].nparams; pi++) {
                 char pname_safe[NAME_LEN];
                 expand_name(named_pats[i].param_names[pi], pname_safe, sizeof pname_safe);
@@ -3541,6 +3749,13 @@ static void emit_program(Program *prog) {
                 rk == E_VART || rk == E_KW)
                 continue; /* plain value assignment — not a real named pattern */
         }
+        /* Non-fn named pattern: ret_γ/ret_ω go into per-box DATA (M-T2-INVOKE).
+         * Also keep in .bss so call sites and trampolines work unchanged. */
+        box_ctx_begin(named_pats[i].safe);
+        var_register(named_pats[i].ret_gamma);
+        var_register(named_pats[i].ret_omega);
+        box_ctx_end();
+        /* Also register in .bss for current call-site compatibility */
         var_register(named_pats[i].ret_gamma);
         var_register(named_pats[i].ret_omega);
     }
@@ -3616,6 +3831,7 @@ static void emit_program(Program *prog) {
     A("    extern  kw_anchor\n");
     A("    extern  stmt_aref, stmt_aset, stmt_field_set\n");
     A("    extern  comm_stno\n");
+    A("    extern  blk_alloc, blk_free, memcpy  ; per-invocation DATA block runtime\n");
     A("    global  cursor, subject_data, subject_len_val\n");
     A("\n");
     /* subject_data/subject_len_val/cursor: defined here, exported for stmt_rt.c */
@@ -3752,7 +3968,8 @@ static void emit_program(Program *prog) {
             /* If has_eq: assign replacement to subject variable */
             if (s->has_eq && s->subject &&
                 (s->subject->kind == E_VART || s->subject->kind == E_KW)) {
-                const char *fail_target = id_f >= 0 ? sfail_lbl : next_lbl;
+                int has_f_tgt = (id_f >= 0 || (tgt_f && is_special_goto(tgt_f)));
+                const char *fail_target = has_f_tgt ? sfail_lbl : next_lbl;
                 int is_output = strcasecmp(s->subject->sval, "OUTPUT") == 0;
                 /* For keyword LHS (&VAR), NV_SET_fn expects bare name "ANCHOR" not "&ANCHOR" */
                 const char *subj_name = s->subject->sval ? s->subject->sval : "";
@@ -3793,7 +4010,7 @@ static void emit_program(Program *prog) {
                 /* success path */
                 emit_jmp(tgt_s ? tgt_s : tgt_u, next_lbl);
                 /* failure path */
-                if (id_f >= 0) {
+                if (has_f_tgt) {
                     asmL(sfail_lbl);
                     emit_jmp(tgt_f, next_lbl);
                 }
@@ -3802,7 +4019,8 @@ static void emit_program(Program *prog) {
                 /* $expr = val  — indirect assignment.
                  * Parser uses E_INDR (right=operand) for $X in subject position.
                  * E_DOL (left=operand) is the binary capture op; support both. */
-                const char *fail_target = id_f >= 0 ? sfail_lbl : next_lbl;
+                int has_f_tgt = (id_f >= 0 || (tgt_f && is_special_goto(tgt_f)));
+                const char *fail_target = has_f_tgt ? sfail_lbl : next_lbl;
                 /* Eval the name expression → [rbp-16/8] */
                 /* SNOBOL4 parser puts operand in ->children[1] for E_INDR.
                  * Snocone sc_lower puts it in ->children[0].  Accept either. */
@@ -3823,7 +4041,7 @@ static void emit_program(Program *prog) {
                 }
                 A("    SET_VAR_INDIR\n");
                 emit_jmp(tgt_s ? tgt_s : tgt_u, next_lbl);
-                if (id_f >= 0) {
+                if (has_f_tgt) {
                     asmL(sfail_lbl);
                     emit_jmp(tgt_f, next_lbl);
                 }
@@ -3841,9 +4059,8 @@ static void emit_program(Program *prog) {
                  * We stash arr and key in .bss scratch slots to survive the
                  * RHS evaluation (which may clobber [rbp-16/8] and [rbp-32/24]).
                  */
-                const char *fail_target = id_f >= 0 ? sfail_lbl : next_lbl;
-
-                /* Use a unique scratch uid to avoid slot collisions */
+                int has_f_tgt_idx = (id_f >= 0 || (tgt_f && is_special_goto(tgt_f)));
+                const char *fail_target = has_f_tgt_idx ? sfail_lbl : next_lbl;
                 static int idx_uid_counter = 0;
                 int idx_uid = idx_uid_counter++;
 
@@ -3890,7 +4107,7 @@ static void emit_program(Program *prog) {
                 A("    add     rsp, 32\n");         /* pop 4 saved qwords */
                 A("    call    stmt_aset\n");
                 emit_jmp(tgt_s ? tgt_s : tgt_u, next_lbl);
-                if (id_f >= 0) {
+                if (has_f_tgt_idx) {
                     asmL(sfail_lbl);
                     emit_jmp(tgt_f, next_lbl);
                 }
@@ -3898,14 +4115,9 @@ static void emit_program(Program *prog) {
                        s->subject->kind == E_FNC &&
                        s->subject->nchildren == 1 &&
                        s->subject->sval) {
-                /* field(obj) = val  →  stmt_field_set(obj, "field", val)
-                 *
-                 * SysV AMD64 for stmt_field_set(obj, field, val):
-                 *   obj:   rdi=type, rsi=ptr
-                 *   field: rdx = pointer to C string label
-                 *   val:   rcx=type, r8=ptr
-                 */
-                const char *fail_target = id_f >= 0 ? sfail_lbl : next_lbl;
+                /* field(obj) = val  →  stmt_field_set(obj, "field", val) */
+                int has_f_tgt_fnc = (id_f >= 0 || (tgt_f && is_special_goto(tgt_f)));
+                const char *fail_target = has_f_tgt_fnc ? sfail_lbl : next_lbl;
                 const char *flab = str_intern(s->subject->sval);
 
                 /* Evaluate obj → push onto stack */
@@ -3929,7 +4141,7 @@ static void emit_program(Program *prog) {
                 A("    add     rsp, 16\n");         /* pop 2 saved qwords */
                 A("    call    stmt_field_set\n");
                 emit_jmp(tgt_s ? tgt_s : tgt_u, next_lbl);
-                if (id_f >= 0) {
+                if (has_f_tgt_fnc) {
                     asmL(sfail_lbl);
                     emit_jmp(tgt_f, next_lbl);
                 }
@@ -3938,9 +4150,9 @@ static void emit_program(Program *prog) {
                        s->subject->sval &&
                        strcasecmp(s->subject->sval, "ITEM") == 0 &&
                        s->subject->nchildren >= 2) {
-                /* item(arr, key) = val  →  stmt_aset(arr, key, val)
-                 * Same calling convention as E_IDX write path. */
-                const char *fail_target = id_f >= 0 ? sfail_lbl : next_lbl;
+                /* item(arr, key) = val  →  stmt_aset(arr, key, val) */
+                int has_f_tgt_item = (id_f >= 0 || (tgt_f && is_special_goto(tgt_f)));
+                const char *fail_target = has_f_tgt_item ? sfail_lbl : next_lbl;
                 EXPR_t *arr_expr = s->subject->children[0];
                 EXPR_t *key_expr = s->subject->children[1];
 
@@ -3976,7 +4188,7 @@ static void emit_program(Program *prog) {
                 A("    mov     r9,  [rbp-24]\\n");   /* val ptr  */
                 A("    call    stmt_aset\\n");
                 emit_jmp(tgt_s ? tgt_s : tgt_u, next_lbl);
-                if (id_f >= 0) {
+                if (has_f_tgt_item) {
                     asmL(sfail_lbl);
                     emit_jmp(tgt_f, next_lbl);
                 }
@@ -4103,6 +4315,14 @@ static void emit_program(Program *prog) {
 
         /* -- gamma: match succeeded -- */
         asmL(pat_gamma);
+        /* For ? stmts (no replacement): advance scan_start BEFORE SET_CAPTURE.
+         * SET_CAPTURE calls stmt_set_capture (C ABI), trashing rax.
+         * [cursor] memory is safe across the call, but we save it early to
+         * keep the advance adjacent to the match point and avoid confusion. */
+        if (!s->has_eq) {
+            A("    mov     rax, [cursor]\n");
+            A("    mov     [%s], rax\n", scan_start);
+        }
         /* Materialise DOL/NAM captures — only those reachable from this stmt. */
         for (int ci = 0; ci < cap_var_count; ci++) {
             int found = 0;
@@ -4145,6 +4365,15 @@ static void emit_program(Program *prog) {
                 static int tramp_uid = 0;
                 snprintf(tramp, sizeof tramp, "scan_fail_tramp_%d", tramp_uid++);
                 scan_fail = tramp;
+            } else if (scan_fail_tgt && is_special_goto(scan_fail_tgt)) {
+                /* Special goto at top level (e.g. END outside a function):
+                 * label_nasm() can't resolve it — use the known ASM label directly. */
+                if (strcasecmp(scan_fail_tgt, "END") == 0)
+                    scan_fail = "L_SNO_END";
+                else {
+                    /* RETURN/FRETURN outside a function — treat as END */
+                    scan_fail = "L_SNO_END";
+                }
             } else {
                 scan_fail = scan_fail_tgt ? label_nasm(scan_fail_tgt) : next_lbl;
             }
@@ -4215,11 +4444,94 @@ static void emit_program(Program *prog) {
         }
     }
 
+    /* ---- per-box relocation tables ---- */
+    emit_blk_reloc_tables();
+
     /* ---- .data emitted last so all str_intern() calls are captured ---- */
     flush_pending_sep(); emit_sep_major("STRING TABLE");
     A("section .data\n");
     str_emit();
     flt_emit();
+}
+
+/* -----------------------------------------------------------------------
+ * emit_blk_reloc_tables — emit per-box relocation tables (.rodata) and
+ *                        per-box DATA template sections (.data)
+ *
+ * M-T2-EMIT-TABLE: reloc tables have count=0 (entries added by M-T2-INVOKE).
+ * M-T2-EMIT-SPLIT: DATA templates emitted here; box_SAFE_data_template global.
+ * blk_reloc_kind: BLK_RELOC_REL32=1  BLK_RELOC_ABS64=2  (matches blk_reloc.h)
+ * ----------------------------------------------------------------------- */
+static void emit_blk_reloc_tables(void) {
+    /* Collect boxes: named pattern bodies (non-trivial) + is_fn functions */
+    int box_count = 0;
+    for (int i = 0; i < named_pat_count; i++) {
+        if (named_pats[i].is_fn) { box_count++; continue; }
+        if (!named_pats[i].pat) continue;
+        EKind rk = named_pats[i].pat->kind;
+        if (rk==E_QLIT||rk==E_ILIT||rk==E_FLIT||rk==E_NULV||rk==E_VART||rk==E_KW)
+            continue;
+        box_count++;
+    }
+
+    flush_pending_sep(); emit_sep_major("BOX RELOCATION TABLES");
+    A("section .rodata\n");
+
+    if (box_count == 0) {
+        A("; (no named pattern boxes in this program)\n");
+        return;
+    }
+
+    /* .rodata: reloc counts + tables (empty for now — M-T2-INVOKE fills them) */
+    for (int i = 0; i < named_pat_count; i++) {
+        int is_real_box = named_pats[i].is_fn;
+        if (!is_real_box) {
+            if (!named_pats[i].pat) continue;
+            EKind rk = named_pats[i].pat->kind;
+            if (rk==E_QLIT||rk==E_ILIT||rk==E_FLIT||rk==E_NULV||rk==E_VART||rk==E_KW) continue;
+            is_real_box = 1;
+        }
+        if (!is_real_box) continue;
+        A("    global  box_%s_reloc_count, box_%s_reloc_table\n",
+          named_pats[i].safe, named_pats[i].safe);
+    }
+    for (int i = 0; i < named_pat_count; i++) {
+        int is_real_box = named_pats[i].is_fn;
+        if (!is_real_box) {
+            if (!named_pats[i].pat) continue;
+            EKind rk = named_pats[i].pat->kind;
+            if (rk==E_QLIT||rk==E_ILIT||rk==E_FLIT||rk==E_NULV||rk==E_VART||rk==E_KW) continue;
+            is_real_box = 1;
+        }
+        if (!is_real_box) continue;
+        const char *safe = named_pats[i].safe;
+        A("; --- box %s ---\n", named_pats[i].varname);
+        A("box_%s_reloc_count: dq 0\n", safe);
+        A("box_%s_reloc_table:\n", safe);
+        A("; (entries added by M-T2-INVOKE)\n");
+        A("\n");
+    }
+
+    /* .data: per-box DATA templates (M-T2-EMIT-SPLIT) */
+    flush_pending_sep(); emit_sep_major("BOX DATA TEMPLATES");
+    for (int i = 0; i < named_pat_count; i++) {
+        int is_real_box = named_pats[i].is_fn;
+        if (!is_real_box) {
+            if (!named_pats[i].pat) continue;
+            EKind rk = named_pats[i].pat->kind;
+            if (rk==E_QLIT||rk==E_ILIT||rk==E_FLIT||rk==E_NULV||rk==E_VART||rk==E_KW) continue;
+            is_real_box = 1;
+        }
+        if (!is_real_box) continue;
+        const char *safe = named_pats[i].safe;
+        int dsz = box_data_size(safe);
+        if (dsz == 0) {
+            A("; box %s: no DATA slots\n", named_pats[i].varname);
+            continue;
+        }
+        A("    global  box_%s_data_template, box_%s_data_size\n", safe, safe);
+        box_data_emit_section(safe);
+    }
 }
 
 void asm_emit(Program *prog, FILE *f) {
