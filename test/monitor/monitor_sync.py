@@ -129,7 +129,9 @@ def main():
                 else:
                     kind, name, value = rec
                     # Canonical event key: "KIND\x1fNAME\x1fVALUE"
-                    events[i] = f'{kind}\x1f{name}\x1f{value}'
+                    # Normalize name to uppercase: SPITBOL lowercases variable
+                    # names; CSNOBOL4 preserves case. Compare uppercase always.
+                    events[i] = f'{kind}\x1f{name.upper()}\x1f{value}'
                     remaining.remove(i)
 
         step += 1

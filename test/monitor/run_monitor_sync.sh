@@ -118,8 +118,13 @@ GO_PATHS=$(echo $NAMES | tr ' ' '\n' | sed "s|.*|$TMP/&.go|" | tr '\n' ',' | sed
 
 # ── Step 6: launch all 5 participants (background) ───────────────────────
 # Must start before controller so both FIFO ends open simultaneously.
+# Case policy: run both oracles with DEFAULT case settings (fold-on).
+#   CSNOBOL4 default = fold ON (uppercase). Do NOT pass -f (that toggles fold OFF).
+#   SPITBOL   default = -F  (fold ON). Do NOT pass -f (that turns fold OFF).
+# All .sno sources must use uppercase identifiers (DIFFER not differ, etc.).
+# monitor_sync.py normalises trace names to uppercase before comparing.
 MONITOR_READY_PIPE="$TMP/csn.ready" MONITOR_GO_PIPE="$TMP/csn.go" MONITOR_SO="$SO" \
-    snobol4 -f -P256k -I"$INC" "$TMP/instr.sno" \
+    snobol4 -P256k -I"$INC" "$TMP/instr.sno" \
     < "$STDIN_SRC" > "$TMP/csn.out" 2>"$TMP/csn.err" &
 CSN_PID=$!
 

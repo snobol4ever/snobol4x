@@ -23,6 +23,13 @@ static int asm_mode = 0;    /* -asm flag: emit x64 NASM instead of C */
 static int jvm_mode = 0;    /* -jvm flag: emit JVM Jasmin text */
 static int net_mode = 0;    /* -net flag: emit .NET CIL text */
 static int sc_mode  = 0;    /* -sc  flag: Snocone frontend */
+/* Case folding (SPITBOL-compatible switch names):
+ *   -F = fold identifiers to uppercase (DEFAULT; matches SPITBOL/CSNOBOL4 default).
+ *   -f = do not fold (case-sensitive).
+ * Today: accepted, recorded in fold_mode, but lexer does not yet fold at parse
+ * time — runtime folds on lookup so correctness is preserved.
+ * Full parse-time fold is milestone M-SNO2C-FOLD. */
+static int fold_mode = 1;   /* 1=fold(default,-F)  0=no-fold(-f) */
 
 /* Return 1 if filename ends with suffix (case-sensitive). */
 static int ends_with(const char *filename, const char *suffix) {
@@ -71,6 +78,10 @@ int main(int argc, char *argv[]) {
             asm_body_mode = 1;
         } else if (!strcmp(argv[i],"-sc")) {
             sc_mode = 1;
+        } else if (!strcmp(argv[i],"-F")) {
+            fold_mode = 1;   /* fold ON  — default; explicit -F is a no-op */
+        } else if (!strcmp(argv[i],"-f")) {
+            fold_mode = 0;   /* fold OFF — no-op until M-SNO2C-FOLD */
         } else if (argv[i][0]!='-') {
             infile = argv[i];
         } else {

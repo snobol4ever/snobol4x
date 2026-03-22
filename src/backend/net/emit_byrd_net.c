@@ -2126,12 +2126,7 @@ static void net_emit_header(Program *prog) {
     N("    ldloc.0\n");
     N("    callvirt   instance int32 [mscorlib]System.String::get_Length()\n");
     N("    brfalse    Nnmi_done\n");
-    /* new StreamWriter(fifo, append:true); store in net_mon_sw */
-    N("    ldloc.0\n");
-    N("    ldc.i4.1\n");
-    snprintf(nbuf, sizeof nbuf, "    stsfld     class [mscorlib]System.IO.StreamWriter %s::net_mon_sw\n", net_classname);
-    N("%s", nbuf);
-    /* Actually: StreamWriter ctor takes (string path, bool append) */
+    /* new StreamWriter(path, append:true); store in net_mon_sw */
     N("    ldloc.0\n");
     N("    ldc.i4.1\n");
     N("    newobj     instance void [mscorlib]System.IO.StreamWriter::.ctor(string, bool)\n");

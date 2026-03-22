@@ -3136,12 +3136,13 @@ static void jvm_emit_runtime_helpers(void) {
         J("    ifnull Lsmv_done\n");
         J("    getstatic %s\n", monackfd2);
         J("    invokevirtual java/io/InputStream/read()I\n");
-        /* read() returns byte as int (0-255) or -1 on EOF */
-        /* 'S' = 83. Anything != 'G' (71) → exit */
-        J("    dup\n");
+        /* read() returns ack byte as int (0-255) or -1 on EOF */
+        /* 'G' = 71 → continue; anything else → exit(0) */
+        /* Store to local 2 (reuse) so the exit path stack is clean */
+        J("    istore_2\n");
+        J("    iload_2\n");
         J("    bipush 71\n");    /* 'G' */
         J("    if_icmpeq Lsmv_done\n");
-        J("    pop\n");
         J("    iconst_0\n");
         J("    invokestatic java/lang/System/exit(I)V\n");
         J("Lsmv_done:\n");
