@@ -116,45 +116,8 @@ done
 EVT_PATHS=$(echo $NAMES | tr ' ' '\n' | sed "s|.*|$TMP/&.evt|" | tr '\n' ',' | sed 's/,$//')
 ACK_PATHS=$(echo $NAMES | tr ' ' '\n' | sed "s|.*|$TMP/&.ack|" | tr '\n' ',' | sed 's/,$//')
 
-# ── Step 6: launch sync controller ──────────────────────────────────────
-python3 "$MDIR/monitor_sync.py" \
-    "$TIMEOUT" \
-    "csn,spl,asm,jvm,net" \
-    "$EVT_PATHS" \
-    "$ACK_PATHS" &
-CTRL_PID=$!
-
-# Wait for controller to signal READY (it opens all read-FIFOs first)
-# Controller prints "READY\n" to stdout when all event FIFOs have readers
-# and all ack FIFOs are open for writing.
-# We use a simple poll since controller is a child process writing to stdout.
-# Actually: redirect controller stdout to a pipe we read here.
-# Relaunch with stdout captured:
-kill $CTRL_PID 2>/dev/null; wait $CTRL_PID 2>/dev/null
-
-# Relaunch capturing controller stdout for READY signal
-python3 "$MDIR/monitor_sync.py" \
-    "$TIMEOUT" \
-    "csn,spl,asm,jvm,net" \
-    "$EVT_PATHS" \
-    "$ACK_PATHS" > "$TMP/ctrl.out" 2>&1 &
-CTRL_PID=$!
-
-# Poll for READY line (controller opens FIFOs then writes READY)
-READY=0
-for i in $(seq 1 50); do
-    if grep -q "^READY$" "$TMP/ctrl.out" 2>/dev/null; then
-        READY=1; break
-    fi
-    sleep 0.1
-done
-if [[ $READY -eq 0 ]]; then
-    echo "ERROR: controller did not signal READY" >&2
-    kill $CTRL_PID 2>/dev/null
-    exit 2
-fi
-
-# ── Step 7: launch all 5 participants ────────────────────────────────────
+# ── Step 6: launch all 5 participants (background) ───────────────────────
+# Must start before controller so both FIFO ends open simultaneously.
 MONITOR_FIFO="$TMP/csn.evt" MONITOR_ACK_FIFO="$TMP/csn.ack" MONITOR_SO="$SO" \
     snobol4 -f -P256k -I"$INC" "$TMP/instr.sno" \
     < "$STDIN_SRC" > "$TMP/csn.out" 2>"$TMP/csn.err" &
@@ -178,6 +141,14 @@ JVM_PID=$!
 MONITOR_FIFO="$TMP/net.evt" MONITOR_ACK_FIFO="$TMP/net.ack" \
     mono "$exe" < "$STDIN_SRC" > "$TMP/net.out" 2>"$TMP/net.err" &
 NET_PID=$!
+
+# ── Step 7: launch sync controller (opens FIFOs after participants are ready) ─
+python3 "$MDIR/monitor_sync.py" \
+    "$TIMEOUT" \
+    "csn,spl,asm,jvm,net" \
+    "$EVT_PATHS" \
+    "$ACK_PATHS" > "$TMP/ctrl.out" 2>&1 &
+CTRL_PID=$!
 
 # ── Step 8: wait for controller ──────────────────────────────────────────
 wait $CTRL_PID

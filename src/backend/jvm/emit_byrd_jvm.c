@@ -3095,16 +3095,18 @@ static void jvm_emit_runtime_helpers(void) {
 
         /* sno_mon_var(String name, String val) → void
          * Compiled trace pathway: writes "VAR name \"val\"\n" to sno_mon_fd (static field).
-         * sno_mon_fd is opened once at main() entry via sno_mon_init() from MONITOR_FIFO env var.
-         * No-op if sno_mon_fd is null.
-         * Mirrors comm_var() in snobol4.c / ASM runtime pathway. */
+         * Sync-step: after write, blocks reading 1 byte from sno_mon_ack_fd.
+         * 'G' → return normally. 'S' or error → call System.exit(0).
+         * sno_mon_fd/sno_mon_ack_fd opened once at main() entry via sno_mon_init().
+         * No-op if sno_mon_fd is null. */
         J(".method static sno_mon_var(Ljava/lang/String;Ljava/lang/String;)V\n");
         J("    .limit stack 6\n");
         J("    .limit locals 3\n");
         /* local 0=name, 1=val, 2=line bytes */
-        char monfd[512];
-        snprintf(monfd, sizeof monfd, "%s/sno_mon_fd Ljava/io/OutputStream;", jvm_classname);
-        J("    getstatic %s\n", monfd);
+        char monfd2[512], monackfd2[512];
+        snprintf(monfd2,    sizeof monfd2,    "%s/sno_mon_fd Ljava/io/OutputStream;", jvm_classname);
+        snprintf(monackfd2, sizeof monackfd2, "%s/sno_mon_ack_fd Ljava/io/InputStream;", jvm_classname);
+        J("    getstatic %s\n", monfd2);
         J("    ifnull Lsmv_done\n");
         /* Build: "VAR " + name + " \"" + val + "\"\n" */
         J("    new java/lang/StringBuilder\n");
@@ -3124,9 +3126,22 @@ static void jvm_emit_runtime_helpers(void) {
         J("    ldc \"UTF-8\"\n");
         J("    invokevirtual java/lang/String/getBytes(Ljava/lang/String;)[B\n");
         J("    astore_2\n");
-        J("    getstatic %s\n", monfd);
+        J("    getstatic %s\n", monfd2);
         J("    aload_2\n");
         J("    invokevirtual java/io/OutputStream/write([B)V\n");
+        /* Sync-step: read 1-byte ack. 'S' or error → exit(0). */
+        J("    getstatic %s\n", monackfd2);
+        J("    ifnull Lsmv_done\n");
+        J("    getstatic %s\n", monackfd2);
+        J("    invokevirtual java/io/InputStream/read()I\n");
+        /* read() returns byte as int (0-255) or -1 on EOF */
+        /* 'S' = 83. Anything != 'G' (71) → exit */
+        J("    dup\n");
+        J("    bipush 71\n");    /* 'G' */
+        J("    if_icmpeq Lsmv_done\n");
+        J("    pop\n");
+        J("    iconst_0\n");
+        J("    invokestatic java/lang/System/exit(I)V\n");
         J("Lsmv_done:\n");
         J("    return\n");
         J(".end method\n\n");
@@ -3996,6 +4011,8 @@ static void jvm_emit_header(Program *prog) {
     J(".field static sno_data_types Ljava/util/HashMap;\n");
     /* Monitor trace fd — opened once from MONITOR_FIFO env var, null if not set */
     J(".field static sno_mon_fd Ljava/io/OutputStream;\n");
+    /* Monitor ack fd (sync-step) — opened once from MONITOR_ACK_FIFO env var, null if not set */
+    J(".field static sno_mon_ack_fd Ljava/io/InputStream;\n");
 
     /* static fields for SNOBOL4 variables */
     for (int i = 0; i < jvm_nvar; i++) {
@@ -4053,11 +4070,13 @@ static void jvm_emit_header(Program *prog) {
      * Called from main() before any statements so FIFO is ready before first var write.
      * Separate from <clinit> because FileOutputStream open blocks on FIFO until
      * monitor_collect.py has the read side open — must happen at runtime, not class-load. */
-    char monfd[512];
-    snprintf(monfd, sizeof monfd, "%s/sno_mon_fd Ljava/io/OutputStream;", jvm_classname);
+    char monfd[512], monackfd[512];
+    snprintf(monfd,    sizeof monfd,    "%s/sno_mon_fd Ljava/io/OutputStream;", jvm_classname);
+    snprintf(monackfd, sizeof monackfd, "%s/sno_mon_ack_fd Ljava/io/InputStream;", jvm_classname);
     J(".method static sno_mon_init()V\n");
     J("    .limit stack 6\n");
     J("    .limit locals 2\n");
+    /* Open event FIFO (MONITOR_FIFO) */
     J("    ldc \"MONITOR_FIFO\"\n");
     J("    invokestatic java/lang/System/getenv(Ljava/lang/String;)Ljava/lang/String;\n");
     J("    astore_0\n");
@@ -4072,6 +4091,20 @@ static void jvm_emit_header(Program *prog) {
     J("    iconst_1\n");
     J("    invokespecial java/io/FileOutputStream/<init>(Ljava/lang/String;Z)V\n");
     J("    putstatic %s\n", monfd);
+    /* Open ack FIFO (MONITOR_ACK_FIFO) for sync-step — blocks until controller opens write end */
+    J("    ldc \"MONITOR_ACK_FIFO\"\n");
+    J("    invokestatic java/lang/System/getenv(Ljava/lang/String;)Ljava/lang/String;\n");
+    J("    astore_1\n");
+    J("    aload_1\n");
+    J("    ifnull Lsmi_done\n");
+    J("    aload_1\n");
+    J("    invokevirtual java/lang/String/isEmpty()Z\n");
+    J("    ifne Lsmi_done\n");
+    J("    new java/io/FileInputStream\n");
+    J("    dup\n");
+    J("    aload_1\n");
+    J("    invokespecial java/io/FileInputStream/<init>(Ljava/lang/String;)V\n");
+    J("    putstatic %s\n", monackfd);
     J("Lsmi_done:\n");
     J("    return\n");
     J(".end method\n\n");

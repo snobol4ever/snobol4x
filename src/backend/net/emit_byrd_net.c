@@ -2033,6 +2033,9 @@ static void net_emit_header(Program *prog) {
     N("  .field static string kw_anchor\n");
     N("  .field static class [mscorlib]System.Collections.Generic.Dictionary`2<string,string> sno_vars\n");
     N("  .field static class [mscorlib]System.Collections.Generic.Dictionary`2<string,class [mscorlib]System.Collections.Generic.Dictionary`2<string,string>> sno_arrays\n");
+    /* Monitor static fields — opened once at startup, null if not set */
+    N("  .field static class [mscorlib]System.IO.StreamWriter net_mon_sw\n");
+    N("  .field static class [mscorlib]System.IO.Stream net_mon_ack\n");
     N("\n");
 
     /* Static initialiser: set all variables to "" */
@@ -2105,22 +2108,65 @@ static void net_emit_header(Program *prog) {
     N("    ret\n");
     N("  }\n\n");
 
-    /* net_mon_var(string name, string val) -> void
-     * Compiled trace pathway: writes "VAR name \"val\"\n" to MONITOR_FIFO.
-     * Gated on Environment.GetEnvironmentVariable("MONITOR_FIFO") — no-op if unset.
-     * Mirrors comm_var() in snobol4.c for the ASM/C runtime pathway. */
-    N("  .method static void net_mon_var(string name, string val) cil managed\n");
+    /* net_mon_init() — opens MONITOR_FIFO (StreamWriter) and MONITOR_ACK_FIFO (FileStream)
+     * once at startup. Mirrors sno_mon_init() in JVM backend and comm_var init in snobol4.c.
+     * Called from main() before any statements. */
+    {
+    char nbuf[512];
+    N("  .method static void net_mon_init() cil managed\n");
     N("  {\n");
     N("    .maxstack 8\n");
-    N("    .locals init (string V_fifo, string V_line, class [mscorlib]System.IO.StreamWriter V_sw)\n");
-    /* local 0=fifo path, local 1=line string, local 2=StreamWriter */
+    N("    .locals init (string V_fifo, string V_ack)\n");
+    /* Open event FIFO (MONITOR_FIFO) */
     N("    ldstr      \"MONITOR_FIFO\"\n");
     N("    call       string [mscorlib]System.Environment::GetEnvironmentVariable(string)\n");
     N("    stloc.0\n");
     N("    ldloc.0\n");
-    N("    brfalse    Nmv_done\n");
+    N("    brfalse    Nnmi_done\n");
     N("    ldloc.0\n");
     N("    callvirt   instance int32 [mscorlib]System.String::get_Length()\n");
+    N("    brfalse    Nnmi_done\n");
+    /* new StreamWriter(fifo, append:true); store in net_mon_sw */
+    N("    ldloc.0\n");
+    N("    ldc.i4.1\n");
+    snprintf(nbuf, sizeof nbuf, "    stsfld     class [mscorlib]System.IO.StreamWriter %s::net_mon_sw\n", net_classname);
+    N("%s", nbuf);
+    /* Actually: StreamWriter ctor takes (string path, bool append) */
+    N("    ldloc.0\n");
+    N("    ldc.i4.1\n");
+    N("    newobj     instance void [mscorlib]System.IO.StreamWriter::.ctor(string, bool)\n");
+    snprintf(nbuf, sizeof nbuf, "    stsfld     class [mscorlib]System.IO.StreamWriter %s::net_mon_sw\n", net_classname);
+    N("%s", nbuf);
+    /* Open ack FIFO (MONITOR_ACK_FIFO) as FileStream read-only */
+    N("    ldstr      \"MONITOR_ACK_FIFO\"\n");
+    N("    call       string [mscorlib]System.Environment::GetEnvironmentVariable(string)\n");
+    N("    stloc.1\n");
+    N("    ldloc.1\n");
+    N("    brfalse    Nnmi_done\n");
+    N("    ldloc.1\n");
+    N("    callvirt   instance int32 [mscorlib]System.String::get_Length()\n");
+    N("    brfalse    Nnmi_done\n");
+    N("    ldloc.1\n");
+    N("    ldc.i4.3\n");   /* FileMode.Open = 3 */
+    N("    ldc.i4.1\n");   /* FileAccess.Read = 1 */
+    N("    newobj     instance void [mscorlib]System.IO.FileStream::.ctor(string, valuetype [mscorlib]System.IO.FileMode, valuetype [mscorlib]System.IO.FileAccess)\n");
+    snprintf(nbuf, sizeof nbuf, "    stsfld     class [mscorlib]System.IO.Stream %s::net_mon_ack\n", net_classname);
+    N("%s", nbuf);
+    N("  Nnmi_done:\n");
+    N("    ret\n");
+    N("  }\n\n");
+
+    /* net_mon_var(string name, string val) -> void
+     * Compiled trace pathway: writes "VAR name \"val\"\n" to net_mon_sw (static StreamWriter).
+     * Sync-step: after write+flush, reads 1 byte from net_mon_ack.
+     * 'G' (71) → return. Anything else → Environment.Exit(0).
+     * net_mon_sw/net_mon_ack opened once at startup via net_mon_init(). No-op if null. */
+    N("  .method static void net_mon_var(string name, string val) cil managed\n");
+    N("  {\n");
+    N("    .maxstack 8\n");
+    N("    .locals init (string V_line, int32 V_ack)\n");
+    snprintf(nbuf, sizeof nbuf, "    ldsfld     class [mscorlib]System.IO.StreamWriter %s::net_mon_sw\n", net_classname);
+    N("%s", nbuf);
     N("    brfalse    Nmv_done\n");
     /* Build: "VAR " + name + " \"" + val + "\"\n" */
     N("    newobj     instance void [mscorlib]System.Text.StringBuilder::.ctor()\n");
@@ -2135,23 +2181,32 @@ static void net_emit_header(Program *prog) {
     N("    ldstr      \"\\\"\\n\"\n");
     N("    callvirt   instance class [mscorlib]System.Text.StringBuilder [mscorlib]System.Text.StringBuilder::Append(string)\n");
     N("    callvirt   instance string [mscorlib]System.Text.StringBuilder::ToString()\n");
-    N("    stloc.1\n");
-    /* Open FIFO (append=true), write line, flush, close */
+    N("    stloc.0\n");
+    snprintf(nbuf, sizeof nbuf, "    ldsfld     class [mscorlib]System.IO.StreamWriter %s::net_mon_sw\n", net_classname);
+    N("%s", nbuf);
     N("    ldloc.0\n");
-    N("    ldc.i4.1\n");
-    N("    newobj     instance void [mscorlib]System.IO.StreamWriter::.ctor(string, bool)\n");
-    N("    stloc.2\n");
-    N("    ldloc.2\n");
-    N("    ldloc.1\n");
     N("    callvirt   instance void [mscorlib]System.IO.TextWriter::Write(string)\n");
-    N("    ldloc.2\n");
+    snprintf(nbuf, sizeof nbuf, "    ldsfld     class [mscorlib]System.IO.StreamWriter %s::net_mon_sw\n", net_classname);
+    N("%s", nbuf);
     N("    callvirt   instance void [mscorlib]System.IO.StreamWriter::Flush()\n");
-    N("    ldloc.2\n");
-    N("    callvirt   instance void [mscorlib]System.IO.StreamWriter::Close()\n");
+    /* Sync-step: read 1-byte ack */
+    snprintf(nbuf, sizeof nbuf, "    ldsfld     class [mscorlib]System.IO.Stream %s::net_mon_ack\n", net_classname);
+    N("%s", nbuf);
+    N("    brfalse    Nmv_done\n");
+    snprintf(nbuf, sizeof nbuf, "    ldsfld     class [mscorlib]System.IO.Stream %s::net_mon_ack\n", net_classname);
+    N("%s", nbuf);
+    N("    callvirt   instance int32 [mscorlib]System.IO.Stream::ReadByte()\n");
+    N("    stloc.1\n");
+    N("    ldloc.1\n");
+    N("    ldc.i4     71\n");   /* 'G' */
+    N("    beq        Nmv_done\n");
+    N("    ldc.i4.0\n");
+    N("    call       void [mscorlib]System.Environment::Exit(int32)\n");
     N("  Nmv_done:\n");
     N("    ret\n");
     N("  }\n\n");
     (void)prog;
+    } /* end nbuf scope */
 }
 
 static void net_emit_main_open(void) {
@@ -2173,6 +2228,8 @@ static void net_emit_main_open(void) {
     N("                  string V_24, string V_25, string V_26, string V_27,\n");
     N("                  string V_28, string V_29)\n");
     N("\n");
+    /* Open monitor FIFOs once before any statements — sync-step compiled trace pathway */
+    N("    call       void %s::net_mon_init()\n", net_classname);
 }
 
 static void net_emit_main_close(void) {
