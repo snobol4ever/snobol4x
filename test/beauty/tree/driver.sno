@@ -1,0 +1,52 @@
+-INCLUDE 'global.sno'
+-INCLUDE 'is.sno'
+-INCLUDE 'tree.sno'
+        &STLIMIT = 1000000
+
+*  1: MakeLeaf creates node with correct t, v, n=0
+        leaf = MakeLeaf('Id', 'foo')
+        IDENT(t(leaf), 'Id')                              :S(P1a)
+        OUTPUT = 'FAIL: 1a leaf type'                    :(T1)
+P1a     IDENT(v(leaf), 'foo')                             :S(P1b)
+        OUTPUT = 'FAIL: 1b leaf value'                   :(T1)
+P1b     IDENT(n(leaf), 0)                                 :S(P1)
+        OUTPUT = 'FAIL: 1c leaf nchildren'               :(T1)
+P1      OUTPUT = 'PASS: 1 MakeLeaf t/v/n'
+T1
+
+*  2: MakeNode with 2 children
+        ch1 = MakeLeaf('Id', 'x')
+        ch2 = MakeLeaf('Integer', '42')
+        kids = ARRAY('1:2')
+        kids[1] = ch1
+        kids[2] = ch2
+        nd = MakeNode('BinOp', '+', 2, kids)
+        IDENT(t(nd), 'BinOp')                             :S(P2a)
+        OUTPUT = 'FAIL: 2a node type'                    :(T2)
+P2a     IDENT(n(nd), 2)                                   :S(P2b)
+        OUTPUT = 'FAIL: 2b nchildren'                    :(T2)
+P2b     IDENT(t(c(nd)[1]), 'Id')                          :S(P2c)
+        OUTPUT = 'FAIL: 2c child1 type'                  :(T2)
+P2c     IDENT(t(c(nd)[2]), 'Integer')                     :S(P2)
+        OUTPUT = 'FAIL: 2d child2 type'                  :(T2)
+P2      OUTPUT = 'PASS: 2 MakeNode with children'
+T2
+
+*  3: DIFFER guard on real node (non-null)
+        DIFFER(leaf)                                       :S(P3)
+        OUTPUT = 'FAIL: 3 DIFFER on node'               :(T3)
+P3      OUTPUT = 'PASS: 3 DIFFER guard'
+T3
+
+*  4: field update
+        leaf2 = MakeLeaf('X', 'y')
+        t(leaf2) = 'Label'
+        v(leaf2) = 'done'
+        IDENT(t(leaf2), 'Label')                          :S(P4a)
+        OUTPUT = 'FAIL: 4a t update'                     :(T4)
+P4a     IDENT(v(leaf2), 'done')                           :S(P4)
+        OUTPUT = 'FAIL: 4b v update'                     :(T4)
+P4      OUTPUT = 'PASS: 4 field update'
+T4
+
+END

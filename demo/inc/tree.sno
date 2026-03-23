@@ -1,0 +1,16 @@
+*---------------------------------------------------------------------------------------------------
+* tree.sno — Tree node data structure for beauty.sno
+*
+* Node fields: t=type, v=value, n=nchildren, c=children ARRAY (1..n)
+* Field accessors t(), v(), n(), c() registered by DATA().
+* Constructor functions: MakeNode(t,v,n,c)  MakeLeaf(t,v)
+*---------------------------------------------------------------------------------------------------
+               DATA('treeNode(t,v,n,c)')
+               DEFINE('MakeNode(nodeT,nodeV,nodeN,nodeC)')
+               DEFINE('MakeLeaf(nodeT,nodeV)')                                      :(treeEnd)
+*
+MakeNode       MakeNode        =  treeNode(nodeT, nodeV, nodeN, nodeC)              :(RETURN)
+*
+MakeLeaf       MakeLeaf        =  treeNode(nodeT, nodeV, 0, ARRAY('1:0'))           :(RETURN)
+*
+treeEnd

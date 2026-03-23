@@ -701,7 +701,10 @@ static DESCR_t _b_DATA(DESCR_t *a, int n) {
 
     if (_data_ntypes >= DATA_MAX_TYPES) return NULVCL;
     int tidx = _data_ntypes++;
-    _data_types[tidx].typename = GC_strdup(tname);
+    /* CSNOBOL4 returns DATATYPE as uppercase — uppercase the typename now */
+    char *uname = GC_strdup(tname);
+    for (char *p = uname; *p; p++) *p = (char)toupper((unsigned char)*p);
+    _data_types[tidx].typename = uname;
 
     /* Parse fields */
     int nf = 0;
@@ -1305,7 +1308,10 @@ void DEFDAT_fn(const char *spec) {
     if (close) *close = '\0';
 
     DATBLK_t *t = GC_malloc(sizeof(DATBLK_t));
-    t->name = GC_strdup(name);
+    /* Uppercase name to match CSNOBOL4 DATATYPE() behavior */
+    char *uname = GC_strdup(name);
+    for (char *p = uname; *p; p++) *p = (char)toupper((unsigned char)*p);
+    t->name = uname;
 
     /* Count and extract fields */
     int nfields = 0;
