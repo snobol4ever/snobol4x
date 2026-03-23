@@ -270,6 +270,7 @@ static DESCR_t _b_LNE(DESCR_t *a, int n) {
 }
 static DESCR_t _b_HOST(DESCR_t *a, int n) {
     /* HOST(0) = command args string, HOST(1) = PID, HOST(3) = argc */
+    /* HOST(4, name) = getenv(name) — used by monitor preamble */
     if (n < 1) return NULVCL;
     int64_t selector = to_int(a[0]);
     if (selector == 0) return STRVAL(GC_strdup(""));
@@ -278,6 +279,13 @@ static DESCR_t _b_HOST(DESCR_t *a, int n) {
         return STRVAL(GC_strdup(buf));
     }
     if (selector == 3) return INTVAL(0);
+    if (selector == 4 && n >= 2) {
+        const char *envname = VARVAL_fn(a[1]);
+        if (!envname || !*envname) return NULVCL;
+        const char *val = getenv(envname);
+        if (!val) return NULVCL;
+        return STRVAL(GC_strdup(val));
+    }
     return NULVCL;
 }
 static DESCR_t _b_ENDFILE(DESCR_t *a, int n) {

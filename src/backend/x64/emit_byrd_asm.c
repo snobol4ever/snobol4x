@@ -794,6 +794,7 @@ struct NamedPat {
     int  nlocals;
     char local_names[MAX_PARAMS][64]; /* local variable names (after ')' in prototype) */
     char body_label[NAME_LEN + 16]; /* NASM label of function body entry */
+    int  uses_nreturn;               /* 1 = function has :(NRETURN) path */
 };
 
 static const NamedPat *named_pat_lookup(const char *varname);
@@ -2345,6 +2346,38 @@ static void scan_named_patterns(Program *prog) {
             }
         }
     }
+
+    /* Second pass: detect which user functions use NRETURN.
+     * Walk all statements; when inside a named-function body (between its
+     * entry label and the next label), check goto targets for NRETURN. */
+    {
+        NamedPat *cur_np = NULL;
+        for (STMT_t *s = prog->head; s; s = s->next) {
+            /* Entering a labeled statement — check if this label is a function entry */
+            if (s->label && s->label[0]) {
+                NamedPat *found = NULL;
+                for (int i = 0; i < named_pat_count; i++) {
+                    if (named_pats[i].is_fn &&
+                        strcasecmp(named_pats[i].varname, s->label) == 0) {
+                        found = &named_pats[i];
+                        break;
+                    }
+                }
+                if (found) cur_np = found;
+                else cur_np = NULL; /* new label = new block, not this fn */
+            }
+            if (!cur_np) continue;
+            /* Check all goto targets for NRETURN */
+            if (s->go) {
+                const char *targets[3] = {s->go->onsuccess, s->go->onfailure, s->go->uncond};
+                for (int ti = 0; ti < 3; ti++) {
+                    if (targets[ti] && strcasecmp(targets[ti], "NRETURN") == 0) {
+                        cur_np->uses_nreturn = 1;
+                    }
+                }
+            }
+        }
+    }
 }
 
 /* -----------------------------------------------------------------------
@@ -2943,6 +2976,14 @@ static int emit_expr(EXPR_t *e, int rbp_off) {
              * Fix: B-263. Restore outer subject globals first (B-263 icase fix). */
             A("    call    stmt_restore_subject\n");
             A("    GET_VAR     %s\n", fnlab);
+            /* NRETURN: function returned a NAME (l-value string). Resolve it
+             * via indirection so caller gets value($(retvar)) not retvar itself. */
+            if (ufn->uses_nreturn) {
+                A("    mov     rdi, [rbp-16]\n");
+                A("    mov     rsi, [rbp-8]\n");
+                A("    call    stmt_get_indirect\n");
+                A("    STORE_RESULT16\n");
+            }
             /* Restore old param values from stack */
             for (int ai = 0; ai < actual_args; ai++) {
                 const char *plab = str_intern(ufn->param_names[ai]);
@@ -3594,6 +3635,31 @@ static int emit_expr(EXPR_t *e, int rbp_off) {
         return 1;
     }
 
+    case E_INDR: {
+        /* $X — indirect read in value context.
+         * Parser puts operand in children[1] (SNOBOL4 front) or children[0] (snocone).
+         * Emits: name_expr → [rbp-48/40] (temp), then call stmt_get_indirect → rax:rdx. */
+        EXPR_t *name_expr = (e->nchildren > 1 && e->children[1])
+                            ? e->children[1] : e->children[0];
+        /* Use a deeper temp slot for the name so we don't clobber rbp_off slot */
+        A("    sub     rsp, 16\n");          /* temp frame for name */
+        emit_expr(name_expr, -32);           /* name → [rbp-32/24] */
+        A("    mov     rdi, [rbp-32]\n");
+        A("    mov     rsi, [rbp-24]\n");
+        A("    call    stmt_get_indirect\n");
+        A("    add     rsp, 16\n");          /* pop temp frame */
+        /* Write result (rax:rdx) to the requested slot */
+        if (rbp_off == -16) {
+            A("    STORE_RESULT16\n");
+        } else if (rbp_off == -32) {
+            A("    STORE_RESULT\n");
+        } else {
+            A("    mov     [rbp%+d], rax\n", rbp_off);
+            A("    mov     [rbp%+d], rdx\n", rbp_off+8);
+        }
+        return 1;
+    }
+
     fallback:
     default:
         /* Fallback: emit NULVCL — complex exprs not yet supported */
@@ -3639,7 +3705,7 @@ static void emit_jmp(const char *tgt, const char *fallthrough) {
                        strcasecmp(tgt,"FRETURN")==0 ||
                        strcasecmp(tgt,"NRETURN")==0)) {
         char lbl[NAME_LEN + 32];
-        if (strcasecmp(tgt,"RETURN")==0)
+        if (strcasecmp(tgt,"RETURN")==0 || strcasecmp(tgt,"NRETURN")==0)
             snprintf(lbl, sizeof lbl, "fn_%s_γ", cur_fn->safe);
         else
             snprintf(lbl, sizeof lbl, "fn_%s_ω", cur_fn->safe);
@@ -3664,7 +3730,8 @@ static void prog_emit_goto(const char *target, const char *fallthrough) {
         strcasecmp(target,"NRETURN")==0 || strcasecmp(target,"SRETURN")==0) {
         if (cur_fn) {
             char lbl[NAME_LEN + 32];
-            if (strcasecmp(target,"RETURN")==0 || strcasecmp(target,"SRETURN")==0)
+            if (strcasecmp(target,"RETURN")==0 || strcasecmp(target,"SRETURN")==0 ||
+                strcasecmp(target,"NRETURN")==0)
                 snprintf(lbl, sizeof lbl, "fn_%s_γ", cur_fn->safe);
             else
                 snprintf(lbl, sizeof lbl, "fn_%s_ω", cur_fn->safe);
@@ -3912,7 +3979,7 @@ static void emit_program(Program *prog) {
     A("%%include \"snobol4_asm.mac\"\n");
     A("    global  main\n");
     A("    extern  stmt_init, stmt_strval, stmt_intval\n");
-    A("    extern  stmt_realval, stmt_set_null, stmt_set_indirect\n");
+    A("    extern  stmt_realval, stmt_set_null, stmt_set_indirect, stmt_get_indirect\n");
     A("    extern  stmt_get, stmt_set, stmt_output, stmt_input\n");
     A("    extern  stmt_concat, stmt_is_fail, stmt_finish\n");
     A("    extern  stmt_realval, stmt_set_null, stmt_set_indirect\n");

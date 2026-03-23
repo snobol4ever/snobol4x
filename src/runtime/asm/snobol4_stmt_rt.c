@@ -97,6 +97,13 @@ void stmt_set_indirect(DESCR_t name_val, DESCR_t val) {
     NV_SET_fn(s, val);
 }
 
+/* ---- indirect read ($name → value of variable named by name_val) ---- */
+DESCR_t stmt_get_indirect(DESCR_t name_val) {
+    const char *s = VARVAL_fn(name_val);
+    if (!s || !*s) return NULVCL;
+    return NV_GET_fn(s);
+}
+
 
 
 /* ---- POS(variable) — fetch var, coerce to int, compare with cursor ---- */
@@ -275,12 +282,14 @@ DESCR_t stmt_concat(DESCR_t a, DESCR_t b) {
         DESCR_t pb = (b.v == DT_P) ? b : pat_lit(VARVAL_fn(b));
         return pat_cat(pa, pb);
     }
-    /* Both must be string-ish; convert integers to string first */
+    /* Identity: "" concat X = X (preserves X's type — SNOBOL4 standard) */
     const char *sa = VARVAL_fn(a);
     const char *sb = VARVAL_fn(b);
     if (!sa) sa = "";
     if (!sb) sb = "";
     size_t la = strlen(sa), lb = strlen(sb);
+    if (la == 0) return b;   /* "" || X  → X unchanged */
+    if (lb == 0) return a;   /* X  || "" → X unchanged */
     char *buf = GC_MALLOC_ATOMIC(la + lb + 1);
     memcpy(buf, sa, la);
     memcpy(buf + la, sb, lb);
