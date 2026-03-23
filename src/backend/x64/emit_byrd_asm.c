@@ -4912,9 +4912,21 @@ static void emit_pl_term_load(EXPR_t *e, int frame_base_words) {
  * C-ABI function (emitted by emit_prolog_choice) using a switch table.
  * This function emits the per-clause block within that switch.
  * ---------------------------------------------------------------------- */
+/* Continuation encoding for Prolog _r functions.
+ *
+ * Each clause has a "base" start value. Dispatch finds the right clause.
+ * - Fact / builtin-only clause: occupies exactly 1 slot (base, base+1 → next clause).
+ *   γ returns base+1 (= next clause's base).
+ * - Body-user-call clause: open-ended. base = start of this clause's range.
+ *   inner = start - base (0=fresh, k+1 = resume sub-call at sub_cs=k).
+ *   γ returns base + sub_cs + 1.
+ *
+ * emit_prolog_choice computes base[] at emit time and passes it into
+ * emit_prolog_clause_block via the base parameter. */
+
 static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                                      const char *pred_safe, int arity,
-                                     const char *omega_lbl) {
+                                     const char *omega_lbl, int base) {
     if (!clause) return;
     int n_vars = (int)clause->ival;
     int nbody  = clause->nchildren - arity;
@@ -4927,7 +4939,24 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
     else
         snprintf(next_clause, sizeof next_clause, "%s",            omega_lbl);
 
-    A("\n; --- clause %d/%d  n_vars=%d ---\n", idx+1, total, n_vars);
+    /* Count body user-calls (non-builtin E_FNC goals) to decide gamma encoding */
+    int body_user_call_count = 0;
+    for (int bi = 0; bi < nbody; bi++) {
+        EXPR_t *g = clause->children[arity + bi];
+        if (!g || g->kind != E_FNC || !g->sval) continue;
+        const char *gn = g->sval;
+        if (strcmp(gn,"write")==0||strcmp(gn,"nl")==0||strcmp(gn,"writeln")==0||
+            strcmp(gn,"true")==0||strcmp(gn,"fail")==0||strcmp(gn,"halt")==0||
+            strcmp(gn,"is")==0||strcmp(gn,"=")==0||strcmp(gn,"!")==0||
+            strcmp(gn,"<")==0||strcmp(gn,">")==0||strcmp(gn,"=<")==0||
+            strcmp(gn,">=")==0||strcmp(gn,"=:=")==0||strcmp(gn,"=\\=")==0||
+            strcmp(gn,",")==0||strcmp(gn,";")==0) continue;
+        if (g->kind == E_CUT) continue;
+        body_user_call_count++;
+    }
+
+    A("\n; --- clause %d/%d  n_vars=%d body_ucalls=%d ---\n",
+      idx+1, total, n_vars, body_user_call_count);
     A("; clause %d entry\n", idx);
     A("%s:\n", this_alpha);
 
@@ -5317,7 +5346,7 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                     if (uca > 0) A("    add     rsp, %d\n", ALIGN16(uca*8));
                     A("    test    eax, eax\n");
                     A("    js      %s\n", else_lbl);
-                    A("    inc     eax\n");
+                    /* eax is already the STRIDE-encoded next resume point — save directly */
                     A("    mov     [rbp - 32], eax\n");
 
                     /* Post-call goals — failure loops back to retry */
@@ -5484,12 +5513,17 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
             #undef EMIT_CMP
             /* --- user-defined predicate call --- */
             {
-                /* Build args array on stack, call pl_NAME_ARITY_r */
+                /* Build args array on stack, call pl_NAME_ARITY_r
+                 * Pass inner_start from [rbp-32] so recursive calls resume correctly.
+                 * On success, return encoded start = clause_idx * PL_STRIDE + (sub_ret + 1).
+                 * On re-entry with inner_start > 0, pass sub_start = inner_start - 1 to sub-call. */
                 char call_safe_fa[300]; snprintf(call_safe_fa, sizeof call_safe_fa, "%s/%d", fn, garity);
                 char call_safe[256];
                 snprintf(call_safe, sizeof call_safe, "%s", pl_safe(call_safe_fa));
                 char fail_lbl[128];
                 snprintf(fail_lbl, sizeof fail_lbl, "pl_%s_c%d_bfail%d", pred_safe, idx, bi);
+                char resume_lbl[128];
+                snprintf(resume_lbl, sizeof resume_lbl, "pl_%s_c%d_bres%d", pred_safe, idx, bi);
                 /* push args in reverse then pass array ptr */
                 if (garity > 0) {
                     int alloc = ALIGN16(garity*8);
@@ -5504,12 +5538,22 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                     A("    xor     rdi, rdi               ; no args\n");
                 }
                 A("    lea     rsi, [rel pl_trail]\n");
-                A("    xor     edx, edx                   ; start=0\n");
+                /* sub_cs = start - base - 1  (start in [rbp-32], base=%d is compile-time)
+                 * start == base  → fresh call  (sub_cs=0, but we subtract base+1 → -1, clamp to 0)
+                 * start > base   → resume, sub_cs = start - base - 1 */
+                A("    mov     edx, [rbp - 32]            ; raw start\n");
+                A("    sub     edx, %d                    ; start - (base+1)\n", base + 1);
+                A("    jge     %s                         ; >= 0: resume with sub_cs\n", resume_lbl);
+                A("    xor     edx, edx                   ; fresh call: sub_cs=0\n");
+                A("%s:\n", resume_lbl);
+                A("    ; edx = sub_cs\n");
                 A("    call    pl_%s_r\n", call_safe);
                 if (garity > 0)
                     A("    add     rsp, %d\n", ALIGN16(garity*8));
                 A("    test    eax, eax\n");
                 A("    js      %s\n", fail_lbl);
+                /* success: save sub_ret+1 as new inner_start for next resume */
+                A("    mov     [rbp - 32], eax\n");
                 A("    jmp     pl_%s_c%d_bsucc%d\n", pred_safe, idx, bi);
                 A("%s:\n", fail_lbl);
                 A("    lea     rdi, [rel pl_trail]\n");
@@ -5521,11 +5565,21 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
         }
     }
 
-    /* γ — body succeeded: return clause index */
-    A("    ; gamma — success: return clause index %d\n", idx);
+    /* γ — body succeeded */
+    A("    ; gamma — success clause %d (base=%d body_ucalls=%d)\n",
+      idx, base, body_user_call_count);
+    if (body_user_call_count == 0) {
+        /* Fact / builtin-only: 1 slot. γ returns base+1 = next clause's base. */
+        A("    mov     eax, %d               ; base+1 → next clause\n", base + 1);
+    } else {
+        /* Body-call clause: γ returns base + sub_cs + 1.
+         * sub_cs is the raw return from the sub-call, stored in [rbp-32]. */
+        A("    mov     eax, [rbp - 32]       ; sub_cs from body call\n");
+        A("    inc     eax                   ; sub_cs + 1\n");
+        A("    add     eax, %d               ; + base\n", base);
+    }
     A("    mov     rsp, rbp\n");
     A("    pop     rbp\n");
-    A("    mov     eax, %d\n", idx);
     A("    ret\n");
 }
 
@@ -5623,18 +5677,80 @@ static void emit_prolog_choice(EXPR_t *choice) {
         A("    mov     [rbp - 32], %s     ; save start\n", argregs[start_reg_idx]);
     }
 
-    /* switch on start — emit jmp table via a series of cmp/je */
-    A("    mov     eax, [rbp - 32]       ; start value\n");
-    for (int ci = 0; ci < nclauses; ci++) {
-        A("    cmp     eax, %d\n", ci);
-        A("    je      pl_%s_c%d_α\n", safe, ci);
+    /* Compute base[] for each clause.
+     * Fact/builtin-only clause: 1 slot → next base = base + 1.
+     * Body-call clause: open-ended → next base = base + 1 (conservative: base
+     * just marks entry, inner is open). We use base+1 as the next clause's base
+     * regardless, since a body-call clause can return any value >= base+1 and
+     * the next clause dispatch checks start >= base[next]. */
+    int base[64];
+    if (nclauses > 64) nclauses = 64;  /* safety */
+    base[0] = 0;
+    for (int ci = 0; ci < nclauses - 1; ci++) {
+        EXPR_t *ec = choice->children[ci];
+        int nb = ec ? (int)(ec->nchildren) - arity : 0;
+        if (nb < 0) nb = 0;
+        /* Check if this clause has any body user-calls */
+        int has_ucall = 0;
+        for (int bi = 0; bi < nb && !has_ucall; bi++) {
+            EXPR_t *g = ec ? ec->children[arity + bi] : NULL;
+            if (!g || g->kind != E_FNC || !g->sval) continue;
+            const char *gn = g->sval;
+            if (strcmp(gn,"write")==0||strcmp(gn,"nl")==0||strcmp(gn,"writeln")==0||
+                strcmp(gn,"true")==0||strcmp(gn,"fail")==0||strcmp(gn,"halt")==0||
+                strcmp(gn,"is")==0||strcmp(gn,"=")==0||
+                strcmp(gn,"<")==0||strcmp(gn,">")==0||strcmp(gn,"=<")==0||
+                strcmp(gn,">=")==0||strcmp(gn,"=:=")==0||strcmp(gn,"=\\=")==0||
+                strcmp(gn,",")==0||strcmp(gn,";")==0) continue;
+            if (g->kind == E_CUT) continue;
+            has_ucall = 1;
+        }
+        /* Both fact and body-call clauses: next base = this base + 1.
+         * Body-call clause range is [base[ci], base[ci+1]) = [ci, ci+1) + open.
+         * The dispatch identifies the clause by: largest ci where start >= base[ci]. */
+        base[ci + 1] = base[ci] + 1;
     }
-    A("    jmp     %s\n", omega_lbl);
 
-    /* Emit each clause block */
+    /* Compute omega_base: if last clause is a fact, start >= base[last]+1 → ω.
+     * For body-call last clause, any start >= base[last] dispatches there (open-ended). */
+    {
+        EXPR_t *last_ec = choice->children[nclauses - 1];
+        int last_nb = last_ec ? (int)(last_ec->nchildren) - arity : 0;
+        if (last_nb < 0) last_nb = 0;
+        int last_has_ucall = 0;
+        for (int bi = 0; bi < last_nb && !last_has_ucall; bi++) {
+            EXPR_t *g = last_ec ? last_ec->children[arity + bi] : NULL;
+            if (!g || g->kind != E_FNC || !g->sval) continue;
+            const char *gn = g->sval;
+            if (strcmp(gn,"write")==0||strcmp(gn,"nl")==0||strcmp(gn,"writeln")==0||
+                strcmp(gn,"true")==0||strcmp(gn,"fail")==0||strcmp(gn,"halt")==0||
+                strcmp(gn,"is")==0||strcmp(gn,"=")==0||
+                strcmp(gn,"<")==0||strcmp(gn,">")==0||strcmp(gn,"=<")==0||
+                strcmp(gn,">=")==0||strcmp(gn,"=:=")==0||strcmp(gn,"=\\=")==0||
+                strcmp(gn,",")==0||strcmp(gn,";")==0) continue;
+            if (g->kind == E_CUT) continue;
+            last_has_ucall = 1;
+        }
+        int omega_base = base[nclauses - 1] + 1;  /* only meaningful for fact last clause */
+
+        /* switch on start — linear scan from last to first */
+        A("    mov     eax, [rbp - 32]       ; start value\n");
+        if (!last_has_ucall) {
+            /* Last clause is a fact: values >= omega_base go directly to ω */
+            A("    cmp     eax, %d\n", omega_base);
+            A("    jge     %s                 ; past all clauses\n", omega_lbl);
+        }
+        for (int ci = nclauses - 1; ci >= 0; ci--) {
+            A("    cmp     eax, %d\n", base[ci]);
+            A("    jge     pl_%s_c%d_α\n", safe, ci);
+        }
+        A("    jmp     %s\n", omega_lbl);
+    }
+
+    /* Emit each clause block with its base */
     for (int ci = 0; ci < nclauses; ci++)
         emit_prolog_clause_block(choice->children[ci], ci, nclauses,
-                                 safe, arity, omega_lbl);
+                                 safe, arity, omega_lbl, base[ci]);
 
     /* ω port */
     A("\n%s:\n", omega_lbl);
