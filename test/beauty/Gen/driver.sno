@@ -1,0 +1,87 @@
+*  driver.sno — test driver for Gen subsystem
+*  Oracle: snobol4 -f -P256k -I$INC driver.sno
+*  Run via: bash test/beauty/run_beauty_subsystem.sh Gen
+*
+*  Exercises: Gen/GenTab/GenSetCont/IncLevel/DecLevel/SetLevel/GetLevel
+*  Depends on: global.sno (nl), io.sno (output_)
+*  Gimpel parallel: none direct; output buffering pattern used throughout beauty.sno
+
+-INCLUDE 'global.sno'
+-INCLUDE 'is.sno'
+-INCLUDE 'FENCE.sno'
+-INCLUDE 'io.sno'
+-INCLUDE 'Gen.sno'
+
+        &STLIMIT = 1000000
+        xTrace = 0
+
+*  Reset Gen globals before each test
+*  $'#L'=0, $'$B'='', $'$X'='', $'$C'=''
+
+*  1: GetLevel() returns 0 initially
+        $'#L'  = 0
+        $'$B'  =
+        $'$X'  =
+        $'$C'  =
+        lv     = GetLevel()
+        IDENT(lv, 0)                                    :S(P1)
+        OUTPUT = 'FAIL: 1 GetLevel init got: ' lv       :(T1)
+P1      OUTPUT = 'PASS: 1 GetLevel init'
+T1
+
+*  2: IncLevel increments by default 2
+        $'#L'  = 0
+        IncLevel()
+        lv2    = GetLevel()
+        IDENT(lv2, 2)                                   :S(P2)
+        OUTPUT = 'FAIL: 2 IncLevel default got: ' lv2   :(T2)
+P2      OUTPUT = 'PASS: 2 IncLevel default'
+T2
+
+*  3: DecLevel decrements by default 2
+        DecLevel()
+        lv3    = GetLevel()
+        IDENT(lv3, 0)                                   :S(P3)
+        OUTPUT = 'FAIL: 3 DecLevel default got: ' lv3   :(T3)
+P3      OUTPUT = 'PASS: 3 DecLevel default'
+T3
+
+*  4: SetLevel sets explicitly
+        SetLevel(4)
+        lv4    = GetLevel()
+        IDENT(lv4, 4)                                   :S(P4)
+        OUTPUT = 'FAIL: 4 SetLevel got: ' lv4           :(T4)
+P4      OUTPUT = 'PASS: 4 SetLevel'
+T4
+
+*  5: Gen with no newline — stays in buffer, no output yet
+        $'#L'  = 0
+        $'$B'  =
+        $'$X'  =
+        $'$C'  =
+        Gen('hello')
+        IDENT($'$B', 'hello')                           :S(P5)
+        OUTPUT = 'FAIL: 5 Gen buffer got: [' $'$B' ']'  :(T5)
+P5      OUTPUT = 'PASS: 5 Gen buffering'
+T5
+
+*  6: Gen with newline — flushes line to OUTPUT
+        $'#L'  = 0
+        $'$B'  =
+        $'$X'  =
+        $'$C'  =
+        Gen('line1' nl)
+        OUTPUT = 'PASS: 6 Gen flush'
+T6
+
+*  7: Gen two fragments then newline — concatenates then flushes
+        $'#L'  = 0
+        $'$B'  =
+        $'$X'  =
+        $'$C'  =
+        Gen('foo')
+        Gen('bar' nl)
+        OUTPUT = 'PASS: 7 Gen concat+flush'
+T7
+
+END

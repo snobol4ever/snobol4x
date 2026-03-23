@@ -1,0 +1,9 @@
+PASS: 1 GetLevel init
+PASS: 2 IncLevel default
+PASS: 3 DecLevel default
+PASS: 4 SetLevel
+PASS: 5 Gen buffering
+line1
+PASS: 6 Gen flush
+foobar
+PASS: 7 Gen concat+flush
