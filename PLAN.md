@@ -1917,3 +1917,101 @@ bash /home/claude/beauty-project/snobol4x/setup.sh
 
 ### Trigger phrase
 **"playing with beauty"** → B-271 → snobol4x PLAN.md §28, milestone `M-BEAUTY-TDUMP`
+
+---
+
+## §29 — Session Handoff B-272 (2026-03-23): M-BEAUTY-READWRITE @-capture bug
+
+### Work completed this session
+
+- **B-272 partial:** `test/beauty/ReadWrite/driver.sno` + `driver.ref` created (8 tests, 8/8 CSNOBOL4 PASS)
+- 3-way monitor: DIVERGENCE at step 1 — `lm[0]=2` (ASM) vs `lm[0]=1` (oracle)
+- Root cause **fully traced to `@x` cursor-capture returning empty in ASM backend**
+
+### §29.1 — Root cause: `@var` captures empty string instead of cursor integer
+
+Minimal reproduction:
+
+```snobol4
+DEFINE('LM3(s)')  :(LM3End)
+LM3   o = 0
+LM3_3 s POS(0) BREAK(nl) nl @x =   :F(LM3_9)
+      OUTPUT = 'x=' x ' o=' o
+      o = o + x                     :(LM3_3)
+LM3_9                               :(RETURN)
+LM3End
+      LM3('hi' nl 'bye' nl)
+```
+
+- **CSNOBOL4:** `x=3 o_before=0` / `o_after=3` / `x=4 o_before=3` / `o_after=7` ✅
+- **ASM:** `x= o_before=0` / `o_after=0` ❌ — `x` is empty, `o` never advances
+
+`@x` in SNOBOL4 captures the **current cursor position** (an integer) into `x`.
+The ASM `AT_α` macro apparently sets the cursor variable slot but does NOT call
+`stmt_set(varname, cursor_as_integer)` so `x` remains NULVCL.
+
+### §29.2 — Fix location
+
+In `src/backend/x64/emit_byrd_asm.c`, find the emitter for `E_AT` nodes (the `@var`
+cursor-position capture). The pattern node likely emits `AT_α S_varname, cursor, ...`
+but the `AT_α` macro in `snobol4_asm.mac` may not store the cursor value as an
+integer into the variable.
+
+**Check `AT_α` in `src/runtime/asm/snobol4_asm.mac`:**
+
+```bash
+grep -n "macro AT_α\|AT_α\b" src/runtime/asm/snobol4_asm.mac | head -10
+```
+
+Expected: `AT_α` should emit something like:
+```asm
+mov  rdi, cursor_val        ; integer cursor position
+call stmt_intval            ; make SnoVal integer
+lea  rdi, [rel S_varname]
+mov  rsi, rax               ; type
+mov  rdx, rdx               ; ptr
+call stmt_set               ; store into variable
+```
+
+If it only sets `[cursor]` (the global scan position) without storing into the
+SNOBOL4 variable, that is the bug.
+
+### §29.3 — Next session action plan (B-273)
+
+```bash
+ln -sfn /home/claude/beauty_project/x64 /home/claude/x64
+bash /home/claude/beauty_project/snobol4x/setup.sh
+```
+
+1. Find `AT_α` macro and `E_AT` emit in `emit_byrd_asm.c`
+2. Confirm `AT_α` does NOT call `stmt_set` for the capture variable
+3. Fix: after setting cursor, also `stmt_set(varname, integer(cursor))`
+4. Rebuild: `cd src && make`
+5. Run minimal test: `LM3('hi' nl 'bye' nl)` → expect `x=3 o_after=3`
+6. Run: `INC=demo/inc bash test/beauty/run_beauty_subsystem.sh ReadWrite`
+7. On 8/8 PASS: `git commit -m "B-272: M-BEAUTY-READWRITE ✅"`, push
+8. Update HQ PLAN.md row: `M-BEAUTY-READWRITE → ✅`, next `M-BEAUTY-XDUMP`
+9. Run `bash test/crosscheck/run_crosscheck_asm_corpus.sh` → must stay 106/106
+
+### §29.4 — Files committed this session
+
+- `test/beauty/ReadWrite/driver.sno` — 8-test driver
+- `test/beauty/ReadWrite/driver.ref` — oracle reference (8 lines)
+- `PLAN.md` — this handoff note
+
+### §29.5 — Test status going into B-273
+
+| Step | Test | ASM |
+|------|------|-----|
+| 1 | LineMap[0]=1 | ❌ returns 2 (lmOfs never advances → lmLineNo=2 at second lmMap[0] write) |
+| 2 | LineMap offset 6 = line 2 | ❌ (lmOfs stays 0) |
+| 3 | LineMap offset 11 = line 3 | ❌ |
+| 4 | Read FRETURN bad path | ? (untested past step 1) |
+| 5 | Write FRETURN bad path | ? |
+| 6 | LineMap empty string | ? |
+| 7 | LineMap single word | ? |
+| 8 | LineMap 2-line second offset | ? |
+
+### Trigger phrase for next session
+**"playing with beauty"** → B-273 → snobol4x PLAN.md §29, milestone `M-BEAUTY-READWRITE`
+

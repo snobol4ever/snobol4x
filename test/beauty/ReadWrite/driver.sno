@@ -1,0 +1,70 @@
+*  driver.sno — test driver for ReadWrite subsystem
+*  Oracle: snobol4 -f -P256k -Idemo/inc driver.sno
+*  Run via: INC=demo/inc bash test/beauty/run_beauty_subsystem.sh ReadWrite
+*
+*  Exercises: LineMap(str,mapName), Read()/Write() FRETURN on bad paths
+*  Depends on: global.sno (nl)
+*  Note: Read()/Write() use INPUT/OUTPUT unit-file association which requires
+*        a writable filesystem. Tests 4-5 verify FRETURN on inaccessible paths.
+*        Tests 1-3, 6-8 exercise LineMap entirely in memory.
+
+-INCLUDE 'global.sno'
+-INCLUDE 'ReadWrite.sno'
+
+        &STLIMIT = 1000000
+
+*  1: LineMap offset 0 = line 1
+        LineMap('alpha' nl 'beta' nl 'gamma' nl, 'lm1')
+        EQ(lm1[0], 1)                                  :S(P1)F(F1)
+P1      OUTPUT = 'PASS: 1 LineMap[0]=1'                :(T1)
+F1      OUTPUT = 'FAIL: 1 LineMap[0]=' lm1[0]
+T1
+
+*  2: LineMap offset SIZE('alpha')+1 = line 2
+        off2 = SIZE('alpha') + 1
+        EQ(lm1[off2], 2)                               :S(P2)F(F2)
+P2      OUTPUT = 'PASS: 2 LineMap offset ' off2 ' = line 2' :(T2)
+F2      OUTPUT = 'FAIL: 2 LineMap[' off2 ']=' lm1[off2]
+T2
+
+*  3: LineMap offset SIZE('alpha')+1+SIZE('beta')+1 = line 3
+        off3 = SIZE('alpha') + 1 + SIZE('beta') + 1
+        EQ(lm1[off3], 3)                               :S(P3)F(F3)
+P3      OUTPUT = 'PASS: 3 LineMap offset ' off3 ' = line 3' :(T3)
+F3      OUTPUT = 'FAIL: 3 LineMap[' off3 ']=' lm1[off3]
+T3
+
+*  4: Read FRETURN on inaccessible path
+        Read('/nonexistent/path/file.txt')             :F(P4)
+        OUTPUT = 'FAIL: 4 Read bad path should FRETURN' :(T4)
+P4      OUTPUT = 'PASS: 4 Read FRETURN on bad path'
+T4
+
+*  5: Write FRETURN on inaccessible path
+        Write('/nonexistent/path/file.txt', 'x' nl)    :F(P5)
+        OUTPUT = 'FAIL: 5 Write bad path should FRETURN' :(T5)
+P5      OUTPUT = 'PASS: 5 Write FRETURN on bad path'
+T5
+
+*  6: LineMap empty string — still creates table with lmMap[0]=1
+        LineMap('', 'lm6')
+        DIFFER(lm6)                                    :S(P6)F(F6)
+P6      OUTPUT = 'PASS: 6 LineMap empty string creates table' :(T6)
+F6      OUTPUT = 'FAIL: 6 LineMap empty string no table'
+T6
+
+*  7: LineMap single word no trailing nl
+        LineMap('hello', 'lm7')
+        EQ(lm7[0], 1)                                  :S(P7)F(F7)
+P7      OUTPUT = 'PASS: 7 LineMap single word no-nl'   :(T7)
+F7      OUTPUT = 'FAIL: 7 LineMap[0]=' lm7[0]
+T7
+
+*  8: LineMap does not require rdMapName — inline form
+        LineMap('x' nl 'y' nl, 'lm8')
+        EQ(lm8[SIZE('x') + 1], 2)                      :S(P8)F(F8)
+P8      OUTPUT = 'PASS: 8 LineMap 2-line second offset' :(T8)
+F8      OUTPUT = 'FAIL: 8 LineMap 2-line offset got ' lm8[SIZE('x') + 1]
+T8
+
+END
