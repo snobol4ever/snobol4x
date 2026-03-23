@@ -17,10 +17,10 @@ are always the cause when builds fail with "not found" errors.
 
 ### Current milestone
 
-**BEAUTY session:** `M-BEAUTY-CASE`
-- driver + ref already committed at `test/beauty/case/`
-- run: `bash test/beauty/run_beauty_subsystem.sh case`
-- on pass: commit `B-263: M-BEAUTY-CASE ✅`, advance to `M-BEAUTY-ASSIGN`
+**BEAUTY session:** `M-BEAUTY-ASSIGN`
+- create driver + ref at `test/beauty/assign/`
+- run: `bash test/beauty/run_beauty_subsystem.sh assign`
+- on pass: commit `B-264: M-BEAUTY-ASSIGN ✅`, advance to `M-BEAUTY-MATCH`
 
 ### Beauty subsystem sequence (18 total)
 
@@ -30,8 +30,8 @@ are always the cause when builds fail with "not found" errors.
 | 2 | is | ✅ |
 | 3 | FENCE | ✅ |
 | 4 | io | ✅ |
-| 5 | **case** | ← next |
-| 6 | assign | |
+| 5 | case | ✅ |
+| 6 | **assign** | ← next |
 | 7 | match | |
 | 8 | counter | |
 | 9 | stack | |

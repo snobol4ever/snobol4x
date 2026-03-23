@@ -1,0 +1,12 @@
+*---------------------------------------------------------------------------------------------------
+* assign(var, val) — indirect assignment helper
+* Sets $var = val (assigns val to the variable named by var).
+* Returns null (always succeeds); used as a side-effect function in patterns.
+*
+* Usage:
+*   assign('x', 'hello')          x = 'hello'
+*   *assign(.SorF, *'S')          in pattern: set SorF = 'S' on match
+*---------------------------------------------------------------------------------------------------
+               DEFINE('assign(var,val)')                                            :(assign_end)
+assign         $var           =   val                                               :(RETURN)
+assign_end

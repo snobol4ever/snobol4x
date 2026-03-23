@@ -1,0 +1,7 @@
+PASS: 1 basic string assign
+PASS: 2 assign integer
+PASS: 3 reassign
+PASS: 4 assign returns null
+PASS: 5 assign empty string
+PASS: 6 indirect varname
+PASS: 7 chain assign

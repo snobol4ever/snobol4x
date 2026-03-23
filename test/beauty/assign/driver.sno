@@ -1,0 +1,64 @@
+*  driver.sno — test driver for assign.sno
+*  Oracle: snobol4 -f -P256k -I$INC driver.sno
+*  Run via: bash test/beauty/run_beauty_subsystem.sh assign
+*  All 3 participants (CSNOBOL4, SPITBOL, ASM) must produce identical output.
+*  Exercises: assign(var, val) — indirect assignment helper
+-INCLUDE 'global.sno'
+-INCLUDE 'is.sno'
+-INCLUDE 'assign.sno'
+
+        &STLIMIT = 1000000
+
+*  1: basic string assign
+        assign('a', 'hello')
+        IDENT(a, 'hello')                                      :S(P1)
+        OUTPUT = 'FAIL: 1 basic string assign'                 :(T1)
+P1      OUTPUT = 'PASS: 1 basic string assign'
+T1
+
+*  2: assign integer
+        assign('b', 99)
+        IDENT(b, 99)                                           :S(P2)
+        OUTPUT = 'FAIL: 2 assign integer'                      :(T2)
+P2      OUTPUT = 'PASS: 2 assign integer'
+T2
+
+*  3: reassign (overwrite existing value)
+        assign('c', 'first')
+        assign('c', 'second')
+        IDENT(c, 'second')                                     :S(P3)
+        OUTPUT = 'FAIL: 3 reassign'                            :(T3)
+P3      OUTPUT = 'PASS: 3 reassign'
+T3
+
+*  4: assign returns null (always succeeds, no value)
+        r = assign('d', 'val')
+        IDENT(r, '')                                           :S(P4)
+        OUTPUT = 'FAIL: 4 assign returns null'                 :(T4)
+P4      OUTPUT = 'PASS: 4 assign returns null'
+T4
+
+*  5: assign empty string
+        assign('e', '')
+        IDENT(e, '')                                           :S(P5)
+        OUTPUT = 'FAIL: 5 assign empty string'                 :(T5)
+P5      OUTPUT = 'PASS: 5 assign empty string'
+T5
+
+*  6: assign via indirect variable name
+        vname = 'myvar'
+        assign(vname, 'indirect')
+        IDENT(myvar, 'indirect')                               :S(P6)
+        OUTPUT = 'FAIL: 6 indirect varname'                    :(T6)
+P6      OUTPUT = 'PASS: 6 indirect varname'
+T6
+
+*  7: chain assign
+        assign('x', 'chain')
+        assign('y', x)
+        IDENT(y, 'chain')                                      :S(P7)
+        OUTPUT = 'FAIL: 7 chain assign'                        :(T7)
+P7      OUTPUT = 'PASS: 7 chain assign'
+T7
+
+END
