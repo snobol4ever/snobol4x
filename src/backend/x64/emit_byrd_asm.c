@@ -5628,8 +5628,8 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                     A("    add     rsp, %d\n", ALIGN16(garity*8));
                 A("    test    eax, eax\n");
                 A("    js      %s\n", fail_lbl);
-                /* success: save sub_ret+1 as new inner_start for next resume */
-                A("    mov     [rbp - 32], eax\n");
+                /* success: save sub_ret as sub_cs_acc (NOT to [rbp-32]: that is read-only start) */
+                A("    mov     [rbp - 16], eax        ; sub_cs_acc\n");
                 A("    jmp     pl_%s_c%d_bsucc%d\n", pred_safe, idx, bi);
                 A("%s:\n", fail_lbl);
                 A("    lea     rdi, [rel pl_trail]\n");
@@ -5650,8 +5650,8 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
         A("    mov     eax, %d               ; base+1 → next clause\n", base + 1);
     } else {
         /* Body-call clause: γ returns base + sub_cs + 1.
-         * sub_cs is the raw return from the sub-call, stored in [rbp-32]. */
-        A("    mov     eax, [rbp - 32]       ; sub_cs from body call\n");
+         * sub_cs_acc accumulated in [rbp-16] (separate from [rbp-32] = read-only start). */
+        A("    mov     eax, [rbp - 16]       ; sub_cs_acc from body call\n");
         A("    inc     eax                   ; sub_cs + 1\n");
         A("    add     eax, %d               ; + base\n", base);
     }
@@ -5753,6 +5753,10 @@ static void emit_prolog_choice(EXPR_t *choice) {
     if (start_reg_idx < 6) {
         A("    mov     [rbp - 32], %s     ; save start\n", argregs[start_reg_idx]);
     }
+    /* [rbp-16] = sub_cs_acc: separate from [rbp-32] (start) so original start
+     * stays readable for last-ucall sub_cs dispatch in multi-ucall bodies. */
+    A("    xor     eax, eax\n");
+    A("    mov     [rbp - 16], eax        ; sub_cs_acc = 0\n");
 
     /* Compute base[] for each clause.
      * Fact/builtin-only clause: 1 slot → next base = base + 1.
