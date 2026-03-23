@@ -4778,10 +4778,10 @@ static void emit_pl_term_load(EXPR_t *e, int frame_base_words) {
             A("    call    term_new_int\n");
             break;
         case E_VART: {
-            /* var slot is in e->ival; fresh Term* in frame at [rbp - (slot+1)*8] */
+            /* var slot is in e->ival; fresh Term* in frame at [rbp - (slot+2)*8] */
             int slot = (int)e->ival;
             A("    mov     rax, [rbp - %d]  ; var slot %d (%s)\n",
-              (slot+1)*8, slot, e->sval ? e->sval : "_");
+              (slot+2)*8, slot, e->sval ? e->sval : "_");
             break;
         }
         case E_FNC:
@@ -4851,9 +4851,8 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
         char fail_lbl[128];
         snprintf(fail_lbl, sizeof fail_lbl, "pl_%s_c%d_hfail%d", pred_safe, idx, i);
 
-        /* Load call arg from stack parameter area: args[i] */
-        /* args array pointer is in [rbp+16] (first pushed arg after retaddr+rbp) */
-        A("    mov     rdi, [rbp + 16]     ; args array\n");
+        /* Load call arg via args array ptr stored at [rbp-24] */
+        A("    mov     rdi, [rbp - 24]     ; args array ptr\n");
         A("    mov     rdi, [rdi + %d]     ; args[%d]\n", i*8, i);
         /* Load head pattern term into rsi */
         /* (emit_pl_term_load uses rax; we need rsi = head term) */
@@ -4980,7 +4979,8 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                             /* no-op */
                         } else {
                             /* user call — build args and call _r */
-                            char csafe[256]; strncpy(csafe, pl_safe(sfn), 255);
+                            char cfa[300]; snprintf(cfa, sizeof cfa, "%s/%d", sfn, sa);
+                            char csafe[256]; strncpy(csafe, pl_safe(cfa), 255);
                             char cfail[128];
                             snprintf(cfail, sizeof cfail, "pl_%s_c%d_cfail%d_%d", pred_safe, idx, bi, fi);
                             if (sa > 0) {
@@ -4993,7 +4993,7 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                             } else { A("    xor     rdi, rdi\n"); }
                             A("    lea     rsi, [rel pl_trail]\n");
                             A("    xor     edx, edx\n");
-                            A("    call    pl_%s_%d_r\n", csafe, sa);
+                            A("    call    pl_%s_r\n", csafe);
                             if (sa > 0) A("    add     rsp, %d\n", sa*8);
                             A("    test    eax, eax\n");
                             A("    jns     pl_%s_c%d_cok%d_%d\n", pred_safe, idx, bi, fi);
@@ -5040,8 +5040,9 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
 
                 if (user_call_idx >= 0) {
                     EXPR_t *ucall = lgoals[user_call_idx];
-                    char ucsafe[256]; strncpy(ucsafe, pl_safe(ucall->sval), 255);
                     int uca = ucall->nchildren;
+                    char ucfa[300]; snprintf(ucfa, sizeof ucfa, "%s/%d", ucall->sval, uca);
+                    char ucsafe[256]; strncpy(ucsafe, pl_safe(ucfa), 255);
                     char retry_lbl[128];
                     snprintf(retry_lbl, sizeof retry_lbl, "disj_%s_%d_%d_retry", pred_safe, idx, bi);
 
@@ -5072,7 +5073,7 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                     } else { A("    xor     rdi, rdi\n"); }
                     A("    lea     rsi, [rel pl_trail]\n");
                     A("    mov     edx, [rbp - 36]\n");
-                    A("    call    pl_%s_%d_r\n", ucsafe, uca);
+                    A("    call    pl_%s_r\n", ucsafe);
                     if (uca > 0) A("    add     rsp, %d\n", uca*8);
                     A("    test    eax, eax\n");
                     A("    js      %s\n", else_lbl);
@@ -5092,7 +5093,8 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                         } else if (strcmp(pgn,"true")==0) { /* no-op */
                         } else {
                             /* another user call — call once, fail -> retry outer */
-                            char isafe[256]; strncpy(isafe, pl_safe(pgn), 255);
+                            char ifa[300]; snprintf(ifa, sizeof ifa, "%s/%d", pgn, pga);
+                            char isafe[256]; strncpy(isafe, pl_safe(ifa), 255);
                             if (pga > 0) {
                                 A("    sub     rsp, %d\n", pga*8);
                                 for (int ai = 0; ai < pga; ai++) {
@@ -5103,7 +5105,7 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                             } else { A("    xor     rdi, rdi\n"); }
                             A("    lea     rsi, [rel pl_trail]\n");
                             A("    xor     edx, edx\n");
-                            A("    call    pl_%s_%d_r\n", isafe, pga);
+                            A("    call    pl_%s_r\n", isafe);
                             if (pga > 0) A("    add     rsp, %d\n", pga*8);
                             A("    test    eax, eax\n");
                             A("    js      %s\n", retry_lbl);
@@ -5130,8 +5132,9 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                     if (strcmp(right->sval,"true")==0) { /* no-op */ }
                     else if (strcmp(right->sval,"fail")==0) { A("    jmp %s\n", next_clause); }
                     else {
-                        char rsafe2[256]; strncpy(rsafe2, pl_safe(right->sval), 255);
                         int ra2 = right->nchildren;
+                        char rfa2[300]; snprintf(rfa2, sizeof rfa2, "%s/%d", right->sval, ra2);
+                        char rsafe2[256]; strncpy(rsafe2, pl_safe(rfa2), 255);
                         if (ra2 > 0) {
                             A("    sub     rsp, %d\n", ra2*8);
                             for (int ai = 0; ai < ra2; ai++) {
@@ -5142,7 +5145,7 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                         } else { A("    xor     rdi, rdi\n"); }
                         A("    lea     rsi, [rel pl_trail]\n");
                         A("    xor     edx, edx\n");
-                        A("    call    pl_%s_%d_r\n", rsafe2, ra2);
+                        A("    call    pl_%s_r\n", rsafe2);
                         if (ra2 > 0) A("    add     rsp, %d\n", ra2*8);
                         A("    test    eax, eax\n");
                         A("    js      %s\n", next_clause);
@@ -5171,11 +5174,72 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                 A("pl_%s_c%d_ug%d:\n", pred_safe, idx, bi);
                 continue;
             }
+            /* --- write/1 in goal position --- */
+            if (strcmp(fn, "write") == 0 && garity == 1) {
+                emit_pl_term_load(goal->children[0], n_vars);
+                A("    mov     rdi, rax\n");
+                A("    call    pl_write\n");
+                continue;
+            }
+            /* --- nl/0 in goal position --- */
+            if (strcmp(fn, "nl") == 0 && garity == 0) {
+                A("    mov     edi, 10\n");
+                A("    call    putchar\n");
+                continue;
+            }
+            /* --- is/2: Result is Expr --- */
+            if (strcmp(fn, "is") == 0 && garity == 2) {
+                char isfail[128];
+                snprintf(isfail, sizeof isfail, "pl_%s_c%d_isfail%d", pred_safe, idx, bi);
+                emit_pl_term_load(goal->children[0], n_vars);
+                A("    mov     [rel pl_tmp], rax\n");
+                emit_pl_term_load(goal->children[1], n_vars);
+                A("    mov     rsi, rax\n");
+                A("    mov     rdi, [rel pl_tmp]\n");
+                A("    lea     rdx, [rel pl_trail]\n");
+                A("    call    pl_is\n");
+                A("    test    eax, eax\n");
+                A("    jnz     pl_%s_c%d_ug%d\n", pred_safe, idx, bi+1);
+                A("%s:\n", isfail);
+                A("    lea     rdi, [rel pl_trail]\n");
+                A("    mov     esi, [rbp - 8]\n");
+                A("    call    trail_unwind\n");
+                A("    jmp     %s\n", next_clause);
+                continue;
+            }
+            /* --- numeric comparisons --- */
+            #define EMIT_CMP(op, fn_name) \
+            if (strcmp(fn, op) == 0 && garity == 2) { \
+                char cmpfail[128]; \
+                snprintf(cmpfail, sizeof cmpfail, "pl_%s_c%d_cmpfail%d", pred_safe, idx, bi); \
+                emit_pl_term_load(goal->children[0], n_vars); \
+                A("    mov     [rel pl_tmp], rax\n"); \
+                emit_pl_term_load(goal->children[1], n_vars); \
+                A("    mov     rsi, rax\n"); \
+                A("    mov     rdi, [rel pl_tmp]\n"); \
+                A("    call    " fn_name "\n"); \
+                A("    test    eax, eax\n"); \
+                A("    jnz     pl_%s_c%d_ug%d\n", pred_safe, idx, bi+1); \
+                A("%s:\n", cmpfail); \
+                A("    lea     rdi, [rel pl_trail]\n"); \
+                A("    mov     esi, [rbp - 8]\n"); \
+                A("    call    trail_unwind\n"); \
+                A("    jmp     %s\n", next_clause); \
+                continue; \
+            }
+            EMIT_CMP("<",   "pl_num_lt")
+            EMIT_CMP(">",   "pl_num_gt")
+            EMIT_CMP("=<",  "pl_num_le")
+            EMIT_CMP(">=",  "pl_num_ge")
+            EMIT_CMP("=:=", "pl_num_eq")
+            EMIT_CMP("=\\=", "pl_num_ne")
+            #undef EMIT_CMP
             /* --- user-defined predicate call --- */
             {
                 /* Build args array on stack, call pl_NAME_ARITY_r */
+                char call_safe_fa[300]; snprintf(call_safe_fa, sizeof call_safe_fa, "%s/%d", fn, garity);
                 char call_safe[256];
-                snprintf(call_safe, sizeof call_safe, "%s", pl_safe(fn));
+                snprintf(call_safe, sizeof call_safe, "%s", pl_safe(call_safe_fa));
                 char fail_lbl[128];
                 snprintf(fail_lbl, sizeof fail_lbl, "pl_%s_c%d_bfail%d", pred_safe, idx, bi);
                 /* push args in reverse then pass array ptr */
@@ -5193,7 +5257,7 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                 }
                 A("    lea     rsi, [rel pl_trail]\n");
                 A("    xor     edx, edx                   ; start=0\n");
-                A("    call    pl_%s_%d_r\n", call_safe, garity);
+                A("    call    pl_%s_r\n", call_safe);
                 if (garity > 0)
                     A("    add     rsp, %d\n", garity*8);
                 A("    test    eax, eax\n");
@@ -5233,7 +5297,7 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
  *   [rbp - 8]    = trail mark      (int stored as 8B)
  *   [rbp - 16]   = _cut flag       (1B, padded to 8B slot; at [rbp-17])
  *   [rbp - (k+2)*8] for k=0..n_vars-1 = fresh Term* for var slot k
- *   [rbp + 16]   = first arg (arg0) — or Trail* if arity==0
+ *   [rbp - 40]   = first arg (arg0) saved in frame (arity>0 case)
  *   [rbp + 24]   = second arg (arg1 or Trail*)
  *   ...
  * ---------------------------------------------------------------------- */
@@ -5264,7 +5328,15 @@ static void emit_prolog_choice(EXPR_t *choice) {
     A("; predicate %s  (%d clause%s)\n", pred, nclauses, nclauses==1?"":"s");
     A("; ============================================================\n");
 
-    /* frame: mark(8) + _cut(8) + args_ptr(8) + start(8) + n_vars*8, align 16 */
+    /* frame: mark(8) + _cut(8) + args_ptr(8) + start(8) + arity*8 + n_vars*8, align 16
+     * [rbp-8]         = trail mark
+     * [rbp-16]        = var slot 0  (if any)
+     * [rbp-17]        = _cut byte
+     * [rbp-24]        = args array ptr
+     * [rbp-32]        = start
+     * [rbp-40-ai*8]   = saved arg ai  (arity slots)
+     * [rbp-40-arity*8 - k*8] = var slot k
+     */
     int frame = 32 + max_vars*8;
     if (frame % 16) frame = (frame/16+1)*16;
 
@@ -5287,19 +5359,10 @@ static void emit_prolog_choice(EXPR_t *choice) {
     /* Actually with C-ABI the args are already in registers at function entry.
      * We need to preserve 'start' and the args array.
      * Strategy: push all register args to a local args array in frame. */
-    if (arity > 0 && arity <= 4) {
-        /* save arg registers to [rbp+16..] area (above frame) */
-        /* They're already there if caller used push — but with call convention
-         * they're in registers. Store them to known frame slots. */
-        const char *arg_regs_order[] = {"rdi","rsi","rdx","rcx","r8","r9"};
-        for (int ai = 0; ai < arity && ai < 4; ai++) {
-            A("    mov     [rbp + %d], %s   ; save arg %d\n",
-              16 + ai*8, arg_regs_order[ai], ai);
-        }
-        /* store args array base pointer for clause blocks to use */
-        A("    lea     rax, [rbp + 16]\n");
-        A("    mov     [rbp - 24], rax     ; args array ptr\n");
-        /* adjust trail and start regs — they're displaced by arity */
+    if (arity > 0) {
+        /* rdi = args array ptr (caller built Term*[] and passed pointer).
+         * Just save rdi directly into the args_ptr slot. */
+        A("    mov     [rbp - 24], rdi     ; save args array ptr\n");
     } else if (arity == 0) {
         A("    ; arity 0 — no args to save\n");
         A("    xor     rax, rax\n");

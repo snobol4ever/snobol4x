@@ -308,3 +308,61 @@ int pl_read(Term *result, Trail *tr) {
     (void)result; (void)tr;
     return 0;  /* not implemented in M-PROLOG-R1 */
 }
+
+/* =========================================================================
+ * Arithmetic evaluation — is/2
+ * ======================================================================= */
+
+static int _aid_plus=-1, _aid_minus=-1, _aid_times=-1, _aid_div=-1, _aid_mod=-1;
+static void arith_atoms_init(void) {
+    if (_aid_plus >= 0) return;
+    _aid_plus  = prolog_atom_intern("+");
+    _aid_minus = prolog_atom_intern("-");
+    _aid_times = prolog_atom_intern("*");
+    _aid_div   = prolog_atom_intern("/");
+    _aid_mod   = prolog_atom_intern("mod");
+}
+
+long pl_eval_arith(Term *t) {
+    arith_atoms_init();
+    t = term_deref(t);
+    if (!t) return 0;
+    switch (t->tag) {
+        case TT_INT: return t->ival;
+        case TT_FLOAT: return (long)t->fval;
+        case TT_COMPOUND: {
+            int f = t->compound.functor;
+            int a = t->compound.arity;
+            if (a == 2) {
+                long l = pl_eval_arith(t->compound.args[0]);
+                long r = pl_eval_arith(t->compound.args[1]);
+                if (f == _aid_plus)  return l + r;
+                if (f == _aid_minus) return l - r;
+                if (f == _aid_times) return l * r;
+                if (f == _aid_div)   return r ? l / r : 0;
+                if (f == _aid_mod)   return r ? l % r : 0;
+            }
+            if (a == 1) {
+                long v = pl_eval_arith(t->compound.args[0]);
+                if (f == _aid_minus) return -v;
+            }
+            return 0;
+        }
+        default: return 0;
+    }
+}
+
+/* is/2: Result is Expr — unify Result with evaluated Expr */
+int pl_is(Term *result, Term *expr, Trail *trail) {
+    long val = pl_eval_arith(expr);
+    Term *res_term = term_new_int(val);
+    return unify(result, res_term, trail);
+}
+
+/* Numeric comparisons */
+int pl_num_lt(Term *a, Term *b)  { return pl_eval_arith(a) <  pl_eval_arith(b); }
+int pl_num_gt(Term *a, Term *b)  { return pl_eval_arith(a) >  pl_eval_arith(b); }
+int pl_num_le(Term *a, Term *b)  { return pl_eval_arith(a) <= pl_eval_arith(b); }
+int pl_num_ge(Term *a, Term *b)  { return pl_eval_arith(a) >= pl_eval_arith(b); }
+int pl_num_eq(Term *a, Term *b)  { return pl_eval_arith(a) == pl_eval_arith(b); }
+int pl_num_ne(Term *a, Term *b)  { return pl_eval_arith(a) != pl_eval_arith(b); }
