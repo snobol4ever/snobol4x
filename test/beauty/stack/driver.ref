@@ -1,0 +1,7 @@
+PASS: 1 push/top = 42
+PASS: 2 top of 3 = 30
+PASS: 3 pop restores 20
+PASS: 4 Pop(var) = 99
+PASS: 5 empty pop fails
+PASS: 6 empty top fails
+PASS: 7 nested pop order a/b/c

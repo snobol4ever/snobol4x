@@ -1,0 +1,70 @@
+-INCLUDE 'global.sno'
+-INCLUDE 'is.sno'
+-INCLUDE 'stack.sno'
+
+        &STLIMIT = 1000000
+        dummy = InitStack()
+
+*  1: push one value, Top() returns it
+        dummy = Push(42)
+        IDENT(Top(), 42)                                       :S(P1)
+        OUTPUT = 'FAIL: 1 push/top'                           :(T1)
+P1      OUTPUT = 'PASS: 1 push/top = 42'
+T1
+
+*  2: push three, Top() returns last
+        dummy = InitStack()
+        dummy = Push(10)
+        dummy = Push(20)
+        dummy = Push(30)
+        IDENT(Top(), 30)                                       :S(P2)
+        OUTPUT = 'FAIL: 2 top of 3'                           :(T2)
+P2      OUTPUT = 'PASS: 2 top of 3 = 30'
+T2
+
+*  3: Pop removes top, next Top is 20
+        dummy = Pop('dummy')
+        IDENT(Top(), 20)                                       :S(P3)
+        OUTPUT = 'FAIL: 3 pop restores prev'                  :(T3)
+P3      OUTPUT = 'PASS: 3 pop restores 20'
+T3
+
+*  4: Pop('result') assigns to named var
+        dummy = InitStack()
+        dummy = Push(99)
+        Pop('result')                                          :F(P4fail)
+        IDENT(result, 99)                                      :S(P4)
+P4fail  OUTPUT = 'FAIL: 4 Pop(var) failed'                    :(T4)
+P4      OUTPUT = 'PASS: 4 Pop(var) = 99'
+T4
+
+*  5: Pop on empty stack fails
+        dummy = InitStack()
+        Pop('dummy')                                           :F(P5)
+        OUTPUT = 'FAIL: 5 empty pop'                          :(T5)
+P5      OUTPUT = 'PASS: 5 empty pop fails'
+T5
+
+*  6: Top on empty stack fails
+        dummy = InitStack()
+        Top()                                                  :F(P6)
+        OUTPUT = 'FAIL: 6 empty top'                          :(T6)
+P6      OUTPUT = 'PASS: 6 empty top fails'
+T6
+
+*  7: LIFO order: push a/b/c, pop c/b/a
+        dummy = InitStack()
+        dummy = Push('a')
+        dummy = Push('b')
+        dummy = Push('c')
+        Pop('v1')                                              :F(P7fail)
+        Pop('v2')                                              :F(P7fail)
+        Pop('v3')                                              :F(P7fail)
+        IDENT(v1, 'c')                                         :F(P7fail)
+        IDENT(v2, 'b')                                         :F(P7fail)
+        IDENT(v3, 'a')                                         :S(P7)
+P7fail  OUTPUT = 'FAIL: 7 nested pop order'                   :(T7)
+P7      OUTPUT = 'PASS: 7 nested pop order a/b/c'
+T7
+
+END

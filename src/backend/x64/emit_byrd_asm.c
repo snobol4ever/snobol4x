@@ -3620,9 +3620,19 @@ static int emit_expr(EXPR_t *e, int rbp_off) {
     case E_NAM: {
         /* .dupl → STRVAL("dupl"). Used by OPSYN(.facto,'fact'), APPLY(.eq,…),
          * NRETURN (.a), and any other place a name-value is passed as an arg.
-         * In value (non-pattern) context E_NAM(child=E_VART("varname")) → name string. */
-        const char *varname = (e->children[0] && e->children[0]->sval)
-                              ? e->children[0]->sval
+         * In value (non-pattern) context E_NAM(child=E_VART("varname")) → name string.
+         *
+         * EXCEPTION: .fieldFn(obj) — when child is E_FNC (a DATA field accessor call
+         * like .value($'@S')), we must EVALUATE the call to get the field value,
+         * not emit the function name as a literal string. This pattern appears in
+         * Push, Top, Pop1 where NRETURN returns through a field getter. */
+        EXPR_t *child = e->nchildren > 0 ? e->children[0] : NULL;
+        if (child && child->kind == E_FNC) {
+            /* Evaluate the function call — result lands in rbp_off slot */
+            return emit_expr(child, rbp_off);
+        }
+        const char *varname = (child && child->sval)
+                              ? child->sval
                               : (e->sval ? e->sval : "");
         const char *vlab = str_intern(varname);
         if (rbp_off == -32 || rbp_off == -16) {
