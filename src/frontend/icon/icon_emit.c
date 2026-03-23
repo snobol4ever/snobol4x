@@ -100,6 +100,14 @@ static char     cur_fail_label[64]="";  /* label to jump to for fail */
 
 static void locals_reset(void) { cur_nlocals=0; cur_nparams=0; }
 
+/* Allocate an anonymous frame slot for a temporary (e.g. binop/relop lcache).
+ * Returns the slot index; use slot_offset(slot) for rbp-relative access. */
+static int locals_alloc_tmp(void) {
+    int slot=cur_nlocals;
+    if(cur_nlocals<MAX_LOCALS){ cur_locals[cur_nlocals].name[0]='\0'; cur_locals[cur_nlocals++].slot=slot; }
+    return slot;
+}
+
 static int locals_find(const char *name) {
     for(int i=0;i<cur_nlocals;i++)
         if(!strcmp(cur_locals[i].name,name)) return cur_locals[i].slot;
@@ -121,15 +129,16 @@ static void emit_expr(IcnEmitter *em, IcnNode *n, IcnPorts ports,
 
 /* =========================================================================
  * ICN_INT
+ * Stack protocol: α pushes value onto hardware stack then jumps succeed.
+ * β pops nothing (re-entry after backtrack) then jumps fail.
  * ======================================================================= */
 static void emit_int(IcnEmitter *em, IcnNode *n, IcnPorts ports,
                      char *oa, char *ob) {
-    int id=icn_new_id(em); char a[64],b[64],v[64];
+    int id=icn_new_id(em); char a[64],b[64];
     icn_label_alpha(id,a,sizeof a); icn_label_beta(id,b,sizeof b);
-    label_val(id,v,sizeof v); bss_declare(v);
     strncpy(oa,a,63); strncpy(ob,b,63);
     E(em,"    ; INT %ld  id=%d\n",n->val.ival,id);
-    Ldef(em,a); E(em,"    mov     qword [rel %s], %ld\n",v,n->val.ival); Jmp(em,ports.succeed);
+    Ldef(em,a); E(em,"    push    %ld\n",n->val.ival); Jmp(em,ports.succeed);
     Ldef(em,b); Jmp(em,ports.fail);
 }
 
@@ -148,28 +157,26 @@ static void emit_str(IcnEmitter *em, IcnNode *n, IcnPorts ports,
 
 /* =========================================================================
  * ICN_VAR — variable reference
- * For local/param vars: load from frame slot → BSS val, succeed.
- * For globals/unknowns: emit as BSS slot (assigned elsewhere).
+ * α: load value into rax (from frame slot or global BSS), push, succeed.
+ * β: jump fail (one-shot — variable has no next value).
  * ======================================================================= */
 static void emit_var(IcnEmitter *em, IcnNode *n, IcnPorts ports,
                      char *oa, char *ob) {
-    int id=icn_new_id(em); char a[64],b[64],v[64];
+    int id=icn_new_id(em); char a[64],b[64];
     icn_label_alpha(id,a,sizeof a); icn_label_beta(id,b,sizeof b);
-    label_val(id,v,sizeof v); bss_declare(v);
     strncpy(oa,a,63); strncpy(ob,b,63);
     E(em,"    ; VAR %s  id=%d\n",n->val.sval,id);
     Ldef(em,a);
     int slot=locals_find(n->val.sval);
     if(slot>=0) {
         E(em,"    mov     rax, [rbp%+d]\n", slot_offset(slot));
-        E(em,"    mov     [rel %s], rax\n", v);
     } else {
         /* Global BSS var */
         char gv[80]; snprintf(gv,sizeof gv,"icn_gvar_%s",n->val.sval);
         bss_declare(gv);
         E(em,"    mov     rax, [rel %s]\n", gv);
-        E(em,"    mov     [rel %s], rax\n", v);
     }
+    E(em,"    push    rax\n");
     Jmp(em,ports.succeed);
     Ldef(em,b); Jmp(em,ports.fail);
 }
@@ -193,9 +200,8 @@ static void emit_assign(IcnEmitter *em, IcnNode *n, IcnPorts ports,
     Ldef(em,a); Jmp(em,ra);
     Ldef(em,b); Jmp(em,rb);
 
-    int rhs_id=-1; sscanf(ra,"icon_%d_a",&rhs_id);
     Ldef(em,store);
-    if(rhs_id>=0) E(em,"    mov     rax, [rel icon_%d_val]\n",rhs_id);
+    E(em,"    pop     rax\n"); /* consume value pushed by RHS */
 
     IcnNode *lhs=n->children[0];
     if(lhs && lhs->kind==ICN_VAR){
@@ -229,9 +235,8 @@ static void emit_return(IcnEmitter *em, IcnNode *n, IcnPorts ports,
         emit_expr(em,n->children[0],vp,va2,vb2);
         Ldef(em,a); Jmp(em,va2);
         Ldef(em,b); Jmp(em,cur_ret_label[0]?cur_ret_label:"icn_dead");
-        int vid=-1; sscanf(va2,"icon_%d_a",&vid);
         Ldef(em,after);
-        if(vid>=0) E(em,"    mov     rax, [rel icon_%d_val]\n",vid);
+        E(em,"    pop     rax\n"); /* consume value pushed by expr */
         E(em,"    mov     [rel icn_retval], rax\n");
         E(em,"    mov     byte [rel icn_failed], 0\n");
         Jmp(em,cur_ret_label[0]?cur_ret_label:"icn_dead");
@@ -293,7 +298,11 @@ static void emit_if(IcnEmitter *em, IcnNode *n, IcnPorts ports,
     char ca[64],cb[64];
     emit_expr(em,cond,cp,ca,cb);
 
-    Ldef(em,cond_then); Jmp(em,thenb?then_a:ports.succeed);
+    /* cond_then: condition succeeded and pushed a value — discard it, enter then */
+    Ldef(em,cond_then);
+    E(em,"    add     rsp, 8\n");  /* discard condition result value */
+    Jmp(em,thenb?then_a:ports.succeed);
+    /* cond_else: condition failed (no value pushed) — enter else */
     Ldef(em,cond_else); Jmp(em,elseb?else_a:ports.fail);
 
     Ldef(em,a); Jmp(em,ca);
@@ -329,12 +338,12 @@ static void emit_call(IcnEmitter *em, IcnNode *n, IcnPorts ports,
         Ldef(em,a); Jmp(em,arg_a);
         Ldef(em,b); Jmp(em,arg_b);
         Ldef(em,after);
-        int arg_id=-1; sscanf(arg_a,"icon_%d_a",&arg_id);
         if(arg->kind==ICN_STR){
-            /* rdi already points at string data (set by emit_str via lea) */
+            /* emit_str sets rdi via lea; nothing on hw stack — just call */
             E(em,"    call    icn_write_str\n");
         } else {
-            if(arg_id>=0) E(em,"    mov     rdi, [rel icon_%d_val]\n",arg_id);
+            /* arg value is on the hardware stack — pop into rdi */
+            E(em,"    pop     rdi\n");
             E(em,"    call    icn_write_int\n");
         }
         Jmp(em,ports.succeed);
@@ -343,32 +352,25 @@ static void emit_call(IcnEmitter *em, IcnNode *n, IcnPorts ports,
 
     /* --- user procedure call --- */
     if(is_user_proc(fname)){
-        /* Evaluate args left-to-right; push each onto icn_stack */
-        /* Chain: arg0 → arg1 → ... → do_call */
+        /* Evaluate args left-to-right; each arg pushes its value on hw stack.
+         * push_relay pops from hw stack and calls icn_push (software stack).
+         * After all args transferred, call the procedure. */
         char do_call[64]; snprintf(do_call,sizeof do_call,"icon_%d_docall",id);
-        char cur_succ[64]; strncpy(cur_succ,do_call,63);
 
-        /* We need to emit args and push them. Use a sequential chain. */
-        /* Emit all args, collect their α/β/val-id */
         char (*arg_alphas)[64] = nargs>0 ? malloc(nargs*64) : NULL;
         char (*arg_betas) [64] = nargs>0 ? malloc(nargs*64) : NULL;
-        int  *arg_ids           = nargs>0 ? malloc(nargs*sizeof(int)) : NULL;
 
-        /* Emit args in reverse order so we can chain succeed ports forward */
-        /* Actually emit forward, each arg's succeed = push + next arg */
-        /* Use a simpler approach: emit each arg with succeed=push_relay */
         char prev_succ[64]; strncpy(prev_succ,do_call,63);
 
-        /* Emit args right-to-left so rightmost is pushed first (stack convention) */
+        /* Emit args right-to-left so leftmost arg ends up pushed last
+         * (icn_pop in callee pops in reverse → slot 0 = first param) */
         for(int i=nargs-1;i>=0;i--){
             char push_relay[64]; snprintf(push_relay,sizeof push_relay,"icon_%d_push%d",id,i);
             IcnPorts ap3; strncpy(ap3.succeed,push_relay,63); strncpy(ap3.fail,ports.fail,63);
             emit_expr(em,n->children[i+1],ap3,arg_alphas[i],arg_betas[i]);
-            int aid=-1; sscanf(arg_alphas[i],"icon_%d_a",&aid);
-            arg_ids[i]=aid;
-            /* push relay: load val, push */
+            /* push_relay: pop hw stack value → rdi → icn_push (software stack) */
             Ldef(em,push_relay);
-            if(aid>=0) E(em,"    mov     rdi, [rel icon_%d_val]\n",aid);
+            E(em,"    pop     rdi\n");
             E(em,"    call    icn_push\n");
             Jmp(em,prev_succ);
             strncpy(prev_succ,arg_alphas[i],63);
@@ -376,29 +378,26 @@ static void emit_call(IcnEmitter *em, IcnNode *n, IcnPorts ports,
 
         /* α: start first arg */
         Ldef(em,a);
-        if(nargs>0) Jmp(em,prev_succ); /* prev_succ now = first arg's α */
+        if(nargs>0) Jmp(em,prev_succ);
         else Jmp(em,do_call);
 
         /* β: not resumable for now */
         Ldef(em,b); Jmp(em,ports.fail);
 
-        /* do_call: args on stack, call proc */
-        char after_call[64]; snprintf(after_call,sizeof after_call,"icon_%d_after",id);
+        /* do_call: all args on icn_stack, call proc */
         Ldef(em,do_call);
         E(em,"    call    icn_%s\n",fname);
         /* Check icn_failed */
         E(em,"    movzx   rax, byte [rel icn_failed]\n");
         E(em,"    test    rax, rax\n");
         E(em,"    jnz     %s\n",ports.fail);
-        /* Load return value into a val bss slot */
-        char ret_val[64]; label_val(id,ret_val,sizeof ret_val); bss_declare(ret_val);
+        /* Push return value onto hw stack for consumer */
         E(em,"    mov     rax, [rel icn_retval]\n");
-        E(em,"    mov     [rel %s], rax\n",ret_val);
+        E(em,"    push    rax\n");
         Jmp(em,ports.succeed);
 
         if(arg_alphas) free(arg_alphas);
         if(arg_betas)  free(arg_betas);
-        if(arg_ids)    free(arg_ids);
         return;
     }
 
@@ -431,31 +430,52 @@ static void emit_alt(IcnEmitter *em, IcnNode *n, IcnPorts ports,
 
 /* =========================================================================
  * Binary arithmetic — funcs-set wiring (§4.3)
+ * Frame slot lc_slot: left cache (per-invocation, prevents recursive clobber).
+ * BSS bflag: 0=α path (start right from α), 1=β path (resume right from β).
+ *   α: bflag=0, run left → lstore → cache → ra
+ *   β: bflag=1, run left → lstore → cache → rb
+ * right.ω → lbfwd → left.β → binop fails
  * ======================================================================= */
 static void emit_binop(IcnEmitter *em, IcnNode *n, IcnPorts ports,
                        char *oa, char *ob) {
-    int id=icn_new_id(em); char a[64],b[64],compute[64],lbfwd[64];
+    int id=icn_new_id(em); char a[64],b[64],compute[64],lbfwd[64],lstore[64],bflag[64];
     icn_label_alpha(id,a,sizeof a); icn_label_beta(id,b,sizeof b);
     snprintf(compute,sizeof compute,"icon_%d_compute",id);
     snprintf(lbfwd,  sizeof lbfwd,  "icon_%d_lb",id);
-    char rv[64]; label_val(id,rv,sizeof rv); bss_declare(rv);
+    snprintf(lstore, sizeof lstore, "icon_%d_lstore",id);
+    snprintf(bflag,  sizeof bflag,  "icon_%d_bflag",id);
+    bss_declare(bflag);
     strncpy(oa,a,63); strncpy(ob,b,63);
     const char *op=n->kind==ICN_ADD?"ADD":n->kind==ICN_SUB?"SUB":n->kind==ICN_MUL?"MUL":n->kind==ICN_DIV?"DIV":"MOD";
     E(em,"    ; %s  id=%d\n",op,id);
 
+    int lc_slot = locals_alloc_tmp();
+
     IcnPorts rp; strncpy(rp.succeed,compute,63); strncpy(rp.fail,lbfwd,63);
     char ra[64],rb[64]; emit_expr(em,n->children[1],rp,ra,rb);
-    IcnPorts lp; strncpy(lp.succeed,ra,63); strncpy(lp.fail,ports.fail,63);
+
+    IcnPorts lp; strncpy(lp.succeed,lstore,63); strncpy(lp.fail,ports.fail,63);
     char la[64],lb[64]; emit_expr(em,n->children[0],lp,la,lb);
 
     Ldef(em,lbfwd); Jmp(em,lb);
-    Ldef(em,a); Jmp(em,la);
-    Ldef(em,b); Jmp(em,rb);
+    Ldef(em,a);
+    E(em,"    mov     byte [rel %s], 0\n",bflag);  /* α path */
+    Jmp(em,la);
+    Ldef(em,b);
+    E(em,"    mov     byte [rel %s], 1\n",bflag);  /* β path: re-eval left */
+    Jmp(em,la);
 
-    int rid=-1,lid=-1; sscanf(ra,"icon_%d_a",&rid); sscanf(la,"icon_%d_a",&lid);
+    /* lstore: left pushed value; pop, cache, branch on bflag */
+    Ldef(em,lstore);
+    E(em,"    pop     rax\n");
+    E(em,"    mov     [rbp%+d], rax\n", slot_offset(lc_slot));
+    E(em,"    cmp     byte [rel %s], 0\n", bflag);
+    E(em,"    je      %s\n", ra);   /* α path: start right */
+    Jmp(em,rb);                     /* β path: resume right */
+
     Ldef(em,compute);
-    if(rid>=0) E(em,"    mov     rax, [rel icon_%d_val]\n",rid);
-    if(lid>=0) E(em,"    mov     rcx, [rel icon_%d_val]\n",lid);
+    E(em,"    pop     rax\n");
+    E(em,"    mov     rcx, [rbp%+d]\n", slot_offset(lc_slot));
     switch(n->kind){
         case ICN_ADD: E(em,"    add     rcx, rax\n"); break;
         case ICN_SUB: E(em,"    sub     rcx, rax\n"); break;
@@ -464,46 +484,60 @@ static void emit_binop(IcnEmitter *em, IcnNode *n, IcnPorts ports,
         case ICN_MOD: E(em,"    xchg    rax, rcx\n    cqo\n    idiv    rcx\n    mov     rcx, rdx\n"); break;
         default: break;
     }
-    E(em,"    mov     [rel %s], rcx\n",rv);
+    E(em,"    push    rcx\n");
     Jmp(em,ports.succeed);
 }
 
 /* =========================================================================
  * Relational operators — goal-directed retry
+ * Same left-cache pattern as binop.
+ * On comparison failure → right.β (retry right, left still in lcache).
+ * On right exhausted → left.β (retry left, re-stores lcache).
  * ======================================================================= */
 static void emit_relop(IcnEmitter *em, IcnNode *n, IcnPorts ports,
                        char *oa, char *ob) {
     int id=icn_new_id(em); char a[64],b[64],chk[64],lbfwd[64];
     icn_label_alpha(id,a,sizeof a); icn_label_beta(id,b,sizeof b);
-    snprintf(chk,  sizeof chk,  "icon_%d_check",id);
-    snprintf(lbfwd,sizeof lbfwd,"icon_%d_lb",id);
-    char rv[64]; label_val(id,rv,sizeof rv); bss_declare(rv);
+    snprintf(chk,       sizeof chk,       "icon_%d_check",id);
+    snprintf(lbfwd,     sizeof lbfwd,     "icon_%d_lb",id);
     strncpy(oa,a,63); strncpy(ob,b,63);
     const char *op=n->kind==ICN_LT?"LT":n->kind==ICN_LE?"LE":n->kind==ICN_GT?"GT":n->kind==ICN_GE?"GE":n->kind==ICN_EQ?"EQ":"NE";
     E(em,"    ; %s  id=%d\n",op,id);
 
+    char lcache_store[64]; snprintf(lcache_store,sizeof lcache_store,"icon_%d_lstore",id);
+    int lc_slot = locals_alloc_tmp();
+
     IcnPorts rp; strncpy(rp.succeed,chk,63); strncpy(rp.fail,lbfwd,63);
     char ra[64],rb[64]; emit_expr(em,n->children[1],rp,ra,rb);
-    IcnPorts lp; strncpy(lp.succeed,ra,63); strncpy(lp.fail,ports.fail,63);
+    IcnPorts lp; strncpy(lp.succeed,lcache_store,63); strncpy(lp.fail,ports.fail,63);
     char la[64],lb[64]; emit_expr(em,n->children[0],lp,la,lb);
 
     Ldef(em,lbfwd); Jmp(em,lb);
     Ldef(em,a); Jmp(em,la);
     Ldef(em,b); Jmp(em,rb);
 
-    int rid=-1,lid=-1; sscanf(ra,"icon_%d_a",&rid); sscanf(la,"icon_%d_a",&lid);
+    Ldef(em,lcache_store);
+    E(em,"    pop     rax\n");
+    E(em,"    mov     [rbp%+d], rax\n", slot_offset(lc_slot));
+    Jmp(em,ra);
+
     Ldef(em,chk);
-    if(lid>=0) E(em,"    mov     rax, [rel icon_%d_val]\n",lid);
-    if(rid>=0) E(em,"    mov     rcx, [rel icon_%d_val]\n",rid);
+    E(em,"    pop     rcx\n");                                    /* right value */
+    E(em,"    mov     rax, [rbp%+d]\n", slot_offset(lc_slot));   /* left from frame */
     E(em,"    cmp     rax, rcx\n");
     const char *jfail=n->kind==ICN_LT?"jge":n->kind==ICN_LE?"jg":n->kind==ICN_GT?"jle":n->kind==ICN_GE?"jl":n->kind==ICN_EQ?"jne":"je";
     E(em,"    %s      %s\n",jfail,rb);
-    if(rid>=0) E(em,"    mov     [rel %s], rcx\n",rv);
+    E(em,"    push    rcx\n");
     Jmp(em,ports.succeed);
 }
 
 /* =========================================================================
  * ICN_TO — range generator inline counter (§4.4)
+ * E1 and E2 each push their value onto the stack.
+ * init: pop E2 value → BSS e2_bound; pop E1 value → BSS I (counter start)
+ * β:   inc I, re-check
+ * BSS I and e2_bound are per-TO-node but NOT per-invocation — safe here
+ * because TO is only used inside `every` (flat, non-recursive context).
  * ======================================================================= */
 static void emit_to(IcnEmitter *em, IcnNode *n, IcnPorts ports,
                     char *oa, char *ob) {
@@ -513,8 +547,9 @@ static void emit_to(IcnEmitter *em, IcnNode *n, IcnPorts ports,
     snprintf(init,sizeof init,"icon_%d_init",id);
     snprintf(e1bf,sizeof e1bf,"icon_%d_e1b",id);
     snprintf(e2bf,sizeof e2bf,"icon_%d_e2b",id);
-    char I[64],v[64]; label_I(id,I,sizeof I); label_val(id,v,sizeof v);
-    bss_declare(I); bss_declare(v);
+    char I[64],bound[64]; label_I(id,I,sizeof I);
+    snprintf(bound,sizeof bound,"icon_%d_bound",id);
+    bss_declare(I); bss_declare(bound);
     strncpy(oa,a,63); strncpy(ob,b,63);
     E(em,"    ; TO  id=%d\n",id);
 
@@ -528,16 +563,19 @@ static void emit_to(IcnEmitter *em, IcnNode *n, IcnPorts ports,
     Ldef(em,a);    Jmp(em,e1a);
     Ldef(em,b);    E(em,"    inc     qword [rel %s]\n",I); Jmp(em,code);
 
-    int e1id=-1,e2id=-1; sscanf(e1a,"icon_%d_a",&e1id); sscanf(e2a,"icon_%d_a",&e2id);
+    /* init: E1 pushed first (deeper), E2 pushed on top */
     Ldef(em,init);
-    if(e1id>=0) E(em,"    mov     rax, [rel icon_%d_val]\n",e1id);
+    E(em,"    pop     rax\n");              /* E2 value (top of stack) */
+    E(em,"    mov     [rel %s], rax\n",bound);
+    E(em,"    pop     rax\n");              /* E1 value */
     E(em,"    mov     [rel %s], rax\n",I);
     Jmp(em,code);
+
     Ldef(em,code);
     E(em,"    mov     rax, [rel %s]\n",I);
-    if(e2id>=0) E(em,"    cmp     rax, [rel icon_%d_val]\n",e2id);
+    E(em,"    cmp     rax, [rel %s]\n",bound);
     E(em,"    jg      %s\n",e2bf);
-    E(em,"    mov     [rel %s], rax\n",v);
+    E(em,"    push    rax\n");              /* push current counter value */
     Jmp(em,ports.succeed);
 }
 
@@ -707,10 +745,6 @@ void icn_emit_file(IcnEmitter *em, IcnNode **nodes, int count) {
                 }
             }
         }
-        /* Frame size: all locals (params + declared locals) */
-        int frame_size=(cur_nlocals>0)?8*(cur_nlocals+1):0;
-        if(frame_size%16!=0) frame_size=(frame_size+15)&~15;
-
         /* Chain statements in reverse — skip ICN_GLOBAL (local decl) nodes */
         char **alphas=calloc(nstmts,sizeof(char*));
         for(int i=0;i<nstmts;i++) alphas[i]=malloc(64);
@@ -723,6 +757,10 @@ void icn_emit_file(IcnEmitter *em, IcnNode **nodes, int count) {
             char sa[64],sb[64]; emit_expr(em,stmt,sp,sa,sb);
             strncpy(alphas[i],sa,63); strncpy(next_a,sa,63);
         }
+
+        /* Frame size computed AFTER emit so locals_alloc_tmp() slots are counted */
+        int frame_size=(cur_nlocals>0)?8*(cur_nlocals+1):0;
+        if(frame_size%16!=0) frame_size=(frame_size+15)&~15;
 
         /* Emit proc entry */
         E(em,"icn_%s:\n",pname);
