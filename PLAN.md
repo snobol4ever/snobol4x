@@ -17,7 +17,7 @@ are always the cause when builds fail with "not found" errors.
 
 ### Current milestone
 
-**BEAUTY session:** `M-BEAUTY-READWRITE`
+**BEAUTY session:** `M-BEAUTY-TREE`
 - create `demo/inc/tree.sno`, driver + ref at `test/beauty/tree/`
 - run: `bash test/beauty/run_beauty_subsystem.sh tree`
 - on pass: commit `B-268: M-BEAUTY-TREE ✅`, advance to `M-BEAUTY-ShiftReduce`
@@ -42,7 +42,7 @@ are always the cause when builds fail with "not found" errors.
 | 12 | TDump | |
 | 13 | Gen | |
 | 14 | Qize | |
-| 15 | ReadWrite | ← next |
+| 15 | ReadWrite | |
 | 16 | XDump | |
 | 17 | semantic | |
 | 18 | omega | |
@@ -1520,7 +1520,7 @@ INC=demo/inc bash test/beauty/run_beauty_subsystem.sh stack
 | 12 | TDump | |
 | 13 | Gen | |
 | 14 | Qize | |
-| 15 | ReadWrite | ← next |
+| 15 | ReadWrite | |
 | 16 | XDump | |
 | 17 | semantic | |
 | 18 | omega | |
@@ -2015,6 +2015,202 @@ bash /home/claude/beauty_project/snobol4x/setup.sh
 ### Trigger phrase for next session
 **"playing with beauty"** → B-273 → snobol4x PLAN.md §29, milestone `M-BEAUTY-READWRITE`
 
+
+---
+
+## §28 — Session Handoff F-227 (2026-03-23): Five fixes in, label mismatch found
+
+### Work completed this session
+
+Five bugs fixed in `src/backend/x64/emit_byrd_asm.c` (uncommitted, one file changed):
+
+| Fix | What | Why |
+|-----|------|-----|
+| **γ-time trail mark** | Mark for ucall N moved from αN entry to BEFORE γN label | αN re-entered on resume — re-marking over-unwinds prior variables |
+| **βN owns its mark** | βN unwinds to `UCALL_MARK_OFFSET(ucall_seq)` not `[rbp-8]` | Clause mark wipes ALL bindings; own mark wipes only this ucall's |
+| **rbx stable base** | Args array indexed via `[rbx+N]` after `mov rbx, rsp` | `emit_pl_term_load` shifts rsp internally for nested compounds |
+| **edx survives arg-build** | `mov edx, [rbp - UCALL_SLOT_OFFSET(N)]` after arg-building | `term_new_compound` clobbers rdx (C ABI) |
+| **Collision guard** | Only emit next-ucall mark when `ucall_seq+1 < max_ucalls` | `UCALL_MARK_OFFSET(max_ucalls)` == `VAR_SLOT_OFFSET(0)` otherwise |
+
+Also: clause entry now stores mark at `UCALL_MARK_OFFSET(0)` when `max_ucalls > 0` so β0 has a valid slot.
+
+### Test results
+
+- M7 (clean build): ✅ zero errors
+- M8 (`member(a,[a,b,c])`): ✅ prints `found_a`
+- M9 (`color(X),color(Y)` 9/9): ❌ NASM label errors
+
+### Root cause of M9 failure — `bi` vs `ucall_seq` label mismatch
+
+`γN` and `βN` labels are named with `bi` (body goal index — counts ALL goals including builtins).
+`αN` labels and `jmp` targets use `ucall_seq` (counts only USER-CALL goals).
+
+When builtins appear between user calls, `bi` and `ucall_seq` diverge:
+- ucall 0 at bi=0 → emits `α0`, `β0`, `γ0`
+- ucall 1 at bi=3 (after write/nl/write) → emits `α1`, `β1` (using ucall_seq=1) but `γ3` (using bi=3)
+- `β1` jumps to `α1` ✅ but `γ1` jumps to `α3` ❌ (doesn't exist)
+
+### The one-line fix needed for F-228
+
+In `emit_byrd_asm.c`, the γN label emission (one place):
+
+```c
+// CURRENT (broken):
+A("pl_%s_c%d_γ%d:\n", pred_safe, idx, bi);
+
+// FIX: use ucall_seq, not bi
+A("pl_%s_c%d_γ%d:\n", pred_safe, idx, ucall_seq);
+```
+
+Same fix for the `jmp pl_%s_c%d_γ%d` reference just above it (the success jump to γN).
+Also check `snprintf(last_β_lbl, ...)` — it uses `bi` for `β%d`, must match `ucall_seq`.
+
+### §START update for F-228
+
+1. `bash setup.sh`
+2. In `src/backend/x64/emit_byrd_asm.c`, grep for `γ%d.*bi` and `β%d.*bi` — change all to `ucall_seq`
+3. Build: `cd src && make`
+4. Test M8: `member(a,[a,b,c])` → `found_a` ✅
+5. Test M9: `color(X),color(Y)` → 9 lines ✅
+6. Run rungs 01–09 (regression check)
+7. Run rung10 puzzles (puzzle_01, puzzle_05, puzzle_06)
+8. On all pass: commit `F-227: trail-mark timing + rbx/edx arg fixes; bi→ucall_seq label unification`
+9. Update HQ PLAN.md dashboard row + fire M-PROLOG-R10 ✅ M-PROLOG-CORPUS ✅
+
+### Trigger phrase
+**"playing with Prolog frontend"** → F-228 → snobol4x PLAN.md §28
+## §28 — Session Handoff B-270 (2026-03-23): M-BEAUTY-STACK 3-way PASS ✅
+
+### Work completed this session
+
+- **M-BEAUTY-STACK 3-way PASS confirmed** — CSN + SPL + ASM, 8 sync steps, 0 divergences.
+- **Monitor infrastructure fix:** `X64_DIR` defaulted to `/home/claude/x64` (missing).
+  SPITBOL IPC hung at step 0 with error 142 (LOAD failed — wrong `.so` path).
+  Fix: `ln -sfn /home/claude/beauty-project/x64 /home/claude/x64`
+  This symlink must be created at session start whenever x64 is cloned to a non-default path.
+  **Add to setup.sh or session bootstrap.**
+- **§START table updated:** `stack → ✅`, current milestone `M-BEAUTY-TREE` (already ✅ at `ed72c0f`).
+  Effective next milestone: **M-BEAUTY-TDUMP** (per HQ PLAN.md `3251cd4`).
+
+### PLAN.md §START update
+
+**Current milestone:** `M-BEAUTY-TDUMP` — 2 bugs open from B-269:
+1. `ANY(&UCASE &LCASE)` charset quoting — SPITBOL and CSNOBOL4 handle `&UCASE &LCASE` literal concat differently
+2. `STLIMIT` loop in `Gen.sno` — Gen loops indefinitely without STLIMIT guard
+
+### Next session action plan (B-271)
+
+```bash
+ln -sfn /home/claude/beauty-project/x64 /home/claude/x64   # if needed
+bash /home/claude/beauty-project/snobol4x/setup.sh
+```
+
+1. Read snobol4x PLAN.md §28 (this section) + `test/beauty/TDump/` for current state
+2. Fix bug 1: `ANY(&UCASE &LCASE)` quoting in `emit_byrd_asm.c`
+3. Fix bug 2: `STLIMIT` loop guard in `Gen.sno`
+4. Run: `INC=demo/inc bash test/beauty/run_beauty_subsystem.sh TDump`
+5. On PASS: commit `B-271: M-BEAUTY-TDUMP ✅`, update §START → `M-BEAUTY-GEN`
+
+### Trigger phrase
+**"playing with beauty"** → B-271 → snobol4x PLAN.md §28, milestone `M-BEAUTY-TDUMP`
+
+---
+
+## §29 — Session Handoff B-272 (2026-03-23): M-BEAUTY-READWRITE @-capture bug
+
+### Work completed this session
+
+- **B-272 partial:** `test/beauty/ReadWrite/driver.sno` + `driver.ref` created (8 tests, 8/8 CSNOBOL4 PASS)
+- 3-way monitor: DIVERGENCE at step 1 — `lm[0]=2` (ASM) vs `lm[0]=1` (oracle)
+- Root cause **fully traced to `@x` cursor-capture returning empty in ASM backend**
+
+### §29.1 — Root cause: `@var` captures empty string instead of cursor integer
+
+Minimal reproduction:
+
+```snobol4
+DEFINE('LM3(s)')  :(LM3End)
+LM3   o = 0
+LM3_3 s POS(0) BREAK(nl) nl @x =   :F(LM3_9)
+      OUTPUT = 'x=' x ' o=' o
+      o = o + x                     :(LM3_3)
+LM3_9                               :(RETURN)
+LM3End
+      LM3('hi' nl 'bye' nl)
+```
+
+- **CSNOBOL4:** `x=3 o_before=0` / `o_after=3` / `x=4 o_before=3` / `o_after=7` ✅
+- **ASM:** `x= o_before=0` / `o_after=0` ❌ — `x` is empty, `o` never advances
+
+`@x` in SNOBOL4 captures the **current cursor position** (an integer) into `x`.
+The ASM `AT_α` macro apparently sets the cursor variable slot but does NOT call
+`stmt_set(varname, cursor_as_integer)` so `x` remains NULVCL.
+
+### §29.2 — Fix location
+
+In `src/backend/x64/emit_byrd_asm.c`, find the emitter for `E_AT` nodes (the `@var`
+cursor-position capture). The pattern node likely emits `AT_α S_varname, cursor, ...`
+but the `AT_α` macro in `snobol4_asm.mac` may not store the cursor value as an
+integer into the variable.
+
+**Check `AT_α` in `src/runtime/asm/snobol4_asm.mac`:**
+
+```bash
+grep -n "macro AT_α\|AT_α\b" src/runtime/asm/snobol4_asm.mac | head -10
+```
+
+Expected: `AT_α` should emit something like:
+```asm
+mov  rdi, cursor_val        ; integer cursor position
+call stmt_intval            ; make SnoVal integer
+lea  rdi, [rel S_varname]
+mov  rsi, rax               ; type
+mov  rdx, rdx               ; ptr
+call stmt_set               ; store into variable
+```
+
+If it only sets `[cursor]` (the global scan position) without storing into the
+SNOBOL4 variable, that is the bug.
+
+### §29.3 — Next session action plan (B-273)
+
+```bash
+ln -sfn /home/claude/beauty_project/x64 /home/claude/x64
+bash /home/claude/beauty_project/snobol4x/setup.sh
+```
+
+1. Find `AT_α` macro and `E_AT` emit in `emit_byrd_asm.c`
+2. Confirm `AT_α` does NOT call `stmt_set` for the capture variable
+3. Fix: after setting cursor, also `stmt_set(varname, integer(cursor))`
+4. Rebuild: `cd src && make`
+5. Run minimal test: `LM3('hi' nl 'bye' nl)` → expect `x=3 o_after=3`
+6. Run: `INC=demo/inc bash test/beauty/run_beauty_subsystem.sh ReadWrite`
+7. On 8/8 PASS: `git commit -m "B-272: M-BEAUTY-READWRITE ✅"`, push
+8. Update HQ PLAN.md row: `M-BEAUTY-READWRITE → ✅`, next `M-BEAUTY-XDUMP`
+9. Run `bash test/crosscheck/run_crosscheck_asm_corpus.sh` → must stay 106/106
+
+### §29.4 — Files committed this session
+
+- `test/beauty/ReadWrite/driver.sno` — 8-test driver
+- `test/beauty/ReadWrite/driver.ref` — oracle reference (8 lines)
+- `PLAN.md` — this handoff note
+
+### §29.5 — Test status going into B-273
+
+| Step | Test | ASM |
+|------|------|-----|
+| 1 | LineMap[0]=1 | ❌ returns 2 (lmOfs never advances → lmLineNo=2 at second lmMap[0] write) |
+| 2 | LineMap offset 6 = line 2 | ❌ (lmOfs stays 0) |
+| 3 | LineMap offset 11 = line 3 | ❌ |
+| 4 | Read FRETURN bad path | ? (untested past step 1) |
+| 5 | Write FRETURN bad path | ? |
+| 6 | LineMap empty string | ? |
+| 7 | LineMap single word | ? |
+| 8 | LineMap 2-line second offset | ? |
+
+### Trigger phrase for next session
+**"playing with beauty"** → B-273 → snobol4x PLAN.md §29, milestone `M-BEAUTY-READWRITE`
+
 ---
 
 ## §30 — Session Handoff B-273 (2026-03-23): M-BEAUTY-READWRITE partial ✅ steps 1–5 pass
@@ -2117,35 +2313,3 @@ bash /home/claude/snobol4x/setup.sh
 4. Rebuild: `cd src && make`
 5. Run unit test: `snobol4 /tmp/test_input_fail.sno` → PASS; compile+run via ASM → PASS
 6. Run 3-way monitor: `INC=demo/inc bash test/beauty/run_beauty_subsystem.sh ReadWrite`
-7. On 8/8 PASS:
-   ```bash
-   git add src/runtime/snobol4/snobol4.c PLAN.md
-   git commit -m "B-274: M-BEAUTY-READWRITE ✅"
-   git push
-   ```
-8. Update HQ PLAN.md row: `ReadWrite → ✅`, next milestone `M-BEAUTY-XDUMP`
-9. Run `bash test/crosscheck/run_crosscheck_asm_corpus.sh` → must stay 106/106
-
-### §30.3 — Files committed this session
-
-| File | Change |
-|------|--------|
-| `src/backend/x64/emit_byrd_asm.c` | Binary `E_ATP` fix: `children[1]->sval` for varname, child wiring |
-| `PLAN.md` | This handoff note |
-
-### §30.4 — Test status going into B-274
-
-| Step | Test | ASM |
-|------|------|-----|
-| 1 | LineMap[0]=1 | ✅ |
-| 2 | LineMap offset 6 = line 2 | ✅ |
-| 3 | LineMap offset 11 = line 3 | ✅ |
-| 4 | Read FRETURN bad path | ❌ `_b_INPUT n==3` returns NULVCL not FAILDESCR |
-| 5 | Write FRETURN bad path | ❌ same class |
-| 6 | LineMap empty string | ? |
-| 7 | LineMap single word | ? |
-| 8 | LineMap 2-line second offset | ? |
-
-### Trigger phrase for next session
-**"playing with beauty"** → B-274 → snobol4x PLAN.md §30, milestone `M-BEAUTY-READWRITE`
-

@@ -5218,10 +5218,20 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
         A("    mov     [rbp - %d], rax    ; var slot %d\n", (5 + max_ucalls + max_ucalls + k)*8, k);
     }
 
-    /* Trail mark — save in frame slot [rbp-8] */
+    /* Trail mark — save in clause frame slot [rbp-8].
+     * Also store at UCALL_MARK_OFFSET(0) when there are ucalls, so β0 can
+     * unwind to it uniformly (β0 uses UCALL_MARK_OFFSET(0), not [rbp-8]).
+     * Zero all sub_cs slots so restore-before-call emits 0 on first entry. */
     A("    lea     rdi, [rel pl_trail]\n");
     A("    call    trail_mark_fn\n");
-    A("    mov     [rbp - 8], eax          ; save trail mark\n");
+    A("    mov     [rbp - 8], eax          ; clause trail mark\n");
+    if (max_ucalls > 0) {
+        A("    mov     [rbp - %d], eax     ; UCALL_MARK_OFFSET(0) = β0 unwind target\n",
+          UCALL_MARK_OFFSET(0));
+        for (int s = 0; s < max_ucalls; s++)
+            A("    mov     dword [rbp - %d], 0  ; init sub_cs slot %d\n",
+              UCALL_SLOT_OFFSET(s), s);
+    }
 
     /* Head unification — for each head arg child[i], unify with call arg.
      * Fall through all args sequentially. Only jump on failure. */
@@ -5332,21 +5342,20 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
             if (strcmp(fn, "true") == 0 && garity == 0) {
                 continue;  /* no-op */
             }
-            /* --- fail/0 --- */
+            /* --- fail/0 — retry innermost ucall (Proebsting E2.fail→E1.resume) --- */
             if (strcmp(fn, "fail") == 0 && garity == 0) {
                 if (ucall_seq > 0) {
-                    /* retry innermost ucall — Proebsting E2.fail→E1.resume
-                     * Unwind to the per-ucall trail mark (not the clause mark)
-                     * so only this ucall's bindings are cleared, leaving
-                     * earlier ucalls' bindings (e.g. color(X)) intact. */
+                    /* Unwind to the innermost ucall's own mark, then retry it.
+                     * Uses UCALL_MARK_OFFSET(ucall_seq-1) — same slot βN-1 would use. */
                     A("    lea     rdi, [rel pl_trail]\n");
-                    A("    mov     esi, [rbp - %d]    ; ucall %d trail mark\n",
+                    A("    mov     esi, [rbp - %d]    ; own mark ucall %d\n",
                       UCALL_MARK_OFFSET(ucall_seq - 1), ucall_seq - 1);
                     A("    call    trail_unwind\n");
                     A("    mov     edx, [rbp - %d]    ; restore sub_cs for retry\n",
                       UCALL_SLOT_OFFSET(ucall_seq - 1));
                     A("    jmp     pl_%s_c%d_α%d\n", pred_safe, idx, ucall_seq - 1);
                 } else {
+                    /* No ucalls yet — unwind clause mark and fail */
                     A("    lea     rdi, [rel pl_trail]\n");
                     A("    mov     esi, [rbp - 8]\n");
                     A("    call    trail_unwind\n");
@@ -5936,68 +5945,77 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                 snprintf(call_safe, sizeof call_safe, "%s", pl_safe(call_safe_fa));
                 char β_lbl[128];
                 snprintf(β_lbl, sizeof β_lbl, "pl_%s_c%d_β%d", pred_safe, idx, bi);
-                char α_lbl[128];
-                snprintf(α_lbl, sizeof α_lbl, "pl_%s_c%d_bres%d", pred_safe, idx, bi);
-                /* Every ucall gets a ucres label BEFORE args setup.
-                 * On fresh first call: fall through with edx=0 (xor below).
-                 * On E2.fail→E1.resume retry: jumped here with edx=saved sub_cs. */
+                /* αN: re-entry for resume after prior ucall exhausts.
+                 * Trail mark for THIS ucall was taken at γ_{N-1} time (see γN block below),
+                 * NOT here — taking it at αN re-entry would over-unwind on resume.
+                 * Sub_cs is pre-zeroed; restored from slot before call so edx survives
+                 * arg-building (term_new_compound is a C function that clobbers rdx). */
                 A("pl_%s_c%d_α%d:\n", pred_safe, idx, ucall_seq);
-                /* Take a fresh trail mark for this ucall so fail/0 can unwind
-                 * only this ucall's bindings (not earlier ucalls') on retry. */
-                A("    lea     rdi, [rel pl_trail]\n");
-                A("    call    trail_mark_fn\n");
-                A("    mov     [rbp - %d], eax    ; ucall %d trail mark\n",
-                  UCALL_MARK_OFFSET(ucall_seq), ucall_seq);
-                /* push args in reverse then pass array ptr */
+                /* Build args with rbx as stable base.
+                 * emit_pl_term_load may do sub/add rsp for nested compounds;
+                 * [rbx+N] indexing is immune to those rsp shifts. */
                 if (garity > 0) {
                     int alloc = ALIGN16(garity*8);
-                    A("    sub     rsp, %d              ; args array for %s/%d (aligned)\n",
+                    A("    sub     rsp, %d              ; args array for %s/%d\n",
                       alloc, fn, garity);
+                    A("    mov     rbx, rsp               ; stable base (immune to rsp shifts)\n");
                     for (int ai = 0; ai < garity; ai++) {
                         emit_pl_term_load(goal->children[ai], n_vars);
-                        A("    mov     [rsp + %d], rax\n", ai*8);
+                        A("    mov     [rbx + %d], rax    ; args[%d]\n", ai*8, ai);
                     }
-                    A("    mov     rdi, rsp               ; args[]\n");
+                    A("    mov     rdi, rbx               ; args[] ptr\n");
                 } else {
                     A("    xor     rdi, rdi               ; no args\n");
                 }
                 A("    lea     rsi, [rel pl_trail]\n");
-                /* Fresh entry path falls through here with edx=0 (set at clause entry).
-                 * Resume path jumps to ucres with edx already loaded from slot. */
-                A("%s:\n", α_lbl);
-                A("    ; edx = sub_cs\n");
+                /* Restore edx after arg-building — term_new_compound clobbers rdx */
+                A("    mov     edx, [rbp - %d]    ; restore sub_cs ucall %d\n",
+                  UCALL_SLOT_OFFSET(ucall_seq), ucall_seq);
                 A("    call    pl_%s_r\n", call_safe);
                 if (garity > 0)
                     A("    add     rsp, %d\n", ALIGN16(garity*8));
                 A("    test    eax, eax\n");
                 A("    js      %s\n", β_lbl);
-                /* success: save sub_cs to per-ucall slot [rbp - UCALL_SLOT(bi)] */
+                /* success: save returned sub_cs */
                 A("    mov     [rbp - %d], eax        ; ucall slot %d sub_cs\n",
                   UCALL_SLOT_OFFSET(ucall_seq), ucall_seq);
-                /* also update sub_cs_acc for γ encoding */
                 A("    mov     [rbp - 16], eax        ; sub_cs_acc\n");
                 A("    jmp     pl_%s_c%d_γ%d\n", pred_safe, idx, bi);
                 A("%s:\n", β_lbl);
-                /* E2.fail → E1.resume: if there's a prior ucall, retry it */
+                /* βN unwinds to OWN mark UCALL_MARK_OFFSET(ucall_seq) — not [rbp-8].
+                 * This clears only this ucall's bindings; prior bindings survive.
+                 * Then retry the previous ucall (or fail the whole clause). */
+                A("    lea     rdi, [rel pl_trail]\n");
+                A("    mov     esi, [rbp - %d]    ; own mark ucall %d\n",
+                  UCALL_MARK_OFFSET(ucall_seq), ucall_seq);
+                A("    call    trail_unwind\n");
                 if (ucall_seq > 0) {
-                    /* Unwind trail to clause mark before retrying — clear bindings from this subtree */
-                    A("    lea     rdi, [rel pl_trail]\n");
-                    A("    mov     esi, [rbp - 8]\n");
-                    A("    call    trail_unwind\n");
-                    A("    mov     edx, [rbp - %d]    ; restore sub_cs of ucall %d\n",
+                    A("    mov     edx, [rbp - %d]    ; restore sub_cs ucall %d\n",
                       UCALL_SLOT_OFFSET(ucall_seq - 1), ucall_seq - 1);
                     A("    jmp     pl_%s_c%d_α%d\n", pred_safe, idx, ucall_seq - 1);
                 } else {
-                    A("    lea     rdi, [rel pl_trail]\n");
-                    A("    mov     esi, [rbp - 8]\n");
-                    A("    call    trail_unwind\n");
                     A("    jmp     %s\n", next_clause);
                 }
+                /* γN: emit trail mark for the NEXT ucall BEFORE this label.
+                 * Mark is taken after ucall N has bound its variable, so βN+1
+                 * can unwind exactly those bindings without touching earlier ones.
+                 * Guard: only when ucall_seq+1 < max_ucalls to prevent
+                 * UCALL_MARK_OFFSET(max_ucalls) == VAR_SLOT_OFFSET(0) collision. */
+                if (ucall_seq + 1 < max_ucalls) {
+                    A("    lea     rdi, [rel pl_trail]\n");
+                    A("    call    trail_mark_fn\n");
+                    A("    mov     [rbp - %d], eax    ; trail mark for ucall %d\n",
+                      UCALL_MARK_OFFSET(ucall_seq + 1), ucall_seq + 1);
+                }
                 A("pl_%s_c%d_γ%d:\n", pred_safe, idx, bi);
+                /* zero next ucall's sub_cs slot so restore-before-call emits 0 on fresh entry */
+                if (ucall_seq + 1 < max_ucalls)
+                    A("    mov     dword [rbp - %d], 0  ; init sub_cs slot ucall %d\n",
+                      UCALL_SLOT_OFFSET(ucall_seq + 1), ucall_seq + 1);
                 A("    xor     edx, edx               ; next ucall starts fresh\n");
-                /* record this ucall's fail label so fail/0 can retry it */
                 snprintf(last_β_lbl, sizeof last_β_lbl,
                          "pl_%s_c%d_β%d", pred_safe, idx, bi);
+                ucall_seq++;
                 ucall_seq++;
             }
         }
