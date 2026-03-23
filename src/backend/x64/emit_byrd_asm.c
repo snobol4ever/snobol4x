@@ -2021,6 +2021,8 @@ static void emit_named_def(const NamedPat *np,
         snprintf(omega_lbl, sizeof omega_lbl, "fn_%s_ω", safe);
         ALFC(gamma_lbl, "fn γ", "FN_γ %s\n", np->ret_gamma);
         ALFC(omega_lbl, "fn ω", "FN_ω %s\n", np->ret_omega);
+        /* β — backtrack into function call = failure; standalone stub after body */
+        ALFC(np->beta_lbl, "fn β — backtrack = fail", "jmp     [%s]\n", np->ret_omega);
         box_ctx_end();
         return;
     }

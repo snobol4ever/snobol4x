@@ -27,19 +27,18 @@ echo " M-BEAUTY-$(echo $SUB | tr a-z A-Z)"
 echo " driver: $DRIVER"
 echo "═══════════════════════════════════════════════════"
 
-# --- Sanity: SPITBOL output must match ref (SPITBOL is primary oracle) ---
+# --- Sanity: CSNOBOL4 output must match ref (CSNOBOL4 is primary oracle) ---
 TMP=$(mktemp -d /tmp/beauty_sub_XXXXXX)
 trap 'rm -rf "$TMP"' EXIT
 
-(cd "$INC" && SNOLIB="$X64_DIR:$INC" \
-    "$X64_DIR/bootsbl" "$DRIVER" < /dev/null > "$TMP/spl.out" 2>"$TMP/spl.err") || true
-if ! diff -q "$REF" "$TMP/spl.out" > /dev/null 2>&1; then
-    echo "FAIL: SPITBOL output does not match ref"
+INC="$INC" snobol4 -f -P256k -I"$INC" "$DRIVER" > "$TMP/csn.out" 2>"$TMP/csn.err"
+if ! diff -q "$REF" "$TMP/csn.out" > /dev/null 2>&1; then
+    echo "FAIL: CSNOBOL4 output does not match ref"
     echo "--- ref ---"; cat "$REF"
-    echo "--- got ---"; cat "$TMP/spl.out"
+    echo "--- got ---"; cat "$TMP/csn.out"
     exit 2
 fi
-echo "PASS: SPITBOL oracle matches ref ($(wc -l < "$REF") lines)"
+echo "PASS: CSNOBOL4 oracle matches ref ($(wc -l < "$REF") lines)"
 
 # --- 3-way monitor run ---
 INC="$INC" X64_DIR="$X64_DIR" MONITOR_TIMEOUT="$MONITOR_TIMEOUT" \

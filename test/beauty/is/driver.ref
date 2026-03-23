@@ -1,2 +1,2 @@
-PASS: IsSnobol4 correctly fails in SPITBOL
-PASS: IsSpitbol correctly succeeds in SPITBOL
+PASS: IsSnobol4 correctly succeeds in CSNOBOL4
+PASS: IsSpitbol correctly fails in CSNOBOL4

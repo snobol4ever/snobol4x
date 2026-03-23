@@ -1,0 +1,23 @@
+*  driver.sno — test driver for FENCE.sno
+*  Oracle: SPITBOL -I$INC driver.sno   (snobol4x targets SPITBOL semantics)
+*  Exercises: FENCE primitive in pattern matching
+*  FENCE.sno only defines FENCE() for CSNOBOL4; SPITBOL has it as a builtin.
+-INCLUDE 'global.sno'
+-INCLUDE 'is.sno'
+-INCLUDE 'FENCE.sno'
+
+        &STLIMIT = 1000000
+
+*  FENCE in alternation — on gamma path (LEN(1) matches), FENCE never tried
+        'ab'  (LEN(1) . X | FENCE)             :S(f1ok)F(f1fail)
+f1ok    OUTPUT = 'PASS: FENCE alt gamma'        :(f1done)
+f1fail  OUTPUT = 'FAIL: FENCE alt failed'
+f1done
+
+*  FENCE alone — always fails (fences backtrack, causes match failure)
+        'x'   FENCE                             :S(f2ok)F(f2fail)
+f2ok    OUTPUT = 'FAIL: FENCE should not succeed as subject match'  :(f2done)
+f2fail  OUTPUT = 'PASS: FENCE alone fails match'
+f2done
+
+END
