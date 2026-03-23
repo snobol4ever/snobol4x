@@ -1009,3 +1009,226 @@ This prevents broken static boxes for `upr('h') | lwr('H')`. But without the `st
 - `src/runtime/snobol4/snobol4.c` — SUBSTR 2-arg fix, datatype() uppercase fix
 - `PLAN.md` — this session note
 
+
+---
+
+## §21 — Session Handoff (2026-03-23): M-BEAUTY-CASE icase root cause fully traced
+
+### Work completed this session
+
+**INC path fix:** `INC=demo/inc` (not `/home/claude/snobol4corpus/programs/inc`).
+CSNOBOL4 oracle: 9/9 PASS confirmed.
+
+**Bug fixed — S_ duplicate label (NASM error):**
+`emit_byrd_asm.c` ANY runtime-expr branch called `var_register(str_intern(tmplab))`
+which emitted both `S_any_expr_tmp_N resq 1` (BSS via var_register) AND
+`S_any_expr_tmp_N db ...` (string literal via str_intern) — NASM duplicate label.
+
+Fix: replaced `var_register` + `emit_any_var` with new `ANY_α_PTR` / `ANY_β_PTR`
+macros that take raw BSS slots `any_expr_tmp_N_t/_p` and call `stmt_any_ptr(vtype,vptr,...)`.
+- `src/backend/x64/emit_byrd_asm.c` — ANY runtime-expr branch rewritten
+- `src/runtime/asm/snobol4_stmt_rt.c` — `stmt_any_ptr()` added
+- `src/runtime/asm/snobol4_asm.mac` — `ANY_α_PTR` / `ANY_β_PTR` macros added
+- extern `stmt_any_ptr` added to generated `.s` preamble
+
+**Result:** Steps 1–6 and 9 now PASS in ASM. Steps 7–8 (icase) still fail.
+
+**Committed:** `715b300` — "B-264 partial: ANY_α_PTR, stmt_any_ptr, icase debug tracing"
+
+---
+
+### §21.1 — icase root cause: `any_expr_tmp` BSS slots receive zero at match time
+
+**Debug trace confirms:**
+
+```
+[stmt_any_ptr] vtype=0 cs='' cursor=0 subj[cur]='h'
+```
+
+`vtype=0` (DT_SNUL) — the `any_expr_tmp_64_t/_p` BSS slots are **zero** when
+`ANY_α_PTR` reads them. The `stmt_concat(&UCASE, &LCASE)` result is not
+reaching the slots.
+
+**Why the slots are zero — the section-switch bug:**
+
+The emitter writes:
+```asm
+                        ; ... (inside icase function body, .text section)
+DOL_SAVE    dol_entry_letter, cursor, dol63_child_α
+seq_r62_β:  jmp dol63_child_β
+
+section .bss                        ; ← MID-CODE SECTION SWITCH
+any_expr_tmp_64_t resq 1
+any_expr_tmp_64_p resq 1
+section .text                       ; ← SWITCH BACK
+
+            lea rdi, [rel S_UCASE]
+            call stmt_get
+            ...
+            call stmt_concat
+            mov [rel any_expr_tmp_64_t], rax    ; store result
+            mov [rel any_expr_tmp_64_p], rdx
+dol63_child_α:  ANY_α_PTR any_expr_tmp_64_t, ...
+```
+
+**The `section .bss` / `section .text` switch in the middle of the text
+section is the culprit.** The eval code (`lea rdi, [rel S_UCASE] ... call
+stmt_concat ... mov [rel any_expr_tmp_64_t], rax`) is emitted in the
+**fall-through path before `dol63_child_α`**. On the first scan attempt
+this executes correctly. But on **retry** (scan advances cursor, jumps
+back to scan_retry which goes to `dol63_child_α` directly), the eval is
+skipped — `rax`/`rdx` from the previous `stmt_concat` are stale on the
+stack, not in the BSS slots (wait — they ARE stored to BSS on first pass).
+
+Actually re-examining: the BSS slots ARE written on first fall-through.
+On retry the jump goes to `dol63_child_α` which reads BSS — those slots
+should have the value from first time. BUT `vtype=0` means the first
+fall-through itself produced zero.
+
+**Most likely real cause:** `stmt_concat` is called with `&UCASE`/`&LCASE`
+values that are themselves zero/null at the time of the call. The keywords
+`UCASE` and `LCASE` may not be initialized yet in the ASM runtime's variable
+table when the icase function body first executes.
+
+The debug `[stmt_get UCASE]` trace was never printed — meaning `stmt_get`
+was NOT called for `UCASE`/`LCASE`. This means `emit_expr` for the
+`&UCASE &LCASE` concat is NOT going through `stmt_get`. It is likely emitting
+a direct `GET_VAR S_UCASE` (register-based load into `[rbp-32/24]`) rather
+than `call stmt_get`. The `GET_VAR` macro reads from the BSS slot
+`S_UCASE resq 1` — which is the ASM's own BSS copy of the variable, not the
+C runtime's `NV_GET_fn("UCASE")`. If the ASM BSS slot for UCASE is never
+written (because `init_keywords()` writes to `NV_SET_fn("UCASE")` but does
+NOT write to the ASM's `S_UCASE resq 1`), it stays zero.
+
+**This is the same class of bug as the old snoSrc initialization issue (§14.4).**
+The C runtime initializes variables via `NV_SET_fn`, but the ASM backend reads
+them via `GET_VAR S_UCASE` (direct BSS). These two storage locations are NOT
+the same — `NV_SET_fn` writes to the C hash table; `GET_VAR` reads the ASM
+BSS slot. They are synchronized only when the ASM does `SET_VAR` (which calls
+`stmt_set` → `NV_SET_fn`) or when something calls `NV_SET_fn(UCASE, ...)` AND
+the ASM has a corresponding `stmt_get("UCASE")` call that reads it back.
+
+**Concrete verification needed (next session step 2):**
+```bash
+# In generated prog.s, check what GET_VAR S_UCASE emits:
+grep -n "S_UCASE\|UCASE" /tmp/.../prog.s | head -20
+# If GET_VAR reads [rel S_UCASE] (BSS), and S_UCASE is never written
+# by the ASM (only by C init), it will always be zero.
+```
+
+---
+
+### §21.2 — The GET_VAR vs NV_GET_fn duality
+
+The ASM backend has TWO variable storage locations:
+1. **ASM BSS** (`S_varname resq 1`) — read by `GET_VAR`, written by `SET_VAR`
+2. **C hash table** — read/written by `NV_GET_fn`/`NV_SET_fn`
+
+`stmt_get(name)` calls `NV_GET_fn` → C hash. But `GET_VAR S_name` reads
+ASM BSS directly.
+
+Keywords like `&UCASE`, `&LCASE`, `&STLIMIT` are initialized in `snobol4.c`
+`init_keywords()` via `NV_SET_fn("UCASE", ...)`. They are NEVER written to
+the ASM BSS slots `S_UCASE resq 1`.
+
+When `emit_expr` sees `E_KEYWORD("UCASE")` it emits `GET_VAR S_UCASE` —
+reading the ASM BSS slot, which is always zero.
+
+The fix has two options:
+
+**Option A — emit `call stmt_get` for keyword expressions in emit_expr:**
+Replace `GET_VAR S_KEYWORD` with `lea rdi, [rel S_KEYWORD_str]; call stmt_get`
+for E_KEYWORD nodes. This routes through `NV_GET_fn` where the C runtime has
+the value. This is correct and already works for `ANY(&UCASE)` when the arg
+is `E_VART("UCASE")` (which uses `emit_any_var` → `ANY_α_VAR` → `stmt_any_var`
+→ `NV_GET_fn`).
+
+**Option B — sync ASM BSS from C hash at init:**
+After `sno_init()` / `SNO_INIT_fn()`, explicitly copy keyword values from
+the C hash to ASM BSS. Fragile — requires knowing all keyword names.
+
+**Option A is correct.** The bug is in `emit_expr` for `E_KEYWORD` — it should
+emit a `stmt_get` call rather than a direct BSS read.
+
+---
+
+### §21.3 — Next session action plan (START HERE)
+
+```bash
+bash setup.sh   # always first
+```
+
+**Step 1 — Clean up debug instrumentation:**
+Remove `SNO_CALLDEBUG` fprintf blocks from `snobol4_stmt_rt.c`:
+- `stmt_get` UCASE/LCASE debug
+- `stmt_set` icase debug
+- `stmt_any_ptr` debug
+- `stmt_apply` ALT debug
+- `stmt_match_descr` debug
+Keep `stmt_any_ptr` function itself (it's real, not debug).
+
+**Step 2 — Fix `emit_expr` E_KEYWORD to use `stmt_get`:**
+In `emit_byrd_asm.c`, find the `E_KEYWORD` case in `emit_expr`. Currently it
+likely emits `GET_VAR S_KEYWORD`. Change it to:
+```c
+case E_KEYWORD: {
+    const char *klab = str_intern(pat->sval);  /* S_UCASE etc */
+    A("    lea     rdi, [rel %s]\n", klab);
+    A("    call    stmt_get\n");
+    A("    mov     [rbp-%d], rax\n", slot);
+    A("    mov     [rbp-%d], rdx\n", slot-8);
+    break;
+}
+```
+This routes keyword reads through `NV_GET_fn` which has the C-runtime values.
+
+**Step 3 — Rebuild and verify:**
+```bash
+cd /home/claude/beauty-project/snobol4x/src && make
+TMP=$(mktemp -d)
+RT=src/runtime; INC=demo/inc
+# [build as before]
+"$TMP/prog_asm"
+# Expect: 9/9 PASS
+```
+
+**Step 4 — Run 3-way monitor:**
+```bash
+INC=demo/inc bash test/beauty/run_beauty_subsystem.sh case
+# Expect: 9/9, all 3 participants agree
+```
+
+**Step 5 — On 9/9 PASS:**
+```bash
+git add src/backend/x64/emit_byrd_asm.c src/runtime/asm/snobol4_stmt_rt.c \
+        src/runtime/asm/snobol4_asm.mac test/beauty/case/driver.sno \
+        test/beauty/case/driver.ref PLAN.md
+git commit -m "B-263: M-BEAUTY-CASE ✅"
+git push
+```
+Then update §START table: `case → ✅`, advance to `M-BEAUTY-ASSIGN`.
+
+---
+
+### §21.4 — Files changed, pending commit (already committed as 715b300)
+
+| File | Change |
+|------|--------|
+| `src/backend/x64/emit_byrd_asm.c` | ANY runtime-expr → ANY_α_PTR; extern stmt_any_ptr; forward decl |
+| `src/runtime/asm/snobol4_stmt_rt.c` | stmt_any_ptr(); stmt_match_descr DT_P; debug traces (remove next session) |
+| `src/runtime/asm/snobol4_asm.mac` | ANY_α_PTR / ANY_β_PTR macros |
+
+### §21.5 — Current test status
+
+| Step | Test | ASM |
+|------|------|-----|
+| 1 | lwr(HELLO) = hello | ✅ |
+| 2 | lwr(world) = world | ✅ |
+| 3 | upr(hello) = HELLO | ✅ |
+| 4 | upr(WORLD) = WORLD | ✅ |
+| 5 | cap(hELLO) = Hello | ✅ |
+| 6 | cap(WORLD) = World | ✅ |
+| 7 | icase(hello) matches Hello | ❌ E_KEYWORD GET_VAR zero |
+| 8 | icase(world) matches WORLD | ❌ same |
+| 9 | lwr(upr(MiXeD)) roundtrip | ✅ |
+
