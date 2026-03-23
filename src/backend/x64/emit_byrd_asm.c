@@ -5039,14 +5039,17 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
     A("pl_%s_c%d_body:\n", pred_safe, idx);
 
     /* Body goals */
+    int ucall_seq = 0;   /* sequential index of user-calls emitted so far */
     for (int bi = 0; bi < nbody; bi++) {
         EXPR_t *goal = clause->children[arity + bi];
         if (!goal) continue;
 
         /* Cut */
         if (goal->kind == E_CUT) {
-            A("    ; cut — seal beta (set _cut flag)\n");
+            A("    ; cut — seal beta: _cut=1, redirect failures to omega\n");
             A("    mov     byte [rbp - 17], 1    ; _cut = 1\n");
+            /* After cut, any subsequent fail/retry goes to omega, not next clause */
+            snprintf(next_clause, sizeof next_clause, "%s", omega_lbl);
             continue;
         }
 
@@ -5239,6 +5242,28 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                             A("    jz      %s\n", else_lbl);
                             cond_handled = 1;
                         }
+                    }
+                    /* User-defined predicate call as condition */
+                    if (!cond_handled && cond && cond->kind == E_FNC && cond->sval) {
+                        const char *cfn2 = cond->sval; int ca2 = cond->nchildren;
+                        char cfa2[300]; snprintf(cfa2, sizeof cfa2, "%s/%d", cfn2, ca2);
+                        char csafe2[256]; strncpy(csafe2, pl_safe(cfa2), 255);
+                        if (ca2 > 0) {
+                            A("    sub     rsp, %d\n", ALIGN16(ca2*8));
+                            for (int ai = 0; ai < ca2; ai++) {
+                                emit_pl_term_load(cond->children[ai], n_vars);
+                                A("    mov     [rsp + %d], rax\n", ai*8);
+                            }
+                            A("    mov     rdi, rsp\n");
+                        } else { A("    xor     rdi, rdi\n"); }
+                        A("    lea     rsi, [rel pl_trail]\n");
+                        A("    xor     edx, edx\n");
+                        A("    call    pl_%s_r\n", csafe2);
+                        if (ca2 > 0) A("    add     rsp, %d\n", ALIGN16(ca2*8));
+                        /* return < 0 means failure */
+                        A("    test    eax, eax\n");
+                        A("    js      %s\n", else_lbl);
+                        cond_handled = 1;
                     }
                     if (!cond_handled) {
                         /* fallback: always take then-branch */
@@ -5570,14 +5595,24 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                     A("    xor     rdi, rdi               ; no args\n");
                 }
                 A("    lea     rsi, [rel pl_trail]\n");
-                /* sub_cs = start - base - 1  (start in [rbp-32], base=%d is compile-time)
-                 * start == base  → fresh call  (sub_cs=0, but we subtract base+1 → -1, clamp to 0)
-                 * start > base   → resume, sub_cs = start - base - 1 */
-                A("    mov     edx, [rbp - 32]            ; raw start\n");
-                A("    sub     edx, %d                    ; start - (base+1)\n", base + 1);
-                A("    jge     %s                         ; >= 0: resume with sub_cs\n", resume_lbl);
-                A("    xor     edx, edx                   ; fresh call: sub_cs=0\n");
-                A("%s:\n", resume_lbl);
+                /* sub_cs encoding: only the LAST user-call in a body gets the
+                 * base-relative resume scheme.  Earlier calls are always fresh
+                 * (sub_cs=0) because we don't support backtracking into them. */
+                int is_last_ucall = (ucall_seq + 1 == body_user_call_count);
+                if (is_last_ucall) {
+                    /* sub_cs = start - base - 1  (start in [rbp-32], base is compile-time)
+                     * start == base  → fresh call  (sub edx,base+1 → -1, clamp to 0)
+                     * start > base   → resume, sub_cs = start - base - 1 */
+                    A("    mov     edx, [rbp - 32]            ; raw start\n");
+                    A("    sub     edx, %d                    ; start - (base+1)\n", base + 1);
+                    A("    jge     %s                         ; >= 0: resume with sub_cs\n", resume_lbl);
+                    A("    xor     edx, edx                   ; fresh call: sub_cs=0\n");
+                    A("%s:\n", resume_lbl);
+                } else {
+                    /* Not the last call: always fresh */
+                    A("    xor     edx, edx                   ; fresh call (non-last)\n");
+                    A("%s:\n", resume_lbl);
+                }
                 A("    ; edx = sub_cs\n");
                 A("    call    pl_%s_r\n", call_safe);
                 if (garity > 0)
@@ -5593,6 +5628,7 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                 A("    call    trail_unwind\n");
                 A("    jmp     %s\n", next_clause);
                 A("pl_%s_c%d_bsucc%d:\n", pred_safe, idx, bi);
+                ucall_seq++;
             }
         }
     }
