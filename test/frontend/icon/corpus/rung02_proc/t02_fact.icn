@@ -1,0 +1,9 @@
+# rung02 t02: factorial — tests recursion + return
+procedure fact(n);
+  if n = 0 then return 1;
+  return n * fact(n - 1);
+end
+
+procedure main();
+  every write(fact(5));
+end

@@ -84,6 +84,7 @@ static int expect(IcnParser *p, IcnTkKind kind, const char *ctx) {
  * ======================================================================= */
 static IcnNode *parse_expr(IcnParser *p);
 static IcnNode *parse_stmt(IcnParser *p);
+static IcnNode *parse_do_clause(IcnParser *p);
 
 /* =========================================================================
  * Expression parsing (recursive descent)
@@ -400,6 +401,31 @@ static IcnNode *parse_assign(IcnParser *p) {
 }
 
 static IcnNode *parse_expr(IcnParser *p) {
+    int line = p->cur.line;
+    /* Control expressions — valid anywhere an expression is expected */
+    if (check(p, TK_RETURN)) {
+        advance(p);
+        IcnNode *val = NULL;
+        if (!check(p, TK_SEMICOL) && !check(p, TK_RPAREN) &&
+            !check(p, TK_EOF)  && !check(p, TK_THEN) &&
+            !check(p, TK_ELSE) && !check(p, TK_DO))
+            val = parse_expr(p);
+        if (val) return icn_node_new(ICN_RETURN, line, 1, val);
+        return icn_node_new(ICN_RETURN, line, 0);
+    }
+    if (check(p, TK_FAIL)) {
+        advance(p);
+        return icn_node_new(ICN_FAIL, line, 0);
+    }
+    if (check(p, TK_SUSPEND)) {
+        advance(p);
+        IcnNode *val = parse_expr(p);
+        IcnNode *body = parse_do_clause(p);
+        if (body) return icn_node_new(ICN_SUSPEND, line, 2, val, body);
+        return icn_node_new(ICN_SUSPEND, line, 1, val);
+    }
+    if (check(p, TK_BREAK)) { advance(p); return icn_node_new(ICN_BREAK, line, 0); }
+    if (check(p, TK_NEXT))  { advance(p); return icn_node_new(ICN_NEXT,  line, 0); }
     return parse_assign(p);
 }
 

@@ -648,25 +648,6 @@ static void emit_expr(IcnEmitter *em, IcnNode *n, IcnPorts ports,
 }
 
 /* =========================================================================
- * Scan for local declarations in a procedure body
- * ======================================================================= */
-static void scan_locals(IcnNode **stmts, int n) {
-    for(int i=0;i<n;i++){
-        IcnNode *s=stmts[i];
-        if(!s) continue;
-        /* local var declarations: parser produces NULL nodes with a side-channel.
-         * We handle ICN_ASSIGN whose LHS is a fresh ICN_VAR not yet in locals. */
-        /* For explicit `local x;` — the parser currently returns NULL.
-         * We auto-discover vars via ICN_ASSIGN lhs. */
-        if(s->kind==ICN_ASSIGN && s->nchildren>=1 && s->children[0] &&
-           s->children[0]->kind==ICN_VAR){
-            const char *vname=s->children[0]->val.sval;
-            if(locals_find(vname)<0) locals_add(vname);
-        }
-    }
-}
-
-/* =========================================================================
  * icn_emit_file — full file emission
  * ======================================================================= */
 void icn_emit_file(IcnEmitter *em, IcnNode **nodes, int count) {
@@ -678,14 +659,7 @@ void icn_emit_file(IcnEmitter *em, IcnNode **nodes, int count) {
         if(!proc||proc->kind!=ICN_PROC||proc->nchildren<1) continue;
         const char *pname=proc->children[0]->val.sval;
         if(strcmp(pname,"main")==0) continue;
-        /* count params: parser stores them as named children but we didn't
-         * capture param names in AST. Use a heuristic: parse the proc source.
-         * Since we do store param names in parse, let's count ICN_PROC children
-         * that are ICN_VAR before the first non-VAR child.
-         * Actually our parser doesn't store params in AST currently.
-         * For now: look at first stmt to infer. Use 0 and fix later. */
-        /* Better: add param scanning to parser. For now emit with stack-based args. */
-        register_user_proc(pname, 0); /* nparams=0 placeholder */
+        register_user_proc(pname, (int)proc->val.ival);
     }
 
     /* Emit to temp buffer */
@@ -700,7 +674,6 @@ void icn_emit_file(IcnEmitter *em, IcnNode **nodes, int count) {
         if(!proc||proc->kind!=ICN_PROC||proc->nchildren<1) continue;
         const char *pname=proc->children[0]->val.sval;
         int is_main=strcmp(pname,"main")==0;
-        int nstmts=proc->nchildren-1;
 
         E(em,"\n; === procedure %s ===\n",pname);
 
@@ -712,28 +685,40 @@ void icn_emit_file(IcnEmitter *em, IcnNode **nodes, int count) {
         strncpy(cur_ret_label, is_main?"icn_main_done":proc_ret, 63);
         strncpy(cur_fail_label, proc_done, 63);
 
-        /* For non-main: pop params from icn_stack */
-        /* We need to know param count. For now, scan param names from
-         * a special structure. Our parser lost them. Use 0 params for now
-         * and extend when we add param AST nodes. */
-        /* TODO: preserve param names in AST. For Rung 3 t01/t02, manually
-         * detect by scanning the proc's first child. */
+        /* Register params as local slots 0..np-1 */
+        int np = (int)proc->val.ival;
+        cur_nparams = np;
+        for (int pi = 0; pi < np; pi++) {
+            IcnNode *pv = proc->children[1 + pi];
+            if (pv && pv->kind == ICN_VAR)
+                locals_add(pv->val.sval);
+        }
 
-        /* Scan for locals via assignment LHS discovery */
-        scan_locals(proc->children+1, nstmts);
-
-        /* Frame size: cur_nlocals slots */
+        /* Scan for additional locals (ICN_GLOBAL nodes in body stmts) */
+        int body_start = 1 + np;
+        int nstmts = proc->nchildren - body_start;
+        for (int si = 0; si < nstmts; si++) {
+            IcnNode *s = proc->children[body_start + si];
+            if (s && s->kind == ICN_GLOBAL) {
+                for (int ci = 0; ci < s->nchildren; ci++) {
+                    IcnNode *v = s->children[ci];
+                    if (v && v->kind == ICN_VAR && locals_find(v->val.sval) < 0)
+                        locals_add(v->val.sval);
+                }
+            }
+        }
+        /* Frame size: all locals (params + declared locals) */
         int frame_size=(cur_nlocals>0)?8*(cur_nlocals+1):0;
         if(frame_size%16!=0) frame_size=(frame_size+15)&~15;
 
-        /* Chain statements in reverse */
+        /* Chain statements in reverse — skip ICN_GLOBAL (local decl) nodes */
         char **alphas=calloc(nstmts,sizeof(char*));
         for(int i=0;i<nstmts;i++) alphas[i]=malloc(64);
         char next_a[64]; strncpy(next_a,proc_done,63);
 
         for(int i=nstmts-1;i>=0;i--){
-            IcnNode *stmt=proc->children[i+1];
-            if(!stmt){ strncpy(alphas[i],next_a,63); continue; }
+            IcnNode *stmt=proc->children[body_start+i];
+            if(!stmt||stmt->kind==ICN_GLOBAL){ strncpy(alphas[i],next_a,63); continue; }
             IcnPorts sp; strncpy(sp.succeed,next_a,63); strncpy(sp.fail,next_a,63);
             char sa[64],sb[64]; emit_expr(em,stmt,sp,sa,sb);
             strncpy(alphas[i],sa,63); strncpy(next_a,sa,63);
@@ -743,6 +728,14 @@ void icn_emit_file(IcnEmitter *em, IcnNode **nodes, int count) {
         E(em,"icn_%s:\n",pname);
         E(em,"    push    rbp\n    mov     rbp, rsp\n");
         if(frame_size>0) E(em,"    sub     rsp, %d\n",frame_size);
+        /* Pop params from icn_stack into frame slots.
+         * Caller pushes args left-to-right; pop in reverse → slot 0=first param. */
+        if(!is_main && np>0){
+            for(int pi=np-1;pi>=0;pi--){
+                E(em,"    call    icn_pop\n");
+                E(em,"    mov     [rbp%+d], rax\n", slot_offset(pi));
+            }
+        }
         if(nstmts>0) Jmp(em,alphas[0]);
 
         /* Return label (for non-main: restore frame, ret) */

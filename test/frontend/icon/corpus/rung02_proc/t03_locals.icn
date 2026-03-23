@@ -1,0 +1,11 @@
+# rung02 t03: local vars — tests local frame slots
+procedure sum_to(n);
+  local total;
+  total := 0;
+  every total := total + (1 to n);
+  return total;
+end
+
+procedure main();
+  every write(sum_to(5));
+end
