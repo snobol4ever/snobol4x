@@ -1,0 +1,4 @@
+# paper §2 example 2: (1 to 3) * (1 to 2) generates 1,2,2,4,3,6
+procedure main();
+  every write((1 to 3) * (1 to 2));
+end

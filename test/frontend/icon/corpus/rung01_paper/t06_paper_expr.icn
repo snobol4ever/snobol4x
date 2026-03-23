@@ -1,0 +1,7 @@
+# paper §5 full example: 5 > ((1 to 2) * (3 to 4))
+# 5 > x returns x when 5>x; products 3,4,6,8 → 3 and 4 succeed
+# every loop simply exhausts with no output
+procedure main();
+  every write(5 > ((1 to 2) * (3 to 4)));
+  write("done");
+end

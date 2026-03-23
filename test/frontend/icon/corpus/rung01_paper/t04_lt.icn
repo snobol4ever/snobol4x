@@ -1,0 +1,4 @@
+# paper §2 example 4: 2 < (1 to 4) generates 3,4
+procedure main();
+  every write(2 < (1 to 4));
+end
