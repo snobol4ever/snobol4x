@@ -216,9 +216,7 @@ DESCR_t pat_cat(DESCR_t left, DESCR_t right) {
 }
 
 DESCR_t pat_alt(DESCR_t left, DESCR_t right) {
-    fprintf(stderr, "DEBUG pat_alt: left.v=%d left.s=%.8s  right.v=%d right.s=%.8s  -> ",
-            (int)left.v, (left.v==1&&left.s)?left.s:"?",
-            (int)right.v, (right.v==1&&right.s)?right.s:"?");
+
     PATND_t *p = spat_new(XOR);
     p->left  = spat_of(left);
     p->right = spat_of(right);
@@ -230,7 +228,7 @@ DESCR_t pat_alt(DESCR_t left, DESCR_t right) {
     if (!p->right && right.v == DT_SNUL) p->right = spat_of(pat_epsilon());
     if (!p->left)  return right;
     if (!p->right) return left;
-    DESCR_t _r = spat_val(p); fprintf(stderr, "XOR node %p\n", (void*)p); return _r;
+    return spat_val(p);
 }
 
 DESCR_t pat_ref(const char *name) {

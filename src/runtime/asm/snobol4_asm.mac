@@ -590,6 +590,30 @@
 %endmacro
 
 ; =============================================================================
+; CALL_PAT_α descr_t, descr_p, saved, cursor, γ, ω
+;   α port: match using a pre-evaluated DESCR_t in two .bss qwords (type, ptr).
+;   stmt_match_descr dispatches DT_P through the pattern engine or does string match.
+;   saved = .bss qword for cursor save.
+; =============================================================================
+%macro CALL_PAT_α 6        ; descr_t, descr_p, saved, cursor, γ, ω
+    mov     rax, [%4]
+    mov     [%3], rax        ; save cursor for β restore
+    mov     rdi, [%1]        ; vtype
+    mov     rsi, [%2]        ; vptr
+    call    stmt_match_descr
+    test    eax, eax
+    jz      %6
+    jmp     %5
+%endmacro
+
+; CALL_PAT_β saved, cursor, ω
+%macro CALL_PAT_β 3         ; saved, cursor, ω
+    mov     rax, [%1]
+    mov     [%2], rax
+    jmp     %3
+%endmacro
+
+; =============================================================================
 ; POS_α n, cursor, γ, ω
 ; =============================================================================
 %macro POS_α 4            ; n, cursor, γ, ω
