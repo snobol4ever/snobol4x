@@ -14,7 +14,13 @@ REPO=$(cd "$SDIR/../.." && pwd)
 DRIVER="$SDIR/$SUB/driver.sno"
 REF="$SDIR/$SUB/driver.ref"
 MONITOR="$REPO/test/monitor/run_monitor_3way.sh"
-CONF="${2:-$REPO/test/monitor/tracepoints.conf}"
+# Per-subsystem conf overrides default if present
+_SUB_CONF="$SDIR/$SUB/tracepoints.conf"
+if [[ -f "$_SUB_CONF" ]]; then
+    CONF="${2:-$_SUB_CONF}"
+else
+    CONF="${2:-$REPO/test/monitor/tracepoints.conf}"
+fi
 INC="${INC:-/home/claude/snobol4corpus/programs/inc}"
 X64_DIR="${X64_DIR:-/home/claude/x64}"
 MONITOR_TIMEOUT="${MONITOR_TIMEOUT:-30}"

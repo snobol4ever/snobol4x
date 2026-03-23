@@ -1,0 +1,19 @@
+*---------------------------------------------------------------------------------------------------
+* match(table, outvar) — table membership test using global tx
+* Succeeds if tx IS a key with non-null value in table; FRETURN otherwise.
+* Sets local outvar = table[tx] (side-effect to caller requires indirect name passing).
+* Used in beauty.sno as: tx $ *match(Functions, TxInList)
+*---------------------------------------------------------------------------------------------------
+               DEFINE('match(table,outvar)')                                        :(match_end)
+match          outvar         =   table[tx]
+               DIFFER(outvar)                                                       :S(RETURN)
+               :(FRETURN)
+match_end
+*---------------------------------------------------------------------------------------------------
+* notmatch(table, outvar) — table non-membership test using global tx
+* Succeeds if tx is NOT a key in table (or has null value); FRETURN otherwise.
+*---------------------------------------------------------------------------------------------------
+               DEFINE('notmatch(table,outvar)')                                     :(notmatch_end)
+notmatch       IDENT(table[tx])                                                     :S(RETURN)
+               :(FRETURN)
+notmatch_end

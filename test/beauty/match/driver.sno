@@ -1,0 +1,66 @@
+*  driver.sno — test driver for match.sno
+*  Oracle: snobol4 -f -P256k -I$INC driver.sno
+*  Run via: bash test/beauty/run_beauty_subsystem.sh match
+*  Exercises: match(table, outvar) and notmatch(table, outvar)
+-INCLUDE 'global.sno'
+-INCLUDE 'is.sno'
+-INCLUDE 'match.sno'
+
+        &STLIMIT = 1000000
+
+*  Build test table (init before monitor traces begin; TABLE repr diverges across impls)
+        T = TABLE()
+        T['foo'] = 'FOO'
+        T['bar'] = 'BAR'
+        E = TABLE()
+
+*  1: match hit — tx in table
+        tx = 'foo'
+        match(T, TxInList)                                     :S(P1)
+        OUTPUT = 'FAIL: 1 match hit'                           :(T1)
+P1      OUTPUT = 'PASS: 1 match hit'
+T1
+
+*  2: match miss — tx not in table
+        tx = 'baz'
+        match(T, TxInList)                                     :F(P2)
+        OUTPUT = 'FAIL: 2 match miss'                          :(T2)
+P2      OUTPUT = 'PASS: 2 match miss'
+T2
+
+*  3: notmatch — tx not in table → success
+        tx = 'baz'
+        notmatch(T, TxInList)                                  :S(P3)
+        OUTPUT = 'FAIL: 3 notmatch miss'                       :(T3)
+P3      OUTPUT = 'PASS: 3 notmatch miss'
+T3
+
+*  4: notmatch — tx IS in table → failure
+        tx = 'foo'
+        notmatch(T, TxInList)                                  :F(P4)
+        OUTPUT = 'FAIL: 4 notmatch hit'                        :(T4)
+P4      OUTPUT = 'PASS: 4 notmatch hit'
+T4
+
+*  5: match second key
+        tx = 'bar'
+        match(T, TxInList)                                     :S(P5)
+        OUTPUT = 'FAIL: 5 match second key'                    :(T5)
+P5      OUTPUT = 'PASS: 5 match second key'
+T5
+
+*  6: match empty table → fail
+        tx = 'any'
+        match(E, TxInList)                                     :F(P6)
+        OUTPUT = 'FAIL: 6 match empty table'                   :(T6)
+P6      OUTPUT = 'PASS: 6 match empty table'
+T6
+
+*  7: notmatch empty table → success
+        tx = 'any'
+        notmatch(E, TxInList)                                  :S(P7)
+        OUTPUT = 'FAIL: 7 notmatch empty table'                :(T7)
+P7      OUTPUT = 'PASS: 7 notmatch empty table'
+T7
+
+END
