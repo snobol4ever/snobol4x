@@ -1,0 +1,2 @@
+PASS: IsSnobol4 correctly fails in SPITBOL
+PASS: IsSpitbol correctly succeeds in SPITBOL

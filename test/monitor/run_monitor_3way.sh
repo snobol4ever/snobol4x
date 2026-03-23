@@ -3,7 +3,7 @@
 #
 # Sync-step 3-way monitor: CSNOBOL4 + SPITBOL + snobol4x ASM backend.
 # JVM and NET excluded. Identical logic to run_monitor_sync.sh minus
-# those two participants. NAMES="csn spl asm".
+# those two participants. NAMES="spl csn asm" (SPITBOL is oracle[0]).
 #
 # Exit 0 = all agree. Exit 1 = divergence. Exit 2 = timeout/error.
 
@@ -66,22 +66,24 @@ gcc -no-pie "$TMP/prog.o" \
     -lgc -lm -o "$TMP/prog_asm" 2>/dev/null
 
 # ── Step 3: create FIFOs ─────────────────────────────────────────────────
-NAMES="csn spl asm"
+NAMES="spl csn asm"
 for p in $NAMES; do mkfifo "$TMP/$p.ready"; mkfifo "$TMP/$p.go"; done
 READY_PATHS=$(echo $NAMES | tr ' ' '\n' | sed "s|.*|$TMP/&.ready|" | tr '\n' ',' | sed 's/,$//')
 GO_PATHS=$(echo $NAMES    | tr ' ' '\n' | sed "s|.*|$TMP/&.go|"    | tr '\n' ',' | sed 's/,$//')
 
 # ── Step 4: launch 3 participants ────────────────────────────────────────
-MONITOR_READY_PIPE="$TMP/csn.ready" MONITOR_GO_PIPE="$TMP/csn.go" MONITOR_SO="$SO" \
-    snobol4 -P256k -I"$INC" "$TMP/instr.sno" \
-    < "$STDIN_SRC" > "$TMP/csn.out" 2>"$TMP/csn.err" &
-CSN_PID=$!
-
+# SPITBOL is participant 0 (primary oracle) — snobol4x targets SPITBOL semantics.
+# CSNOBOL4 is participant 1 (reference). When they disagree, snobol4x follows SPITBOL.
 (cd "$INC" && SNOLIB="$X64_DIR:$INC" MONITOR_READY_PIPE="$TMP/spl.ready" \
     MONITOR_GO_PIPE="$TMP/spl.go" MONITOR_SO="$X64_DIR/monitor_ipc_spitbol.so" \
     "$X64_DIR/bootsbl" "$TMP/instr.sno" \
     < "$STDIN_SRC" > "$TMP/spl.out" 2>"$TMP/spl.err") &
 SPL_PID=$!
+
+MONITOR_READY_PIPE="$TMP/csn.ready" MONITOR_GO_PIPE="$TMP/csn.go" MONITOR_SO="$SO" \
+    snobol4 -P256k -I"$INC" "$TMP/instr.sno" \
+    < "$STDIN_SRC" > "$TMP/csn.out" 2>"$TMP/csn.err" &
+CSN_PID=$!
 
 MONITOR_READY_PIPE="$TMP/asm.ready" MONITOR_GO_PIPE="$TMP/asm.go" \
     "$TMP/prog_asm" < "$STDIN_SRC" > "$TMP/asm.out" 2>"$TMP/asm.err" &
@@ -89,7 +91,7 @@ ASM_PID=$!
 
 # ── Step 5: controller ───────────────────────────────────────────────────
 python3 "$MDIR/monitor_sync.py" \
-    "$TIMEOUT" "csn,spl,asm" "$READY_PATHS" "$GO_PATHS" > "$TMP/ctrl.out" 2>&1 &
+    "$TIMEOUT" "$(echo $NAMES | tr ' ' ',')" "$READY_PATHS" "$GO_PATHS" > "$TMP/ctrl.out" 2>&1 &
 CTRL_PID=$!
 
 wait $CTRL_PID; CTRL_RC=$?

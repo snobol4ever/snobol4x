@@ -1,0 +1,25 @@
+*  driver.sno — test driver for is.sno
+*  Oracle: SPITBOL -I$INC driver.sno   (snobol4x targets SPITBOL semantics)
+*  Exercises: IsSnobol4() / IsSpitbol() predicates
+*  Note: IsType() uses DATATYPE() which differs between CSNOBOL4/SPITBOL;
+*        IsType tests are covered by M-BEAUTY-CASE milestone instead.
+-INCLUDE 'global.sno'
+-INCLUDE 'is.sno'
+
+        &STLIMIT = 1000000
+
+*  IsSnobol4() — fails in SPITBOL
+        IsSnobol4()                                         :S(sno4_yes)
+        OUTPUT = 'PASS: IsSnobol4 correctly fails in SPITBOL'  :(sk1)
+sno4_yes
+        OUTPUT = 'PASS: IsSnobol4 correctly succeeds in CSNOBOL4'
+sk1
+
+*  IsSpitbol() — succeeds in SPITBOL
+        IsSpitbol()                                         :S(spl_yes)
+        OUTPUT = 'PASS: IsSpitbol correctly fails in CSNOBOL4'  :(sk2)
+spl_yes
+        OUTPUT = 'PASS: IsSpitbol correctly succeeds in SPITBOL'
+sk2
+
+END
