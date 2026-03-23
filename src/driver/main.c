@@ -19,6 +19,7 @@
 
 extern int trampoline_mode;
 void asm_emit(Program *prog, FILE *f);
+void asm_emit_prolog(Program *prog, FILE *f);
 extern int asm_body_mode;
 void jvm_emit(Program *prog, FILE *f, const char *filename);
 void net_emit(Program *prog, FILE *f, const char *filename);
@@ -141,8 +142,12 @@ int main(int argc, char *argv[]) {
         prog = prolog_lower(pl_prog);
         prolog_program_free(pl_prog);
         if (!prog) { return 1; }
-        /* Prolog always uses the C emitter (x64 ASM backend deferred to later milestone) */
-        pl_emit(prog, out);
+        /* Route: -pl -asm  -> x64 ASM backend (M-PROLOG-HELLO)
+         *        -pl       -> C backend (existing pl_emit) */
+        if (asm_mode)
+            asm_emit_prolog(prog, out);
+        else
+            pl_emit(prog, out);
         if (infile)  fclose(in);
         if (outfile) fclose(out);
         return 0;

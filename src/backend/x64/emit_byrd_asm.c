@@ -4580,6 +4580,8 @@ static void emit_blk_reloc_tables(void) {
     }
 }
 
+static void emit_prolog_program(Program *prog);  /* forward */
+
 void asm_emit(Program *prog, FILE *f) {
     out = f;
 
@@ -4604,36 +4606,40 @@ void asm_emit(Program *prog, FILE *f) {
 }
 
 /* =========================================================================
- * Prolog Byrd-Box emitter  (M-PROLOG-EMIT-NODES)
+ * Prolog Byrd-Box ASM emitter  (M-PROLOG-HELLO)
  *
- * Lowers E_CHOICE / E_CLAUSE / E_UNIFY / E_CUT IR nodes to x64 NASM.
+ * Calling convention for emitted predicates — matches C emitter resumable:
+ *   int pl_NAME_ARITY_r(Term *arg0, ..., Trail *trail, int start)
+ * In System V x64:
+ *   rdi..rsi..rdx..rcx..r8..r9 = first 6 args
+ *   For arity 0: rdi=Trail*, rsi=start
+ *   For arity 1: rdi=arg0, rsi=Trail*, rdx=start
+ *   For arity 2: rdi=arg0, rsi=arg1, rdx=Trail*, rcx=start
+ *   etc.
+ * Returns: clause index (>=0) on success, -1 on failure.
  *
- * Byrd Box ports (per FRONTEND-PROLOG.md / Proebsting paper):
- *   α (alpha) — try-head: attempt to unify call args with clause head args
- *   β (beta)  — retry: try next clause on backtrack
- *   γ (gamma) — succeed: clause body succeeded, return to caller
- *   ω (omega) — fail: all clauses exhausted, signal failure to caller
+ * Each predicate function uses a switch on 'start' to resume at the
+ * right clause — same as the C emitter's switch(_start){case N:}.
  *
- * Calling convention (x64 System V):
- *   rdi = pointer to caller's arg array (Term** args)
- *   rsi = Trail*
- *   rdx = ret_gamma label address (indirect call on success)
- *   rcx = ret_omega label address (indirect call on failure)
- *   rax = scratch / return value
+ * Head unification: load call arg from frame, load head pattern term
+ * (static atom or freshly allocated var), call unify(arg, head, trail).
  *
- * For Sprint 2 (M-PROLOG-EMIT-NODES) we emit structural scaffolding:
- *   - global label  pred_NAME_ARITY  (entry = α port)
- *   - per-clause α/β labels with trail-mark + head-unify stubs
- *   - γ/ω port jumps via rdx/rcx
- *   - cut seals β → ω
- * Full unification codegen comes in M-PROLOG-HELLO.
+ * Body goals: for user calls, call the _r function and check return.
+ * For builtins: call pl_builtin_* helpers from prolog_builtin.c.
+ *
+ * Static data: atom Terms are emitted as .data initialized structs.
+ * Per-clause var Terms are freshly allocated each clause entry via
+ * term_new_var() calls — cheap malloc, reset on backtrack via trail.
+ *
+ * Trail: a single global Trail pl_trail, init'd once in pl_rt_init().
  * ======================================================================= */
 
 #include "../../frontend/prolog/prolog_atom.h"
 #include "../../frontend/prolog/prolog_runtime.h"
+#include "../../frontend/prolog/term.h"
 
 /* -------------------------------------------------------------------------
- * Name sanitisation (reuse asm_expand_name logic: replace / with _sl_ etc.)
+ * Name sanitisation: foo/2 -> foo_sl_2,  . -> _dt_,  ! -> _ct_
  * ---------------------------------------------------------------------- */
 static char _pl_safe_buf[256];
 static const char *pl_safe(const char *s) {
@@ -4642,161 +4648,815 @@ static const char *pl_safe(const char *s) {
     int   n = 0;
     for (const char *p = s; *p && n < 250; p++) {
         char c = *p;
-        if (c == '/')  { *d++ = '_'; *d++ = 's'; *d++ = 'l'; *d++ = '_'; n += 4; }
-        else if (c == '.') { *d++ = '_'; *d++ = 'd'; *d++ = 't'; *d++ = '_'; n += 4; }
-        else if (c == '-') { *d++ = '_'; n++; }
-        else if (c == '!') { *d++ = '_'; *d++ = 'c'; *d++ = 't'; *d++ = '_'; n += 4; }
-        else { *d++ = c; n++; }
+        if      (c == '/')  { *d++='_'; *d++='s'; *d++='l'; *d++='_'; n+=4; }
+        else if (c == '.')  { *d++='_'; *d++='d'; *d++='t'; *d++='_'; n+=4; }
+        else if (c == '-')  { *d++='_'; n++; }
+        else if (c == '!')  { *d++='_'; *d++='c'; *d++='t'; *d++='_'; n+=4; }
+        else if (c == ',')  { *d++='_'; *d++='c'; *d++='m'; *d++='_'; n+=4; }
+        else if (c == ';')  { *d++='_'; *d++='s'; *d++='c'; *d++='_'; n+=4; }
+        else if (c == '\\') { *d++='_'; *d++='b'; *d++='s'; *d++='_'; n+=4; }
+        else if (c == '+')  { *d++='_'; *d++='p'; *d++='l'; *d++='_'; n+=4; }
+        else if (c == '=')  { *d++='_'; *d++='e'; *d++='q'; *d++='_'; n+=4; }
+        else if (c == '<')  { *d++='_'; *d++='l'; *d++='t'; *d++='_'; n+=4; }
+        else if (c == '>')  { *d++='_'; *d++='g'; *d++='t'; *d++='_'; n+=4; }
+        else { *d++ = (char)c; n++; }
     }
     *d = '\0';
     return _pl_safe_buf;
 }
 
 /* -------------------------------------------------------------------------
- * emit_prolog_term_arg — emit code to push one Term* argument onto
- * the stack as a QWORD constant address for stub purposes.
- * Full codegen deferred to M-PROLOG-HELLO.
+ * Atom table collected during emit pass — each unique atom string gets
+ * one .data Term struct: pl_atom_NAME (TT_ATOM, atom_id resolved at init).
+ *
+ * We emit .data stubs (tag=TT_ATOM, id=0) and fix ids up in pl_rt_init()
+ * which calls prolog_atom_intern at runtime for each one.
  * ---------------------------------------------------------------------- */
-static void emit_prolog_term_stub(EXPR_t *e, const char *pred_safe,
-                                   int clause_idx, int arg_idx) {
-    if (!e) return;
-    /* Emit a comment describing the term for now */
+#define PL_MAX_ATOMS 512
+static char  *pl_atom_strings[PL_MAX_ATOMS];
+static char   pl_atom_labels[PL_MAX_ATOMS][128];
+static int    pl_atom_count_emit = 0;
+
+static const char *pl_intern_atom_label(const char *name) {
+    /* return existing label if already interned */
+    for (int i = 0; i < pl_atom_count_emit; i++)
+        if (strcmp(pl_atom_strings[i], name) == 0)
+            return pl_atom_labels[i];
+    if (pl_atom_count_emit >= PL_MAX_ATOMS) return "pl_atom_overflow";
+    int idx = pl_atom_count_emit++;
+    pl_atom_strings[idx] = strdup(name);
+    /* build safe suffix from atom name, then prefix pl_atom_ */
+    char tmp[100]; int j = 0;
+    for (const char *p = name; *p && j < 90; p++) {
+        unsigned char c = (unsigned char)*p;
+        tmp[j++] = (isalnum(c)||c=='_') ? (char)c : '_';
+    }
+    tmp[j] = '\0';
+    if (j == 0) { tmp[0]='a'; tmp[1]='\0'; }
+    snprintf(pl_atom_labels[idx], sizeof pl_atom_labels[idx],
+             "pl_atom_%s_%d", tmp, idx);
+    return pl_atom_labels[idx];
+}
+
+/* Emit .data section for all collected atoms */
+static void emit_pl_atom_data(void) {
+    if (pl_atom_count_emit == 0) return;
+    A("\n; --- Prolog atom Term structs (TT_ATOM=0, id fixed by pl_rt_init) ---\n");
+    A("section .data\n");
+    /* Term layout: { TermTag tag(4), int saved_slot(4), union(8) } = 16 bytes */
+    for (int i = 0; i < pl_atom_count_emit; i++) {
+        A("%-32s dd 0, 0       ; tag=TT_ATOM, saved_slot=0\n", pl_atom_labels[i]);
+        A("                         dq 0           ; atom_id (filled by pl_rt_init)\n");
+        /* make it a proper label: */
+    }
+}
+
+/* Better: emit as proper labeled records */
+static void emit_pl_atom_data_v2(void) {
+    if (pl_atom_count_emit == 0) return;
+    A("\nsection .data\n");
+    A("; TT_ATOM=0 — term_tag(4B) + saved_slot(4B) + atom_id(8B) = 16 bytes\n");
+    for (int i = 0; i < pl_atom_count_emit; i++) {
+        A("%s:\n", pl_atom_labels[i]);
+        A("    dd      0               ; tag = TT_ATOM\n");
+        A("    dd      0               ; saved_slot\n");
+        A("    dd      0               ; atom_id — filled by pl_rt_init\n");
+        A("    dd      0               ; atom_id high dword (padding)\n");
+        A("    dq      0               ; union padding (compound.args* slot)\n");
+    }
+}
+
+/* -------------------------------------------------------------------------
+ * emit_pl_header — globals, externs, .bss trail
+ * ---------------------------------------------------------------------- */
+static void emit_pl_header(Program *prog) {
+    A("; generated by sno2c -pl -asm\n");
+    A("; compile: nasm -f elf64 prog.s -o prog.o\n");
+    A("; link:    gcc -no-pie prog.o \\\n");
+    A(";            src/frontend/prolog/prolog_atom.o \\\n");
+    A(";            src/frontend/prolog/prolog_unify.o \\\n");
+    A(";            src/frontend/prolog/prolog_builtin.o \\\n");
+    A(";            -o prog\n");
+    A("\n");
+    A("    global  main\n");
+    A("    extern  prolog_atom_init, prolog_atom_intern\n");
+    A("    extern  trail_init, trail_mark_fn, trail_unwind, trail_push\n");
+    A("    extern  unify\n");
+    A("    extern  term_new_atom, term_new_var, term_new_int, term_new_float\n");
+    A("    extern  term_new_compound\n");
+    A("    extern  pl_write, pl_writeln\n");
+    A("    extern  pl_functor, pl_arg, pl_univ\n");
+    A("    extern  printf, fflush, putchar, exit\n");
+    A("\n");
+    A("\n");
+
+    /* .bss — global Trail */
+    A("section .note.GNU-stack noalloc noexec nowrite progbits\n\n");
+    A("section .bss\n");
+    A("%-32s resb 32    ; Trail struct (top+cap+stack ptr)\n", "pl_trail");
+    A("%-32s resq 1     ; scratch qword\n", "pl_tmp");
+    A("\n");
+}
+
+/* -------------------------------------------------------------------------
+ * emit_pl_term_load — emit instructions that leave a Term* in rax.
+ * For atoms: lea rax, [rel ATOM_LABEL]
+ * For vars:  call term_new_var with slot index
+ * For ints:  call term_new_int with value
+ * For compound: build args array then call term_new_compound (stub: use atom)
+ * ---------------------------------------------------------------------- */
+static void emit_pl_term_load(EXPR_t *e, int frame_base_words) {
+    if (!e) { A("    xor     rax, rax\n"); return; }
     switch (e->kind) {
-        case E_QLIT:
-            A("    ; arg[%d] = atom '%s'\n", arg_idx, e->sval ? e->sval : "");
+        case E_QLIT: {
+            const char *lbl = pl_intern_atom_label(e->sval ? e->sval : "");
+            A("    lea     rax, [rel %s]\n", lbl);
             break;
+        }
         case E_ILIT:
-            A("    ; arg[%d] = int %ld\n", arg_idx, e->ival);
+            A("    mov     rdi, %ld\n", e->ival);
+            A("    call    term_new_int\n");
             break;
-        case E_VART:
-            A("    ; arg[%d] = var slot %ld (%s)\n", arg_idx, e->ival,
-              e->sval ? e->sval : "");
+        case E_VART: {
+            /* var slot is in e->ival; fresh Term* in frame at [rbp - (slot+1)*8] */
+            int slot = (int)e->ival;
+            A("    mov     rax, [rbp - %d]  ; var slot %d (%s)\n",
+              (slot+1)*8, slot, e->sval ? e->sval : "_");
             break;
+        }
         case E_FNC:
-            A("    ; arg[%d] = compound %s/%d\n", arg_idx,
-              e->sval ? e->sval : "?", e->nchildren);
-            break;
-        case E_UNIFY:
-            A("    ; goal: unify\n");
-            break;
-        case E_CUT:
-            A("    ; goal: cut (seal beta)\n");
-            A("    mov     rax, [rel pl_%s_c%d_beta_addr]\n",
-              pred_safe, clause_idx);
-            A("    mov     qword [rax], 0   ; seal beta -> omega\n");
+            if (e->nchildren == 0) {
+                /* nullary functor = atom */
+                const char *lbl = pl_intern_atom_label(e->sval ? e->sval : "");
+                A("    lea     rax, [rel %s]\n", lbl);
+            } else {
+                /* compound — simplified: emit as atom label (full compound support TBD) */
+                const char *lbl = pl_intern_atom_label(e->sval ? e->sval : "f");
+                A("    lea     rax, [rel %s]  ; compound %s/%d (stub: atom only)\n",
+                  lbl, e->sval ? e->sval : "?", e->nchildren);
+            }
             break;
         default:
-            A("    ; arg[%d] = <kind %d>\n", arg_idx, (int)e->kind);
+            A("    xor     rax, rax            ; unknown term kind %d\n", (int)e->kind);
             break;
     }
 }
 
 /* -------------------------------------------------------------------------
- * emit_prolog_clause — emit α port for one clause
+ * emit_prolog_clause — one clause: α through body through γ, then β
  *
- * Layout:
- *   pred_NAME_ARITY_cN_alpha:      ; try this clause
- *       ; save trail mark
- *       ; unify head args (stubs for now)
- *       ; execute body goals (stubs for now)
- *       jmp [rdx]                  ; success -> caller's gamma
- *   pred_NAME_ARITY_cN_beta:       ; retry (next clause or omega)
- *       ; unwind trail
- *       jmp pred_NAME_ARITY_c(N+1)_alpha  OR  pred_NAME_ARITY_omega
+ * Frame layout (rbp-based):
+ *   [rbp -  8]  = saved trail mark (int, 8B slot)
+ *   [rbp - 16]  = saved start value (for switch dispatch)
+ *   [rbp - (k+2)*8] for k in 0..n_vars-1 = fresh Term* for var slot k
+ *
+ * The function is NOT generated inline here — the whole predicate is one
+ * C-ABI function (emitted by emit_prolog_choice) using a switch table.
+ * This function emits the per-clause block within that switch.
  * ---------------------------------------------------------------------- */
-static void emit_prolog_clause(EXPR_t *clause, int idx, int total,
-                                const char *pred_safe, int arity) {
-    char alpha_lbl[128], beta_lbl[128], next_lbl[128];
-    snprintf(alpha_lbl, sizeof alpha_lbl, "pl_%s_c%d_alpha", pred_safe, idx);
-    snprintf(beta_lbl,  sizeof beta_lbl,  "pl_%s_c%d_beta",  pred_safe, idx);
-    if (idx + 1 < total)
-        snprintf(next_lbl, sizeof next_lbl, "pl_%s_c%d_alpha", pred_safe, idx+1);
-    else
-        snprintf(next_lbl, sizeof next_lbl, "pl_%s_omega",     pred_safe);
-
+static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
+                                     const char *pred_safe, int arity,
+                                     const char *omega_lbl) {
+    if (!clause) return;
     int n_vars = (int)clause->ival;
+    int nbody  = clause->nchildren - arity;
+    if (nbody < 0) nbody = 0;
 
-    A("\n");
-    A("; --- clause %d / %d  (n_vars=%d, arity=%d) ---\n",
-      idx+1, total, n_vars, arity);
+    char this_alpha[128], next_clause[128];
+    snprintf(this_alpha,  sizeof this_alpha,  "pl_%s_c%d_α", pred_safe, idx);
+    if (idx + 1 < total)
+        snprintf(next_clause, sizeof next_clause, "pl_%s_c%d_α", pred_safe, idx+1);
+    else
+        snprintf(next_clause, sizeof next_clause, "%s",            omega_lbl);
 
-    /* α port */
-    A("global %s\n", alpha_lbl);
-    A("%s:\n", alpha_lbl);
-    A("    push    rbp\n");
-    A("    mov     rbp, rsp\n");
-    if (n_vars > 0)
-        A("    sub     rsp, %d          ; env frame: %d var slots\n",
-          n_vars * 8, n_vars);
+    A("\n; --- clause %d/%d  n_vars=%d ---\n", idx+1, total, n_vars);
+    A("; clause %d entry\n", idx);
+    A("%s:\n", this_alpha);
 
-    A("    ; === TRAIL MARK (E_TRAIL_MARK) ===\n");
-    A("    ; [trail mark slot saved in env frame]\n");
+    /* Allocate fresh Term* for each variable in this clause */
+    for (int k = 0; k < n_vars; k++) {
+        A("    mov     rdi, %d\n", k);
+        A("    call    term_new_var\n");
+        A("    mov     [rbp - %d], rax    ; var slot %d\n", (k+2)*8, k);
+    }
 
-    A("    ; === HEAD UNIFICATION (E_UNIFY stubs) ===\n");
-    /* Head args are children[0..arity-1] */
-    for (int i = 0; i < arity && i < clause->nchildren; i++)
-        emit_prolog_term_stub(clause->children[i], pred_safe, idx, i);
+    /* Trail mark — save in frame slot [rbp-8] */
+    A("    lea     rdi, [rel pl_trail]\n");
+    A("    call    trail_mark_fn\n");
+    A("    mov     [rbp - 8], eax          ; save trail mark\n");
 
-    A("    ; === BODY GOALS ===\n");
-    /* Body goals are children[arity..nchildren-1] */
-    for (int i = arity; i < clause->nchildren; i++)
-        emit_prolog_term_stub(clause->children[i], pred_safe, idx, i - arity);
+    /* Head unification — for each head arg child[i], unify with call arg */
+    for (int i = 0; i < arity && i < clause->nchildren; i++) {
+        EXPR_t *head_arg = clause->children[i];
+        char fail_lbl[128];
+        snprintf(fail_lbl, sizeof fail_lbl, "pl_%s_c%d_hfail%d", pred_safe, idx, i);
 
-    A("    ; === GAMMA (success) ===\n");
+        /* Load call arg from stack parameter area: args[i] */
+        /* args array pointer is in [rbp+16] (first pushed arg after retaddr+rbp) */
+        A("    mov     rdi, [rbp + 16]     ; args array\n");
+        A("    mov     rdi, [rdi + %d]     ; args[%d]\n", i*8, i);
+        /* Load head pattern term into rsi */
+        /* (emit_pl_term_load uses rax; we need rsi = head term) */
+        emit_pl_term_load(head_arg, n_vars);
+        A("    mov     rsi, rax\n");
+        /* swap: rdi=call_arg, rsi=head_term  -> call unify(head_term, call_arg, trail) */
+        A("    xchg    rdi, rsi\n");
+        A("    lea     rdx, [rel pl_trail]\n");
+        A("    call    unify\n");
+        A("    test    eax, eax\n");
+        A("    jz      %s\n", fail_lbl);
+        A("    jmp     pl_%s_c%d_body\n", pred_safe, idx);
+        A("%s:\n", fail_lbl);
+        /* unify failed — unwind trail and try next clause */
+        A("    mov     edi, [rbp - 8]      ; restore trail mark\n");
+        A("    lea     rdi, [rel pl_trail]\n");
+        A("    mov     esi, [rbp - 8]\n");
+        A("    call    trail_unwind\n");
+        A("    jmp     %s\n", next_clause);
+    }
+
+    A("pl_%s_c%d_body:\n", pred_safe, idx);
+
+    /* Body goals */
+    for (int bi = 0; bi < nbody; bi++) {
+        EXPR_t *goal = clause->children[arity + bi];
+        if (!goal) continue;
+
+        /* Cut */
+        if (goal->kind == E_CUT) {
+            A("    ; cut — seal beta (set _cut flag)\n");
+            A("    mov     byte [rbp - 17], 1    ; _cut = 1\n");
+            continue;
+        }
+
+        /* E_FNC — builtin or user call */
+        if (goal->kind == E_FNC && goal->sval) {
+            const char *fn = goal->sval;
+            int garity = goal->nchildren;
+
+            /* --- write/1 --- */
+            if (strcmp(fn, "write") == 0 && garity == 1) {
+                emit_pl_term_load(goal->children[0], n_vars);
+                A("    mov     rdi, rax\n");
+                A("    call    pl_write\n");
+                continue;
+            }
+            /* --- nl/0 --- */
+            if (strcmp(fn, "nl") == 0 && garity == 0) {
+                A("    mov     edi, 10         ; '\\n'\n");
+                A("    call    putchar\n");
+                continue;
+            }
+            /* --- halt/0 and halt/1 --- */
+            if (strcmp(fn, "halt") == 0) {
+                if (garity == 1) {
+                    emit_pl_term_load(goal->children[0], n_vars);
+                    /* extract ival from Term* if TT_INT, else 0 */
+                    A("    mov     edi, 0\n");
+                } else {
+                    A("    xor     edi, edi\n");
+                }
+                A("    call    exit\n");
+                continue;
+            }
+            /* --- true/0 --- */
+            if (strcmp(fn, "true") == 0 && garity == 0) {
+                continue;  /* no-op */
+            }
+            /* --- fail/0 --- */
+            if (strcmp(fn, "fail") == 0 && garity == 0) {
+                A("    lea     rdi, [rel pl_trail]\n");
+                A("    mov     esi, [rbp - 8]\n");
+                A("    call    trail_unwind\n");
+                A("    jmp     %s\n", next_clause);
+                continue;
+            }
+            /* --- writeln/1 --- */
+            if (strcmp(fn, "writeln") == 0 && garity == 1) {
+                emit_pl_term_load(goal->children[0], n_vars);
+                A("    mov     rdi, rax\n");
+                A("    call    pl_write\n");
+                A("    mov     edi, 10\n");
+                A("    call    putchar\n");
+                continue;
+            }
+            /* --- ,/2 — conjunction: flatten and emit each goal inline --- */
+            if (strcmp(fn, ",") == 0 && garity == 2) {
+                /* Flatten into a temporary goals array and recurse */
+                EXPR_t *flat[64]; int nflat = 0;
+                EXPR_t *cur = goal;
+                while (cur && cur->kind == E_FNC && cur->sval &&
+                       strcmp(cur->sval, ",") == 0 && cur->nchildren == 2 &&
+                       nflat < 63) {
+                    flat[nflat++] = cur->children[0];
+                    cur = cur->children[1];
+                }
+                if (cur) flat[nflat++] = cur;
+                for (int fi = 0; fi < nflat; fi++) {
+                    EXPR_t *sub = flat[fi];
+                    /* Re-enter body goal emitter for each sub-goal */
+                    /* Simplest: recurse by creating a temporary 1-element array */
+                    /* Instead emit recursively via a nested call with same pred context */
+                    /* For now: emit each sub-goal directly */
+                    if (sub->kind == E_FNC && sub->sval) {
+                        /* temporarily set goal = sub and re-run this loop iteration */
+                        /* We can't easily recurse here without refactoring, so fall through
+                         * to user-call — but that would break too. Use a label trick: */
+                        /* Actually the cleanest fix: emit a sub-goal by reusing the same code.
+                         * Since we can't recurse in a loop, push onto a worklist.
+                         * For the common case (atom goals), handle directly: */
+                        const char *sfn = sub->sval; int sa = sub->nchildren;
+                        if (strcmp(sfn,"nl")==0 && sa==0) {
+                            A("    mov     edi, 10\n"); A("    call    putchar\n");
+                        } else if (strcmp(sfn,"write")==0 && sa==1) {
+                            emit_pl_term_load(sub->children[0], n_vars);
+                            A("    mov     rdi, rax\n"); A("    call    pl_write\n");
+                        } else if (strcmp(sfn,"fail")==0 && sa==0) {
+                            A("    lea     rdi, [rel pl_trail]\n");
+                            A("    mov     esi, [rbp - 8]\n");
+                            A("    call    trail_unwind\n");
+                            A("    jmp     %s\n", next_clause);
+                        } else if (strcmp(sfn,"true")==0 && sa==0) {
+                            /* no-op */
+                        } else {
+                            /* user call — build args and call _r */
+                            char csafe[256]; strncpy(csafe, pl_safe(sfn), 255);
+                            char cfail[128];
+                            snprintf(cfail, sizeof cfail, "pl_%s_c%d_cfail%d_%d", pred_safe, idx, bi, fi);
+                            if (sa > 0) {
+                                A("    sub     rsp, %d\n", sa*8);
+                                for (int ai = 0; ai < sa; ai++) {
+                                    emit_pl_term_load(sub->children[ai], n_vars);
+                                    A("    mov     [rsp + %d], rax\n", ai*8);
+                                }
+                                A("    mov     rdi, rsp\n");
+                            } else { A("    xor     rdi, rdi\n"); }
+                            A("    lea     rsi, [rel pl_trail]\n");
+                            A("    xor     edx, edx\n");
+                            A("    call    pl_%s_%d_r\n", csafe, sa);
+                            if (sa > 0) A("    add     rsp, %d\n", sa*8);
+                            A("    test    eax, eax\n");
+                            A("    jns     pl_%s_c%d_cok%d_%d\n", pred_safe, idx, bi, fi);
+                            A("%s:\n", cfail);
+                            A("    lea     rdi, [rel pl_trail]\n");
+                            A("    mov     esi, [rbp - 8]\n");
+                            A("    call    trail_unwind\n");
+                            A("    jmp     %s\n", next_clause);
+                            A("pl_%s_c%d_cok%d_%d:\n", pred_safe, idx, bi, fi);
+                        }
+                    }
+                }
+                continue;
+            }
+            /* --- ;/2 — disjunction: flatten left conj, emit with backtrack retry --- */
+            if (strcmp(fn, ";") == 0 && garity == 2) {
+                EXPR_t *left  = goal->children[0];
+                EXPR_t *right = goal->children[1];
+                char else_lbl[128], done_lbl[128];
+                snprintf(else_lbl, sizeof else_lbl, "disj_%s_%d_%d_else", pred_safe, idx, bi);
+                snprintf(done_lbl, sizeof done_lbl, "disj_%s_%d_%d_done", pred_safe, idx, bi);
+
+                /* Flatten left conjunction */
+                EXPR_t *lgoals[64]; int nlg = 0;
+                EXPR_t *cur2 = left;
+                while (cur2 && cur2->kind == E_FNC && cur2->sval &&
+                       strcmp(cur2->sval, ",") == 0 && cur2->nchildren == 2 && nlg < 63) {
+                    lgoals[nlg++] = cur2->children[0];
+                    cur2 = cur2->children[1];
+                }
+                if (cur2) lgoals[nlg++] = cur2;
+
+                /* Find the backtrackable user call in left goals (first non-builtin) */
+                int user_call_idx = -1;
+                for (int li = 0; li < nlg; li++) {
+                    EXPR_t *lg = lgoals[li];
+                    if (!lg || lg->kind != E_FNC || !lg->sval) continue;
+                    const char *lfn = lg->sval;
+                    if (strcmp(lfn,"nl")==0||strcmp(lfn,"write")==0||
+                        strcmp(lfn,"writeln")==0||strcmp(lfn,"true")==0||
+                        strcmp(lfn,"fail")==0||strcmp(lfn,"halt")==0) continue;
+                    user_call_idx = li; break;
+                }
+
+                if (user_call_idx >= 0) {
+                    EXPR_t *ucall = lgoals[user_call_idx];
+                    char ucsafe[256]; strncpy(ucsafe, pl_safe(ucall->sval), 255);
+                    int uca = ucall->nchildren;
+                    char retry_lbl[128];
+                    snprintf(retry_lbl, sizeof retry_lbl, "disj_%s_%d_%d_retry", pred_safe, idx, bi);
+
+                    /* Emit pre-call goals (deterministic) */
+                    for (int li = 0; li < user_call_idx; li++) {
+                        EXPR_t *lg = lgoals[li]; if (!lg||!lg->sval) continue;
+                        if (strcmp(lg->sval,"nl")==0) { A("    mov edi,10\n"); A("    call putchar\n"); }
+                        else if (strcmp(lg->sval,"write")==0 && lg->nchildren==1) {
+                            emit_pl_term_load(lg->children[0], n_vars);
+                            A("    mov rdi, rax\n"); A("    call pl_write\n");
+                        }
+                    }
+
+                    /* Retry loop: _cs in [rbp-36] */
+                    A("    mov     dword [rbp - 36], 0    ; _cs\n");
+                    A("%s:\n", retry_lbl);
+                    /* unwind trail before each retry */
+                    A("    lea     rdi, [rel pl_trail]\n");
+                    A("    mov     esi, [rbp - 8]\n");
+                    A("    call    trail_unwind\n");
+                    if (uca > 0) {
+                        A("    sub     rsp, %d\n", uca*8);
+                        for (int ai = 0; ai < uca; ai++) {
+                            emit_pl_term_load(ucall->children[ai], n_vars);
+                            A("    mov     [rsp + %d], rax\n", ai*8);
+                        }
+                        A("    mov     rdi, rsp\n");
+                    } else { A("    xor     rdi, rdi\n"); }
+                    A("    lea     rsi, [rel pl_trail]\n");
+                    A("    mov     edx, [rbp - 36]\n");
+                    A("    call    pl_%s_%d_r\n", ucsafe, uca);
+                    if (uca > 0) A("    add     rsp, %d\n", uca*8);
+                    A("    test    eax, eax\n");
+                    A("    js      %s\n", else_lbl);
+                    A("    inc     eax\n");
+                    A("    mov     [rbp - 36], eax\n");
+
+                    /* Post-call goals — failure loops back to retry */
+                    for (int li = user_call_idx+1; li < nlg; li++) {
+                        EXPR_t *lg = lgoals[li]; if (!lg||!lg->sval) continue;
+                        const char *pgn = lg->sval; int pga = lg->nchildren;
+                        if (strcmp(pgn,"nl")==0) { A("    mov edi,10\n"); A("    call putchar\n"); }
+                        else if (strcmp(pgn,"write")==0 && pga==1) {
+                            emit_pl_term_load(lg->children[0], n_vars);
+                            A("    mov rdi, rax\n"); A("    call pl_write\n");
+                        } else if (strcmp(pgn,"fail")==0 && pga==0) {
+                            A("    jmp     %s\n", retry_lbl);
+                        } else if (strcmp(pgn,"true")==0) { /* no-op */
+                        } else {
+                            /* another user call — call once, fail -> retry outer */
+                            char isafe[256]; strncpy(isafe, pl_safe(pgn), 255);
+                            if (pga > 0) {
+                                A("    sub     rsp, %d\n", pga*8);
+                                for (int ai = 0; ai < pga; ai++) {
+                                    emit_pl_term_load(lg->children[ai], n_vars);
+                                    A("    mov     [rsp + %d], rax\n", ai*8);
+                                }
+                                A("    mov     rdi, rsp\n");
+                            } else { A("    xor     rdi, rdi\n"); }
+                            A("    lea     rsi, [rel pl_trail]\n");
+                            A("    xor     edx, edx\n");
+                            A("    call    pl_%s_%d_r\n", isafe, pga);
+                            if (pga > 0) A("    add     rsp, %d\n", pga*8);
+                            A("    test    eax, eax\n");
+                            A("    js      %s\n", retry_lbl);
+                        }
+                    }
+                    A("    jmp     %s\n", done_lbl);
+                } else {
+                    /* No user call in left — just emit deterministic goals */
+                    for (int li = 0; li < nlg; li++) {
+                        EXPR_t *lg = lgoals[li]; if (!lg||!lg->sval) continue;
+                        if (strcmp(lg->sval,"fail")==0) { A("    jmp %s\n", else_lbl); break; }
+                        if (strcmp(lg->sval,"nl")==0) { A("    mov edi,10\n"); A("    call putchar\n"); }
+                        else if (strcmp(lg->sval,"write")==0 && lg->nchildren==1) {
+                            emit_pl_term_load(lg->children[0], n_vars);
+                            A("    mov rdi, rax\n"); A("    call pl_write\n");
+                        }
+                    }
+                    A("    jmp     %s\n", done_lbl);
+                }
+
+                A("%s:\n", else_lbl);
+                /* Right branch */
+                if (right && right->kind == E_FNC && right->sval) {
+                    if (strcmp(right->sval,"true")==0) { /* no-op */ }
+                    else if (strcmp(right->sval,"fail")==0) { A("    jmp %s\n", next_clause); }
+                    else {
+                        char rsafe2[256]; strncpy(rsafe2, pl_safe(right->sval), 255);
+                        int ra2 = right->nchildren;
+                        if (ra2 > 0) {
+                            A("    sub     rsp, %d\n", ra2*8);
+                            for (int ai = 0; ai < ra2; ai++) {
+                                emit_pl_term_load(right->children[ai], n_vars);
+                                A("    mov     [rsp + %d], rax\n", ai*8);
+                            }
+                            A("    mov     rdi, rsp\n");
+                        } else { A("    xor     rdi, rdi\n"); }
+                        A("    lea     rsi, [rel pl_trail]\n");
+                        A("    xor     edx, edx\n");
+                        A("    call    pl_%s_%d_r\n", rsafe2, ra2);
+                        if (ra2 > 0) A("    add     rsp, %d\n", ra2*8);
+                        A("    test    eax, eax\n");
+                        A("    js      %s\n", next_clause);
+                    }
+                }
+                A("%s:\n", done_lbl);
+                continue;
+            }
+            if (strcmp(fn, "=") == 0 && garity == 2) {
+                char ufail[128];
+                snprintf(ufail, sizeof ufail, "pl_%s_c%d_ufail%d", pred_safe, idx, bi);
+                emit_pl_term_load(goal->children[0], n_vars);
+                A("    mov     [rel pl_tmp], rax\n");
+                emit_pl_term_load(goal->children[1], n_vars);
+                A("    mov     rsi, rax\n");
+                A("    mov     rdi, [rel pl_tmp]\n");
+                A("    lea     rdx, [rel pl_trail]\n");
+                A("    call    unify\n");
+                A("    test    eax, eax\n");
+                A("    jnz     pl_%s_c%d_ug%d\n", pred_safe, idx, bi);
+                A("%s:\n", ufail);
+                A("    lea     rdi, [rel pl_trail]\n");
+                A("    mov     esi, [rbp - 8]\n");
+                A("    call    trail_unwind\n");
+                A("    jmp     %s\n", next_clause);
+                A("pl_%s_c%d_ug%d:\n", pred_safe, idx, bi);
+                continue;
+            }
+            /* --- user-defined predicate call --- */
+            {
+                /* Build args array on stack, call pl_NAME_ARITY_r */
+                char call_safe[256];
+                snprintf(call_safe, sizeof call_safe, "%s", pl_safe(fn));
+                char fail_lbl[128];
+                snprintf(fail_lbl, sizeof fail_lbl, "pl_%s_c%d_bfail%d", pred_safe, idx, bi);
+                /* push args in reverse then pass array ptr */
+                if (garity > 0) {
+                    /* allocate args array on stack: sub rsp, garity*8 */
+                    A("    sub     rsp, %d              ; args array for %s/%d\n",
+                      garity*8, fn, garity);
+                    for (int ai = 0; ai < garity; ai++) {
+                        emit_pl_term_load(goal->children[ai], n_vars);
+                        A("    mov     [rsp + %d], rax\n", ai*8);
+                    }
+                    A("    mov     rdi, rsp               ; args[]\n");
+                } else {
+                    A("    xor     rdi, rdi               ; no args\n");
+                }
+                A("    lea     rsi, [rel pl_trail]\n");
+                A("    xor     edx, edx                   ; start=0\n");
+                A("    call    pl_%s_%d_r\n", call_safe, garity);
+                if (garity > 0)
+                    A("    add     rsp, %d\n", garity*8);
+                A("    test    eax, eax\n");
+                A("    js      %s\n", fail_lbl);
+                A("    jmp     pl_%s_c%d_bsucc%d\n", pred_safe, idx, bi);
+                A("%s:\n", fail_lbl);
+                A("    lea     rdi, [rel pl_trail]\n");
+                A("    mov     esi, [rbp - 8]\n");
+                A("    call    trail_unwind\n");
+                A("    jmp     %s\n", next_clause);
+                A("pl_%s_c%d_bsucc%d:\n", pred_safe, idx, bi);
+            }
+        }
+    }
+
+    /* γ — body succeeded: return clause index */
+    A("    ; gamma — success: return clause index %d\n", idx);
     A("    mov     rsp, rbp\n");
     A("    pop     rbp\n");
-    A("    jmp     rdx              ; call ret_gamma\n");
-
-    /* β port (retry) */
-    A("\n");
-    A("global %s\n", beta_lbl);
-    A("%s:\n", beta_lbl);
-    A("    ; === TRAIL UNWIND (E_TRAIL_UNWIND) ===\n");
-    A("    mov     rsp, rbp\n");
-    A("    pop     rbp\n");
-    A("    jmp     %s\n", next_lbl);
+    A("    mov     eax, %d\n", idx);
+    A("    ret\n");
 }
 
 /* -------------------------------------------------------------------------
- * emit_prolog_choice — emit one complete predicate (all clauses + ω port)
+ * emit_prolog_choice — emit complete resumable function for one predicate
+ *
+ * Generated function signature (C-ABI):
+ *   int pl_NAME_ARITY_r(Term *arg0, ..., Trail *trail_unused, int start)
+ *
+ * The trail is the global pl_trail — trail arg ignored (use global).
+ * 'start' selects which clause to try first (0 = fresh call).
+ * Returns clause_idx on success, -1 on total failure.
+ *
+ * Frame layout (after push rbp; mov rbp,rsp):
+ *   [rbp +  8]   = return address  (standard)
+ *   [rbp +  0]   = saved rbp       (standard)
+ *   [rbp - 8]    = trail mark      (int stored as 8B)
+ *   [rbp - 16]   = _cut flag       (1B, padded to 8B slot; at [rbp-17])
+ *   [rbp - (k+2)*8] for k=0..n_vars-1 = fresh Term* for var slot k
+ *   [rbp + 16]   = first arg (arg0) — or Trail* if arity==0
+ *   [rbp + 24]   = second arg (arg1 or Trail*)
+ *   ...
  * ---------------------------------------------------------------------- */
 static void emit_prolog_choice(EXPR_t *choice) {
     if (!choice || choice->kind != E_CHOICE) return;
 
     const char *pred = choice->sval ? choice->sval : "unknown/0";
-    const char *safe = pl_safe(pred);
-
-    /* Parse arity from "name/N" */
     int arity = 0;
     const char *sl = strrchr(pred, '/');
-    if (sl) arity = atoi(sl + 1);
-
+    if (sl) arity = atoi(sl+1);
     int nclauses = choice->nchildren;
 
-    A("\n");
-    emit_sep_major(pred);
-    A("; Prolog predicate %s  (%d clause%s)\n",
-      pred, nclauses, nclauses == 1 ? "" : "s");
-    A("\n");
+    /* Find max n_vars across clauses for frame allocation */
+    int max_vars = 0;
+    for (int ci = 0; ci < nclauses; ci++) {
+        EXPR_t *ec = choice->children[ci];
+        if (ec && (int)ec->ival > max_vars) max_vars = (int)ec->ival;
+    }
 
-    /* Entry label = α of first clause */
-    A("global pl_%s\n", safe);
+    /* Make a stable copy of safe name (pl_safe uses static buffer) */
+    char safe[256]; strncpy(safe, pl_safe(pred), 255); safe[255]='\0';
+
+    char omega_lbl[128];
+    snprintf(omega_lbl, sizeof omega_lbl, "pl_%s_ω", safe);
+
+    A("\n");
+    A("; ============================================================\n");
+    A("; predicate %s  (%d clause%s)\n", pred, nclauses, nclauses==1?"":"s");
+    A("; ============================================================\n");
+
+    /* frame: mark(8) + _cut(8) + args_ptr(8) + start(8) + n_vars*8, align 16 */
+    int frame = 32 + max_vars*8;
+    if (frame % 16) frame = (frame/16+1)*16;
+
+    /* Resumable function */
+    A("global pl_%s_r\n", safe);
+    A("pl_%s_r:\n", safe);
+    A("    push    rbp\n");
+    A("    mov     rbp, rsp\n");
+    A("    sub     rsp, %d\n", frame);
+    A("    mov     byte [rbp - 17], 0    ; _cut = 0\n");
+
+    /* 'start' argument: in register position arity+1 (0-indexed).
+     * Arg registers: rdi rsi rdx rcx r8 r9
+     * slot 0=rdi, 1=rsi, 2=rdx, 3=rcx, 4=r8, 5=r9
+     * For arity N: args[0..N-1] in rdi..., Trail* in reg[N], start in reg[N+1] */
+    static const char *argregs[] = {"rdi","rsi","rdx","rcx","r8","r9"};
+    int start_reg_idx = arity + 1;  /* start position */
+
+    /* Save args array pointer to [rbp+16] slot — push all args onto caller frame */
+    /* Actually with C-ABI the args are already in registers at function entry.
+     * We need to preserve 'start' and the args array.
+     * Strategy: push all register args to a local args array in frame. */
+    if (arity > 0 && arity <= 4) {
+        /* save arg registers to [rbp+16..] area (above frame) */
+        /* They're already there if caller used push — but with call convention
+         * they're in registers. Store them to known frame slots. */
+        const char *arg_regs_order[] = {"rdi","rsi","rdx","rcx","r8","r9"};
+        for (int ai = 0; ai < arity && ai < 4; ai++) {
+            A("    mov     [rbp + %d], %s   ; save arg %d\n",
+              16 + ai*8, arg_regs_order[ai], ai);
+        }
+        /* store args array base pointer for clause blocks to use */
+        A("    lea     rax, [rbp + 16]\n");
+        A("    mov     [rbp - 24], rax     ; args array ptr\n");
+        /* adjust trail and start regs — they're displaced by arity */
+    } else if (arity == 0) {
+        A("    ; arity 0 — no args to save\n");
+        A("    xor     rax, rax\n");
+        A("    mov     [rbp - 24], rax     ; args array ptr = NULL\n");
+    }
+
+    /* Save 'start' to stack */
+    if (start_reg_idx < 6) {
+        A("    mov     [rbp - 32], %s     ; save start\n", argregs[start_reg_idx]);
+    }
+
+    /* switch on start — emit jmp table via a series of cmp/je */
+    A("    mov     eax, [rbp - 32]       ; start value\n");
+    for (int ci = 0; ci < nclauses; ci++) {
+        A("    cmp     eax, %d\n", ci);
+        A("    je      pl_%s_c%d_α\n", safe, ci);
+    }
+    A("    jmp     %s\n", omega_lbl);
+
+    /* Emit each clause block */
+    for (int ci = 0; ci < nclauses; ci++)
+        emit_prolog_clause_block(choice->children[ci], ci, nclauses,
+                                 safe, arity, omega_lbl);
+
+    /* ω port */
+    A("\n%s:\n", omega_lbl);
+    A("    ; omega — all clauses exhausted\n");
+    A("    lea     rdi, [rel pl_trail]\n");
+    A("    mov     esi, [rbp - 8]         ; trail mark\n");
+    A("    call    trail_unwind\n");
+    A("    mov     rsp, rbp\n");
+    A("    pop     rbp\n");
+    A("    mov     eax, -1\n");
+    A("    ret\n");
+
+    /* Single-shot wrapper (no start arg — always starts at 0) */
+    A("\nglobal pl_%s\n", safe);
     A("pl_%s:\n", safe);
-    A("    ; entry point — fall through to clause 1 alpha\n");
-    if (nclauses > 0)
-        A("    jmp     pl_%s_c0_alpha\n", safe);
-    else
-        A("    jmp     pl_%s_omega\n",    safe);
-
-    /* Emit each clause */
-    for (int i = 0; i < nclauses; i++)
-        emit_prolog_clause(choice->children[i], i, nclauses, safe, arity);
-
-    /* ω port — all clauses exhausted */
-    A("\n");
-    A("; --- omega port (all clauses exhausted) ---\n");
-    A("global pl_%s_omega\n", safe);
-    A("pl_%s_omega:\n", safe);
-    A("    jmp     rcx              ; call ret_omega\n");
+    /* shift args: trail goes into extra reg slot, start=0 appended */
+    if (arity < 5) {
+        /* push 0 (start) into the right register */
+        /* Trail* is already at arg[arity] register; just add start=0 */
+        A("    ; single-shot wrapper: push start=0\n");
+        A("    xor     %s, %s\n", argregs[start_reg_idx], argregs[start_reg_idx]);
+        A("    jmp     pl_%s_r\n", safe);
+    } else {
+        A("    push    0\n");
+        A("    jmp     pl_%s_r\n", safe);
+    }
 }
+
+/* -------------------------------------------------------------------------
+ * emit_prolog_main — emit pl_rt_init + main
+ * Scans for :- initialization(X) directive to find entry predicate.
+ * ---------------------------------------------------------------------- */
+static void emit_prolog_main(Program *prog) {
+    /* Find initialization predicate name */
+    const char *init_pred = "main";
+    for (STMT_t *s = prog->head; s; s = s->next) {
+        EXPR_t *e = s->subject;
+        if (!e || e->kind != E_FNC || !e->sval) continue;
+        if (strcmp(e->sval, "initialization") == 0 && e->nchildren >= 1) {
+            EXPR_t *goal = e->children[0];
+            if (goal && goal->sval) init_pred = goal->sval;
+        }
+    }
+    /* init_pred is just the functor name (e.g. "main"), arity is 0 */
+    char init_full[280]; snprintf(init_full, sizeof init_full, "%s/0", init_pred);
+    char safe_init[256]; strncpy(safe_init, pl_safe(init_full), 255);
+
+    A("\n; ============================================================\n");
+    A("; pl_rt_init — fix up atom_ids in .data Term structs\n");
+    A("; ============================================================\n");
+    A("pl_rt_init:\n");
+    A("    push    rbp\n");
+    A("    mov     rbp, rsp\n");
+    /* For each atom, call prolog_atom_intern(name_str) and store into atom struct+8 */
+    for (int i = 0; i < pl_atom_count_emit; i++) {
+        /* We need the string pointer — emit string literals in .rodata */
+        A("    lea     rdi, [rel pl_astr_%d]\n", i);
+        A("    call    prolog_atom_intern\n");
+        /* store int result (eax) into the dq slot of the atom struct */
+        A("    mov     dword [rel %s + 8], eax\n", pl_atom_labels[i]);
+    }
+    A("    pop     rbp\n");
+    A("    ret\n");
+
+    A("\n; ============================================================\n");
+    A("; main\n");
+    A("; ============================================================\n");
+    A("main:\n");
+    A("    push    rbp\n");
+    A("    mov     rbp, rsp\n");
+    A("    ; init atom table\n");
+    A("    call    prolog_atom_init\n");
+    A("    ; init trail\n");
+    A("    lea     rdi, [rel pl_trail]\n");
+    A("    call    trail_init\n");
+    A("    ; fix up atom_id fields\n");
+    A("    call    pl_rt_init\n");
+    A("    ; call initialization predicate: %s/0\n", init_pred);
+    A("    lea     rdi, [rel pl_trail]   ; Trail* (arg 0 for arity-0 pred)\n");
+    A("    xor     esi, esi               ; start=0\n");
+    A("    call    pl_%s_r\n", safe_init);
+    A("    ; exit 0\n");
+    A("    xor     edi, edi\n");
+    A("    call    exit\n");
+    A("    pop     rbp\n");
+    A("    ret\n");
+
+    /* .rodata — atom name strings */
+    A("\nsection .rodata\n");
+    for (int i = 0; i < pl_atom_count_emit; i++) {
+        A("pl_astr_%d: db `%s`, 0\n", i, pl_atom_strings[i]);
+    }
+}
+
+/* -------------------------------------------------------------------------
+ * emit_prolog_program — top-level entry for -pl -asm
+ * ---------------------------------------------------------------------- */
+static void emit_prolog_program(Program *prog) {
+    if (!prog) return;
+
+    /* Reset atom table */
+    for (int i = 0; i < pl_atom_count_emit; i++) free(pl_atom_strings[i]);
+    pl_atom_count_emit = 0;
+
+    /* Pass 1: pre-intern all atoms that appear in head/body terms */
+    /* (intern happens lazily via emit_pl_term_load, so just emit) */
+
+    emit_pl_header(prog);
+
+    A("section .text\n\n");
+
+    /* Emit each predicate */
+    for (STMT_t *s = prog->head; s; s = s->next) {
+        EXPR_t *e = s->subject;
+        if (!e) continue;
+        if (e->kind == E_CHOICE) {
+            emit_prolog_choice(e);
+        }
+        /* directives (E_FNC initialization etc.) handled in emit_prolog_main */
+    }
+
+    emit_prolog_main(prog);
+
+    /* .data — atom Term structs (collected during emit_prolog_choice passes) */
+    emit_pl_atom_data_v2();
+}
+
+/* end Prolog ASM emitter */
 /* ======================================================================= */
+
+/* -------------------------------------------------------------------------
+ * asm_emit_prolog — public entry point for -pl -asm path (called from main.c)
+ * ---------------------------------------------------------------------- */
+void asm_emit_prolog(Program *prog, FILE *f) {
+    out = f;
+    emit_prolog_program(prog);
+}

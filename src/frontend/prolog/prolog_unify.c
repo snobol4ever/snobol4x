@@ -120,3 +120,6 @@ int unify(Term *t1, Term *t2, Trail *trail) {
     /* Type mismatch */
     return 0;
 }
+
+/* Non-inline wrapper so ASM backend can call trail_mark via extern */
+int trail_mark_fn(const Trail *t) { return t->top; }
