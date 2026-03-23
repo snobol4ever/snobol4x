@@ -5839,7 +5839,42 @@ static void emit_prolog_choice(EXPR_t *choice) {
      * [rbp-40-ai*8]   = saved arg ai  (arity slots)
      * [rbp-40-arity*8 - k*8] = var slot k
      */
-    int frame = 40 + max_vars*8;  /* 40 base (trail+cut+args_ptr+start+scratch) + vars */
+    /* Frame layout:
+     * [rbp- 8] trail mark
+     * [rbp-16] sub_cs_acc (last ucall return, for γ encoding)
+     * [rbp-17] _cut byte
+     * [rbp-24] args array ptr
+     * [rbp-32] start (read-only after save)
+     * [rbp-40 .. rbp-40-(max_ucalls-1)*8] per-ucall sub_cs slots (ucall 0..N-1)
+     * [rbp-40-max_ucalls*8 .. ] var slots
+     */
+    /* Count max body user calls across all clauses for frame sizing */
+    int max_body_ucalls = 0;
+    for (int ci = 0; ci < nclauses; ci++) {
+        EXPR_t *ec = choice->children[ci];
+        if (!ec) continue;
+        int nb = (int)ec->nchildren - arity; if (nb < 0) nb = 0;
+        int nuc = 0;
+        for (int bi = 0; bi < nb; bi++) {
+            EXPR_t *g = ec->children[arity + bi];
+            if (!g || g->kind != E_FNC || !g->sval) continue;
+            const char *gn = g->sval;
+            if (strcmp(gn,"write")==0||strcmp(gn,"nl")==0||strcmp(gn,"writeln")==0||
+                strcmp(gn,"true")==0||strcmp(gn,"fail")==0||strcmp(gn,"halt")==0||
+                strcmp(gn,"is")==0||strcmp(gn,"=")==0||strcmp(gn,"!")== 0||
+                strcmp(gn,"<")==0||strcmp(gn,">")==0||strcmp(gn,"=<")==0||
+                strcmp(gn,">=")==0||strcmp(gn,"=:=")==0||strcmp(gn,"=\\=")==0||
+                strcmp(gn,",")==0||strcmp(gn,";")==0||strcmp(gn,"functor")==0||
+                strcmp(gn,"arg")==0||strcmp(gn,"=..")==0||strcmp(gn,"atom")==0||
+                strcmp(gn,"integer")==0||strcmp(gn,"float")==0||
+                strcmp(gn,"var")==0||strcmp(gn,"nonvar")==0||strcmp(gn,"compound")==0) continue;
+            if (g->kind == E_CUT) continue;
+            nuc++;
+        }
+        if (nuc > max_body_ucalls) max_body_ucalls = nuc;
+    }
+    int frame = 40 + max_body_ucalls*8 + max_vars*8;
+    /* 40 base (trail+cut+args_ptr+start+sub_cs_acc) + ucall slots + vars */
     if (frame % 16) frame = (frame/16+1)*16;
 
     /* Resumable function */
@@ -6050,7 +6085,28 @@ static void emit_prolog_main(Program *prog) {
     /* .rodata — atom name strings */
     A("\nsection .rodata\n");
     for (int i = 0; i < pl_atom_count_emit; i++) {
-        A("pl_astr_%d: db `%s`, 0\n", i, pl_atom_strings[i]);
+        /* Emit atom string safely: use hex bytes for any non-printable or
+         * backtick/backslash chars to avoid NASM parse errors. */
+        {
+            const char *s = pl_atom_strings[i];
+            A("pl_astr_%d: db ", i);
+            if (*s == '\0') {
+                A("0");  /* empty string: just the null terminator */
+            } else {
+                int first = 1;
+                while (*s) {
+                    unsigned char c = (unsigned char)*s++;
+                    if (!first) A(",");
+                    first = 0;
+                    if (c == '`' || c == '\\' || c < 0x20 || c > 0x7e)
+                        A("0x%02x", c);
+                    else
+                        A("`%c`", c);
+                }
+                A(",0");
+            }
+            A("\n");
+        }
     }
 }
 
