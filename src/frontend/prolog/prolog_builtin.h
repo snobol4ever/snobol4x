@@ -37,3 +37,12 @@ int  pl_num_le(Term *a, Term *b);
 int  pl_num_ge(Term *a, Term *b);
 int  pl_num_eq(Term *a, Term *b);
 int  pl_num_ne(Term *a, Term *b);
+
+/* Type tests */
+int pl_atom(Term *t);
+int pl_integer(Term *t);
+int pl_is_float(Term *t);
+int pl_var(Term *t);
+int pl_nonvar(Term *t);
+int pl_compound(Term *t);
+int pl_callable(Term *t);

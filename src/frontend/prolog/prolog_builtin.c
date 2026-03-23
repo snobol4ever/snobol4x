@@ -366,3 +366,12 @@ int pl_num_le(Term *a, Term *b)  { return pl_eval_arith(a) <= pl_eval_arith(b); 
 int pl_num_ge(Term *a, Term *b)  { return pl_eval_arith(a) >= pl_eval_arith(b); }
 int pl_num_eq(Term *a, Term *b)  { return pl_eval_arith(a) == pl_eval_arith(b); }
 int pl_num_ne(Term *a, Term *b)  { return pl_eval_arith(a) != pl_eval_arith(b); }
+
+/* Type-test builtins — return 1 (true) or 0 (false), no Trail needed */
+int pl_atom(Term *t)     { t = term_deref(t); return t && t->tag == TT_ATOM; }
+int pl_integer(Term *t)  { t = term_deref(t); return t && t->tag == TT_INT; }
+int pl_is_float(Term *t) { t = term_deref(t); return t && t->tag == TT_FLOAT; }
+int pl_var(Term *t)      { t = term_deref(t); return !t || t->tag == TT_VAR; }
+int pl_nonvar(Term *t)   { t = term_deref(t); return t && t->tag != TT_VAR; }
+int pl_compound(Term *t) { t = term_deref(t); return t && t->tag == TT_COMPOUND; }
+int pl_callable(Term *t) { t = term_deref(t); return t && (t->tag == TT_ATOM || t->tag == TT_COMPOUND); }

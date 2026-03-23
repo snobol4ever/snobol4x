@@ -4845,6 +4845,7 @@ static void emit_pl_header(Program *prog) {
     A("    extern  pl_write, pl_writeln\n");
     A("    extern  pl_is, pl_num_lt, pl_num_gt, pl_num_le, pl_num_ge, pl_num_eq, pl_num_ne\n");
     A("    extern  pl_functor, pl_arg, pl_univ\n");
+    A("    extern  pl_atom, pl_integer, pl_is_float, pl_var, pl_nonvar, pl_compound\n");
     A("    extern  printf, fflush, putchar, exit\n");
     A("\n");
     A("\n");
@@ -4991,7 +4992,9 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
             strcmp(gn,"is")==0||strcmp(gn,"=")==0||strcmp(gn,"!")==0||
             strcmp(gn,"<")==0||strcmp(gn,">")==0||strcmp(gn,"=<")==0||
             strcmp(gn,">=")==0||strcmp(gn,"=:=")==0||strcmp(gn,"=\\=")==0||
-            strcmp(gn,",")==0||strcmp(gn,";")==0) continue;
+            strcmp(gn,",")==0||strcmp(gn,";")==0||strcmp(gn,"functor")==0||strcmp(gn,"arg")==0||strcmp(gn,"=..")==0||
+            strcmp(gn,"atom")==0||strcmp(gn,"integer")==0||strcmp(gn,"float")==0||
+            strcmp(gn,"var")==0||strcmp(gn,"nonvar")==0||strcmp(gn,"compound")==0) continue;
         if (g->kind == E_CUT) continue;
         body_user_call_count++;
     }
@@ -5247,6 +5250,26 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                             A("    mov     rdi, [rel pl_tmp]\n");
                             A("    lea     rdx, [rel pl_trail]\n");
                             A("    call    unify\n");
+                            A("    test    eax, eax\n");
+                            A("    jz      %s\n", else_lbl);
+                            cond_handled = 1;
+                        }
+                    }
+                    /* Type-test builtins as condition: atom/1, integer/1, etc. */
+                    if (!cond_handled && cond && cond->kind == E_FNC && cond->sval &&
+                        cond->nchildren == 1) {
+                        const char *cop1 = cond->sval;
+                        const char *rtfn = NULL;
+                        if      (strcmp(cop1,"atom")==0)     rtfn = "pl_atom";
+                        else if (strcmp(cop1,"integer")==0)  rtfn = "pl_integer";
+                        else if (strcmp(cop1,"float")==0)    rtfn = "pl_is_float";
+                        else if (strcmp(cop1,"var")==0)      rtfn = "pl_var";
+                        else if (strcmp(cop1,"nonvar")==0)   rtfn = "pl_nonvar";
+                        else if (strcmp(cop1,"compound")==0) rtfn = "pl_compound";
+                        if (rtfn) {
+                            emit_pl_term_load(cond->children[0], n_vars);
+                            A("    mov     rdi, rax\n");
+                            A("    call    %s\n", rtfn);
                             A("    test    eax, eax\n");
                             A("    jz      %s\n", else_lbl);
                             cond_handled = 1;
@@ -5577,6 +5600,106 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
             EMIT_CMP("=:=", "pl_num_eq")
             EMIT_CMP("=\\=", "pl_num_ne")
             #undef EMIT_CMP
+            /* --- functor/3: functor(Term, Name, Arity) --- */
+            if (strcmp(fn, "functor") == 0 && garity == 3) {
+                char ffail[128], fok[128];
+                snprintf(ffail, sizeof ffail, "pl_%s_c%d_ffail%d", pred_safe, idx, bi);
+                snprintf(fok,   sizeof fok,   "pl_%s_c%d_fok%d",   pred_safe, idx, bi);
+                emit_pl_term_load(goal->children[0], n_vars);
+                A("    mov     [rel pl_tmp], rax\n");
+                emit_pl_term_load(goal->children[1], n_vars);
+                A("    push    rax\n");
+                emit_pl_term_load(goal->children[2], n_vars);
+                A("    mov     rcx, rax\n");
+                A("    pop     rsi\n");
+                A("    mov     rdi, [rel pl_tmp]\n");
+                A("    mov     rdx, rcx\n");
+                A("    lea     rcx, [rel pl_trail]\n");
+                A("    call    pl_functor\n");
+                A("    test    eax, eax\n");
+                A("    jnz     %s\n", fok);
+                A("%s:\n", ffail);
+                A("    lea     rdi, [rel pl_trail]\n");
+                A("    mov     esi, [rbp - 8]\n");
+                A("    call    trail_unwind\n");
+                A("    jmp     %s\n", next_clause);
+                A("%s:\n", fok);
+                continue;
+            }
+            /* --- arg/3: arg(N, Compound, Arg) --- */
+            if (strcmp(fn, "arg") == 0 && garity == 3) {
+                char afail[128], aok[128];
+                snprintf(afail, sizeof afail, "pl_%s_c%d_afail%d", pred_safe, idx, bi);
+                snprintf(aok,   sizeof aok,   "pl_%s_c%d_aok%d",   pred_safe, idx, bi);
+                emit_pl_term_load(goal->children[0], n_vars);
+                A("    mov     [rel pl_tmp], rax\n");
+                emit_pl_term_load(goal->children[1], n_vars);
+                A("    push    rax\n");
+                emit_pl_term_load(goal->children[2], n_vars);
+                A("    mov     rcx, rax\n");
+                A("    pop     rsi\n");
+                A("    mov     rdi, [rel pl_tmp]\n");
+                A("    mov     rdx, rcx\n");
+                A("    lea     rcx, [rel pl_trail]\n");
+                A("    call    pl_arg\n");
+                A("    test    eax, eax\n");
+                A("    jnz     %s\n", aok);
+                A("%s:\n", afail);
+                A("    lea     rdi, [rel pl_trail]\n");
+                A("    mov     esi, [rbp - 8]\n");
+                A("    call    trail_unwind\n");
+                A("    jmp     %s\n", next_clause);
+                A("%s:\n", aok);
+                continue;
+            }
+            /* --- =../2: Term =.. List (univ) --- */
+            if (strcmp(fn, "=..") == 0 && garity == 2) {
+                char ufail[128], uok[128];
+                snprintf(ufail, sizeof ufail, "pl_%s_c%d_ufail%d", pred_safe, idx, bi);
+                snprintf(uok,   sizeof uok,   "pl_%s_c%d_uok%d",   pred_safe, idx, bi);
+                emit_pl_term_load(goal->children[0], n_vars);
+                A("    mov     [rel pl_tmp], rax\n");
+                emit_pl_term_load(goal->children[1], n_vars);
+                A("    mov     rsi, rax\n");
+                A("    mov     rdi, [rel pl_tmp]\n");
+                A("    lea     rdx, [rel pl_trail]\n");
+                A("    call    pl_univ\n");
+                A("    test    eax, eax\n");
+                A("    jnz     %s\n", uok);
+                A("%s:\n", ufail);
+                A("    lea     rdi, [rel pl_trail]\n");
+                A("    mov     esi, [rbp - 8]\n");
+                A("    call    trail_unwind\n");
+                A("    jmp     %s\n", next_clause);
+                A("%s:\n", uok);
+                continue;
+            }
+            /* --- type tests: atom/1, integer/1, float/1, var/1, nonvar/1, compound/1 --- */
+            #define EMIT_TYPETEST(name, rt_fn) \
+            if (strcmp(fn, name) == 0 && garity == 1) { \
+                char ttfail[128], ttok[128]; \
+                snprintf(ttfail, sizeof ttfail, "pl_%s_c%d_ttfail%d", pred_safe, idx, bi); \
+                snprintf(ttok,   sizeof ttok,   "pl_%s_c%d_ttok%d",   pred_safe, idx, bi); \
+                emit_pl_term_load(goal->children[0], n_vars); \
+                A("    mov     rdi, rax\n"); \
+                A("    call    " rt_fn "\n"); \
+                A("    test    eax, eax\n"); \
+                A("    jnz     %s\n", ttok); \
+                A("%s:\n", ttfail); \
+                A("    lea     rdi, [rel pl_trail]\n"); \
+                A("    mov     esi, [rbp - 8]\n"); \
+                A("    call    trail_unwind\n"); \
+                A("    jmp     %s\n", next_clause); \
+                A("%s:\n", ttok); \
+                continue; \
+            }
+            EMIT_TYPETEST("atom",     "pl_atom")
+            EMIT_TYPETEST("integer",  "pl_integer")
+            EMIT_TYPETEST("float",    "pl_is_float")
+            EMIT_TYPETEST("var",      "pl_var")
+            EMIT_TYPETEST("nonvar",   "pl_nonvar")
+            EMIT_TYPETEST("compound", "pl_compound")
+            #undef EMIT_TYPETEST
             /* --- user-defined predicate call --- */
             {
                 /* Build args array on stack, call pl_NAME_ARITY_r
@@ -5782,7 +5905,9 @@ static void emit_prolog_choice(EXPR_t *choice) {
                 strcmp(gn,"is")==0||strcmp(gn,"=")==0||
                 strcmp(gn,"<")==0||strcmp(gn,">")==0||strcmp(gn,"=<")==0||
                 strcmp(gn,">=")==0||strcmp(gn,"=:=")==0||strcmp(gn,"=\\=")==0||
-                strcmp(gn,",")==0||strcmp(gn,";")==0) continue;
+                strcmp(gn,",")==0||strcmp(gn,";")==0||strcmp(gn,"functor")==0||strcmp(gn,"arg")==0||strcmp(gn,"=..")==0||
+                strcmp(gn,"atom")==0||strcmp(gn,"integer")==0||strcmp(gn,"float")==0||
+                strcmp(gn,"var")==0||strcmp(gn,"nonvar")==0||strcmp(gn,"compound")==0) continue;
             if (g->kind == E_CUT) continue;
             has_ucall = 1;
         }
@@ -5808,7 +5933,9 @@ static void emit_prolog_choice(EXPR_t *choice) {
                 strcmp(gn,"is")==0||strcmp(gn,"=")==0||
                 strcmp(gn,"<")==0||strcmp(gn,">")==0||strcmp(gn,"=<")==0||
                 strcmp(gn,">=")==0||strcmp(gn,"=:=")==0||strcmp(gn,"=\\=")==0||
-                strcmp(gn,",")==0||strcmp(gn,";")==0) continue;
+                strcmp(gn,",")==0||strcmp(gn,";")==0||strcmp(gn,"functor")==0||strcmp(gn,"arg")==0||strcmp(gn,"=..")==0||
+                strcmp(gn,"atom")==0||strcmp(gn,"integer")==0||strcmp(gn,"float")==0||
+                strcmp(gn,"var")==0||strcmp(gn,"nonvar")==0||strcmp(gn,"compound")==0) continue;
             if (g->kind == E_CUT) continue;
             last_has_ucall = 1;
         }
