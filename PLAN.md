@@ -961,3 +961,51 @@ This prevents broken static boxes for `upr('h') | lwr('H')`. But without the `st
 - `test/beauty/case/driver.ref` — oracle reference (9 lines)
 - `PLAN.md` — this session note
 
+
+---
+
+## §20 — Session Handoff (2026-03-23 late): M-BEAUTY-CASE icase deep diagnosis
+
+### Work completed this session
+
+**`stmt_match_var` upgraded (DT_P dispatch):**
+- `snobol4_stmt_rt.c`: `stmt_match_var` now checks `val.v == DT_P` first, dispatches through `match_pattern_at()` instead of string memcmp
+- New `stmt_match_descr(uint64_t vtype, void *vptr)`: same logic, takes pre-evaluated DESCR_t fields — for function-call results in pattern position
+- New `CALL_PAT_α/β` macros in `snobol4_asm.mac`: evaluate function call result → call `stmt_match_descr`
+- `emit_pat_node` E_FNC fallback: replaced `UNIMPLEMENTED → ω` with `emit_expr + CALL_PAT_α/β`
+- Forward declaration for `emit_expr` added before `emit_pat_node`
+
+**Result:** `CALL_PAT_α` is correctly emitted for `icase('hello')` in pattern position. But `icase` still returns STRING not PATTERN.
+
+### §20.1 — Root cause of icase returning STRING
+
+`icase('hello')` returns STRING. Manual trace confirms:
+
+1. `&epsilon` is initialized as DT_P (pattern) in the global variable table
+2. Inside the `icase` function, retval `icase` is initialized to NULVCL by `FN_CLEAR_VAR`
+3. The icase body does `icase = icase (upr(letter) | lwr(letter))` — concat NULVCL with DT_P
+4. `stmt_concat(NULVCL, DT_P)` should produce DT_P (pattern cat) ✓ — but icase returns STRING
+
+**The actual problem:** `icase` is registered as a named-pattern box (from `scan_named_patterns`). When the body assigns `SET_VAR S_icase`, the emitter may be generating code that sets the global SNOBOL4 variable `icase` (correct), but the function's RETURN path reads the return value via `GET_VAR S_icase` — which fetches the global variable. The global `icase` IS being set correctly. But the ucall return path for the **inner icase call** (the self-recursive `:(icase)` loop back) re-evaluates `GET_VAR S_icase` before restoring the caller's saved value of `str/letter/character`. This should be fine...
+
+**More likely:** the `icase` variable is also a named-pattern box (`P_icase_α` defined). The `scan_named_patterns` call registers `icase` as a named pattern because `icase = epsilon (upr(letter) | lwr(letter))` — its body contains an E_OR (since `expr_is_pattern_expr` for `E_OR` was `return 1` before our fix). Even with our fix (`return expr_has_pattern_fn(e)`), the E_OR inside the function body sees `upr(letter) | lwr(letter)` — `expr_has_pattern_fn` returns 0 for ucalls, so E_OR returns 0 now. But the outer assignment `icase = epsilon concat_with_alt` — the concat may still trigger named-pattern registration.
+
+**Actually the most likely cause:** the `icase` function's assignment statement `icase = icase (upr(letter)|lwr(letter))` hits the subject-replacement path (left-hand side is the subject `icase`), not a plain variable assignment. In SNOBOL4, `icase = VALUE` with no pattern is an assignment. But the parser sees the function variable `icase` as the subject and the expression as both pattern AND replacement. The emitter may be misclassifying this as a pattern match statement rather than a value assignment.
+
+### §20.2 — Next session action plan
+
+1. `bash setup.sh`
+2. Add a debug print to `stmt_set("icase", v)` to confirm what value is being stored at each loop iteration
+3. Verify whether `stmt_concat` is actually being called and what it returns for `(NULVCL, DT_P)` inputs
+4. Check whether the issue is: (a) concat not called / wrong codepath, (b) concat returns STRING incorrectly, or (c) GET_VAR at return time fetches wrong value
+5. Once `icase('hello')` returns DT_P, the `CALL_PAT_α` dispatch should handle the match
+6. Run 9/9, commit `B-263: M-BEAUTY-CASE ✅`, advance to `M-BEAUTY-ASSIGN`
+
+### §20.3 — Files changed (all need commit)
+
+- `src/backend/x64/emit_byrd_asm.c` — forward decl, CALL_PAT emission, expr_is_pattern_expr E_OR fix, GET_VAR before restore, FN_CLEAR_VAR param skip
+- `src/runtime/asm/snobol4_stmt_rt.c` — stmt_match_var DT_P, stmt_match_descr new
+- `src/runtime/asm/snobol4_asm.mac` — CALL_PAT_α/β macros
+- `src/runtime/snobol4/snobol4.c` — SUBSTR 2-arg fix, datatype() uppercase fix
+- `PLAN.md` — this session note
+

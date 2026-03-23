@@ -402,18 +402,54 @@ void stmt_apply_replacement_splice(const char *varname, DESCR_t repl,
     NV_SET_fn(varname, STRVAL(out));
 }
 
-/* stmt_match_var: dynamic indirect pattern match (*VAR).
-
- * Fetches the string value of SNOBOL4 variable 'varname', then tries to match
- * it as a literal at the current cursor position in subject_data.
- * Returns 1 on success (cursor advanced), 0 on failure.
- * Used by E_INDR nodes where the variable holds a plain string, not a named pattern. */
+/* stmt_match_var: dynamic variable pattern/string match.
+ *
+ * If the variable holds a DT_P (pattern) descriptor, dispatch through
+ * match_pattern_at() — the full Byrd-box engine, anchored at current cursor.
+ * This handles runtime patterns like the result of upr(x)|lwr(x) stored in
+ * a SNOBOL4 variable and used in pattern position.  Fix: B-263 icase.
+ *
+ * Otherwise (string/integer/null), match as a literal string at cursor.
+ * Returns 1 on success (cursor advanced), 0 on failure. */
 int stmt_match_var(const char *varname) {
     DESCR_t val = NV_GET_fn(varname);
+    /* DT_P: runtime pattern descriptor — dispatch through engine */
+    if (val.v == DT_P) {
+        int new_cur = match_pattern_at(val, subject_data,
+                                       (int)subject_len_val, (int)cursor);
+        if (new_cur < 0) return 0;
+        cursor = (uint64_t)new_cur;
+        return 1;
+    }
+    /* String/integer/null: literal match at cursor position */
     const char *s = VARVAL_fn(val);
     if (!s) return 0;
     size_t len = strlen(s);
     if (len == 0) return 1; /* empty string always matches — advance 0 */
+    if (cursor + len > subject_len_val) return 0;
+    if (memcmp(subject_data + cursor, s, len) != 0) return 0;
+    cursor += (uint64_t)len;
+    return 1;
+}
+
+/* stmt_match_descr: match a pre-evaluated DESCR_t against subject at cursor.
+ * DT_P: dispatch through pattern engine (anchored at cursor).
+ * DT_S/other: literal string match.
+ * Returns 1 on success (cursor advanced), 0 on failure.
+ * Used for function-call results in pattern position (e.g. icase('hello')). */
+int stmt_match_descr(uint64_t vtype, void *vptr) {
+    DESCR_t val = { .v = (DTYPE_t)vtype, .slen = 0, .ptr = vptr };
+    if (val.v == DT_P) {
+        int new_cur = match_pattern_at(val, subject_data,
+                                       (int)subject_len_val, (int)cursor);
+        if (new_cur < 0) return 0;
+        cursor = (uint64_t)new_cur;
+        return 1;
+    }
+    const char *s = VARVAL_fn(val);
+    if (!s) return 0;
+    size_t len = strlen(s);
+    if (len == 0) return 1;
     if (cursor + len > subject_len_val) return 0;
     if (memcmp(subject_data + cursor, s, len) != 0) return 0;
     cursor += (uint64_t)len;

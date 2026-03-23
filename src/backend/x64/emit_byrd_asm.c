@@ -814,6 +814,9 @@ static const char *label_nasm(const char *lbl);
  * Forward declaration for recursive emit_pat_node
  * ----------------------------------------------------------------------- */
 
+/* Forward — emit_pat_node calls emit_expr for CALL_PAT */
+static int emit_expr(EXPR_t *e, int rbp_off);
+
 static void emit_pat_node(EXPR_t *pat,
                            const char *alpha, const char *beta,
                            const char *gamma, const char *omega,
@@ -1587,10 +1590,41 @@ static void emit_pat_node(EXPR_t *pat,
             asmL(alpha);
             ALF(beta, "jmp     %s\n", omega);
         } else {
-            /* Unimplemented function — emit a comment + omega jump */
-            A("\n; UNIMPLEMENTED: %s() → ω\n", pat->sval ? pat->sval : "?");
+            /* Unknown function in pattern position — evaluate at runtime.
+             * Strategy: call the function (ucall or builtin), store DESCR_t
+             * result in two .bss qwords, then dispatch via CALL_PAT_α which
+             * calls stmt_match_descr (handles DT_P pattern or string literal).
+             * Fix: B-263 icase('hello') in pattern position. */
+            int cuid2 = next_uid();
+            char dt_slot[64], dp_slot[64], saved_slot[64];
+            snprintf(dt_slot,    sizeof dt_slot,    "cpat%d_t", cuid2);
+            snprintf(dp_slot,    sizeof dp_slot,    "cpat%d_p", cuid2);
+            snprintf(saved_slot, sizeof saved_slot, "cpat%d_saved", cuid2);
+            var_register(dt_slot);
+            var_register(dp_slot);
+            var_register(saved_slot);
+
+            /* Emit the function call evaluation BEFORE α (at stmt init time).
+             * We use a pre-eval label so the call happens once when first entered.
+             * For the pattern match scan loop, re-evaluate each attempt by
+             * inlining the call at α entry. */
+            A("\n; CALL_PAT %s() — runtime pattern/string dispatch\n",
+              pat->sval ? pat->sval : "?");
+
+            /* α: evaluate call, store result, then match */
             asmL(alpha);
-            ALF(beta, "jmp     %s\n", omega);
+            /* Evaluate the function call into [rbp-32/24] */
+            emit_expr(pat, -32);    /* re-uses existing emit_expr for E_FNC */
+            /* Store result into .bss slots */
+            A("    mov     [%s], rax\n", dt_slot);
+            A("    mov     [%s], rdx\n", dp_slot);
+            /* Match via stmt_match_descr */
+            A("    CALL_PAT_α %s, %s, %s, %s, %s, %s\n",
+              dt_slot, dp_slot, saved_slot, cursor, gamma, omega);
+
+            /* β: restore cursor and go to omega */
+            ALFC(beta, "CALL_PAT β", "CALL_PAT_β %s, %s, %s\n",
+                 saved_slot, cursor, omega);
         }
         break;
 
@@ -3845,7 +3879,7 @@ static void emit_program(Program *prog) {
     A("    extern  stmt_apply, stmt_goto_dispatch\n");
     A("    extern  stmt_setup_subject, stmt_apply_replacement\n");
     A("    extern  stmt_apply_replacement_splice\n");
-    A("    extern  stmt_set_capture, stmt_match_var\n");
+    A("    extern  stmt_set_capture, stmt_match_var, stmt_match_descr\n");
     A("    extern  stmt_pos_var, stmt_rpos_var\n");
     A("    extern  stmt_span_var, stmt_break_var\n");
     A("    extern  stmt_breakx_var, stmt_breakx_lit\n");
