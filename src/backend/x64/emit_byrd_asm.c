@@ -4726,6 +4726,8 @@ static const char *pl_safe(const char *s) {
  * which calls prolog_atom_intern at runtime for each one.
  * ---------------------------------------------------------------------- */
 #define PL_MAX_ATOMS 512
+/* Round up to 16-byte boundary for SysV ABI stack alignment */
+#define ALIGN16(n) (((n)+15)&~15)
 static char  *pl_atom_strings[PL_MAX_ATOMS];
 static char   pl_atom_labels[PL_MAX_ATOMS][128];
 static int    pl_atom_count_emit = 0;
@@ -4811,6 +4813,7 @@ static void emit_pl_header(Program *prog) {
     A("section .bss\n");
     A("%-32s resb 32    ; Trail struct (top+cap+stack ptr)\n", "pl_trail");
     A("%-32s resq 1     ; scratch qword\n", "pl_tmp");
+    A("%-32s resq 8     ; head arg scratch (8 slots, max arity)\n", "pl_head_args");
     A("\n");
 }
 
@@ -4834,10 +4837,16 @@ static void emit_pl_term_load(EXPR_t *e, int frame_base_words) {
             A("    call    term_new_int\n");
             break;
         case E_VART: {
-            /* var slot is in e->ival; fresh Term* in frame at [rbp - (slot+2)*8] */
+            /* var slot is in e->ival; fresh Term* in frame at [rbp - (slot+5)*8] */
             int slot = (int)e->ival;
-            A("    mov     rax, [rbp - %d]  ; var slot %d (%s)\n",
-              (slot+2)*8, slot, e->sval ? e->sval : "_");
+            if (slot < 0) {
+                /* anonymous wildcard _ — allocate a fresh unbound var each time */
+                A("    mov     rdi, -1\n");
+                A("    call    term_new_var    ; anon wildcard\n");
+            } else {
+                A("    mov     rax, [rbp - %d]  ; var slot %d (%s)\n",
+                  (slot+5)*8, slot, e->sval ? e->sval : "_");
+            }
             break;
         }
         case E_FNC:
@@ -4897,7 +4906,7 @@ static void emit_pl_term_load(EXPR_t *e, int frame_base_words) {
  * Frame layout (rbp-based):
  *   [rbp -  8]  = saved trail mark (int, 8B slot)
  *   [rbp - 16]  = saved start value (for switch dispatch)
- *   [rbp - (k+2)*8] for k in 0..n_vars-1 = fresh Term* for var slot k
+ *   [rbp - (k+5)*8] for k in 0..n_vars-1 = fresh Term* for var slot k
  *
  * The function is NOT generated inline here — the whole predicate is one
  * C-ABI function (emitted by emit_prolog_choice) using a switch table.
@@ -4926,7 +4935,7 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
     for (int k = 0; k < n_vars; k++) {
         A("    mov     rdi, %d\n", k);
         A("    call    term_new_var\n");
-        A("    mov     [rbp - %d], rax    ; var slot %d\n", (k+2)*8, k);
+        A("    mov     [rbp - %d], rax    ; var slot %d\n", (k+5)*8, k);
     }
 
     /* Trail mark — save in frame slot [rbp-8] */
@@ -4934,33 +4943,36 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
     A("    call    trail_mark_fn\n");
     A("    mov     [rbp - 8], eax          ; save trail mark\n");
 
-    /* Head unification — for each head arg child[i], unify with call arg */
+    /* Head unification — for each head arg child[i], unify with call arg.
+     * Fall through all args sequentially. Only jump on failure. */
     for (int i = 0; i < arity && i < clause->nchildren; i++) {
         EXPR_t *head_arg = clause->children[i];
         char fail_lbl[128];
         snprintf(fail_lbl, sizeof fail_lbl, "pl_%s_c%d_hfail%d", pred_safe, idx, i);
 
-        /* Load call arg via args array ptr stored at [rbp-24] */
-        A("    mov     rdi, [rbp - 24]     ; args array ptr\n");
-        A("    mov     rdi, [rdi + %d]     ; args[%d]\n", i*8, i);
-        /* Load head pattern term into rsi */
-        /* (emit_pl_term_load uses rax; we need rsi = head term) */
+        /* Load call arg — save to pl_head_args[i] before building head pattern.
+         * emit_pl_term_load calls functions (term_new_var, term_new_compound)
+         * that clobber all caller-saved registers; static slot survives. */
+        A("    mov     rax, [rbp - 24]     ; args array ptr\n");
+        A("    mov     rax, [rax + %d]     ; args[%d]\n", i*8, i);
+        A("    mov     [rel pl_head_args + %d], rax  ; save call arg[%d]\n", i*8, i);
+        /* Build head pattern term into rax */
         emit_pl_term_load(head_arg, n_vars);
-        A("    mov     rsi, rax\n");
-        /* swap: rdi=call_arg, rsi=head_term  -> call unify(head_term, call_arg, trail) */
-        A("    xchg    rdi, rsi\n");
+        A("    mov     rsi, rax            ; head pattern\n");
+        A("    mov     rdi, [rel pl_head_args + %d]  ; restore call arg[%d]\n", i*8, i);
+        /* unify(call_arg=rdi, head_pattern=rsi, trail=rdx) */
         A("    lea     rdx, [rel pl_trail]\n");
         A("    call    unify\n");
         A("    test    eax, eax\n");
-        A("    jz      %s\n", fail_lbl);
-        A("    jmp     pl_%s_c%d_body\n", pred_safe, idx);
+        A("    jnz     pl_%s_c%d_hok%d\n", pred_safe, idx, i);
         A("%s:\n", fail_lbl);
         /* unify failed — unwind trail and try next clause */
-        A("    mov     edi, [rbp - 8]      ; restore trail mark\n");
         A("    lea     rdi, [rel pl_trail]\n");
         A("    mov     esi, [rbp - 8]\n");
         A("    call    trail_unwind\n");
         A("    jmp     %s\n", next_clause);
+        A("pl_%s_c%d_hok%d:\n", pred_safe, idx, i);
+        /* fall through to next arg check */
     }
 
     A("pl_%s_c%d_body:\n", pred_safe, idx);
@@ -5095,7 +5107,7 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                             char cfail[128];
                             snprintf(cfail, sizeof cfail, "pl_%s_c%d_cfail%d_%d", pred_safe, idx, bi, fi);
                             if (sa > 0) {
-                                A("    sub     rsp, %d\n", sa*8);
+                                A("    sub     rsp, %d\n", ALIGN16(sa*8));
                                 for (int ai = 0; ai < sa; ai++) {
                                     emit_pl_term_load(sub->children[ai], n_vars);
                                     A("    mov     [rsp + %d], rax\n", ai*8);
@@ -5105,7 +5117,7 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                             A("    lea     rsi, [rel pl_trail]\n");
                             A("    xor     edx, edx\n");
                             A("    call    pl_%s_r\n", csafe);
-                            if (sa > 0) A("    add     rsp, %d\n", sa*8);
+                            if (sa > 0) A("    add     rsp, %d\n", ALIGN16(sa*8));
                             A("    test    eax, eax\n");
                             A("    jns     pl_%s_c%d_cok%d_%d\n", pred_safe, idx, bi, fi);
                             A("%s:\n", cfail);
@@ -5192,7 +5204,7 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                             char tfa[300]; snprintf(tfa, sizeof tfa, "%s/%d", tfn, ta);
                             char tsafe[256]; strncpy(tsafe, pl_safe(tfa), 255);
                             if (ta > 0) {
-                                A("    sub     rsp, %d\n", ta*8);
+                                A("    sub     rsp, %d\n", ALIGN16(ta*8));
                                 for (int ai = 0; ai < ta; ai++) {
                                     emit_pl_term_load(then->children[ai], n_vars);
                                     A("    mov     [rsp + %d], rax\n", ai*8);
@@ -5202,7 +5214,7 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                             A("    lea     rsi, [rel pl_trail]\n");
                             A("    xor     edx, edx\n");
                             A("    call    pl_%s_r\n", tsafe);
-                            if (ta > 0) A("    add     rsp, %d\n", ta*8);
+                            if (ta > 0) A("    add     rsp, %d\n", ALIGN16(ta*8));
                         }
                     }
                     A("    jmp     %s\n", done_lbl);
@@ -5227,7 +5239,7 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                             char efa[300]; snprintf(efa, sizeof efa, "%s/%d", efn, ea);
                             char esafe[256]; strncpy(esafe, pl_safe(efa), 255);
                             if (ea > 0) {
-                                A("    sub     rsp, %d\n", ea*8);
+                                A("    sub     rsp, %d\n", ALIGN16(ea*8));
                                 for (int ai = 0; ai < ea; ai++) {
                                     emit_pl_term_load(right->children[ai], n_vars);
                                     A("    mov     [rsp + %d], rax\n", ai*8);
@@ -5237,7 +5249,7 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                             A("    lea     rsi, [rel pl_trail]\n");
                             A("    xor     edx, edx\n");
                             A("    call    pl_%s_r\n", esafe);
-                            if (ea > 0) A("    add     rsp, %d\n", ea*8);
+                            if (ea > 0) A("    add     rsp, %d\n", ALIGN16(ea*8));
                         }
                     }
                     A("%s:\n", done_lbl);
@@ -5284,14 +5296,15 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                         }
                     }
 
-                    /* Retry loop: _cs in [rbp-36] */
+                    /* Retry loop: _cs in [rbp-32] */
                     char retry_back_lbl[128];
                     snprintf(retry_back_lbl, sizeof retry_back_lbl, "disj_%s_%d_%d_retry_back", pred_safe, idx, bi);
-                    A("    mov     dword [rbp - 36], 0    ; _cs\n");
+                    A("    mov     dword [rbp - 32], 0    ; _cs\n");
                     A("%s:\n", retry_lbl);
                     /* call predicate with current _cs */
                     if (uca > 0) {
-                        A("    sub     rsp, %d\n", uca*8);
+                        int alloc2 = ALIGN16(uca*8);
+                        A("    sub     rsp, %d\n", alloc2);
                         for (int ai = 0; ai < uca; ai++) {
                             emit_pl_term_load(ucall->children[ai], n_vars);
                             A("    mov     [rsp + %d], rax\n", ai*8);
@@ -5299,13 +5312,13 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                         A("    mov     rdi, rsp\n");
                     } else { A("    xor     rdi, rdi\n"); }
                     A("    lea     rsi, [rel pl_trail]\n");
-                    A("    mov     edx, [rbp - 36]\n");
+                    A("    mov     edx, [rbp - 32]\n");
                     A("    call    pl_%s_r\n", ucsafe);
-                    if (uca > 0) A("    add     rsp, %d\n", uca*8);
+                    if (uca > 0) A("    add     rsp, %d\n", ALIGN16(uca*8));
                     A("    test    eax, eax\n");
                     A("    js      %s\n", else_lbl);
                     A("    inc     eax\n");
-                    A("    mov     [rbp - 36], eax\n");
+                    A("    mov     [rbp - 32], eax\n");
 
                     /* Post-call goals — failure loops back to retry */
                     for (int li = user_call_idx+1; li < nlg; li++) {
@@ -5323,7 +5336,7 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                             char ifa[300]; snprintf(ifa, sizeof ifa, "%s/%d", pgn, pga);
                             char isafe[256]; strncpy(isafe, pl_safe(ifa), 255);
                             if (pga > 0) {
-                                A("    sub     rsp, %d\n", pga*8);
+                                A("    sub     rsp, %d\n", ALIGN16(pga*8));
                                 for (int ai = 0; ai < pga; ai++) {
                                     emit_pl_term_load(lg->children[ai], n_vars);
                                     A("    mov     [rsp + %d], rax\n", ai*8);
@@ -5333,7 +5346,7 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                             A("    lea     rsi, [rel pl_trail]\n");
                             A("    xor     edx, edx\n");
                             A("    call    pl_%s_r\n", isafe);
-                            if (pga > 0) A("    add     rsp, %d\n", pga*8);
+                            if (pga > 0) A("    add     rsp, %d\n", ALIGN16(pga*8));
                             A("    test    eax, eax\n");
                             A("    js      %s\n", retry_back_lbl);
                         }
@@ -5369,7 +5382,7 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                         char rfa2[300]; snprintf(rfa2, sizeof rfa2, "%s/%d", right->sval, ra2);
                         char rsafe2[256]; strncpy(rsafe2, pl_safe(rfa2), 255);
                         if (ra2 > 0) {
-                            A("    sub     rsp, %d\n", ra2*8);
+                            A("    sub     rsp, %d\n", ALIGN16(ra2*8));
                             for (int ai = 0; ai < ra2; ai++) {
                                 emit_pl_term_load(right->children[ai], n_vars);
                                 A("    mov     [rsp + %d], rax\n", ai*8);
@@ -5379,7 +5392,7 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                         A("    lea     rsi, [rel pl_trail]\n");
                         A("    xor     edx, edx\n");
                         A("    call    pl_%s_r\n", rsafe2);
-                        if (ra2 > 0) A("    add     rsp, %d\n", ra2*8);
+                        if (ra2 > 0) A("    add     rsp, %d\n", ALIGN16(ra2*8));
                         A("    test    eax, eax\n");
                         A("    js      %s\n", next_clause);
                     }
@@ -5479,9 +5492,9 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                 snprintf(fail_lbl, sizeof fail_lbl, "pl_%s_c%d_bfail%d", pred_safe, idx, bi);
                 /* push args in reverse then pass array ptr */
                 if (garity > 0) {
-                    /* allocate args array on stack: sub rsp, garity*8 */
-                    A("    sub     rsp, %d              ; args array for %s/%d\n",
-                      garity*8, fn, garity);
+                    int alloc = ALIGN16(garity*8);
+                    A("    sub     rsp, %d              ; args array for %s/%d (aligned)\n",
+                      alloc, fn, garity);
                     for (int ai = 0; ai < garity; ai++) {
                         emit_pl_term_load(goal->children[ai], n_vars);
                         A("    mov     [rsp + %d], rax\n", ai*8);
@@ -5494,7 +5507,7 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                 A("    xor     edx, edx                   ; start=0\n");
                 A("    call    pl_%s_r\n", call_safe);
                 if (garity > 0)
-                    A("    add     rsp, %d\n", garity*8);
+                    A("    add     rsp, %d\n", ALIGN16(garity*8));
                 A("    test    eax, eax\n");
                 A("    js      %s\n", fail_lbl);
                 A("    jmp     pl_%s_c%d_bsucc%d\n", pred_safe, idx, bi);
@@ -5531,7 +5544,7 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
  *   [rbp +  0]   = saved rbp       (standard)
  *   [rbp - 8]    = trail mark      (int stored as 8B)
  *   [rbp - 16]   = _cut flag       (1B, padded to 8B slot; at [rbp-17])
- *   [rbp - (k+2)*8] for k=0..n_vars-1 = fresh Term* for var slot k
+ *   [rbp - (k+5)*8] for k=0..n_vars-1 = fresh Term* for var slot k
  *   [rbp - 40]   = first arg (arg0) saved in frame (arity>0 case)
  *   [rbp + 24]   = second arg (arg1 or Trail*)
  *   ...
@@ -5572,7 +5585,7 @@ static void emit_prolog_choice(EXPR_t *choice) {
      * [rbp-40-ai*8]   = saved arg ai  (arity slots)
      * [rbp-40-arity*8 - k*8] = var slot k
      */
-    int frame = 32 + max_vars*8;
+    int frame = 40 + max_vars*8;  /* 40 base (trail+cut+args_ptr+start+scratch) + vars */
     if (frame % 16) frame = (frame/16+1)*16;
 
     /* Resumable function */
@@ -5583,12 +5596,13 @@ static void emit_prolog_choice(EXPR_t *choice) {
     A("    sub     rsp, %d\n", frame);
     A("    mov     byte [rbp - 17], 0    ; _cut = 0\n");
 
-    /* 'start' argument: in register position arity+1 (0-indexed).
-     * Arg registers: rdi rsi rdx rcx r8 r9
-     * slot 0=rdi, 1=rsi, 2=rdx, 3=rcx, 4=r8, 5=r9
-     * For arity N: args[0..N-1] in rdi..., Trail* in reg[N], start in reg[N+1] */
+    /* 'start' argument: ABI is always pl_NAME_r(Term **args, Trail *trail, int start)
+     * = (rdi, rsi, rdx) regardless of predicate arity.
+     * args is a pointer to the caller-built Term*[] array.
+     * trail is the global trail pointer.
+     * start is always in rdx. */
     static const char *argregs[] = {"rdi","rsi","rdx","rcx","r8","r9"};
-    int start_reg_idx = arity + 1;  /* start position */
+    int start_reg_idx = 2;  /* start is always rdx (index 2) */
 
     /* Save args array pointer to [rbp+16] slot — push all args onto caller frame */
     /* Actually with C-ABI the args are already in registers at function entry.
@@ -5699,8 +5713,9 @@ static void emit_prolog_main(Program *prog) {
     A("    ; fix up atom_id fields\n");
     A("    call    pl_rt_init\n");
     A("    ; call initialization predicate: %s/0\n", init_pred);
-    A("    lea     rdi, [rel pl_trail]   ; Trail* (arg 0 for arity-0 pred)\n");
-    A("    xor     esi, esi               ; start=0\n");
+    A("    xor     rdi, rdi               ; args=NULL (arity 0)\n");
+    A("    lea     rsi, [rel pl_trail]   ; Trail*\n");
+    A("    xor     edx, edx               ; start=0\n");
     A("    call    pl_%s_r\n", safe_init);
     A("    ; exit 0\n");
     A("    xor     edi, edi\n");
