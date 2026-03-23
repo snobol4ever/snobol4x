@@ -1232,3 +1232,101 @@ Then update §START table: `case → ✅`, advance to `M-BEAUTY-ASSIGN`.
 | 8 | icase(world) matches WORLD | ❌ same |
 | 9 | lwr(upr(MiXeD)) roundtrip | ✅ |
 
+
+---
+
+## §22 — Session Handoff (2026-03-23 emergency): icase BSS slot overwrite confirmed
+
+### §START update
+**Current milestone:** `M-BEAUTY-CASE` — steps 1–6, 9 ✅ ASM; steps 7–8 ❌
+
+### Root cause CONFIRMED this session
+
+`stmt_concat` receives `a.v=1 b.v=1` (both DT_S strings) — concat itself is
+NOT failing. The return value IS a valid 52-char string in rax:rdx.
+
+**The actual bug: `any_expr_tmp_N` BSS slots declared mid-function via
+inline `section .bss / section .text` switch get overwritten.**
+
+The `section .bss` switch mid-`.text` emits the resq slots correctly, but
+the `icase` function is RECURSIVE — each recursive call re-enters the Byrd
+box, re-executes `stmt_concat`, and `mov [rel any_expr_tmp_2_t], rax`
+writes to the same slot. On the recursive call, the icase ucall stack frame
+reuse means the slot is written N times but read at the wrong iteration.
+More critically: `DOL_SAVE` and other Byrd-box machinery uses `[rbp-32/24]`
+stack slots that ALIAS with the emit_expr output slot — overwriting rax/rdx
+before the `mov [rel any_expr_tmp_2_t]` store takes effect, OR the recursive
+icase ucall trashes the slot between store and read.
+
+### THE FIX (implement first thing next session)
+
+**Move `any_expr_tmp_N` BSS declarations to the file-level BSS block.**
+
+In `emit_byrd_asm.c`, the ANY runtime-expr branch (around line 1549):
+
+```c
+// CURRENT (broken): inline section switch mid-function
+A("section .bss\n");
+A("%s resq 1\n", tlab);
+A("%s resq 1\n", plab);
+A("section .text\n");
+
+// FIX: add to a deferred BSS list, emit later at file-level BSS section
+deferred_bss_add(tlab);   // emits "tlab resq 1" in global BSS block
+deferred_bss_add(plab);
+// remove the section .bss / section .text lines entirely
+```
+
+The deferred BSS infrastructure already exists (`var_register` does this for
+SNOBOL4 variables). Either reuse `var_register` with a non-string tag, or add
+a parallel `bss_slot_register(name)` that emits `name resq 1` in the global
+`.bss` section only (no string literal, no `S_` prefix).
+
+**Implementation steps:**
+
+1. Add `static char bss_slots[MAX_BSS][LBUF]; static int bss_slot_count=0;`
+   and `static void bss_slot_register(const char *name)` to the emitter.
+2. In the ANY runtime-expr branch, replace the inline section switch with
+   `bss_slot_register(tlab); bss_slot_register(plab);`
+3. In `emit_bss_section()` (wherever global BSS is emitted), call
+   `for (int i=0;i<bss_slot_count;i++) A("%s resq 1\n", bss_slots[i]);`
+4. Rebuild: `cd src && make`
+5. Run: `INC=demo/inc bash test/beauty/run_beauty_subsystem.sh case`
+6. Expect 9/9. If so, remove debug `fprintf` from `stmt_concat`, commit.
+
+### Files with uncommitted debug traces (clean up before commit)
+
+- `src/runtime/asm/snobol4_stmt_rt.c` — `stmt_concat` fprintf (debug only, remove)
+- `src/backend/x64/emit_byrd_asm.c` — any changes from this session
+
+### Commit sequence on 9/9 pass
+
+```bash
+# Remove debug trace from stmt_concat first
+# Then:
+git add src/backend/x64/emit_byrd_asm.c \
+        src/runtime/asm/snobol4_stmt_rt.c \
+        src/runtime/asm/snobol4_asm.mac \
+        test/beauty/case/driver.sno \
+        test/beauty/case/driver.ref \
+        PLAN.md
+git commit -m "B-263: M-BEAUTY-CASE ✅"
+git push
+```
+
+Update §START: `case → ✅`, next milestone `M-BEAUTY-ASSIGN`.
+
+### Test status going into next session
+
+| Step | Test | ASM |
+|------|------|-----|
+| 1 | lwr(HELLO) = hello | ✅ |
+| 2 | lwr(world) = world | ✅ |
+| 3 | upr(hello) = HELLO | ✅ |
+| 4 | upr(WORLD) = WORLD | ✅ |
+| 5 | cap(hELLO) = Hello | ✅ |
+| 6 | cap(WORLD) = World | ✅ |
+| 7 | icase(hello) matches Hello | ❌ BSS slot overwrite (fix above) |
+| 8 | icase(world) matches WORLD | ❌ same |
+| 9 | lwr(upr(MiXeD)) roundtrip | ✅ |
+

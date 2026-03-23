@@ -1540,19 +1540,23 @@ static void emit_pat_node(EXPR_t *pat,
                  * ANY_α_PTR calls stmt_any_ptr(vtype,vptr,...) directly. */
                 char tmplab[LBUF];
                 snprintf(tmplab, LBUF, "any_expr_tmp_%d", next_uid());
-                char tlab[LBUF], plab[LBUF], saved[LBUF];
-                snprintf(tlab,  sizeof tlab,  "%s_t", tmplab);
-                snprintf(plab,  sizeof plab,  "%s_p", tmplab);
-                snprintf(saved, sizeof saved, "any%d_saved", next_uid());
+                char tlab[LBUF], plab[LBUF], saved[LBUF], dispatch_lbl[LBUF];
+                snprintf(tlab,         sizeof tlab,         "%s_t", tmplab);
+                snprintf(plab,         sizeof plab,         "%s_p", tmplab);
+                snprintf(saved,        sizeof saved,        "any%d_saved", next_uid());
+                snprintf(dispatch_lbl, sizeof dispatch_lbl, "%s_dispatch", tmplab);
                 var_register(saved);
                 A("section .bss\n");
                 A("%s resq 1\n", tlab);
                 A("%s resq 1\n", plab);
                 A("section .text\n");
+                /* alpha label points HERE — at the eval code — so DOL_SAVE
+                 * and other jumps to alpha land at the eval, not past it. */
+                ALF(alpha, "; ANY(expr) α — eval arg then dispatch\n");
                 emit_expr(arg, -32);
                 A("    mov     [rel %s], rax\n", tlab);
                 A("    mov     [rel %s], rdx\n", plab);
-                ALFC(alpha, "ANY(expr) α",
+                ALFC(dispatch_lbl, "ANY(expr) α dispatch",
                      "ANY_α_PTR   %s, %s, %s, %s, %s, %s, %s, %s\n",
                      tlab, plab, bref(saved),
                      cursor, subj, subj_len, gamma, omega);

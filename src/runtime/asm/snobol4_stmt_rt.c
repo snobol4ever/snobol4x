@@ -264,6 +264,10 @@ DESCR_t stmt_input(void) {
 DESCR_t stmt_concat(DESCR_t a, DESCR_t b) {
     /* Propagate failure: if either argument is FAILDESCR, the concat fails.
      * This ensures DIFFER(X,Y) CONCAT rest fails when X==Y. */
+    if (getenv("SNO_CALLDEBUG"))
+        fprintf(stderr, "[stmt_concat] a.v=%d a.ptr='%.10s' b.v=%d b.ptr='%.10s'\n",
+                (int)a.v, (a.v==1&&a.ptr)?(const char*)a.ptr:"<non-str>",
+                (int)b.v, (b.v==1&&b.ptr)?(const char*)b.ptr:"<non-str>");
     if (IS_FAIL_fn(a)) return FAILDESCR;
     if (IS_FAIL_fn(b)) return FAILDESCR;
     /* Pattern concatenation: if either operand is a pattern, build a SEQ
