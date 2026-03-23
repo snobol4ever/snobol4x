@@ -27,3 +27,13 @@ int pl_univ(Term *t, Term *list, Trail *tr);
 int pl_read(Term *result, Trail *tr);
 
 #endif /* PL_BUILTIN_H */
+
+/* Arithmetic */
+long pl_eval_arith(Term *t);
+int  pl_is(Term *result, Term *expr, Trail *trail);
+int  pl_num_lt(Term *a, Term *b);
+int  pl_num_gt(Term *a, Term *b);
+int  pl_num_le(Term *a, Term *b);
+int  pl_num_ge(Term *a, Term *b);
+int  pl_num_eq(Term *a, Term *b);
+int  pl_num_ne(Term *a, Term *b);
