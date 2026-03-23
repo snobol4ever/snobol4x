@@ -4676,6 +4676,8 @@ static const char *pl_safe(const char *s) {
 static char  *pl_atom_strings[PL_MAX_ATOMS];
 static char   pl_atom_labels[PL_MAX_ATOMS][128];
 static int    pl_atom_count_emit = 0;
+static int    pl_compound_uid_ctr = 0;
+static int    pl_compound_uid(void) { return pl_compound_uid_ctr++; }
 
 static const char *pl_intern_atom_label(const char *name) {
     /* return existing label if already interned */
@@ -4745,6 +4747,7 @@ static void emit_pl_header(Program *prog) {
     A("    extern  term_new_atom, term_new_var, term_new_int, term_new_float\n");
     A("    extern  term_new_compound\n");
     A("    extern  pl_write, pl_writeln\n");
+    A("    extern  pl_is, pl_num_lt, pl_num_gt, pl_num_le, pl_num_ge, pl_num_eq, pl_num_ne\n");
     A("    extern  pl_functor, pl_arg, pl_univ\n");
     A("    extern  printf, fflush, putchar, exit\n");
     A("\n");
@@ -4790,12 +4793,45 @@ static void emit_pl_term_load(EXPR_t *e, int frame_base_words) {
                 const char *lbl = pl_intern_atom_label(e->sval ? e->sval : "");
                 A("    lea     rax, [rel %s]\n", lbl);
             } else {
-                /* compound — simplified: emit as atom label (full compound support TBD) */
+                /* compound: build Term*[] on stack, call term_new_compound */
+                int cuid = pl_compound_uid();
+                int arity = e->nchildren;
                 const char *lbl = pl_intern_atom_label(e->sval ? e->sval : "f");
-                A("    lea     rax, [rel %s]  ; compound %s/%d (stub: atom only)\n",
-                  lbl, e->sval ? e->sval : "?", e->nchildren);
+                /* allocate args array on stack */
+                A("    sub     rsp, %d            ; args[%d] for compound %s/%d\n",
+                  arity * 8, arity, e->sval ? e->sval : "?", arity);
+                for (int ci = 0; ci < arity; ci++) {
+                    emit_pl_term_load(e->children[ci], frame_base_words);
+                    A("    mov     [rsp + %d], rax  ; compound arg %d\n", ci * 8, ci);
+                }
+                /* term_new_compound(int functor_atom_id, int arity, Term **args) */
+                /* We have the atom label; atom_id is stored at label+8 (dword) */
+                A("    mov     edi, dword [rel %s + 8]  ; functor atom_id\n", lbl);
+                A("    mov     esi, %d                   ; arity\n", arity);
+                A("    mov     rdx, rsp                   ; args ptr\n");
+                A("    call    term_new_compound\n");
+                A("    add     rsp, %d\n", arity * 8);
             }
             break;
+        case E_ADD: case E_SUB: case E_MPY: case E_DIV: {
+            /* Build a compound Term for pl_eval_arith: +(L,R) etc. */
+            const char *opname = (e->kind==E_ADD) ? "+" :
+                                 (e->kind==E_SUB) ? "-" :
+                                 (e->kind==E_MPY) ? "*" : "/";
+            const char *oplbl = pl_intern_atom_label(opname);
+            int cuid2 = pl_compound_uid();
+            A("    sub     rsp, 16          ; arith compound args[2] uid%d\n", cuid2);
+            emit_pl_term_load(e->children[0], frame_base_words);
+            A("    mov     [rsp + 0], rax\n");
+            emit_pl_term_load(e->children[1], frame_base_words);
+            A("    mov     [rsp + 8], rax\n");
+            A("    mov     edi, dword [rel %s + 8]  ; functor atom_id '%s'\n", oplbl, opname);
+            A("    mov     esi, 2\n");
+            A("    mov     rdx, rsp\n");
+            A("    call    term_new_compound\n");
+            A("    add     rsp, 16\n");
+            break;
+        }
         default:
             A("    xor     rax, rax            ; unknown term kind %d\n", (int)e->kind);
             break;
@@ -4885,6 +4921,28 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
         if (goal->kind == E_CUT) {
             A("    ; cut — seal beta (set _cut flag)\n");
             A("    mov     byte [rbp - 17], 1    ; _cut = 1\n");
+            continue;
+        }
+
+        /* E_UNIFY — =/2 lowered by pl_lower (goal->kind == E_UNIFY) */
+        if (goal->kind == E_UNIFY && goal->nchildren == 2) {
+            char ufail[128];
+            snprintf(ufail, sizeof ufail, "pl_%s_c%d_ufail%d", pred_safe, idx, bi);
+            emit_pl_term_load(goal->children[0], n_vars);
+            A("    mov     [rel pl_tmp], rax\n");
+            emit_pl_term_load(goal->children[1], n_vars);
+            A("    mov     rsi, rax\n");
+            A("    mov     rdi, [rel pl_tmp]\n");
+            A("    lea     rdx, [rel pl_trail]\n");
+            A("    call    unify\n");
+            A("    test    eax, eax\n");
+            A("    jnz     pl_%s_c%d_ug%d\n", pred_safe, idx, bi);
+            A("%s:\n", ufail);
+            A("    lea     rdi, [rel pl_trail]\n");
+            A("    mov     esi, [rbp - 8]\n");
+            A("    call    trail_unwind\n");
+            A("    jmp     %s\n", next_clause);
+            A("pl_%s_c%d_ug%d:\n", pred_safe, idx, bi);
             continue;
         }
 
@@ -5016,6 +5074,123 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                 snprintf(else_lbl, sizeof else_lbl, "disj_%s_%d_%d_else", pred_safe, idx, bi);
                 snprintf(done_lbl, sizeof done_lbl, "disj_%s_%d_%d_done", pred_safe, idx, bi);
 
+                /* if-then-else: (Cond -> Then ; Else) */
+                if (left && left->kind == E_FNC && left->sval &&
+                    strcmp(left->sval, "->") == 0 && left->nchildren == 2) {
+                    EXPR_t *cond = left->children[0];
+                    EXPR_t *then = left->children[1];
+                    /* Emit condition inline: numeric comparison or unify */
+                    int cond_handled = 0;
+                    if (cond && cond->kind == E_FNC && cond->sval && cond->nchildren == 2) {
+                        const char *cop = cond->sval;
+                        const char *cfn = NULL;
+                        if      (strcmp(cop,"<")   == 0) cfn = "pl_num_lt";
+                        else if (strcmp(cop,">")   == 0) cfn = "pl_num_gt";
+                        else if (strcmp(cop,"=<")  == 0) cfn = "pl_num_le";
+                        else if (strcmp(cop,">=")  == 0) cfn = "pl_num_ge";
+                        else if (strcmp(cop,"=:=") == 0) cfn = "pl_num_eq";
+                        else if (strcmp(cop,"=\\=") == 0) cfn = "pl_num_ne";
+                        if (cfn) {
+                            emit_pl_term_load(cond->children[0], n_vars);
+                            A("    mov     [rel pl_tmp], rax\n");
+                            emit_pl_term_load(cond->children[1], n_vars);
+                            A("    mov     rsi, rax\n");
+                            A("    mov     rdi, [rel pl_tmp]\n");
+                            A("    call    %s\n", cfn);
+                            A("    test    eax, eax\n");
+                            A("    jz      %s\n", else_lbl);
+                            cond_handled = 1;
+                        }
+                        if (!cond_handled && strcmp(cop,"=") == 0) {
+                            emit_pl_term_load(cond->children[0], n_vars);
+                            A("    mov     [rel pl_tmp], rax\n");
+                            emit_pl_term_load(cond->children[1], n_vars);
+                            A("    mov     rsi, rax\n");
+                            A("    mov     rdi, [rel pl_tmp]\n");
+                            A("    lea     rdx, [rel pl_trail]\n");
+                            A("    call    unify\n");
+                            A("    test    eax, eax\n");
+                            A("    jz      %s\n", else_lbl);
+                            cond_handled = 1;
+                        }
+                    }
+                    if (!cond_handled) {
+                        /* fallback: always take then-branch */
+                        A("    ; if-then-else cond unhandled — assuming true\n");
+                    }
+                    /* Then branch */
+                    if (then && then->kind == E_FNC && then->sval) {
+                        const char *tfn = then->sval; int ta = then->nchildren;
+                        if (strcmp(tfn,"write")==0 && ta==1) {
+                            emit_pl_term_load(then->children[0], n_vars);
+                            A("    mov     rdi, rax\n");
+                            A("    call    pl_write\n");
+                        } else if (strcmp(tfn,"nl")==0 && ta==0) {
+                            A("    mov     edi, 10\n"); A("    call    putchar\n");
+                        } else if (strcmp(tfn,"writeln")==0 && ta==1) {
+                            emit_pl_term_load(then->children[0], n_vars);
+                            A("    mov     rdi, rax\n");
+                            A("    call    pl_writeln\n");
+                        } else if (strcmp(tfn,"true")==0) { /* no-op */ }
+                        else if (strcmp(tfn,"fail")==0) {
+                            A("    jmp     %s\n", next_clause);
+                        } else {
+                            /* user call — call once, deterministic */
+                            char tfa[300]; snprintf(tfa, sizeof tfa, "%s/%d", tfn, ta);
+                            char tsafe[256]; strncpy(tsafe, pl_safe(tfa), 255);
+                            if (ta > 0) {
+                                A("    sub     rsp, %d\n", ta*8);
+                                for (int ai = 0; ai < ta; ai++) {
+                                    emit_pl_term_load(then->children[ai], n_vars);
+                                    A("    mov     [rsp + %d], rax\n", ai*8);
+                                }
+                                A("    mov     rdi, rsp\n");
+                            } else { A("    xor     rdi, rdi\n"); }
+                            A("    lea     rsi, [rel pl_trail]\n");
+                            A("    xor     edx, edx\n");
+                            A("    call    pl_%s_r\n", tsafe);
+                            if (ta > 0) A("    add     rsp, %d\n", ta*8);
+                        }
+                    }
+                    A("    jmp     %s\n", done_lbl);
+                    /* Else branch */
+                    A("%s:\n", else_lbl);
+                    if (right && right->kind == E_FNC && right->sval) {
+                        const char *efn = right->sval; int ea = right->nchildren;
+                        if (strcmp(efn,"write")==0 && ea==1) {
+                            emit_pl_term_load(right->children[0], n_vars);
+                            A("    mov     rdi, rax\n");
+                            A("    call    pl_write\n");
+                        } else if (strcmp(efn,"nl")==0 && ea==0) {
+                            A("    mov     edi, 10\n"); A("    call    putchar\n");
+                        } else if (strcmp(efn,"writeln")==0 && ea==1) {
+                            emit_pl_term_load(right->children[0], n_vars);
+                            A("    mov     rdi, rax\n");
+                            A("    call    pl_writeln\n");
+                        } else if (strcmp(efn,"true")==0) { /* no-op */ }
+                        else if (strcmp(efn,"fail")==0) {
+                            A("    jmp     %s\n", next_clause);
+                        } else {
+                            char efa[300]; snprintf(efa, sizeof efa, "%s/%d", efn, ea);
+                            char esafe[256]; strncpy(esafe, pl_safe(efa), 255);
+                            if (ea > 0) {
+                                A("    sub     rsp, %d\n", ea*8);
+                                for (int ai = 0; ai < ea; ai++) {
+                                    emit_pl_term_load(right->children[ai], n_vars);
+                                    A("    mov     [rsp + %d], rax\n", ai*8);
+                                }
+                                A("    mov     rdi, rsp\n");
+                            } else { A("    xor     rdi, rdi\n"); }
+                            A("    lea     rsi, [rel pl_trail]\n");
+                            A("    xor     edx, edx\n");
+                            A("    call    pl_%s_r\n", esafe);
+                            if (ea > 0) A("    add     rsp, %d\n", ea*8);
+                        }
+                    }
+                    A("%s:\n", done_lbl);
+                    continue;
+                }
+
                 /* Flatten left conjunction */
                 EXPR_t *lgoals[64]; int nlg = 0;
                 EXPR_t *cur2 = left;
@@ -5057,12 +5232,11 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                     }
 
                     /* Retry loop: _cs in [rbp-36] */
+                    char retry_back_lbl[128];
+                    snprintf(retry_back_lbl, sizeof retry_back_lbl, "disj_%s_%d_%d_retry_back", pred_safe, idx, bi);
                     A("    mov     dword [rbp - 36], 0    ; _cs\n");
                     A("%s:\n", retry_lbl);
-                    /* unwind trail before each retry */
-                    A("    lea     rdi, [rel pl_trail]\n");
-                    A("    mov     esi, [rbp - 8]\n");
-                    A("    call    trail_unwind\n");
+                    /* call predicate with current _cs */
                     if (uca > 0) {
                         A("    sub     rsp, %d\n", uca*8);
                         for (int ai = 0; ai < uca; ai++) {
@@ -5089,7 +5263,7 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                             emit_pl_term_load(lg->children[0], n_vars);
                             A("    mov rdi, rax\n"); A("    call pl_write\n");
                         } else if (strcmp(pgn,"fail")==0 && pga==0) {
-                            A("    jmp     %s\n", retry_lbl);
+                            A("    jmp     %s\n", retry_back_lbl);
                         } else if (strcmp(pgn,"true")==0) { /* no-op */
                         } else {
                             /* another user call — call once, fail -> retry outer */
@@ -5108,9 +5282,15 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                             A("    call    pl_%s_r\n", isafe);
                             if (pga > 0) A("    add     rsp, %d\n", pga*8);
                             A("    test    eax, eax\n");
-                            A("    js      %s\n", retry_lbl);
+                            A("    js      %s\n", retry_back_lbl);
                         }
                     }
+                    /* retry_back: unwind trail then loop */
+                    A("%s:\n", retry_back_lbl);
+                    A("    lea     rdi, [rel pl_trail]\n");
+                    A("    mov     esi, [rbp - 8]\n");
+                    A("    call    trail_unwind\n");
+                    A("    jmp     %s\n", retry_lbl);
                     A("    jmp     %s\n", done_lbl);
                 } else {
                     /* No user call in left — just emit deterministic goals */
@@ -5199,12 +5379,13 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                 A("    lea     rdx, [rel pl_trail]\n");
                 A("    call    pl_is\n");
                 A("    test    eax, eax\n");
-                A("    jnz     pl_%s_c%d_ug%d\n", pred_safe, idx, bi+1);
+                A("    jnz     pl_%s_c%d_isok%d\n", pred_safe, idx, bi);
                 A("%s:\n", isfail);
                 A("    lea     rdi, [rel pl_trail]\n");
                 A("    mov     esi, [rbp - 8]\n");
                 A("    call    trail_unwind\n");
                 A("    jmp     %s\n", next_clause);
+                A("pl_%s_c%d_isok%d:\n", pred_safe, idx, bi);
                 continue;
             }
             /* --- numeric comparisons --- */
@@ -5219,12 +5400,13 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                 A("    mov     rdi, [rel pl_tmp]\n"); \
                 A("    call    " fn_name "\n"); \
                 A("    test    eax, eax\n"); \
-                A("    jnz     pl_%s_c%d_ug%d\n", pred_safe, idx, bi+1); \
+                A("    jnz     pl_%s_c%d_cmpok%d\n", pred_safe, idx, bi); \
                 A("%s:\n", cmpfail); \
                 A("    lea     rdi, [rel pl_trail]\n"); \
                 A("    mov     esi, [rbp - 8]\n"); \
                 A("    call    trail_unwind\n"); \
                 A("    jmp     %s\n", next_clause); \
+                A("pl_%s_c%d_cmpok%d:\n", pred_safe, idx, bi); \
                 continue; \
             }
             EMIT_CMP("<",   "pl_num_lt")
