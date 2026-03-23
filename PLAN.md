@@ -819,3 +819,63 @@ Retained for historical reference only. See Decision 13 in `doc/DECISIONS.md`.
 - `test/smoke/outputs/session50/` — full logs, oracle, compiled output, diff
 - Smoke test convention documented in §17
 - Commits: `375d55c` (findings+tests), `7d3d0b6` (artifact), `05b80c2` (outputs)
+
+---
+
+## §18 — Session 51 Handoff (2026-03-22)
+
+### Work completed this session
+
+- **`datatype()` uppercase fix** — `snobol4.c`: all return values changed to
+  uppercase (`"STRING"`, `"INTEGER"`, `"REAL"`, `"PATTERN"`, `"ARRAY"`,
+  `"TABLE"`, `"CODE"`, `"DATA"`). Matches SNOBOL4 spec and existing unit tests.
+  Commit pending (staged, not yet pushed — stash present in working tree).
+
+- **`M-BEAUTY-CASE` driver + ref created** — `test/beauty/case/driver.sno`
+  and `driver.ref` (9 lines, all PASS). CSNOBOL4 oracle confirmed 9/9 PASS.
+  Files exist on disk, not yet committed.
+
+- **PLAN.md §START written** — session bootstrap checklist, beauty subsystem
+  table, current milestone pointer. Committed `a309d6c`, pushed to `origin/main`
+  after rebase (`a4ae121`).
+
+### Active bug: `M-BEAUTY-CASE` ASM diverges at step 1
+
+```
+DIVERGENCE at step 1:
+  oracle [csn]: VALUE OUTPUT = 'PASS: lwr(HELLO) = hello'
+  FAIL   [asm]: VALUE OUTPUT = 'FAIL: lwr(HELLO)'
+```
+
+`lwr` calls `REPLACE(lwr, &UCASE, &LCASE)`. The ASM emitter generates
+`lea rdi, [rel S_UCASE]; call stmt_get` — passing the bare string `"UCASE"`
+(no `&` prefix) to `stmt_get`. `stmt_get` only strips `&` when the first char
+IS `&`; for bare `"UCASE"` it calls `NV_GET_fn("UCASE")` which hits the hash
+table. `UCASE` IS registered at init via `NV_SET_fn("UCASE", STRVAL(ucase))`.
+
+**Root cause not yet confirmed.** Hypothesis: the monitor's `inject_traces.py`
+adds `TRACE` calls that interact with `UCASE`/`LCASE` initialization order,
+OR the emitter passes `stmt_get` the wrong variable name for keyword args.
+
+### Next session action plan
+
+1. `bash setup.sh`
+2. Add a one-line debug print to `stmt_get` in `snobol4_stmt_rt.c`:
+   ```c
+   fprintf(stderr, "stmt_get(%s) -> type=%d val=%s\n",
+           name, v.v, VARVAL_fn(v));
+   ```
+3. Build + run case driver through monitor, capture stderr from ASM participant
+4. Confirm whether `stmt_get("UCASE")` returns the 26-char uppercase alphabet
+   or something else (empty, NULL, etc.)
+5. Fix the root cause, rebuild, rerun monitor
+6. On 9/9 PASS: commit `B-263: M-BEAUTY-CASE ✅`, update §START table
+7. Advance to `M-BEAUTY-ASSIGN`
+
+### Files needing commit (next session)
+
+- `src/runtime/snobol4/snobol4.c` — datatype() uppercase fix
+- `test/beauty/case/driver.sno` — case subsystem driver
+- `test/beauty/case/driver.ref` — oracle reference output
+- `PLAN.md` — this session note
+

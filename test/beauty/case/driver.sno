@@ -1,0 +1,66 @@
+*  driver.sno — test driver for case.sno
+*  Oracle: snobol4 -f -P256k -I$INC driver.sno
+*  Run via: bash test/beauty/run_beauty_subsystem.sh case
+*  All 3 participants (CSNOBOL4, SPITBOL, ASM) must produce identical output.
+*  Exercises: lwr(), upr(), cap(), icase()
+-INCLUDE 'global.sno'
+-INCLUDE 'is.sno'
+-INCLUDE 'case.sno'
+
+        &STLIMIT = 1000000
+
+*  lwr: uppercase -> lowercase
+        IDENT(lwr('HELLO'), 'hello')                       :S(P1)
+        OUTPUT = 'FAIL: lwr(HELLO)'                       :(T1)
+P1      OUTPUT = 'PASS: lwr(HELLO) = hello'
+T1
+
+*  lwr: already lowercase -> unchanged
+        IDENT(lwr('world'), 'world')                       :S(P2)
+        OUTPUT = 'FAIL: lwr(world)'                       :(T2)
+P2      OUTPUT = 'PASS: lwr(world) = world'
+T2
+
+*  upr: lowercase -> uppercase
+        IDENT(upr('hello'), 'HELLO')                       :S(P3)
+        OUTPUT = 'FAIL: upr(hello)'                       :(T3)
+P3      OUTPUT = 'PASS: upr(hello) = HELLO'
+T3
+
+*  upr: already uppercase -> unchanged
+        IDENT(upr('WORLD'), 'WORLD')                       :S(P4)
+        OUTPUT = 'FAIL: upr(WORLD)'                       :(T4)
+P4      OUTPUT = 'PASS: upr(WORLD) = WORLD'
+T4
+
+*  cap: first char upper, rest lower
+        IDENT(cap('hELLO'), 'Hello')                       :S(P5)
+        OUTPUT = 'FAIL: cap(hELLO) expected Hello, got ' cap('hELLO') :(T5)
+P5      OUTPUT = 'PASS: cap(hELLO) = Hello'
+T5
+
+*  cap: all upper -> capitalized
+        IDENT(cap('WORLD'), 'World')                       :S(P6)
+        OUTPUT = 'FAIL: cap(WORLD) expected World, got ' cap('WORLD') :(T6)
+P6      OUTPUT = 'PASS: cap(WORLD) = World'
+T6
+
+*  icase: pattern matches Hello with icase('hello')
+        'Hello' icase('hello')                             :S(P7)
+        OUTPUT = 'FAIL: icase(hello) did not match Hello' :(T7)
+P7      OUTPUT = 'PASS: icase(hello) matches Hello'
+T7
+
+*  icase: pattern matches WORLD with icase('world')
+        'WORLD' icase('world')                             :S(P8)
+        OUTPUT = 'FAIL: icase(world) did not match WORLD' :(T8)
+P8      OUTPUT = 'PASS: icase(world) matches WORLD'
+T8
+
+*  lwr roundtrip: lwr(upr(x)) = lwr(x)
+        IDENT(lwr(upr('MiXeD')), lwr('MiXeD'))             :S(P9)
+        OUTPUT = 'FAIL: lwr(upr(MiXeD)) roundtrip'        :(T9)
+P9      OUTPUT = 'PASS: lwr(upr(MiXeD)) = lwr(MiXeD)'
+T9
+
+END

@@ -1079,16 +1079,16 @@ double to_real(DESCR_t v) {
 
 const char *datatype(DESCR_t v) {
     switch (v.v) {
-        case DT_SNUL:    return "string";  /* NULL = empty string */
-        case DT_S:     return "string";
-        case DT_I:     return "integer";
-        case DT_R:    return "real";
-        case DT_DATA:    return v.u ? v.u->type->name : "data";
-        case DT_P:    return "pattern";
-        case DT_A:    return "array";
-        case DT_T:    return "table";
-        case DT_C:    return "code";
-        default:          return "string";
+        case DT_SNUL:    return "STRING";  /* NULL = empty string */
+        case DT_S:     return "STRING";
+        case DT_I:     return "INTEGER";
+        case DT_R:    return "REAL";
+        case DT_DATA:    return v.u ? v.u->type->name : "DATA";
+        case DT_P:    return "PATTERN";
+        case DT_A:    return "ARRAY";
+        case DT_T:    return "TABLE";
+        case DT_C:    return "CODE";
+        default:          return "STRING";
     }
 }
 
