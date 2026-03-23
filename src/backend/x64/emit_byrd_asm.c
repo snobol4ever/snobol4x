@@ -1546,10 +1546,12 @@ static void emit_pat_node(EXPR_t *pat,
                 snprintf(saved,        sizeof saved,        "any%d_saved", next_uid());
                 snprintf(dispatch_lbl, sizeof dispatch_lbl, "%s_dispatch", tmplab);
                 var_register(saved);
-                A("section .bss\n");
-                A("%s resq 1\n", tlab);
-                A("%s resq 1\n", plab);
-                A("section .text\n");
+                /* §22 fix: register tlab/plab in the file-level BSS block
+                 * (via var_register deferred list) instead of an inline
+                 * section .bss/.text switch mid-function, which causes the
+                 * slots to be overwritten by recursive ucall stack frames. */
+                var_register(tlab);
+                var_register(plab);
                 /* alpha label points HERE — at the eval code — so DOL_SAVE
                  * and other jumps to alpha land at the eval, not past it. */
                 ALF(alpha, "; ANY(expr) α — eval arg then dispatch\n");
@@ -2896,6 +2898,10 @@ static int emit_expr(EXPR_t *e, int rbp_off) {
             A("    mov     [%s], rax\n", ufn->ret_gamma);
             A("    lea     rax, [rel %s]\n", ret_omega_lbl);
             A("    mov     [%s], rax\n", ufn->ret_omega);
+            /* Save outer match subject globals — the callee may run its own
+             * stmt_setup_subject() internally (e.g. icase scanning str),
+             * which would clobber subject_data/subject_len_val/cursor. */
+            A("    call    stmt_save_subject\n");
             A("    jmp     %s\n", ufn->alpha_lbl);
 
             /* Helper: pop saved frame off stack.
@@ -2934,7 +2940,8 @@ static int emit_expr(EXPR_t *e, int rbp_off) {
             }
             /* Get return value BEFORE restoring params — param restore would
              * overwrite the return-value variable when fn name == param name.
-             * Fix: B-263. */
+             * Fix: B-263. Restore outer subject globals first (B-263 icase fix). */
+            A("    call    stmt_restore_subject\n");
             A("    GET_VAR     %s\n", fnlab);
             /* Restore old param values from stack */
             for (int ai = 0; ai < actual_args; ai++) {
@@ -2984,7 +2991,8 @@ static int emit_expr(EXPR_t *e, int rbp_off) {
                 A("    call    stmt_set\n");
             }
             if (extra_align) A("    add     rsp, 8          ; remove align pad\n");
-            /* FRETURN: signal failure to caller via FAILDESCR */
+            /* FRETURN: restore outer subject globals then signal failure */
+            A("    call    stmt_restore_subject\n");
             A("    LOAD_FAILDESCR32\n");
             A("ucall%d_done:\n", cuid);
             return 1;
@@ -3913,6 +3921,7 @@ static void emit_program(Program *prog) {
     A("    extern  stmt_apply_replacement_splice\n");
     A("    extern  stmt_set_capture, stmt_match_var, stmt_match_descr\n");
     A("    extern  stmt_pos_var, stmt_rpos_var\n");
+    A("    extern  stmt_save_subject, stmt_restore_subject\n");
     A("    extern  stmt_span_var, stmt_break_var\n");
     A("    extern  stmt_breakx_var, stmt_breakx_lit\n");
     A("    extern  stmt_any_var, stmt_notany_var, stmt_any_ptr\n");

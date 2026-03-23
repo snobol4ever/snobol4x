@@ -264,10 +264,6 @@ DESCR_t stmt_input(void) {
 DESCR_t stmt_concat(DESCR_t a, DESCR_t b) {
     /* Propagate failure: if either argument is FAILDESCR, the concat fails.
      * This ensures DIFFER(X,Y) CONCAT rest fails when X==Y. */
-    if (getenv("SNO_CALLDEBUG"))
-        fprintf(stderr, "[stmt_concat] a.v=%d a.ptr='%.10s' b.v=%d b.ptr='%.10s'\n",
-                (int)a.v, (a.v==1&&a.ptr)?(const char*)a.ptr:"<non-str>",
-                (int)b.v, (b.v==1&&b.ptr)?(const char*)b.ptr:"<non-str>");
     if (IS_FAIL_fn(a)) return FAILDESCR;
     if (IS_FAIL_fn(b)) return FAILDESCR;
     /* Pattern concatenation: if either operand is a pattern, build a SEQ
@@ -387,6 +383,31 @@ int stmt_setup_subject(DESCR_t subj) {
     subject_len_val = (uint64_t)len;
     cursor = 0;
     return 0;
+}
+
+/* Subject save/restore stack — for ucalls that internally run pattern matches.
+ * A ucall like icase('hello') runs its own stmt_setup_subject() internally,
+ * clobbering the outer match's subject_data/subject_len_val/cursor.
+ * The ucall prologue calls stmt_save_subject(); epilogue calls stmt_restore_subject().
+ * Depth 32 is more than enough for any realistic nesting. */
+#define SUBJ_SAVE_DEPTH 32
+static struct { char data[65536]; uint64_t len; uint64_t cur; } subj_stack[SUBJ_SAVE_DEPTH];
+static int subj_stack_top = 0;
+
+void stmt_save_subject(void) {
+    if (subj_stack_top >= SUBJ_SAVE_DEPTH) return;  /* overflow: ignore */
+    struct { char data[65536]; uint64_t len; uint64_t cur; } *s = &subj_stack[subj_stack_top++];
+    memcpy(s->data, subject_data, (size_t)subject_len_val + 1);
+    s->len = subject_len_val;
+    s->cur = cursor;
+}
+
+void stmt_restore_subject(void) {
+    if (subj_stack_top <= 0) return;  /* underflow: ignore */
+    struct { char data[65536]; uint64_t len; uint64_t cur; } *s = &subj_stack[--subj_stack_top];
+    memcpy(subject_data, s->data, (size_t)s->len + 1);
+    subject_len_val = s->len;
+    cursor = s->cur;
 }
 
 /* stmt_apply_replacement: after a successful match, write the replacement
