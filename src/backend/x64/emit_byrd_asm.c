@@ -4839,6 +4839,8 @@ static const char *pl_safe(const char *s) {
 static char  *pl_atom_strings[PL_MAX_ATOMS];
 static char   pl_atom_labels[PL_MAX_ATOMS][128];
 static int    pl_atom_count_emit = 0;
+/* Set before emit_prolog_clause_block so emit_pl_term_load can compute correct var offsets */
+static int    pl_cur_max_ucalls = 0;
 static int    pl_compound_uid_ctr = 0;
 static int    pl_compound_uid(void) { return pl_compound_uid_ctr++; }
 
@@ -4917,12 +4919,17 @@ static void emit_pl_header(Program *prog) {
     A("\n");
     A("\n");
 
-    /* .bss — global Trail */
+    /* .bss — global Trail + SNOBOL4 runtime stubs required by stmt_rt.c */
     A("section .note.GNU-stack noalloc noexec nowrite progbits\n\n");
     A("section .bss\n");
     A("%-32s resb 32    ; Trail struct (top+cap+stack ptr)\n", "pl_trail");
     A("%-32s resq 1     ; scratch qword\n", "pl_tmp");
     A("%-32s resq 8     ; head arg scratch (8 slots, max arity)\n", "pl_head_args");
+    /* stmt_rt.c externs these — provide stubs so Prolog binaries link cleanly */
+    A("    global  cursor, subject_data, subject_len_val\n");
+    A("%-32s resq 1     ; SNOBOL4 pattern cursor (unused in Prolog)\n", "cursor");
+    A("%-32s resq 1     ; SNOBOL4 subject length (unused in Prolog)\n", "subject_len_val");
+    A("%-32s resb 65536 ; SNOBOL4 subject buffer  (unused in Prolog)\n", "subject_data");
     A("\n");
 }
 
@@ -4946,7 +4953,7 @@ static void emit_pl_term_load(EXPR_t *e, int frame_base_words) {
             A("    call    term_new_int\n");
             break;
         case E_VART: {
-            /* var slot is in e->ival; fresh Term* in frame at [rbp - (slot+5)*8] */
+            /* var slot is in e->ival; fresh Term* in frame at [rbp - (5+max_ucalls+slot)*8] */
             int slot = (int)e->ival;
             if (slot < 0) {
                 /* anonymous wildcard _ — allocate a fresh unbound var each time */
@@ -4954,7 +4961,7 @@ static void emit_pl_term_load(EXPR_t *e, int frame_base_words) {
                 A("    call    term_new_var    ; anon wildcard\n");
             } else {
                 A("    mov     rax, [rbp - %d]  ; var slot %d (%s)\n",
-                  (slot+5)*8, slot, e->sval ? e->sval : "_");
+                  (5 + pl_cur_max_ucalls + slot)*8, slot, e->sval ? e->sval : "_");
             }
             break;
         }
@@ -5035,11 +5042,18 @@ static void emit_pl_term_load(EXPR_t *e, int frame_base_words) {
 
 static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                                      const char *pred_safe, int arity,
-                                     const char *omega_lbl, int base) {
+                                     const char *omega_lbl, int base,
+                                     int max_ucalls) {
     if (!clause) return;
     int n_vars = (int)clause->ival;
     int nbody  = clause->nchildren - arity;
     if (nbody < 0) nbody = 0;
+    /* Var slot k is at [rbp - (5 + max_ucalls + k)*8].
+     * Ucall slot bi is at [rbp - (5 + bi)*8].
+     * This keeps ucall slots and var slots non-overlapping. */
+#define VAR_SLOT_OFFSET(k)   ((5 + max_ucalls + (k)) * 8)
+#define UCALL_SLOT_OFFSET(bi) ((5 + (bi)) * 8)
+#define PL_RESUME_BIG 4096  /* stride between ucall levels in return encoding */
 
     char this_alpha[128], next_clause[128];
     snprintf(this_alpha,  sizeof this_alpha,  "pl_%s_c%d_α", pred_safe, idx);
@@ -5075,7 +5089,7 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
     for (int k = 0; k < n_vars; k++) {
         A("    mov     rdi, %d\n", k);
         A("    call    term_new_var\n");
-        A("    mov     [rbp - %d], rax    ; var slot %d\n", (k+5)*8, k);
+        A("    mov     [rbp - %d], rax    ; var slot %d\n", (5 + max_ucalls + k)*8, k);
     }
 
     /* Trail mark — save in frame slot [rbp-8] */
@@ -5116,9 +5130,13 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
     }
 
     A("pl_%s_c%d_body:\n", pred_safe, idx);
+    /* edx=0 on fresh entry — all ucres labels fall through with this value on first call */
+    A("    xor     edx, edx               ; sub_cs=0 for first ucall\n");
 
     /* Body goals */
     int ucall_seq = 0;   /* sequential index of user-calls emitted so far */
+    char last_bfail_lbl[128];  /* most recent user-call fail label, for fail/0 retry */
+    snprintf(last_bfail_lbl, sizeof last_bfail_lbl, "%s", next_clause);  /* default: no ucalls yet */
     for (int bi = 0; bi < nbody; bi++) {
         EXPR_t *goal = clause->children[arity + bi];
         if (!goal) continue;
@@ -5190,10 +5208,17 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
             }
             /* --- fail/0 --- */
             if (strcmp(fn, "fail") == 0 && garity == 0) {
-                A("    lea     rdi, [rel pl_trail]\n");
-                A("    mov     esi, [rbp - 8]\n");
-                A("    call    trail_unwind\n");
-                A("    jmp     %s\n", next_clause);
+                if (ucall_seq > 0) {
+                    /* retry innermost ucall — Proebsting E2.fail→E1.resume */
+                    A("    mov     edx, [rbp - %d]    ; restore sub_cs for retry\n",
+                      UCALL_SLOT_OFFSET(ucall_seq - 1));
+                    A("    jmp     pl_%s_c%d_ucres%d\n", pred_safe, idx, ucall_seq - 1);
+                } else {
+                    A("    lea     rdi, [rel pl_trail]\n");
+                    A("    mov     esi, [rbp - 8]\n");
+                    A("    call    trail_unwind\n");
+                    A("    jmp     %s\n", next_clause);
+                }
                 continue;
             }
             /* --- writeln/1 --- */
@@ -5780,6 +5805,10 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                 snprintf(fail_lbl, sizeof fail_lbl, "pl_%s_c%d_bfail%d", pred_safe, idx, bi);
                 char resume_lbl[128];
                 snprintf(resume_lbl, sizeof resume_lbl, "pl_%s_c%d_bres%d", pred_safe, idx, bi);
+                /* Every ucall gets a ucres label BEFORE args setup.
+                 * On fresh first call: fall through with edx=0 (xor below).
+                 * On E2.fail→E1.resume retry: jumped here with edx=saved sub_cs. */
+                A("pl_%s_c%d_ucres%d:\n", pred_safe, idx, ucall_seq);
                 /* push args in reverse then pass array ptr */
                 if (garity > 0) {
                     int alloc = ALIGN16(garity*8);
@@ -5794,39 +5823,42 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                     A("    xor     rdi, rdi               ; no args\n");
                 }
                 A("    lea     rsi, [rel pl_trail]\n");
-                /* sub_cs encoding: only the LAST user-call in a body gets the
-                 * base-relative resume scheme.  Earlier calls are always fresh
-                 * (sub_cs=0) because we don't support backtracking into them. */
-                int is_last_ucall = (ucall_seq + 1 == body_user_call_count);
-                if (is_last_ucall) {
-                    /* sub_cs = start - base - 1  (start in [rbp-32], base is compile-time)
-                     * start == base  → fresh call  (sub edx,base+1 → -1, clamp to 0)
-                     * start > base   → resume, sub_cs = start - base - 1 */
-                    A("    mov     edx, [rbp - 32]            ; raw start\n");
-                    A("    sub     edx, %d                    ; start - (base+1)\n", base + 1);
-                    A("    jge     %s                         ; >= 0: resume with sub_cs\n", resume_lbl);
-                    A("    xor     edx, edx                   ; fresh call: sub_cs=0\n");
-                    A("%s:\n", resume_lbl);
-                } else {
-                    /* Not the last call: always fresh */
-                    A("    xor     edx, edx                   ; fresh call (non-last)\n");
-                    A("%s:\n", resume_lbl);
-                }
+                /* Fresh entry path falls through here with edx=0 (set at clause entry).
+                 * Resume path jumps to ucres with edx already loaded from slot. */
+                A("%s:\n", resume_lbl);
                 A("    ; edx = sub_cs\n");
                 A("    call    pl_%s_r\n", call_safe);
                 if (garity > 0)
                     A("    add     rsp, %d\n", ALIGN16(garity*8));
                 A("    test    eax, eax\n");
                 A("    js      %s\n", fail_lbl);
-                /* success: save sub_ret as sub_cs_acc (NOT to [rbp-32]: that is read-only start) */
+                /* success: save sub_cs to per-ucall slot [rbp - UCALL_SLOT(bi)] */
+                A("    mov     [rbp - %d], eax        ; ucall slot %d sub_cs\n",
+                  UCALL_SLOT_OFFSET(ucall_seq), ucall_seq);
+                /* also update sub_cs_acc for γ encoding */
                 A("    mov     [rbp - 16], eax        ; sub_cs_acc\n");
                 A("    jmp     pl_%s_c%d_bsucc%d\n", pred_safe, idx, bi);
                 A("%s:\n", fail_lbl);
-                A("    lea     rdi, [rel pl_trail]\n");
-                A("    mov     esi, [rbp - 8]\n");
-                A("    call    trail_unwind\n");
-                A("    jmp     %s\n", next_clause);
+                /* E2.fail → E1.resume: if there's a prior ucall, retry it */
+                if (ucall_seq > 0) {
+                    /* Unwind trail to clause mark before retrying — clear bindings from this subtree */
+                    A("    lea     rdi, [rel pl_trail]\n");
+                    A("    mov     esi, [rbp - 8]\n");
+                    A("    call    trail_unwind\n");
+                    A("    mov     edx, [rbp - %d]    ; restore sub_cs of ucall %d\n",
+                      UCALL_SLOT_OFFSET(ucall_seq - 1), ucall_seq - 1);
+                    A("    jmp     pl_%s_c%d_ucres%d\n", pred_safe, idx, ucall_seq - 1);
+                } else {
+                    A("    lea     rdi, [rel pl_trail]\n");
+                    A("    mov     esi, [rbp - 8]\n");
+                    A("    call    trail_unwind\n");
+                    A("    jmp     %s\n", next_clause);
+                }
                 A("pl_%s_c%d_bsucc%d:\n", pred_safe, idx, bi);
+                A("    xor     edx, edx               ; next ucall starts fresh\n");
+                /* record this ucall's fail label so fail/0 can retry it */
+                snprintf(last_bfail_lbl, sizeof last_bfail_lbl,
+                         "pl_%s_c%d_bfail%d", pred_safe, idx, bi);
                 ucall_seq++;
             }
         }
@@ -6058,9 +6090,12 @@ static void emit_prolog_choice(EXPR_t *choice) {
     }
 
     /* Emit each clause block with its base */
-    for (int ci = 0; ci < nclauses; ci++)
+    for (int ci = 0; ci < nclauses; ci++) {
+        pl_cur_max_ucalls = max_body_ucalls;
         emit_prolog_clause_block(choice->children[ci], ci, nclauses,
-                                 safe, arity, omega_lbl, base[ci]);
+                                 safe, arity, omega_lbl, base[ci],
+                                 max_body_ucalls);
+    }
 
     /* ω port */
     A("\n%s:\n", omega_lbl);
