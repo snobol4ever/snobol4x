@@ -1525,3 +1525,83 @@ INC=demo/inc bash test/beauty/run_beauty_subsystem.sh stack
 | 17 | semantic | |
 | 18 | omega | |
 
+
+---
+
+## §24 — Session Handoff F-223 (2026-03-23): M-PROLOG-BUILTINS ✅ — rung10 multi-ucall wiring WIP
+
+### §START update
+**Completed this session:**
+- M-PROLOG-BUILTINS ✅ — `rung09_builtins` PASS (`functor/3`, `arg/3`, `=../2`, type tests)
+- Link fix: added `subject_data`, `subject_len_val`, `cursor` BSS stubs to `emit_pl_header()` so Prolog binaries link against `stmt_rt.c` cleanly
+
+**Current milestone:** `M-PROLOG-R10` — rung10 puzzle solvers blocked on multi-ucall backtracking
+
+### Three fixes applied to `src/backend/x64/emit_byrd_asm.c`
+
+| # | Fix | Location | Status |
+|---|-----|----------|--------|
+| 1 | BSS stubs (`subject_data` etc.) in `emit_pl_header` | ~line 4868 | ✅ working |
+| 2 | `xor edx,edx` at `bsucc` label (next ucall starts fresh) | ~line 5784 | ✅ in |
+| 3 | `fail/0` retries innermost ucall via `jmp ucresN` | ~line 5141 | ✅ in |
+| 4 | `trail_unwind` before E2.fail→E1.resume retry in `bfailN` | ~line 5773 | ✅ in — **needs test** |
+
+### Root cause of rung10 silence (diagnosed)
+
+`fail/0` in puzzle bodies triggers E2.fail→E1.resume correctly (fix 3), but `bfailN`
+jumping to `ucres(N-1)` did NOT unwind trail — so previously unified variables (e.g.
+`Cashier=smith`) remained bound when the outer generator was retried. Fix 4 adds
+`trail_unwind` to the clause mark `[rbp-8]` before each inter-ucall retry.
+
+### Next session action plan (F-224)
+
+1. `bash setup.sh`
+2. `cd src && make` (fix 4 already in — verify clean build)
+3. Test mini cross-product:
+```prolog
+% /tmp/mini.pro
+:- initialization(main).
+color(red). color(green). color(blue).
+main :- color(X), color(Y), write(X), write('-'), write(Y), nl, fail.
+main.
+```
+Expected: 9 lines `red-red` through `blue-blue`.
+If only `red-red`: trail_unwind in bfailN may be over-unwinding — check that
+`term_new_var` slots at `[rbp-56/64]` are re-allocated after unwind (they are
+Term* pointers, not bindings — unwind only clears the trail, the slot pointers
+themselves survive). If vars are still bound after unwind, the issue is that
+`ucresN` reuses the OLD Term* (already unified) rather than allocating a fresh one.
+**Key question:** does `ucres0` need to call `term_new_var` again on retry, or does
+`trail_unwind` correctly reset the existing Term* to unbound? Check `trail_unwind`
+in `prolog_unify.c` — it should set `*slot = NULL` or `term->tag = TT_VAR` for
+each trailed binding.
+
+4. If mini PASS: create `.expected` files and run rung10 puzzles:
+```bash
+bash /tmp/run_prolog_rung.sh test/frontend/prolog/corpus/rung10_programs
+```
+Expected outputs (from README.md):
+- `puzzle_01`: `Cashier=smith Manager=brown Teller=jones`
+- `puzzle_02`: `Carpenter=clark Painter=daw Plumber=fuller`
+- `puzzle_06`: `Clark=druggist Jones=grocer Morgan=butcher Smith=policeman`
+
+5. On rung10 PASS: run rungs 01–09 regression check, then:
+```bash
+git add src/backend/x64/emit_byrd_asm.c PLAN.md
+git commit -m "F-223: M-PROLOG-BUILTINS ✅ M-PROLOG-R10 ✅ M-PROLOG-CORPUS ✅"
+git push
+```
+Then push HQ PLAN.md update to snobol4ever/.github.
+
+6. Update HQ PLAN.md dashboard row:
+```
+| **TINY frontend** | F-223 — M-PROLOG-BUILTINS ✅ M-PROLOG-R10 ✅ M-PROLOG-CORPUS ✅ ... | HEAD | M-BEAUTY-COUNTER |
+```
+Fire milestones: M-PROLOG-BUILTINS ✅ M-PROLOG-R10 ✅ M-PROLOG-CORPUS ✅
+
+### Files changed (uncommitted)
+- `src/backend/x64/emit_byrd_asm.c` — fixes 1–4 above
+
+### Invariant check before commit
+- Run `bash test/crosscheck/run_crosscheck_asm_rung.sh` on a few SNOBOL4 rungs to
+  confirm SNOBOL4 backend not regressed by BSS stub addition
