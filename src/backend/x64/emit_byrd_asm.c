@@ -1589,19 +1589,57 @@ static void emit_pat_node(EXPR_t *pat,
             EXPR_t *arg = pat->children[0];
             if (arg->kind == E_VART && arg->sval) {
                 emit_span_var(str_intern(arg->sval), α, β, γ, ω, cursor, subj, subj_len);
+            } else if (arg->kind == E_QLIT && arg->sval) {
+                emit_span(arg->sval, (int)strlen(arg->sval), α, β, γ, ω, cursor, subj, subj_len);
             } else {
-                const char *cs = (arg->kind == E_QLIT && arg->sval) ? arg->sval : "";
-                int cslen = (arg->kind == E_QLIT && arg->sval) ? (int)strlen(arg->sval) : 0;
-                emit_span(cs, cslen, α, β, γ, ω, cursor, subj, subj_len);
+                char tmplab[LBUF];
+                snprintf(tmplab, LBUF, "spn_expr_tmp_%d", next_uid());
+                char tlab[LBUF], plab[LBUF], saved[LBUF], dispatch_lbl[LBUF];
+                snprintf(tlab,         sizeof tlab,         "%s_t", tmplab);
+                snprintf(plab,         sizeof plab,         "%s_p", tmplab);
+                snprintf(saved,        sizeof saved,        "spn%d_saved", next_uid());
+                snprintf(dispatch_lbl, sizeof dispatch_lbl, "%s_dispatch", tmplab);
+                var_register(saved); var_register(tlab); var_register(plab);
+                ALF(α, "; SPAN(expr) α — eval arg then dispatch\n");
+                emit_expr(arg, -32);
+                A("    mov     [rel %s], rax\n", tlab);
+                A("    mov     [rel %s], rdx\n", plab);
+                ALFC(dispatch_lbl, "SPAN(expr) α dispatch",
+                     "SPAN_α_PTR  %s, %s, %s, %s, %s, %s, %s, %s\n",
+                     tlab, plab, bref(saved), cursor, subj, subj_len, γ, ω);
+                ALFC(β, "SPAN(expr) β",
+                     "SPAN_β_PTR   %s, %s, %s\n", bref(saved), cursor, ω);
             }
         } else if (pat->sval && strcasecmp(pat->sval, "BREAK") == 0 && pat->nchildren == 1) {
             EXPR_t *arg = pat->children[0];
             if (arg->kind == E_VART && arg->sval) {
                 emit_break_var(str_intern(arg->sval), α, β, γ, ω, cursor, subj, subj_len);
+            } else if (arg->kind == E_QLIT && arg->sval) {
+                emit_break(arg->sval, (int)strlen(arg->sval), α, β, γ, ω, cursor, subj, subj_len);
             } else {
-                const char *cs = (arg->kind == E_QLIT && arg->sval) ? arg->sval : "";
-                int cslen = (arg->kind == E_QLIT && arg->sval) ? (int)strlen(arg->sval) : 0;
-                emit_break(cs, cslen, α, β, γ, ω, cursor, subj, subj_len);
+                /* Runtime expression (e.g. E_CONC of vars like sq dq):
+                 * Evaluate into BSS temp slots, dispatch via BREAK_α_PTR. */
+                char tmplab[LBUF];
+                snprintf(tmplab, LBUF, "brk_expr_tmp_%d", next_uid());
+                char tlab[LBUF], plab[LBUF], saved[LBUF], dispatch_lbl[LBUF];
+                snprintf(tlab,         sizeof tlab,         "%s_t", tmplab);
+                snprintf(plab,         sizeof plab,         "%s_p", tmplab);
+                snprintf(saved,        sizeof saved,        "brk%d_saved", next_uid());
+                snprintf(dispatch_lbl, sizeof dispatch_lbl, "%s_dispatch", tmplab);
+                var_register(saved);
+                var_register(tlab);
+                var_register(plab);
+                ALF(α, "; BREAK(expr) α — eval arg then dispatch\n");
+                emit_expr(arg, -32);
+                A("    mov     [rel %s], rax\n", tlab);
+                A("    mov     [rel %s], rdx\n", plab);
+                ALFC(dispatch_lbl, "BREAK(expr) α dispatch",
+                     "BREAK_α_PTR %s, %s, %s, %s, %s, %s, %s, %s\n",
+                     tlab, plab, bref(saved),
+                     cursor, subj, subj_len, γ, ω);
+                ALFC(β, "BREAK(expr) β",
+                     "BREAK_β_PTR  %s, %s, %s\n",
+                     bref(saved), cursor, ω);
             }
         } else if (pat->sval && strcasecmp(pat->sval, "BREAKX") == 0 && pat->nchildren == 1) {
             EXPR_t *arg = pat->children[0];
@@ -4038,6 +4076,7 @@ static void emit_program(Program *prog) {
     A("    extern  stmt_span_var, stmt_break_var\n");
     A("    extern  stmt_breakx_var, stmt_breakx_lit\n");
     A("    extern  stmt_any_var, stmt_notany_var, stmt_any_ptr\n");
+    A("    extern  stmt_break_ptr, stmt_span_ptr\n");
     A("    extern  stmt_at_capture\n");
     A("    extern  kw_anchor\n");
     A("    extern  stmt_aref, stmt_aset, stmt_field_set\n");

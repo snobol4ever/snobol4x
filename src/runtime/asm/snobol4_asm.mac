@@ -721,7 +721,56 @@
 %endmacro
 
 ; =============================================================================
-; BREAKX_α_VAR varlab, saved, cursor, subj, subj_len, γ, ω
+; BREAK_α_PTR tlab, plab, saved, cursor, subj, subj_len, γ, ω
+; Like BREAK_α_VAR but takes pre-evaluated DESCR_t fields (BSS slots) directly.
+; Calls stmt_break_ptr(vtype, vptr, cursor, subj, subj_len) — no hash lookup.
+; =============================================================================
+%macro BREAK_α_PTR 8       ; tlab, plab, saved, cursor, subj, subj_len, γ, ω
+    mov     rax, [%4]
+    mov     [%3], rax
+    mov     rdi, [rel %1]       ; vtype
+    mov     rsi, [rel %2]       ; vptr
+    mov     rdx, [%4]           ; cursor
+    lea     rcx, [rel %5]       ; subj
+    mov     r8,  [%6]           ; subj_len
+    call    stmt_break_ptr
+    cmp     rax, -1
+    je      %8
+    mov     [%4], rax
+    jmp     %7
+%endmacro
+
+%macro BREAK_β_PTR 3       ; saved, cursor, ω
+    mov     rax, [%1]
+    mov     [%2], rax
+    jmp     %3
+%endmacro
+
+; =============================================================================
+; SPAN_α_PTR tlab, plab, saved, cursor, subj, subj_len, γ, ω
+; =============================================================================
+%macro SPAN_α_PTR 8        ; tlab, plab, saved, cursor, subj, subj_len, γ, ω
+    mov     rax, [%4]
+    mov     [%3], rax
+    mov     rdi, [rel %1]       ; vtype
+    mov     rsi, [rel %2]       ; vptr
+    mov     rdx, [%4]           ; cursor
+    lea     rcx, [rel %5]       ; subj
+    mov     r8,  [%6]           ; subj_len
+    call    stmt_span_ptr
+    cmp     rax, -1
+    je      %8
+    mov     [%4], rax
+    jmp     %7
+%endmacro
+
+%macro SPAN_β_PTR 3        ; saved, cursor, ω
+    mov     rax, [%1]
+    mov     [%2], rax
+    jmp     %3
+%endmacro
+
+
 ;   BREAKX with variable charset — fails on zero advance
 ; =============================================================================
 %macro BREAKX_α_VAR 7     ; varlab, saved, cursor, subj, subj_len, γ, ω

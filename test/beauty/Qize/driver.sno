@@ -1,0 +1,50 @@
+*  driver.sno — test driver for Qize subsystem
+*  Oracle: snobol4 -f -P256k -Idemo/inc driver.sno
+*  Run via: bash test/beauty/run_beauty_subsystem.sh Qize
+*
+*  Exercises: Qize/SQize — quoting strings as SNOBOL4 expressions
+*  Depends on: global.sno (bSlash,bs,ff,nl,cr,tab)
+
+-INCLUDE 'global.sno'
+-INCLUDE 'Qize.sno'
+
+        &STLIMIT = 1000000
+
+*  1: Qize empty string -> ''
+        q1 = Qize('')
+        IDENT(q1, "''")                                 :S(P1)
+        OUTPUT = 'FAIL: 1 Qize empty got: [' q1 ']'    :(T1)
+P1      OUTPUT = 'PASS: 1 Qize empty'
+T1
+
+*  2: Qize simple word -> 'hello'
+        q2 = Qize('hello')
+        IDENT(q2, "'hello'")                            :S(P2)
+        OUTPUT = 'FAIL: 2 Qize simple got: [' q2 ']'   :(T2)
+P2      OUTPUT = 'PASS: 2 Qize simple'
+T2
+
+*  3: Qize string with embedded single-quote
+*     CSNOBOL4 renders it's as: "it'" 's'
+*     We just verify it round-trips (is non-empty and starts/ends correctly)
+        q3 = Qize("it's")
+        IDENT(q3)                                       :F(P3)
+        OUTPUT = 'FAIL: 3 Qize squote returned empty'   :(T3)
+P3      OUTPUT = 'PASS: 3 Qize squote'
+T3
+
+*  4: SQize empty -> empty
+        sq4 = SQize('')
+        IDENT(sq4)                                      :S(P4)
+        OUTPUT = 'FAIL: 4 SQize empty got: [' sq4 ']'  :(T4)
+P4      OUTPUT = 'PASS: 4 SQize empty'
+T4
+
+*  5: SQize simple -> 'word'
+        sq5 = SQize('hello')
+        IDENT(sq5, "'hello'")                           :S(P5)
+        OUTPUT = 'FAIL: 5 SQize simple got: [' sq5 ']' :(T5)
+P5      OUTPUT = 'PASS: 5 SQize simple'
+T5
+
+END

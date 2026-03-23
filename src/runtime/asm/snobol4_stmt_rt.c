@@ -224,6 +224,39 @@ int stmt_any_ptr(uint64_t vtype, void *vptr, int64_t cursor,
     return strchr(cs, subj[cursor]) ? 1 : 0;
 }
 
+/* stmt_break_ptr — BREAK() with a pre-evaluated DESCR_t (type+ptr pair).
+ * Used for BREAK(runtime-expr) where arg is E_CONC, not a named variable. */
+int64_t stmt_break_ptr(uint64_t vtype, void *vptr, int64_t cursor,
+                       const char *subj, int64_t subj_len) {
+    DESCR_t v; v.v = (int)vtype; v.p = vptr;
+    const char *cs = VARVAL_fn(v);
+    if (!cs) cs = "";
+    int64_t pos = cursor;
+    while (pos < subj_len) {
+        char c = subj[pos];
+        if (strchr(cs, c)) break;
+        pos++;
+    }
+    if (pos >= subj_len) return -1;
+    return pos;
+}
+
+/* stmt_span_ptr — SPAN() with a pre-evaluated DESCR_t (type+ptr pair). */
+int64_t stmt_span_ptr(uint64_t vtype, void *vptr, int64_t cursor,
+                      const char *subj, int64_t subj_len) {
+    DESCR_t v; v.v = (int)vtype; v.p = vptr;
+    const char *cs = VARVAL_fn(v);
+    if (!cs || cursor >= subj_len) return -1;
+    int64_t pos = cursor;
+    while (pos < subj_len) {
+        char c = subj[pos];
+        if (!strchr(cs, c)) break;
+        pos++;
+    }
+    if (pos == cursor) return -1;
+    return pos;
+}
+
 /* ---- NOTANY(variable) — match one char NOT IN charset, return 1/0 ---- */
 int stmt_notany_var(const char *varname, int64_t cursor,
                     const char *subj, int64_t subj_len) {
