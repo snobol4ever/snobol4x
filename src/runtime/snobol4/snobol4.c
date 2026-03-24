@@ -2188,7 +2188,29 @@ DESCR_t input_read(void) {
  * io.sno OPSYNs the original INPUT builtin to input__ then calls it with 4 args.
  * We support the essential case: reassign INPUT source to a named file. */
 static DESCR_t _b_INPUT(DESCR_t *a, int n) {
-    const char *fname = (n >= 4) ? VARVAL_fn(a[3]) : NULL;
+    const char *fname = NULL;
+    char fname_buf[4096];
+    if (n >= 4) {
+        fname = VARVAL_fn(a[3]);
+    } else if (n >= 3) {
+        /* 3-arg form: INPUT(var, chan, "filename[-opts]")
+         * Extract filename = everything before '[', trimmed */
+        const char *opts_str = VARVAL_fn(a[2]);
+        if (opts_str && opts_str[0]) {
+            const char *bracket = strchr(opts_str, '[');
+            if (bracket) {
+                size_t len = (size_t)(bracket - opts_str);
+                while (len > 0 && opts_str[len-1] == ' ') len--;
+                if (len > 0 && len < sizeof(fname_buf)) {
+                    memcpy(fname_buf, opts_str, len);
+                    fname_buf[len] = '\0';
+                    fname = fname_buf;
+                }
+            } else {
+                fname = opts_str;  /* no bracket — whole string is filename */
+            }
+        }
+    }
     if (!fname || !fname[0]) {
         if (_input_fp && _input_fp != stdin) fclose(_input_fp);
         _input_fp = stdin;
