@@ -538,7 +538,7 @@ static void box_data_reset(void) {
  * .bss slot registry — program-global (non-box) variables
  * ----------------------------------------------------------------------- */
 
-#define MAX_VARS 2048
+#define MAX_VARS 512
 static char *vars[MAX_VARS];
 static int   nvar = 0;
 
@@ -1559,12 +1559,9 @@ static void emit_pat_node(EXPR_t *pat,
                 /* §22 fix: register tlab/plab in the file-level BSS block
                  * (via var_register deferred list) instead of an inline
                  * section .bss/.text switch mid-function, which causes the
-                 * slots to be overwritten by recursive ucall stack frames.
-                 * NB: tlab/plab are used as direct labels in ANY_α_PTR macro
-                 * (not via bref), so they MUST live in flat .bss even inside
-                 * a function box — use flat_bss_register, not var_register. */
-                flat_bss_register(tlab);
-                flat_bss_register(plab);
+                 * slots to be overwritten by recursive ucall stack frames. */
+                var_register(tlab);
+                var_register(plab);
                 /* α label points HERE — at the eval code — so DOL_SAVE
                  * and other jumps to α land at the eval, not past it. */
                 ALF(α, "; ANY(expr) α — eval arg then dispatch\n");
@@ -1602,7 +1599,7 @@ static void emit_pat_node(EXPR_t *pat,
                 snprintf(plab,         sizeof plab,         "%s_p", tmplab);
                 snprintf(saved,        sizeof saved,        "spn%d_saved", next_uid());
                 snprintf(dispatch_lbl, sizeof dispatch_lbl, "%s_dispatch", tmplab);
-                var_register(saved); flat_bss_register(tlab); flat_bss_register(plab);
+                var_register(saved); var_register(tlab); var_register(plab);
                 ALF(α, "; SPAN(expr) α — eval arg then dispatch\n");
                 emit_expr(arg, -32);
                 A("    mov     [rel %s], rax\n", tlab);
@@ -1630,8 +1627,8 @@ static void emit_pat_node(EXPR_t *pat,
                 snprintf(saved,        sizeof saved,        "brk%d_saved", next_uid());
                 snprintf(dispatch_lbl, sizeof dispatch_lbl, "%s_dispatch", tmplab);
                 var_register(saved);
-                flat_bss_register(tlab);
-                flat_bss_register(plab);
+                var_register(tlab);
+                var_register(plab);
                 ALF(α, "; BREAK(expr) α — eval arg then dispatch\n");
                 emit_expr(arg, -32);
                 A("    mov     [rel %s], rax\n", tlab);
@@ -4200,36 +4197,18 @@ static void emit_program(Program *prog) {
         int uid_save = uid_ctr;
         /* Walk statements using the same uid sequence as the real pass */
         int dry_stmt_uid = 0;
-        const NamedPat *dry_cur_fn = NULL; /* mirrors cur_fn in the real pass */
         for (STMT_t *sp = prog->head; sp; sp = sp->next) {
             if (sp->is_end) break;
             int dry_uid = dry_stmt_uid++;
-            /* Mirror cur_fn tracking from the real pass */
-            if (sp->label && sp->label[0]) {
-                const NamedPat *fn_entry = named_pat_lookup(sp->label);
-                if (fn_entry && fn_entry->is_fn) {
-                    dry_cur_fn = fn_entry;
-                }
-                if (dry_cur_fn) {
-                    char end_lbl[LBUF + 16];
-                    snprintf(end_lbl, sizeof end_lbl, "%s.END", dry_cur_fn->varname);
-                    if (strcasecmp(sp->label, end_lbl) == 0)
-                        dry_cur_fn = NULL;
-                }
-            }
             if (!sp->pattern) continue;
             /* Use real label names so var_register registers the correct slot names */
             char dry_α[64]; snprintf(dry_α, sizeof dry_α, "P_%d_α", dry_uid);
             char dry_β[64];  snprintf(dry_β,  sizeof dry_β,  "P_%d_β", dry_uid);
             char dry_γ[64]; snprintf(dry_γ, sizeof dry_γ, "P_%d_γ", dry_uid);
             char dry_ω[64]; snprintf(dry_ω, sizeof dry_ω, "P_%d_ω", dry_uid);
-            /* Route sub-node BSS slots into the function's per-box DATA when
-             * inside a function body — mirrors the real pass box_ctx logic */
-            if (dry_cur_fn) box_ctx_begin(dry_cur_fn->safe);
             emit_pat_node(sp->pattern,
                           dry_α, dry_β, dry_γ, dry_ω,
                           "cursor", "subject_data", "subject_len_val", 0);
-            if (dry_cur_fn) box_ctx_end();
         }
         /* also dry-run named pattern bodies */
         for (int i = 0; i < named_pat_count; i++) {
@@ -4776,11 +4755,6 @@ static void emit_program(Program *prog) {
          * On γ: match succeeded from scan_start_N. */
         char scan_start[64]; snprintf(scan_start, sizeof scan_start, "scan_start_%d", uid);
         char scan_retry[64]; snprintf(scan_retry, sizeof scan_retry, "scan_retry_%d", uid);
-        /* Route scan_start and all pattern sub-node slots into per-box DATA when
-         * inside a user function body — they must be pre-registered in Pass 3
-         * under the same box context, otherwise var_register here is a no-op
-         * (bss section already emitted). */
-        if (cur_fn) box_ctx_begin(cur_fn->safe);
         var_register(scan_start);
         /* reset scan_start to 0 (subject_data cursor already 0 from SUBJ_FROM16) */
         A("    mov     qword [%s], 0\n", scan_start);
@@ -4841,7 +4815,6 @@ static void emit_program(Program *prog) {
                       pat_γ, pat_ω,
                       "cursor", "subject_data", "subject_len_val",
                       0 /* depth */);
-        if (cur_fn) box_ctx_end();
         A("\n");
 
         /* -- γ: match succeeded -- */
