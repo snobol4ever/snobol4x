@@ -1426,11 +1426,26 @@ static void pj_emit_choice(EXPR_t *choice) {
 
         /* α port */
         J("%s:\n", α_lbl);
-        /* Compute init_cs = cs - base[ci].  This is the sub-cs to resume
-         * the first body user-call at; 0 means fresh entry. */
+        /* Compute init_cs = max(0, cs - base[ci]).
+         * 0 means fresh entry; positive means resuming a suspended body ucall.
+         * CLAMP to 0: when alphafail routes from an earlier clause to this one,
+         * cs < base[ci] (e.g. cs=0, base[ci]=1 → would give -1).
+         * A negative init_cs propagates into body ucall cs arguments, causing
+         * the callee's dispatch to hit omega immediately (cs < 0 < base[0]).
+         * Clamping ensures fresh-entry semantics on any alphafail path. */
         J("    iload %d\n", cs_local);
         J("    ldc %d\n", base[ci]);
         JI("isub", "");
+        JI("dup", "");
+        {
+            char lbl_clamp[128];
+            snprintf(lbl_clamp, sizeof lbl_clamp, "p_%s_%d_initcs_clamp_%d",
+                     safe_fn, arity, ci);
+            J("    ifge %s\n", lbl_clamp);
+            JI("pop", "");
+            JI("iconst_0", "");
+            J("%s:\n", lbl_clamp);
+        }
         J("    istore %d\n", init_cs_local);
         /* Reset sub_cs_out to 0 */
         JI("iconst_0", "");
