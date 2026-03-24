@@ -723,6 +723,90 @@ static void pj_emit_runtime_helpers(void) {
     JI("invokevirtual", "java/io/PrintStream/print(Ljava/lang/String;)V");
     JI("return", "");
     J(".end method\n\n");
+
+    /* ------------------------------------------------------------------
+     * pj_term_to_list(Object term) -> Object[] list
+     * Implements =../2 (univ): atom -> [atom], compound -> [F|args]
+     * Returns a proper Prolog list as nested cons cells.
+     * ------------------------------------------------------------------ */
+    J(".method static pj_term_to_list(Ljava/lang/Object;)[Ljava/lang/Object;\n");
+    J("    .limit stack 8\n");
+    J("    .limit locals 5\n");
+    /* local 0 = term (deref'd Object[])
+     * local 1 = arity (I)
+     * local 2 = i (I) — loop counter (going backward)
+     * local 3 = list (current tail, Object[])
+     * local 4 = new cons cell */
+
+    /* deref term */
+    JI("aload_0", "");
+    J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("astore_0", "");
+
+    /* check tag */
+    JI("aload_0", "");
+    JI("iconst_0", ""); JI("aaload", "");  /* tag */
+    JI("astore_1", "");  /* reuse local 1 for tag temporarily */
+
+    /* start with nil */
+    JI("ldc", "\"[]\"");
+    J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+    JI("astore_3", "");  /* list = nil */
+
+    /* is it an atom? */
+    JI("aload_1", "");
+    JI("ldc", "\"atom\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "ttl_compound");
+
+    /* atom: build [name_atom] = cons(name, nil) */
+    JI("aload_0", "");
+    JI("iconst_1", ""); JI("aaload", "");  /* name string */
+    JI("checkcast", "java/lang/String");
+    J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+    /* cons = {"compound", ".", name_atom, nil} */
+    JI("bipush", "4"); JI("anewarray", "java/lang/Object");
+    JI("dup", ""); JI("iconst_0", ""); JI("ldc", "\"compound\""); JI("aastore", "");
+    JI("dup", ""); JI("iconst_1", ""); JI("ldc", "\".\""); JI("aastore", "");
+    JI("dup", ""); JI("iconst_2", "");
+    JI("aload_0", ""); JI("iconst_1", ""); JI("aaload", ""); JI("checkcast", "java/lang/String");
+    J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+    JI("aastore", "");
+    JI("dup", ""); JI("bipush", "3"); JI("aload_3", ""); JI("aastore", "");
+    JI("areturn", "");
+
+    J("ttl_compound:\n");
+    /* compound: arity = arraylength-2 */
+    JI("aload_0", ""); JI("arraylength", ""); JI("iconst_2", ""); JI("isub", "");
+    JI("istore_1", "");  /* local 1 = arity */
+    /* loop i from arity-1 down to 0: prepend args[i] to list */
+    JI("iload_1", ""); JI("iconst_1", ""); JI("isub", ""); JI("istore_2", "");
+    J("ttl_arg_loop:\n");
+    JI("iload_2", ""); JI("iflt", "ttl_prepend_functor");
+    /* cons = {"compound", ".", args[i], list} */
+    JI("bipush", "4"); JI("anewarray", "java/lang/Object");
+    JI("dup", ""); JI("iconst_0", ""); JI("ldc", "\"compound\""); JI("aastore", "");
+    JI("dup", ""); JI("iconst_1", ""); JI("ldc", "\".\""); JI("aastore", "");
+    JI("dup", ""); JI("iconst_2", "");
+    JI("aload_0", ""); JI("iload_2", ""); JI("iconst_2", ""); JI("iadd", ""); JI("aaload", ""); /* args[i] */
+    JI("aastore", "");
+    JI("dup", ""); JI("bipush", "3"); JI("aload_3", ""); JI("aastore", "");
+    JI("astore_3", "");  /* list = new cons */
+    JI("iinc", "2 -1");
+    JI("goto", "ttl_arg_loop");
+    J("ttl_prepend_functor:\n");
+    /* prepend functor atom */
+    JI("bipush", "4"); JI("anewarray", "java/lang/Object");
+    JI("dup", ""); JI("iconst_0", ""); JI("ldc", "\"compound\""); JI("aastore", "");
+    JI("dup", ""); JI("iconst_1", ""); JI("ldc", "\".\""); JI("aastore", "");
+    JI("dup", ""); JI("iconst_2", "");
+    JI("aload_0", ""); JI("iconst_1", ""); JI("aaload", ""); JI("checkcast", "java/lang/String");
+    J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+    JI("aastore", "");
+    JI("dup", ""); JI("bipush", "3"); JI("aload_3", ""); JI("aastore", "");
+    JI("areturn", "");
+    J(".end method\n\n");
 }
 
 /* -------------------------------------------------------------------------
@@ -1138,6 +1222,266 @@ static void pj_emit_goal(EXPR_t *goal, const char *lbl_γ, const char *lbl_ω,
             }
             J("%s:\n", cond_fail);
             JI("goto", lbl_ω);
+            return;
+        }
+        /* structural equality ==/2, \==/2 */
+        if ((strcmp(fn, "==") == 0 || strcmp(fn, "\\==") == 0) && nargs == 2) {
+            int uid = pj_fresh_label();
+            char ok[128]; snprintf(ok, sizeof ok, "seq%d_ok", uid);
+            /* deref both terms and compare via pj_term_str (structural print) */
+            pj_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+            J("    invokestatic %s/pj_term_str(Ljava/lang/Object;)Ljava/lang/String;\n", pj_classname);
+            pj_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+            J("    invokestatic %s/pj_term_str(Ljava/lang/Object;)Ljava/lang/String;\n", pj_classname);
+            JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+            if (strcmp(fn, "==") == 0) J("    ifeq %s\n", lbl_ω);
+            else                        J("    ifne %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+        /* \+/1, not/1 — negation as failure */
+        if ((strcmp(fn, "\\+") == 0 || strcmp(fn, "not") == 0) && nargs == 1) {
+            int uid = pj_fresh_label();
+            char inner_ok[128], inner_fail[128];
+            snprintf(inner_ok,   sizeof inner_ok,   "naf%d_ok",   uid);
+            snprintf(inner_fail, sizeof inner_fail, "naf%d_fail", uid);
+            pj_emit_goal(goal->children[0], inner_ok, inner_fail,
+                         trail_local, var_locals, n_vars, cut_cs_seal, cs_local_for_cut);
+            J("%s:\n", inner_ok);   JI("goto", lbl_ω);
+            J("%s:\n", inner_fail); JI("goto", lbl_γ);
+            return;
+        }
+        /* type tests: atom/1, integer/1, float/1, compound/1, var/1, nonvar/1, atomic/1, is_list/1 */
+        if (nargs == 1 &&
+            (strcmp(fn,"atom")==0 || strcmp(fn,"integer")==0 || strcmp(fn,"float")==0 ||
+             strcmp(fn,"compound")==0 || strcmp(fn,"var")==0 || strcmp(fn,"nonvar")==0 ||
+             strcmp(fn,"atomic")==0 || strcmp(fn,"is_list")==0)) {
+            int uid = pj_fresh_label();
+            char deref_lbl[128], tag_lbl[128];
+            snprintf(deref_lbl, sizeof deref_lbl, "tt%d_deref", uid);
+            snprintf(tag_lbl,   sizeof tag_lbl,   "tt%d_tag",   uid);
+            /* deref term, store in a temp — we'll check its tag string */
+            pj_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+            /* stack: deref'd term (Object) */
+            if (strcmp(fn, "var") == 0) {
+                /* var: term is null OR (tag=="var" && [1]==null) */
+                int uid2 = pj_fresh_label();
+                char vok[128], vfail[128];
+                snprintf(vok,   sizeof vok,   "var%d_ok",   uid2);
+                snprintf(vfail, sizeof vfail, "var%d_fail", uid2);
+                JI("dup", "");
+                J("    ifnull %s\n", vok);   /* null = unbound → succeed */
+                /* not null: check tag=="var" */
+                JI("checkcast", "[Ljava/lang/Object;");
+                JI("dup", ""); JI("iconst_0", ""); JI("aaload", "");
+                JI("ldc", "\"var\"");
+                JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+                J("    ifeq %s\n", vfail);   /* not var tag → fail */
+                /* tag=="var": check [1]==null (unbound) */
+                JI("iconst_1", ""); JI("aaload", "");
+                J("    ifnonnull %s\n", vfail); /* bound → fail */
+                JI("goto", lbl_γ);
+                J("%s:\n", vok);   JI("pop", ""); JI("goto", lbl_γ);
+                J("%s:\n", vfail); JI("pop", ""); JI("goto", lbl_ω);
+                return;
+            }
+            if (strcmp(fn, "nonvar") == 0) {
+                /* nonvar: not null AND not unbound var */
+                int uid2 = pj_fresh_label();
+                char nfail[128], nok[128];
+                snprintf(nfail, sizeof nfail, "nv%d_fail", uid2);
+                snprintf(nok,   sizeof nok,   "nv%d_ok",   uid2);
+                JI("dup", "");
+                J("    ifnull %s\n", nfail);  /* null = unbound → fail */
+                JI("checkcast", "[Ljava/lang/Object;");
+                JI("dup", ""); JI("iconst_0", ""); JI("aaload", "");
+                JI("ldc", "\"var\"");
+                JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+                J("    ifeq %s\n", nok);   /* not var tag → nonvar → succeed */
+                /* tag=="var": check if [1]!=null (bound ref = nonvar) */
+                JI("iconst_1", ""); JI("aaload", "");
+                J("    ifnonnull %s\n", nok); /* bound ref → succeed */
+                /* unbound var → fail */
+                JI("goto", lbl_ω);
+                J("%s:\n", nok);   JI("pop", ""); JI("goto", lbl_γ);
+                J("%s:\n", nfail); JI("pop", ""); JI("goto", lbl_ω);
+                return;
+            }
+            /* For remaining type tests: get tag string */
+            JI("ifnull", lbl_ω);  /* null = unbound var → fail for all remaining */
+            pj_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+            JI("checkcast", "[Ljava/lang/Object;");
+            JI("iconst_0", ""); JI("aaload", "");  /* tag string on stack */
+            if (strcmp(fn, "atom") == 0) {
+                JI("ldc", "\"atom\"");
+                JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+                J("    ifeq %s\n", lbl_ω);
+            } else if (strcmp(fn, "integer") == 0) {
+                JI("ldc", "\"int\"");
+                JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+                J("    ifeq %s\n", lbl_ω);
+            } else if (strcmp(fn, "float") == 0) {
+                JI("ldc", "\"float\"");
+                JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+                J("    ifeq %s\n", lbl_ω);
+            } else if (strcmp(fn, "compound") == 0) {
+                JI("ldc", "\"compound\"");
+                JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+                J("    ifeq %s\n", lbl_ω);
+            } else if (strcmp(fn, "atomic") == 0) {
+                /* atomic: atom or integer or float */
+                int uid2 = pj_fresh_label();
+                char a_ok[128]; snprintf(a_ok, sizeof a_ok, "atomic%d_ok", uid2);
+                JI("dup", ""); JI("ldc", "\"atom\"");
+                JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+                J("    ifne %s\n", a_ok);
+                JI("dup", ""); JI("ldc", "\"int\"");
+                JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+                J("    ifne %s\n", a_ok);
+                JI("ldc", "\"float\"");
+                JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+                J("    ifeq %s\n", lbl_ω);
+                J("%s:\n", a_ok);
+            } else if (strcmp(fn, "is_list") == 0) {
+                /* is_list: atom "[]" or compound with functor "." and arity 2 */
+                /* We already have the tag on stack; just check it's [] atom or '.' compound */
+                int uid2 = pj_fresh_label();
+                char il_ok[128]; snprintf(il_ok, sizeof il_ok, "islist%d_ok", uid2);
+                JI("pop", "");  /* discard tag — re-emit term */
+                pj_emit_term(goal->children[0], var_locals, n_vars);
+                J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+                J("    invokestatic %s/pj_term_str(Ljava/lang/Object;)Ljava/lang/String;\n", pj_classname);
+                JI("ldc", "\"[]\"");
+                JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+                J("    ifne %s\n", lbl_γ);
+                /* not [] — check if starts with '[' (is a proper list string) */
+                pj_emit_term(goal->children[0], var_locals, n_vars);
+                J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+                J("    invokestatic %s/pj_term_str(Ljava/lang/Object;)Ljava/lang/String;\n", pj_classname);
+                JI("iconst_0", "");
+                JI("invokevirtual", "java/lang/String/charAt(I)C");
+                JI("bipush", "91");  /* '[' */
+                J("    if_icmpne %s\n", lbl_ω);
+                /* also confirm no '|' (proper list only) */
+                pj_emit_term(goal->children[0], var_locals, n_vars);
+                J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+                J("    invokestatic %s/pj_term_str(Ljava/lang/Object;)Ljava/lang/String;\n", pj_classname);
+                JI("ldc", "\"|\"");
+                JI("invokevirtual", "java/lang/String/contains(Ljava/lang/CharSequence;)Z");
+                J("    ifne %s\n", lbl_ω);
+            }
+            JI("goto", lbl_γ);
+            return;
+        }
+        /* functor/3: functor(Term, Name, Arity)
+         * Deref Term; if atom → Name=functor, Arity=0; if compound → Name=functor, Arity=arity.
+         * Unify Name and Arity with children[1] and children[2]. */
+        if (strcmp(fn, "functor") == 0 && nargs == 3) {
+            int uid = pj_fresh_label();
+            char is_atom[128], is_compound[128], done[128], is_null[128];
+            snprintf(is_atom,     sizeof is_atom,     "funct%d_atom",     uid);
+            snprintf(is_compound, sizeof is_compound, "funct%d_compound", uid);
+            snprintf(done,        sizeof done,        "funct%d_done",     uid);
+            snprintf(is_null,     sizeof is_null,     "funct%d_null",     uid);
+            /* deref once, check tag — all paths start with empty stack */
+            pj_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+            JI("ifnull", lbl_ω);  /* consumes the ref; stack empty */
+            /* re-emit to check tag */
+            pj_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+            JI("checkcast", "[Ljava/lang/Object;");
+            JI("iconst_0", ""); JI("aaload", "");  /* tag on stack */
+            JI("ldc", "\"atom\"");
+            JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+            J("    ifne %s\n", is_atom);   /* consumes boolean; stack empty */
+            pj_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+            JI("checkcast", "[Ljava/lang/Object;");
+            JI("iconst_0", ""); JI("aaload", "");
+            JI("ldc", "\"compound\"");
+            JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+            J("    ifne %s\n", is_compound);
+            JI("goto", lbl_ω);
+
+            /* atom path: stack empty at label */
+            J("%s:\n", is_atom);
+            pj_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+            JI("checkcast", "[Ljava/lang/Object;");
+            JI("iconst_1", ""); JI("aaload", "");
+            JI("checkcast", "java/lang/String");
+            J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+            pj_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("lconst_0", "");
+            J("    invokestatic %s/pj_term_int(J)[Ljava/lang/Object;\n", pj_classname);
+            pj_emit_term(goal->children[2], var_locals, n_vars);
+            J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+            J("    ifeq %s\n", lbl_ω);
+            J("    goto %s\n", done);
+
+            /* compound path: stack empty at label */
+            J("%s:\n", is_compound);
+            pj_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+            JI("checkcast", "[Ljava/lang/Object;");
+            JI("iconst_1", ""); JI("aaload", "");
+            JI("checkcast", "java/lang/String");
+            J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+            pj_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+            J("    ifeq %s\n", lbl_ω);
+            pj_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+            JI("checkcast", "[Ljava/lang/Object;");
+            JI("arraylength", ""); JI("iconst_2", ""); JI("isub", ""); JI("i2l", "");
+            J("    invokestatic %s/pj_term_int(J)[Ljava/lang/Object;\n", pj_classname);
+            pj_emit_term(goal->children[2], var_locals, n_vars);
+            J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+            J("    ifeq %s\n", lbl_ω);
+            J("%s:\n", done);
+            JI("goto", lbl_γ);
+            return;
+        }
+        /* arg/3: arg(N, Term, Arg) — 1-based argument access */
+        if (strcmp(fn, "arg") == 0 && nargs == 3) {
+            /* check Term is non-null compound first */
+            pj_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+            JI("ifnull", lbl_ω);
+            /* load compound array, index into args: array[N+1] */
+            pj_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+            JI("checkcast", "[Ljava/lang/Object;");
+            pj_emit_arith(goal->children[0], var_locals, n_vars);
+            JI("l2i", ""); JI("iconst_1", ""); JI("iadd", "");
+            JI("aaload", "");  /* args[N-1+2] = array[N+1] */
+            pj_emit_term(goal->children[2], var_locals, n_vars);
+            J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+        /* =../2: Term =.. List (univ)
+         * foo(a,b) =.. [foo,a,b];  atom =.. [atom]
+         * Delegate entirely to pj_term_to_list helper. */
+        if (strcmp(fn, "=..") == 0 && nargs == 2) {
+            pj_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+            J("    ifnull %s\n", lbl_ω);
+            pj_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+            J("    invokestatic %s/pj_term_to_list(Ljava/lang/Object;)[Ljava/lang/Object;\n", pj_classname);
+            pj_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
             return;
         }
         /* user-defined predicate call — deterministic single-solution call.
