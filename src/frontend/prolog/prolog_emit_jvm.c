@@ -1167,19 +1167,22 @@ static void pj_emit_choice(EXPR_t *choice) {
         base[ci + 1] = base[ci] + 1;
         (void)has_ucall; /* stride is 1 regardless; sub_cs fills the gap */
     }
-    /* ω_base: value >= which cs is exhausted (only matters if last clause is fact) */
+    /* base[nclauses]: one-past-end sentinel for the dispatch omega guard */
+    base[nclauses] = base[nclauses - 1] + 1;
+    /* last_has_ucall: does the last clause have any body user-calls?
+     * If yes, the cs range for that clause is open-ended (sub_cs from inner
+     * calls can push cs beyond base[nclauses]), so we CANNOT add an omega guard.
+     * If no (pure fact/builtin), cs >= base[nclauses] means exhausted → ω safe. */
+    int last_has_ucall = 0;
     {
         EXPR_t *last = choice->children[nclauses - 1];
         int nv_args_last = last ? (int)last->dval : 0;
         int nb_last = last ? (int)last->nchildren - nv_args_last : 0;
         if (nb_last < 0) nb_last = 0;
-        int last_has_ucall = 0;
         for (int bi = 0; bi < nb_last && !last_has_ucall; bi++) {
             EXPR_t *g = last->children[nv_args_last + bi];
             if (g && pj_is_user_call(g)) last_has_ucall = 1;
         }
-        /* ω_base only needed for the dispatch guard on last fact clause */
-        (void)last_has_ucall;
     }
 
     /* locals layout:
@@ -1203,7 +1206,16 @@ static void pj_emit_choice(EXPR_t *choice) {
 
     /* dispatch: linear scan from last clause down.
      * cs >= base[ci] → enter clause ci.
-     * Mirrors ASM: cmp eax, base[ci]; jge pl_name_cN_α */
+     * Mirrors ASM: cmp eax, base[ci]; jge pl_name_cN_α
+     *
+     * GUARD: Only emit omega guard when last clause is a pure fact (no ucalls).
+     * If last clause has body user-calls, cs range is open-ended because sub_cs
+     * from recursive calls can push cs beyond base[nclauses]; no guard needed
+     * as the sub_cs path correctly re-enters clause N-1 for continuation. */
+    if (!last_has_ucall) {
+        J("    iload %d ; cs >= %d (all clauses exhausted)? → omega\n    ldc %d\n    if_icmpge p_%s_%d_omega\n",
+          cs_local, base[nclauses], base[nclauses], safe_fn, arity);
+    }
     J("    iload %d\n", cs_local);
     J("    istore %d\n", init_cs_local);   /* will be refined per clause below */
     /* Linear scan from last to first */
