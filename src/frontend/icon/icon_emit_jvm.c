@@ -200,6 +200,14 @@ static int ij_jvm_locals_count(void) {
     return 2 * ij_nlocals + 2;   /* +2 for scratch */
 }
 
+/* Current procedure name — used to namespace per-proc static var fields */
+static char ij_cur_proc[64] = "";
+
+/* Static field name for a named local/param in current proc */
+static void ij_var_field(const char *varname, char *out, size_t outsz) {
+    snprintf(out, outsz, "icn_pv_%s_%s", ij_cur_proc, varname);
+}
+
 /* =========================================================================
  * Static fields emitted at class level
  * ======================================================================= */
@@ -337,7 +345,10 @@ static void ij_emit_var(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
     JC("VAR"); JL(a);
     int slot = ij_locals_find(n->val.sval);
     if (slot >= 0) {
-        J("    lload %d\n", slot_jvm(slot));
+        /* Named local/param: use per-proc static field (suspend-safe) */
+        char fld[128]; ij_var_field(n->val.sval, fld, sizeof fld);
+        ij_declare_static(fld);
+        ij_get_long(fld);
     } else {
         char gname[80]; snprintf(gname, sizeof gname, "icn_gvar_%s", n->val.sval);
         ij_declare_static(gname);
@@ -376,8 +387,10 @@ static void ij_emit_assign(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
     if (lhs && lhs->kind == ICN_VAR) {
         int slot = ij_locals_find(lhs->val.sval);
         if (slot >= 0) {
-            /* Value on JVM stack (long), store into local slot */
-            J("    lstore %d\n", slot_jvm(slot));
+            /* Named local/param: store into per-proc static field */
+            char fld[128]; ij_var_field(lhs->val.sval, fld, sizeof fld);
+            ij_declare_static(fld);
+            ij_put_long(fld);
         } else {
             char gname[80]; snprintf(gname, sizeof gname, "icn_gvar_%s", lhs->val.sval);
             ij_declare_static(gname);
@@ -388,11 +401,11 @@ static void ij_emit_assign(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
         JI("pop2", "");
     }
     /* Push back value for expression result (Icon := returns the value) */
-    /* Reload and push */
     if (lhs && lhs->kind == ICN_VAR) {
         int slot = ij_locals_find(lhs->val.sval);
         if (slot >= 0) {
-            J("    lload %d\n", slot_jvm(slot));
+            char fld[128]; ij_var_field(lhs->val.sval, fld, sizeof fld);
+            ij_get_long(fld);
         } else {
             char gname[80]; snprintf(gname, sizeof gname, "icn_gvar_%s", lhs->val.sval);
             ij_get_long(gname);
@@ -1081,6 +1094,7 @@ static void ij_emit_proc(IcnNode *proc, FILE *out_target) {
 
     /* Setup local environment */
     ij_locals_reset();
+    strncpy(ij_cur_proc, pname, 63);
     char proc_done[64];
     if (is_main) snprintf(proc_done, sizeof proc_done, "icn_main_done");
     else         snprintf(proc_done, sizeof proc_done, "icn_%s_done", pname);
@@ -1156,6 +1170,9 @@ static void ij_emit_proc(IcnNode *proc, FILE *out_target) {
     /* proc_done: failure exit (for non-main); icn_main_done for main */
     JL(proc_done);
     if (!is_main) {
+        /* Clear suspend state so subsequent calls to this proc start fresh */
+        JI("iconst_0", ""); ij_put_byte("icn_suspended");
+        JI("iconst_0", ""); ij_put_int_field("icn_suspend_id");
         ij_set_fail();
         JI("return","");
         /* proc_ret: success return */
@@ -1182,11 +1199,17 @@ static void ij_emit_proc(IcnNode *proc, FILE *out_target) {
     J("    .limit locals %d\n", jvm_locals);
 
     /* For non-main procs, load params from static arg fields */
-    if (!is_main && np > 0) {
+    /* NOTE: for generators, param load happens at fresh_entry (after zero-init).
+     * For non-generators, load here since there is no zero-init block. */
+    if (!is_main && np > 0 && !(is_gen && total_susp > 0)) {
         for (int i = 0; i < np; i++) {
+            IcnNode *pv = proc->children[1 + i];
+            const char *pname2 = (pv && pv->kind == ICN_VAR) ? pv->val.sval : "";
             char argfield[64]; snprintf(argfield, sizeof argfield, "icn_arg_%d", i);
+            char fld[128]; ij_var_field(pname2, fld, sizeof fld);
+            ij_declare_static(fld);
             ij_get_long(argfield);
-            J("    lstore %d\n", slot_jvm(i));
+            ij_put_long(fld);
         }
     }
 
@@ -1194,12 +1217,8 @@ static void ij_emit_proc(IcnNode *proc, FILE *out_target) {
     if (is_gen && total_susp > 0) {
         char beta_entry[64]; snprintf(beta_entry, sizeof beta_entry, "icn_%s_beta", pname);
         char fresh_entry[64]; snprintf(fresh_entry, sizeof fresh_entry, "icn_%s_fresh", pname);
-        /* Fix IJ-6 Bug1: initialise every long slot to 0L BEFORE the suspend_id
-         * dispatch branch so the JVM verifier sees a consistent slot type at every
-         * control-flow join point (icn_upto_beta / tableswitch targets).
-         * Without this the verifier reports "Register pair 2/3 contains wrong type"
-         * because the fall-through path (suspend_id == 0) has untyped slots while
-         * resume paths have them typed as long. */
+        /* Zero-init all JVM local slots so verifier sees consistent types at all
+         * control-flow join points (fresh path + all tableswitch resume targets). */
         for (int s = 0; s < ij_nlocals; s++) {
             JI("lconst_0", "");
             J("    lstore %d\n", slot_jvm(s));
@@ -1207,6 +1226,20 @@ static void ij_emit_proc(IcnNode *proc, FILE *out_target) {
         J("    getstatic %s/icn_suspend_id I\n", ij_classname);
         J("    ifne %s\n", beta_entry);
         JL(fresh_entry);
+        /* Fresh entry: load params from arg fields into per-proc static var fields.
+         * This must happen AFTER zero-init (so zero-init doesn't clobber them)
+         * and only on fresh calls (not resume — param values persist in static fields). */
+        if (np > 0) {
+            for (int i = 0; i < np; i++) {
+                IcnNode *pv2 = proc->children[1 + i];
+                const char *pvname = (pv2 && pv2->kind == ICN_VAR) ? pv2->val.sval : "";
+                char argfield[64]; snprintf(argfield, sizeof argfield, "icn_arg_%d", i);
+                char fld[128]; ij_var_field(pvname, fld, sizeof fld);
+                ij_declare_static(fld);
+                ij_get_long(argfield);
+                ij_put_long(fld);
+            }
+        }
     }
     /* Entry: jump to first statement */
     if (nstmts > 0 && alphas[0][0]) JGoto(alphas[0]);
