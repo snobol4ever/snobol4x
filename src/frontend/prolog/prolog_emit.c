@@ -818,7 +818,6 @@ static void emit_choice(EXPR_t *choice) {
         snprintf(c_γ[ci], LBUF, "pred_%d_γ%d", pl_uid_ctr + 1, ci);
     }
 
-    PL_C("    _mark = trail_mark(&_trail);\n");
     PL_C("    case 0:;\n");
 
     for (int ci = 0; ci < nclauses; ci++) {
