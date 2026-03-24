@@ -640,8 +640,33 @@ static void emit_body(EXPR_t **goals, int ngoals, int base_uid,
             PL_C("    _cs%d = _cr%d + 1;\n", cmu, cmu);
 
             if (i + 1 < ngoals) {
-                emit_body(goals + i + 1, ngoals - i - 1,
-                          pl_next_uid(), γ, retry_lbl);
+                /* Find whether suffix contains a cut.
+                 * Goals before the cut backtrack into this call (ω=retry_lbl).
+                 * Goals after the cut have committed — they must fail to the
+                 * outer ω, not back into the retry loop (Proebsting: cut seals β). */
+                int cut_pos = -1;
+                for (int k = i + 1; k < ngoals; k++) {
+                    if (goals[k] && goals[k]->kind == E_CUT) { cut_pos = k; break; }
+                }
+                if (cut_pos < 0) {
+                    /* No cut in suffix — normal Proebsting wiring */
+                    emit_body(goals + i + 1, ngoals - i - 1,
+                              pl_next_uid(), γ, retry_lbl);
+                } else {
+                    /* Emit goals up to and including cut with ω=retry_lbl,
+                     * then goals after cut with ω=outer ω (cut has committed). */
+                    int pre_len  = cut_pos - i;          /* includes the cut itself */
+                    int post_len = ngoals - cut_pos - 1; /* goals after cut */
+                    char post_γ[LBUF];
+                    snprintf(post_γ, LBUF, "g%d_γ", pl_next_uid());
+                    emit_body(goals + i + 1, pre_len,
+                              pl_next_uid(), post_len > 0 ? post_γ : γ, retry_lbl);
+                    if (post_len > 0) {
+                        PL_C("%s:\n", post_γ);
+                        emit_body(goals + cut_pos + 1, post_len,
+                                  pl_next_uid(), γ, ω);
+                    }
+                }
             } else {
                 PG(γ);
             }
