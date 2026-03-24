@@ -1,0 +1,4 @@
+# rung06 t04: upto() generates positions up to chars in cset
+procedure main();
+  every ("hello world" ? write(upto(' ')));
+end

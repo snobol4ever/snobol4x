@@ -1,0 +1,6 @@
+# rung06 t05: cset stored in variable, used in any()
+procedure main();
+  local vowels;
+  vowels := 'aeiou';
+  "icon" ? write(any(vowels));
+end

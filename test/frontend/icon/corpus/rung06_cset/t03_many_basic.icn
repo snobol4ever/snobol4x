@@ -1,0 +1,4 @@
+# rung06 t03: many() spans chars in cset
+procedure main();
+  "aaabcd" ? write(many('abc'));
+end

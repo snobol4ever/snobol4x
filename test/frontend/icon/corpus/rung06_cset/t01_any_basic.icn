@@ -1,0 +1,4 @@
+# rung06 t01: any() matches single char in cset; returns new pos (2)
+procedure main();
+  "apple" ? write(any('aeiou'));
+end
