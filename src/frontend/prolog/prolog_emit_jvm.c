@@ -1452,7 +1452,8 @@ static void pj_emit_choice(EXPR_t *choice) {
         for (int ai = 0; ai < n_args && ai < clause->nchildren; ai++) {
             EXPR_t *ht = clause->children[ai];
             if (ht && ht->kind == E_VART && ht->ival >= 0 && ht->ival < n_vars)
-                jvm_arg_for_slot[ht->ival] = ai;
+                if (jvm_arg_for_slot[ht->ival] < 0)   /* first occurrence wins */
+                    jvm_arg_for_slot[ht->ival] = ai;
         }
         for (int vi = 0; vi < n_vars; vi++) {
             if (jvm_arg_for_slot[vi] >= 0) {
