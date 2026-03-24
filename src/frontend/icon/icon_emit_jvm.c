@@ -359,6 +359,16 @@ static void ij_emit_var(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
     lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
     strncpy(oα,a,63); strncpy(oβ,b,63);
     JC("VAR"); JL(a);
+
+    /* &subject keyword — push current scan subject (String) */
+    if (strcmp(n->val.sval, "&subject") == 0) {
+        ij_declare_static_str("icn_subject");
+        ij_get_str_field("icn_subject");
+        JGoto(ports.γ);
+        JL(b); JGoto(ports.ω);
+        return;
+    }
+
     int slot = ij_locals_find(n->val.sval);
     if (slot >= 0) {
         /* Named local/param: use per-proc static field (suspend-safe) */
@@ -1080,7 +1090,14 @@ static int ij_expr_is_string(IcnNode *n) {
             if (n->nchildren >= 2) return ij_expr_is_string(n->children[1]);
             return 0;
         }
+        case ICN_SCAN: {
+            /* Scan result type = body result type */
+            if (n->nchildren >= 2) return ij_expr_is_string(n->children[1]);
+            return 0;
+        }
         case ICN_VAR: {
+            /* &subject keyword is always a String */
+            if (strcmp(n->val.sval, "&subject") == 0) return 1;
             /* Check if var's static field is typed 'A' (String) */
             char fld[128]; ij_var_field(n->val.sval, fld, sizeof fld);
             for (int i = 0; i < ij_nstatics; i++)
@@ -1152,6 +1169,134 @@ static void ij_emit_concat(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
 }
 
 /* =========================================================================
+ * ICN_SCAN — E ? body
+ *
+ * Byrd-box wiring (four-port, per JCON ir_a_Scan / JCON-ANALYSIS §E ? body):
+ *
+ *   α  → expr.α
+ *   expr.γ (new subject on stack as String):
+ *          save old icn_subject → old_subject_N
+ *          save old icn_pos    → old_pos_N
+ *          putstatic icn_subject  (consumes new String from stack)
+ *          iconst_0 → putstatic icn_pos
+ *          → body.α
+ *   expr.ω → ports.ω  (expr failed → whole scan fails)
+ *   body.γ → restore old_subject / old_pos → ports.γ
+ *   body.ω → restore old_subject / old_pos → expr.β
+ *             (expr is one-shot string → expr.β → ports.ω)
+ *   β      → restore old_subject / old_pos → body.β
+ *
+ * Save slots: per-scan static fields old_subject_N (String) and old_pos_N (I).
+ * ======================================================================= */
+static void ij_emit_scan(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
+    int id = ij_new_id(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+
+    /* Per-scan save-restore static fields */
+    char old_subj[64], old_pos[64];
+    snprintf(old_subj, sizeof old_subj, "icn_scan_oldsubj_%d", id);
+    snprintf(old_pos,  sizeof old_pos,  "icn_scan_oldpos_%d",  id);
+    ij_declare_static_str(old_subj);
+    ij_declare_static_int(old_pos);
+
+    /* Ensure global subject/pos fields are declared */
+    ij_declare_static_str("icn_subject");
+    ij_declare_static_int("icn_pos");
+
+    /* Child nodes */
+    IcnNode *expr_node = (n->nchildren >= 1) ? n->children[0] : NULL;
+    IcnNode *body_node = (n->nchildren >= 2) ? n->children[1] : NULL;
+
+    /* Label names for intermediate wiring */
+    char setup[64], body_fail_restore[64], body_ok_restore[64], beta_restore[64];
+    snprintf(setup,             sizeof setup,             "icn_%d_scan_setup",    id);
+    snprintf(body_fail_restore, sizeof body_fail_restore, "icn_%d_scan_bfail",    id);
+    snprintf(body_ok_restore,   sizeof body_ok_restore,   "icn_%d_scan_bok",      id);
+    snprintf(beta_restore,      sizeof beta_restore,       "icn_%d_scan_beta",     id);
+
+    /* Wire expr: success → setup, fail → ports.ω */
+    IjPorts ep;
+    strncpy(ep.γ, setup,    63);
+    strncpy(ep.ω, ports.ω,  63);
+    char ea[64], eb[64];
+    ij_emit_expr(expr_node, ep, ea, eb);
+
+    /* Wire body: success → body_ok_restore, fail → body_fail_restore */
+    IjPorts bp;
+    strncpy(bp.γ, body_ok_restore,   63);
+    strncpy(bp.ω, body_fail_restore,  63);
+    char ba[64], bb[64];
+    ij_emit_expr(body_node, bp, ba, bb);
+
+    /* α → expr.α */
+    JC("SCAN"); JL(a); JGoto(ea);
+
+    /* β → restore → body.β */
+    JL(b); JGoto(beta_restore);
+
+    /* setup: expr.γ — new subject String is on JVM stack
+     *   save old subject/pos, install new subject, reset pos, → body.α */
+    JL(setup);
+    JC("SCAN save+install");
+    /* Stack has new subject String — save it in a temp by storing first,
+     * then saving old subject, restoring new.  Use dup to keep on stack. */
+    /* Strategy: dup the new subject, put into icn_subject, then save old
+     * subject was already overwritten — so: save old first, then install.
+     * But old is in icn_subject already and new is on stack.  Use a temp
+     * approach: swap via old_subj slot. */
+    /* Correct sequence:
+     *   [stack: new_str]
+     *   getstatic icn_subject → save to old_subj  (pops nothing, pushes old)
+     *   putstatic old_subj                         (consumes old)
+     *   getstatic icn_pos → save to old_pos
+     *   putstatic old_pos
+     *   [stack: new_str still there from expr.γ]
+     *   putstatic icn_subject                      (consumes new_str)
+     *   iconst_0 → putstatic icn_pos
+     * PROBLEM: getstatic doesn't consume the new_str — but new_str is
+     * already on the stack when we arrive here.  We must save icn_subject
+     * BEFORE consuming new_str.  Use dup: */
+    /* Actually at expr.γ the String ref is on the JVM operand stack.
+     * We do NOT want to consume it yet.  So: */
+    /*   dup                        ; [new new]
+     *   → we don't need dup; instead: save old, then install new.
+     * The new_str is on stack.  getstatic pushes old on top:
+     *   [new old_subj]
+     * That's 2 items on stack.  We need to putstatic old_subj first,
+     * but that pops old_subj leaving [new].  Perfect: */
+    ij_get_str_field("icn_subject");         /* push old subject */
+    ij_put_str_field(old_subj);              /* save old subject; stack: [new_str] */
+    ij_get_int_field("icn_pos");             /* push old pos */
+    ij_put_int_field(old_pos);               /* save old pos;    stack: [new_str] */
+    ij_put_str_field("icn_subject");         /* install new subject; stack: [] */
+    J("    iconst_0\n");
+    ij_put_int_field("icn_pos");             /* reset pos to 0 */
+    JGoto(ba);                               /* → body.α */
+
+    /* body.γ — body succeeded: restore subject/pos, → ports.γ */
+    JL(body_ok_restore);
+    JC("SCAN restore (body ok)");
+    ij_get_str_field(old_subj); ij_put_str_field("icn_subject");
+    ij_get_int_field(old_pos);  ij_put_int_field("icn_pos");
+    JGoto(ports.γ);
+
+    /* body.ω — body failed: restore subject/pos, → expr.β (retry = fail) */
+    JL(body_fail_restore);
+    JC("SCAN restore (body fail)");
+    ij_get_str_field(old_subj); ij_put_str_field("icn_subject");
+    ij_get_int_field(old_pos);  ij_put_int_field("icn_pos");
+    JGoto(eb);   /* expr.β — one-shot string → expr.ω → ports.ω */
+
+    /* β: restore subject/pos, → body.β */
+    JL(beta_restore);
+    JC("SCAN restore (outer beta)");
+    ij_get_str_field(old_subj); ij_put_str_field("icn_subject");
+    ij_get_int_field(old_pos);  ij_put_int_field("icn_pos");
+    JGoto(bb);   /* body.β */
+}
+
+/* =========================================================================
  * Dispatch
  * ======================================================================= */
 static void ij_emit_expr(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
@@ -1195,6 +1340,7 @@ static void ij_emit_expr(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
         case ICN_EVERY:   ij_emit_every    (n,ports,oα,oβ); break;
         case ICN_WHILE:   ij_emit_while    (n,ports,oα,oβ); break;
         case ICN_CALL:    ij_emit_call     (n,ports,oα,oβ); break;
+        case ICN_SCAN:    ij_emit_scan     (n,ports,oα,oβ); break;
         default: {
             int id = ij_new_id(); char a2[64], b2[64];
             lbl_α(id,a2,sizeof a2); lbl_β(id,b2,sizeof b2);
@@ -1466,6 +1612,22 @@ void ij_emit_file(IcnNode **nodes, int count, FILE *out, const char *filename) {
             J(".field public static %s %c\n", ij_statics[i], type);
     }
     J("\n");
+
+    /* Static initializer: set icn_subject = "" (not null), icn_pos = 0
+     * Only emit if scan was used (icn_subject will be in statics). */
+    int has_scan_fields = 0;
+    for (int i = 0; i < ij_nstatics; i++)
+        if (!strcmp(ij_statics[i], "icn_subject")) { has_scan_fields = 1; break; }
+    if (has_scan_fields) {
+        J(".method static <clinit>()V\n");
+        J("    .limit stack 2\n    .limit locals 0\n");
+        J("    ldc \"\"\n");
+        J("    putstatic %s/icn_subject Ljava/lang/String;\n", ij_classname);
+        J("    iconst_0\n");
+        J("    putstatic %s/icn_pos I\n", ij_classname);
+        J("    return\n");
+        J(".end method\n\n");
+    }
 
     /* main method: calls icn_main */
     J(".method public static main([Ljava/lang/String;)V\n");
