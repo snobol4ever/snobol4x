@@ -1,19 +1,19 @@
 *---------------------------------------------------------------------------------------------------
-* match(table, outvar) — table membership test using global tx
-* Succeeds if tx IS a key with non-null value in table; FRETURN otherwise.
-* Sets local outvar = table[tx] (side-effect to caller requires indirect name passing).
-* Used in beauty.sno as: tx $ *match(Functions, TxInList)
+* match(subject, pattern) — match pattern against subject during pattern matching
+* Succeeds (NRETURN) if pattern matches subject; FRETURN otherwise.
+* Usage: tx $ *match(Functions, TxInList)
+*   where Functions is a space-separated word list string and
+*   TxInList = (POS(0) | ' ') *upr(tx) (' ' | RPOS(0)) tests membership.
 *---------------------------------------------------------------------------------------------------
-               DEFINE('match(table,outvar)')                                        :(match_end)
-match          outvar         =   table[tx]
-               DIFFER(outvar)                                                       :S(RETURN)
-               :(FRETURN)
+               DEFINE('match(subject,pattern)')                                     :(match_end)
+match          match          =  .dummy
+               subject        pattern                                                :S(NRETURN)F(FRETURN)
 match_end
 *---------------------------------------------------------------------------------------------------
-* notmatch(table, outvar) — table non-membership test using global tx
-* Succeeds if tx is NOT a key in table (or has null value); FRETURN otherwise.
+* notmatch(subject, pattern) — non-membership test
+* Succeeds (NRETURN) if pattern does NOT match subject; FRETURN otherwise.
 *---------------------------------------------------------------------------------------------------
-               DEFINE('notmatch(table,outvar)')                                     :(notmatch_end)
-notmatch       IDENT(table[tx])                                                     :S(RETURN)
-               :(FRETURN)
+               DEFINE('notmatch(subject,pattern)')                                  :(notmatch_end)
+notmatch       notmatch       =  .dummy
+               subject        pattern                                                :S(FRETURN)F(NRETURN)
 notmatch_end
