@@ -3936,16 +3936,19 @@ static int emit_expr(EXPR_t *e, int rbp_off) {
 
     case E_STAR: {
         /* *VAR — deferred/indirect pattern reference in value context.
-         * Semantics: fetch the value stored IN VAR (a DT_P pattern or string).
-         * NOT a double-dereference — just stmt_get(VAR).
-         * B-280: M-BEAUTIFY-BOOTSTRAP — "Stmt = *Label" was using stmt_get_indirect,
-         * which reads the variable *named by* Label's value (wrong double-deref). */
+         * B-287: M-BUG-BOOTSTRAP-PARSE — *VAR in value context (e.g. ARBNO(*Command))
+         * must emit pat_ref(name) to create an XDSAR deferred-lookup node, NOT
+         * stmt_get(name) which snapshots the variable at assignment time.
+         * When "Parse = nPush() ARBNO(*Command) ..." runs, Command may not yet be
+         * assigned. pat_ref() defers the lookup to match time, when Command is valid.
+         * The XDSAR engine node (snobol4_pattern.c:XDSAR) resolves the name via
+         * NV_GET_fn at every match, giving correct indirect semantics. */
         EXPR_t *operand = e->children[0];
         const char *varname = (operand && operand->sval) ? operand->sval : "";
         const char *varlab  = str_intern(varname);
         if (*varname) {
             A("    lea     rdi, [rel %s]\n", varlab);
-            A("    call    stmt_get\n");
+            A("    call    pat_ref\n");
         } else {
             A("    mov     eax, 1\n");   /* DT_S */
             A("    xor     edx, edx\n");
@@ -4419,6 +4422,7 @@ static void emit_program(Program *prog) {
     A("    extern  stmt_aref2, stmt_aset2\n");
     A("    extern  comm_stno\n");
     A("    extern  blk_alloc, blk_free, memcpy  ; per-invocation DATA block runtime\n");
+    A("    extern  pat_ref  ; B-287: deferred *VAR pattern ref (XDSAR)\n");
     A("    global  cursor, subject_data, subject_len_val\n");
     A("\n");
     /* subject_data/subject_len_val/cursor: defined here, exported for stmt_rt.c */
