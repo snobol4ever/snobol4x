@@ -1,0 +1,8 @@
+PASS: 1 nPush=PATTERN
+PASS: 2 nInc=PATTERN
+PASS: 3 nPop=PATTERN
+PASS: 4 nPush match; nTop=0
+PASS: 5 nInc match; nTop=1
+PASS: 6 nInc x2; nTop=2
+PASS: 7 nested nPush; nTop=0
+PASS: 8 nTop INTEGER

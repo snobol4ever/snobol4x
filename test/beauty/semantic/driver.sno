@@ -1,0 +1,64 @@
+*  driver.sno — test driver for semantic subsystem
+*  Oracle: snobol4 -f -P256k -Idemo/inc driver.sno
+
+-INCLUDE 'global.sno'
+-INCLUDE 'counter.sno'
+-INCLUDE 'semantic.sno'
+
+        &STLIMIT = 1000000
+        InitCounter()
+
+*  1: nPush() returns PATTERN
+        IDENT(DATATYPE(nPush()), 'PATTERN')            :S(P1)F(F1)
+P1      OUTPUT = 'PASS: 1 nPush=PATTERN'              :(T1)
+F1      OUTPUT = 'FAIL: 1'
+T1
+
+*  2: nInc() returns PATTERN
+        IDENT(DATATYPE(nInc()), 'PATTERN')             :S(P2)F(F2)
+P2      OUTPUT = 'PASS: 2 nInc=PATTERN'               :(T2)
+F2      OUTPUT = 'FAIL: 2'
+T2
+
+*  3: nPop() returns PATTERN
+        IDENT(DATATYPE(nPop()), 'PATTERN')             :S(P3)F(F3)
+P3      OUTPUT = 'PASS: 3 nPop=PATTERN'               :(T3)
+F3      OUTPUT = 'FAIL: 3'
+T3
+
+*  4: match nPush, nTop=0
+        '' nPush()                                     :F(F4)
+        EQ(nTop(), 0)                                  :S(P4)F(F4)
+P4      OUTPUT = 'PASS: 4 nPush match; nTop=0'        :(T4)
+F4      OUTPUT = 'FAIL: 4 nTop=' nTop()
+T4
+
+*  5: match nInc, nTop=1
+        '' nInc()                                      :F(F5)
+        EQ(nTop(), 1)                                  :S(P5)F(F5)
+P5      OUTPUT = 'PASS: 5 nInc match; nTop=1'         :(T5)
+F5      OUTPUT = 'FAIL: 5 nTop=' nTop()
+T5
+
+*  6: match nInc again, nTop=2
+        '' nInc()                                      :F(F6)
+        EQ(nTop(), 2)                                  :S(P6)F(F6)
+P6      OUTPUT = 'PASS: 6 nInc x2; nTop=2'            :(T6)
+F6      OUTPUT = 'FAIL: 6 nTop=' nTop()
+T6
+
+*  7: nested nPush, inner counter starts at 0
+        '' nPush()                                     :F(F7)
+        EQ(nTop(), 0)                                  :S(P7)F(F7)
+P7      OUTPUT = 'PASS: 7 nested nPush; nTop=0'       :(T7)
+F7      OUTPUT = 'FAIL: 7 nTop=' nTop()
+T7
+
+*  8: nTop returns INTEGER
+        v = nTop()
+        IDENT(DATATYPE(v), 'INTEGER')                  :S(P8)F(F8)
+P8      OUTPUT = 'PASS: 8 nTop INTEGER'               :(T8)
+F8      OUTPUT = 'FAIL: 8 DATATYPE=' DATATYPE(v)
+T8
+
+END
