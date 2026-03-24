@@ -26,6 +26,7 @@ typedef enum {
     E_VART,          /* plain variable */
     E_KW,            /* &IDENT */
     E_INDR,          /* $expr  — indirect / immediate-assign-target */
+    E_STAR,          /* *expr  — deferred/indirect pattern reference */
     /* arithmetic */
     E_MNS,
     E_ADD, E_SUB, E_MPY, E_DIV, E_EXPOP,

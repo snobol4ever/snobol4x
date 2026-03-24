@@ -1479,6 +1479,7 @@ static void emit_pat_node(EXPR_t *pat,
         break;
     }
 
+    case E_STAR:    /* *VAR — deferred pattern ref (value context split in B-280) */
     case E_INDR: {
         /* *VAR — indirect pattern reference.
          * pat->children[0] is E_VART holding the variable name.
@@ -1501,8 +1502,29 @@ static void emit_pat_node(EXPR_t *pat,
                                  α, β, γ, ω,
                                  cursor, subj, subj_len);
                 } else {
-                    A("\n; E_INDR unresolved: %s → ω\n", varname);
-                    asmL(α); ALF(β, "jmp     %s\n", ω);
+                    /* Runtime DT_P dispatch: *VAR where VAR holds a pattern at runtime.
+                     * B-280: M-BEAUTIFY-BOOTSTRAP — *Parse, *Command, *Stmt etc. are
+                     * runtime-built patterns (nPush/ARBNO/nPop), not compile-time named pats.
+                     * Use CALL_PAT_α/β machinery (same as unknown E_FNC path). */
+                    int ruid = next_uid();
+                    char dt_slot[64], dp_slot[64], saved_slot[64];
+                    snprintf(dt_slot,    sizeof dt_slot,    "rpat%d_t", ruid);
+                    snprintf(dp_slot,    sizeof dp_slot,    "rpat%d_p", ruid);
+                    snprintf(saved_slot, sizeof saved_slot, "rpat%d_s", ruid);
+                    flat_bss_register(dt_slot);
+                    flat_bss_register(dp_slot);
+                    flat_bss_register(saved_slot);
+                    const char *varlab = str_intern(varname);
+                    A("\n; E_STAR/E_INDR *%s → runtime DT_P dispatch\n", varname);
+                    asmL(α);
+                    A("    lea     rdi, [rel %s]\n", varlab);
+                    A("    call    stmt_get\n");
+                    A("    mov     [%s], rax\n", dt_slot);
+                    A("    mov     [%s], rdx\n", dp_slot);
+                    A("    CALL_PAT_α %s, %s, %s, %s, %s, %s\n",
+                      dt_slot, dp_slot, saved_slot, cursor, γ, ω);
+                    ALFC(β, "E_STAR β", "CALL_PAT_β %s, %s, %s\n",
+                         saved_slot, cursor, ω);
                 }
             }
         } else {
@@ -2311,6 +2333,8 @@ static int expr_has_pattern_fn(EXPR_t *e) {
      * B-276: M-BEAUTY-OMEGA fix — without this, TZ = LE(xTrace,0) pat @txOfs
      * was not recognised as a pattern expression and fell into OPSYN dispatch. */
     if (e->kind == E_ATP) return 1;
+    /* E_STAR (*VAR deferred pattern ref) is always a pattern-valued expression */
+    if (e->kind == E_STAR) return 1;
     for (int i = 0; i < e->nchildren; i++)
         if (expr_has_pattern_fn(e->children[i])) return 1;
     return 0;
@@ -3896,6 +3920,33 @@ static int emit_expr(EXPR_t *e, int rbp_off) {
             A("    mov     qword [rbp%+d], 1\n", rbp_off);   /* DT_S */
             A("    lea     rax, [rel %s]\n", vlab);
             A("    mov     [rbp%+d], rax\n", rbp_off+8);
+        }
+        return 1;
+    }
+
+    case E_STAR: {
+        /* *VAR — deferred/indirect pattern reference in value context.
+         * Semantics: fetch the value stored IN VAR (a DT_P pattern or string).
+         * NOT a double-dereference — just stmt_get(VAR).
+         * B-280: M-BEAUTIFY-BOOTSTRAP — "Stmt = *Label" was using stmt_get_indirect,
+         * which reads the variable *named by* Label's value (wrong double-deref). */
+        EXPR_t *operand = e->children[0];
+        const char *varname = (operand && operand->sval) ? operand->sval : "";
+        const char *varlab  = str_intern(varname);
+        if (*varname) {
+            A("    lea     rdi, [rel %s]\n", varlab);
+            A("    call    stmt_get\n");
+        } else {
+            A("    mov     eax, 1\n");   /* DT_S */
+            A("    xor     edx, edx\n");
+        }
+        if (rbp_off == -16) {
+            A("    STORE_RESULT16\n");
+        } else if (rbp_off == -32) {
+            A("    STORE_RESULT\n");
+        } else {
+            A("    mov     [rbp%+d], rax\n", rbp_off);
+            A("    mov     [rbp%+d], rdx\n", rbp_off+8);
         }
         return 1;
     }
