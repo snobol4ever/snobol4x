@@ -1,0 +1,7 @@
+# rung05 t03: &subject restored after scan
+procedure main();
+  local s;
+  s := "outer";
+  s ? write(&subject);
+  write(s);
+end

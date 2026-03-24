@@ -1,0 +1,9 @@
+# rung05 t05: nested scan — inner restores outer subject
+procedure main();
+  local a;
+  local b;
+  a := "first";
+  b := "second";
+  a ? (b ? write(&subject));
+  write(&subject);
+end

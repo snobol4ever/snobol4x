@@ -1,0 +1,6 @@
+# rung05 t02: scan from variable
+procedure main();
+  local s;
+  s := "world";
+  s ? write(&subject);
+end
