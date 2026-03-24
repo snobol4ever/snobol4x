@@ -540,9 +540,9 @@ static void emit_call(IcnEmitter *em, IcnNode *n, IcnPorts ports,
 }
 
 /* =========================================================================
- * ICN_ALT — value alternation E1 | E2
- * α → E1.α; E1.ω → E2.α; E2.ω → node.ω
- * β → E1.β (simple: resume left first, then right)
+ * ICN_ALT — value alternation E1 | E2 | ... | En  (n-ary flat array)
+ * α → E1.α; E1.ω → E2.α; ... ; En.ω → node.ω
+ * β → E1.β (resume leftmost; irgen.icn simple alternation model)
  * ======================================================================= */
 static void emit_alt(IcnEmitter *em, IcnNode *n, IcnPorts ports,
                      char *oa, char *ob) {
@@ -550,15 +550,22 @@ static void emit_alt(IcnEmitter *em, IcnNode *n, IcnPorts ports,
     icn_label_alpha(id,a,sizeof a); icn_label_beta(id,b,sizeof b);
     strncpy(oa,a,63); strncpy(ob,b,63);
 
-    char e1a[64],e1b[64],e2a[64],e2b[64];
-    IcnPorts e2p; strncpy(e2p.succeed,ports.succeed,63); strncpy(e2p.fail,ports.fail,63);
-    emit_expr(em,n->children[1],e2p,e2a,e2b);
+    int nc = n->nchildren;
+    /* Allocate alpha/beta label storage for each child */
+    char (*ca)[64] = malloc(nc * 64);
+    char (*cb)[64] = malloc(nc * 64);
 
-    IcnPorts e1p; strncpy(e1p.succeed,ports.succeed,63); strncpy(e1p.fail,e2a,63);
-    emit_expr(em,n->children[0],e1p,e1a,e1b);
+    /* Emit right-to-left so ω of child[i] → α of child[i+1] */
+    for (int i = nc - 1; i >= 0; i--) {
+        IcnPorts ep;
+        strncpy(ep.succeed, ports.succeed, 63);
+        strncpy(ep.fail, (i == nc-1) ? ports.fail : ca[i+1], 63);
+        emit_expr(em, n->children[i], ep, ca[i], cb[i]);
+    }
 
-    Ldef(em,a); Jmp(em,e1a);
-    Ldef(em,b); Jmp(em,e1b);
+    Ldef(em,a); Jmp(em,ca[0]);
+    Ldef(em,b); Jmp(em,cb[0]);
+    free(ca); free(cb);
 }
 
 /* =========================================================================
@@ -903,6 +910,34 @@ static void emit_expr(IcnEmitter *em, IcnNode *n, IcnPorts ports,
         case ICN_EVERY:  emit_every    (em,n,ports,oa,ob); break;
         case ICN_WHILE:  emit_while    (em,n,ports,oa,ob); break;
         case ICN_CALL:   emit_call     (em,n,ports,oa,ob); break;
+        case ICN_AND: {
+            /* n-ary conjunction: E1 & E2 & ... & En
+             * irgen.icn ir_conjunction wiring:
+             *   α → E1.α; E1.γ → E2.α; ...; En.γ → node.γ
+             *   Ei.ω → E(i-1).β (backtrack left); E1.ω → node.ω
+             *   β → En.β (resume rightmost) */
+            int nc = n->nchildren;
+            int cid = icn_new_id(em); char ca2[64],cb2[64];
+            icn_label_alpha(cid,ca2,sizeof ca2); icn_label_beta(cid,cb2,sizeof cb2);
+            strncpy(oa,ca2,63); strncpy(ob,cb2,63);
+
+            char (*cca)[64] = malloc(nc*64);
+            char (*ccb)[64] = malloc(nc*64);
+
+            /* Emit right-to-left: Ei.ω → E(i-1).β, En.ω → node.ω */
+            for (int i = nc-1; i >= 0; i--) {
+                IcnPorts ep;
+                strncpy(ep.succeed, ports.succeed, 63);
+                strncpy(ep.fail, (i == 0) ? ports.fail : ccb[i-1], 63);
+                emit_expr(em, n->children[i], ep, cca[i], ccb[i]);
+            }
+            /* Chain γ left-to-right: Ei.γ → E(i+1).α already handled via
+             * ports.succeed threading; just wire the node entry/resume */
+            Ldef(em,ca2); Jmp(em,cca[0]);
+            Ldef(em,cb2); Jmp(em,ccb[nc-1]);
+            free(cca); free(ccb);
+            break;
+        }
         default:{
             int id=icn_new_id(em); char a2[64],b2[64];
             icn_label_alpha(id,a2,sizeof a2); icn_label_beta(id,b2,sizeof b2);

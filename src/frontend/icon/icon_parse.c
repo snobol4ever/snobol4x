@@ -322,13 +322,16 @@ static IcnNode *parse_rel(IcnParser *p) {
 static IcnNode *parse_and(IcnParser *p) {
     IcnNode *n = parse_rel(p);
     if (!n) return NULL;
+    if (!check(p, TK_AND)) return n;
+    /* Flatten into a single n-ary ICN_AND node */
+    int line = p->cur.line;
+    IcnNode *and_node = icn_node_new(ICN_AND, line, 1, n);
     while (check(p, TK_AND)) {
-        int line = p->cur.line;
         advance(p);
         IcnNode *rhs = parse_rel(p);
-        n = icn_node_new(ICN_AND, line, 2, n, rhs);
+        icn_node_append(and_node, rhs);
     }
-    return n;
+    return and_node;
 }
 
 static IcnNode *parse_to(IcnParser *p) {
@@ -352,13 +355,16 @@ static IcnNode *parse_to(IcnParser *p) {
 static IcnNode *parse_alt(IcnParser *p) {
     IcnNode *n = parse_to(p);
     if (!n) return NULL;
+    if (!check(p, TK_BAR)) return n;
+    /* Flatten into a single n-ary ICN_ALT node */
+    int line = p->cur.line;
+    IcnNode *alt_node = icn_node_new(ICN_ALT, line, 1, n);
     while (check(p, TK_BAR)) {
-        int line = p->cur.line;
         advance(p);
         IcnNode *rhs = parse_to(p);
-        n = icn_node_new(ICN_ALT, line, 2, n, rhs);
+        icn_node_append(alt_node, rhs);
     }
-    return n;
+    return alt_node;
 }
 
 static int is_augop(IcnTkKind k) {

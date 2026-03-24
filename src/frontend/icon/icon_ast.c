@@ -121,6 +121,13 @@ const char *icn_kind_name(IcnKind kind) {
     }
 }
 
+/* Append one child to an existing node (used to flatten n-ary nodes). */
+void icn_node_append(IcnNode *parent, IcnNode *child) {
+    parent->children = realloc(parent->children,
+                               (parent->nchildren + 1) * sizeof(IcnNode *));
+    parent->children[parent->nchildren++] = child;
+}
+
 void icn_node_dump(IcnNode *n, int indent) {
     if (!n) { fprintf(stderr, "%*s(null)\n", indent*2, ""); return; }
     switch (n->kind) {

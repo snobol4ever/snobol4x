@@ -145,6 +145,7 @@ struct IcnNode {
  * -------------------------------------------------------------------------*/
 
 IcnNode *icn_node_new(IcnKind kind, int line, int nchildren, ...);
+void icn_node_append(IcnNode *parent, IcnNode *child);
 IcnNode *icn_leaf_int(int line, long ival);
 IcnNode *icn_leaf_real(int line, double fval);
 IcnNode *icn_leaf_str(IcnKind kind, int line, const char *s, size_t len);

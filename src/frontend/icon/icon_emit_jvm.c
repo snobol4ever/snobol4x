@@ -702,8 +702,8 @@ static void ij_emit_call(IcnNode *n, IjPorts ports, char *oa, char *ob) {
 }
 
 /* =========================================================================
- * ICN_ALT — E1 | E2 value alternation
- * α → E1.α; E1.ω → E2.α; E2.ω → node.ω
+ * ICN_ALT — E1 | E2 | ... | En  value alternation (n-ary flat)
+ * α → E1.α; E1.ω → E2.α; ... ; En.ω → node.ω
  * β → E1.β
  * ======================================================================= */
 static void ij_emit_alt(IcnNode *n, IjPorts ports, char *oa, char *ob) {
@@ -711,14 +711,20 @@ static void ij_emit_alt(IcnNode *n, IjPorts ports, char *oa, char *ob) {
     lbl_a(id,a,sizeof a); lbl_b(id,b,sizeof b);
     strncpy(oa,a,63); strncpy(ob,b,63);
 
-    char e1a[64], e1b[64], e2a[64], e2b[64];
-    IjPorts e2p; strncpy(e2p.succeed,ports.succeed,63); strncpy(e2p.fail,ports.fail,63);
-    ij_emit_expr(n->children[1], e2p, e2a, e2b);
-    IjPorts e1p; strncpy(e1p.succeed,ports.succeed,63); strncpy(e1p.fail,e2a,63);
-    ij_emit_expr(n->children[0], e1p, e1a, e1b);
+    int nc = n->nchildren;
+    char (*ca)[64] = malloc(nc*64);
+    char (*cb)[64] = malloc(nc*64);
 
-    JL(a); JGoto(e1a);
-    JL(b); JGoto(e1b);
+    for (int i = nc-1; i >= 0; i--) {
+        IjPorts ep;
+        strncpy(ep.succeed, ports.succeed, 63);
+        strncpy(ep.fail, (i == nc-1) ? ports.fail : ca[i+1], 63);
+        ij_emit_expr(n->children[i], ep, ca[i], cb[i]);
+    }
+
+    JL(a); JGoto(ca[0]);
+    JL(b); JGoto(cb[0]);
+    free(ca); free(cb);
 }
 
 /* =========================================================================
@@ -1011,6 +1017,26 @@ static void ij_emit_expr(IcnNode *n, IjPorts ports, char *oa, char *ob) {
         case ICN_FAIL:    ij_emit_fail_node(n,ports,oa,ob); break;
         case ICN_IF:      ij_emit_if       (n,ports,oa,ob); break;
         case ICN_ALT:     ij_emit_alt      (n,ports,oa,ob); break;
+        case ICN_AND: {
+            /* n-ary conjunction: E1 & E2 & ... & En
+             * irgen.icn ir_conjunction: Ei.γ → E(i+1).α; Ei.ω → E(i-1).β; β → En.β */
+            int nc = n->nchildren;
+            int cid = ij_new_id(); char ca2[64], cb2[64];
+            lbl_a(cid,ca2,sizeof ca2); lbl_b(cid,cb2,sizeof cb2);
+            strncpy(oa,ca2,63); strncpy(ob,cb2,63);
+            char (*cca)[64] = malloc(nc*64);
+            char (*ccb)[64] = malloc(nc*64);
+            for (int i = nc-1; i >= 0; i--) {
+                IjPorts ep;
+                strncpy(ep.succeed, (i == nc-1) ? ports.succeed : cca[i+1], 63);
+                strncpy(ep.fail,    (i == 0)    ? ports.fail    : ccb[i-1], 63);
+                ij_emit_expr(n->children[i], ep, cca[i], ccb[i]);
+            }
+            JL(ca2); JGoto(cca[0]);
+            JL(cb2); JGoto(ccb[nc-1]);
+            free(cca); free(ccb);
+            break;
+        }
         case ICN_ADD: case ICN_SUB: case ICN_MUL: case ICN_DIV: case ICN_MOD:
                           ij_emit_binop    (n,ports,oa,ob); break;
         case ICN_LT: case ICN_LE: case ICN_GT: case ICN_GE: case ICN_EQ: case ICN_NE:
