@@ -1,0 +1,12 @@
+PASS: 1 T8Pos nil map=LPAD
+PASS: 2 T8Pos map line/col
+PASS: 3 T8Pos updates t8Max
+PASS: 4 T8Trace doDebug=0 returns STRING
+PASS: 5 T8Trace lvl>doDebug NRETURN
+PASS: 6 T8Trace ?-prefix doDebug=1 NRETURN
+PASS: 7 T8Trace t8MaxLine<621 NRETURN
+--- test 8 output follows ---
+       0? node
+PASS: 8 T8Trace doDebug=2 ?-expand output
+       0  upd
+PASS: 9 t8MaxLast updated to t8Max
