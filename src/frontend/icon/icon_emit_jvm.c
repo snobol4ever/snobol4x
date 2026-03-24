@@ -471,7 +471,7 @@ static void ij_emit_suspend(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
 
     /* Assign a unique suspend ID for tableswitch */
     int susp_id = ij_next_suspend_id++;
-    if (ij_suspend_count < 64) ij_suspend_ids[ij_suspend_count++] = susp_id;
+    if (ij_suspend_count < 64) ij_suspend_ids[ij_suspend_count++] = id;  /* Bug2 fix: store node id, not susp_id */
 
     char resume_here[64]; snprintf(resume_here, sizeof resume_here, "icn_%d_resume", id);
     char after_val[64];   snprintf(after_val,   sizeof after_val,   "icn_%d_yield",  id);
@@ -610,12 +610,14 @@ static void ij_emit_call(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
             JI("invokevirtual", "java/io/PrintStream/println(Ljava/lang/String;)V");
         } else {
             /* Long on stack — print as integer */
-            /* Store long, get stream, load long, convert, println */
+            /* Store long, get stream, load long, println; reload for caller (write returns arg) */
             int scratch = ij_locals_alloc_tmp();
             J("    lstore %d\n", slot_jvm(scratch));
             JI("getstatic", "java/lang/System/out Ljava/io/PrintStream;");
             J("    lload %d\n", slot_jvm(scratch));
             JI("invokevirtual", "java/io/PrintStream/println(J)V");
+            /* Reload: write() returns its argument; γ port / gbfwd pop2 needs value on stack */
+            J("    lload %d\n", slot_jvm(scratch));
         }
         JGoto(ports.γ);
         return;
@@ -656,8 +658,9 @@ static void ij_emit_call(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
             char b_fail[64];   snprintf(b_fail,   sizeof b_fail,   "icn_%d_b_fail",   id);
             ij_get_byte("icn_suspended");
             J("    ifeq %s\n", b_fail);
-            /* Resume: clear suspended flag, call again — proc will tableswitch on icn_suspend_id */
-            JI("iconst_0",""); ij_put_byte("icn_suspended");
+            /* Resume: clear suspend_id AFTER we're done — entry dispatch uses icn_suspend_id!=0 */
+            /* (icn_suspended stays set until proc itself clears on fresh call) */
+            /* Just invoke — proc entry dispatches via icn_suspend_id */
             char sig[384]; snprintf(sig, sizeof sig, "%s/icn_%s()V", ij_classname, fname);
             JI("invokestatic", sig);
             /* Check result */
@@ -1165,6 +1168,14 @@ static void ij_emit_proc(IcnNode *proc, FILE *out_target) {
         }
     }
 
+    /* Entry: generator dispatch — if icn_suspend_id != 0, we are resuming → beta entry */
+    if (is_gen && total_susp > 0) {
+        char beta_entry[64]; snprintf(beta_entry, sizeof beta_entry, "icn_%s_beta", pname);
+        char fresh_entry[64]; snprintf(fresh_entry, sizeof fresh_entry, "icn_%s_fresh", pname);
+        J("    getstatic %s/icn_suspend_id I\n", ij_classname);
+        J("    ifne %s\n", beta_entry);
+        JL(fresh_entry);
+    }
     /* Entry: jump to first statement */
     if (nstmts > 0 && alphas[0][0]) JGoto(alphas[0]);
     else JGoto(proc_done);
