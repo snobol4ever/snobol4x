@@ -15,7 +15,7 @@ hasHeardOf(_, _).
 earnsMore(daw, clark).
 doesEarnMore(X, Y) :- earnsMore(X, Y).
 doesEarnMore(X, Y) :- earnsMore(Y, X), !, fail.
-doesEarnMore(X, Z) :- earnsMore(X, Y), earnsMore(X, Z).
+doesEarnMore(X, Z) :- earnsMore(X, Y), earnsMore(Y, Z).
 statement(X, V, Y) :- write(X), write(V), write(Y), write('.\n').
 main :-
    person(Carpenter),
