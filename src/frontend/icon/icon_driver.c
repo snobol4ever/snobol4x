@@ -14,6 +14,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* Forward declaration for JVM emitter */
+void ij_emit_file(IcnNode **nodes, int count, FILE *out, const char *filename);
+
 static char *read_file(const char *path) {
     FILE *f = fopen(path, "r");
     if (!f) { perror(path); return NULL; }
@@ -31,13 +34,15 @@ int main(int argc, char **argv) {
     const char *input  = NULL;
     const char *output = NULL;
     int do_run = 0;
+    int do_jvm = 0;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-o") == 0 && i+1 < argc) output = argv[++i];
         else if (strcmp(argv[i], "-run") == 0) do_run = 1;
+        else if (strcmp(argv[i], "-jvm") == 0) do_jvm = 1;
         else input = argv[i];
     }
-    if (!input) { fprintf(stderr, "usage: icon_driver [-o out.asm] [-run] file.icn\n"); return 1; }
+    if (!input) { fprintf(stderr, "usage: icon_driver [-jvm] [-o out.j/.asm] [-run] file.icn\n"); return 1; }
 
     char *src = read_file(input);
     if (!src) return 1;
@@ -60,9 +65,13 @@ int main(int argc, char **argv) {
     FILE *out_file = stdout;
     if (output) { out_file = fopen(output, "w"); if (!out_file) { perror(output); return 1; } }
 
-    IcnEmitter em;
-    icn_emit_init(&em, out_file);
-    icn_emit_file(&em, procs, count);
+    if (do_jvm) {
+        ij_emit_file(procs, count, out_file, input);
+    } else {
+        IcnEmitter em;
+        icn_emit_init(&em, out_file);
+        icn_emit_file(&em, procs, count);
+    }
 
     if (output) fclose(out_file);
 
