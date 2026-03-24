@@ -66,24 +66,24 @@ gcc -no-pie "$TMP/prog.o" \
     -lgc -lm -o "$TMP/prog_asm" 2>/dev/null
 
 # ── Step 3: create FIFOs ─────────────────────────────────────────────────
-NAMES="csn spl asm"
+NAMES="spl csn asm"
 for p in $NAMES; do mkfifo "$TMP/$p.ready"; mkfifo "$TMP/$p.go"; done
 READY_PATHS=$(echo $NAMES | tr ' ' '\n' | sed "s|.*|$TMP/&.ready|" | tr '\n' ',' | sed 's/,$//')
 GO_PATHS=$(echo $NAMES    | tr ' ' '\n' | sed "s|.*|$TMP/&.go|"    | tr '\n' ',' | sed 's/,$//')
 
 # ── Step 4: launch 3 participants ────────────────────────────────────────
-# CSNOBOL4 is participant 0 (primary oracle) — snobol4x targets CSNOBOL4 semantics.
-# SPITBOL implements extensions; CSNOBOL4 wins on semantic edge cases.
-MONITOR_READY_PIPE="$TMP/csn.ready" MONITOR_GO_PIPE="$TMP/csn.go" MONITOR_SO="$SO" \
-    snobol4 -P256k -I"$INC" "$TMP/instr.sno" \
-    < "$STDIN_SRC" > "$TMP/csn.out" 2>"$TMP/csn.err" &
-CSN_PID=$!
-
+# SPITBOL is participant 0 (primary oracle) — snobol4x targets SPITBOL semantics (D-001/D-005).
+# CSNOBOL4 is secondary; its quirks (FENCE, DATATYPE case) are ignore-points.
 (cd "$INC" && SNOLIB="$X64_DIR:$INC" MONITOR_READY_PIPE="$TMP/spl.ready" \
     MONITOR_GO_PIPE="$TMP/spl.go" MONITOR_SO="$X64_DIR/monitor_ipc_spitbol.so" \
     "$X64_DIR/bootsbl" "$TMP/instr.sno" \
     < "$STDIN_SRC" > "$TMP/spl.out" 2>"$TMP/spl.err") &
 SPL_PID=$!
+
+MONITOR_READY_PIPE="$TMP/csn.ready" MONITOR_GO_PIPE="$TMP/csn.go" MONITOR_SO="$SO" \
+    snobol4 -P256k -I"$INC" "$TMP/instr.sno" \
+    < "$STDIN_SRC" > "$TMP/csn.out" 2>"$TMP/csn.err" &
+CSN_PID=$!
 
 MONITOR_READY_PIPE="$TMP/asm.ready" MONITOR_GO_PIPE="$TMP/asm.go" \
     "$TMP/prog_asm" < "$STDIN_SRC" > "$TMP/asm.out" 2>"$TMP/asm.err" &

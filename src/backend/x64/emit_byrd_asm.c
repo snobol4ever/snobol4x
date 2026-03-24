@@ -3406,7 +3406,11 @@ static int emit_expr(EXPR_t *e, int rbp_off) {
             int arr_bytes = na * 16;
             A("    sub     rsp, %d\n", arr_bytes);
             for (int ai = 0; ai < na && e->children[ai]; ai++) {
-                emit_expr(e->children[ai], -(rbp_off < 0 ? -rbp_off : 32) - 0);
+                /* B-286: always use -32 for arg staging. Using the outer rbp_off
+                 * (e.g. -16) causes E_VART to emit GET_VAR->rbp-16/8, but
+                 * STORE_ARG32 reads from rbp-32/24 -- stale data. The arg
+                 * staging slot is always rbp-32/24 regardless of outer context. */
+                emit_expr(e->children[ai], -32);
                 A("    STORE_ARG32 %d\n", ai * 16);
             }
             A("    APPLY_FN_N  %s, %d\n", fnlab, na);
