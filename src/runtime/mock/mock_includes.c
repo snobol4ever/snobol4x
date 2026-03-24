@@ -594,6 +594,35 @@ static DESCR_t _w_TopCounter(DESCR_t *a, int n) {
     return INTVAL(v);
 }
 
+/* nPush() / nInc() / nPop() / nTop() — semantic.inc wrappers.
+ * These are SNOBOL4-defined NRETURN functions that return epsilon patterns
+ * with counter side-effects.  When called via the pattern engine's T_FUNC
+ * path (deferred_call_fn → APPLY_fn), APPLY_fn would find fn==NULL and
+ * silently return NULVCL, dropping the side-effect.  Register C wrappers
+ * so APPLY_fn dispatches to the actual C-level counter operations.
+ * The T_FUNC engine node treats any non-(-1) return as zero-width succeed,
+ * which matches the NRETURN epsilon behaviour. */
+static DESCR_t _w_nPush(DESCR_t *a, int n) {
+    (void)a; (void)n;
+    NPUSH_fn();
+    return NULVCL;   /* epsilon / NRETURN */
+}
+static DESCR_t _w_nInc(DESCR_t *a, int n) {
+    (void)a; (void)n;
+    NINC_fn();
+    return NULVCL;   /* epsilon / NRETURN */
+}
+static DESCR_t _w_nPop(DESCR_t *a, int n) {
+    (void)a; (void)n;
+    NPOP_fn();
+    return NULVCL;   /* epsilon / NRETURN */
+}
+static DESCR_t _w_nTop(DESCR_t *a, int n) {
+    (void)a; (void)n;
+    int64_t v = ntop();
+    return INTVAL(v);   /* returns counter value (integer) */
+}
+
 /* SqlSQize(STRVAL_fn) — Qize.inc: SQL single-quote escape ('' for each ') */
 static DESCR_t _w_SqlSQize(DESCR_t *a, int n) {
     const char *s = VARVAL_fn(n > 0 ? a[0] : NULVCL);
@@ -765,6 +794,10 @@ void inc_init_extra(void) {
     register_fn("Push",       _w_Push,        1, 1);
     register_fn("Pop",        _w_Pop,         0, 1);
     register_fn("TopCounter", _w_TopCounter,  0, 0);
+    register_fn("nPush",      _w_nPush,       0, 0);
+    register_fn("nInc",       _w_nInc,        0, 0);
+    register_fn("nPop",       _w_nPop,        0, 0);
+    register_fn("nTop",       _w_nTop,        0, 0);
     register_fn("SqlSQize",   _w_SqlSQize,    1, 1);
     register_fn("TLump",      _w_TLump,       1, 2);
     register_fn("TValue",     _w_TValue,      1, 1);

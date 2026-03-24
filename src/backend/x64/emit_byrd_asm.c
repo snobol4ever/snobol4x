@@ -1697,6 +1697,7 @@ static void emit_pat_node(EXPR_t *pat,
             /* FAIL always fails — α and β both jump to ω */
             A("\n; FAIL  α=%s\n", α);
             asmL(α);
+            A("    jmp     %s\n", ω);
             ALF(β, "jmp     %s\n", ω);
         } else {
             /* Unknown function in pattern position — evaluate at runtime.

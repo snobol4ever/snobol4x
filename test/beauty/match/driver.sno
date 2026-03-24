@@ -1,66 +1,72 @@
 *  driver.sno — test driver for match.sno
 *  Oracle: snobol4 -f -P256k -I$INC driver.sno
 *  Run via: bash test/beauty/run_beauty_subsystem.sh match
-*  Exercises: match(table, outvar) and notmatch(table, outvar)
+*  Exercises: match(subject,pattern) / notmatch(subject,pattern)
+*  Pattern usage mirrors beauty.sno line 254:
+*    TxInList = (POS(0) | ' ') *upr(tx) (' ' | RPOS(0))
 -INCLUDE 'global.sno'
 -INCLUDE 'is.sno'
 -INCLUDE 'match.sno'
 
         &STLIMIT = 1000000
 
-*  Build test table (init before monitor traces begin; TABLE repr diverges across impls)
-        T = TABLE()
-        T['foo'] = 'FOO'
-        T['bar'] = 'BAR'
-        E = TABLE()
-
-*  1: match hit — tx in table
-        tx = 'foo'
-        match(T, TxInList)                                     :S(P1)
-        OUTPUT = 'FAIL: 1 match hit'                           :(T1)
-P1      OUTPUT = 'PASS: 1 match hit'
+*  1: match — ANY pattern, subject contains matching char
+        match('hello', ANY('aeiou'))                           :S(P1)
+        OUTPUT = 'FAIL: 1 match ANY hit'                       :(T1)
+P1      OUTPUT = 'PASS: 1 match ANY hit'
 T1
 
-*  2: match miss — tx not in table
-        tx = 'baz'
-        match(T, TxInList)                                     :F(P2)
-        OUTPUT = 'FAIL: 2 match miss'                          :(T2)
-P2      OUTPUT = 'PASS: 2 match miss'
+*  2: match — ANY pattern, subject has no matching char
+        match('xyz', ANY('aeiou'))                             :F(P2)
+        OUTPUT = 'FAIL: 2 match ANY miss'                      :(T2)
+P2      OUTPUT = 'PASS: 2 match ANY miss'
 T2
 
-*  3: notmatch — tx not in table → success
-        tx = 'baz'
-        notmatch(T, TxInList)                                  :S(P3)
+*  3: notmatch — subject does NOT match → success
+        notmatch('xyz', ANY('aeiou'))                          :S(P3)
         OUTPUT = 'FAIL: 3 notmatch miss'                       :(T3)
 P3      OUTPUT = 'PASS: 3 notmatch miss'
 T3
 
-*  4: notmatch — tx IS in table → failure
-        tx = 'foo'
-        notmatch(T, TxInList)                                  :F(P4)
+*  4: notmatch — subject DOES match → failure
+        notmatch('hello', ANY('aeiou'))                        :F(P4)
         OUTPUT = 'FAIL: 4 notmatch hit'                        :(T4)
 P4      OUTPUT = 'PASS: 4 notmatch hit'
 T4
 
-*  5: match second key
-        tx = 'bar'
-        match(T, TxInList)                                     :S(P5)
-        OUTPUT = 'FAIL: 5 match second key'                    :(T5)
-P5      OUTPUT = 'PASS: 5 match second key'
+*  5: match — SPAN pattern
+        match('   foo', SPAN(' '))                             :S(P5)
+        OUTPUT = 'FAIL: 5 match SPAN'                          :(T5)
+P5      OUTPUT = 'PASS: 5 match SPAN'
 T5
 
-*  6: match empty table → fail
-        tx = 'any'
-        match(E, TxInList)                                     :F(P6)
-        OUTPUT = 'FAIL: 6 match empty table'                   :(T6)
-P6      OUTPUT = 'PASS: 6 match empty table'
+*  6: match — LEN(0) always matches
+        match('anything', LEN(0))                             :S(P6)
+        OUTPUT = 'FAIL: 6 match LEN(0)'                        :(T6)
+P6      OUTPUT = 'PASS: 6 match LEN(0)'
 T6
 
-*  7: notmatch empty table → success
-        tx = 'any'
-        notmatch(E, TxInList)                                  :S(P7)
-        OUTPUT = 'FAIL: 7 notmatch empty table'                :(T7)
-P7      OUTPUT = 'PASS: 7 notmatch empty table'
+*  7: match — RPOS(0) matches at end only; subject with no prior match
+        match('abc', RPOS(0))                                  :S(P7)
+        OUTPUT = 'FAIL: 7 match RPOS(0)'                       :(T7)
+P7      OUTPUT = 'PASS: 7 match RPOS(0)'
 T7
+
+*  8: word-list membership (mirrors beauty.sno TxInList pattern)
+        wList = 'DEFINE LABEL END'
+        tx = 'LABEL'
+        TxInList = (POS(0) | ' ') tx (' ' | RPOS(0))
+        match(wList, TxInList)                                 :S(P8)
+        OUTPUT = 'FAIL: 8 word list hit'                       :(T8)
+P8      OUTPUT = 'PASS: 8 word list hit'
+T8
+
+*  9: word-list non-member
+        tx = 'GOTO'
+        TxInList = (POS(0) | ' ') tx (' ' | RPOS(0))
+        match(wList, TxInList)                                 :F(P9)
+        OUTPUT = 'FAIL: 9 word list miss'                      :(T9)
+P9      OUTPUT = 'PASS: 9 word list miss'
+T9
 
 END

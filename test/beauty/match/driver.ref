@@ -1,7 +1,9 @@
-PASS: 1 match hit
-PASS: 2 match miss
+PASS: 1 match ANY hit
+PASS: 2 match ANY miss
 PASS: 3 notmatch miss
 PASS: 4 notmatch hit
-PASS: 5 match second key
-PASS: 6 match empty table
-PASS: 7 notmatch empty table
+PASS: 5 match SPAN
+PASS: 6 match LEN(0)
+PASS: 7 match RPOS(0)
+PASS: 8 word list hit
+PASS: 9 word list miss
