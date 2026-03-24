@@ -606,7 +606,11 @@ static void pj_emit_term(EXPR_t *e, int *var_locals, int n_vars) {
         if (slot >= 0 && slot < n_vars && var_locals) {
             J("    aload %d\n", var_locals[slot]);
         } else {
-            JI("aconst_null", "");
+            /* anonymous wildcard _ (slot=-1): allocate fresh unbound var cell.
+             * aconst_null would break unification — every _ must be a distinct
+             * fresh variable so it unifies with anything without binding anything
+             * the caller cares about. */
+            J("    invokestatic %s/pj_term_var()[Ljava/lang/Object;\n", pj_classname);
         }
         break;
     }
@@ -849,8 +853,9 @@ static void pj_emit_goal(EXPR_t *goal, const char *lbl_gamma, const char *lbl_om
             /* check for (Cond -> Then) as first branch = if-then-else */
             EXPR_t *first = goal->children[0];
             if (first && first->kind == E_FNC && first->sval &&
-                strcmp(first->sval, "->") == 0 && first->nchildren == 2) {
-                /* if-then-else: Cond -> Then ; Else1 ; Else2 ... */
+                strcmp(first->sval, "->") == 0 && first->nchildren >= 2) {
+                /* if-then-else: Cond -> Then ; Else1 ; Else2 ...
+                 * -> is flat n-ary: children[0]=Cond, children[1..]=Then goals */
                 int uid = pj_fresh_label();
                 char cond_ok[128], cond_fail[128], done_lbl[128];
                 snprintf(cond_ok,   sizeof cond_ok,   "ite%d_ok",   uid);
@@ -860,8 +865,17 @@ static void pj_emit_goal(EXPR_t *goal, const char *lbl_gamma, const char *lbl_om
                 pj_emit_goal(first->children[0], cond_ok, cond_fail,
                              trail_local, var_locals, n_vars);
                 J("%s:\n", cond_ok);
-                pj_emit_goal(first->children[1], lbl_gamma, lbl_omega,
-                             trail_local, var_locals, n_vars);
+                /* emit Then goals: children[1..nchildren-1] as flat sequence */
+                int nthen = first->nchildren - 1;
+                for (int ti = 0; ti < nthen; ti++) {
+                    char tstep_g[128], tstep_o[128];
+                    snprintf(tstep_g, sizeof tstep_g, "ite%d_t%d_g", uid, ti);
+                    snprintf(tstep_o, sizeof tstep_o, "ite%d_t%d_o", uid, ti);
+                    const char *step_gamma = (ti == nthen - 1) ? lbl_gamma : tstep_g;
+                    pj_emit_goal(first->children[1 + ti], step_gamma, lbl_omega,
+                                 trail_local, var_locals, n_vars);
+                    if (ti < nthen - 1) J("%s:\n", tstep_g);
+                }
                 J("    goto %s\n", done_lbl);
                 J("%s:\n", cond_fail);
                 /* emit remaining else branches */
@@ -897,18 +911,26 @@ static void pj_emit_goal(EXPR_t *goal, const char *lbl_gamma, const char *lbl_om
             J("%s:\n", done_lbl);
             return;
         }
-        /* ->/2 — if-then (without else): Cond -> Then.
-         * Condition success = fall through to Then; failure = goto lbl_omega. */
-        if (strcmp(fn, "->") == 0 && nargs == 2) {
+        /* -> (if-then, no else): Cond -> Then1, Then2, ...
+         * Flat n-ary: children[0]=Cond, children[1..]=Then goals.
+         * Condition success → emit each Then step in sequence.
+         * Condition failure → lbl_omega. */
+        if (strcmp(fn, "->") == 0 && nargs >= 2) {
             int uid = pj_fresh_label();
             char cond_ok[128], cond_fail[128];
             snprintf(cond_ok,   sizeof cond_ok,   "ifthen%d_ok",   uid);
             snprintf(cond_fail, sizeof cond_fail,  "ifthen%d_fail", uid);
-            /* emit condition: success falls through, failure jumps to omega */
             pj_emit_goal(goal->children[0], cond_ok, cond_fail, trail_local, var_locals, n_vars);
             J("%s:\n", cond_ok);
-            pj_emit_goal(goal->children[1], lbl_gamma, lbl_omega, trail_local, var_locals, n_vars);
-            J("    goto %s\n", lbl_omega);  /* if Then fails */
+            int nthen = nargs - 1;
+            for (int ti = 0; ti < nthen; ti++) {
+                char tstep_g[128];
+                snprintf(tstep_g, sizeof tstep_g, "ifthen%d_t%d_g", uid, ti);
+                const char *step_gamma = (ti == nthen - 1) ? lbl_gamma : tstep_g;
+                pj_emit_goal(goal->children[1 + ti], step_gamma, lbl_omega,
+                             trail_local, var_locals, n_vars);
+                if (ti < nthen - 1) J("%s:\n", tstep_g);
+            }
             J("%s:\n", cond_fail);
             JI("goto", lbl_omega);
             return;
@@ -1142,13 +1164,16 @@ static void pj_emit_choice(EXPR_t *choice) {
             if (g && g->kind == E_CUT) { has_cut = 1; break; }
         }
 
-        /* head unification: children[0..n_args-1] vs arg locals */
+        /* head unification: children[0..n_args-1] vs arg locals.
+         * Use raw JVM parameter index `ai` (0..arity-1), NOT var_locals[ai].
+         * var_locals maps Prolog variable SLOTS, not argument positions;
+         * a head arg at position ai may not be a named variable at all. */
         for (int ai = 0; ai < n_args && ai < clause->nchildren; ai++) {
             EXPR_t *head_term = clause->children[ai];
             if (!head_term) continue;
-            if (head_term->kind == E_VART) continue; /* wildcard or variable: always unifies */
-            /* unify caller arg[ai] with head pattern */
-            J("    aload %d\n", var_locals[ai]);
+            if (head_term->kind == E_VART) continue; /* variable: already aliased, skip */
+            /* unify the caller's actual argument (JVM local `ai`) with head pattern */
+            J("    aload %d\n", ai);
             pj_emit_term(head_term, var_locals, n_vars);
             J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
             /* head unification failure: trail_unwind, go to next clause */

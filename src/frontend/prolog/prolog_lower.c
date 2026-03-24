@@ -180,6 +180,28 @@ static EXPR_t *lower_term(Term *t) {
                 return e;
             }
 
+            /* ->/2 — if-then: flatten Then-part into n-ary children.
+             * E_FNC("->") layout: children[0] = Cond, children[1..] = Then goals.
+             * (Then conjunction flattened, same as E_CLAUSE body goals.)
+             * Every then-step is visible at top level for the emitter. */
+            int arrow_id = prolog_atom_intern("->");
+            if (t->compound.functor == arrow_id && arity == 2) {
+                EXPR_t *e = expr_new(E_FNC);
+                e->sval = strdup("->");
+                /* children[0] = Cond */
+                expr_add_child(e, lower_term(t->compound.args[0]));
+                /* children[1..] = Then goals (flatten right-spine conjunction) */
+                Term *then_part = term_deref(t->compound.args[1]);
+                while (then_part && then_part->tag == TT_COMPOUND &&
+                       then_part->compound.functor == comma_id &&
+                       then_part->compound.arity == 2) {
+                    expr_add_child(e, lower_term(then_part->compound.args[0]));
+                    then_part = term_deref(then_part->compound.args[1]);
+                }
+                if (then_part) expr_add_child(e, lower_term(then_part));
+                return e;
+            }
+
             /* General compound / goal -> E_FNC */
             EXPR_t *e = expr_new(E_FNC);
             e->sval = strdup(fn);
