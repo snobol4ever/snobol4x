@@ -955,17 +955,19 @@ static void ij_emit_every(IcnNode *n, IjPorts ports, char *oa, char *ob) {
     char ga[64], gb[64];
 
     if (body) {
+        /* bstart: generator yielded a value — drain it, then run body */
         char bstart[64]; snprintf(bstart, sizeof bstart, "icn_%d_body", id);
         IjPorts bp; strncpy(bp.succeed,gbfwd,63); strncpy(bp.fail,gbfwd,63);
         char ba[64], bb[64]; ij_emit_expr(body, bp, ba, bb);
         IjPorts gp; strncpy(gp.succeed,bstart,63); strncpy(gp.fail,ports.fail,63);
         ij_emit_expr(gen, gp, ga, gb);
-        JL(bstart); JGoto(ba);
+        JL(bstart); JI("pop2",""); JGoto(ba);
     } else {
         IjPorts gp; strncpy(gp.succeed,gbfwd,63); strncpy(gp.fail,ports.fail,63);
         ij_emit_expr(gen, gp, ga, gb);
     }
-    JL(gbfwd); JGoto(gb);
+    /* gbfwd: generator yielded — drain value, kick beta to get next */
+    JL(gbfwd); JI("pop2",""); JGoto(gb);
     JL(a); JGoto(ga);
     JL(b); JGoto(ports.fail);
 }
