@@ -1,12 +1,16 @@
 *---------------------------------------------------------------------------------------------------
-* assign(var, val) — indirect assignment helper
-* Sets $var = val (assigns val to the variable named by var).
-* Returns null (always succeeds); used as a side-effect function in patterns.
+* assign(name, expression) — indirect assignment during pattern matching
+* Returns .dummy (NAME) so that pattern . *assign(name, expr) works correctly:
+*   . requires a NAME on RHS; assign returns .dummy as the discard target.
+* Side effect: $name = EVAL(expression) or $name = expression
+* NRETURN: the enclosing pattern always continues (assignment never fails the pattern).
 *
 * Usage:
-*   assign('x', 'hello')          x = 'hello'
-*   *assign(.SorF, *'S')          in pattern: set SorF = 'S' on match
+*   ('S'|'s') . *assign(.SorF, *'S')   — set SorF to 'S' on match
 *---------------------------------------------------------------------------------------------------
-               DEFINE('assign(var,val)')                                            :(assign_end)
-assign         $var           =   val                                               :(RETURN)
+               DEFINE('assign(name,expression)')                                    :(assign_end)
+assign         assign         =  .dummy
+               IDENT(DATATYPE(expression), 'EXPRESSION')                            :F(assign1)
+               $name          =  EVAL(expression)                                   :(NRETURN)
+assign1        $name          =  expression                                         :(NRETURN)
 assign_end
