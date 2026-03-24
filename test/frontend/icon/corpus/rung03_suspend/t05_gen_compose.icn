@@ -1,0 +1,11 @@
+# rung03 t05: two independent generators, sequential
+procedure upto(n);
+  local i;
+  i := 1;
+  while i <= n do suspend i do i := i + 1;
+end
+
+procedure main();
+  every write(upto(3));
+  every write(upto(2));
+end

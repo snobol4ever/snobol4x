@@ -1,0 +1,9 @@
+# rung03 t03: procedure that fails (no return value)
+procedure positive(n);
+  if n > 0 then return n;
+end
+
+procedure main();
+  if positive(5) then write(1);
+  if positive(0) then write(2) else write(3);
+end

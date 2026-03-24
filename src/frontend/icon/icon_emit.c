@@ -349,6 +349,7 @@ static void emit_suspend(IcnEmitter *em, IcnNode *n, IcnPorts ports,
     /* store resume address: after yield, caller's β comes back to resume_here */
     E(em,"    lea     rax, [rel %s]\n", resume_here);
     E(em,"    mov     [rel icn_suspend_resume], rax\n");
+    E(em,"    mov     [rel icn_suspend_rbp], rbp\n");
     /* yield to caller — bare ret, frame stays alive */
     Jmp(em, cur_suspend_ret_label[0] ? cur_suspend_ret_label : "icn_dead");
 
@@ -488,6 +489,7 @@ static void emit_call(IcnEmitter *em, IcnNode *n, IcnPorts ports,
             E(em,"    test    rax, rax\n");
             E(em,"    jz      %s\n", ports.ω);
             E(em,"    mov     byte [rel icn_suspended], 0\n");
+            E(em,"    mov     rbp, [rel icn_suspend_rbp]\n");
             E(em,"    jmp     [rel icn_suspend_resume]\n");
         } else {
             Jmp(em,ports.ω);
@@ -1121,7 +1123,8 @@ void icn_emit_file(IcnEmitter *em, IcnNode **nodes, int count) {
     }
     E(em,"    icn_failed: resb 1\n");
     E(em,"    icn_suspended: resb 1\n");
-    E(em,"    icn_suspend_resume: resq 1\n\n");
+    E(em,"    icn_suspend_resume: resq 1\n");
+    E(em,"    icn_suspend_rbp: resq 1\n\n");
 
     E(em,"section .text\n    global _start\n    extern icn_write_int\n    extern icn_write_str\n");
     E(em,"    extern icn_push\n    extern icn_pop\n\n");

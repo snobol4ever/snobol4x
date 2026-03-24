@@ -1,0 +1,10 @@
+# rung03 t04: generator counting down via suspend
+procedure downto(n);
+  local i;
+  i := n;
+  while i >= 1 do suspend i do i := i - 1;
+end
+
+procedure main();
+  every write(downto(4));
+end
