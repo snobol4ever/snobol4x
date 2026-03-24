@@ -17,6 +17,8 @@ person(smith).
 livesNear(jones, smith).
 playsChess(jones, smith).
 betterAtChess(clark, jones).
+betterAtChess(brown, smith).
+betterAtChess(brown, jones).
 doesLiveNear(X, Y) :- livesNear(X, Y).
 doesLiveNear(X, Y) :- livesNear(Y, X).
 doesLiveNear(X, Z) :- livesNear(X, Y), livesNear(Y, Z).
@@ -27,14 +29,14 @@ main :-
    person(Manager),
    person(President),
    differ(Accountant, Cashier, Manager, President),
-%  betterAtChess(Cashier, President),
-%  \+playsChess(President, Manager),
-%  \+playsChess(President, Accountant),
-%  betterAtChess(Manager, Accountant),
-%  betterAtChess(Cashier, Accountant),
-%  doesLiveNear(Accountant, President),
-%  \+doesLiveNear(Accountant, Cashier),
-%  \+doesLiveNear(Accountant, Manager)
+   betterAtChess(Cashier, President),
+   \+playsChess(President, Manager),
+   \+playsChess(President, Accountant),
+   betterAtChess(Manager, Accountant),
+   betterAtChess(Cashier, Accountant),
+   doesLiveNear(Accountant, President),
+   \+doesLiveNear(Accountant, Cashier),
+   \+doesLiveNear(Accountant, Manager),
    display(Accountant, Cashier, Manager, President),
    fail
 .

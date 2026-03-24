@@ -207,6 +207,9 @@ static void emit_term_val(EXPR_t *e) {
     }
 }
 
+/* forward declaration — defined after emit_body */
+static int is_user_call(EXPR_t *goal);
+
 /* =========================================================================
  * emit_goal — emit code for one body goal
  *
@@ -481,23 +484,42 @@ static void emit_goal(EXPR_t *goal, int uid,
                 return;
             }
 
-            /* \+/1 — negation-as-failure */
+            /* \+/1 — negation-as-failure
+             * Try the subgoal on a scratch trail copy.
+             * If subgoal SUCCEEDS → unwind, goto ω (outer failure).
+             * If subgoal FAILS    → unwind, goto γ (success for \+).
+             * User predicates use the resumable _r call (start=0, one try).
+             * Builtin goals are inlined with a flag that captures the outcome. */
             if ((strcmp(fn, "\\+") == 0 || strcmp(fn, "not") == 0) && arity == 1) {
-                char naf_succ[LBUF], naf_fail[LBUF];
-                snprintf(naf_succ, LBUF, "naf%d_s", uid);
-                snprintf(naf_fail, LBUF, "naf%d_f", uid);
+                EXPR_t *sub = goal->children[0];
                 int mu = pl_next_uid();
-                PL_C("    { int _naf%d = trail_mark(&_trail);\n", mu);
-                /* try goal in a sub-trail; if it succeeds → outer ω */
-                /* We implement via a temporary copy of trail */
+                char naf_succ[LBUF], naf_fail[LBUF], naf_done[LBUF];
+                snprintf(naf_succ, LBUF, "naf%d_s", mu);
+                snprintf(naf_fail, LBUF, "naf%d_f", mu);
+                snprintf(naf_done, LBUF, "naf%d_d", mu);
+                PL_C("    { /* \\+ negation-as-failure */\n");
                 PL_C("      Trail _naf_tr%d = _trail;\n", mu);
-                PL_C("      int _naf_ok%d = 0;\n", mu);
-                /* emit child goal into a goto-label pair we catch */
-                /* simplified: call as a function if it's a user predicate,
-                 * or emit inline with flag capture */
-                (void)naf_succ; (void)naf_fail;
-                PL_C("      /* \\+ inline not yet fully supported - treat as opaque */\n");
-                PL_C("      (void)_naf_ok%d;\n", mu);
+                PL_C("      int   _naf_mk%d = trail_mark(&_naf_tr%d);\n", mu, mu);
+                PL_C("      int   _naf_ok%d = 0;\n", mu);
+                if (is_user_call(sub)) {
+                    const char *sfn2 = sub->sval;
+                    int sa = sub->nchildren;
+                    char sfname[256];
+                    snprintf(sfname, sizeof sfname, "pl_%s_%d", safe_name(sfn2) + 2, sa);
+                    PL_C("      { int _naf_r%d = %s_r(", mu, sfname);
+                    for (int j = 0; j < sa; j++) {
+                        emit_term_val(sub->children[j]); PL_C(", ");
+                    }
+                    PL_C("&_naf_tr%d, 0); _naf_ok%d = (_naf_r%d >= 0); }\n", mu, mu, mu);
+                } else {
+                    /* inline: emit the sub-goal jumping to naf_succ/naf_fail */
+                    emit_goal(sub, pl_next_uid(), naf_succ, naf_fail);
+                    PL_C("%s: _naf_ok%d = 0; goto %s;\n", naf_fail, mu, naf_done);
+                    PL_C("%s: _naf_ok%d = 1;\n", naf_succ, mu);
+                    PL_C("%s:;\n", naf_done);
+                }
+                PL_C("      trail_unwind(&_naf_tr%d, _naf_mk%d);\n", mu, mu);
+                PL_C("      if (_naf_ok%d) goto %s;\n", mu, ω);
                 PL_C("    }\n");
                 PG(γ); return;
             }
