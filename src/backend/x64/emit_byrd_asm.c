@@ -804,6 +804,8 @@ struct NamedPat {
     char local_names[MAX_PARAMS][64]; /* local variable names (after ')' in prototype) */
     char body_label[NAME_LEN + 16]; /* NASM label of function body entry */
     int  uses_nreturn;               /* 1 = function has :(NRETURN) path */
+    int  body_end_idx;               /* stmt index of last stmt in body (-1 = unknown) */
+    char end_label[NAME_LEN + 16];   /* source label of stmt just after body (e.g. "TWEnd") */
 };
 
 static const NamedPat *named_pat_lookup(const char *varname);
@@ -2022,6 +2024,9 @@ static NamedPat *named_pat_register(const char *varname, EXPR_t *pat) {
     e->nparams = 0;
     e->nlocals = 0;
     e->body_label[0] = '\0';
+    e->uses_nreturn = 0;
+    e->body_end_idx = -1;
+    e->end_label[0] = '\0';
     memset(e->param_names, 0, sizeof e->param_names);
     memset(e->local_names, 0, sizeof e->local_names);
     return e;
@@ -2501,6 +2506,14 @@ static void scan_named_patterns(Program *prog) {
                             if (*entry == '.') entry++;
                             snprintf(e->body_label, sizeof e->body_label, "%s", entry);
                         }
+                    }
+                    /* Capture end_label from DEFINE goto target: DEFINE('F()'):(FEnd)
+                     * The goto is uncond or onsuccess pointing to the post-body label. */
+                    if (s->go) {
+                        const char *endlbl = s->go->uncond ? s->go->uncond
+                                           : s->go->onsuccess;
+                        if (endlbl && endlbl[0])
+                            snprintf(e->end_label, sizeof e->end_label, "%s", endlbl);
                     }
                 }
             }
@@ -4189,6 +4202,69 @@ static void emit_program(Program *prog) {
         }
     }
 
+    /* ---- Pre-scan: compute body_end_idx for DEFINE-style functions ----
+     * Must run BEFORE Pass 3 so dry_cur_fn clearing in Pass 3 uses correct values.
+     * For each function with a known end_label (the goto target from the DEFINE stmt,
+     * e.g. "TWEnd"), scan stmts to find that label and set body_end_idx = stmt_before_it.
+     * For functions without end_label, fall back to "next body_label - 1".
+     * scan_idx mirrors uid: skip Prolog stmts same as real pass. */
+    {
+        /* First pass: assign body_end_idx for functions with end_label */
+        for (int fi = 0; fi < named_pat_count; fi++) {
+            NamedPat *np = &named_pats[fi];
+            if (!np->is_fn || !np->end_label[0]) continue;
+            int idx = 0, body_started = 0, last_before_end = -1;
+            for (STMT_t *sp = prog->head; sp; sp = sp->next) {
+                if (sp->is_end) break;
+                if (sp->subject && sp->subject->kind == E_CHOICE) continue;
+                if (sp->subject && (sp->subject->kind == E_UNIFY ||
+                                    sp->subject->kind == E_CLAUSE)) continue;
+                if (!body_started && sp->label && sp->label[0] &&
+                    strcasecmp(sp->label, np->body_label) == 0)
+                    body_started = 1;
+                if (body_started && sp->label && sp->label[0] &&
+                    strcasecmp(sp->label, np->end_label) == 0) {
+                    np->body_end_idx = idx - 1;
+                    break;
+                }
+                if (body_started) last_before_end = idx;
+                idx++;
+            }
+            if (np->body_end_idx < 0 && last_before_end >= 0)
+                np->body_end_idx = last_before_end;
+        }
+        /* Second pass: functions without end_label — use "next body_label - 1" */
+        {
+            int scan_idx = 0;
+            NamedPat *active_fn = NULL;
+            for (STMT_t *sp = prog->head; sp; sp = sp->next) {
+                if (sp->is_end) break;
+                if (sp->subject && sp->subject->kind == E_CHOICE) continue;
+                if (sp->subject && (sp->subject->kind == E_UNIFY ||
+                                    sp->subject->kind == E_CLAUSE)) continue;
+                if (sp->label && sp->label[0]) {
+                    NamedPat *new_fn = NULL;
+                    for (int fi = 0; fi < named_pat_count; fi++) {
+                        if (named_pats[fi].is_fn &&
+                            named_pats[fi].body_label[0] &&
+                            strcasecmp(named_pats[fi].body_label, sp->label) == 0) {
+                            new_fn = &named_pats[fi];
+                            break;
+                        }
+                    }
+                    if (new_fn) {
+                        if (active_fn && active_fn->body_end_idx < 0)
+                            active_fn->body_end_idx = scan_idx - 1;
+                        active_fn = (new_fn->body_end_idx < 0) ? new_fn : NULL;
+                    }
+                }
+                scan_idx++;
+            }
+            /* Last unresolved function: do NOT extend to end of program */
+            (void)active_fn;
+        }
+    }
+
     /* ---- Pass 3: dry-run all pattern emissions to collect bss/lit slots ----
      * Mirrors emit_stmt dry-run. Redirects output to /dev/null,
      * runs emit_pat_node for every pattern stmt, then restores.
@@ -4204,11 +4280,24 @@ static void emit_program(Program *prog) {
         for (STMT_t *sp = prog->head; sp; sp = sp->next) {
             if (sp->is_end) break;
             int dry_uid = dry_stmt_uid++;
+        /* Clear dry_cur_fn when past function body range */
+        if (dry_cur_fn && dry_cur_fn->body_end_idx >= 0 && dry_uid > dry_cur_fn->body_end_idx)
+            dry_cur_fn = NULL;
             /* Mirror cur_fn tracking from the real pass */
             if (sp->label && sp->label[0]) {
                 const NamedPat *fn_entry = named_pat_lookup(sp->label);
                 if (fn_entry && fn_entry->is_fn) {
                     dry_cur_fn = fn_entry;
+                } else {
+                    /* DEFINE-style: match by body_label */
+                    for (int _fi = 0; _fi < named_pat_count; _fi++) {
+                        if (named_pats[_fi].is_fn &&
+                            named_pats[_fi].body_label[0] &&
+                            strcasecmp(named_pats[_fi].body_label, sp->label) == 0) {
+                            dry_cur_fn = &named_pats[_fi];
+                            break;
+                        }
+                    }
                 }
                 if (dry_cur_fn) {
                     char end_lbl[LBUF + 16];
@@ -4332,6 +4421,12 @@ static void emit_program(Program *prog) {
         char next_lbl[64]; snprintf(next_lbl, sizeof next_lbl, "Ln_%d", uid);
         char sfail_lbl[64]; snprintf(sfail_lbl, sizeof sfail_lbl, "Lf_%d", uid);
 
+        /* Clear cur_fn when we've passed the end of its body range.
+         * This handles DEFINE-style functions whose body_end_idx was computed
+         * by the pre-scan above — prevents cur_fn leaking into top-level stmts. */
+        if (cur_fn && cur_fn->body_end_idx >= 0 && uid > cur_fn->body_end_idx)
+            cur_fn = NULL;
+
         /* Major separator: SNOBOL4 statement boundary.
          * Emit "; === label ===..." with the SNOBOL4 source label embedded
          * when present, or plain "; ======..." for unlabelled statements.
@@ -4342,10 +4437,24 @@ static void emit_program(Program *prog) {
             { int _id = label_id(s->label);
               if (_id >= 0) label_defined[_id] = 1; }
 
-            /* cur_fn tracking: entering a user function body */
+            /* cur_fn tracking: entering a user function body.
+             * Two cases:
+             *   1. Snocone-style: label == function varname (e.g. "nPush")
+             *   2. DEFINE-style:  label == body_label (e.g. "L_nPush_136")
+             * Both must set cur_fn so RETURN routes to the right fn_NAME_γ. */
             const NamedPat *fn_entry = named_pat_lookup(s->label);
             if (fn_entry && fn_entry->is_fn) {
                 cur_fn = fn_entry;
+            } else {
+                /* Try matching by body_label for DEFINE-style functions */
+                for (int _fi = 0; _fi < named_pat_count; _fi++) {
+                    if (named_pats[_fi].is_fn &&
+                        named_pats[_fi].body_label[0] &&
+                        strcasecmp(named_pats[_fi].body_label, s->label) == 0) {
+                        cur_fn = &named_pats[_fi];
+                        break;
+                    }
+                }
             }
             /* Leaving a user function body: label ends with ".END" */
             if (cur_fn) {
