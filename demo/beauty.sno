@@ -193,10 +193,10 @@ ppAP90ok       ppP90          =  ppWArr[ppP90i]
 ppAscale
 *                 s4 = p90 + 6, min 40
                ppStop[4]      =  ppP90 + 6
-               LT(ppStop[4], 40)                                                :F(ppAs1)
+               LT(ppStop[4], 40)                                                :F(ppAstop1)
                ppStop[4]      =  40
 *                 s1 scales 11..19 across s4 range 40..110
-ppAs1          ppStop[1]      =  11 + (ppStop[4] - 40) * 8 / 70
+ppAstop1       ppStop[1]      =  11 + (ppStop[4] - 40) * 8 / 70
 *                 s2 = s1 + 15, s3 = s2 + 3
                ppStop[2]      =  ppStop[1] + 15
                ppStop[3]      =  ppStop[2] + 3
@@ -251,7 +251,7 @@ ppAutoSkip
 +                                | nl ('+' | '.') FENCE(SPAN(' ' tab) | epsilon)
 +                                )
 
-               TxInList       =  (POS(0) | ' ') *upr(tx) (' ' | RPOS(0))
+               TxInList       =  (POS(0) | ' ') EVAL('upr(tx)') (' ' | RPOS(0))
                SpecialNms     =  'ABORT CONTINUE END FRETURN NRETURN RETURN SCONTINUE START'
                BuiltinVars    =  'ABORT ARB BAL FAIL FENCE INPUT OUTPUT REM TERMINAL'
                ProtKwds       =  'ABORT ALPHABET ARB BAL FAIL FENCE FILE FNCLEVEL '
