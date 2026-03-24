@@ -1660,8 +1660,14 @@ static void pj_emit_body(EXPR_t **goals, int ngoals, const char *lbl_γ,
             J("    invokestatic %s/pj_trail_unwind(I)V\n", pj_classname);
             JI("goto", call_α);   /* β port: retry ucall for next solution */
         }
-        /* ucall exhausted → retry enclosing call (lbl_ω = enclosing beta) */
+        /* ucall exhausted → retry enclosing call (lbl_ω = enclosing beta).
+         * Reset local_cs to 0 so the next invocation of this predicate
+         * starts fresh.  Without this reset, a retry of the enclosing call
+         * (e.g. item(Y) binding a new Y) would re-enter differ with cs
+         * already past its last clause, causing an infinite loop. */
         J("%s:\n", call_ω);
+        JI("iconst_0", "");
+        J("    istore %d\n", local_cs);
         JI("goto", lbl_ω);
         return;
     }
