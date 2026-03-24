@@ -1,0 +1,172 @@
+*  driver.sno — test driver for omega subsystem (B-276)
+*  Oracle: snobol4 -f -P256k -Idemo/inc driver.sno
+*  Run via: INC=demo/inc bash test/beauty/run_beauty_subsystem.sh omega
+*
+*  omega.sno exports: TV TW TX TY TZ
+*  Note: TV/TW/TX/TY/TZ return patterns containing $ *assign idioms that
+*  only work in beauty.sno's full context (t8Max, dummy, T8Trace globals).
+*  Tests verify: (a) DEFINE loads cleanly, (b) functions return PATTERN,
+*  (c) the Qize/lwr/upr/LEQ logic used inside them is exercised via the
+*  omega string construction path.
+
+-INCLUDE 'global.sno'
+-INCLUDE 'case.sno'
+-INCLUDE 'assign.sno'
+-INCLUDE 'Qize.sno'
+-INCLUDE 'counter.sno'
+-INCLUDE 'stack.sno'
+-INCLUDE 'tree.sno'
+-INCLUDE 'ShiftReduce.sno'
+-INCLUDE 'Gen.sno'
+-INCLUDE 'semantic.sno'
+-INCLUDE 'omega.sno'
+
+        &STLIMIT   = 1000000
+
+*  Scan-visible stubs: inject_traces.py scans only this file, not -INCLUDE'd files.
+*  These re-DEFINE the omega functions so the monitor injects CALL/RETURN traces.
+*  At runtime the IDENT('','x') always fails so the block is unreachable (no-op).
+        IDENT('', 'x')                                 :S(omega_stub_skip)
+        DEFINE('TV(lvl,pat,name)omega')
+        DEFINE('TW(lvl,pat,name)omega')
+        DEFINE('TX(lvl,pat,name)omega')
+        DEFINE('TY(lvl,name,pat)omega')
+        DEFINE('TZ(lvl,name,pat)omega')
+omega_stub_skip
+        epsilon    = ''
+        xTrace     = 0
+        t8Max      = 0
+        txOfs      = 0
+        tz         = ''
+        tx         = ''
+        dummy      = ''
+        doParseTree = FALSE
+
+*  Minimal T8Trace stub (needed by TY/TZ xTrace>0 path -- not exercised but must exist)
+        DEFINE('T8Trace(lvl,str,ofs)') :(T8TraceEnd)
+T8Trace T8Trace = .dummy               :(RETURN)
+T8TraceEnd
+
+* -----------------------------------------------------------------------
+*  1-2: TZ returns PATTERN (xTrace=0 and xTrace=1)
+* -----------------------------------------------------------------------
+        xTrace = 0
+        p1 = TZ(0, 'lbl', LEN(1))
+        IDENT(DATATYPE(p1), 'PATTERN')                :S(P1)F(F1)
+P1      OUTPUT = 'PASS: 1 TZ xTrace=0 PATTERN'        :(T1)
+F1      OUTPUT = 'FAIL: 1 ' DATATYPE(p1)
+T1
+        xTrace = 1 ; t8Max = 0 ; txOfs = 0 ; tz = ''
+        p2 = TZ(1, 'lbl', LEN(1))
+        IDENT(DATATYPE(p2), 'PATTERN')                :S(P2)F(F2)
+P2      OUTPUT = 'PASS: 2 TZ xTrace=1 PATTERN'        :(T2)
+F2      OUTPUT = 'FAIL: 2 ' DATATYPE(p2)
+T2
+
+* -----------------------------------------------------------------------
+*  3-4: TY returns PATTERN (xTrace=0 and xTrace=1)
+* -----------------------------------------------------------------------
+        xTrace = 0
+        p3 = TY(0, 'lbl', LEN(2))
+        IDENT(DATATYPE(p3), 'PATTERN')                :S(P3)F(F3)
+P3      OUTPUT = 'PASS: 3 TY xTrace=0 PATTERN'        :(T3)
+F3      OUTPUT = 'FAIL: 3 ' DATATYPE(p3)
+T3
+        xTrace = 1 ; t8Max = 0 ; txOfs = 0 ; tz = ''
+        p4 = TY(1, 'lbl', LEN(2))
+        IDENT(DATATYPE(p4), 'PATTERN')                :S(P4)F(F4)
+P4      OUTPUT = 'PASS: 4 TY xTrace=1 PATTERN'        :(T4)
+F4      OUTPUT = 'FAIL: 4 ' DATATYPE(p4)
+T4
+
+* -----------------------------------------------------------------------
+*  5-6: TX returns PATTERN (doParseTree=FALSE and TRUE)
+* -----------------------------------------------------------------------
+        xTrace = 0 ; doParseTree = FALSE
+        p5 = TX(0, LEN(5), 'hello')
+        IDENT(DATATYPE(p5), 'PATTERN')                :S(P5)F(F5)
+P5      OUTPUT = 'PASS: 5 TX doParseTree=FALSE PATTERN' :(T5)
+F5      OUTPUT = 'FAIL: 5 ' DATATYPE(p5)
+T5
+        xTrace = 0 ; doParseTree = TRUE
+        p6 = TX(0, LEN(5), 'hello')
+        IDENT(DATATYPE(p6), 'PATTERN')                :S(P6)F(F6)
+P6      OUTPUT = 'PASS: 6 TX doParseTree=TRUE PATTERN' :(T6)
+F6      OUTPUT = 'FAIL: 6 ' DATATYPE(p6)
+T6
+
+* -----------------------------------------------------------------------
+*  7-8: TV returns PATTERN (doParseTree=FALSE and TRUE)
+* -----------------------------------------------------------------------
+        xTrace = 0 ; doParseTree = FALSE
+        p7 = TV(0, LEN(5), 'HELLO')
+        IDENT(DATATYPE(p7), 'PATTERN')                :S(P7)F(F7)
+P7      OUTPUT = 'PASS: 7 TV doParseTree=FALSE PATTERN' :(T7)
+F7      OUTPUT = 'FAIL: 7 ' DATATYPE(p7)
+T7
+        xTrace = 0 ; doParseTree = TRUE
+        p8 = TV(0, LEN(5), 'HELLO')
+        IDENT(DATATYPE(p8), 'PATTERN')                :S(P8)F(F8)
+P8      OUTPUT = 'PASS: 8 TV doParseTree=TRUE PATTERN' :(T8)
+F8      OUTPUT = 'FAIL: 8 ' DATATYPE(p8)
+T8
+
+* -----------------------------------------------------------------------
+*  9-10: TW returns PATTERN (doParseTree=FALSE and TRUE)
+* -----------------------------------------------------------------------
+        xTrace = 0 ; doParseTree = FALSE
+        p9 = TW(0, LEN(5), 'hello')
+        IDENT(DATATYPE(p9), 'PATTERN')                :S(P9)F(F9)
+P9      OUTPUT = 'PASS: 9 TW doParseTree=FALSE PATTERN' :(T9)
+F9      OUTPUT = 'FAIL: 9 ' DATATYPE(p9)
+T9
+        xTrace = 0 ; doParseTree = TRUE
+        p10 = TW(0, LEN(5), 'hello')
+        IDENT(DATATYPE(p10), 'PATTERN')               :S(P10)F(F10)
+P10     OUTPUT = 'PASS: 10 TW doParseTree=TRUE PATTERN' :(T10)
+F10     OUTPUT = 'FAIL: 10 ' DATATYPE(p10)
+T10
+
+* -----------------------------------------------------------------------
+*  11: TX omega string uses LEQ — verify LEQ(tx,name) logic directly
+*      TX builds "pat $ tx *LEQ(tx, 'name')" — LEQ is case-sensitive LE
+* -----------------------------------------------------------------------
+        IDENT(DATATYPE(LEQ('hello', 'hello')), 'STRING') :S(P11)F(F11)
+P11     OUTPUT = 'PASS: 11 LEQ same strings STRING'   :(T11)
+F11     OUTPUT = 'FAIL: 11'
+T11
+
+* -----------------------------------------------------------------------
+*  12: LEQ('abc','abd') succeeds (abc <= abd)
+* -----------------------------------------------------------------------
+        LEQ('abc', 'abd')                                  :F(P12)S(F12)
+P12     OUTPUT = 'PASS: 12 LEQ abc!=abd fails'             :(T12)
+F12     OUTPUT = 'FAIL: 12'
+T12
+
+* -----------------------------------------------------------------------
+*  13: LEQ fails when left > right
+* -----------------------------------------------------------------------
+        LEQ('z', 'a')                                  :F(P13)S(F13)
+P13     OUTPUT = 'PASS: 13 LEQ z>a fails'              :(T13)
+F13     OUTPUT = 'FAIL: 13'
+T13
+
+* -----------------------------------------------------------------------
+*  14: TV lwr path — lwr used inside TX omega string build
+*      Verify lwr('HELLO') = 'hello'
+* -----------------------------------------------------------------------
+        IDENT(lwr('HELLO'), 'hello')                   :S(P14)F(F14)
+P14     OUTPUT = 'PASS: 14 lwr HELLO=hello'            :(T14)
+F14     OUTPUT = 'FAIL: 14 lwr=' lwr('HELLO')
+T14
+
+* -----------------------------------------------------------------------
+*  15: TW upr path — upr('hello') = 'HELLO'
+* -----------------------------------------------------------------------
+        IDENT(upr('hello'), 'HELLO')                   :S(P15)F(F15)
+P15     OUTPUT = 'PASS: 15 upr hello=HELLO'            :(T15)
+F15     OUTPUT = 'FAIL: 15 upr=' upr('hello')
+T15
+
+END

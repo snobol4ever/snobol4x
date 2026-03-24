@@ -1,0 +1,15 @@
+PASS: 1 TZ xTrace=0 PATTERN
+PASS: 2 TZ xTrace=1 PATTERN
+PASS: 3 TY xTrace=0 PATTERN
+PASS: 4 TY xTrace=1 PATTERN
+PASS: 5 TX doParseTree=FALSE PATTERN
+PASS: 6 TX doParseTree=TRUE PATTERN
+PASS: 7 TV doParseTree=FALSE PATTERN
+PASS: 8 TV doParseTree=TRUE PATTERN
+PASS: 9 TW doParseTree=FALSE PATTERN
+PASS: 10 TW doParseTree=TRUE PATTERN
+PASS: 11 LEQ same strings STRING
+PASS: 12 LEQ abc!=abd fails
+PASS: 13 LEQ z>a fails
+PASS: 14 lwr HELLO=hello
+PASS: 15 upr hello=HELLO

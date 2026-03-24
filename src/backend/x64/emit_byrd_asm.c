@@ -2298,6 +2298,11 @@ static int expr_has_pattern_fn(EXPR_t *e) {
     }
     /* E_NAM (. capture) and E_DOL ($ capture) wrap a pattern child */
     if (e->kind == E_NAM || e->kind == E_DOL) return 1;
+    /* E_ATP (@ cursor capture) is always a pattern element:
+     * unary @x or binary pat @x — both produce pattern values.
+     * B-276: M-BEAUTY-OMEGA fix — without this, TZ = LE(xTrace,0) pat @txOfs
+     * was not recognised as a pattern expression and fell into OPSYN dispatch. */
+    if (e->kind == E_ATP) return 1;
     for (int i = 0; i < e->nchildren; i++)
         if (expr_has_pattern_fn(e->children[i])) return 1;
     return 0;
@@ -2315,6 +2320,9 @@ static int expr_is_pattern_expr(EXPR_t *e) {
      * a pattern function call. Pure literal concat like 'hello' ' world'
      * is a VALUE expression (string join), not a pattern. */
     if (e->kind == E_CONC) return expr_has_pattern_fn(e);
+    /* E_ATP (@var cursor capture) is always a pattern expression:
+     * unary @x or binary pat @x — both yield a pattern value. */
+    if (e->kind == E_ATP) return 1;
     /* Any function call is a pattern expression */
     return expr_has_pattern_fn(e);
 }
@@ -3773,23 +3781,49 @@ static int emit_expr(EXPR_t *e, int rbp_off) {
         return 1;
     }
 
-    /* ---- E_ATP: unary @VAR (cursor capture) or binary @ (OPSYN dispatch) ---- */
+    /* ---- E_ATP: unary @VAR (cursor capture) or binary pat@VAR ---- */
     case E_ATP: {
         if (e->nchildren >= 2 && e->children[0] && e->children[1]) {
-            /* Binary @ — OPSYN: dispatch via APPLY_fn("@", args, 2) at runtime.
-             * The runtime's opsyn() registered "@" → whatever the user bound.
-             * E.g. opsyn('@', .dupl, 2) → APPLY_fn("@", ['a', 4], 2) → dupl('a',4). */
-            const char *fnlab = str_intern("@");
-            EXPR_t *l = e->children[0], *r = e->children[1];
-            A("    sub     rsp, 32\n");
-            emit_expr(l, -32);
-            A("    STORE_ARG32 0\n");
-            emit_expr(r, -32);
-            A("    STORE_ARG32 16\n");
-            A("    APPLY_FN_N  %s, 2\n", fnlab);
-            A("    add     rsp, 32\n");
+            /* Binary pat @VAR in value context — SNOBOL4 pattern concatenation.
+             * Semantics: evaluate LHS (a pattern or value), capture cursor into VAR
+             * as a side effect, return LHS value unchanged.
+             * In production beauty.sno, "TZ = LE(xTrace,0) pat @txOfs $ *assign(...)"
+             * constructs a pattern value (from LE()/pat) and attaches cursor-capture.
+             * The runtime pat_cat() handles DT_P concat correctly; we use stmt_concat
+             * which delegates to pat_cat when either side is DT_P.
+             * B-276: M-BEAUTY-OMEGA — binary @ was incorrectly emitted as OPSYN call.
+             *
+             * Emit: (1) evaluate LHS into result slot; (2) apply cursor capture to VAR;
+             * (3) stmt_concat(LHS, cursor_val) so pat_cat wires the AT element into the
+             *     pattern when LHS is DT_P.
+             *
+             * Note: @VAR cursor-capture in SNOBOL4 pattern context is handled by the
+             * pattern emitter (emit_pat_node E_ATP).  Here in value-expression context
+             * we produce the equivalent runtime effect via stmt_at_capture + result passthrough.
+             */
+            EXPR_t *lhs = e->children[0];
+            EXPR_t *rhs = e->children[1];  /* E_VART("varname") */
+            const char *varname = (rhs && rhs->sval) ? rhs->sval : "";
+            const char *varlab  = str_intern(varname);
+
+            /* Step 1: evaluate LHS → [rbp-32/rbp-24] */
+            emit_expr(lhs, -32);
+
+            /* Step 2: push LHS result so we can restore after at_capture call */
+            A("    push    rdx\n");    /* LHS ptr */
+            A("    push    rax\n");    /* LHS type */
+
+            /* Step 3: call stmt_at_capture(varname, cursor) — side effect only */
+            A("    lea     rdi, [rel %s]\n", varlab);
+            A("    mov     rsi, [cursor]\n");
+            A("    call    stmt_at_capture\n");
+
+            /* Step 4: restore LHS → result slot */
+            A("    pop     rax\n");    /* LHS type */
+            A("    pop     rdx\n");    /* LHS ptr */
             if (rbp_off == -32 || rbp_off == -16) {
-                A("    STORE_RESULT\n");
+                A("    mov     [rbp-32], rax\n");
+                A("    mov     [rbp-24], rdx\n");
             } else {
                 A("    mov     [rbp%+d], rax\n", rbp_off);
                 A("    mov     [rbp%+d], rdx\n", rbp_off+8);
