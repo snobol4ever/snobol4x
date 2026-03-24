@@ -10,7 +10,7 @@ ln -sfn /home/claude/snobol4ever/x64 /home/claude/x64   # if x64 missing
 
 ---
 
-## Current milestone: `M-BEAUTY-XDUMP` (B-275)
+## Current milestone: `M-BEAUTY-SEMANTIC` (B-275)
 
 1. Check `demo/inc/XDump.sno` exists; if not, create driver + ref from CSNOBOL4 oracle
 2. `INC=demo/inc bash test/beauty/run_beauty_subsystem.sh XDump`
@@ -43,8 +43,9 @@ FRETURN inside `Read` body routes correctly. 8/8 ASM PASS. Commit `eeeb5ad`.
 | 13 | Gen         | ✅ |
 | 14 | Qize        | ✅ |
 | 15 | ReadWrite   | ✅ |
-| 16 | XDump       | ← now |
-| 17 | semantic    | |
+| 16 | XDump       | ✅ |
+| 17 | semantic    | ← now |
+
 | 18 | omega       | |
 
 ---
