@@ -990,6 +990,19 @@ static int pj_is_user_call(EXPR_t *goal) {
 }
 
 /* -------------------------------------------------------------------------
+ * pj_count_ucalls — count total user calls in a body (each allocates 5 locals)
+ * ------------------------------------------------------------------------- */
+static int pj_count_ucalls(EXPR_t **goals, int ngoals) {
+    int count = 0;
+    for (int i = 0; i < ngoals; i++) {
+        EXPR_t *g = goals[i];
+        if (!g) continue;
+        if (pj_is_user_call(g)) count++;
+    }
+    return count;
+}
+
+/* -------------------------------------------------------------------------
  * Goal emitter
  * lbl_γ = label to goto on goal success
  * lbl_ω  = label to goto on goal failure
@@ -1179,7 +1192,9 @@ static void pj_emit_goal(EXPR_t *goal, const char *lbl_γ, const char *lbl_ω,
                 J("%s:\n", done_lbl);
                 return;
             }
-            /* plain disjunction: try each branch in sequence */
+            /* plain disjunction: try each branch in sequence.
+             * Use pj_emit_body for each branch so that user calls within
+             * a branch get proper retry loops (e.g. puzzle ; true). */
             int uid = pj_fresh_label();
             char done_lbl[128];
             snprintf(done_lbl, sizeof done_lbl, "disj%d_done", uid);
@@ -1187,9 +1202,27 @@ static void pj_emit_goal(EXPR_t *goal, const char *lbl_γ, const char *lbl_ω,
                 char next_lbl[128];
                 snprintf(next_lbl, sizeof next_lbl, "disj%d_alt%d", uid, bi + 1);
                 const char *fail_to = (bi < nargs - 1) ? next_lbl : lbl_ω;
-                pj_emit_goal(goal->children[bi], lbl_γ, fail_to,
-                             trail_local, var_locals, n_vars,
-                             cut_cs_seal, cs_local_for_cut);
+                /* Fresh locals for this branch — branches are mutually exclusive */
+                int next_local_disj = trail_local + 1 + n_vars + 8;
+                int ics_disj = next_local_disj++;
+                int sco_disj = next_local_disj++;
+                JI("iconst_0", ""); J("    istore %d\n", ics_disj);
+                JI("iconst_0", ""); J("    istore %d\n", sco_disj);
+                EXPR_t *branch = goal->children[bi];
+                if (branch && branch->kind == E_FNC && branch->sval &&
+                    strcmp(branch->sval, ",") == 0) {
+                    /* conjunction branch: pass children directly to pj_emit_body */
+                    pj_emit_body(branch->children, branch->nchildren,
+                                 lbl_γ, fail_to, fail_to,
+                                 trail_local, var_locals, n_vars, &next_local_disj,
+                                 ics_disj, sco_disj, cut_cs_seal, cs_local_for_cut, NULL);
+                } else {
+                    /* single goal branch */
+                    pj_emit_body(&branch, 1,
+                                 lbl_γ, fail_to, fail_to,
+                                 trail_local, var_locals, n_vars, &next_local_disj,
+                                 ics_disj, sco_disj, cut_cs_seal, cs_local_for_cut, NULL);
+                }
                 if (bi < nargs - 1) {
                     J("    goto %s\n", done_lbl);
                     J("%s:\n", next_lbl);
@@ -1627,9 +1660,9 @@ static void pj_emit_body(EXPR_t **goals, int ngoals, const char *lbl_γ,
             J("    invokestatic %s/pj_trail_unwind(I)V\n", pj_classname);
             JI("goto", call_α);   /* β port: retry ucall for next solution */
         }
-        /* ucall exhausted → outer omega (next clause) */
+        /* ucall exhausted → retry enclosing call (lbl_ω = enclosing beta) */
         J("%s:\n", call_ω);
-        JI("goto", lbl_outer_ω);
+        JI("goto", lbl_ω);
         return;
     }
 
@@ -1755,7 +1788,18 @@ static void pj_emit_choice(EXPR_t *choice) {
     int init_cs_local = arity + 2;
     int sub_cs_out_local = arity + 3;
     int vars_base     = arity + 4;
-    int locals_needed = vars_base + max_vars + 32;
+    /* count max user calls in any single clause body — each allocates 5 locals */
+    int max_ucalls = 0;
+    for (int ci2 = 0; ci2 < nclauses; ci2++) {
+        EXPR_t *cl2 = choice->children[ci2];
+        if (!cl2 || cl2->kind != E_CLAUSE) continue;
+        int n_args_ci2 = (int)cl2->dval;
+        int nb2 = cl2->nchildren - n_args_ci2;
+        if (nb2 < 0) nb2 = 0;
+        int uc = pj_count_ucalls(cl2->children + n_args_ci2, nb2);
+        if (uc > max_ucalls) max_ucalls = uc;
+    }
+    int locals_needed = vars_base + max_vars + 5 * max_ucalls + 16;
 
     J("    .limit stack 16\n");
     J("    .limit locals %d\n", locals_needed);
