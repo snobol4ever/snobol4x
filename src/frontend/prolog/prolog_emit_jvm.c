@@ -27,6 +27,7 @@
  * ------------------------------------------------------------------------- */
 
 static FILE    *pj_out = NULL;
+static FILE    *pj_helper_buf = NULL;
 static char     pj_classname[256];
 static Program *pj_prog = NULL;  /* M-PJ-CUT-UCALL: program root for callee lookup */
 
@@ -1453,31 +1454,75 @@ static void pj_emit_goal(EXPR_t *goal, const char *lbl_γ, const char *lbl_ω,
             JI("goto", lbl_γ);
             return;
         }
-        /* \+/1, not/1 — negation as failure */
+        /* \+/1, not/1 — negation as failure.
+         * Emit the inner goal into a separate synthetic static helper method
+         * naf_helper_N(Object v0 ... vN-1) returning Z (boolean).
+         * This gives the inner goal its own clean JVM local frame, preventing
+         * aliasing between inner ucall cs-locals and outer clause locals.
+         * The helper is emitted inline at the current output position;
+         * Jasmin accepts methods in any order in the file. */
         if ((strcmp(fn, "\\+") == 0 || strcmp(fn, "not") == 0) && nargs == 1) {
             int uid = pj_fresh_label();
-            char inner_ok[128], inner_fail[128];
-            snprintf(inner_ok,   sizeof inner_ok,   "naf%d_ok",   uid);
-            snprintf(inner_fail, sizeof inner_fail, "naf%d_fail", uid);
-            /* Save trail mark so inner goal's bindings can be undone on both paths.
-             * Without this, any bindings made by the inner goal (even if it ultimately
-             * fails) survive into the enclosing environment, corrupting the search.
-             * Pattern mirrors \=/2 handler above. */
-            int scratch_tmark = (*next_local)++;
-            JI("iconst_0", ""); J("    istore %d\n", scratch_tmark);
+            /* --- emit helper method into pj_helper_buf (flushed after .end method) --- */
+            char parmdesc[1024]; parmdesc[0] = '\0';
+            for (int _p = 0; _p < n_vars; _p++) strcat(parmdesc, "[Ljava/lang/Object;");
+            char hname[128];
+            snprintf(hname, sizeof hname, "naf_helper_%d", uid);
+            int inner_var_locals[256];
+            int nvl = n_vars < 256 ? n_vars : 256;
+            for (int _v = 0; _v < nvl; _v++) inner_var_locals[_v] = _v;
+            int h_trail = n_vars;
+            int h_next  = n_vars + 1;
+            /* Redirect to helper buffer */
+            FILE *pj_saved_out = pj_out;
+            if (!pj_helper_buf) pj_helper_buf = tmpfile();
+            pj_out = pj_helper_buf;
+            J("\n.method static %s(%s)Z\n", hname, parmdesc);
+            J("    .limit stack 32\n");
+            J("    .limit locals %d\n", n_vars + 64);
+            J("    iconst_0\n"); J("    istore %d\n", h_trail);
             J("    invokestatic %s/pj_trail_mark()I\n", pj_classname);
-            J("    istore %d\n", scratch_tmark);
-            pj_emit_goal(goal->children[0], inner_ok, inner_fail,
-                         trail_local, var_locals, n_vars, cut_cs_seal, cs_local_for_cut, next_local, lbl_cutγ);
-            /* Unwind trail on both paths before routing \+ result */
-            J("%s:\n", inner_ok);
-            J("    iload %d\n", scratch_tmark);
+            J("    istore %d\n", h_trail);
+            /* Emit inner goal */
+            char h_ok[128], h_fail[128];
+            snprintf(h_ok,   sizeof h_ok,   "nafh%d_ok",   uid);
+            snprintf(h_fail, sizeof h_fail, "nafh%d_fail", uid);
+            EXPR_t *naf_inner = goal->children[0];
+            if (naf_inner && naf_inner->kind == E_FNC && naf_inner->sval
+                    && strcmp(naf_inner->sval, ",") == 0 && naf_inner->nchildren >= 1) {
+                int h_ics = h_next++; int h_sco = h_next++;
+                J("    iconst_0\n"); J("    istore %d\n", h_ics);
+                J("    iconst_0\n"); J("    istore %d\n", h_sco);
+                pj_emit_body(naf_inner->children, naf_inner->nchildren,
+                             h_ok, h_fail, h_fail,
+                             h_trail, inner_var_locals, nvl, &h_next,
+                             h_ics, h_sco, 0, 0, NULL, NULL);
+            } else {
+                int h_ics = h_next++; int h_sco = h_next++;
+                J("    iconst_0\n"); J("    istore %d\n", h_ics);
+                J("    iconst_0\n"); J("    istore %d\n", h_sco);
+                pj_emit_body(&naf_inner, 1,
+                             h_ok, h_fail, h_fail,
+                             h_trail, inner_var_locals, nvl, &h_next,
+                             h_ics, h_sco, 0, 0, NULL, NULL);
+            }
+            J("%s:\n", h_ok);
+            J("    iload %d\n", h_trail);
             J("    invokestatic %s/pj_trail_unwind(I)V\n", pj_classname);
-            JI("goto", lbl_ω);
-            J("%s:\n", inner_fail);
-            J("    iload %d\n", scratch_tmark);
+            J("    iconst_1\n    ireturn\n");
+            J("%s:\n", h_fail);
+            J("    iload %d\n", h_trail);
             J("    invokestatic %s/pj_trail_unwind(I)V\n", pj_classname);
-            JI("goto", lbl_γ);
+            J("    iconst_0\n    ireturn\n");
+            J(".end method\n\n");
+            pj_out = pj_saved_out;
+            /* --- call helper from outer body --- */
+            for (int _p = 0; _p < n_vars && _p < nvl; _p++)
+                J("    aload %d\n", var_locals[_p]);
+            J("    invokestatic %s/%s(%s)Z\n", pj_classname, hname, parmdesc);
+            /* result on stack: 1=inner succeeded (NAF fails), 0=inner failed (NAF succeeds) */
+            J("    ifeq %s\n", lbl_γ);   /* == 0 → inner failed → NAF succeeds → lbl_γ */
+            JI("goto", lbl_ω);           /* != 0 → inner succeeded → NAF fails → lbl_ω */
             return;
         }
         /* type tests: atom/1, integer/1, float/1, compound/1, var/1, nonvar/1, atomic/1, is_list/1 */
@@ -2559,6 +2604,15 @@ static void pj_emit_choice(EXPR_t *choice) {
     JI("areturn", "");
 
     J(".end method\n\n");
+    /* Flush any NAF helper methods buffered during this predicate */
+    if (pj_helper_buf) {
+        fflush(pj_helper_buf);
+        rewind(pj_helper_buf);
+        int _hc;
+        while ((_hc = fgetc(pj_helper_buf)) != EOF) fputc(_hc, pj_out);
+        fclose(pj_helper_buf);
+        pj_helper_buf = NULL;
+    }
 }
 
 /* -------------------------------------------------------------------------
