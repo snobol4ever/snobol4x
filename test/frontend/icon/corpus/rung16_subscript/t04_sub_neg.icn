@@ -1,0 +1,5 @@
+procedure main();
+  s := "hello";
+  write(s[-1]);
+  write(s[-2]);
+end

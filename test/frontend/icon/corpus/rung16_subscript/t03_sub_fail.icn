@@ -1,0 +1,4 @@
+procedure main();
+  s := "hi";
+  if s[5] then write("yes") else write("no");
+end

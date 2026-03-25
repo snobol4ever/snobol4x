@@ -719,9 +719,11 @@ static void ij_emit_if(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
     char ca[64], cb[64];
     ij_emit_expr(cond, cp, ca, cb);
 
-    /* cond_then: condition succeeded — value (long) on stack, discard */
+    /* cond_then: condition succeeded — value on stack, discard it.
+     * Use pop for String (1 slot), pop2 for long/double (2 slots). */
     JL(cond_then);
-    JI("pop2","");   /* discard condition result */
+    if (ij_expr_is_string(cond)) JI("pop","");
+    else                         JI("pop2","");
     JGoto(thenb ? then_a : ports.γ);
 
     JL(cond_else);
@@ -1612,6 +1614,8 @@ static int ij_expr_is_string(IcnNode *n) {
             if (n->nchildren >= 1) return ij_expr_is_string(n->children[0]);
             return 0;
         }
+        case ICN_SUBSCRIPT:
+            return 1;  /* s[i] always yields a single-char String */
         case ICN_VAR: {
             /* &subject keyword is always a String */
             if (strcmp(n->val.sval, "&subject") == 0) return 1;
@@ -2288,6 +2292,122 @@ static void ij_emit_limit(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
 }
 
 /* =========================================================================
+ * ICN_SUBSCRIPT — s[i]  (string character subscript, 1-based)
+ *
+ * Semantics: s[i] returns the single character at 1-based position i as a
+ * String.  Fails if i < 1 or i > length(s).
+ * Negative indices count from the end: s[-1] = last char.
+ *
+ * Implementation (one-shot — β → ω):
+ *   eval s → store in per-site static (String)
+ *   eval i → l2i → compute 0-based offset (handle negative)
+ *   bounds check: if offset < 0 || offset >= length → ω
+ *   substring(offset, offset+1) → γ (String)
+ *
+ * Children: [0]=string expr, [1]=index expr (long, 1-based)
+ * Result type: String (single character)
+ * ======================================================================= */
+static void ij_emit_subscript(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
+    int id = ij_new_id(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+
+    if (n->nchildren < 2) {
+        JL(a); JGoto(ports.ω); JL(b); JGoto(ports.ω); return;
+    }
+
+    IcnNode *str_child = n->children[0];
+    IcnNode *idx_child = n->children[1];
+
+    /* Per-site statics for cross-label value passing */
+    char s_fld[64], i_fld[64];
+    snprintf(s_fld, sizeof s_fld, "icn_%d_sub_s", id);
+    snprintf(i_fld, sizeof i_fld, "icn_%d_sub_i", id);
+    ij_declare_static_str(s_fld);
+    ij_declare_static_int(i_fld);   /* 0-based int offset */
+
+    /* Relay labels */
+    char s_relay[64], i_relay[64], check[64];
+    snprintf(s_relay, sizeof s_relay, "icn_%d_sub_srelay", id);
+    snprintf(i_relay, sizeof i_relay, "icn_%d_sub_irelay", id);
+    snprintf(check,   sizeof check,   "icn_%d_sub_check",  id);
+
+    /* Emit index child (long) — fail→ω */
+    IjPorts ip; strncpy(ip.γ, i_relay, 63); strncpy(ip.ω, ports.ω, 63);
+    char ia[64], ib[64]; ij_emit_expr(idx_child, ip, ia, ib);
+
+    /* Emit string child — fail→ω */
+    IjPorts sp; strncpy(sp.γ, s_relay, 63); strncpy(sp.ω, ports.ω, 63);
+    char sa[64], sb[64]; ij_emit_expr(str_child, sp, sa, sb);
+
+    /* s_relay: String on stack → store, then eval index */
+    JL(s_relay);
+    ij_put_str_field(s_fld);
+    JGoto(ia);
+
+    /* i_relay: long index on stack → convert to 0-based int, store, goto check */
+    JL(i_relay);
+    JI("l2i", "");                       /* long → int (1-based Icon index) */
+    /* Convert 1-based to 0-based, handling negative (count from end) */
+    /* if i > 0: offset = i - 1
+       if i < 0: offset = length + i   (e.g. s[-1] = length-1)
+       if i == 0: fail */
+    char pos_branch[64], neg_branch[64], zero_fail[64];
+    snprintf(pos_branch, sizeof pos_branch, "icn_%d_sub_pos", id);
+    snprintf(neg_branch, sizeof neg_branch, "icn_%d_sub_neg", id);
+    snprintf(zero_fail,  sizeof zero_fail,  "icn_%d_sub_z",   id);
+    /* Duplicate int on stack for the comparison (it's on stack once) */
+    int idx_slot = ij_locals_alloc_tmp();
+    J("    istore %d\n", slot_jvm(idx_slot));
+    J("    iload %d\n",  slot_jvm(idx_slot));
+    J("    ifgt %s\n", pos_branch);
+    J("    iload %d\n",  slot_jvm(idx_slot));
+    J("    iflt %s\n", neg_branch);
+    /* i == 0 → fail */
+    JL(zero_fail); JGoto(ports.ω);
+
+    /* pos_branch: offset = i - 1 */
+    JL(pos_branch);
+    J("    iload %d\n", slot_jvm(idx_slot));
+    JI("iconst_1", ""); JI("isub", "");
+    ij_put_int_field(i_fld);
+    JGoto(check);
+
+    /* neg_branch: offset = length + i */
+    JL(neg_branch);
+    ij_get_str_field(s_fld);
+    JI("invokevirtual", "java/lang/String/length()I");
+    J("    iload %d\n", slot_jvm(idx_slot));
+    JI("iadd", "");
+    ij_put_int_field(i_fld);
+    JGoto(check);
+
+    /* check: if offset < 0 || offset >= length → fail; else substring */
+    JL(check);
+    ij_get_int_field(i_fld);
+    J("    iflt %s\n", ports.ω);          /* offset < 0 → fail */
+    ij_get_str_field(s_fld);
+    JI("invokevirtual", "java/lang/String/length()I");
+    ij_get_int_field(i_fld);
+    JI("if_icmple", ports.ω);             /* length <= offset → fail */
+    /* substring(offset, offset+1) */
+    ij_get_str_field(s_fld);
+    ij_get_int_field(i_fld);
+    ij_get_int_field(i_fld);
+    JI("iconst_1", ""); JI("iadd", "");
+    JI("invokevirtual", "java/lang/String/substring(II)Ljava/lang/String;");
+    JGoto(ports.γ);
+
+    /* α: eval string first, then index */
+    JL(a); JGoto(sa);
+    /* β: retry index generator (allows every s[1 to N] to work).
+     * String child is one-shot and its value is cached in s_fld, so we
+     * just re-drive the index child's β to get the next index. */
+    JL(b); JGoto(ib);
+}
+
+
+/* =========================================================================
  * ICN_SWAP — E1 :=: E2  (swap values of two variables)
  * Semantics: atomically exchange values of lhs and rhs variables.
  * Returns the new value of E1 (Icon :=: returns lhs after swap).
@@ -2433,7 +2553,8 @@ static void ij_emit_expr(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
                           ij_emit_binop    (n,ports,oα,oβ); break;
         case ICN_CONCAT:  ij_emit_concat   (n,ports,oα,oβ); break;
         case ICN_LCONCAT: ij_emit_concat   (n,ports,oα,oβ); break; /* Tiny-ICON: ||| = || */
-        case ICN_SWAP:    ij_emit_swap     (n,ports,oα,oβ); break;
+        case ICN_SWAP:    ij_emit_swap      (n,ports,oα,oβ); break;
+        case ICN_SUBSCRIPT: ij_emit_subscript(n,ports,oα,oβ); break;
         case ICN_LT: case ICN_LE: case ICN_GT: case ICN_GE: case ICN_EQ: case ICN_NE:
                           ij_emit_relop    (n,ports,oα,oβ); break;
         case ICN_TO:      ij_emit_to       (n,ports,oα,oβ); break;

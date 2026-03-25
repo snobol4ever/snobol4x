@@ -1,0 +1,4 @@
+procedure main();
+  s := "abc";
+  every write(s[1 to 3]);
+end
