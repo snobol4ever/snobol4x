@@ -1,0 +1,4 @@
+procedure main();
+  s := "abc";
+  every write(!s);
+end
