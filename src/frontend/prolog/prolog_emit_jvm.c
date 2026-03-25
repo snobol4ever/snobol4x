@@ -880,11 +880,9 @@ static void pj_emit_runtime_helpers(void) {
     JI("ldc", "\"int\"");
     JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
     JI("ifeq", "pan_atom");
-    /* INT: field[1] is a Long — toString */
+    /* INT: field[1] is a String (Long.toString) — return it directly */
     JI("aload_0", ""); JI("iconst_1", ""); JI("aaload", "");
-    JI("checkcast", "java/lang/Long");
-    JI("invokevirtual", "java/lang/Long/longValue()J");
-    JI("invokestatic", "java/lang/Long/toString(J)Ljava/lang/String;");
+    JI("checkcast", "java/lang/String");
     JI("areturn", "");
     J("pan_atom:\n");
     /* ATOM: field[1] is the name String */
@@ -902,8 +900,8 @@ static void pj_emit_runtime_helpers(void) {
     J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
     JI("checkcast", "[Ljava/lang/Object;");
     JI("iconst_1", ""); JI("aaload", "");
-    JI("checkcast", "java/lang/Long");
-    JI("invokevirtual", "java/lang/Long/longValue()J");
+    JI("checkcast", "java/lang/String");
+    JI("invokestatic", "java/lang/Long/parseLong(Ljava/lang/String;)J");
     JI("lreturn", "");
     J(".end method\n\n");
 
