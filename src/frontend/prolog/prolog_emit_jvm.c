@@ -1026,6 +1026,45 @@ static int pj_count_neq(EXPR_t **goals, int ngoals) {
     return count;
 }
 
+/* pj_term_stack_depth — compute max JVM stack slots needed to emit a term.
+ * Compound: dup+idx+child leaves [arr,arr,idx,child]=4 per level before aastore.
+ * Worst case per nesting level = 4 slots. */
+static int pj_term_stack_depth(EXPR_t *e) {
+    if (!e) return 1;
+    switch (e->kind) {
+    case E_FNC:
+        if (e->nchildren == 0) return 2; /* ldc + invokestatic */
+        {
+            int max_child = 0;
+            for (int i = 0; i < e->nchildren; i++) {
+                int d = pj_term_stack_depth(e->children[i]);
+                if (d > max_child) max_child = d;
+            }
+            return 4 + max_child; /* array ref + dup + index + child */
+        }
+    default:
+        return 2;
+    }
+}
+
+/* pj_clause_stack_needed — max stack depth across all goals in a clause body */
+static int pj_clause_stack_needed(EXPR_t **goals, int ngoals) {
+    int max_s = 4; /* baseline for simple goals */
+    for (int i = 0; i < ngoals; i++) {
+        EXPR_t *g = goals[i];
+        if (!g) continue;
+        /* for goals with term arguments, stack depth = goal overhead + max arg depth */
+        if (g->kind == E_FNC || g->kind == E_UNIFY) {
+            int nc = g->nchildren;
+            for (int j = 0; j < nc; j++) {
+                int d = pj_term_stack_depth(g->children[j]);
+                if (d > max_s) max_s = d;
+            }
+        }
+    }
+    return max_s + 4; /* +4 for invokestatic overhead */
+}
+
 /* -------------------------------------------------------------------------
  * Goal emitter
  * lbl_γ = label to goto on goal success
@@ -1849,6 +1888,7 @@ static void pj_emit_choice(EXPR_t *choice) {
     /* count max user calls in any single clause body — each allocates 5 locals */
     int max_ucalls = 0;
     int max_neq = 0;
+    int max_stack = 16;
     for (int ci2 = 0; ci2 < nclauses; ci2++) {
         EXPR_t *cl2 = choice->children[ci2];
         if (!cl2 || cl2->kind != E_CLAUSE) continue;
@@ -1859,10 +1899,17 @@ static void pj_emit_choice(EXPR_t *choice) {
         if (uc > max_ucalls) max_ucalls = uc;
         int nq = pj_count_neq(cl2->children + n_args_ci2, nb2);
         if (nq > max_neq) max_neq = nq;
+        /* also check head args for deep terms */
+        int s = pj_clause_stack_needed(cl2->children + n_args_ci2, nb2);
+        for (int hi = 0; hi < n_args_ci2; hi++) {
+            int d = pj_term_stack_depth(cl2->children[hi]) + 4;
+            if (d > s) s = d;
+        }
+        if (s > max_stack) max_stack = s;
     }
     int locals_needed = vars_base + max_vars + 5 * max_ucalls + 2 * max_neq + 16;
 
-    J("    .limit stack 16\n");
+    J("    .limit stack %d\n", max_stack < 16 ? 16 : max_stack);
     J("    .limit locals %d\n", locals_needed);
 
     /* dispatch: linear scan from last clause down.
