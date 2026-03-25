@@ -340,6 +340,19 @@ static void ij_put_str_field(const char *fname) {
     JI("putstatic", buf);
 }
 
+/* Double-typed (D) static field helpers — for ICN_POW, real to-by */
+static void ij_declare_static_real(const char *name) {
+    ij_declare_static_typed(name, 'D');
+}
+static void ij_get_real_field(const char *fname) {
+    char buf[384]; snprintf(buf, sizeof buf, "%s/%s D", ij_classname, fname);
+    JI("getstatic", buf);
+}
+static void ij_put_real_field(const char *fname) {
+    char buf[384]; snprintf(buf, sizeof buf, "%s/%s D", ij_classname, fname);
+    JI("putstatic", buf);
+}
+
 /* Forward declaration needed for ij_expr_is_string */
 static int ij_expr_is_string(IcnNode *n);
 
@@ -416,6 +429,11 @@ static void ij_emit_real(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
 static int ij_expr_is_real(IcnNode *n) {
     if (!n) return 0;
     if (n->kind == ICN_REAL) return 1;
+    /* ICN_NEG: real if child is real */
+    if (n->kind == ICN_NEG && n->nchildren >= 1)
+        return ij_expr_is_real(n->children[0]);
+    /* ICN_POW always returns double (Math.pow returns D) */
+    if (n->kind == ICN_POW) return 1;
     /* Binop is real if either operand is real */
     if (n->kind == ICN_ADD || n->kind == ICN_SUB || n->kind == ICN_MUL ||
         n->kind == ICN_DIV || n->kind == ICN_MOD) {
@@ -436,6 +454,13 @@ static int ij_expr_is_real(IcnNode *n) {
         IcnNode *fn = n->children[0];
         if (fn && fn->kind == ICN_VAR && strcmp(fn->val.sval, "real") == 0) return 1;
     }
+    /* ICN_TO_BY: real if any of start/end/step is real */
+    if (n->kind == ICN_TO_BY && n->nchildren >= 3)
+        return ij_expr_is_real(n->children[0]) || ij_expr_is_real(n->children[1])
+               || ij_expr_is_real(n->children[2]);
+    /* ICN_TO: real if either bound is real */
+    if (n->kind == ICN_TO && n->nchildren >= 2)
+        return ij_expr_is_real(n->children[0]) || ij_expr_is_real(n->children[1]);
     if (n->kind == ICN_VAR) {
         char fld[128]; ij_var_field(n->val.sval, fld, sizeof fld);
         for (int i = 0; i < ij_nstatics; i++)
@@ -1296,10 +1321,64 @@ static void ij_emit_alt(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
 }
 
 /* =========================================================================
+ * ICN_POW — E1 ^ E2  (exponentiation, always returns double)
+ * Wiring: standard funcs-set (§4.3): E1 then E2, compute, → γ.
+ * Both operands promoted to double. Result = Math.pow(D,D) → double.
+ * One-shot (β → ω) — pow is not a generator.
+ * ======================================================================= */
+static void ij_emit_pow(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
+    int id = ij_new_id(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+
+    char lrelay[64], rrelay[64], lstore[64], rstore[64];
+    snprintf(lrelay, sizeof lrelay, "icn_%d_pow_lr", id);
+    snprintf(rrelay, sizeof rrelay, "icn_%d_pow_rr", id);
+    snprintf(lstore, sizeof lstore, "icn_%d_pow_lv", id);
+    snprintf(rstore, sizeof rstore, "icn_%d_pow_rv", id);
+    ij_declare_static_real(lstore);  /* D: left operand value */
+    ij_declare_static_real(rstore);  /* D: right operand value */
+
+    IcnNode *lchild = (n->nchildren > 0) ? n->children[0] : NULL;
+    IcnNode *rchild = (n->nchildren > 1) ? n->children[1] : NULL;
+
+    IjPorts rp; strncpy(rp.γ, rrelay, 63); strncpy(rp.ω, ports.ω, 63);
+    IjPorts lp; strncpy(lp.γ, lrelay, 63); strncpy(lp.ω, ports.ω, 63);
+
+    char ra[64], rb[64]; ij_emit_expr(rchild, rp, ra, rb);
+    char la[64], lb[64]; ij_emit_expr(lchild, lp, la, lb);
+
+    JC("POW -- E1 ^ E2 via Math.pow(D,D)");
+
+    /* α: eval left */
+    JL(a); JGoto(la);
+
+    /* left γ: promote to double, store, eval right */
+    JL(lrelay);
+    if (!ij_expr_is_real(lchild)) { JI("l2d",""); }  /* long → double */
+    ij_put_real_field(lstore);
+    JGoto(ra);
+
+    /* right γ: promote, store, then load left, load right, call Math.pow */
+    JL(rrelay);
+    if (!ij_expr_is_real(rchild)) { JI("l2d",""); }  /* long → double */
+    ij_put_real_field(rstore);
+    /* Now load in order: left (base), right (exponent) */
+    ij_get_real_field(lstore);
+    ij_get_real_field(rstore);
+    JI("invokestatic","java/lang/Math/pow(DD)D");
+    /* Result is D on stack → γ */
+    JGoto(ports.γ);
+
+    /* β: one-shot → ω */
+    JL(b); JGoto(ports.ω);
+}
+
+ /* ==========================================================================
  * Binary arithmetic — funcs-set wiring (Proebsting §4.3)
  * JVM discipline: operand stack EMPTY at every label boundary.
  * Values passed across labels go through static fields (lc, rc, bf).
- * ======================================================================= */
+ * ========================================================================= */
 static void ij_emit_binop(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
     int id = ij_new_id(); char a[64], b[64];
     lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
@@ -1994,7 +2073,9 @@ static void ij_emit_neg(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
     IjPorts cp; strncpy(cp.γ, negate, 63); strncpy(cp.ω, ports.ω, 63);
     char ca[64], cb[64]; ij_emit_expr(child, cp, ca, cb);
     JC("NEG"); JL(a); JGoto(ca); JL(b); JGoto(cb);
-    JL(negate); JI("lneg",""); JGoto(ports.γ);
+    JL(negate);
+    if (ij_expr_is_real(child)) JI("dneg",""); else JI("lneg","");
+    JGoto(ports.γ);
 }
 
 /* =========================================================================
@@ -2015,29 +2096,53 @@ static void ij_emit_to_by(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
     lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
     strncpy(oα,a,63); strncpy(oβ,b,63);
 
-    /* Static fields for cross-label values */
+    IcnNode *e1 = (n->nchildren > 0) ? n->children[0] : NULL;
+    IcnNode *e2 = (n->nchildren > 1) ? n->children[1] : NULL;
+    IcnNode *e3 = (n->nchildren > 2) ? n->children[2] : NULL;
+
+    /* Determine if any operand is real → use double fields throughout */
+    int is_dbl = ij_expr_is_real(e1) || ij_expr_is_real(e2) || ij_expr_is_real(e3);
+
+    /* Static fields — D for real, J for integer */
     char I_f[64], end_f[64], step_f[64];
     snprintf(I_f,    sizeof I_f,    "icn_%d_toby_i",   id);
     snprintf(end_f,  sizeof end_f,  "icn_%d_toby_end", id);
     snprintf(step_f, sizeof step_f, "icn_%d_toby_stp", id);
-    ij_declare_static(I_f);
-    ij_declare_static(end_f);
-    ij_declare_static(step_f);
+    if (is_dbl) {
+        ij_declare_static_real(I_f);
+        ij_declare_static_real(end_f);
+        ij_declare_static_real(step_f);
+    } else {
+        ij_declare_static(I_f);
+        ij_declare_static(end_f);
+        ij_declare_static(step_f);
+    }
+
+/* Helpers: get/put the counter field and push zero for comparison */
+#define TB_GET_I()    (is_dbl ? ij_get_real_field(I_f)    : ij_get_long(I_f))
+#define TB_PUT_I()    (is_dbl ? ij_put_real_field(I_f)    : ij_put_long(I_f))
+#define TB_GET_END()  (is_dbl ? ij_get_real_field(end_f)  : ij_get_long(end_f))
+#define TB_GET_STP()  (is_dbl ? ij_get_real_field(step_f) : ij_get_long(step_f))
+#define TB_PUT_END()  (is_dbl ? ij_put_real_field(end_f)  : ij_put_long(end_f))
+#define TB_PUT_STP()  (is_dbl ? ij_put_real_field(step_f) : ij_put_long(step_f))
+#define TB_ZERO()     (is_dbl ? JI("dconst_0","")         : JI("lconst_0",""))
+#define TB_ADD()      (is_dbl ? JI("dadd","")             : JI("ladd",""))
+#define TB_CMP()      (is_dbl ? JI("dcmpl","")            : JI("lcmp",""))
+#define TB_CMP_GT()   (is_dbl ? JI("dcmpg","")            : JI("lcmp",""))
+/* Promote operand to double if needed (only in dbl mode) */
+#define TB_PROMOTE(expr) if (is_dbl && !ij_expr_is_real(expr)) { JI("l2d",""); }
 
     /* Labels */
     char r1[64], r2[64], r3[64], check[64], chkp[64], chkn[64];
     snprintf(r1,    sizeof r1,    "icn_%d_tb_r1",    id);
     snprintf(r2,    sizeof r2,    "icn_%d_tb_r2",    id);
+    snprintf(r3,    sizeof r3,    "icn_%d_tb_r3\n",  id);  /* trailing \n trick: unused */
     snprintf(r3,    sizeof r3,    "icn_%d_tb_r3",    id);
     snprintf(check, sizeof check, "icn_%d_tb_check", id);
     snprintf(chkp,  sizeof chkp,  "icn_%d_tb_ckp",  id);
+    snprintf(chkn,  sizeof chkn,  "icn_%d_tb_ckn\n",id);
     snprintf(chkn,  sizeof chkn,  "icn_%d_tb_ckn",  id);
 
-    IcnNode *e1 = (n->nchildren > 0) ? n->children[0] : NULL;
-    IcnNode *e2 = (n->nchildren > 1) ? n->children[1] : NULL;
-    IcnNode *e3 = (n->nchildren > 2) ? n->children[2] : NULL;
-
-    /* Wire child ports: relay labels store each value then chain to next eval */
     IjPorts p1; strncpy(p1.γ,r1,63); strncpy(p1.ω,ports.ω,63);
     IjPorts p2; strncpy(p2.γ,r2,63); strncpy(p2.ω,ports.ω,63);
     IjPorts p3; strncpy(p3.γ,r3,63); strncpy(p3.ω,ports.ω,63);
@@ -2047,39 +2152,48 @@ static void ij_emit_to_by(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
     ij_emit_expr(e2, p2, a2, b2);
     ij_emit_expr(e3, p3, a3, b3);
 
-    JC("TO_BY -- forward-only, no backward branches");
+    JC("TO_BY -- forward-only, supports integer and real");
 
-    /* a: start -- evaluate E1, E2, E3 in sequence, then goto check (FORWARD) */
+    /* α: eval E1 → r1 */
     JL(a);  JGoto(a1);
-    JL(r1); ij_put_long(I_f);    JGoto(a2);    /* E1 done -> store I,    eval E2  */
-    JL(r2); ij_put_long(end_f);  JGoto(a3);    /* E2 done -> store end,  eval E3  */
-    JL(r3); ij_put_long(step_f); JGoto(check); /* E3 done -> store step, -> check */
+    JL(r1); TB_PROMOTE(e1); TB_PUT_I();    JGoto(a2);
+    JL(r2); TB_PROMOTE(e2); TB_PUT_END();  JGoto(a3);
+    JL(r3); TB_PROMOTE(e3); TB_PUT_STP(); JGoto(check);
 
-    /* b: advance -- I += step, then goto check (FORWARD) */
+    /* β: I += step, → check */
     JL(b);
-    ij_get_long(I_f); ij_get_long(step_f); JI("ladd",""); ij_put_long(I_f);
+    TB_GET_I(); TB_GET_STP(); TB_ADD(); TB_PUT_I();
     JGoto(check);
 
-    /* check: both a and b jump here forward -- no backward edges.
-     * Inspect step direction with TWO separate lcmp ops -- one per branch.
-     * Using a single lcmp + ifgt + iflt would underflow the stack because
-     * ifgt consumes the int, leaving nothing for iflt. */
+    /* check: forward-only — inspect step sign, then bounds check */
     JL(check);
-    ij_get_long(step_f); JI("lconst_0",""); JI("lcmp","");
-    J("    ifgt %s\n", chkp);   /* step > 0 -> positive check */
-    ij_get_long(step_f); JI("lconst_0",""); JI("lcmp","");
-    J("    iflt %s\n", chkn);   /* step < 0 -> negative check */
-    JGoto(ports.ω);             /* step == 0 -> always fail */
+    TB_GET_STP(); TB_ZERO(); TB_CMP();
+    J("    ifgt %s\n", chkp);
+    TB_GET_STP(); TB_ZERO(); TB_CMP();
+    J("    iflt %s\n", chkn);
+    JGoto(ports.ω);   /* step == 0 → always fail */
 
     JL(chkp);   /* positive step: yield while I <= end */
-    ij_get_long(I_f); ij_get_long(end_f); JI("lcmp","");
-    J("    ifgt %s\n", ports.ω);    /* I > end -> exhausted */
-    ij_get_long(I_f); JGoto(ports.γ);
+    TB_GET_I(); TB_GET_END(); TB_CMP_GT();
+    J("    ifgt %s\n", ports.ω);
+    TB_GET_I(); JGoto(ports.γ);
 
     JL(chkn);   /* negative step: yield while I >= end */
-    ij_get_long(I_f); ij_get_long(end_f); JI("lcmp","");
-    J("    iflt %s\n", ports.ω);    /* I < end -> exhausted */
-    ij_get_long(I_f); JGoto(ports.γ);
+    TB_GET_I(); TB_GET_END(); TB_CMP();
+    J("    iflt %s\n", ports.ω);
+    TB_GET_I(); JGoto(ports.γ);
+
+#undef TB_GET_I
+#undef TB_PUT_I
+#undef TB_GET_END
+#undef TB_GET_STP
+#undef TB_PUT_END
+#undef TB_PUT_STP
+#undef TB_ZERO
+#undef TB_ADD
+#undef TB_CMP
+#undef TB_CMP_GT
+#undef TB_PROMOTE
 
     (void)b1; (void)b2; (void)b3;
 }
@@ -2691,6 +2805,7 @@ static void ij_emit_expr(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
         }
         case ICN_ADD: case ICN_SUB: case ICN_MUL: case ICN_DIV: case ICN_MOD:
                           ij_emit_binop    (n,ports,oα,oβ); break;
+        case ICN_POW:     ij_emit_pow      (n,ports,oα,oβ); break;
         case ICN_CONCAT:  ij_emit_concat   (n,ports,oα,oβ); break;
         case ICN_LCONCAT: ij_emit_concat   (n,ports,oα,oβ); break; /* Tiny-ICON: ||| = || */
         case ICN_SWAP:    ij_emit_swap      (n,ports,oα,oβ); break;

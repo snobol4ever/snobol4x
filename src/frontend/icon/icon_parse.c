@@ -244,8 +244,21 @@ static IcnNode *parse_unary(IcnParser *p) {
     return parse_limit(p);
 }
 
-static IcnNode *parse_mul(IcnParser *p) {
+/* parse_pow — right-associative ^ (exponentiation), higher precedence than * / % */
+static IcnNode *parse_pow(IcnParser *p) {
     IcnNode *n = parse_unary(p);
+    if (!n) return NULL;
+    if (check(p, TK_CARET)) {
+        int line = p->cur.line;
+        advance(p);
+        IcnNode *rhs = parse_pow(p);  /* right-associative: recurse */
+        n = icn_node_new(ICN_POW, line, 2, n, rhs);
+    }
+    return n;
+}
+
+static IcnNode *parse_mul(IcnParser *p) {
+    IcnNode *n = parse_pow(p);
     if (!n) return NULL;
     for (;;) {
         int line = p->cur.line;
@@ -255,7 +268,7 @@ static IcnNode *parse_mul(IcnParser *p) {
         else if (check(p, TK_MOD))   kind = ICN_MOD;
         else break;
         advance(p);
-        IcnNode *rhs = parse_unary(p);
+        IcnNode *rhs = parse_pow(p);
         n = icn_node_new(kind, line, 2, n, rhs);
     }
     return n;
