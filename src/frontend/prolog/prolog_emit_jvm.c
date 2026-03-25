@@ -26,8 +26,9 @@
  * Output state
  * ------------------------------------------------------------------------- */
 
-static FILE *pj_out = NULL;
-static char  pj_classname[256];
+static FILE    *pj_out = NULL;
+static char     pj_classname[256];
+static Program *pj_prog = NULL;  /* M-PJ-CUT-UCALL: program root for callee lookup */
 
 /* -------------------------------------------------------------------------
  * Output helpers — identical pattern to emit_byrd_jvm.c
@@ -841,6 +842,9 @@ static void pj_emit_goal(EXPR_t *goal, const char *lbl_γ, const char *lbl_ω,
                          int *next_local, const char *lbl_cutγ);
 static void pj_emit_term(EXPR_t *term, int *var_locals, int n_vars);
 static void pj_emit_arith(EXPR_t *e, int *var_locals, int n_vars);
+/* M-PJ-CUT-UCALL: forward decls for callee cut-sentinel helpers */
+static int pj_predicate_base_nclauses(const char *fn, int arity);
+static int pj_callee_has_cut_no_last_ucall(const char *fn, int arity);
 
 /* -------------------------------------------------------------------------
  * Term emitter — leaves Object[] on JVM stack
@@ -1790,6 +1794,24 @@ static void pj_emit_body(EXPR_t **goals, int ngoals, const char *lbl_γ,
         JI("dup", "");
         J("    astore %d\n", local_rv);
         J("    ifnull %s\n", call_ω);
+        /* M-PJ-CUT-UCALL: cutgamma propagation guard.
+         * If callee contains cut and its last clause has no ucall, the
+         * sentinel base[nclauses] is reliable.  Non-null rv with
+         * rv[0].intValue() >= callee_sentinel means cut fired inside callee —
+         * propagate upward by jumping to lbl_cutγ (caller's cutgamma port).
+         * Without this guard, cutgamma is treated as a normal success and the
+         * body continues, causing puzzle_18-style double-output. */
+        /* M-PJ-CUT-UCALL: if callee has cut and reliable sentinel, propagate cutgamma.
+         * MAX_VALUE (2147483647) is the unambiguous sentinel — check rv[0] >= it. */
+        if (lbl_cutγ && pj_callee_has_cut_no_last_ucall(fn, nargs)) {
+            J("    aload %d\n", local_rv);
+            JI("iconst_0", "");
+            JI("aaload", "");
+            JI("checkcast", "java/lang/Integer");
+            JI("invokevirtual", "java/lang/Integer/intValue()I");
+            J("    ldc 2147483647\n");
+            J("    if_icmpeq %s\n", lbl_cutγ);
+        }
         /* extract returned cs — store into sub_cs_out_local for γ encoding,
          * and advance local_cs for the next β-retry of THIS call. */
         J("    aload %d\n", local_rv);
@@ -2029,6 +2051,68 @@ static void pj_emit_between_builtin(void) {
  * Returns Object[] = args array on success, null on failure.
  * ------------------------------------------------------------------------- */
 
+/* -------------------------------------------------------------------------
+ * pj_predicate_base_nclauses — M-PJ-CUT-UCALL
+ * Returns base[nclauses] for the named predicate (fn/arity key).
+ * Since stride=1 and base[0]=0, base[nclauses] == nclauses exactly.
+ * Returns -1 if predicate not found or too large.
+ * ------------------------------------------------------------------------- */
+static int pj_predicate_base_nclauses(const char *fn, int arity) {
+    if (!pj_prog || !fn) return -1;
+    char key[256];
+    snprintf(key, sizeof key, "%s/%d", fn, arity);
+    for (STMT_t *s = pj_prog->head; s; s = s->next) {
+        if (!s->subject || s->subject->kind != E_CHOICE) continue;
+        if (!s->subject->sval || strcmp(s->subject->sval, key) != 0) continue;
+        int nc = s->subject->nchildren;
+        if (nc <= 0 || nc > 64) return -1;
+        return nc;  /* base[nclauses] = nclauses (stride=1, base[0]=0) */
+    }
+    return -1;
+}
+
+/* -------------------------------------------------------------------------
+ * pj_callee_has_cut_no_last_ucall — M-PJ-CUT-UCALL
+ * Returns 1 if the named predicate has any cut AND its last clause has no
+ * user call (i.e., base[nclauses] is a reliable sentinel — not open-ended).
+ * ------------------------------------------------------------------------- */
+static int pj_callee_has_cut_no_last_ucall(const char *fn, int arity) {
+    if (!pj_prog || !fn) return 0;
+    char key[256];
+    snprintf(key, sizeof key, "%s/%d", fn, arity);
+    for (STMT_t *s = pj_prog->head; s; s = s->next) {
+        if (!s->subject || s->subject->kind != E_CHOICE) continue;
+        if (!s->subject->sval || strcmp(s->subject->sval, key) != 0) continue;
+        EXPR_t *choice = s->subject;
+        int nc = choice->nchildren;
+        if (nc <= 0 || nc > 64) return 0;
+        /* scan all clauses for cut */
+        int any_cut = 0;
+        for (int ci = 0; ci < nc && !any_cut; ci++) {
+            EXPR_t *cl = choice->children[ci];
+            if (!cl) continue;
+            int nv = (int)cl->dval;
+            int nb = (int)cl->nchildren - nv;
+            if (nb < 0) nb = 0;
+            for (int bi = 0; bi < nb && !any_cut; bi++)
+                if (pj_body_has_cut(cl->children[nv + bi])) any_cut = 1;
+        }
+        if (!any_cut) return 0;
+        /* check last clause has no user call */
+        EXPR_t *last = choice->children[nc - 1];
+        if (!last) return 1;
+        int nv_last = (int)last->dval;
+        int nb_last = (int)last->nchildren - nv_last;
+        if (nb_last < 0) nb_last = 0;
+        for (int bi = 0; bi < nb_last; bi++) {
+            EXPR_t *g = last->children[nv_last + bi];
+            if (g && pj_is_user_call(g)) return 0;  /* last has ucall — sentinel unreliable */
+        }
+        return 1;
+    }
+    return 0;
+}
+
 static void pj_emit_choice(EXPR_t *choice) {
     if (!choice || choice->kind != E_CHOICE) return;
     const char *functor = choice->sval ? choice->sval : "unknown";
@@ -2180,8 +2264,11 @@ static void pj_emit_choice(EXPR_t *choice) {
         J("    iload %d ; cs >= %d (all clauses exhausted)? → omega\n    ldc %d\n    if_icmpge p_%s_%d_omega\n",
           cs_local, base[nclauses], base[nclauses], safe_fn, arity);
     } else if (any_has_cut) {
-        J("    iload %d ; cs == %d (cutgamma sentinel)? → omega\n    ldc %d\n    if_icmpeq p_%s_%d_omega\n",
-          cs_local, base[nclauses], base[nclauses], safe_fn, arity);
+        /* M-PJ-CUT-UCALL: use MAX_VALUE as unambiguous cutgamma sentinel.
+         * base[nclauses] collides with last-clause γ return (base[nc-1]+0+1==nclauses).
+         * Integer.MAX_VALUE (0x7fffffff) is never a legitimate cs value. */
+        J("    iload %d ; cs == 0x7fffffff (cutgamma sentinel)? -> omega\n    ldc 2147483647\n    if_icmpeq p_%s_%d_omega\n",
+          cs_local, safe_fn, arity);
     }
     J("    iload %d\n", cs_local);
     J("    istore %d\n", init_cs_local);   /* will be refined per clause below */
@@ -2428,7 +2515,9 @@ static void pj_emit_choice(EXPR_t *choice) {
         JI("anewarray", "java/lang/Object");
         JI("dup", "");
         JI("iconst_0", "");
-        J("    ldc %d\n", base[nclauses]);
+        /* M-PJ-CUT-UCALL: return MAX_VALUE (2147483647) as unambiguous sentinel.
+         * base[nclauses] is ambiguous — last-clause gamma returns the same value. */
+        J("    ldc 2147483647\n");
         JI("invokestatic", "java/lang/Integer/valueOf(I)Ljava/lang/Integer;");
         JI("aastore", "");
         JI("areturn", "");
@@ -2469,6 +2558,7 @@ static void pj_emit_main(Program *prog) {
 
 void prolog_emit_jvm(Program *prog, FILE *out, const char *filename) {
     pj_out = out;
+    pj_prog = prog;  /* M-PJ-CUT-UCALL: store for callee base[nclauses] lookup */
     pj_natoms = 0;
     pj_label_counter = 0;
     pj_set_classname(filename);
