@@ -1,0 +1,7 @@
+procedure main();
+  a := "foo";
+  b := "bar";
+  a ||:= "-";
+  a ||:= b;
+  write(a);
+end

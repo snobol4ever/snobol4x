@@ -1330,13 +1330,13 @@ static void ij_emit_every(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
         ij_loop_pop();
         IjPorts gp; strncpy(gp.γ,bstart,63); strncpy(gp.ω,ports.ω,63);
         ij_emit_expr(gen, gp, ga, gb);
-        JL(bstart); JI("pop2",""); JGoto(ba);
+        JL(bstart); JI(ij_expr_is_string(gen) ? "pop" : "pop2",""); JGoto(ba);
     } else {
         IjPorts gp; strncpy(gp.γ,gbfwd,63); strncpy(gp.ω,ports.ω,63);
         ij_emit_expr(gen, gp, ga, gb);
     }
     /* gbfwd: generator yielded — drain value, kick beta to get next */
-    JL(gbfwd); JI("pop2",""); JGoto(gb);
+    JL(gbfwd); JI(ij_expr_is_string(gen) ? "pop" : "pop2",""); JGoto(gb);
     JL(a); JGoto(ga);
     JL(b); JGoto(ports.ω);
 }
@@ -1458,6 +1458,9 @@ static int ij_expr_is_string(IcnNode *n) {
         case ICN_STR:    return 1;
         case ICN_CSET:   return 1;  /* cset literal is a String */
         case ICN_CONCAT: return 1;
+        case ICN_BANG:   return 1;  /* !E yields single-char Strings */
+        case ICN_AUGOP:  /* ||:= (TK_AUGCONCAT=35) yields String; arithmetic augops yield long */
+            return (n->val.ival == 35) ? 1 : 0;
         case ICN_CALL: {
             if (n->nchildren >= 1) {
                 IcnNode *fn = n->children[0];
@@ -1921,7 +1924,7 @@ static void ij_emit_augop(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
     JL(b); JGoto(rb);
 
     JL(rhs_ok);
-    /* rhs value is on stack (long).
+    /* rhs value is on stack — String ref for ||:=, long for arithmetic ops.
      * Load lhs current value, apply op, store result back, push result. */
     if (lhs && lhs->kind == ICN_VAR) {
         char fld[128];
@@ -1930,37 +1933,111 @@ static void ij_emit_augop(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
             ij_var_field(lhs->val.sval, fld, sizeof fld);
         } else {
             snprintf(fld, sizeof fld, "icn_gvar_%s", lhs->val.sval);
+        }
+
+        if ((int)aug_kind == 35) {
+            /* TK_AUGCONCAT=35: String ||:= String
+             * Stack at rhs_ok: String ref (rhs). */
+            char tmp_str_fld[128]; snprintf(tmp_str_fld, sizeof tmp_str_fld, "icn_%d_augtemp_s", id);
+            ij_declare_static_str(tmp_str_fld);
+            ij_declare_static_str(fld);             /* ensure lhs field is str-typed */
+            ij_put_str_field(tmp_str_fld);          /* save rhs String */
+            ij_get_str_field(fld);                  /* load current lhs String */
+            ij_get_str_field(tmp_str_fld);          /* reload rhs String */
+            JI("invokevirtual", "java/lang/String/concat(Ljava/lang/String;)Ljava/lang/String;");
+            JI("dup","");                           /* one copy stays on stack for γ */
+            ij_put_str_field(fld);                  /* store result back to lhs */
+            JGoto(ports.γ);
+        } else {
+            /* Arithmetic augop: rhs is long on stack. */
+            char tmp_fld[128]; snprintf(tmp_fld, sizeof tmp_fld, "icn_%d_augtemp", id);
+            ij_declare_static(tmp_fld);
+            ij_put_long(tmp_fld);              /* save rhs */
+
             ij_declare_static(fld);
+            ij_get_long(fld);                  /* load current lhs value */
+            ij_get_long(tmp_fld);              /* reload rhs */
+
+            /* Apply arithmetic op. Actual TK_AUG* values (from icon_lex.h enum):
+             * TK_AUGPLUS=30 TK_AUGMINUS=31 TK_AUGSTAR=32 TK_AUGSLASH=33 TK_AUGMOD=34 */
+            switch ((int)aug_kind) {
+                case 30: JI("ladd",""); break;  /* TK_AUGPLUS   */
+                case 31: JI("lsub",""); break;  /* TK_AUGMINUS  */
+                case 32: JI("lmul",""); break;  /* TK_AUGSTAR   */
+                case 33: JI("ldiv",""); break;  /* TK_AUGSLASH  */
+                case 34: JI("lrem",""); break;  /* TK_AUGMOD    */
+                default: JI("ladd",""); break;
+            }
+
+            /* dup result: one copy stored back to lhs, one stays on stack as expr result */
+            JI("dup2","");
+            ij_put_long(fld);
+            JGoto(ports.γ);
         }
-
-        /* Stack: [rhs_val]  — store rhs to a temp, load lhs, reload rhs, apply op. */
-        char tmp_fld[128]; snprintf(tmp_fld, sizeof tmp_fld, "icn_%d_augtemp", id);
-        ij_declare_static(tmp_fld);
-        ij_put_long(tmp_fld);              /* save rhs */
-
-        ij_declare_static(fld);
-        ij_get_long(fld);                  /* load current lhs value */
-        ij_get_long(tmp_fld);              /* reload rhs */
-
-        /* Apply arithmetic op. Actual TK_AUG* values (from icon_lex.h enum):
-         * TK_AUGPLUS=30 TK_AUGMINUS=31 TK_AUGSTAR=32 TK_AUGSLASH=33 TK_AUGMOD=34 */
-        switch ((int)aug_kind) {
-            case 30: JI("ladd",""); break;  /* TK_AUGPLUS   */
-            case 31: JI("lsub",""); break;  /* TK_AUGMINUS  */
-            case 32: JI("lmul",""); break;  /* TK_AUGSTAR   */
-            case 33: JI("ldiv",""); break;  /* TK_AUGSLASH  */
-            case 34: JI("lrem",""); break;  /* TK_AUGMOD    */
-            default: JI("ladd",""); break;
-        }
-
-        /* dup result: one copy stored back to lhs, one stays on stack as expr result */
-        JI("dup2","");
-        ij_put_long(fld);
-        JGoto(ports.γ);
     } else {
         /* Non-var lhs — just discard and push rhs as result (rare/error case) */
         JGoto(ports.γ);
     }
+}
+
+/* =========================================================================
+ * ICN_BANG — !E  string character generator
+ * Byrd-box: α evals E once into static str field, resets pos=0, then falls
+ * through to check.  check: if pos >= length → ω.  Else substring(pos,pos+1)
+ * on stack → γ; pos incremented before goto γ.  β → check (resume).
+ * Result type: String (single char).  ij_expr_is_string returns 1 for BANG.
+ * ======================================================================= */
+static void ij_emit_bang(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
+    int id = ij_new_id();
+    char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+
+    char str_fld[128]; snprintf(str_fld, sizeof str_fld, "icn_%d_bang_str", id);
+    char pos_fld[128]; snprintf(pos_fld, sizeof pos_fld, "icn_%d_bang_pos", id);
+    char check[64];    snprintf(check,   sizeof check,   "icn_%d_bang_chk", id);
+    char advance[64];  snprintf(advance, sizeof advance,  "icn_%d_bang_adv", id);
+
+    ij_declare_static_str(str_fld);
+    ij_declare_static_int(pos_fld);
+
+    /* child expr */
+    IjPorts ep; strncpy(ep.γ, advance, 63); strncpy(ep.ω, ports.ω, 63);
+    char ea[64], eb[64]; ij_emit_expr(n->children[0], ep, ea, eb);
+
+    /* α: eval child, store string, reset pos, goto check */
+    JL(a); JGoto(ea);
+    /* β: resume — just re-enter check without re-evaluating E */
+    JL(b); JGoto(check);
+
+    /* advance: child produced String on stack → store into str_fld, reset pos */
+    JL(advance);
+    ij_put_str_field(str_fld);
+    JI("iconst_0",""); ij_put_int_field(pos_fld);
+    /* fall through to check */
+
+    /* check: if pos >= length(str) → ω; else extract char, increment pos, → γ */
+    JL(check);
+    ij_get_str_field(str_fld);
+    JI("invokevirtual","java/lang/String/length()I");
+    ij_get_int_field(pos_fld);
+    /* stack: [length, pos] — if pos >= length → ω */
+    J("    if_icmple %s\n", ports.ω);  /* if length <= pos → ω  (i.e. pos >= length) */
+
+    /* extract substring(pos, pos+1) */
+    ij_get_str_field(str_fld);
+    ij_get_int_field(pos_fld);
+    ij_get_int_field(pos_fld);
+    JI("iconst_1","");
+    JI("iadd","");
+    JI("invokevirtual","java/lang/String/substring(II)Ljava/lang/String;");
+    /* increment pos */
+    ij_get_int_field(pos_fld);
+    JI("iconst_1","");
+    JI("iadd","");
+    ij_put_int_field(pos_fld);
+    /* String result is on stack → γ */
+    JGoto(ports.γ);
 }
 
 /* =========================================================================
@@ -2042,6 +2119,7 @@ static void ij_emit_expr(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
         case ICN_BREAK:   ij_emit_break    (n,ports,oα,oβ); break;
         case ICN_NEXT:    ij_emit_next     (n,ports,oα,oβ); break;
         case ICN_AUGOP:   ij_emit_augop    (n,ports,oα,oβ); break;
+        case ICN_BANG:    ij_emit_bang     (n,ports,oα,oβ); break;
         case ICN_SEQ: case ICN_SNE: case ICN_SLT:
         case ICN_SLE: case ICN_SGT: case ICN_SGE:
                           ij_emit_strrelop (n,ports,oα,oβ); break;

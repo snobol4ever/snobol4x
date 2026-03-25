@@ -1,0 +1,6 @@
+procedure main();
+  s := "xy";
+  result := "";
+  every result ||:= !s;
+  write(result);
+end
