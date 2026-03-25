@@ -397,7 +397,17 @@ static void ij_emit_real(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
     JC("REAL"); JL(a);
     /* Emit as double constant. Jasmin requires 'd' suffix for ldc2_w double literals
      * (without it Jasmin treats the value as float and widens, losing precision). */
-    J("    ldc2_w %gd\n", n->val.fval);
+    /* Ensure a decimal point is present so Jasmin treats it as double, not int.
+     * %g may produce "2" for 2.0; append ".0" if no decimal or exponent present. */
+    {
+        char dbuf[64];
+        snprintf(dbuf, sizeof dbuf, "%g", n->val.fval);
+        int has_dot = 0;
+        for (int ci = 0; dbuf[ci]; ci++)
+            if (dbuf[ci] == '.' || dbuf[ci] == 'e' || dbuf[ci] == 'E' || dbuf[ci] == 'n') { has_dot = 1; break; }
+        if (!has_dot) strncat(dbuf, ".0", sizeof dbuf - strlen(dbuf) - 1);
+        J("    ldc2_w %sd\n", dbuf);
+    }
     JGoto(ports.γ);
     JL(b); JGoto(ports.ω);
 }
@@ -406,6 +416,17 @@ static void ij_emit_real(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
 static int ij_expr_is_real(IcnNode *n) {
     if (!n) return 0;
     if (n->kind == ICN_REAL) return 1;
+    /* Binop is real if either operand is real */
+    if (n->kind == ICN_ADD || n->kind == ICN_SUB || n->kind == ICN_MUL ||
+        n->kind == ICN_DIV || n->kind == ICN_MOD) {
+        if (n->nchildren >= 2)
+            return ij_expr_is_real(n->children[0]) || ij_expr_is_real(n->children[1]);
+    }
+    /* real() builtin call always returns double */
+    if (n->kind == ICN_CALL && n->nchildren >= 1) {
+        IcnNode *fn = n->children[0];
+        if (fn && fn->kind == ICN_VAR && strcmp(fn->val.sval, "real") == 0) return 1;
+    }
     if (n->kind == ICN_VAR) {
         char fld[128]; ij_var_field(n->val.sval, fld, sizeof fld);
         for (int i = 0; i < ij_nstatics; i++)
@@ -791,6 +812,70 @@ static void ij_emit_call(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
             JI("invokevirtual", "java/io/PrintStream/println(J)V");
             /* Reload: write() returns its argument */
             J("    lload %d\n", slot_jvm(scratch));
+        }
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* --- built-in integer(x) --- convert real or string to long */
+    if (strcmp(fname, "integer") == 0 && nargs >= 1 && !ij_is_user_proc(fname)) {
+        IcnNode *arg = n->children[1];
+        char after[64]; snprintf(after, sizeof after, "icn_%d_int_after", id);
+        IjPorts ap; strncpy(ap.γ, after, 63); strncpy(ap.ω, ports.ω, 63);
+        char aa[64], ab[64]; ij_emit_expr(arg, ap, aa, ab);
+        JL(a); JGoto(aa);
+        JL(b); JGoto(ab);
+        JL(after);
+        if (ij_expr_is_real(arg))        JI("d2l", "");   /* double → long */
+        else if (ij_expr_is_string(arg)) {
+            /* String → Long.parseLong */
+            int scratch = ij_locals_alloc_tmp();
+            J("    astore %d\n", slot_jvm(scratch));
+            J("    aload %d\n",  slot_jvm(scratch));
+            JI("invokestatic", "java/lang/Long/parseLong(Ljava/lang/String;)J");
+        }
+        /* else already long — no conversion needed */
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* --- built-in real(x) --- convert long or string to double */
+    if (strcmp(fname, "real") == 0 && nargs >= 1 && !ij_is_user_proc(fname)) {
+        IcnNode *arg = n->children[1];
+        char after[64]; snprintf(after, sizeof after, "icn_%d_real_after", id);
+        IjPorts ap; strncpy(ap.γ, after, 63); strncpy(ap.ω, ports.ω, 63);
+        char aa[64], ab[64]; ij_emit_expr(arg, ap, aa, ab);
+        JL(a); JGoto(aa);
+        JL(b); JGoto(ab);
+        JL(after);
+        if (ij_expr_is_string(arg)) {
+            int scratch = ij_locals_alloc_tmp();
+            J("    astore %d\n", slot_jvm(scratch));
+            J("    aload %d\n",  slot_jvm(scratch));
+            JI("invokestatic", "java/lang/Double/parseDouble(Ljava/lang/String;)D");
+        } else if (!ij_expr_is_real(arg)) {
+            JI("l2d", "");  /* long → double */
+        }
+        /* else already double — no conversion */
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* --- built-in string(x) --- convert numeric to String */
+    if (strcmp(fname, "string") == 0 && nargs >= 1 && !ij_is_user_proc(fname)) {
+        IcnNode *arg = n->children[1];
+        char after[64]; snprintf(after, sizeof after, "icn_%d_str_after", id);
+        IjPorts ap; strncpy(ap.γ, after, 63); strncpy(ap.ω, ports.ω, 63);
+        char aa[64], ab[64]; ij_emit_expr(arg, ap, aa, ab);
+        JL(a); JGoto(aa);
+        JL(b); JGoto(ab);
+        JL(after);
+        if (ij_expr_is_string(arg)) {
+            /* already a String — no conversion */
+        } else if (ij_expr_is_real(arg)) {
+            JI("invokestatic", "java/lang/Double/toString(D)Ljava/lang/String;");
+        } else {
+            JI("invokestatic", "java/lang/Long/toString(J)Ljava/lang/String;");
         }
         JGoto(ports.γ);
         return;
@@ -1212,10 +1297,11 @@ static void ij_emit_binop(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
     char compute[64]; snprintf(compute, sizeof compute, "icn_%d_compute", id);
     char lbfwd[64];   snprintf(lbfwd,   sizeof lbfwd,   "icn_%d_lb",     id);
     char lstore[64];  snprintf(lstore,  sizeof lstore,  "icn_%d_lstore", id);
-    /* Bug 1 fix: use local slots instead of static fields to support recursion.
-     * Static fields are class-global and get clobbered by recursive calls. */
-    int lc_slot = ij_locals_alloc_tmp();   /* long: 2 JVM slots */
-    int rc_slot = ij_locals_alloc_tmp();   /* long: 2 JVM slots */
+    /* Determine if this is a double (real) operation */
+    int is_dbl = ij_expr_is_real(n->children[0]) || ij_expr_is_real(n->children[1]);
+    /* Bug 1 fix: use local slots instead of static fields to support recursion. */
+    int lc_slot = ij_locals_alloc_tmp();   /* long or double: 2 JVM slots */
+    int rc_slot = ij_locals_alloc_tmp();   /* long or double: 2 JVM slots */
     int bf_slot = ij_locals_alloc_tmp();   /* used as int (istore/iload) */
     strncpy(oα,a,63); strncpy(oβ,b,63);
 
@@ -1229,12 +1315,20 @@ static void ij_emit_binop(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
 
     IcnNode *lchild = n->children[0];
     int left_is_value = (lchild->kind == ICN_VAR || lchild->kind == ICN_INT ||
+                         lchild->kind == ICN_REAL ||
                          lchild->kind == ICN_STR || lchild->kind == ICN_CALL);
 
-    /* left_relay: left long on stack → drain to lc_slot → goto lstore */
-    JL(left_relay); J("    lstore %d\n", slot_jvm(lc_slot)); JGoto(lstore);
-    /* right_relay: right long on stack → drain to rc_slot → goto compute */
-    JL(right_relay); J("    lstore %d\n", slot_jvm(rc_slot)); JGoto(compute);
+    const char *st_op = is_dbl ? "dstore" : "lstore";
+    const char *ld_op = is_dbl ? "dload"  : "lload";
+
+    /* left_relay: value on stack → promote if needed → drain to lc_slot */
+    JL(left_relay);
+    if (is_dbl && !ij_expr_is_real(n->children[0])) JI("l2d", "");
+    J("    %s %d\n", st_op, slot_jvm(lc_slot)); JGoto(lstore);
+    /* right_relay: value on stack → promote if needed → drain to rc_slot */
+    JL(right_relay);
+    if (is_dbl && !ij_expr_is_real(n->children[1])) JI("l2d", "");
+    J("    %s %d\n", st_op, slot_jvm(rc_slot)); JGoto(compute);
 
     JL(lbfwd); JGoto(lb);
     JL(a); JI("iconst_0",""); J("    istore %d\n", slot_jvm(bf_slot)); JGoto(la);
@@ -1242,7 +1336,6 @@ static void ij_emit_binop(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
     if (left_is_value) { JI("iconst_1",""); J("    istore %d\n", slot_jvm(bf_slot)); JGoto(la); }
     else { JGoto(rb); }
 
-    /* lstore: lc_slot has left, decide ra vs rb based on bf_slot */
     JL(lstore);
     J("    iload %d\n", slot_jvm(bf_slot));
     J("    ifeq %s\n", ra);
@@ -1250,16 +1343,26 @@ static void ij_emit_binop(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
 
     /* compute: lc_slot=left, rc_slot=right — stack empty */
     JL(compute);
-    J("    lload %d\n", slot_jvm(lc_slot));   /* push left  = value2 (below) */
-    J("    lload %d\n", slot_jvm(rc_slot));   /* push right = value1 (top)   */
-    /* JVM: lsub/ldiv/lrem = value2 op value1 = left op right ✓ */
-    switch (n->kind) {
-        case ICN_ADD: JI("ladd",""); break;
-        case ICN_SUB: JI("lsub",""); break;
-        case ICN_MUL: JI("lmul",""); break;
-        case ICN_DIV: JI("ldiv",""); break;
-        case ICN_MOD: JI("lrem",""); break;
-        default: break;
+    J("    %s %d\n", ld_op, slot_jvm(lc_slot));
+    J("    %s %d\n", ld_op, slot_jvm(rc_slot));
+    if (is_dbl) {
+        switch (n->kind) {
+            case ICN_ADD: JI("dadd",""); break;
+            case ICN_SUB: JI("dsub",""); break;
+            case ICN_MUL: JI("dmul",""); break;
+            case ICN_DIV: JI("ddiv",""); break;
+            case ICN_MOD: JI("drem",""); break;
+            default: break;
+        }
+    } else {
+        switch (n->kind) {
+            case ICN_ADD: JI("ladd",""); break;
+            case ICN_SUB: JI("lsub",""); break;
+            case ICN_MUL: JI("lmul",""); break;
+            case ICN_DIV: JI("ldiv",""); break;
+            case ICN_MOD: JI("lrem",""); break;
+            default: break;
+        }
     }
     JGoto(ports.γ);
 }
@@ -1577,8 +1680,10 @@ static int ij_expr_is_string(IcnNode *n) {
                     if (strcmp(fn_name, "write") == 0 && n->nchildren >= 2)
                         return ij_expr_is_string(n->children[1]);
                     /* tab/move return String substrings */
-                    if (strcmp(fn_name, "tab") == 0)  return 1;
-                    if (strcmp(fn_name, "move") == 0) return 1;
+                    if (strcmp(fn_name, "tab") == 0)    return 1;
+                    if (strcmp(fn_name, "move") == 0)   return 1;
+                    /* string() conversion returns String */
+                    if (strcmp(fn_name, "string") == 0) return 1;
                     /* match returns a long position, not a String */
                 }
             }

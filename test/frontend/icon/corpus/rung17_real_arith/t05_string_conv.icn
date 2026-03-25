@@ -1,0 +1,4 @@
+procedure main();
+  write(string(42));
+  write(string(3.14));
+end

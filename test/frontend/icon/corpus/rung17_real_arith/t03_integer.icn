@@ -1,0 +1,4 @@
+procedure main();
+  write(integer(3.9));
+  write(integer("42"));
+end
