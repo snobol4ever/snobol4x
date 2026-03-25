@@ -983,6 +983,20 @@ static int pj_is_always_fail(EXPR_t *goal) {
 }
 
 /* -------------------------------------------------------------------------
+ * pj_body_has_cut — recursive scan for E_CUT in a goal tree (walks E_FNC
+ * children for "," and ";" conjunction/disjunction nodes).
+ * ------------------------------------------------------------------------- */
+static int pj_body_has_cut(EXPR_t *g) {
+    if (!g) return 0;
+    if (g->kind == E_CUT) return 1;
+    if (g->kind == E_FNC) {
+        for (int i = 0; i < (int)g->nchildren; i++)
+            if (pj_body_has_cut(g->children[i])) return 1;
+    }
+    return 0;
+}
+
+/* -------------------------------------------------------------------------
  * pj_is_user_call — true for user-defined predicates needing retry loop
  * ------------------------------------------------------------------------- */
 static int pj_is_user_call(EXPR_t *goal) {
@@ -2097,7 +2111,7 @@ static void pj_emit_choice(EXPR_t *choice) {
             EXPR_t *g = last->children[nv_args_last + bi];
             if (g && pj_is_user_call(g)) last_has_ucall = 1;
         }
-        /* scan all clauses for cut presence */
+        /* scan all clauses for cut presence — recursive so nested "," and ";" are checked */
         for (int ci2 = 0; ci2 < nclauses && !any_has_cut; ci2++) {
             EXPR_t *cl = choice->children[ci2];
             if (!cl) continue;
@@ -2105,8 +2119,7 @@ static void pj_emit_choice(EXPR_t *choice) {
             int nb2 = (int)cl->nchildren - nv2;
             if (nb2 < 0) nb2 = 0;
             for (int bi2 = 0; bi2 < nb2 && !any_has_cut; bi2++) {
-                EXPR_t *g2 = cl->children[nv2 + bi2];
-                if (g2 && g2->kind == E_CUT) any_has_cut = 1;
+                if (pj_body_has_cut(cl->children[nv2 + bi2])) any_has_cut = 1;
             }
         }
     }
