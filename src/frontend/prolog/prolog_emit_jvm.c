@@ -837,7 +837,8 @@ static void pj_emit_class_header(void) {
 
 static void pj_emit_goal(EXPR_t *goal, const char *lbl_γ, const char *lbl_ω,
                          int trail_local, int *var_locals, int n_vars,
-                         int cut_cs_seal, int cs_local_for_cut);
+                         int cut_cs_seal, int cs_local_for_cut,
+                         int *next_local);
 static void pj_emit_term(EXPR_t *term, int *var_locals, int n_vars);
 static void pj_emit_arith(EXPR_t *e, int *var_locals, int n_vars);
 
@@ -1013,6 +1014,18 @@ static int pj_count_ucalls(EXPR_t **goals, int ngoals) {
     return count;
 }
 
+/* pj_count_neq — count \=/2 goals in a body (each allocates 2 scratch locals) */
+static int pj_count_neq(EXPR_t **goals, int ngoals) {
+    int count = 0;
+    for (int i = 0; i < ngoals; i++) {
+        EXPR_t *g = goals[i];
+        if (!g) continue;
+        if (g->kind == E_FNC && g->sval && strcmp(g->sval, "\\=") == 0 && g->nchildren == 2)
+            count++;
+    }
+    return count;
+}
+
 /* -------------------------------------------------------------------------
  * Goal emitter
  * lbl_γ = label to goto on goal success
@@ -1032,7 +1045,8 @@ static void pj_emit_body(EXPR_t **goals, int ngoals, const char *lbl_γ,
 
 static void pj_emit_goal(EXPR_t *goal, const char *lbl_γ, const char *lbl_ω,
                          int trail_local, int *var_locals, int n_vars,
-                         int cut_cs_seal, int cs_local_for_cut) {
+                         int cut_cs_seal, int cs_local_for_cut,
+                         int *next_local) {
     if (!goal) { JI("goto", lbl_γ); return; }
 
     if (goal->kind == E_CUT) {
@@ -1171,7 +1185,7 @@ static void pj_emit_goal(EXPR_t *goal, const char *lbl_γ, const char *lbl_ω,
                 /* emit condition — success falls through to cond_ok, failure jumps to else */
                 pj_emit_goal(first->children[0], cond_ok, cond_fail,
                              trail_local, var_locals, n_vars,
-                             cut_cs_seal, cs_local_for_cut);
+                             cut_cs_seal, cs_local_for_cut, next_local);
                 J("%s:\n", cond_ok);
                 /* emit Then goals: children[1..nchildren-1] as flat sequence */
                 int nthen = first->nchildren - 1;
@@ -1182,7 +1196,7 @@ static void pj_emit_goal(EXPR_t *goal, const char *lbl_γ, const char *lbl_ω,
                     const char *step_γ = (ti == nthen - 1) ? lbl_γ : tstep_γ;
                     pj_emit_goal(first->children[1 + ti], step_γ, lbl_ω,
                                  trail_local, var_locals, n_vars,
-                                 cut_cs_seal, cs_local_for_cut);
+                                 cut_cs_seal, cs_local_for_cut, next_local);
                     if (ti < nthen - 1) J("%s:\n", tstep_γ);
                 }
                 J("    goto %s\n", done_lbl);
@@ -1194,7 +1208,7 @@ static void pj_emit_goal(EXPR_t *goal, const char *lbl_γ, const char *lbl_ω,
                     const char *fail_to = (bi < nargs - 1) ? next_lbl : lbl_ω;
                     pj_emit_goal(goal->children[bi], lbl_γ, fail_to,
                                  trail_local, var_locals, n_vars,
-                                 cut_cs_seal, cs_local_for_cut);
+                                 cut_cs_seal, cs_local_for_cut, next_local);
                     if (bi < nargs - 1) {
                         J("    goto %s\n", done_lbl);
                         J("%s:\n", next_lbl);
@@ -1252,7 +1266,7 @@ static void pj_emit_goal(EXPR_t *goal, const char *lbl_γ, const char *lbl_ω,
             snprintf(cond_ok,   sizeof cond_ok,   "ifthen%d_ok",   uid);
             snprintf(cond_fail, sizeof cond_fail,  "ifthen%d_fail", uid);
             pj_emit_goal(goal->children[0], cond_ok, cond_fail, trail_local, var_locals, n_vars,
-                         cut_cs_seal, cs_local_for_cut);
+                         cut_cs_seal, cs_local_for_cut, next_local);
             J("%s:\n", cond_ok);
             int nthen = nargs - 1;
             for (int ti = 0; ti < nthen; ti++) {
@@ -1261,7 +1275,7 @@ static void pj_emit_goal(EXPR_t *goal, const char *lbl_γ, const char *lbl_ω,
                 const char *step_γ = (ti == nthen - 1) ? lbl_γ : tstep_γ;
                 pj_emit_goal(goal->children[1 + ti], step_γ, lbl_ω,
                              trail_local, var_locals, n_vars,
-                             cut_cs_seal, cs_local_for_cut);
+                             cut_cs_seal, cs_local_for_cut, next_local);
                 if (ti < nthen - 1) J("%s:\n", tstep_γ);
             }
             J("%s:\n", cond_fail);
@@ -1285,6 +1299,33 @@ static void pj_emit_goal(EXPR_t *goal, const char *lbl_γ, const char *lbl_ω,
             JI("goto", lbl_γ);
             return;
         }
+        /* \=/2 — non-unifiability: succeed iff X and Y cannot be unified.
+         * Strategy: save trail mark, probe pj_unify, unwind regardless, branch inverted.
+         * Uses a fresh local for the trial trail mark so we don't clobber trail_local
+         * (which belongs to the enclosing clause's β-retry machinery). */
+        if (strcmp(fn, "\\=") == 0 && nargs == 2) {
+            int scratch_tmark  = (*next_local)++;
+            int scratch_result = (*next_local)++;
+            /* initialise scratch locals to 0 */
+            JI("iconst_0", ""); J("    istore %d\n", scratch_tmark);
+            JI("iconst_0", ""); J("    istore %d\n", scratch_result);
+            /* save trail mark */
+            J("    invokestatic %s/pj_trail_mark()I\n", pj_classname);
+            J("    istore %d\n", scratch_tmark);
+            /* attempt unification; save boolean result */
+            pj_emit_term(goal->children[0], var_locals, n_vars);
+            pj_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+            J("    istore %d\n", scratch_result);
+            /* unwind trail — undo any bindings made by the probe */
+            J("    iload %d\n", scratch_tmark);
+            J("    invokestatic %s/pj_trail_unwind(I)V\n", pj_classname);
+            /* branch inverted: unify succeeded (1) → \= fails; unify failed (0) → \= succeeds */
+            J("    iload %d\n", scratch_result);
+            J("    ifne %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
         /* \+/1, not/1 — negation as failure */
         if ((strcmp(fn, "\\+") == 0 || strcmp(fn, "not") == 0) && nargs == 1) {
             int uid = pj_fresh_label();
@@ -1292,7 +1333,7 @@ static void pj_emit_goal(EXPR_t *goal, const char *lbl_γ, const char *lbl_ω,
             snprintf(inner_ok,   sizeof inner_ok,   "naf%d_ok",   uid);
             snprintf(inner_fail, sizeof inner_fail, "naf%d_fail", uid);
             pj_emit_goal(goal->children[0], inner_ok, inner_fail,
-                         trail_local, var_locals, n_vars, cut_cs_seal, cs_local_for_cut);
+                         trail_local, var_locals, n_vars, cut_cs_seal, cs_local_for_cut, next_local);
             J("%s:\n", inner_ok);   JI("goto", lbl_ω);
             J("%s:\n", inner_fail); JI("goto", lbl_γ);
             return;
@@ -1690,7 +1731,7 @@ static void pj_emit_body(EXPR_t **goals, int ngoals, const char *lbl_γ,
         snprintf(g_γ, sizeof g_γ, "dg%d_gamma", uid);
         snprintf(g_ω, sizeof g_ω, "dg%d_omega", uid);
         pj_emit_goal(g, g_γ, g_ω, trail_local, var_locals, n_vars,
-                     cut_cs_seal, cs_local_for_cut);
+                     cut_cs_seal, cs_local_for_cut, next_local);
         J("%s:\n", g_γ);
         pj_emit_body(goals + 1, ngoals - 1, lbl_γ, lbl_ω, lbl_outer_ω,
                      trail_local, var_locals, n_vars, next_local,
@@ -1807,6 +1848,7 @@ static void pj_emit_choice(EXPR_t *choice) {
     int vars_base     = arity + 4;
     /* count max user calls in any single clause body — each allocates 5 locals */
     int max_ucalls = 0;
+    int max_neq = 0;
     for (int ci2 = 0; ci2 < nclauses; ci2++) {
         EXPR_t *cl2 = choice->children[ci2];
         if (!cl2 || cl2->kind != E_CLAUSE) continue;
@@ -1815,8 +1857,10 @@ static void pj_emit_choice(EXPR_t *choice) {
         if (nb2 < 0) nb2 = 0;
         int uc = pj_count_ucalls(cl2->children + n_args_ci2, nb2);
         if (uc > max_ucalls) max_ucalls = uc;
+        int nq = pj_count_neq(cl2->children + n_args_ci2, nb2);
+        if (nq > max_neq) max_neq = nq;
     }
-    int locals_needed = vars_base + max_vars + 5 * max_ucalls + 16;
+    int locals_needed = vars_base + max_vars + 5 * max_ucalls + 2 * max_neq + 16;
 
     J("    .limit stack 16\n");
     J("    .limit locals %d\n", locals_needed);
