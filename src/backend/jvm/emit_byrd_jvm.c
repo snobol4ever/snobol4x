@@ -1153,7 +1153,7 @@ static void jvm_emit_expr(EXPR_t *e) {
                     JI("dup", "");
                     char fnesc[256]; jvm_escape_string(dt->fields[fi], fnesc, sizeof fnesc);
                     JI("ldc", fnesc);
-                    if (e->children && e->children[fi]) jvm_emit_expr(e->children[fi]);
+                    if (e->children && fi < e->nchildren && e->children[fi]) jvm_emit_expr(e->children[fi]);
                     else JI("ldc", "\"\"");
                     char apdesc[512]; snprintf(apdesc, sizeof apdesc,
                         "%s/sno_array_put(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
