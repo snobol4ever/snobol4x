@@ -2087,6 +2087,7 @@ static void pj_emit_choice(EXPR_t *choice) {
      * calls can push cs beyond base[nclauses]), so we CANNOT add an omega guard.
      * If no (pure fact/builtin), cs >= base[nclauses] means exhausted → ω safe. */
     int last_has_ucall = 0;
+    int any_has_cut = 0;
     {
         EXPR_t *last = choice->children[nclauses - 1];
         int nv_args_last = last ? (int)last->dval : 0;
@@ -2095,6 +2096,18 @@ static void pj_emit_choice(EXPR_t *choice) {
         for (int bi = 0; bi < nb_last && !last_has_ucall; bi++) {
             EXPR_t *g = last->children[nv_args_last + bi];
             if (g && pj_is_user_call(g)) last_has_ucall = 1;
+        }
+        /* scan all clauses for cut presence */
+        for (int ci2 = 0; ci2 < nclauses && !any_has_cut; ci2++) {
+            EXPR_t *cl = choice->children[ci2];
+            if (!cl) continue;
+            int nv2 = (int)cl->dval;
+            int nb2 = (int)cl->nchildren - nv2;
+            if (nb2 < 0) nb2 = 0;
+            for (int bi2 = 0; bi2 < nb2 && !any_has_cut; bi2++) {
+                EXPR_t *g2 = cl->children[nv2 + bi2];
+                if (g2 && g2->kind == E_CUT) any_has_cut = 1;
+            }
         }
     }
 
@@ -2146,12 +2159,15 @@ static void pj_emit_choice(EXPR_t *choice) {
      * cs >= base[ci] → enter clause ci.
      * Mirrors ASM: cmp eax, base[ci]; jge pl_name_cN_α
      *
-     * GUARD: Only emit omega guard when last clause is a pure fact (no ucalls).
-     * If last clause has body user-calls, cs range is open-ended because sub_cs
-     * from recursive calls can push cs beyond base[nclauses]; no guard needed
-     * as the sub_cs path correctly re-enters clause N-1 for continuation. */
+     * CUT SENTINEL GUARD: if last clause has ucalls AND a cut, add exact-equality
+     * guard cs == base[nclauses] → omega.  cutgamma returns base[nclauses] as the
+     * sentinel; this guard catches it before clause dispatch (the >= range guard
+     * is suppressed for last_has_ucall predicates to allow open-ended sub-cs). */
     if (!last_has_ucall) {
         J("    iload %d ; cs >= %d (all clauses exhausted)? → omega\n    ldc %d\n    if_icmpge p_%s_%d_omega\n",
+          cs_local, base[nclauses], base[nclauses], safe_fn, arity);
+    } else if (any_has_cut) {
+        J("    iload %d ; cs == %d (cutgamma sentinel)? → omega\n    ldc %d\n    if_icmpeq p_%s_%d_omega\n",
           cs_local, base[nclauses], base[nclauses], safe_fn, arity);
     }
     J("    iload %d\n", cs_local);
@@ -2389,13 +2405,19 @@ static void pj_emit_choice(EXPR_t *choice) {
         JI("aastore", "");
         JI("areturn", "");
 
-        /* cutgamma port: cut fired — return null (same as omega) so the caller's
-         * ifnull check routes to call_omega immediately and does NOT retry.
-         * Returning base[nclauses] was wrong: it got stored as a new cs and
-         * the predicate was re-entered with that cs, causing duplicate output.
-         * M-PJ-CUT-UCALL fix. */
+        /* cutgamma port: cut fired — return {base[nclauses]} sentinel (M-PJ-CUT-UCALL fix).
+         * base[nclauses] is the one-past-end value. The dispatch at the top of this
+         * predicate now has an unconditional exact-equality guard (cs == base[nclauses]
+         * → omega) regardless of last_has_ucall, so re-entry with this sentinel
+         * immediately routes to omega without executing any clause body. */
         J("p_%s_%d_cutgamma_%d:\n", safe_fn, arity, ci);
-        JI("aconst_null", "");
+        JI("iconst_1", "");
+        JI("anewarray", "java/lang/Object");
+        JI("dup", "");
+        JI("iconst_0", "");
+        J("    ldc %d\n", base[nclauses]);
+        JI("invokestatic", "java/lang/Integer/valueOf(I)Ljava/lang/Integer;");
+        JI("aastore", "");
         JI("areturn", "");
 
         free(var_locals);
