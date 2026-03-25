@@ -1371,10 +1371,25 @@ static void pj_emit_goal(EXPR_t *goal, const char *lbl_γ, const char *lbl_ω,
             char inner_ok[128], inner_fail[128];
             snprintf(inner_ok,   sizeof inner_ok,   "naf%d_ok",   uid);
             snprintf(inner_fail, sizeof inner_fail, "naf%d_fail", uid);
+            /* Save trail mark so inner goal's bindings can be undone on both paths.
+             * Without this, any bindings made by the inner goal (even if it ultimately
+             * fails) survive into the enclosing environment, corrupting the search.
+             * Pattern mirrors \=/2 handler above. */
+            int scratch_tmark = (*next_local)++;
+            JI("iconst_0", ""); J("    istore %d\n", scratch_tmark);
+            J("    invokestatic %s/pj_trail_mark()I\n", pj_classname);
+            J("    istore %d\n", scratch_tmark);
             pj_emit_goal(goal->children[0], inner_ok, inner_fail,
                          trail_local, var_locals, n_vars, cut_cs_seal, cs_local_for_cut, next_local);
-            J("%s:\n", inner_ok);   JI("goto", lbl_ω);
-            J("%s:\n", inner_fail); JI("goto", lbl_γ);
+            /* Unwind trail on both paths before routing \+ result */
+            J("%s:\n", inner_ok);
+            J("    iload %d\n", scratch_tmark);
+            J("    invokestatic %s/pj_trail_unwind(I)V\n", pj_classname);
+            JI("goto", lbl_ω);
+            J("%s:\n", inner_fail);
+            J("    iload %d\n", scratch_tmark);
+            J("    invokestatic %s/pj_trail_unwind(I)V\n", pj_classname);
+            JI("goto", lbl_γ);
             return;
         }
         /* type tests: atom/1, integer/1, float/1, compound/1, var/1, nonvar/1, atomic/1, is_list/1 */
@@ -2105,16 +2120,34 @@ static void pj_emit_choice(EXPR_t *choice) {
             char pred_ω_lbl[128];
             snprintf(pred_ω_lbl, sizeof pred_ω_lbl, "p_%s_%d_omega", safe_fn, arity);
             int next_local = vars_base + n_vars;
-            /* PJ-16 fix: pass ω_lbl (next clause / predicate omega) as lbl_ω,
-             * not α_retry_lbl (clause head-retry).  When the outermost body
-             * user-call exhausts, the clause is fully done → fall to next clause.
-             * α_retry_lbl was causing infinite re-entry of the clause body.
-             * Nested user calls still wire correctly: their call_ω goes to the
-             * enclosing call_β (set at the recursive pj_emit_body call site). */
-            pj_emit_body(body_goals, nbody, γ_lbl, ω_lbl, ω_lbl,
+            /* PJ-24 fix: body-fail trail unwind.
+             * When a body goal fails it jumps to lbl_ω (next clause label).
+             * But head unification may have bound caller vars that must be
+             * undone before the next clause tries its own head unification.
+             * Previously the body-fail path skipped trail unwind entirely.
+             * Fix: emit a per-clause body_fail trampoline that unwinds the
+             * clause's own trail mark, then jumps to the real ω_lbl.
+             * Pass this trampoline as lbl_ω to pj_emit_body so ALL body-goal
+             * failure paths route through it.
+             * PJ-16 fix preserved: outermost body ucall exhaustion still routes
+             * to ω_lbl (next clause) rather than α_retry_lbl. */
+            char body_fail_lbl[128];
+            snprintf(body_fail_lbl, sizeof body_fail_lbl,
+                     "p_%s_%d_bodyfail_%d", safe_fn, arity, ci);
+            /* lbl_ω=body_fail_lbl: deterministic goal failure unwinds clause trail.
+             * lbl_outer_ω=ω_lbl: ucall exhaustion goes directly to next clause;
+             * ucall already manages its own trail via local_tmark so the clause-level
+             * unwind must NOT fire again (would double-unwind and corrupt bindings). */
+            pj_emit_body(body_goals, nbody, γ_lbl, body_fail_lbl, ω_lbl,
                          trail_local, var_locals, n_vars, &next_local,
                          init_cs_local, sub_cs_out_local,
                          base[nclauses], cs_local, pred_ω_lbl);
+            /* body_fail trampoline: unwind this clause's trail, jump to next
+             * clause (or predicate omega for the last clause). */
+            J("p_%s_%d_bodyfail_%d:\n", safe_fn, arity, ci);
+            J("    iload %d\n", trail_local);
+            J("    invokestatic %s/pj_trail_unwind(I)V\n", pj_classname);
+            J("    goto %s\n", ω_lbl);
         }
 
         /* γ port: return base[ci] + init_cs + 1
