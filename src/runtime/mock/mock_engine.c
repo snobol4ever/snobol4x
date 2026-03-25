@@ -168,6 +168,37 @@ static int match_node(const Pattern *p, const char *s, int slen,
         return end;
     }
 
+    case T_FENCE: {
+        /* FENCE(p): try inner pattern; if it succeeds, commit (no backtrack).
+         * In this simple non-backtracking engine, FENCE(p) = match p. */
+        if (p->n == 0) return cursor;  /* bare FENCE() = succeed, no advance */
+        return match_node(p->children[0], s, slen, cursor, opts, scan_start);
+    }
+
+    case T_ARBNO: {
+        /* ARBNO(p): match zero or more non-overlapping occurrences of p.
+         * Greedy: try to extend as far as possible, but must not loop on zero-width. */
+        if (p->n == 0 || !p->children[0]) return cursor;
+        int cur = cursor;
+        for (;;) {
+            int r = match_node(p->children[0], s, slen, cur, opts, scan_start);
+            if (r < 0 || r == cur) break;  /* failed or zero-width: stop */
+            cur = r;
+        }
+        return cur;
+    }
+
+    case T_ARB: {
+        /* ARB: match zero or more characters (greedy shortest first in SNOBOL4,
+         * but here just try to match as-is at current position — zero chars). */
+        return cursor;
+    }
+
+    case T_BAL: {
+        /* BAL: match a balanced string of parentheses — simplified: skip to end */
+        return cursor;
+    }
+
     default:
         /* Unhandled node type — fail safely */
         return -1;

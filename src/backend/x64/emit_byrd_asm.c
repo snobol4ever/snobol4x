@@ -410,8 +410,8 @@ static void expand_name(const char *src, char *dst, int dstlen) {
  *   box_data_size(safe_name)   — byte size of the DATA block
  * ----------------------------------------------------------------------- */
 
-#define MAX_BOX_DATA_VARS 128
-#define MAX_BOXES 64
+#define MAX_BOX_DATA_VARS 512
+#define MAX_BOXES 512
 
 typedef struct {
     char safe[NAME_LEN];                    /* box safe name */
@@ -538,7 +538,7 @@ static void box_data_reset(void) {
  * .bss slot registry — program-global (non-box) variables
  * ----------------------------------------------------------------------- */
 
-#define MAX_VARS 2048
+#define MAX_VARS 8192
 static char *vars[MAX_VARS];
 static int   nvar = 0;
 
@@ -574,7 +574,7 @@ static void bss_emit(void) {
  * .data string literals registry
  * ----------------------------------------------------------------------- */
 
-#define MAX_LITS 128
+#define MAX_LITS 1024
 typedef struct { char label[LBUF + 16]; char *val; int len; } LitEntry;
 static LitEntry lit_table[MAX_LITS];
 static int lit_count = 0;
@@ -777,7 +777,7 @@ static void emit_rpos_var(const char *varlab,
 typedef struct NamedPat NamedPat;
 
 /* Forward declarations for capture variable registry (defined after named-pat section) */
-#define MAX_CAP_VARS 64
+#define MAX_CAP_VARS 256
 typedef struct {
     char varname[64];
     char safe[64];
@@ -986,7 +986,7 @@ static void emit_arbno(EXPR_t *child,
     /* Replace the var_register approach: use a global extra-bss list */
     extern char extra_slots[][LBUF + 16];
     extern int  extra_slot_count;
-    if (extra_slot_count < 64) {
+    if (extra_slot_count < 512) {
         snprintf(extra_slots[extra_slot_count++], sizeof extra_slots[0],
                  "%-24s resq 64", stk);
     }
@@ -1833,7 +1833,7 @@ static void emit_pat_node(EXPR_t *pat,
  * Extra .bss entries for ARBNO stacks (resq 64 each)
  * ----------------------------------------------------------------------- */
 
-char extra_slots[64][LBUF + 16];
+char extra_slots[512][LBUF + 16];
 int  extra_slot_count = 0;
 
 static void extra_bss_emit(void) {
@@ -1842,11 +1842,11 @@ static void extra_bss_emit(void) {
 }
 
 /* Per-call-uid .bss slots — declared here, emitted as part of .bss section */
-static char call_slots[256][LBUF];
+static char call_slots[4096][LBUF];
 static int  call_slot_count = 0;
 
 static void call_slot_add(const char *name) {
-    if (call_slot_count >= 256) return;
+    if (call_slot_count >= 4096) return;
     /* deduplicate */
     for (int i = 0; i < call_slot_count; i++)
         if (strcmp(call_slots[i], name) == 0) return;
@@ -1995,7 +1995,7 @@ static void cap_vars_emit_data_section(void) {
  * (NamedPat struct defined above as forward decl)
  * ----------------------------------------------------------------------- */
 
-#define NAMED_PAT_MAX 64
+#define NAMED_PAT_MAX 512
 
 static NamedPat named_pats[NAMED_PAT_MAX];
 static int         named_pat_count = 0;
@@ -2005,7 +2005,7 @@ static void named_pat_reset(void);  /* forward decl — defined below after nret
 /* nreturn_fns — set of function names that use :(NRETURN).
  * Populated during scan_named_patterns. Used at fast-path guard to ensure
  * CALL1_* is not used for NRETURN functions even when ufn lookup misses. */
-#define NRETURN_FNS_MAX 64
+#define NRETURN_FNS_MAX 256
 static char nreturn_fns[NRETURN_FNS_MAX][64];
 static int  nreturn_fn_count = 0;
 static void nreturn_fns_reset(void) { nreturn_fn_count = 0; }
@@ -2025,7 +2025,7 @@ static void named_pat_reset(void) { named_pat_count = 0; nreturn_fns_reset(); }
 /* str_vars — registry for plain-string variable assignments (VAR = 'literal').
  * Used by E_INDR (*VAR) when the variable holds a string, not a named pattern.
  * At compile time we know the literal value, so we emit an inline LIT. */
-#define STR_VARS_MAX 64
+#define STR_VARS_MAX 256
 static StrVar str_vars[STR_VARS_MAX];
 static int       str_vars_count = 0;
 
@@ -2115,40 +2115,54 @@ static void emit_named_ref(const NamedPat *np,
                                 const char *α, const char *β,
                                 const char *γ, const char *ω) {
     int uid = next_uid();
-    char glbl[LBUF], olbl[LBUF];
-    snprintf(glbl, LBUF, "nref%d_γ", uid);
-    snprintf(olbl, LBUF, "nref%d_ω", uid);
+    char glbl[LBUF], olbl[LBUF], r12_save[LBUF];
+    snprintf(glbl,     LBUF, "nref%d_γ",    uid);
+    snprintf(olbl,     LBUF, "nref%d_ω",    uid);
+    snprintf(r12_save, LBUF, "nref%d_r12",  uid);
+
+    /* Save slot for caller's r12 — must survive across the nested call */
+    if (!np->is_fn)
+        var_register(r12_save);
 
     {
         char ref_hdr[LBUF + 8];
         snprintf(ref_hdr, sizeof ref_hdr, "REF(%s)", np->varname);
         A("\n");
-        /* α: header comment on label line — "α: ; REF(PatName)" */
         asmLC(α, ref_hdr);
     }
 
-    /* α instructions: load continuations, set r12 to data template, jump to α */
+    /* α: save caller r12, set r12 to callee DATA block, jump to α */
     A("    lea     rax, [rel %s]\n", glbl);
     A("    mov     [%s], rax\n", np->ret_γ);
     A("    lea     rax, [rel %s]\n", olbl);
     A("    mov     [%s], rax\n", np->ret_ω);
-    if (!np->is_fn)
+    if (!np->is_fn) {
+        A("    mov     [%s], r12\n", r12_save);   /* save caller r12 */
         A("    lea     r12, [rel box_%s_data_template]\n", np->safe);
+    }
     A("    jmp     %s\n", np->α_lbl);
 
-    /* β: reload continuations, set r12, jump to β */
+    /* β: same save/restore, jump to β */
     ALFC(β, "REF(%s)", "lea     rax, [rel %s]\n", glbl);
     A("    mov     [%s], rax\n", np->ret_γ);
     A("    lea     rax, [rel %s]\n", olbl);
     A("    mov     [%s], rax\n", np->ret_ω);
-    if (!np->is_fn)
+    if (!np->is_fn) {
+        A("    mov     [%s], r12\n", r12_save);   /* save caller r12 */
         A("    lea     r12, [rel box_%s_data_template]\n", np->safe);
+    }
     A("    jmp     %s\n", np->β_lbl);
 
-    /* γ and ω trampolines — named pattern jumps here, we forward */
+    /* γ trampoline: restore caller r12, then forward to caller γ */
     A("\n%s:\n", glbl);
+    if (!np->is_fn)
+        A("    mov     r12, [%s]\n", r12_save);   /* restore caller r12 */
     asmJ(γ);
+
+    /* ω trampoline: restore caller r12, then forward to caller ω */
     asmL(olbl);
+    if (!np->is_fn)
+        A("    mov     r12, [%s]\n", r12_save);   /* restore caller r12 */
     asmJ(ω);
 }
 
@@ -2604,19 +2618,17 @@ static void scan_named_patterns(Program *prog) {
             continue;
         }
 
-        /* A pattern assignment: subject is a variable, no pattern field,
-         * has_eq is set, replacement holds the pattern expression.
-         * E.g.   ASTAR = ARBNO(LIT("a"))
-         * In sno2c IR: subject=E_VART("ASTAR"), pattern=NULL, replacement=<expr>
-         * Only register if the replacement is genuinely a pattern-building
-         * expression (contains E_FNC).  Plain value assignments like
-         * X = 'hello' or OUTPUT = X 'world' are NOT named patterns. */
+        /* A pattern assignment: subject is a variable, no pattern field, has_eq set.
+         * Register pattern-valued assignments as named patterns so the ASM backend
+         * can emit compiled Byrd-box code with direct ASM user-function calls.
+         * The runtime dispatch path (stmt_match_descr) cannot call back into
+         * compiled ASM SNOBOL4 user functions (nPush/nPop/nInc etc.), so named-pattern
+         * compilation is essential for patterns containing semantic action callbacks. */
         if (s->subject && s->subject->kind == E_VART &&
             s->has_eq && s->replacement && !s->pattern) {
             if (expr_is_pattern_expr(s->replacement)) {
                 named_pat_register(s->subject->sval, s->replacement);
             } else if (s->replacement->kind == E_QLIT && s->replacement->sval) {
-                /* Plain string assignment — register for *VAR indirect use */
                 str_var_register(s->subject->sval, s->replacement->sval);
             }
         }
@@ -2953,7 +2965,7 @@ int asm_body_mode = 0; /* set by -asm-body flag */
 
 
 /* ---- data section string registry ---- */
-#define MAX_STRS 2048
+#define MAX_STRS 8192
 typedef struct { char label[LBUF + 16]; char *val; } StrEntry;
 static StrEntry str_table[MAX_STRS];
 static int     str_count = 0;
@@ -3006,7 +3018,7 @@ static void str_emit(void) {
 }
 
 /* ---- float literal registry ---- */
-#define MAX_FLTS 256
+#define MAX_FLTS 1024
 typedef struct { char label[32]; double val; } FltEntry;
 static FltEntry flt_table[MAX_FLTS];
 static int     flt_count = 0;
@@ -3965,6 +3977,11 @@ static int emit_expr(EXPR_t *e, int rbp_off) {
          * NRETURN (.a), and any other place a name-value is passed as an arg.
          * In value (non-pattern) context E_NAM(child=E_VART("varname")) → name string.
          *
+         * BINARY E_NAM: expr . var → pattern with conditional capture.
+         * e.g. 'epsilon . *PushCounter()' in nPush_ body.
+         * Emit as: stmt_concat(eval(children[0]), DT_N(children[1])).
+         * stmt_concat detects DT_N right operand and builds pat_assign_cond.
+         *
          * EXCEPTION: .fieldFn(obj) — when child is E_FNC (a DATA field accessor call
          * like .value($'@S')), we must EVALUATE the call to get the field value,
          * not emit the function name as a literal string. This pattern appears in
@@ -3973,6 +3990,41 @@ static int emit_expr(EXPR_t *e, int rbp_off) {
         if (child && child->kind == E_FNC) {
             /* Evaluate the function call — result lands in rbp_off slot */
             return emit_expr(child, rbp_off);
+        }
+        /* Binary E_NAM: expr . var — build a conditional-capture pattern at runtime */
+        if (e->nchildren >= 2 && e->children[1]) {
+            EXPR_t *right = e->children[1];
+            /* Emit left operand into [rbp-32], push it */
+            emit_expr(child, -32);
+            A("    push    rdx\n");
+            A("    push    rax\n");
+            /* Emit right operand (the capture var) as DT_N into [rbp-32] */
+            emit_expr(right, -32);   /* for E_STAR/E_VART this gives a name or value */
+            /* Force right to DT_N if it's E_VART or E_STAR pointing to a varname */
+            const char *rname = NULL;
+            if (right->kind == E_VART && right->sval) rname = right->sval;
+            else if (right->kind == E_STAR && right->nchildren > 0
+                     && right->children[0] && right->children[0]->sval)
+                rname = right->children[0]->sval;
+            else if (right->kind == E_INDR && right->nchildren > 0
+                     && right->children[0] && right->children[0]->sval)
+                rname = right->children[0]->sval;
+            if (rname) {
+                /* Emit DT_N for the capture variable name */
+                const char *rvlab = str_intern(rname);
+                A("    mov     qword [rbp-32], 9\n");  /* DT_N */
+                A("    lea     rax, [rel %s]\n", rvlab);
+                A("    mov     [rbp-24], rax\n");
+            }
+            /* Call stmt_concat(left, DT_N(right)) → builds pat_assign_cond */
+            A("    mov     rcx, [rbp-24]\n");
+            A("    mov     rdx, [rbp-32]\n");
+            A("    pop     rdi\n");
+            A("    pop     rsi\n");
+            A("    call    stmt_concat\n");
+            A("    mov     [rbp%+d], rax\n", rbp_off);
+            A("    mov     [rbp%+d], rdx\n", rbp_off + 8);
+            return 1;
         }
         const char *varname = (child && child->sval)
                               ? child->sval
@@ -4132,7 +4184,7 @@ static void prog_emit_goto(const char *target, const char *fallthrough) {
     A("    jmp     %s\n", label_nasm(target));
 }
 /* ---- scan all labels in program for the jump table ---- */
-#define MAX_LABELS 1024
+#define MAX_LABELS 4096
 /* Numeric label registry: each unique SNOBOL4 label name gets an integer ID.
  * Emitted as _L_<base>_N in NASM — number guarantees uniqueness, base aids readability.
  * TODO M-ASM-READABLE: named expansion (pp_>= → pp_GT_EQ_N) post M-ASM-BEAUTY. */

@@ -59,8 +59,8 @@
 
 void stmt_init(void) {
     SNO_INIT_fn();
-    extern void inc_init(void);
-    inc_init();
+    /* inc_init() removed — library functions (lwr, upr, Gen, etc.) are now
+     * compiled directly from the -INCLUDE'd SNOBOL4 source by sno2c -asm */
     NV_SYNC_fn();
 }
 
@@ -325,11 +325,17 @@ DESCR_t stmt_concat(DESCR_t a, DESCR_t b) {
      * This ensures DIFFER(X,Y) CONCAT rest fails when X==Y. */
     if (IS_FAIL_fn(a)) return FAILDESCR;
     if (IS_FAIL_fn(b)) return FAILDESCR;
-    /* Pattern concatenation: if either operand is a pattern, build a SEQ
-     * node via pat_cat().  Strings are promoted to literal patterns.
-     * Without this, VARVAL_fn(DT_P)="PATTERN" for both operands and the
-     * result is the bogus string "PATTERNPATTERN". */
-    if (a.v == DT_P || b.v == DT_P) {
+    /* Pattern concatenation: if either operand is a pattern OR a name (DT_N),
+     * build a pattern node.  DT_N arises from the '.' operator:
+     * 'expr . var' where var is a capture target — e.g. 'epsilon . *PushCounter()'
+     * in nPush_ body.  'a . b' with DT_N(b) = pat_assign_cond(a_as_pat, b).
+     * Without this fix, epsilon . name_ref degrades to string concat -> DT_S. */
+    if (a.v == DT_P || b.v == DT_P || b.v == DT_N) {
+        if (b.v == DT_N) {
+            /* a . name: conditional capture of a's match into name */
+            DESCR_t pa = (a.v == DT_P) ? a : pat_lit(VARVAL_fn(a));
+            return pat_assign_cond(pa, b);
+        }
         DESCR_t pa = (a.v == DT_P) ? a : pat_lit(VARVAL_fn(a));
         DESCR_t pb = (b.v == DT_P) ? b : pat_lit(VARVAL_fn(b));
         return pat_cat(pa, pb);
