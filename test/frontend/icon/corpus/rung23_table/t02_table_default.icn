@@ -1,0 +1,7 @@
+procedure main();
+  local t;
+  t := table(99);
+  t[1] := 7;
+  write(t[1]);
+  write(t[2]);
+end

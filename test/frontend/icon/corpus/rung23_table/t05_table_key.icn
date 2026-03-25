@@ -1,0 +1,10 @@
+procedure main();
+  local t, total;
+  t := table(0);
+  t[1] := 10;
+  t[2] := 20;
+  t[3] := 30;
+  total := 0;
+  every total +:= t[key(t)];
+  write(total);
+end

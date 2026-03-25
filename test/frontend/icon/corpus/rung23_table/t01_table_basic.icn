@@ -1,0 +1,6 @@
+procedure main();
+  local t;
+  t := table(0);
+  t[1] := 42;
+  write(t[1]);
+end

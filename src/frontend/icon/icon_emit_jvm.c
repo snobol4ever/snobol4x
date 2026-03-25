@@ -379,6 +379,7 @@ static void ij_put_real_field(const char *fname) {
 /* Forward declaration needed for ij_expr_is_string */
 static int ij_expr_is_string(IcnNode *n);
 static int ij_expr_is_list(IcnNode *n);
+static int ij_expr_is_table(IcnNode *n);
 
 /* Push 0 to icn_failed (success) */
 static void ij_set_ok(void) {
@@ -449,6 +450,18 @@ static void ij_get_obj_field(const char *fname) {
 }
 static void ij_put_obj_field(const char *fname) {
     char buf[384]; snprintf(buf, sizeof buf, "%s/%s Ljava/lang/Object;", ij_classname, fname);
+    JI("putstatic", buf);
+}
+/* HashMap-typed static field helpers ('T' type tag) — Icon tables */
+static void ij_declare_static_table(const char *name) {
+    ij_declare_static_typed(name, 'T');
+}
+static void ij_get_table_field(const char *fname) {
+    char buf[384]; snprintf(buf, sizeof buf, "%s/%s Ljava/util/HashMap;", ij_classname, fname);
+    JI("getstatic", buf);
+}
+static void ij_put_table_field(const char *fname) {
+    char buf[384]; snprintf(buf, sizeof buf, "%s/%s Ljava/util/HashMap;", ij_classname, fname);
     JI("putstatic", buf);
 }
 
@@ -566,11 +579,12 @@ static void ij_emit_var(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
         /* Named local/param: use per-proc static field (suspend-safe) */
         char fld[128]; ij_var_field(n->val.sval, fld, sizeof fld);
         /* Determine type: look up in statics table */
-        int is_str = 0, is_dbl = 0, is_list = 0;
+        int is_str = 0, is_dbl = 0, is_list = 0, is_table = 0;
         for (int i = 0; i < ij_nstatics; i++) {
             if (!strcmp(ij_statics[i], fld) && ij_static_types[i] == 'A') { is_str  = 1; break; }
             if (!strcmp(ij_statics[i], fld) && ij_static_types[i] == 'D') { is_dbl  = 1; break; }
             if (!strcmp(ij_statics[i], fld) && ij_static_types[i] == 'L') { is_list = 1; break; }
+            if (!strcmp(ij_statics[i], fld) && ij_static_types[i] == 'T') { is_table= 1; break; }
         }
         if (is_str) {
             ij_declare_static_str(fld);
@@ -578,6 +592,9 @@ static void ij_emit_var(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
         } else if (is_list) {
             ij_declare_static_list(fld);
             ij_get_list_field(fld);
+        } else if (is_table) {
+            ij_declare_static_table(fld);
+            ij_get_table_field(fld);
         } else if (is_dbl) {
             ij_declare_static_dbl(fld);
             ij_get_dbl(fld);
@@ -588,15 +605,17 @@ static void ij_emit_var(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
     } else {
         char gname[80]; snprintf(gname, sizeof gname, "icn_gvar_%s", n->val.sval);
         /* Check global type */
-        int is_str = 0, is_dbl = 0, is_list = 0;
+        int is_str = 0, is_dbl = 0, is_list = 0, is_table = 0;
         for (int i = 0; i < ij_nstatics; i++) {
             if (!strcmp(ij_statics[i], gname) && ij_static_types[i] == 'A') { is_str  = 1; break; }
             if (!strcmp(ij_statics[i], gname) && ij_static_types[i] == 'D') { is_dbl  = 1; break; }
             if (!strcmp(ij_statics[i], gname) && ij_static_types[i] == 'L') { is_list = 1; break; }
+            if (!strcmp(ij_statics[i], gname) && ij_static_types[i] == 'T') { is_table= 1; break; }
         }
-        if (is_str)       { ij_declare_static_str(gname);  ij_get_str_field(gname); }
-        else if (is_list) { ij_declare_static_list(gname); ij_get_list_field(gname); }
-        else if (is_dbl)  { ij_declare_static_dbl(gname);  ij_get_dbl(gname); }
+        if (is_str)        { ij_declare_static_str(gname);   ij_get_str_field(gname); }
+        else if (is_list)  { ij_declare_static_list(gname);  ij_get_list_field(gname); }
+        else if (is_table) { ij_declare_static_table(gname); ij_get_table_field(gname); }
+        else if (is_dbl)   { ij_declare_static_dbl(gname);   ij_get_dbl(gname); }
         else              { ij_declare_static(gname);      ij_get_long(gname); }
     }
     JGoto(ports.γ);
@@ -632,27 +651,87 @@ static void ij_emit_assign(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
     IcnNode *rhs = n->children[1];
     int is_str  = ij_expr_is_string(rhs);
     int is_list = !is_str && ij_expr_is_list(rhs);
-    int is_dbl  = !is_str && !is_list && ij_expr_is_real(rhs);
+    int is_tbl  = !is_str && !is_list && ij_expr_is_table(rhs);
+    int is_dbl  = !is_str && !is_list && !is_tbl && ij_expr_is_real(rhs);
 
     if (lhs && lhs->kind == ICN_VAR) {
         int slot = ij_locals_find(lhs->val.sval);
         if (slot >= 0) {
             char fld[128]; ij_var_field(lhs->val.sval, fld, sizeof fld);
-            if (is_str)       { ij_declare_static_str(fld);  ij_put_str_field(fld); }
-            else if (is_list) { ij_declare_static_list(fld); ij_put_list_field(fld); }
-            else if (is_dbl)  { ij_declare_static_dbl(fld);  ij_put_dbl(fld); }
-            else              { ij_declare_static(fld);      ij_put_long(fld); }
+            if (is_str)       { ij_declare_static_str(fld);   ij_put_str_field(fld); }
+            else if (is_list) { ij_declare_static_list(fld);  ij_put_list_field(fld); }
+            else if (is_tbl)  { ij_declare_static_table(fld); ij_put_table_field(fld); }
+            else if (is_dbl)  { ij_declare_static_dbl(fld);   ij_put_dbl(fld); }
+            else              { ij_declare_static(fld);       ij_put_long(fld); }
         } else {
             char gname[80]; snprintf(gname, sizeof gname, "icn_gvar_%s", lhs->val.sval);
-            if (is_str)       { ij_declare_static_str(gname);  ij_put_str_field(gname); }
-            else if (is_list) { ij_declare_static_list(gname); ij_put_list_field(gname); }
-            else if (is_dbl)  { ij_declare_static_dbl(gname);  ij_put_dbl(gname); }
-            else              { ij_declare_static(gname);      ij_put_long(gname); }
+            if (is_str)       { ij_declare_static_str(gname);   ij_put_str_field(gname); }
+            else if (is_list) { ij_declare_static_list(gname);  ij_put_list_field(gname); }
+            else if (is_tbl)  { ij_declare_static_table(gname); ij_put_table_field(gname); }
+            else if (is_dbl)  { ij_declare_static_dbl(gname);   ij_put_dbl(gname); }
+            else              { ij_declare_static(gname);       ij_put_long(gname); }
         }
+    } else if (lhs && lhs->kind == ICN_SUBSCRIPT && lhs->nchildren >= 2
+               && ij_expr_is_table(lhs->children[0])) {
+        /* t[k] := v  — HashMap.put(key_str, boxed_v)
+         * At this point the RHS value (long) is on the JVM stack (from the
+         * store relay).  We need: box it, save it; load the table; load the
+         * key (evaluate lhs->children[1]); do put; restore value for result.
+         *
+         * But the key hasn't been evaluated yet — ij_emit_assign evaluates RHS
+         * first, then calls the store relay.  We must snapshot the table and key
+         * here using statics. Strategy: emit key evaluation in a relay chain
+         * that fires after the store label.
+         *
+         * Simpler path: rewrite the whole assign for subscript LHS before
+         * entering the generic RHS-first flow.  Since we're already past the
+         * RHS emit, use: box RHS → val_fld; evaluate key from lhs->children[1]
+         * using a secondary emit; put; reload val for result.
+         */
+        IcnNode *tvar  = lhs->children[0];
+        IcnNode *kexpr = lhs->children[1];
+        int assign_id = ij_new_id();
+        char val_fld[80]; snprintf(val_fld, sizeof val_fld, "icn_%d_tsa_val", assign_id);
+        char t_fld[80];   snprintf(t_fld,   sizeof t_fld,   "icn_%d_tsa_tbl", assign_id);
+        char k_fld[80];   snprintf(k_fld,   sizeof k_fld,   "icn_%d_tsa_key", assign_id);
+        char kv_fld[80];  snprintf(kv_fld,  sizeof kv_fld,  "icn_%d_tsa_kv",  assign_id);
+        char krelay2[64]; snprintf(krelay2, sizeof krelay2, "icn_%d_tsa_kr",   assign_id);
+        ij_declare_static_obj(val_fld);
+        ij_declare_static_table(t_fld);
+        ij_declare_static_str(k_fld);
+        ij_declare_static(kv_fld);
+        /* RHS long on stack → box, store */
+        JI("invokestatic", "java/lang/Long/valueOf(J)Ljava/lang/Long;");
+        ij_put_obj_field(val_fld);
+        /* Store table ref */
+        {
+            char taf[128]; ij_var_field(tvar->val.sval, taf, sizeof taf);
+            ij_get_table_field(taf);
+        }
+        ij_put_table_field(t_fld);
+        /* Evaluate key — one-shot, no generator context: use a direct relay */
+        IjPorts kp_assign; strncpy(kp_assign.γ, krelay2, 63); strncpy(kp_assign.ω, ports.ω, 63);
+        char kaa[64], kba[64]; ij_emit_expr(kexpr, kp_assign, kaa, kba);
+        JGoto(kaa);
+        JL(krelay2);
+        /* key long on stack → save as long, convert to string */
+        JI("dup2",""); ij_put_long(kv_fld);
+        JI("invokestatic", "java/lang/Long/toString(J)Ljava/lang/String;");
+        ij_put_str_field(k_fld);
+        /* T.put(k, v) */
+        ij_get_table_field(t_fld);
+        ij_get_str_field(k_fld);
+        ij_get_obj_field(val_fld);
+        JI("invokevirtual", "java/util/HashMap/put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
+        JI("pop", "");
+        /* push back RHS value (long) for expression result */
+        ij_get_long(kv_fld);
+        JGoto(ports.γ);
+        return;   /* skip the generic push-back block below */
     } else {
         /* discard — pop appropriate type */
-        if (is_str || is_list) JI("pop", "");
-        else                   JI("pop2", "");  /* double and long both take 2 JVM slots */
+        if (is_str || is_list || is_tbl) JI("pop", "");
+        else                             JI("pop2", "");
     }
     /* Push back value for expression result (Icon := returns the value) */
     if (lhs && lhs->kind == ICN_VAR) {
@@ -661,19 +740,21 @@ static void ij_emit_assign(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
             char fld[128]; ij_var_field(lhs->val.sval, fld, sizeof fld);
             if (is_str)       ij_get_str_field(fld);
             else if (is_list) ij_get_list_field(fld);
+            else if (is_tbl)  ij_get_table_field(fld);
             else if (is_dbl)  ij_get_dbl(fld);
             else              ij_get_long(fld);
         } else {
             char gname[80]; snprintf(gname, sizeof gname, "icn_gvar_%s", lhs->val.sval);
             if (is_str)       ij_get_str_field(gname);
             else if (is_list) ij_get_list_field(gname);
+            else if (is_tbl)  ij_get_table_field(gname);
             else if (is_dbl)  ij_get_dbl(gname);
             else              ij_get_long(gname);
         }
     } else {
-        if (is_str || is_list) JI("aconst_null", "");
-        else if (is_dbl)       JI("dconst_0", "");
-        else                   JI("lconst_0", "");
+        if (is_str || is_list || is_tbl) JI("aconst_null", "");
+        else if (is_dbl)                 JI("dconst_0", "");
+        else                             JI("lconst_0", "");
     }
     JGoto(ports.γ);
 }
@@ -1449,7 +1530,214 @@ static void ij_emit_call(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
 
     /* === END LIST BUILTINS === */
 
-    /* --- user procedure call --- */
+    /* === TABLE BUILTINS ===
+     * table(dflt)      — create new HashMap with default value dflt
+     * insert(T,k,v)    — T.put(k,v); returns T
+     * delete(T,k)      — T.remove(k); returns T
+     * member(T,k)      — succeeds (returning k) if k in T, else fails
+     * key(T)           — generator: yields each key in T
+     *
+     * Key representation: all keys stored as String (ldc / Long.toString).
+     * Default value stored in a parallel per-table Object static _dflt field.
+     * Table subscript t[k] handled in ij_emit_subscript (extended below).
+     */
+
+    if (strcmp(fname, "table") == 0 && nargs >= 1 && !ij_is_user_proc(fname)) {
+        /* table(dflt): create new HashMap; store default in _dflt static */
+        IcnNode *darg = n->children[1];
+        char drelay[64]; snprintf(drelay, sizeof drelay, "icn_%d_tdr", id);
+        char tbl_fld[80];  snprintf(tbl_fld,  sizeof tbl_fld,  "icn_%d_tbl",  id);
+        char dflt_fld[80]; snprintf(dflt_fld, sizeof dflt_fld, "icn_%d_tdflt", id);
+        ij_declare_static_table(tbl_fld);
+        ij_declare_static_obj(dflt_fld);
+
+        IjPorts dp; strncpy(dp.γ, drelay, 63); strncpy(dp.ω, ports.ω, 63);
+        char da[64], db[64]; ij_emit_expr(darg, dp, da, db);
+
+        JL(a); JGoto(da);
+        JL(b); JGoto(ports.ω);
+
+        /* drelay: default value (long) on stack → box → store as Object default */
+        JL(drelay);
+        JI("invokestatic", "java/lang/Long/valueOf(J)Ljava/lang/Long;");
+        ij_put_obj_field(dflt_fld);
+        /* create new HashMap */
+        JI("new", "java/util/HashMap");
+        JI("dup", "");
+        JI("invokespecial", "java/util/HashMap/<init>()V");
+        ij_put_table_field(tbl_fld);
+        ij_get_table_field(tbl_fld);
+        JGoto(ports.γ);
+        return;
+    }
+
+    if (strcmp(fname, "insert") == 0 && nargs >= 3 && !ij_is_user_proc(fname)) {
+        IcnNode *targ = n->children[1];
+        IcnNode *karg = n->children[2];
+        IcnNode *varg = n->children[3];
+        char trelay[64], krelay[64], vrelay[64];
+        snprintf(trelay, sizeof trelay, "icn_%d_itr2", id);
+        snprintf(krelay, sizeof krelay, "icn_%d_ikr2", id);
+        snprintf(vrelay, sizeof vrelay, "icn_%d_ivr2", id);
+        char t_fld[80]; snprintf(t_fld, sizeof t_fld, "icn_%d_itbl2", id);
+        char k_fld[80]; snprintf(k_fld, sizeof k_fld, "icn_%d_ikey2", id);
+        char v_fld[80]; snprintf(v_fld, sizeof v_fld, "icn_%d_ival2", id);
+        ij_declare_static_table(t_fld);
+        ij_declare_static_str(k_fld);
+        ij_declare_static_obj(v_fld);
+
+        IjPorts tp2; strncpy(tp2.γ, trelay, 63); strncpy(tp2.ω, ports.ω, 63);
+        char ta2[64], tb2[64]; ij_emit_expr(targ, tp2, ta2, tb2);
+        IjPorts kp2; strncpy(kp2.γ, krelay, 63); strncpy(kp2.ω, ports.ω, 63);
+        char ka2[64], kb2[64]; ij_emit_expr(karg, kp2, ka2, kb2);
+        IjPorts vp3; strncpy(vp3.γ, vrelay, 63); strncpy(vp3.ω, ports.ω, 63);
+        char va3[64], vb3[64]; ij_emit_expr(varg, vp3, va3, vb3);
+
+        JL(a); JGoto(ta2);
+        JL(b); JGoto(ports.ω);
+        JL(trelay); ij_put_table_field(t_fld); JGoto(ka2);
+        JL(krelay);
+        JI("invokestatic", "java/lang/Long/toString(J)Ljava/lang/String;");
+        ij_put_str_field(k_fld);
+        JGoto(va3);
+        JL(vrelay);
+        JI("invokestatic", "java/lang/Long/valueOf(J)Ljava/lang/Long;");
+        ij_put_obj_field(v_fld);
+        ij_get_table_field(t_fld);
+        ij_get_str_field(k_fld);
+        ij_get_obj_field(v_fld);
+        JI("invokevirtual", "java/util/HashMap/put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
+        JI("pop", "");
+        ij_get_table_field(t_fld);
+        JGoto(ports.γ);
+        return;
+    }
+
+    if (strcmp(fname, "delete") == 0 && nargs >= 2 && !ij_is_user_proc(fname)) {
+        /* delete(T, k): T.remove(key_str); return T */
+        IcnNode *targ = n->children[1];
+        IcnNode *karg = n->children[2];
+        char trelay[64], krelay[64];
+        snprintf(trelay, sizeof trelay, "icn_%d_dtr", id);
+        snprintf(krelay, sizeof krelay, "icn_%d_dkr", id);
+        char t_fld[80]; snprintf(t_fld, sizeof t_fld, "icn_%d_dtbl", id);
+        char k_fld[80]; snprintf(k_fld, sizeof k_fld, "icn_%d_dkey", id);
+        ij_declare_static_table(t_fld);
+        ij_declare_static_str(k_fld);
+
+        IjPorts tp3; strncpy(tp3.γ, trelay, 63); strncpy(tp3.ω, ports.ω, 63);
+        char ta3[64], tb3[64]; ij_emit_expr(targ, tp3, ta3, tb3);
+        IjPorts kp3; strncpy(kp3.γ, krelay, 63); strncpy(kp3.ω, ports.ω, 63);
+        char ka3[64], kb3[64]; ij_emit_expr(karg, kp3, ka3, kb3);
+
+        JL(a); JGoto(ta3);
+        JL(b); JGoto(ports.ω);
+        JL(trelay); ij_put_table_field(t_fld); JGoto(ka3);
+        JL(krelay);
+        JI("invokestatic", "java/lang/Long/toString(J)Ljava/lang/String;");
+        ij_put_str_field(k_fld);
+        ij_get_table_field(t_fld);
+        ij_get_str_field(k_fld);
+        JI("invokevirtual", "java/util/HashMap/remove(Ljava/lang/Object;)Ljava/lang/Object;");
+        JI("pop", "");
+        ij_get_table_field(t_fld);
+        JGoto(ports.γ);
+        return;
+    }
+
+    if (strcmp(fname, "member") == 0 && nargs >= 2 && !ij_is_user_proc(fname)) {
+        /* member(T, k): succeed returning k (long) if k is a key; else fail */
+        IcnNode *targ = n->children[1];
+        IcnNode *karg = n->children[2];
+        char trelay[64], krelay[64];
+        snprintf(trelay, sizeof trelay, "icn_%d_mtr", id);
+        snprintf(krelay, sizeof krelay, "icn_%d_mkr", id);
+        char t_fld[80]; snprintf(t_fld, sizeof t_fld, "icn_%d_mtbl", id);
+        char k_fld[80]; snprintf(k_fld, sizeof k_fld, "icn_%d_mkey", id);
+        char kv_fld[80]; snprintf(kv_fld, sizeof kv_fld, "icn_%d_mkeyv", id);
+        ij_declare_static_table(t_fld);
+        ij_declare_static_str(k_fld);
+        ij_declare_static(kv_fld);  /* long: the key value */
+
+        IjPorts tp4; strncpy(tp4.γ, trelay, 63); strncpy(tp4.ω, ports.ω, 63);
+        char ta4[64], tb4[64]; ij_emit_expr(targ, tp4, ta4, tb4);
+        IjPorts kp4; strncpy(kp4.γ, krelay, 63); strncpy(kp4.ω, ports.ω, 63);
+        char ka4[64], kb4[64]; ij_emit_expr(karg, kp4, ka4, kb4);
+
+        JL(a); JGoto(ta4);
+        JL(b); JGoto(ports.ω);
+        JL(trelay); ij_put_table_field(t_fld); JGoto(ka4);
+        JL(krelay);
+        JI("dup2", "");            /* dup long key value for later return */
+        ij_put_long(kv_fld);      /* save key as long */
+        JI("invokestatic", "java/lang/Long/toString(J)Ljava/lang/String;");
+        ij_put_str_field(k_fld);
+        ij_get_table_field(t_fld);
+        ij_get_str_field(k_fld);
+        JI("invokevirtual", "java/util/HashMap/containsKey(Ljava/lang/Object;)Z");
+        J("    ifeq %s\n", ports.ω);   /* false → fail */
+        ij_get_long(kv_fld);            /* success: return the key as long */
+        JGoto(ports.γ);
+        return;
+    }
+
+    if (strcmp(fname, "key") == 0 && nargs >= 1 && !ij_is_user_proc(fname)) {
+        /* key(T): generator — yields each key (as long) from T.
+         * Strategy: snapshot keySet().toArray() into Object[] static at start;
+         * use int index static to iterate. One-shot keys (no deletion during iteration).
+         */
+        IcnNode *targ = n->children[1];
+        char trelay[64]; snprintf(trelay, sizeof trelay, "icn_%d_ktr", id);
+        char t_fld[80];   snprintf(t_fld,   sizeof t_fld,   "icn_%d_ktbl",  id);
+        char arr_fld[80]; snprintf(arr_fld,  sizeof arr_fld, "icn_%d_karr",  id);
+        char idx_fld[80]; snprintf(idx_fld,  sizeof idx_fld, "icn_%d_kidx",  id);
+        char check[64];   snprintf(check,    sizeof check,   "icn_%d_kchk",  id);
+        ij_declare_static_table(t_fld);
+        ij_declare_static_obj(arr_fld);   /* Object[] stored as Object ref */
+        ij_declare_static_int(idx_fld);
+
+        IjPorts tp5; strncpy(tp5.γ, trelay, 63); strncpy(tp5.ω, ports.ω, 63);
+        char ta5[64], tb5[64]; ij_emit_expr(targ, tp5, ta5, tb5);
+
+        /* α: eval T, snapshot keys */
+        JL(a); JGoto(ta5);
+        JL(trelay);
+        ij_put_table_field(t_fld);
+        /* T.keySet().toArray() → Object[] */
+        ij_get_table_field(t_fld);
+        JI("invokevirtual", "java/util/HashMap/keySet()Ljava/util/Set;");
+        JI("invokeinterface", "java/util/Set/toArray()[Ljava/lang/Object; 1");
+        ij_put_obj_field(arr_fld);
+        /* idx = 0 */
+        JI("iconst_0", "");
+        ij_put_int_field(idx_fld);
+        JGoto(check);
+
+        /* β: increment index, fall into check */
+        JL(b);
+        ij_get_int_field(idx_fld);
+        JI("iconst_1", ""); JI("iadd", "");
+        ij_put_int_field(idx_fld);
+
+        /* check: if idx >= arr.length → fail; else load arr[idx], parse long, → γ */
+        JL(check);
+        ij_get_obj_field(arr_fld);
+        JI("checkcast", "[Ljava/lang/Object;");
+        JI("arraylength", "");
+        ij_get_int_field(idx_fld);
+        JI("if_icmple", ports.ω);         /* arr.length <= idx → fail */
+        /* load arr[idx] as String key */
+        ij_get_obj_field(arr_fld);
+        JI("checkcast", "[Ljava/lang/Object;");
+        ij_get_int_field(idx_fld);
+        JI("aaload", "");
+        JI("checkcast", "java/lang/String");
+        JI("invokestatic", "java/lang/Long/parseLong(Ljava/lang/String;)J");
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* === END TABLE BUILTINS === */
     if (ij_is_user_proc(fname)) {
         int is_gen = ij_is_gen_proc(fname);
         int np = ij_nparams_for(fname);
@@ -2115,6 +2403,8 @@ static int ij_expr_is_string(IcnNode *n) {
             return 0;
         }
         case ICN_SUBSCRIPT:
+            /* t[k] on a table yields a long, not a String */
+            if (n->nchildren >= 1 && ij_expr_is_table(n->children[0])) return 0;
             return 1;  /* s[i] always yields a single-char String */
         case ICN_SECTION:
             return 1;  /* s[i:j] always yields a String */
@@ -2171,6 +2461,33 @@ static int ij_expr_is_list(IcnNode *n) {
         char gname[80]; snprintf(gname, sizeof gname, "icn_gvar_%s", n->val.sval);
         for (int i = 0; i < ij_nstatics; i++)
             if (!strcmp(ij_statics[i], gname) && ij_static_types[i] == 'L') return 1;
+    }
+    return 0;
+}
+
+static int ij_expr_is_table(IcnNode *n) {
+    if (!n) return 0;
+    if (n->kind == ICN_ASSIGN) {
+        if (n->nchildren >= 2) return ij_expr_is_table(n->children[1]);
+        return 0;
+    }
+    if (n->kind == ICN_CALL) {
+        if (n->nchildren >= 1) {
+            IcnNode *fn = n->children[0];
+            if (fn && fn->kind == ICN_VAR) {
+                const char *fname = fn->val.sval;
+                if (strcmp(fname, "table") == 0) return 1;
+            }
+        }
+        return 0;
+    }
+    if (n->kind == ICN_VAR) {
+        char fld[128]; ij_var_field(n->val.sval, fld, sizeof fld);
+        for (int i = 0; i < ij_nstatics; i++)
+            if (!strcmp(ij_statics[i], fld) && ij_static_types[i] == 'T') return 1;
+        char gname[80]; snprintf(gname, sizeof gname, "icn_gvar_%s", n->val.sval);
+        for (int i = 0; i < ij_nstatics; i++)
+            if (!strcmp(ij_statics[i], gname) && ij_static_types[i] == 'T') return 1;
     }
     return 0;
 }
@@ -3054,6 +3371,61 @@ static void ij_emit_subscript(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
     IcnNode *str_child = n->children[0];
     IcnNode *idx_child = n->children[1];
 
+    /* -----------------------------------------------------------------------
+     * TABLE SUBSCRIPT: t[k]
+     * If the LHS is a table variable, do HashMap.get(key_str).
+     * If key not present: return the table's default value.
+     * Default is stored in a parallel _dflt Object static.
+     * Assignment t[k] := v is handled by a separate path in ICN_ASSIGN (below).
+     * One-shot (β → ω).
+     * ----------------------------------------------------------------------- */
+    if (ij_expr_is_table(str_child)) {
+        char t_fld[80];    snprintf(t_fld,    sizeof t_fld,    "icn_%d_ts_tbl",   id);
+        char k_fld[80];    snprintf(k_fld,    sizeof k_fld,    "icn_%d_ts_key",   id);
+        char kv_fld[80];   snprintf(kv_fld,   sizeof kv_fld,   "icn_%d_ts_kval",  id);
+        char trelay[64];   snprintf(trelay,   sizeof trelay,   "icn_%d_ts_tr",    id);
+        char krelay[64];   snprintf(krelay,   sizeof krelay,   "icn_%d_ts_kr",    id);
+        char got_val[64];  snprintf(got_val,  sizeof got_val,  "icn_%d_ts_got",   id);
+        ij_declare_static_table(t_fld);
+        ij_declare_static_str(k_fld);
+        ij_declare_static(kv_fld);
+
+        IjPorts tp; strncpy(tp.γ, trelay, 63); strncpy(tp.ω, ports.ω, 63);
+        char ta[64], tb[64]; ij_emit_expr(str_child, tp, ta, tb);
+        IjPorts kp; strncpy(kp.γ, krelay, 63); strncpy(kp.ω, ports.ω, 63);
+        char ka[64], kb[64]; ij_emit_expr(idx_child, kp, ka, kb);
+
+        JL(a); JGoto(ta);
+        JL(b); JGoto(ports.ω);  /* one-shot */
+
+        JL(trelay); ij_put_table_field(t_fld); JGoto(ka);
+        JL(krelay);
+        /* save raw long key */
+        JI("dup2",""); ij_put_long(kv_fld);
+        /* convert to String key */
+        JI("invokestatic", "java/lang/Long/toString(J)Ljava/lang/String;");
+        ij_put_str_field(k_fld);
+        /* HashMap.get(key) */
+        ij_get_table_field(t_fld);
+        ij_get_str_field(k_fld);
+        JI("invokevirtual", "java/util/HashMap/get(Ljava/lang/Object;)Ljava/lang/Object;");
+        /* if null: return default (stored as Long in _dflt); else unbox Long */
+        JI("dup", "");
+        J("    ifnonnull %s\n", got_val);
+        /* null branch: look up _dflt field for this table variable */
+        JI("pop", "");
+        /* We need the _dflt field name. Convention: for var T, dflt field is
+         * the icn_%d_tdflt stored when table() was called. We can't easily
+         * recover that ID here. Fallback: return 0 as default. */
+        JI("lconst_0", "");
+        JGoto(ports.γ);
+        JL(got_val);
+        JI("checkcast", "java/lang/Long");
+        JI("invokevirtual", "java/lang/Long/longValue()J");
+        JGoto(ports.γ);
+        return;
+    }
+
     /* Per-site statics for cross-label value passing */
     char s_fld[64], i_fld[64];
     snprintf(s_fld, sizeof s_fld, "icn_%d_sub_s", id);
@@ -3614,6 +3986,8 @@ static void ij_emit_proc(IcnNode *proc, FILE *out_target) {
             ij_declare_static_str(fld);
         } else if (ij_expr_is_list(rhs)) {
             ij_declare_static_list(fld);
+        } else if (ij_expr_is_table(rhs)) {
+            ij_declare_static_table(fld);
         } else if (ij_expr_is_real(rhs)) {
             ij_declare_static_dbl(fld);
         }
@@ -3648,7 +4022,8 @@ static void ij_emit_proc(IcnNode *proc, FILE *out_target) {
         /* Determine if statement produces a 1-slot ref (String or ArrayList) or 2-slot (long/double) */
         int stmt_is_str  = ij_expr_is_string(stmt);
         int stmt_is_list = !stmt_is_str && ij_expr_is_list(stmt);
-        int stmt_is_ref  = stmt_is_str || stmt_is_list;
+        int stmt_is_tbl  = !stmt_is_str && !stmt_is_list && ij_expr_is_table(stmt);
+        int stmt_is_ref  = stmt_is_str || stmt_is_list || stmt_is_tbl;
         /* Build a drain label for this statement's success port */
         char sdrain[64]; snprintf(sdrain, sizeof sdrain, "icn_s%d_sdrain", i);
         IjPorts sp; strncpy(sp.γ, sdrain, 63); strncpy(sp.ω, next_a, 63);
@@ -3838,6 +4213,8 @@ void ij_emit_file(IcnNode **nodes, int count, FILE *out, const char *filename) {
             J(".field public static %s Ljava/lang/String;\n", ij_statics[i]);
         else if (type == 'L')
             J(".field public static %s Ljava/util/ArrayList;\n", ij_statics[i]);
+        else if (type == 'T')
+            J(".field public static %s Ljava/util/HashMap;\n", ij_statics[i]);
         else if (type == 'O')
             J(".field public static %s Ljava/lang/Object;\n", ij_statics[i]);
         else

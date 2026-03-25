@@ -1,0 +1,8 @@
+procedure main();
+  local t;
+  t := table(0);
+  t[5] := 1;
+  if member(t, 5) then write(1);
+  if member(t, 9) then write(2);
+  write(3);
+end

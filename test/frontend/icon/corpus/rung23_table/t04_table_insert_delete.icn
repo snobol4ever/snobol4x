@@ -1,0 +1,10 @@
+procedure main();
+  local t;
+  t := table(0);
+  insert(t, 1, 10);
+  insert(t, 2, 20);
+  write(t[1]);
+  write(t[2]);
+  delete(t, 1);
+  write(t[1]);
+end
