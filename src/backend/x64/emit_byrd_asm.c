@@ -582,8 +582,13 @@ static void bss_emit(void) {
 
 #define MAX_LITS 1024
 typedef struct { char label[LBUF + 16]; char *val; int len; } LitEntry;
-static LitEntry lit_table[MAX_LITS];
-static int lit_count = 0;
+/* Heap-allocated to avoid ~352KB BSS segment */
+static LitEntry *lit_table = NULL;
+static int       lit_count = 0;
+static void lit_table_init(void) {
+    if (!lit_table)
+        lit_table = (LitEntry *)calloc(MAX_LITS, sizeof(LitEntry));
+}
 
 static void lit_reset(void) { lit_count = 0; }
 
@@ -1848,11 +1853,17 @@ static void extra_bss_emit(void) {
 }
 
 /* Per-call-uid .bss slots — declared here, emitted as part of .bss section */
-static char call_slots[4096][LBUF];
-static int  call_slot_count = 0;
+/* Heap-allocated to avoid ~1.3MB BSS segment */
+#define CALL_SLOTS_MAX 4096
+static char (*call_slots)[LBUF] = NULL;
+static int   call_slot_count = 0;
+static void call_slots_init(void) {
+    if (!call_slots)
+        call_slots = (char (*)[LBUF])calloc(CALL_SLOTS_MAX, LBUF);
+}
 
 static void call_slot_add(const char *name) {
-    if (call_slot_count >= 4096) return;
+    if (call_slot_count >= CALL_SLOTS_MAX) return;
     /* deduplicate */
     for (int i = 0; i < call_slot_count; i++)
         if (strcmp(call_slots[i], name) == 0) return;
@@ -2003,8 +2014,13 @@ static void cap_vars_emit_data_section(void) {
 
 #define NAMED_PAT_MAX 512
 
-static NamedPat named_pats[NAMED_PAT_MAX];
-static int         named_pat_count = 0;
+/* Heap-allocated to avoid ~1.9MB BSS segment */
+static NamedPat *named_pats = NULL;
+static int        named_pat_count = 0;
+static void named_pats_init(void) {
+    if (!named_pats)
+        named_pats = (NamedPat *)calloc(NAMED_PAT_MAX, sizeof(NamedPat));
+}
 
 static void named_pat_reset(void);  /* forward decl — defined below after nreturn_fns */
 
@@ -2975,8 +2991,13 @@ int asm_body_mode = 0; /* set by -asm-body flag */
 /* ---- data section string registry ---- */
 #define MAX_STRS 8192
 typedef struct { char label[LBUF + 16]; char *val; } StrEntry;
-static StrEntry str_table[MAX_STRS];
-static int     str_count = 0;
+/* Heap-allocated to avoid ~2.8MB BSS segment */
+static StrEntry *str_table = NULL;
+static int       str_count = 0;
+static void str_table_init(void) {
+    if (!str_table)
+        str_table = (StrEntry *)calloc(MAX_STRS, sizeof(StrEntry));
+}
 
 static void str_reset(void) { str_count = 0; }
 
@@ -5366,6 +5387,10 @@ static void emit_prolog_program(Program *prog);  /* forward */
 void asm_emit(Program *prog, FILE *f) {
     out = f;
     box_data_init();
+    named_pats_init();
+    lit_table_init();
+    call_slots_init();
+    str_table_init();
 
     /* Pass 1: scan for named pattern assignments */
     scan_named_patterns(prog);

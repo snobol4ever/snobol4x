@@ -36,7 +36,7 @@ int monitor_ready = 0;  /* set to 1 after pre-init constants are installed */
 /* Trace-registration set: only variables registered via TRACE(name,'VALUE')
  * are sent to the monitor.  Simple open-addressed hash set of C strings.
  * Capacity must be a power of two; 64 slots is ample for typical programs. */
-#define TRACE_SET_CAP 64
+#define TRACE_SET_CAP 256
 static const char *trace_set[TRACE_SET_CAP];  /* NULL = empty slot */
 
 static void trace_register(const char *name) {
