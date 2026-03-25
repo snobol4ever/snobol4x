@@ -259,6 +259,7 @@ static int jvm_need_integer_helper   = 0;
 static int jvm_need_datatype_helper  = 0;
 static int jvm_need_array_helpers    = 0;
 static int jvm_need_data_helpers     = 0;
+static int jvm_need_sort_helper      = 0;
 
 /* Arithmetic scratch locals: double at [jvm_arith_local_base, +1],
  * long at [jvm_arith_local_base+2, +3].
@@ -288,18 +289,24 @@ static const JvmFnDef *jvm_find_fn(const char *name);  /* fwd decl */
  * Mirrors ASM backend's AsmNamedPat/asm_named[] mechanism.
  * When E_VART("P") appears in a pattern context, we look up P here and
  * inline-expand its stored pattern tree via jvm_emit_pat_node. */
-#define JVM_NAMED_PAT_MAX  64
+#define JVM_NAMED_PAT_MAX  512
 #define JVM_NAMED_NAMELEN  128
 typedef struct {
     char    varname[JVM_NAMED_NAMELEN];
     EXPR_t *pat;        /* pattern expression tree */
 } JvmNamedPat;
-static JvmNamedPat jvm_named_pats[JVM_NAMED_PAT_MAX];
-static int         jvm_named_pat_count = 0;
+static JvmNamedPat *jvm_named_pats = NULL;
+static int          jvm_named_pat_count = 0;
 
-static void jvm_named_pat_reset(void) { jvm_named_pat_count = 0; }
+static void jvm_named_pat_reset(void) {
+    if (!jvm_named_pats)
+        jvm_named_pats = (JvmNamedPat *)calloc(JVM_NAMED_PAT_MAX, sizeof(JvmNamedPat));
+    jvm_named_pat_count = 0;
+}
 
 static void jvm_named_pat_register(const char *varname, EXPR_t *pat) {
+    if (!jvm_named_pats)
+        jvm_named_pats = (JvmNamedPat *)calloc(JVM_NAMED_PAT_MAX, sizeof(JvmNamedPat));
     for (int i = 0; i < jvm_named_pat_count; i++) {
         if (strcasecmp(jvm_named_pats[i].varname, varname) == 0) {
             if (pat) jvm_named_pats[i].pat = pat;
@@ -1077,7 +1084,18 @@ static void jvm_emit_expr(EXPR_t *e) {
             JI("invokestatic", tdesc);
             break;
         }
-        /* DATA('proto') — register a data type, return "" */
+        /* SORT(table) → 2D array[1..n,1..2]: col1=key, col2=value, sorted by key */
+        if (strcasecmp(fname, "SORT") == 0) {
+            jvm_need_array_helpers = 1;
+            EXPR_t *a0 = (e->children && e->children[0]) ? e->children[0] : NULL;
+            if (a0) jvm_emit_expr(a0); else JI("ldc", "\"\"");
+            char sdesc[512];
+            snprintf(sdesc, sizeof sdesc,
+                "%s/sno_sort(Ljava/lang/String;)Ljava/lang/String;", jvm_classname);
+            JI("invokestatic", sdesc);
+            jvm_need_sort_helper = 1;
+            break;
+        }
         if (strcasecmp(fname, "DATA") == 0) {
             jvm_need_data_helpers = 1;
             EXPR_t *a0 = (e->children && e->children[0]) ? e->children[0] : NULL;
@@ -2265,7 +2283,13 @@ static void jvm_emit_goto(const char *label) {
                 if (jvm_cur_fn && !in_scope) continue;
                 /* Emit: load computed value, compare, jump */
                 char lsafe[128]; jvm_expand_label(t->label, lsafe, sizeof lsafe);
-                char jlbl[256]; snprintf(jlbl, sizeof jlbl, "L_%s", lsafe);
+                char jlbl[256];
+                if (jvm_cur_fn) {
+                    int _fi = (int)(jvm_cur_fn - jvm_fn_table_fwd);
+                    snprintf(jlbl, sizeof jlbl, "Lf%d_%s", _fi, lsafe);
+                } else {
+                    snprintf(jlbl, sizeof jlbl, "L_%s", lsafe);
+                }
                 J("    ldc %s\n", tmpesc);
                 J("    invokestatic %s\n", vgdesc);
                 char ciesc[256]; jvm_escape_string(t->label, ciesc, sizeof ciesc);
@@ -2291,7 +2315,13 @@ static void jvm_emit_goto(const char *label) {
         return;
     }
     char safe[128]; jvm_expand_label(label, safe, sizeof safe);
-    char glbl[256]; snprintf(glbl, sizeof glbl, "L_%s", safe);
+    char glbl[256];
+    if (jvm_cur_fn) {
+        int _fi = (int)(jvm_cur_fn - jvm_fn_table_fwd);
+        snprintf(glbl, sizeof glbl, "Lf%d_%s", _fi, safe);
+    } else {
+        snprintf(glbl, sizeof glbl, "L_%s", safe);
+    }
 
     /* Cross-scope check: if we are inside a function method, verify that
      * the target label actually exists within this function's body range.
@@ -2348,7 +2378,12 @@ static void jvm_emit_stmt(STMT_t *s, int stmt_idx) {
         JSep(s->label);
         char lsafe[128]; jvm_expand_label(s->label, lsafe, sizeof lsafe);
         char lbuf[256];
-        snprintf(lbuf, sizeof lbuf, "L_%s", lsafe);
+        if (jvm_cur_fn) {
+            int _fi = (int)(jvm_cur_fn - jvm_fn_table_fwd);
+            snprintf(lbuf, sizeof lbuf, "Lf%d_%s", _fi, lsafe);
+        } else {
+            snprintf(lbuf, sizeof lbuf, "L_%s", lsafe);
+        }
         J("%s:\n", lbuf);
     }
 
@@ -3498,12 +3533,9 @@ static void jvm_emit_runtime_helpers(void) {
         J("    aload_1\n");
         J("    invokevirtual java/util/HashMap/get(Ljava/lang/Object;)Ljava/lang/Object;\n");
         J("    checkcast java/lang/String\n");
-        J("    dup\n");
-        J("    ifnonnull Lag_done\n");
-        J("    pop\n");
+        J("    areturn\n");   /* return value or null if key not found — null = SNOBOL4 failure */
         J("Lag_null:\n");
-        J("    ldc \"\"\n");
-        J("Lag_done:\n");
+        J("    aconst_null\n");   /* array-id not found → failure */
         J("    areturn\n");
         J(".end method\n\n");
 
@@ -3530,7 +3562,108 @@ static void jvm_emit_runtime_helpers(void) {
         jvm_need_array_helpers = 0;
     }
 
-    /* DATA type helpers */
+    /* SORT helper — sno_sort(String table_id) → String array_id
+     * Converts a TABLE (stored as HashMap of HashMaps in sno_arrays) into a
+     * sorted 2D array [1..n, 1..2]: col 1 = key, col 2 = value.
+     * Keys are sorted lexicographically via TreeMap. */
+    if (jvm_need_sort_helper) {
+        char am2[512]; snprintf(am2, sizeof am2, "%s/sno_arrays Ljava/util/HashMap;", jvm_classname);
+        J(".method static sno_sort(Ljava/lang/String;)Ljava/lang/String;\n");
+        J("    .limit stack 8\n");
+        J("    .limit locals 8\n");
+        /* local 0 = table_id, 1 = inner/new HashMap, 2 = TreeMap,
+         * 3 = iterator, 4 = entry, 5 = array_id, 6 = row counter, 7 = temp */
+        J("    getstatic %s\n", am2);
+        J("    aload_0\n");
+        J("    invokevirtual java/util/HashMap/get(Ljava/lang/Object;)Ljava/lang/Object;\n");
+        J("    checkcast java/util/HashMap\n");
+        J("    astore_1\n");
+        J("    aload_1\n");
+        J("    ifnonnull Lsort_ok\n");
+        J("    aconst_null\n");
+        J("    areturn\n");
+        J("Lsort_ok:\n");
+        J("    new java/util/TreeMap\n");
+        J("    dup\n");
+        J("    aload_1\n");
+        J("    invokespecial java/util/TreeMap/<init>(Ljava/util/Map;)V\n");
+        J("    astore_2\n");
+        /* Create the result array HashMap and get its id via identityHashCode */
+        J("    new java/util/HashMap\n");
+        J("    dup\n");
+        J("    invokespecial java/util/HashMap/<init>()V\n");
+        J("    astore_1\n");
+        J("    aload_1\n");
+        J("    invokestatic java/lang/System/identityHashCode(Ljava/lang/Object;)I\n");
+        J("    invokestatic java/lang/Integer/toString(I)Ljava/lang/String;\n");
+        J("    astore 5\n");    /* array_id */
+        J("    getstatic %s\n", am2);
+        J("    aload 5\n");
+        J("    aload_1\n");
+        J("    invokevirtual java/util/HashMap/put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;\n");
+        J("    pop\n");
+        /* Iterate TreeMap, build rows */
+        J("    iconst_1\n");
+        J("    istore 6\n");
+        J("    aload_2\n");
+        J("    invokevirtual java/util/TreeMap/entrySet()Ljava/util/Set;\n");
+        J("    invokeinterface java/util/Set/iterator()Ljava/util/Iterator; 1\n");
+        J("    astore_3\n");
+        J("Lsort_loop:\n");
+        J("    aload_3\n");
+        J("    invokeinterface java/util/Iterator/hasNext()Z 1\n");
+        J("    ifeq Lsort_done\n");
+        J("    aload_3\n");
+        J("    invokeinterface java/util/Iterator/next()Ljava/lang/Object; 1\n");
+        J("    checkcast java/util/Map$Entry\n");
+        J("    astore 4\n");
+        /* store key at "row,1" */
+        J("    aload_1\n");
+        J("    new java/lang/StringBuilder\n");
+        J("    dup\n");
+        J("    invokespecial java/lang/StringBuilder/<init>()V\n");
+        J("    iload 6\n");
+        J("    invokevirtual java/lang/StringBuilder/append(I)Ljava/lang/StringBuilder;\n");
+        J("    ldc \",1\"\n");
+        J("    invokevirtual java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;\n");
+        J("    invokevirtual java/lang/StringBuilder/toString()Ljava/lang/String;\n");
+        J("    aload 4\n");
+        J("    invokeinterface java/util/Map$Entry/getKey()Ljava/lang/Object; 1\n");
+        J("    checkcast java/lang/String\n");
+        J("    invokevirtual java/util/HashMap/put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;\n");
+        J("    pop\n");
+        /* store val at "row,2" */
+        J("    aload_1\n");
+        J("    new java/lang/StringBuilder\n");
+        J("    dup\n");
+        J("    invokespecial java/lang/StringBuilder/<init>()V\n");
+        J("    iload 6\n");
+        J("    invokevirtual java/lang/StringBuilder/append(I)Ljava/lang/StringBuilder;\n");
+        J("    ldc \",2\"\n");
+        J("    invokevirtual java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;\n");
+        J("    invokevirtual java/lang/StringBuilder/toString()Ljava/lang/String;\n");
+        J("    aload 4\n");
+        J("    invokeinterface java/util/Map$Entry/getValue()Ljava/lang/Object; 1\n");
+        J("    checkcast java/lang/String\n");
+        J("    invokevirtual java/util/HashMap/put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;\n");
+        J("    pop\n");
+        J("    iinc 6 1\n");
+        J("    goto Lsort_loop\n");
+        J("Lsort_done:\n");
+        /* store __rows__ */
+        J("    aload_1\n");
+        J("    ldc \"__rows__\"\n");
+        J("    iload 6\n");
+        J("    iconst_1\n");
+        J("    isub\n");
+        J("    invokestatic java/lang/Integer/toString(I)Ljava/lang/String;\n");
+        J("    invokevirtual java/util/HashMap/put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;\n");
+        J("    pop\n");
+        J("    aload 5\n");
+        J("    areturn\n");
+        J(".end method\n\n");
+        jvm_need_sort_helper = 0;
+    }
     if (jvm_need_data_helpers) {
         char dm[512]; snprintf(dm, sizeof dm, "%s/sno_data_types Ljava/util/HashMap;", jvm_classname);
         /* sno_data_define(String proto) → void
@@ -4151,6 +4284,7 @@ void jvm_emit(Program *prog, FILE *out, const char *filename) {
     jvm_need_datatype_helper = 0;
     jvm_need_array_helpers   = 0;
     jvm_need_data_helpers    = 0;
+    jvm_need_sort_helper     = 0;
     jvm_set_classname(filename);
 
     jvm_cur_prog = prog;   /* make program visible to jvm_emit_goto for computed gotos */
