@@ -1487,6 +1487,11 @@ static int ij_expr_is_string(IcnNode *n) {
             if (n->nchildren >= 2) return ij_expr_is_string(n->children[1]);
             return 0;
         }
+        case ICN_IF: {
+            /* if/then/else: result type = then-branch type (conservative: check then) */
+            if (n->nchildren >= 2) return ij_expr_is_string(n->children[1]);
+            return 0;
+        }
         case ICN_VAR: {
             /* &subject keyword is always a String */
             if (strcmp(n->val.sval, "&subject") == 0) return 1;
@@ -2041,6 +2046,28 @@ static void ij_emit_bang(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
 }
 
 /* =========================================================================
+ * ICN_SIZE — *E  string size operator
+ * One-shot: α evals child (must be String), calls String.length(), converts
+ * int→long via i2l, pushes long → ports.γ.  β → ports.ω (one-shot, no retry).
+ * ======================================================================= */
+static void ij_emit_size(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
+    int id = ij_new_id(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+    char relay[64]; snprintf(relay, sizeof relay, "icn_%d_relay", id);
+    IcnNode *child = (n->nchildren > 0) ? n->children[0] : NULL;
+    IjPorts cp; strncpy(cp.γ, relay, 63); strncpy(cp.ω, ports.ω, 63);
+    char ca[64], cb[64]; ij_emit_expr(child, cp, ca, cb);
+    JL(a); JGoto(ca);
+    JL(b); JGoto(cb);          /* one-shot: β = re-eval child β = fail */
+    /* relay: String ref on stack */
+    JL(relay);
+    JI("invokevirtual", "java/lang/String/length()I");
+    JI("i2l", "");             /* int → long for uniform numeric stack type */
+    JGoto(ports.γ);
+}
+
+/* =========================================================================
  * Dispatch
  * ======================================================================= */
 static void ij_emit_expr(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
@@ -2120,6 +2147,7 @@ static void ij_emit_expr(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
         case ICN_NEXT:    ij_emit_next     (n,ports,oα,oβ); break;
         case ICN_AUGOP:   ij_emit_augop    (n,ports,oα,oβ); break;
         case ICN_BANG:    ij_emit_bang     (n,ports,oα,oβ); break;
+        case ICN_SIZE:    ij_emit_size     (n,ports,oα,oβ); break;
         case ICN_SEQ: case ICN_SNE: case ICN_SLT:
         case ICN_SLE: case ICN_SGT: case ICN_SGE:
                           ij_emit_strrelop (n,ports,oα,oβ); break;

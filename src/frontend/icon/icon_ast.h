@@ -71,6 +71,7 @@ typedef enum {
 
     /* --- Unary generators / operators --- */
     ICN_BANG,      /* !E  (generate list/string elements) -- Tier 1 */
+    ICN_SIZE,      /* *E  (size of string) -- Tier 2 */
     ICN_LIMIT,     /* E \ N  (limitation) */
     ICN_NOT,       /* not E  (succeed if E fails) */
 

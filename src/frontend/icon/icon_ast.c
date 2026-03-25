@@ -92,6 +92,7 @@ const char *icn_kind_name(IcnKind kind) {
         case ICN_ALT:      return "ALT";
         case ICN_AND:      return "AND";
         case ICN_BANG:     return "BANG";
+        case ICN_SIZE:     return "SIZE";
         case ICN_LIMIT:    return "LIMIT";
         case ICN_NOT:      return "NOT";
         case ICN_SEQ_EXPR: return "SEQ_EXPR";

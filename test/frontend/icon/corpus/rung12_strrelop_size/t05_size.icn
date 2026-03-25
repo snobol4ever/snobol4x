@@ -1,0 +1,4 @@
+procedure main();
+  s := "hello";
+  write(*s);
+end

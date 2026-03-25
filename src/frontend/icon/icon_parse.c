@@ -226,6 +226,11 @@ static IcnNode *parse_unary(IcnParser *p) {
         IcnNode *inner = parse_unary(p);
         return icn_node_new(ICN_BANG, line, 1, inner);
     }
+    if (check(p, TK_STAR)) {
+        advance(p);
+        IcnNode *inner = parse_unary(p);
+        return icn_node_new(ICN_SIZE, line, 1, inner);
+    }
     if (check(p, TK_BACKSLASH)) {
         advance(p);
         IcnNode *inner = parse_unary(p);

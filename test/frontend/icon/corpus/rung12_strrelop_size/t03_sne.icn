@@ -1,0 +1,5 @@
+procedure main();
+  if ("abc" ~== "def") then write("differ");
+  if ("abc" ~== "abc") then write("nope");
+  write("done");
+end
