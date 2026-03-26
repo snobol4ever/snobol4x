@@ -128,7 +128,9 @@ static const OpEntry BIN_OPS[] = {
     { "/",     400, ASSOC_LEFT  },
     { "//",    400, ASSOC_LEFT  },
     { "mod",   400, ASSOC_LEFT  },
+    { "div",   400, ASSOC_LEFT  },
     { "rem",   400, ASSOC_LEFT  },
+    { "rdiv",  400, ASSOC_LEFT  },
     { ">>",    400, ASSOC_LEFT  },
     { "<<",    400, ASSOC_LEFT  },
     { "xor",   400, ASSOC_LEFT  },
@@ -294,11 +296,20 @@ static Term *parse_primary(Parser *p) {
                 Term *args[1] = { arg };
                 return term_new_compound(fid, 1, args);
             }
-            if (strcmp(tk.text, "-") == 0 && (lexer_peek(&p->lx).kind == TK_INT ||
-                                               lexer_peek(&p->lx).kind == TK_FLOAT)) {
-                Token num = lexer_next(&p->lx);
-                if (num.kind == TK_INT)   return term_new_int(-num.ival);
-                if (num.kind == TK_FLOAT) return term_new_float(-num.fval);
+            if (strcmp(tk.text, "-") == 0) {
+                Token pk = lexer_peek(&p->lx);
+                if (pk.kind == TK_INT || pk.kind == TK_FLOAT) {
+                    Token num = lexer_next(&p->lx);
+                    if (num.kind == TK_INT)   return term_new_int(-num.ival);
+                    if (num.kind == TK_FLOAT) return term_new_float(-num.fval);
+                }
+                /* -atom or -compound: treat as -(Arg) prefix compound (prec 200) */
+                if (pk.kind == TK_ATOM || pk.kind == TK_OP) {
+                    Term *arg = parse_term(p, 200);
+                    int fid = prolog_atom_intern("-");
+                    Term *args[1] = { arg };
+                    return term_new_compound(fid, 1, args);
+                }
             }
             /* Fallthrough: treat as atom, but check for compound f(...) */
             {
