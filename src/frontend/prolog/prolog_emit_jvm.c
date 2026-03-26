@@ -4926,6 +4926,31 @@ static void pj_emit_body(EXPR_t **goals, int ngoals, const char *lbl_γ,
     }
 
     if (pj_is_user_call(g)) {
+        /* PJ-72: phrase/N rewrite in ucall path.
+         * phrase/2,3 is recognised as a user call by pj_is_user_call, so it
+         * reaches here before pj_emit_goal's phrase handler fires.  Rewrite
+         * phrase(NT, List) -> NT(List, []) and phrase(NT, List, Rest) ->
+         * NT(List, Rest) so the retry loop below operates on the real NT. */
+        if (g->sval && strcmp(g->sval, "phrase") == 0 &&
+            (g->nchildren == 2 || g->nchildren == 3)) {
+            EXPR_t *nt_expr  = g->children[0];
+            EXPR_t *list_arg = g->children[1];
+            EXPR_t *rest_arg = (g->nchildren == 3) ? g->children[2] : NULL;
+            EXPR_t *nil_node = NULL;
+            if (!rest_arg) {
+                nil_node = expr_new(E_QLIT);
+                nil_node->sval = strdup("[]");
+            }
+            EXPR_t *call = expr_new(E_FNC);
+            int base = (nt_expr->kind == E_FNC) ? nt_expr->nchildren : 0;
+            call->sval      = strdup(nt_expr->sval ? nt_expr->sval : "unknown");
+            call->nchildren = base + 2;
+            call->children  = malloc(call->nchildren * sizeof(EXPR_t *));
+            for (int i = 0; i < base; i++) call->children[i] = nt_expr->children[i];
+            call->children[base]   = list_arg;
+            call->children[base+1] = rest_arg ? rest_arg : nil_node;
+            g = call;
+        }
         const char *fn = g->sval;
         int nargs = g->nchildren;
         char safe[256]; pj_safe_name(fn, safe, sizeof safe);
@@ -5634,7 +5659,7 @@ static void pj_emit_findall_builtin(void) {
     J("; === pj_call_goal (goal interpreter for findall) ====================\n");
     J(".method static pj_call_goal(Ljava/lang/Object;I)I\n");
     J("    .limit stack 20\n");
-    J("    .limit locals 12\n");
+    J("    .limit locals 16\n");
     /* local 0 = goal, local 1 = cs, local 2..11 = scratch */
     J("    aload_0\n");
     J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
@@ -5720,6 +5745,81 @@ static void pj_emit_findall_builtin(void) {
     J("    ifeq pj_cg_fail\n");
     J("    iconst_0\n"); J("    ireturn\n");
     J("pj_cg_not_is:\n");
+    /* phrase/2,3 — rewrite to NT/+2 then reflect-call NT.
+     * phrase(NT, List)       -> p_NT_2(List, [])
+     * phrase(NT, List, Rest) -> p_NT_3(List, Rest)   (arity = NT_base+2)
+     * NT may itself be a compound: item(X) -> p_item_3(X, List, Rest).
+     * We detect phrase by functor name and arity 2 or 3, then build a new
+     * args array [nt_arg0..., list, rest] and reflect-call the NT functor. */
+    J("    aload 4\n"); J("    ldc \"phrase\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ifeq pj_cg_not_phrase\n");
+    /* compute arity = t.length - 2 inline (local 5 not yet set at this point) */
+    J("    aload 2\n"); J("    arraylength\n"); J("    iconst_2\n"); J("    isub\n"); J("    istore 5\n");
+    J("    iload 5\n"); J("    iconst_2\n"); J("    if_icmplt pj_cg_not_phrase\n");
+    J("    iload 5\n"); J("    iconst_3\n"); J("    if_icmpgt pj_cg_not_phrase\n");
+    /* NT term = t[2] (first arg of phrase), deref */
+    J("    aload 2\n"); J("    iconst_2\n"); J("    aaload\n");
+    J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+    J("    astore 6\n");  /* nt_term */
+    /* Determine NT functor name and base arity */
+    J("    aload 6\n");
+    J("    instanceof [Ljava/lang/Object;\n");
+    J("    ifeq pj_cg_phrase_atom_nt\n");
+    /* compound NT: functor = nt[1], base_arity = nt.length-2 */
+    J("    aload 6\n"); J("    checkcast [Ljava/lang/Object;\n"); J("    astore 7\n");
+    J("    aload 7\n"); J("    iconst_1\n"); J("    aaload\n");
+    J("    checkcast java/lang/String\n"); J("    astore 8\n"); /* nt_fn */
+    J("    aload 7\n"); J("    arraylength\n"); J("    iconst_2\n"); J("    isub\n"); J("    istore 9\n"); /* nt_base */
+    J("    goto pj_cg_phrase_have_nt\n");
+    J("pj_cg_phrase_atom_nt:\n");
+    /* atom NT: functor = nt itself, base_arity = 0 */
+    J("    aconst_null\n"); J("    astore 7\n"); /* local 7 unused but must be typed */
+    J("    aload 6\n"); J("    checkcast java/lang/String\n"); J("    astore 8\n"); /* nt_fn */
+    J("    iconst_0\n"); J("    istore 9\n"); /* nt_base = 0 */
+    J("pj_cg_phrase_have_nt:\n");
+    /* total call arity = nt_base + 2 */
+    J("    iload 9\n"); J("    iconst_2\n"); J("    iadd\n"); J("    istore 10\n"); /* call_arity */
+    /* build args array: [nt_args..., list, rest_or_nil] */
+    J("    iload 10\n");
+    J("    anewarray java/lang/Object\n"); J("    astore 11\n");
+    /* copy nt_args (indices 2..nt_base+1 from nt_term if compound) */
+    J("    iconst_0\n"); J("    istore 12\n"); /* j=0 */
+    J("pj_cg_phrase_nt_args_loop:\n");
+    J("    iload 12\n"); J("    iload 9\n"); J("    if_icmpge pj_cg_phrase_nt_args_done\n");
+    J("    aload 11\n"); J("    iload 12\n");
+    J("    aload 7\n"); J("    iload 12\n"); J("    iconst_2\n"); J("    iadd\n"); J("    aaload\n"); /* nt[j+2] */
+    J("    aastore\n");
+    J("    iinc 12 1\n"); J("    goto pj_cg_phrase_nt_args_loop\n");
+    J("pj_cg_phrase_nt_args_done:\n");
+    /* args[nt_base] = list arg = t[3] */
+    J("    aload 11\n"); J("    iload 9\n");
+    J("    aload 2\n"); J("    iconst_3\n"); J("    aaload\n"); /* t[3] = list */
+    J("    aastore\n");
+    /* args[nt_base+1] = rest: t[4] if phrase/3, else [] */
+    J("    aload 11\n"); J("    iload 9\n"); J("    iconst_1\n"); J("    iadd\n");
+    J("    iload 5\n"); J("    iconst_3\n"); J("    if_icmpeq pj_cg_phrase_has_rest\n");
+    /* phrase/2: rest = [] (nil atom term, not bare string) */
+    J("    ldc \"[]\"\n");
+    J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+    J("    goto pj_cg_phrase_store_rest\n");
+    J("pj_cg_phrase_has_rest:\n");
+    J("    aload 2\n"); J("    bipush 4\n"); J("    aaload\n"); /* t[4] = rest */
+    J("pj_cg_phrase_store_rest:\n");
+    J("    aastore\n");
+    /* reflect-call NT */
+    J("    aload 8\n");   /* nt functor */
+    J("    iload 10\n");  /* call arity */
+    J("    aload 11\n");  /* args */
+    J("    iload_1\n");   /* cs */
+    J("    invokestatic %s/pj_reflect_call(Ljava/lang/String;I[Ljava/lang/Object;I)[Ljava/lang/Object;\n", pj_classname);
+    J("    astore 13\n");
+    J("    aload 13\n"); J("    ifnull pj_cg_fail\n");
+    J("    aload 13\n"); J("    iconst_0\n"); J("    aaload\n");
+    J("    checkcast java/lang/Integer\n");
+    J("    invokevirtual java/lang/Integer/intValue()I\n");
+    J("    ireturn\n");
+    J("pj_cg_not_phrase:\n");
     /* user predicate: build args array, call via reflection, return new cs */
     J("    aload 2\n"); J("    arraylength\n"); J("    iconst_2\n"); J("    isub\n"); J("    istore 5\n"); /* arity */
     J("    iload 5\n");

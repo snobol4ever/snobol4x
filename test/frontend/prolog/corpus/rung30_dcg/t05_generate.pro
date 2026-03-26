@@ -1,9 +1,6 @@
 :- initialization(main).
 
-item --> [a].
-item --> [b].
-items([]) --> [].
-items([H|T]) --> item(H), items(T).
+item(X) --> [X].
 
 % Use findall to collect all parses
 main :-
