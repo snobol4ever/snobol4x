@@ -1,5 +1,5 @@
 /*
- * icon_semi.c — Icon auto-semicolon inserter
+ * icon_semicolon.c — Icon auto-semicolon inserter
  *
  * Reads standard Icon source (newline-terminated statements, no explicit
  * semicolons required) and writes semicolon-explicit Icon compatible with
@@ -20,11 +20,11 @@
  * Blank lines and comment-only lines are passed through unchanged.
  *
  * Usage:
- *   icon_semi [file.icn]       read file (or stdin), write to stdout
- *   icon_semi -o out.icn in.icn
+ *   icon_semicolon [file.icn]       read file (or stdin), write to stdout
+ *   icon_semicolon -o out.icn in.icn
  *
  * Build (standalone):
- *   gcc -O2 -o icon_semi src/frontend/icon/icon_semi.c
+ *   gcc -O2 -o icon_semicolon src/frontend/icon/icon_semicolon.c
  *
  * Integrated into icon_driver via -semi flag:
  *   icon_driver -semi foo.icn -o foo_semi.icn
@@ -344,7 +344,7 @@ int main(int argc, char **argv) {
         } else if (argv[i][0] != '-') {
             inpath = argv[i];
         } else {
-            fprintf(stderr, "usage: icon_semi [-o outfile] [infile]\n");
+            fprintf(stderr, "usage: icon_semicolon [-o outfile] [infile]\n");
             return 1;
         }
     }
