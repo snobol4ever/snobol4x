@@ -918,7 +918,12 @@ static void ij_emit_assign(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
             char val_long_fld[80]; snprintf(val_long_fld, sizeof val_long_fld, "icn_%d_tsa_vl", sid);
             char val_obj_fld[80];  snprintf(val_obj_fld,  sizeof val_obj_fld,  "icn_%d_tsa_vo", sid);
             char k_str_fld[80];    snprintf(k_str_fld,    sizeof k_str_fld,    "icn_%d_tsa_ks", sid);
-            ij_declare_static(val_long_fld);
+            int val_is_str  = ij_expr_is_string(rhs);
+            int val_is_list = !val_is_str && ij_expr_is_list(rhs);
+            int val_is_tbl  = !val_is_str && !val_is_list && ij_expr_is_table(rhs);
+            int val_is_ref  = val_is_str || val_is_list || val_is_tbl;
+            if (val_is_ref) ij_declare_static_str(val_long_fld);  /* reuse as str field */
+            else            ij_declare_static(val_long_fld);
             ij_declare_static_obj(val_obj_fld);
             ij_declare_static_str(k_str_fld);
 
@@ -934,13 +939,18 @@ static void ij_emit_assign(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
             JL(a); JGoto(va);
             JL(b); JGoto(ports.ω);
 
-            /* v_relay: RHS long on stack → save long + box to obj */
+            /* v_relay: RHS value on stack → save + box to obj */
             JL(v_relay);
-            JI("dup2",""); ij_put_long(val_long_fld);
-            JI("invokestatic", "java/lang/Long/valueOf(J)Ljava/lang/Long;");
-            ij_put_obj_field(val_obj_fld);
-            /* Now evaluate key */
-            JGoto(ka);
+            if (val_is_ref) {
+                /* String/list/table: dup (1 word), store as str field, box as-is */
+                JI("dup",""); ij_put_str_field(val_long_fld);
+                JGoto(ka);
+            } else {
+                JI("dup2",""); ij_put_long(val_long_fld);
+                JI("invokestatic", "java/lang/Long/valueOf(J)Ljava/lang/Long;");
+                ij_put_obj_field(val_obj_fld);
+                JGoto(ka);
+            }
 
             /* k_relay: key long on stack → convert to String key */
             JL(k_relay);
@@ -955,12 +965,18 @@ static void ij_emit_assign(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
                 ij_get_table_field(taf);
             }
             ij_get_str_field(k_str_fld);
-            ij_get_obj_field(val_obj_fld);
+            if (val_is_ref) {
+                /* val is already a String/ref — use directly as Object */
+                ij_get_str_field(val_long_fld);
+            } else {
+                ij_get_obj_field(val_obj_fld);
+            }
             JI("invokevirtual",
                "java/util/HashMap/put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
             JI("pop","");
-            /* result = v (long) */
-            ij_get_long(val_long_fld);
+            /* result = v */
+            if (val_is_ref) ij_get_str_field(val_long_fld);
+            else            ij_get_long(val_long_fld);
             JGoto(ports.γ);
             return;
         }
@@ -4966,10 +4982,17 @@ static void ij_emit_subscript(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
 
         JL(trelay); ij_put_table_field(t_fld); JGoto(ka);
         JL(krelay);
-        /* save raw long key */
-        JI("dup2",""); ij_put_long(kv_fld);
-        /* convert to String key */
-        JI("invokestatic", "java/lang/Long/toString(J)Ljava/lang/String;");
+        if (ij_expr_is_string(idx_child)) {
+            /* String key: dup (1 word), store directly, use as-is for lookup */
+            JI("dup",""); ij_put_str_field(k_fld);
+            /* kv_fld unused for string keys — store 0 as placeholder */
+            JI("lconst_0",""); ij_put_long(kv_fld);
+        } else {
+            /* Long key: dup2, save raw long, convert to String */
+            JI("dup2",""); ij_put_long(kv_fld);
+            JI("invokestatic", "java/lang/Long/toString(J)Ljava/lang/String;");
+            ij_put_str_field(k_fld);
+        }
         ij_put_str_field(k_fld);
         /* HashMap.get(key) */
         ij_get_table_field(t_fld);
