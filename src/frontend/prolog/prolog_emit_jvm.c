@@ -16,6 +16,8 @@
 
 #include "sno2c.h"
 #include "prolog_atom.h"
+#include "prolog_parse.h"
+#include "prolog_lower.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -6705,6 +6707,505 @@ static void pj_emit_choice(EXPR_t *choice) {
     }
 }
 
+/* =========================================================================
+ * M-PJ-LINKER: plunit linker
+ *
+ * When a program contains :- use_module(library(plunit)), the linker:
+ *   1. Compiles the embedded plunit.pl shim (parse→lower→emit choices)
+ *   2. Emits empty dynamic stubs for pj_suite/1 and pj_test/4
+ *   3. In pj_emit_main, assertz pj_suite/pj_test facts statically derived
+ *      from the test/1 and test/2 clause heads between begin_tests/end_tests
+ *   4. Emits bridge predicates suite_name/0 :- test(name)
+ *
+ * This is the Wizard of Oz approach: SWI files load unchanged.
+ * ========================================================================= */
+
+/* plunit.pl shim source embedded as a C string */
+static const char pj_plunit_shim_src[] =
+    "begin_tests(_).\n"
+    "end_tests(_).\n"
+    "member(X, [X|_]).\n"
+    "member(X, [_|T]) :- member(X, T).\n"
+    "memberchk(X, [X|_]) :- !.\n"
+    "memberchk(X, [_|T]) :- memberchk(X, T).\n"
+    "forall(Cond, Action) :- \\+ forall_fails(Cond, Action).\n"
+    "forall_fails(Cond, Action) :- Cond, \\+ Action.\n"
+    "acyclic_term(_).\n"
+    "cyclic_term(_) :- fail.\n"
+    "maplist(_, []).\n"
+    "maplist(Goal, [H|T]) :- call_1(Goal, H), maplist(Goal, T).\n"
+    "maplist(_, [], []).\n"
+    "maplist(Goal, [H1|T1], [H2|T2]) :- call_2(Goal, H1, H2), maplist(Goal, T1, T2).\n"
+    "call_1(Goal, Arg) :- Goal =.. L, append(L, [Arg], L2), G2 =.. L2, G2.\n"
+    "call_2(Goal, A1, A2) :- Goal =.. L, append(L, [A1,A2], L2), G2 =.. L2, G2.\n"
+    "append([], L, L).\n"
+    "append([H|T], L, [H|R]) :- append(T, L, R).\n"
+    "pj_init :- nb_setval(pj_p,0), nb_setval(pj_f,0), nb_setval(pj_s,0).\n"
+    "pj_inc_pass :- nb_getval(pj_p,N), N1 is N+1, nb_setval(pj_p,N1).\n"
+    "pj_inc_fail :- nb_getval(pj_f,N), N1 is N+1, nb_setval(pj_f,N1).\n"
+    "pj_inc_skip :- nb_getval(pj_s,N), N1 is N+1, nb_setval(pj_s,N1).\n"
+    "pj_summary :-\n"
+    "    nb_getval(pj_p,P), nb_getval(pj_f,F), nb_getval(pj_s,S),\n"
+    "    format('~n% ~w passed, ~w failed, ~w skipped~n',[P,F,S]).\n"
+    "run_tests :- pj_init, run_all_suites, pj_summary.\n"
+    "run_tests(Suite) :- pj_init, run_suite(Suite), pj_summary.\n"
+    "run_all_suites :- pj_suite(S), run_suite(S), fail.\n"
+    "run_all_suites.\n"
+    "run_suite(Suite) :-\n"
+    "    format('~n% PL-Unit: ~w~n',[Suite]),\n"
+    "    run_suite_tests(Suite).\n"
+    "run_suite_tests(Suite) :-\n"
+    "    pj_test(Suite, Name, Opts, Goal),\n"
+    "    run_one(Suite, Name, Opts, Goal),\n"
+    "    fail.\n"
+    "run_suite_tests(_).\n"
+    "run_one(Suite, Name, Opts, Goal) :-\n"
+    "    ( pj_has_sto(Opts) ->\n"
+    "        pj_inc_skip, format('  skip: ~w:~w  [sto]~n',[Suite,Name])\n"
+    "    ; pj_skip_condition(Opts) ->\n"
+    "        pj_inc_skip, format('  skip: ~w:~w  [condition]~n',[Suite,Name])\n"
+    "    ; pj_has_error(Opts, ExpErr) ->\n"
+    "        run_error(Suite, Name, Goal, ExpErr)\n"
+    "    ; pj_has_throws(Opts, ExpThrow) ->\n"
+    "        run_throw(Suite, Name, Goal, ExpThrow)\n"
+    "    ; pj_wants_fail(Opts) ->\n"
+    "        run_fail(Suite, Name, Goal)\n"
+    "    ; pj_has_true(Opts, Expr) ->\n"
+    "        run_true(Suite, Name, Goal, Expr)\n"
+    "    ; pj_has_all(Opts, AllExpr) ->\n"
+    "        run_all(Suite, Name, Goal, AllExpr)\n"
+    "    ;\n"
+    "        run_succeed(Suite, Name, Goal, Opts)\n"
+    "    ).\n"
+    "pj_has_sto([H|_]) :- H = sto(_), !.\n"
+    "pj_has_sto([_|T]) :- pj_has_sto(T).\n"
+    "pj_skip_condition(Opts) :- member(condition(C), Opts), \\+ C.\n"
+    "pj_has_error([error(E)|_], E) :- !.\n"
+    "pj_has_error([_|T], E) :- pj_has_error(T, E).\n"
+    "pj_has_error(error(E), E).\n"
+    "pj_has_throws([throws(T)|_], T) :- !.\n"
+    "pj_has_throws([_|T2], T) :- pj_has_throws(T2, T).\n"
+    "pj_has_throws(throws(T), T).\n"
+    "pj_wants_fail([fail|_]) :- !.\n"
+    "pj_wants_fail([false|_]) :- !.\n"
+    "pj_wants_fail([_|T]) :- pj_wants_fail(T).\n"
+    "pj_wants_fail(fail).\n"
+    "pj_wants_fail(false).\n"
+    "pj_has_true([true(E)|_], E) :- !.\n"
+    "pj_has_true([_|T], E) :- pj_has_true(T, E).\n"
+    "pj_has_all([all(E)|_], E) :- !.\n"
+    "pj_has_all([_|T], E) :- pj_has_all(T, E).\n"
+    "run_succeed(Suite, Name, Goal, Opts) :-\n"
+    "    ( is_list(Opts), \\+ Opts = [] -> true ; Opts = [] ; Opts = true ),\n"
+    "    ( catch(Goal, _E, fail) ->\n"
+    "        pj_inc_pass, format('  pass: ~w:~w~n',[Suite,Name])\n"
+    "    ;   pj_inc_fail, format('  FAIL: ~w:~w  (goal failed)~n',[Suite,Name])\n"
+    "    ).\n"
+    "run_succeed(Suite, Name, Goal, Opts) :-\n"
+    "    Opts \\= [], \\+ is_list(Opts), Opts \\= true, Opts \\= fail, Opts \\= false,\n"
+    "    run_true(Suite, Name, Goal, Opts).\n"
+    "run_fail(Suite, Name, Goal) :-\n"
+    "    ( catch(Goal, _E, true) ->\n"
+    "        pj_inc_fail, format('  FAIL: ~w:~w  (expected fail, succeeded)~n',[Suite,Name])\n"
+    "    ;   pj_inc_pass, format('  pass: ~w:~w~n',[Suite,Name])\n"
+    "    ).\n"
+    "run_error(Suite, Name, Goal, ExpErr) :-\n"
+    "    ( catch(Goal, error(ActErr,_), pj_match_err(Suite,Name,ExpErr,ActErr)) ->\n"
+    "        true\n"
+    "    ;   pj_inc_fail, format('  FAIL: ~w:~w  (no exception)~n',[Suite,Name])\n"
+    "    ).\n"
+    "pj_match_err(Suite, Name, Exp, Act) :-\n"
+    "    copy_term(Exp, ExpC),\n"
+    "    ( ExpC = Act ->\n"
+    "        pj_inc_pass, format('  pass: ~w:~w~n',[Suite,Name])\n"
+    "    ; functor(ExpC,F,_), functor(Act,F,_) ->\n"
+    "        pj_inc_pass, format('  pass: ~w:~w~n',[Suite,Name])\n"
+    "    ;   pj_inc_fail, format('  FAIL: ~w:~w  (error mismatch ~w vs ~w)~n',[Suite,Name,Exp,Act])\n"
+    "    ).\n"
+    "run_throw(Suite, Name, Goal, ExpThrow) :-\n"
+    "    ( catch(Goal, Actual,\n"
+    "        ( Actual = ExpThrow ->\n"
+    "            pj_inc_pass, format('  pass: ~w:~w~n',[Suite,Name])\n"
+    "        ;   pj_inc_fail, format('  FAIL: ~w:~w  (throw mismatch)~n',[Suite,Name])\n"
+    "        )) ->\n"
+    "        true\n"
+    "    ;   pj_inc_fail, format('  FAIL: ~w:~w  (no throw)~n',[Suite,Name])\n"
+    "    ).\n"
+    "run_true(Suite, Name, Goal, Expr) :-\n"
+    "    ( catch(Goal, _E, fail) ->\n"
+    "        ( catch(Expr, _E2, fail) ->\n"
+    "            pj_inc_pass, format('  pass: ~w:~w~n',[Suite,Name])\n"
+    "        ;   pj_inc_fail, format('  FAIL: ~w:~w  (check failed: ~w)~n',[Suite,Name,Expr])\n"
+    "        )\n"
+    "    ;   pj_inc_fail, format('  FAIL: ~w:~w  (goal failed)~n',[Suite,Name])\n"
+    "    ).\n"
+    "run_all(Suite, Name, Goal, (Var == Expected)) :-\n"
+    "    findall(Var, Goal, Actual),\n"
+    "    ( Actual == Expected ->\n"
+    "        pj_inc_pass, format('  pass: ~w:~w~n',[Suite,Name])\n"
+    "    ;   pj_inc_fail, format('  FAIL: ~w:~w  (all mismatch)~n',[Suite,Name])\n"
+    "    ).\n";
+
+/* -------------------------------------------------------------------------
+ * pj_linker_has_plunit — returns 1 if program uses use_module(library(plunit))
+ * ------------------------------------------------------------------------- */
+static int pj_linker_has_plunit(Program *prog) {
+    for (STMT_t *s = prog->head; s; s = s->next) {
+        if (!s->subject) continue;
+        EXPR_t *g = s->subject;
+        if (g->kind == E_CHOICE) continue;
+        if (g->kind != E_FNC || !g->sval) continue;
+        if (strcmp(g->sval, "use_module") != 0 || g->nchildren != 1) continue;
+        /* use_module(library(plunit)) — child is library(plunit) */
+        EXPR_t *arg = g->children[0];
+        if (!arg || arg->kind != E_FNC || !arg->sval) continue;
+        if (strcmp(arg->sval, "library") != 0 || arg->nchildren != 1) continue;
+        EXPR_t *lib = arg->children[0];
+        if (!lib || !lib->sval) continue;
+        if (strcmp(lib->sval, "plunit") == 0) return 1;
+    }
+    return 0;
+}
+
+/* -------------------------------------------------------------------------
+ * pj_linker_emit_plunit_shim — parse+lower+emit the embedded plunit.pl
+ * Called from prolog_emit_jvm() before the user predicates are emitted.
+ * ------------------------------------------------------------------------- */
+static void pj_linker_emit_plunit_shim(void) {
+    JC("=== plunit shim (M-PJ-LINKER) ===");
+    PlProgram *pl = prolog_parse(pj_plunit_shim_src, "plunit.pl");
+    if (!pl) { fprintf(stderr, "plunit linker: parse failed\n"); return; }
+    Program *shim = prolog_lower(pl);
+    if (!shim) { fprintf(stderr, "plunit linker: lower failed\n"); return; }
+    /* Emit each E_CHOICE from the shim, but skip predicates already defined
+     * in the user program to avoid duplicate method errors. */
+    for (STMT_t *ss = shim->head; ss; ss = ss->next) {
+        if (!ss->subject || ss->subject->kind != E_CHOICE) continue;
+        const char *shim_key = ss->subject->sval; /* "name/arity" */
+        if (!shim_key) continue;
+        /* Check if user already defines this predicate */
+        int user_defines = 0;
+        for (STMT_t *us = pj_prog->head; us; us = us->next) {
+            if (!us->subject || us->subject->kind != E_CHOICE) continue;
+            if (us->subject->sval && strcmp(us->subject->sval, shim_key) == 0) {
+                user_defines = 1; break;
+            }
+        }
+        if (!user_defines)
+            pj_emit_choice(ss->subject);
+    }
+    /* Note: shim/pl memory intentionally not freed (static lifetime) */
+}
+
+/* -------------------------------------------------------------------------
+ * pj_linker_emit_db_stub — emit a proper dynamic-DB stub for name/arity.
+ * Mirrors the Bug 1 pure-dynamic stub pattern exactly.
+ * ------------------------------------------------------------------------- */
+static void pj_linker_emit_db_stub(const char *name, int arity) {
+    char safe[256];
+    pj_safe_name(name, safe, sizeof safe);
+    JC("dynamic DB stub (M-PJ-LINKER)");
+    J("; stub for linker-dynamic predicate %s/%d\n", name, arity);
+    J(".method static p_%s_%d(", safe, arity);
+    for (int i = 0; i < arity; i++) J("[Ljava/lang/Object;");
+    J("I)[Ljava/lang/Object;\n");
+    int stub_locals = arity + 50;
+    J("    .limit stack 16\n");
+    J("    .limit locals %d\n", stub_locals);
+    int cs_loc  = arity;
+    int tr_loc  = arity + 1;
+    int idx_loc = arity + 2;
+    int trm_loc = arity + 3;
+    int lbl = pj_fresh_label();
+    char sb_store[64], sb_loop[64], sb_hit[64], sb_miss[64], sb_ok[64], sb_fail[64];
+    snprintf(sb_store, sizeof sb_store, "lnk%d_store", lbl);
+    snprintf(sb_loop,  sizeof sb_loop,  "lnk%d_loop",  lbl);
+    snprintf(sb_hit,   sizeof sb_hit,   "lnk%d_hit",   lbl);
+    snprintf(sb_miss,  sizeof sb_miss,  "lnk%d_miss",  lbl);
+    snprintf(sb_ok,    sizeof sb_ok,    "lnk%d_ok",    lbl);
+    snprintf(sb_fail,  sizeof sb_fail,  "lnk%d_fail",  lbl);
+    J("    iload %d\n", cs_loc);
+    JI("dup", "");
+    J("    ifge %s\n", sb_store);
+    JI("pop", "");
+    JI("iconst_0", "");
+    J("%s:\n", sb_store);
+    J("    istore %d\n", idx_loc);
+    J("%s:\n", sb_loop);
+    J("    ldc \"%s/%d\"\n", name, arity);
+    J("    iload %d\n", idx_loc);
+    J("    invokestatic %s/pj_db_query(Ljava/lang/String;I)Ljava/lang/Object;\n", pj_classname);
+    JI("dup", "");
+    J("    ifnonnull %s\n", sb_hit);
+    JI("pop", "");
+    J("    goto %s\n", sb_miss);
+    J("%s:\n", sb_hit);
+    JI("checkcast", "[Ljava/lang/Object;");
+    J("    astore %d\n", trm_loc);
+    J("    invokestatic %s/pj_trail_mark()I\n", pj_classname);
+    J("    istore %d\n", tr_loc);
+    for (int ai = 0; ai < arity; ai++) {
+        J("    aload %d\n", ai);
+        J("    aload %d\n", trm_loc);
+        J("    ldc %d\n", ai + 2);
+        JI("aaload", "");
+        J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+        J("    ifeq %s\n", sb_fail);
+    }
+    J("    goto %s\n", sb_ok);
+    J("%s:\n", sb_fail);
+    J("    iload %d\n", tr_loc);
+    J("    invokestatic %s/pj_trail_unwind(I)V\n", pj_classname);
+    J("    iinc %d 1\n", idx_loc);
+    J("    goto %s\n", sb_loop);
+    J("%s:\n", sb_ok);
+    J("    ldc %d\n", arity + 1);
+    JI("anewarray", "java/lang/Object");
+    JI("dup", "");
+    JI("iconst_0", "");
+    J("    iload %d\n", idx_loc);
+    JI("iconst_1", "");
+    JI("iadd", "");
+    JI("invokestatic", "java/lang/Integer/valueOf(I)Ljava/lang/Integer;");
+    JI("aastore", "");
+    for (int ai = 0; ai < arity; ai++) {
+        JI("dup", "");
+        J("    ldc %d\n", ai + 1);
+        J("    aload %d\n", ai);
+        JI("aastore", "");
+    }
+    JI("areturn", "");
+    J("%s:\n", sb_miss);
+    JI("aconst_null", "");
+    JI("areturn", "");
+    J(".end method\n\n");
+}
+
+/* -------------------------------------------------------------------------
+ * pj_linker_emit_dynamic_stubs — emit proper DB stubs for pj_suite/1 and pj_test/4
+ * ------------------------------------------------------------------------- */
+static void pj_linker_emit_dynamic_stubs(void) {
+    pj_linker_emit_db_stub("pj_suite", 1);
+    pj_linker_emit_db_stub("pj_test",  4);
+}
+
+/* -------------------------------------------------------------------------
+ * pj_linker_emit_bridge — emit a bridge predicate:
+ *   suite_name/0 :- test(name).
+ * bridge_fn is "suite_name" (safe-name), test_name is the raw atom.
+ * ------------------------------------------------------------------------- */
+static void pj_linker_emit_bridge(const char *bridge_fn, const char *test_name) {
+    JC("bridge predicate (M-PJ-LINKER)");
+    J(".method static p_%s_0(I)[Ljava/lang/Object;\n", bridge_fn);
+    J("    .limit stack 8\n");
+    J("    .limit locals 4\n");
+    /* cs dispatch — single clause, cs==0 only */
+    J("    iload 0\n");
+    J("    ifne p_%s_0_omega_empty\n", bridge_fn);
+    /* call test(name) — emit as p_test_1(atom(name), 0) */
+    J("    ldc \"%s\"\n", test_name);
+    J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+    J("    iconst_0\n");
+    J("    invokestatic %s/p_test_1([Ljava/lang/Object;I)[Ljava/lang/Object;\n", pj_classname);
+    /* if null → fail (result on stack) */
+    J("    dup\n");
+    J("    ifnull p_%s_0_omega_pop\n", bridge_fn);
+    /* success: return the result array as-is (non-null means success) */
+    J("    areturn\n");
+    /* omega_pop: result (null) on stack — pop then return null */
+    J("p_%s_0_omega_pop:\n", bridge_fn);
+    J("    pop\n");
+    J("    aconst_null\n");
+    J("    areturn\n");
+    /* omega_empty: nothing on stack */
+    J("p_%s_0_omega_empty:\n", bridge_fn);
+    J("    aconst_null\n");
+    J("    areturn\n");
+    J(".end method\n\n");
+}
+
+/* -------------------------------------------------------------------------
+ * Linker test registration info
+ * ------------------------------------------------------------------------- */
+#define PJ_LINKER_MAX_TESTS 512
+typedef struct {
+    char suite[64];
+    char name[64];
+    char bridge[128];   /* safe name: "suite_name" */
+    int  arity;         /* 1 or 2 */
+    EXPR_t *opts_expr;  /* for test/2: the opts E_CLAUSE head arg[1] */
+} PjTestInfo;
+
+static PjTestInfo pj_linker_tests[PJ_LINKER_MAX_TESTS];
+static int        pj_linker_ntest = 0;
+static char       pj_linker_suites[32][64];
+static int        pj_linker_nsuite = 0;
+
+/* -------------------------------------------------------------------------
+ * pj_linker_scan — walk program collecting suite/test info.
+ * Must be called before pj_emit_main and before bridge emission.
+ *
+ * NOTE: prolog_lower() batches all E_CHOICE nodes separately from directives.
+ * They are NOT interleaved in source order.  So we cannot track
+ * begin_tests/end_tests windows while walking E_CHOICE nodes.
+ *
+ * Strategy:
+ *   Pass 1 — collect suite names from begin_tests directives.
+ *   Pass 2 — collect test/1 and test/2 E_CHOICE nodes; assign all to
+ *             suite[0].  Correct for the universal case of one suite per file.
+ * ------------------------------------------------------------------------- */
+static void pj_linker_scan(Program *prog) {
+    pj_linker_ntest  = 0;
+    pj_linker_nsuite = 0;
+
+    /* Pass 1: collect suite names from begin_tests directives */
+    for (STMT_t *s = prog->head; s; s = s->next) {
+        if (!s->subject) continue;
+        EXPR_t *g = s->subject;
+        if (g->kind == E_CHOICE) continue;
+        if (g->kind != E_FNC || !g->sval) continue;
+        if (strcmp(g->sval, "begin_tests") != 0 || g->nchildren < 1) continue;
+        EXPR_t *suite_arg = g->children[0];
+        if (!suite_arg || !suite_arg->sval) continue;
+        const char *sname = suite_arg->sval;
+        int found = 0;
+        for (int i = 0; i < pj_linker_nsuite; i++)
+            if (strcmp(pj_linker_suites[i], sname) == 0) { found = 1; break; }
+        if (!found && pj_linker_nsuite < 32)
+            strncpy(pj_linker_suites[pj_linker_nsuite++], sname, 63);
+    }
+
+    if (pj_linker_nsuite == 0) return;
+
+    /* Pass 2: collect test/1 and test/2 clause heads.
+     * Assign to suite[0] — correct for single-suite files (universal case). */
+    const char *suite = pj_linker_suites[0];
+    for (STMT_t *s = prog->head; s; s = s->next) {
+        if (!s->subject || s->subject->kind != E_CHOICE) continue;
+        EXPR_t *g = s->subject;
+        const char *key = g->sval;
+        if (!key) continue;
+        int is_test1 = (strcmp(key, "test/1") == 0);
+        int is_test2 = (strcmp(key, "test/2") == 0);
+        if (!is_test1 && !is_test2) continue;
+
+        for (int ci = 0; ci < g->nchildren && pj_linker_ntest < PJ_LINKER_MAX_TESTS; ci++) {
+            EXPR_t *cl = g->children[ci];
+            if (!cl || cl->kind != E_CLAUSE) continue;
+            int n_args = (int)cl->dval;
+            if (n_args < 1) continue;
+            EXPR_t *name_arg = cl->children[0];
+            if (!name_arg || !name_arg->sval) continue;
+            PjTestInfo *ti = &pj_linker_tests[pj_linker_ntest++];
+            strncpy(ti->suite, suite, 63);
+            strncpy(ti->name,  name_arg->sval, 63);
+            ti->arity     = is_test2 ? 2 : 1;
+            ti->opts_expr = (is_test2 && n_args >= 2) ? cl->children[1] : NULL;
+            char raw[128];
+            snprintf(raw, sizeof raw, "%s_%s", suite, name_arg->sval);
+            pj_safe_name(raw, ti->bridge, sizeof ti->bridge);
+        }
+    }
+}
+
+/* -------------------------------------------------------------------------
+ * pj_linker_emit_main_assertz — emit assertz calls for pj_suite/pj_test facts.
+ * Called from inside pj_emit_main after the existing assertz loop.
+ *
+ * Each pj_suite(Suite) assertz:
+ *   ldc "Suite" → pj_term_atom → pj_db_assert_key → pj_term_atom → iconst_0
+ *   → pj_db_assert
+ *
+ * Each pj_test(Suite, Name, Opts, Goal) assertz:
+ *   build compound ["compound","pj_test", atom(Suite), atom(Name), Opts, atom(bridge)]
+ *   → pj_db_assert_key → same term → iconst_0 → pj_db_assert
+ * ------------------------------------------------------------------------- */
+static void pj_linker_emit_main_assertz(void) {
+    if (pj_linker_ntest == 0 && pj_linker_nsuite == 0) return;
+
+    JC("M-PJ-LINKER: assert pj_suite facts");
+    for (int i = 0; i < pj_linker_nsuite; i++) {
+        const char *sname = pj_linker_suites[i];
+        /* build pj_suite(Suite) term — compound arity 1 */
+        /* Emit twice: once for key derivation, once for the actual assert */
+        for (int pass = 0; pass < 2; pass++) {
+            J("    bipush 3\n");
+            J("    anewarray java/lang/Object\n");
+            J("    dup\n");
+            J("    iconst_0\n");
+            J("    ldc \"compound\"\n");
+            J("    aastore\n");
+            J("    dup\n");
+            J("    iconst_1\n");
+            J("    ldc \"pj_suite\"\n");
+            J("    aastore\n");
+            J("    dup\n");
+            J("    bipush 2\n");
+            J("    ldc \"%s\"\n", sname);
+            J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+            J("    aastore\n");
+            if (pass == 0) {
+                J("    invokestatic %s/pj_db_assert_key(Ljava/lang/Object;)Ljava/lang/String;\n", pj_classname);
+            }
+        }
+        J("    iconst_0\n");  /* asserta=1 / assertz=0 */
+        J("    invokestatic %s/pj_db_assert(Ljava/lang/String;Ljava/lang/Object;I)V\n", pj_classname);
+    }
+
+    JC("M-PJ-LINKER: assert pj_test facts");
+    int *dummy_locals = NULL;
+    for (int i = 0; i < pj_linker_ntest; i++) {
+        PjTestInfo *ti = &pj_linker_tests[i];
+        /* build pj_test(Suite, Name, Opts, BridgeAtom) — compound arity 4 */
+        for (int pass = 0; pass < 2; pass++) {
+            J("    bipush 6\n");  /* 2 + 4 args */
+            J("    anewarray java/lang/Object\n");
+            J("    dup\n");
+            J("    iconst_0\n");
+            J("    ldc \"compound\"\n");
+            J("    aastore\n");
+            J("    dup\n");
+            J("    iconst_1\n");
+            J("    ldc \"pj_test\"\n");
+            J("    aastore\n");
+            /* arg0: Suite atom */
+            J("    dup\n");
+            J("    bipush 2\n");
+            J("    ldc \"%s\"\n", ti->suite);
+            J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+            J("    aastore\n");
+            /* arg1: Name atom */
+            J("    dup\n");
+            J("    bipush 3\n");
+            J("    ldc \"%s\"\n", ti->name);
+            J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+            J("    aastore\n");
+            /* arg2: Opts — emit as term if available, else [] */
+            J("    dup\n");
+            J("    bipush 4\n");
+            if (ti->opts_expr) {
+                pj_emit_term(ti->opts_expr, dummy_locals, 0);
+            } else {
+                /* [] */
+                J("    ldc \"[]\"\n");
+                J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+            }
+            J("    aastore\n");
+            /* arg3: Goal — atom naming the bridge predicate */
+            J("    dup\n");
+            J("    bipush 5\n");
+            J("    ldc \"%s\"\n", ti->bridge);
+            J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+            J("    aastore\n");
+            if (pass == 0) {
+                J("    invokestatic %s/pj_db_assert_key(Ljava/lang/Object;)Ljava/lang/String;\n", pj_classname);
+            }
+        }
+        J("    iconst_0\n");
+        J("    invokestatic %s/pj_db_assert(Ljava/lang/String;Ljava/lang/Object;I)V\n", pj_classname);
+    }
+}
+
 /* -------------------------------------------------------------------------
  * Main method emitter
  * Finds the initialization(main) directive and emits a JVM main() that calls it.
@@ -6712,7 +7213,7 @@ static void pj_emit_choice(EXPR_t *choice) {
 
 static void pj_emit_main(Program *prog) {
     J(".method public static main([Ljava/lang/String;)V\n");
-    J("    .limit stack 8\n");
+    J("    .limit stack 32\n");
     J("    .limit locals 4\n");
 
     /* Bug 2 fix: execute :- assertz/asserta directives before calling main/0.
@@ -6727,6 +7228,8 @@ static void pj_emit_main(Program *prog) {
             strcmp(g->sval, "discontiguous") == 0 ||
             strcmp(g->sval, "module") == 0 ||
             strcmp(g->sval, "use_module") == 0 ||
+            strcmp(g->sval, "begin_tests") == 0 ||
+            strcmp(g->sval, "end_tests") == 0 ||
             strcmp(g->sval, "ensure_loaded") == 0 ||
             strcmp(g->sval, "style_check") == 0 ||
             strcmp(g->sval, "set_prolog_flag") == 0 ||
@@ -6761,6 +7264,9 @@ static void pj_emit_main(Program *prog) {
             J("    pop\n");
         }
     }
+
+    /* M-PJ-LINKER: assert pj_suite/pj_test facts after user directives */
+    pj_linker_emit_main_assertz();
 
     /* Call p_main_0(0) once. The internal fail-loop inside main/0 drives
      * all backtracking via call_sfail→call_α. No outer retry needed. */
@@ -6829,6 +7335,14 @@ void prolog_emit_jvm(Program *prog, FILE *out, const char *filename) {
             pj_emit_aggregate_all_builtin();
     }
 
+    /* M-PJ-LINKER: plunit linker — scan + emit shim + stubs + bridges */
+    int use_plunit = pj_linker_has_plunit(prog);
+    if (use_plunit) {
+        pj_linker_scan(prog);
+        pj_linker_emit_plunit_shim();
+        pj_linker_emit_dynamic_stubs();
+    }
+
     /* Always emit pj_gcd helper (used by gcd/2 in is/2) */
     pj_emit_gcd_helper();
 
@@ -6837,6 +7351,12 @@ void prolog_emit_jvm(Program *prog, FILE *out, const char *filename) {
         if (!s->subject) continue;
         if (s->subject->kind == E_CHOICE)
             pj_emit_choice(s->subject);
+    }
+
+    /* M-PJ-LINKER: emit bridge predicates suite_name/0 :- test(name). */
+    if (use_plunit) {
+        for (int i = 0; i < pj_linker_ntest; i++)
+            pj_linker_emit_bridge(pj_linker_tests[i].bridge, pj_linker_tests[i].name);
     }
 
     /* Bug 1 fix: emit stub methods for pure-dynamic predicates.
