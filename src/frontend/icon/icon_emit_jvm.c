@@ -130,6 +130,7 @@ typedef struct { char γ[64]; char ω[64]; } IjPorts;
 static char ij_user_procs[MAX_USER_PROCS][64];
 static int  ij_user_nparams[MAX_USER_PROCS];
 static int  ij_user_is_gen[MAX_USER_PROCS];
+static int  ij_user_returns_str[MAX_USER_PROCS];  /* 1 if proc returns String */
 static int  ij_user_count = 0;
 
 static void ij_register_proc(const char *name, int nparams, int is_gen) {
@@ -138,8 +139,18 @@ static void ij_register_proc(const char *name, int nparams, int is_gen) {
         strncpy(ij_user_procs[ij_user_count], name, 63);
         ij_user_nparams[ij_user_count] = nparams;
         ij_user_is_gen[ij_user_count]  = is_gen;
+        ij_user_returns_str[ij_user_count] = 0;  /* set later by pre-pass */
         ij_user_count++;
     }
+}
+static void ij_mark_proc_returns_str(const char *name) {
+    for (int i=0;i<ij_user_count;i++)
+        if(!strcmp(ij_user_procs[i],name)) { ij_user_returns_str[i]=1; return; }
+}
+static int ij_proc_returns_str(const char *name) {
+    for (int i=0;i<ij_user_count;i++)
+        if(!strcmp(ij_user_procs[i],name)) return ij_user_returns_str[i];
+    return 0;
 }
 static int ij_is_user_proc(const char *name) {
     for (int i=0;i<ij_user_count;i++) if(!strcmp(ij_user_procs[i],name)) return 1;
@@ -1000,9 +1011,14 @@ static void ij_emit_return(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
         JL(on_fail);
         ij_set_fail();
         JGoto(ij_fail_label[0] ? ij_fail_label : "icn_dead");
-        /* after: expr succeeded — long on stack */
+        /* after: expr succeeded — long or String ref on stack */
         JL(after);
-        ij_put_long("icn_retval");
+        if (ij_expr_is_string(n->children[0])) {
+            ij_put_str_field("icn_retval_str");
+            J("    lconst_0\n"); ij_put_long("icn_retval"); /* clear long slot */
+        } else {
+            ij_put_long("icn_retval");
+        }
         ij_set_ok();
         JGoto(ij_ret_label[0] ? ij_ret_label : "icn_dead");
     } else {
@@ -2101,7 +2117,8 @@ static void ij_emit_call(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
             /* Check result */
             char after_resume[64]; snprintf(after_resume, sizeof after_resume, "icn_%d_after_resume", id);
             ij_jmp_if_failed(after_resume);
-            ij_get_long("icn_retval");
+            if (ij_proc_returns_str(fname)) { ij_get_str_field("icn_retval_str"); }
+            else                            { ij_get_long("icn_retval"); }
             JGoto(ports.γ);
             JL(after_resume); JGoto(ports.ω);
             JL(b_fail); JGoto(ports.ω);
@@ -2121,7 +2138,8 @@ static void ij_emit_call(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
         char after_call[64]; snprintf(after_call, sizeof after_call, "icn_%d_after_call", id);
         ij_jmp_if_failed(after_call);
         /* Check if suspended (generator yielded) or returned */
-        ij_get_long("icn_retval");
+        if (ij_proc_returns_str(fname)) { ij_get_str_field("icn_retval_str"); }
+        else                            { ij_get_long("icn_retval"); }
         JGoto(ports.γ);
         JL(after_call); JGoto(ports.ω);
 
@@ -2689,6 +2707,8 @@ static int ij_expr_is_string(IcnNode *n) {
                     /* string() conversion returns String */
                     if (strcmp(fn_name, "string") == 0) return 1;
                     /* match returns a long position, not a String */
+                    /* user-defined proc — check proc table */
+                    if (ij_proc_returns_str(fn_name)) return 1;
                 }
             }
             return 0;
@@ -4670,6 +4690,15 @@ void ij_emit_file(IcnNode **nodes, int count, FILE *out, const char *filename, c
         for (int si = body_start; si < proc->nchildren; si++)
             if (ij_has_suspend(proc->children[si])) { gen = 1; break; }
         ij_register_proc(pname, np, gen);
+        /* Mark string-returning procs: scan body for ICN_RETURN with string child */
+        for (int si = body_start; si < proc->nchildren; si++) {
+            IcnNode *stmt = proc->children[si];
+            if (stmt && stmt->kind == ICN_RETURN &&
+                stmt->nchildren > 0 && ij_expr_is_string(stmt->children[0])) {
+                ij_mark_proc_returns_str(pname);
+                break;
+            }
+        }
     }
 
     /* Pass 1b: pre-register variables assigned from record constructors as Object-typed.
@@ -4813,6 +4842,7 @@ void ij_emit_file(IcnNode **nodes, int count, FILE *out, const char *filename, c
     /* Long fields */
     J(".field public static icn_retval_obj Ljava/lang/Object;\n");
     J(".field public static icn_retval J\n");
+    J(".field public static icn_retval_str Ljava/lang/String;\n");
     /* Per-user-proc arg static fields (already in statics array from emit_call) */
     for (int i = 0; i < ij_nstatics; i++) {
         char type = ij_static_types[i];

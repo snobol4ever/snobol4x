@@ -269,7 +269,7 @@ def icon_stub(method_sig, prolog_call):
     .limit stack 4
     .limit locals 2
     {prolog_call}
-    putstatic Family_icon/icn_retval Ljava/lang/String;
+    putstatic Family_icon/icn_retval_str Ljava/lang/String;
     return"""
 
 ICN_STUBS = {
@@ -289,8 +289,8 @@ ICN_STUBS = {
         "icn_retval",
         "invokestatic Family_prolog/query_generations()Ljava/lang/String;"),
     ".method public static icn_prolog_query_ancestors()V": (
-        "icn_retval",
-        "aload_0\n    invokestatic Family_prolog/query_ancestors(Ljava/lang/String;)Ljava/lang/String;"),
+        "icn_retval_str",
+        'ldc "U008"\n    invokestatic Family_prolog/query_ancestors(Ljava/lang/String;)Ljava/lang/String;'),
 }
 
 def inject_icon(path):
@@ -303,7 +303,7 @@ def inject_icon(path):
     .limit stack 4
     .limit locals 2
     {call}
-    putstatic Family_icon/icn_retval Ljava/lang/String;
+    putstatic Family_icon/icn_retval_str Ljava/lang/String;
     return"""
         text = replace_method_body(text, sig, body)
     write(path, text)
