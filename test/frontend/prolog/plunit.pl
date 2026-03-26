@@ -46,7 +46,7 @@ run_all_suites :- pj_suite(S), run_suite(S), fail.
 run_all_suites.
 
 run_suite(Suite) :-
-    format('~n% PL-Unit: ~w~n',[Suite]),
+    format('~n% PL-Unit: ~w~n',[Suite]), !,
     run_suite_tests(Suite).
 
 run_suite_tests(Suite) :-
