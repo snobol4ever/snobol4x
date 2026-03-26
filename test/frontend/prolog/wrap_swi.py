@@ -23,6 +23,32 @@ def read_shim():
     with open(os.path.join(here, 'plunit.pl')) as f:
         return f.read()
 
+def normalize_opts(opts_str):
+    """Normalize test/2 options so the result is safe in a Prolog fact.
+
+    SWI test/2 second-arg can be:
+      - a list:      [sto(rational_trees), true(X==y)]   → keep as-is
+      - true(Expr):  true(X==y)                          → keep as-is
+      - bare goal:   X == y                              → wrap as true(X==y)
+      - atom:        fail / nondet / det                 → keep as-is
+
+    The critical issue: bare goals like `X == y` contain unbound variables
+    which are illegal in Prolog facts.  Wrapping as true(X==y) keeps the
+    variable scoped to the clause that uses it (run_true/4 in plunit shim).
+    """
+    s = opts_str.strip()
+    # Already a list or already wrapped in a known functor
+    if s.startswith('['):
+        return s
+    # Check for known atom options
+    if re.match(r'^(fail|false|nondet|det|true)$', s):
+        return s
+    # Already a compound with known option functor
+    if re.match(r'^(true|error|throws|all|setup|cleanup|condition|sto|forall)\s*\(', s):
+        return s
+    # Bare goal (e.g. X == y, Shared == [...]) — wrap as true(...)
+    return f'true({s})'
+
 def parse_test_clauses(lines):
     """Extract (suite, name, options) from test/1 and test/2 clause heads."""
     suite = None
@@ -48,7 +74,8 @@ def parse_test_clauses(lines):
             i += 1; continue
         m = re.match(r'^test\((\w+),\s*(.+)\)\s*:-', s)
         if m:
-            tests.append((suite, m.group(1), m.group(2).strip()))
+            opts = normalize_opts(m.group(2).strip())
+            tests.append((suite, m.group(1), opts))
             i += 1; continue
         i += 1
     return tests

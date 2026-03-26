@@ -6722,7 +6722,25 @@ static void pj_emit_main(Program *prog) {
         if (s->subject->kind == E_CHOICE) continue;
         EXPR_t *g = s->subject;
         if (g->kind != E_FNC || !g->sval) continue;
-        if ((strcmp(g->sval, "assertz") == 0 || strcmp(g->sval, "asserta") == 0)
+        /* Skip meta-directives that have no runtime effect */
+        if (strcmp(g->sval, "dynamic") == 0 ||
+            strcmp(g->sval, "discontiguous") == 0 ||
+            strcmp(g->sval, "module") == 0 ||
+            strcmp(g->sval, "use_module") == 0 ||
+            strcmp(g->sval, "ensure_loaded") == 0 ||
+            strcmp(g->sval, "style_check") == 0 ||
+            strcmp(g->sval, "set_prolog_flag") == 0 ||
+            strcmp(g->sval, "module_transparent") == 0 ||
+            strcmp(g->sval, "meta_predicate") == 0 ||
+            strcmp(g->sval, "multifile") == 0 ||
+            strcmp(g->sval, "reexport") == 0 ||
+            strcmp(g->sval, "load_files") == 0 ||
+            strcmp(g->sval, "if") == 0 ||
+            strcmp(g->sval, "else") == 0 ||
+            strcmp(g->sval, "endif") == 0 ||
+            strcmp(g->sval, "initialization") == 0) {
+            /* silently skip */
+        } else if ((strcmp(g->sval, "assertz") == 0 || strcmp(g->sval, "asserta") == 0)
              && g->nchildren == 1) {
             /* emit assertz/asserta inline — same logic as pj_emit_goal assertz case */
             int is_asserta = (strcmp(g->sval, "asserta") == 0);
@@ -6734,8 +6752,14 @@ static void pj_emit_main(Program *prog) {
             J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
             J("    %s\n", is_asserta ? "iconst_1" : "iconst_0");
             J("    invokestatic %s/pj_db_assert(Ljava/lang/String;Ljava/lang/Object;I)V\n", pj_classname);
+        } else {
+            /* General directive: call via pj_call_goal at runtime */
+            int *dummy_locals = NULL;
+            pj_emit_term(s->subject, dummy_locals, 0);
+            J("    iconst_0\n");
+            J("    invokestatic %s/pj_call_goal(Ljava/lang/Object;I)I\n", pj_classname);
+            J("    pop\n");
         }
-        /* ignore :- dynamic and other directives silently */
     }
 
     /* Call p_main_0(0) once. The internal fail-loop inside main/0 drives
