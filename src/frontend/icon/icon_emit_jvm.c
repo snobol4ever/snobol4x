@@ -5287,7 +5287,9 @@ static void ij_emit_seq_expr(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
         strncpy(ep.ω, (i == 0)    ? ports.ω  : ccb[i-1],  63);
         ij_emit_expr(n->children[i], ep, cca[i], ccb[i]);
     }
-    /* relay trampolines: drain Ei.γ result, jump to E(i+1).α */
+    /* relay trampolines: drain Ei.γ result, jump to E(i+1).α
+     * Jump over relay block first — same verifier fall-through fix as ICN_AND. */
+    JGoto(ca2);
     for (int i = 0; i < nc-1; i++) {
         JL(relay_g[i]);
         int child_is_str = ij_expr_is_string(n->children[i]);
@@ -5432,8 +5434,16 @@ static void ij_emit_expr(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
              * E[i].γ leaves a value on the JVM stack; E[i+1].α expects empty stack.
              * Use putstatic (static field drain) instead of pop/pop2 so relay labels
              * are safe to reach from any stack state (e.g. ICN_EVERY β-tableswitch).
-             * ICN_ALT children deliver lconst_0 (J) at ports.γ — same as long-typed
-             * non-ALT children, so putstatic :J handles them correctly. */
+             *
+             * CRITICAL: jump over the relay block before emitting relay labels.
+             * The v45 type-inference verifier merges stack states at a label from ALL
+             * bytecode-adjacent predecessors — even through unconditional gotos.
+             * Adjacent relay labels with different types (J vs Ljava/lang/String) cause
+             * the verifier to infer Object at the second label → putstatic J fails with
+             * "Expecting to find long on stack".  By jumping to ca2 first, the relay
+             * labels are only reachable via their own explicit goto relay_g[i] calls,
+             * so the verifier sees a clean, single-predecessor stack at each label. */
+            JGoto(ca2);
             for (int i = 0; i < nc-1; i++) {
                 char drain_fld[80];
                 snprintf(drain_fld, sizeof drain_fld, "icn_%d_and_drain_%d", cid, i);
