@@ -1,0 +1,9 @@
+procedure main();
+  local t;
+  t := table("0");
+  t["alice"] := "1";
+  t["bob"] := "1";
+  write(t["alice"]);
+  write(t["bob"]);
+  write(t["carol"]);
+end

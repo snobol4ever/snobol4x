@@ -359,17 +359,22 @@ static void ij_declare_static_str(const char *name) {
 #define MAX_TBL_DFLT 64
 static char ij_tdflt_tbl[MAX_TBL_DFLT][80];   /* table var field name   */
 static char ij_tdflt_fld[MAX_TBL_DFLT][80];   /* dflt Object field name */
+static int  ij_tdflt_str[MAX_TBL_DFLT];        /* 1 if dflt is String    */
 static int  ij_ntdflt = 0;
 static char ij_pending_tdflt[80] = "";         /* set by table() emitter */
+static int  ij_pending_tdflt_is_str = 0;       /* 1 if dflt is String    */
 
-static void ij_register_tdflt(const char *tbl_field, const char *dflt_field) {
+static void ij_register_tdflt(const char *tbl_field, const char *dflt_field, int is_str) {
     for (int i = 0; i < ij_ntdflt; i++)
         if (!strcmp(ij_tdflt_tbl[i], tbl_field)) {
-            strncpy(ij_tdflt_fld[i], dflt_field, 79); return;
+            strncpy(ij_tdflt_fld[i], dflt_field, 79);
+            ij_tdflt_str[i] = is_str;
+            return;
         }
     if (ij_ntdflt < MAX_TBL_DFLT) {
         strncpy(ij_tdflt_tbl[ij_ntdflt], tbl_field, 79);
         strncpy(ij_tdflt_fld[ij_ntdflt], dflt_field, 79);
+        ij_tdflt_str[ij_ntdflt] = is_str;
         ij_ntdflt++;
     }
 }
@@ -379,6 +384,13 @@ static const char *ij_lookup_tdflt(const char *tbl_field) {
     for (int i = 0; i < ij_ntdflt; i++)
         if (!strcmp(ij_tdflt_tbl[i], tbl_field)) return ij_tdflt_fld[i];
     return NULL;
+}
+
+/* Returns 1 if the table's default value is String-typed. */
+static int ij_tdflt_is_str(const char *tbl_field) {
+    for (int i = 0; i < ij_ntdflt; i++)
+        if (!strcmp(ij_tdflt_tbl[i], tbl_field)) return ij_tdflt_str[i];
+    return 0;
 }
 
 /* =========================================================================
@@ -952,10 +964,16 @@ static void ij_emit_assign(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
                 JGoto(ka);
             }
 
-            /* k_relay: key long on stack → convert to String key */
+            /* k_relay: key on stack → convert to String key */
             JL(k_relay);
-            JI("invokestatic", "java/lang/Long/toString(J)Ljava/lang/String;");
-            ij_put_str_field(k_str_fld);
+            if (ij_expr_is_string(kexpr)) {
+                /* String key already on stack — store directly */
+                ij_put_str_field(k_str_fld);
+            } else {
+                /* Long key on stack — convert to string */
+                JI("invokestatic", "java/lang/Long/toString(J)Ljava/lang/String;");
+                ij_put_str_field(k_str_fld);
+            }
             JGoto(do_put);
 
             /* do_put: load T, k_str, v_obj; call put; pop result */
@@ -1024,7 +1042,9 @@ static void ij_emit_assign(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
                     ij_declare_static_obj(vdflt);
                     ij_get_obj_field(ij_pending_tdflt);
                     ij_put_obj_field(vdflt);
+                    ij_register_tdflt(fld, vdflt, ij_pending_tdflt_is_str);
                     ij_pending_tdflt[0] = '\0';
+                    ij_pending_tdflt_is_str = 0;
                 }
             }
             else if (is_dbl)  { ij_declare_static_dbl(fld);   ij_put_dbl(fld); }
@@ -1057,7 +1077,9 @@ static void ij_emit_assign(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
                     ij_declare_static_obj(vdflt);
                     ij_get_obj_field(ij_pending_tdflt);
                     ij_put_obj_field(vdflt);
+                    ij_register_tdflt(gname, vdflt, ij_pending_tdflt_is_str);
                     ij_pending_tdflt[0] = '\0';
+                    ij_pending_tdflt_is_str = 0;
                 }
             }
             else if (is_dbl)  { ij_declare_static_dbl(gname);   ij_put_dbl(gname); }
@@ -2226,10 +2248,16 @@ static void ij_emit_call(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
         JL(a); JGoto(da);
         JL(b); JGoto(ports.ω);
 
-        /* drelay: default value (long) on stack → box → store as Object default */
+        /* drelay: default value on stack → box → store as Object default */
         JL(drelay);
-        JI("invokestatic", "java/lang/Long/valueOf(J)Ljava/lang/Long;");
-        ij_put_obj_field(dflt_fld);
+        if (ij_expr_is_string(darg)) {
+            /* String default: already a reference, store as-is */
+            ij_put_obj_field(dflt_fld);
+        } else {
+            /* Long default: box it */
+            JI("invokestatic", "java/lang/Long/valueOf(J)Ljava/lang/Long;");
+            ij_put_obj_field(dflt_fld);
+        }
         /* create new HashMap */
         JI("new", "java/util/HashMap");
         JI("dup", "");
@@ -2237,6 +2265,7 @@ static void ij_emit_call(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
         ij_put_table_field(tbl_fld);
         /* Record pending dflt so ij_emit_assign can register var→dflt map */
         strncpy(ij_pending_tdflt, dflt_fld, 79);
+        ij_pending_tdflt_is_str = ij_expr_is_string(darg);
         ij_get_table_field(tbl_fld);
         JGoto(ports.γ);
         return;
@@ -3845,8 +3874,20 @@ static int ij_expr_is_string(IcnNode *n) {
                        ij_expr_is_string(n->children[1]);
             return 0;
         case ICN_SUBSCRIPT:
-            /* t[k] on a table yields a long, not a String */
-            if (n->nchildren >= 1 && ij_expr_is_table(n->children[0])) return 0;
+            /* t[k] on a table: String if table has String default, else long */
+            if (n->nchildren >= 1 && ij_expr_is_table(n->children[0])) {
+                IcnNode *tbl = n->children[0];
+                if (tbl->kind == ICN_VAR) {
+                    char tvfld[128];
+                    int slot = ij_locals_find(tbl->val.sval);
+                    if (slot >= 0)
+                        ij_var_field(tbl->val.sval, tvfld, sizeof tvfld);
+                    else
+                        snprintf(tvfld, sizeof tvfld, "icn_gvar_%s", tbl->val.sval);
+                    return ij_tdflt_is_str(tvfld);
+                }
+                return 0;
+            }
             return 1;  /* s[i] always yields a single-char String */
         case ICN_SECTION:
             return 1;  /* s[i:j] always yields a String */
@@ -5037,12 +5078,11 @@ static void ij_emit_subscript(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
             JI("invokestatic", "java/lang/Long/toString(J)Ljava/lang/String;");
             ij_put_str_field(k_fld);
         }
-        ij_put_str_field(k_fld);
         /* HashMap.get(key) */
         ij_get_table_field(t_fld);
         ij_get_str_field(k_fld);
         JI("invokevirtual", "java/util/HashMap/get(Ljava/lang/Object;)Ljava/lang/Object;");
-        /* if null: return default (stored as Long in {varfld}_dflt); else unbox Long */
+        /* if null: return default; else unbox (Long or String depending on table type) */
         JI("dup", "");
         J("    ifnonnull %s\n", got_val);
         /* null branch: load {varfld}_dflt (pre-declared by pre-pass if table(x) was used) */
@@ -5056,6 +5096,7 @@ static void ij_emit_subscript(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
                 snprintf(tvfld, sizeof tvfld, "icn_gvar_%s", str_child->val.sval);
             }
             char vdflt[144]; snprintf(vdflt, sizeof vdflt, "%s_dflt", tvfld);
+            int tbl_dflt_is_str = ij_tdflt_is_str(tvfld);
             /* Check if declared in statics (pre-pass registered it) */
             int dflt_declared = 0;
             for (int _di = 0; _di < ij_nstatics; _di++) {
@@ -5063,18 +5104,45 @@ static void ij_emit_subscript(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
             }
             if (dflt_declared) {
                 ij_get_obj_field(vdflt);
-                JI("checkcast", "java/lang/Long");
-                JI("invokevirtual", "java/lang/Long/longValue()J");
+                if (tbl_dflt_is_str) {
+                    JI("checkcast", "java/lang/String");
+                    /* String at γ — leave on stack as reference */
+                } else {
+                    JI("checkcast", "java/lang/Long");
+                    JI("invokevirtual", "java/lang/Long/longValue()J");
+                }
             } else {
-                JI("lconst_0", "");
+                if (tbl_dflt_is_str) {
+                    JI("ldc", """");  /* empty string default */
+                } else {
+                    JI("lconst_0", "");
+                }
             }
         } else {
             JI("lconst_0", "");
         }
         JGoto(ports.γ);
         JL(got_val);
-        JI("checkcast", "java/lang/Long");
-        JI("invokevirtual", "java/lang/Long/longValue()J");
+        /* ts_got branch: value from HashMap.get — cast to correct type */
+        if (str_child && str_child->kind == ICN_VAR) {
+            char tvfld2[128];
+            int slot2 = ij_locals_find(str_child->val.sval);
+            if (slot2 >= 0) {
+                ij_var_field(str_child->val.sval, tvfld2, sizeof tvfld2);
+            } else {
+                snprintf(tvfld2, sizeof tvfld2, "icn_gvar_%s", str_child->val.sval);
+            }
+            if (ij_tdflt_is_str(tvfld2)) {
+                JI("checkcast", "java/lang/String");
+                /* String at γ */
+            } else {
+                JI("checkcast", "java/lang/Long");
+                JI("invokevirtual", "java/lang/Long/longValue()J");
+            }
+        } else {
+            JI("checkcast", "java/lang/Long");
+            JI("invokevirtual", "java/lang/Long/longValue()J");
+        }
         JGoto(ports.γ);
         return;
     }
@@ -5623,6 +5691,16 @@ static void ij_prepass_types(IcnNode *n) {
                     ij_declare_static_list(fld);
             } else if (ij_expr_is_table(rhs)) {
                 ij_declare_static_table(fld);
+                /* Register dflt type so ij_tdflt_is_str works during emission */
+                if (rhs && rhs->kind == ICN_CALL && rhs->nchildren >= 2) {
+                    IcnNode *fn = rhs->children[0];
+                    if (fn && fn->kind == ICN_VAR && strcmp(fn->val.sval, "table") == 0) {
+                        IcnNode *darg = rhs->children[1];
+                        int dflt_is_str = ij_expr_is_string(darg);
+                        char vdflt[144]; snprintf(vdflt, sizeof vdflt, "%s_dflt", fld);
+                        ij_register_tdflt(fld, vdflt, dflt_is_str);
+                    }
+                }
             } else if (ij_expr_is_real(rhs)) {
                 ij_declare_static_dbl(fld);
             }
