@@ -1289,6 +1289,36 @@ static void pj_emit_assertz_helpers(void) {
     JI("areturn", "");
     J(".end method\n\n");
 
+    /* pj_db_retract(String key, int idx) -> Object | null
+     * Removes and returns the entry at index idx from the DB list for key.
+     * Returns null if key not in DB or idx out of bounds. */
+    J("; pj_db_retract(String key, int idx) -> Object | null\n");
+    J(".method static pj_db_retract(Ljava/lang/String;I)Ljava/lang/Object;\n");
+    J("    .limit stack 4\n");
+    J("    .limit locals 3\n");
+    J("    getstatic %s/pj_db Ljava/util/HashMap;\n", pj_classname);
+    JI("aload_0", "");
+    JI("invokevirtual", "java/util/HashMap/get(Ljava/lang/Object;)Ljava/lang/Object;");
+    JI("dup", "");
+    J("    ifnonnull pj_db_retract_have\n");
+    JI("areturn", "");  /* null -> no entries */
+    J("pj_db_retract_have:\n");
+    JI("checkcast", "java/util/ArrayList");
+    JI("astore_2", "");
+    /* bounds check: idx < list.size() */
+    JI("aload_2", "");
+    JI("invokevirtual", "java/util/ArrayList/size()I");
+    JI("iload_1", "");
+    J("    if_icmpgt pj_db_retract_ok\n");
+    JI("aconst_null", "");
+    JI("areturn", "");
+    J("pj_db_retract_ok:\n");
+    JI("aload_2", "");
+    JI("iload_1", "");
+    JI("invokevirtual", "java/util/ArrayList/remove(I)Ljava/lang/Object;");
+    JI("areturn", "");
+    J(".end method\n\n");
+
     /* pj_copy_term_ground(Object) -> Object
      * Deep-copy a ground term (atoms, ints, compounds) for DB storage.
      * Variables are stored as-is (for future retract support). */
@@ -1605,7 +1635,7 @@ static int pj_is_user_call(EXPR_t *goal) {
         "atom_length","atom_concat","atom_chars","atom_codes","char_code",
         "number_chars","number_codes","upcase_atom","downcase_atom",
         "between","findall",
-        "assertz","asserta","abolish",
+        "assertz","asserta","abolish","retract",
         NULL
     };
     for (int i = 0; builtins[i]; i++)
@@ -1870,7 +1900,68 @@ static void pj_emit_goal(EXPR_t *goal, const char *lbl_γ, const char *lbl_ω,
             return;
         }
 
-        /* atom_length(+Atom, ?Length) */
+        /* retract(+Head) — remove first matching fact from dynamic DB, backtrackable.
+         * Strategy: peek with pj_db_query first; unify; only remove on confirmed match.
+         * On unify failure: undo trail, increment idx, loop. Never removes until match. */
+        if (strcmp(fn, "retract") == 0 && nargs == 1) {
+            int uid = pj_fresh_label();
+            int db_idx_local  = (*next_local)++;  /* I — current probe index */
+            int db_term_local = (*next_local)++;  /* Object — peeked term */
+            int trail_lbl     = (*next_local)++;  /* I — trail mark for unify probe */
+            char loop[64], ok[64], unify_fail[64], miss[64];
+            snprintf(loop,       sizeof loop,       "pj_ret%d_loop",  uid);
+            snprintf(ok,         sizeof ok,         "pj_ret%d_ok",    uid);
+            snprintf(unify_fail, sizeof unify_fail, "pj_ret%d_ufail", uid);
+            snprintf(miss,       sizeof miss,       "pj_ret%d_miss",  uid);
+
+            /* initialise locals */
+            JI("iconst_0", ""); J("    istore %d\n", db_idx_local);
+            JI("aconst_null", ""); J("    astore %d\n", db_term_local);
+            JI("iconst_0", ""); J("    istore %d\n", trail_lbl);
+
+            /* --- loop: peek at db_idx_local without removing --- */
+            J("%s:\n", loop);
+            pj_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+            J("    invokestatic %s/pj_db_assert_key(Ljava/lang/Object;)Ljava/lang/String;\n", pj_classname);
+            J("    iload %d\n", db_idx_local);
+            J("    invokestatic %s/pj_db_query(Ljava/lang/String;I)Ljava/lang/Object;\n", pj_classname);
+            JI("dup", "");
+            J("    ifnonnull %s\n", ok);
+            JI("pop", "");
+            J("    goto %s\n", miss);
+
+            J("%s:\n", ok);
+            J("    astore %d\n", db_term_local);
+            J("    invokestatic %s/pj_trail_mark()I\n", pj_classname);
+            J("    istore %d\n", trail_lbl);
+
+            /* probe unify */
+            pj_emit_term(goal->children[0], var_locals, n_vars);
+            J("    aload %d\n", db_term_local);
+            J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+            J("    ifeq %s\n", unify_fail);
+
+            /* unify succeeded: remove from DB at db_idx_local */
+            pj_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+            J("    invokestatic %s/pj_db_assert_key(Ljava/lang/Object;)Ljava/lang/String;\n", pj_classname);
+            J("    iload %d\n", db_idx_local);
+            J("    invokestatic %s/pj_db_retract(Ljava/lang/String;I)Ljava/lang/Object;\n", pj_classname);
+            JI("pop", "");
+            JI("goto", lbl_γ);
+
+            /* unify failed: unwind trail, increment idx, try next */
+            J("%s:\n", unify_fail);
+            J("    iload %d\n", trail_lbl);
+            J("    invokestatic %s/pj_trail_unwind(I)V\n", pj_classname);
+            J("    iinc %d 1\n", db_idx_local);
+            J("    goto %s\n", loop);
+
+            J("%s:\n", miss);
+            J("    goto %s\n", lbl_ω);
+            return;
+        }
         if (strcmp(fn, "atom_length") == 0 && nargs == 2) {
             int uid = pj_fresh_label();
             char ok[64]; snprintf(ok, sizeof ok, "atlen%d_ok", uid);
