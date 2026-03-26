@@ -1,0 +1,5 @@
+procedure main();
+  write(abs(-5));
+  write(abs(3));
+  write(abs(0));
+end

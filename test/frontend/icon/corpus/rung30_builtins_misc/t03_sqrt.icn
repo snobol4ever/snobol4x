@@ -1,0 +1,5 @@
+procedure main();
+  write(sqrt(4.0));
+  write(sqrt(9.0));
+  write(sqrt(2.0));
+end

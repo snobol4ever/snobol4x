@@ -631,6 +631,17 @@ static int ij_expr_is_real(IcnNode *n) {
     if (n->kind == ICN_CALL && n->nchildren >= 1) {
         IcnNode *fn = n->children[0];
         if (fn && fn->kind == ICN_VAR && strcmp(fn->val.sval, "real") == 0) return 1;
+        /* sqrt always returns double */
+        if (fn && fn->kind == ICN_VAR && strcmp(fn->val.sval, "sqrt") == 0) return 1;
+        /* abs/max/min are real if any arg is real */
+        if (fn && fn->kind == ICN_VAR) {
+            const char *fn_name = fn->val.sval;
+            if ((strcmp(fn_name,"abs")==0 || strcmp(fn_name,"max")==0 || strcmp(fn_name,"min")==0)
+                && n->nchildren >= 2) {
+                for (int ci = 1; ci < n->nchildren; ci++)
+                    if (ij_expr_is_real(n->children[ci])) return 1;
+            }
+        }
     }
     /* ICN_TO_BY: real if any of start/end/step is real */
     if (n->kind == ICN_TO_BY && n->nchildren >= 3)
@@ -2553,6 +2564,150 @@ static void ij_emit_call(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
         JGoto(ports.γ);
         return;
     }
+
+    /* === M-IJ-BUILTINS-MISC === */
+
+    /* --- abs(x) --- absolute value; works for integer (long) and real (double) */
+    if (strcmp(fname, "abs") == 0 && nargs >= 1 && !ij_is_user_proc(fname)) {
+        IcnNode *arg = n->children[1];
+        char after[64]; snprintf(after, sizeof after, "icn_%d_abs_after", id);
+        IjPorts ap; strncpy(ap.γ, after, 63); strncpy(ap.ω, ports.ω, 63);
+        char aa[64], ab[64]; ij_emit_expr(arg, ap, aa, ab);
+        JL(a); JGoto(aa);
+        JL(b); JGoto(ab);
+        JL(after);
+        if (ij_expr_is_real(arg)) {
+            JI("invokestatic", "java/lang/Math/abs(D)D");
+        } else {
+            JI("invokestatic", "java/lang/Math/abs(J)J");
+        }
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* --- max(x, y, ...) --- maximum of 2+ args */
+    if (strcmp(fname, "max") == 0 && nargs >= 2 && !ij_is_user_proc(fname)) {
+        int use_real = 0;
+        for (int i = 0; i < nargs; i++) use_real |= ij_expr_is_real(n->children[1+i]);
+        char tmp_fld[64]; snprintf(tmp_fld, sizeof tmp_fld, "icn_%d_max_tmp", id);
+        if (use_real) ij_declare_static_dbl(tmp_fld);
+        else          ij_declare_static(tmp_fld);
+        char (*arg_a)[64] = malloc(nargs * sizeof(*arg_a));
+        char (*arg_b)[64] = malloc(nargs * sizeof(*arg_b));
+        char (*relay)[64] = malloc((nargs+1) * sizeof(*relay));
+        for (int i = 0; i <= nargs; i++) snprintf(relay[i], 64, "icn_%d_max_r%d", id, i);
+        for (int i = 0; i < nargs; i++) {
+            IjPorts pi; strncpy(pi.γ, relay[i+1], 63); strncpy(pi.ω, ports.ω, 63);
+            ij_emit_expr(n->children[1+i], pi, arg_a[i], arg_b[i]);
+        }
+        JL(a); JGoto(arg_a[0]);
+        JL(b); JGoto(arg_b[0]);
+        JL(relay[1]); /* arg0 TOS — store as running max */
+        if (use_real) ij_put_dbl(tmp_fld); else ij_put_long(tmp_fld);
+        for (int i = 1; i < nargs; i++) {
+            JGoto(arg_a[i]);
+            JL(relay[i+1]); /* arg_i TOS; load tmp below it, call Math.max(tmp, arg_i) */
+            if (use_real) { ij_get_dbl(tmp_fld); JI("invokestatic","java/lang/Math/max(DD)D"); ij_put_dbl(tmp_fld); }
+            else          { ij_get_long(tmp_fld); JI("invokestatic","java/lang/Math/max(JJ)J"); ij_put_long(tmp_fld); }
+        }
+        if (use_real) ij_get_dbl(tmp_fld); else ij_get_long(tmp_fld);
+        free(arg_a); free(arg_b); free(relay);
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* --- min(x, y, ...) --- minimum of 2+ args */
+    if (strcmp(fname, "min") == 0 && nargs >= 2 && !ij_is_user_proc(fname)) {
+        int use_real = 0;
+        for (int i = 0; i < nargs; i++) use_real |= ij_expr_is_real(n->children[1+i]);
+        char tmp_fld[64]; snprintf(tmp_fld, sizeof tmp_fld, "icn_%d_min_tmp", id);
+        if (use_real) ij_declare_static_dbl(tmp_fld);
+        else          ij_declare_static(tmp_fld);
+        char (*arg_a)[64] = malloc(nargs * sizeof(*arg_a));
+        char (*arg_b)[64] = malloc(nargs * sizeof(*arg_b));
+        char (*relay)[64] = malloc((nargs+1) * sizeof(*relay));
+        for (int i = 0; i <= nargs; i++) snprintf(relay[i], 64, "icn_%d_min_r%d", id, i);
+        for (int i = 0; i < nargs; i++) {
+            IjPorts pi; strncpy(pi.γ, relay[i+1], 63); strncpy(pi.ω, ports.ω, 63);
+            ij_emit_expr(n->children[1+i], pi, arg_a[i], arg_b[i]);
+        }
+        JL(a); JGoto(arg_a[0]);
+        JL(b); JGoto(arg_b[0]);
+        JL(relay[1]);
+        if (use_real) ij_put_dbl(tmp_fld); else ij_put_long(tmp_fld);
+        for (int i = 1; i < nargs; i++) {
+            JGoto(arg_a[i]);
+            JL(relay[i+1]);
+            if (use_real) { ij_get_dbl(tmp_fld); JI("invokestatic","java/lang/Math/min(DD)D"); ij_put_dbl(tmp_fld); }
+            else          { ij_get_long(tmp_fld); JI("invokestatic","java/lang/Math/min(JJ)J"); ij_put_long(tmp_fld); }
+        }
+        if (use_real) ij_get_dbl(tmp_fld); else ij_get_long(tmp_fld);
+        free(arg_a); free(arg_b); free(relay);
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* --- sqrt(x) --- square root; result is real */
+    if (strcmp(fname, "sqrt") == 0 && nargs >= 1 && !ij_is_user_proc(fname)) {
+        IcnNode *arg = n->children[1];
+        char after[64]; snprintf(after, sizeof after, "icn_%d_sqrt_after", id);
+        IjPorts ap; strncpy(ap.γ, after, 63); strncpy(ap.ω, ports.ω, 63);
+        char aa[64], ab[64]; ij_emit_expr(arg, ap, aa, ab);
+        JL(a); JGoto(aa);
+        JL(b); JGoto(ab);
+        JL(after);
+        if (!ij_expr_is_real(arg)) JI("l2d", "");  /* promote integer to double */
+        JI("invokestatic", "java/lang/Math/sqrt(D)D");
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* --- seq(i [,j]) --- infinite generator: i, i+j, i+2j, ...
+     * α (start): evaluate args, store start+step, push start value → γ
+     * β (resume): cur += step, push cur → γ
+     * seq never fails on its own (infinite); limit operator controls termination */
+    if (strcmp(fname, "seq") == 0 && nargs >= 1 && !ij_is_user_proc(fname)) {
+        IcnNode *startarg = n->children[1];
+        char cur_fld[64];  snprintf(cur_fld,  sizeof cur_fld,  "icn_%d_seq_cur",  id);
+        char step_fld[64]; snprintf(step_fld, sizeof step_fld, "icn_%d_seq_step", id);
+        ij_declare_static(cur_fld);
+        ij_declare_static(step_fld);
+
+        char after_s[64]; snprintf(after_s, sizeof after_s, "icn_%d_seq_as", id);
+        char after_t[64]; snprintf(after_t, sizeof after_t, "icn_%d_seq_at", id);
+        char produce[64]; snprintf(produce, sizeof produce, "icn_%d_seq_prod", id);
+
+        IjPorts sp; strncpy(sp.γ, after_s, 63); strncpy(sp.ω, ports.ω, 63);
+        char sa[64], sb[64]; ij_emit_expr(startarg, sp, sa, sb);
+
+        /* α: evaluate start (and step if present), init cur, produce first value */
+        JL(a); JGoto(sa);
+        JL(b);  /* β: resume — increment cur, produce */
+        ij_get_long(cur_fld);
+        ij_get_long(step_fld);
+        J("    ladd\n");
+        ij_put_long(cur_fld);
+        JGoto(produce);
+
+        JL(after_s);  /* start arg evaluated, long on stack */
+        ij_put_long(cur_fld);
+        if (nargs >= 2) {
+            IjPorts tp; strncpy(tp.γ, after_t, 63); strncpy(tp.ω, ports.ω, 63);
+            char ta[64], tb[64]; ij_emit_expr(n->children[2], tp, ta, tb);
+            JGoto(ta);
+            JL(after_t);
+            ij_put_long(step_fld);
+        } else {
+            J("    lconst_1\n");
+            ij_put_long(step_fld);
+        }
+        JL(produce);
+        ij_get_long(cur_fld);
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* === END M-IJ-BUILTINS-MISC === */
 
     /* === END M-IJ-BUILTINS-TYPE === */
 
