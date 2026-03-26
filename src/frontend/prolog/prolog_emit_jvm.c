@@ -4878,6 +4878,27 @@ static void pj_emit_goal(EXPR_t *goal, const char *lbl_γ, const char *lbl_ω,
         }
     }
 
+    /* E_VART: variable used as goal — dispatch via pj_call_goal at runtime.
+     * This handles catch(Goal,...) and call(Var) where Goal/Var is a variable. */
+    if (goal->kind == E_VART) {
+        int slot = goal->ival;
+        if (slot >= 0 && slot < n_vars) {
+            J("    aload %d\n", var_locals[slot]);
+        } else {
+            /* shouldn't happen — emit atom 'fail' as safe fallback */
+            J("    ldc \"fail\"\n");
+            J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+        }
+        J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+        J("    iconst_0\n");
+        J("    invokestatic %s/pj_call_goal(Ljava/lang/Object;I)I\n", pj_classname);
+        /* pj_call_goal returns -1 on failure, >=0 (next cs) on success */
+        J("    ldc -1\n");
+        J("    if_icmpeq %s\n", lbl_ω);
+        JI("goto", lbl_γ);
+        return;
+    }
+
     /* fallthrough */
     JI("goto", lbl_γ);
 }
@@ -6752,7 +6773,7 @@ static const char pj_plunit_shim_src[] =
     "run_all_suites :- pj_suite(S), run_suite(S), fail.\n"
     "run_all_suites.\n"
     "run_suite(Suite) :-\n"
-    "    format('~n% PL-Unit: ~w~n',[Suite]),\n"
+    "    format('~n% PL-Unit: ~w~n',[Suite]), !,\n"
     "    run_suite_tests(Suite).\n"
     "run_suite_tests(Suite) :-\n"
     "    pj_test(Suite, Name, Opts, Goal),\n"
@@ -6989,24 +7010,70 @@ static void pj_linker_emit_dynamic_stubs(void) {
     pj_linker_emit_db_stub("pj_test",  4);
 }
 
+/* Forward declarations — pj_linker_emit_bridge needs the test array
+ * but the canonical definitions follow below. */
+#ifndef PJ_LINKER_MAX_TESTS
+#define PJ_LINKER_MAX_TESTS 512
+typedef struct {
+    char suite[64]; char name[64]; char bridge[128];
+    int  arity; EXPR_t *opts_expr;
+} PjTestInfo;
+static PjTestInfo pj_linker_tests[PJ_LINKER_MAX_TESTS];
+static int        pj_linker_ntest = 0;
+static char       pj_linker_suites[32][64];
+static int        pj_linker_nsuite = 0;
+#endif
+
 /* -------------------------------------------------------------------------
  * pj_linker_emit_bridge — emit a bridge predicate:
- *   suite_name/0 :- test(name).
+ *   suite_name/0 :- test(name).          [arity==1]
+ *   suite_name/0 :- test(name, opts).    [arity==2]
  * bridge_fn is "suite_name" (safe-name), test_name is the raw atom.
+ * For test/2 the opts term is emitted inline so p_test_2 gets both args.
  * ------------------------------------------------------------------------- */
 static void pj_linker_emit_bridge(const char *bridge_fn, const char *test_name) {
+    /* arity and opts_expr are picked up from the PjTestInfo array by the caller;
+     * we need them here — find the matching entry */
+    int arity = 1;
+    EXPR_t *opts_expr = NULL;
+    for (int i = 0; i < pj_linker_ntest; i++) {
+        if (strcmp(pj_linker_tests[i].bridge, bridge_fn) == 0) {
+            arity     = pj_linker_tests[i].arity;
+            opts_expr = pj_linker_tests[i].opts_expr;
+            break;
+        }
+    }
+
     JC("bridge predicate (M-PJ-LINKER)");
     J(".method static p_%s_0(I)[Ljava/lang/Object;\n", bridge_fn);
-    J("    .limit stack 8\n");
+    J("    .limit stack 16\n");
     J("    .limit locals 4\n");
     /* cs dispatch — single clause, cs==0 only */
     J("    iload 0\n");
     J("    ifne p_%s_0_omega_empty\n", bridge_fn);
-    /* call test(name) — emit as p_test_1(atom(name), 0) */
-    J("    ldc \"%s\"\n", test_name);
-    J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
-    J("    iconst_0\n");
-    J("    invokestatic %s/p_test_1([Ljava/lang/Object;I)[Ljava/lang/Object;\n", pj_classname);
+
+    if (arity == 2) {
+        /* call test(name, opts) — emit as p_test_2(atom(name), opts_term, 0) */
+        J("    ldc \"%s\"\n", test_name);
+        J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+        /* opts: emit term if available, else [] */
+        if (opts_expr) {
+            int *dummy_locals = NULL;
+            pj_emit_term(opts_expr, dummy_locals, 0);
+        } else {
+            J("    ldc \"[]\"\n");
+            J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+        }
+        J("    iconst_0\n");
+        J("    invokestatic %s/p_test_2([Ljava/lang/Object;[Ljava/lang/Object;I)[Ljava/lang/Object;\n", pj_classname);
+    } else {
+        /* call test(name) — emit as p_test_1(atom(name), 0) */
+        J("    ldc \"%s\"\n", test_name);
+        J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+        J("    iconst_0\n");
+        J("    invokestatic %s/p_test_1([Ljava/lang/Object;I)[Ljava/lang/Object;\n", pj_classname);
+    }
+
     /* if null → fail (result on stack) */
     J("    dup\n");
     J("    ifnull p_%s_0_omega_pop\n", bridge_fn);
@@ -7025,21 +7092,8 @@ static void pj_linker_emit_bridge(const char *bridge_fn, const char *test_name) 
 }
 
 /* -------------------------------------------------------------------------
- * Linker test registration info
+ * Linker test registration info (declared earlier as forward decl)
  * ------------------------------------------------------------------------- */
-#define PJ_LINKER_MAX_TESTS 512
-typedef struct {
-    char suite[64];
-    char name[64];
-    char bridge[128];   /* safe name: "suite_name" */
-    int  arity;         /* 1 or 2 */
-    EXPR_t *opts_expr;  /* for test/2: the opts E_CLAUSE head arg[1] */
-} PjTestInfo;
-
-static PjTestInfo pj_linker_tests[PJ_LINKER_MAX_TESTS];
-static int        pj_linker_ntest = 0;
-static char       pj_linker_suites[32][64];
-static int        pj_linker_nsuite = 0;
 
 /* -------------------------------------------------------------------------
  * pj_linker_scan — walk program collecting suite/test info.
@@ -7180,11 +7234,45 @@ static void pj_linker_emit_main_assertz(void) {
             J("    ldc \"%s\"\n", ti->name);
             J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
             J("    aastore\n");
-            /* arg2: Opts — emit as term if available, else [] */
+            /* arg2: Opts — emit as term if available, else []
+             * If opts_expr is a bare goal (not atom, not list), wrap as true(Opts)
+             * so pj_has_true/2 in the shim recognises it correctly. */
             J("    dup\n");
             J("    bipush 4\n");
             if (ti->opts_expr) {
-                pj_emit_term(ti->opts_expr, dummy_locals, 0);
+                EXPR_t *oe = ti->opts_expr;
+                /* Detect bare goal: E_FNC with sval, nchildren > 0,
+                 * and NOT a list head "." or nil "[]",
+                 * and NOT a known opt atom (fail/false/sto/error/throws/true/all/condition) */
+                int is_list_or_nil = (oe->sval && (strcmp(oe->sval,".")==0 || strcmp(oe->sval,"[]")==0));
+                int is_known_atom  = (oe->nchildren == 0 && oe->sval &&
+                    (strcmp(oe->sval,"fail")==0 || strcmp(oe->sval,"false")==0 ||
+                     strcmp(oe->sval,"true")==0));
+                int is_wrapped     = (oe->sval && oe->nchildren == 1 &&
+                    (strcmp(oe->sval,"true")==0 || strcmp(oe->sval,"error")==0 ||
+                     strcmp(oe->sval,"throws")==0 || strcmp(oe->sval,"all")==0 ||
+                     strcmp(oe->sval,"sto")==0 || strcmp(oe->sval,"condition")==0));
+                int bare_goal = (!is_list_or_nil && !is_known_atom && !is_wrapped &&
+                                 oe->nchildren > 0);
+                if (bare_goal) {
+                    /* emit true(Opts) compound — array ["compound","true", opts_term] */
+                    J("    bipush 3\n");
+                    J("    anewarray java/lang/Object\n");
+                    J("    dup\n");
+                    J("    iconst_0\n");
+                    J("    ldc \"compound\"\n");
+                    J("    aastore\n");
+                    J("    dup\n");
+                    J("    iconst_1\n");
+                    J("    ldc \"true\"\n");
+                    J("    aastore\n");
+                    J("    dup\n");
+                    J("    bipush 2\n");
+                    pj_emit_term(oe, dummy_locals, 0);
+                    J("    aastore\n");
+                } else {
+                    pj_emit_term(oe, dummy_locals, 0);
+                }
             } else {
                 /* [] */
                 J("    ldc \"[]\"\n");
@@ -7215,6 +7303,10 @@ static void pj_emit_main(Program *prog) {
     J(".method public static main([Ljava/lang/String;)V\n");
     J("    .limit stack 32\n");
     J("    .limit locals 4\n");
+
+    /* M-PJ-LINKER: assert pj_suite/pj_test facts FIRST — before any directives
+     * (run_tests/:- halt may appear as directives and must find the DB populated) */
+    pj_linker_emit_main_assertz();
 
     /* Bug 2 fix: execute :- assertz/asserta directives before calling main/0.
      * Directives are STMT_t nodes whose subject is NOT E_CHOICE. */
@@ -7264,9 +7356,6 @@ static void pj_emit_main(Program *prog) {
             J("    pop\n");
         }
     }
-
-    /* M-PJ-LINKER: assert pj_suite/pj_test facts after user directives */
-    pj_linker_emit_main_assertz();
 
     /* Call p_main_0(0) once. The internal fail-loop inside main/0 drives
      * all backtracking via call_sfail→call_α. No outer retry needed. */
