@@ -4,17 +4,22 @@
 # Usage:
 #   bash demo/scrip/run_demo.sh DEMO_DIR [EXPECTED_FILE]
 #
-# DEMO_DIR      path to a demoN/ directory containing *.scrip + *.expected
+# DEMO_DIR      path to a demoN/ directory containing *.md + *.expected
 # EXPECTED_FILE optional override (default: DEMO_DIR/*.expected)
 #
 # Exit codes:
 #   0  all available backends PASS (missing backends are SKIP, not FAIL)
 #   1  at least one backend FAIL
 #
-# Environment overrides:
+# Environment overrides (reference interpreters):
 #   SNOBOL4   path to csnobol4 binary  (default: snobol4)
 #   SWIPL     path to swipl binary     (default: swipl)
 #   ICONT     path to icont binary     (default: icont)
+#
+# Environment overrides (snobol4ever JVM frontends):
+#   SNO2C         path to sno2c binary       (default: auto-detect)
+#   ICON_DRIVER   path to icon_driver binary  (default: auto-detect)
+#   JASMIN        path to jasmin.jar          (default: auto-detect)
 #
 set -euo pipefail
 
@@ -57,7 +62,7 @@ echo "════════════════════════�
 echo "  SCRIP demo: $DEMO_NAME  ($(basename "$SCRIP_FILE"))"
 echo "═══════════════════════════════════════════════"
 
-# ── Split .scrip into per-language files ──────────────────────────────────────
+# ── Split .md into per-language files ─────────────────────────────────────────
 TMP="$(mktemp -d /tmp/scrip_demo_XXXXXX)"
 trap 'rm -rf "$TMP"' EXIT
 
@@ -68,7 +73,60 @@ cat "$TMP/manifest.txt" | while read lang cls file; do
     echo "  $lang  →  $(basename $file)"
 done
 
-# ── Backend runners ───────────────────────────────────────────────────────────
+# ── Auto-detect snobol4ever tools ─────────────────────────────────────────────
+SNO2C="${SNO2C:-}"
+if [ -z "$SNO2C" ]; then
+    if [ -x "$SNOBOL4X/sno2c" ]; then SNO2C="$SNOBOL4X/sno2c"
+    elif command -v sno2c &>/dev/null; then SNO2C="sno2c"; fi
+fi
+
+ICON_DRIVER="${ICON_DRIVER:-}"
+if [ -z "$ICON_DRIVER" ]; then
+    if [ -x "/tmp/icon_driver_jvm" ]; then ICON_DRIVER="/tmp/icon_driver_jvm"
+    elif command -v icon_driver &>/dev/null; then ICON_DRIVER="icon_driver"; fi
+fi
+
+JASMIN="${JASMIN:-}"
+if [ -z "$JASMIN" ]; then
+    if [ -f "$SNOBOL4X/src/backend/jvm/jasmin.jar" ]; then
+        JASMIN="$SNOBOL4X/src/backend/jvm/jasmin.jar"
+    fi
+fi
+
+# ── Icon semicolon converter ───────────────────────────────────────────────────
+# The snobol4x icon_driver uses explicit-semicolon Icon dialect.
+# This function adds ';' after procedure headers and statements.
+icon_add_semis() {
+    python3 - "$1" << 'PYEOF'
+import re, sys
+
+def needs_semi(line):
+    s = line.rstrip()
+    if not s or s.lstrip().startswith('#'):
+        return False
+    if s.rstrip().endswith((';', '{', '}')):
+        return False
+    if re.match(r'^\s*end\s*$', s.rstrip()):
+        return False
+    return True
+
+lines = open(sys.argv[1]).read().split('\n')
+out = []
+for line in lines:
+    s = line.rstrip()
+    m = re.match(r'^(\s*procedure\s+\w+\s*\([^)]*\))\s*$', s)
+    if m:
+        out.append(m.group(1) + ';')
+        continue
+    if needs_semi(s):
+        out.append(s + ';')
+    else:
+        out.append(s)
+print('\n'.join(out), end='')
+PYEOF
+}
+
+# ── Reference interpreter runners ─────────────────────────────────────────────
 SNOBOL4="${SNOBOL4:-snobol4}"
 SWIPL="${SWIPL:-swipl}"
 ICONT="${ICONT:-icont}"
@@ -83,7 +141,7 @@ run_backend() {
     local actual="$TMP/${name}.out"
 
     if [ ! -f "$outfile" ]; then
-        skip "$name  (no source block in .scrip)"
+        skip "$name  (no source block in .md)"
         SKIP_COUNT=$((SKIP_COUNT+1))
         return
     fi
@@ -94,7 +152,6 @@ run_backend() {
         return
     fi
 
-    # Run backend
     case "$name" in
         SNOBOL4)
             "$SNOBOL4" "$outfile" > "$actual" 2>/dev/null
@@ -120,11 +177,106 @@ run_backend() {
     fi
 }
 
+# ── snobol4ever JVM runner ─────────────────────────────────────────────────────
+run_jvm_backend() {
+    local label="$1"    # display name, e.g. "SNO2C-JVM"
+    local src="$2"      # source file to compile
+
+    local actual="$TMP/${label}.out"
+    local jfile="$TMP/${label}.j"
+    local classdir="$TMP/${label}_classes"
+
+    if [ ! -f "$src" ]; then
+        skip "$label  (no source block in .md)"
+        SKIP_COUNT=$((SKIP_COUNT+1))
+        return
+    fi
+
+    if [ -z "$JASMIN" ] || [ ! -f "$JASMIN" ]; then
+        skip "$label  (jasmin.jar not found)"
+        SKIP_COUNT=$((SKIP_COUNT+1))
+        return
+    fi
+
+    # Compile to Jasmin .j
+    case "$label" in
+        SNO2C-JVM)
+            if [ -z "$SNO2C" ]; then
+                skip "$label  (sno2c not found)"
+                SKIP_COUNT=$((SKIP_COUNT+1))
+                return
+            fi
+            "$SNO2C" -jvm "$src" -o "$jfile" 2>/dev/null || true
+            ;;
+        ICON-JVM)
+            if [ -z "$ICON_DRIVER" ]; then
+                skip "$label  (icon_driver not found)"
+                SKIP_COUNT=$((SKIP_COUNT+1))
+                return
+            fi
+            local semi_src="$TMP/icon_demo.icn"
+            icon_add_semis "$src" > "$semi_src"
+            "$ICON_DRIVER" -jvm "$semi_src" -o "$jfile" 2>/dev/null || true
+            ;;
+        PROLOG-JVM)
+            if [ -z "$SNO2C" ]; then
+                skip "$label  (sno2c not found)"
+                SKIP_COUNT=$((SKIP_COUNT+1))
+                return
+            fi
+            "$SNO2C" -pl -jvm "$src" -o "$jfile" 2>/dev/null || true
+            ;;
+    esac
+
+    if [ ! -f "$jfile" ]; then
+        fail "$label  (compiler produced no output)"
+        FAIL_COUNT=$((FAIL_COUNT+1))
+        return
+    fi
+
+    # Extract actual classname from .j file
+    classname="$(grep '^\.class' "$jfile" | head -1 | awk '{print $NF}')"
+    if [ -z "$classname" ]; then
+        fail "$label  (cannot determine class name from .j)"
+        FAIL_COUNT=$((FAIL_COUNT+1))
+        return
+    fi
+
+    # Assemble with Jasmin
+    mkdir -p "$classdir"
+    java -jar "$JASMIN" "$jfile" -d "$classdir" > /dev/null 2>&1 || true
+    if [ ! -f "$classdir/${classname}.class" ]; then
+        fail "$label  (jasmin assembly failed)"
+        FAIL_COUNT=$((FAIL_COUNT+1))
+        return
+    fi
+
+    # Run
+    java -cp "$classdir" "$classname" > "$actual" 2>/dev/null || true
+
+    if diff -q "$EXPECTED" "$actual" > /dev/null 2>&1; then
+        pass "$label"
+        PASS_COUNT=$((PASS_COUNT+1))
+    else
+        fail "$label"
+        echo "    expected: $(cat $EXPECTED)"
+        echo "    actual:   $(cat $actual 2>/dev/null || echo '<no output>')"
+        FAIL_COUNT=$((FAIL_COUNT+1))
+    fi
+}
+
+# ── Run all backends ───────────────────────────────────────────────────────────
 echo ""
-echo "Backends:"
+echo "Reference interpreters:"
 run_backend SNOBOL4 "$TMP/snobol4.sno"
 run_backend SWIPL   "$TMP/prolog.pro"
 run_backend ICONT   "$TMP/icon.icn"
+
+echo ""
+echo "snobol4ever JVM frontends:"
+run_jvm_backend SNO2C-JVM   "$TMP/snobol4.sno"
+run_jvm_backend ICON-JVM    "$TMP/icon.icn"
+run_jvm_backend PROLOG-JVM  "$TMP/prolog.pro"
 
 echo ""
 echo "───────────────────────────────────────────────"
