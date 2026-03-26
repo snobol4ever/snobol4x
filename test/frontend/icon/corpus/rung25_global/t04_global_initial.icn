@@ -1,0 +1,13 @@
+global total;
+
+procedure add(n);
+  initial total := 0;
+  total := total + n;
+end
+
+procedure main();
+  add(5);
+  add(3);
+  add(2);
+  write(total);
+end

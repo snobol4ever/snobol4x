@@ -1,0 +1,11 @@
+procedure counter();
+  local n;
+  initial n := 0;
+  n := n + 1;
+  write(n);
+end
+
+procedure main();
+  counter();
+  counter();
+end

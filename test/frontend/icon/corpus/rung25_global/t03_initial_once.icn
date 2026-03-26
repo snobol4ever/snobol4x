@@ -1,0 +1,12 @@
+procedure count();
+  local x;
+  initial x := 10;
+  x := x + 1;
+  write(x);
+end
+
+procedure main();
+  count();
+  count();
+  count();
+end

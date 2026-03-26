@@ -1,0 +1,13 @@
+global counter;
+
+procedure inc();
+  counter := counter + 1;
+end
+
+procedure main();
+  counter := 0;
+  inc();
+  inc();
+  inc();
+  write(counter);
+end

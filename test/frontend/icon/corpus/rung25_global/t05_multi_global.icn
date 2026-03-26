@@ -1,0 +1,11 @@
+global x, y;
+
+procedure setvals();
+  x := 7;
+  y := 3;
+end
+
+procedure main();
+  setvals();
+  write(x + y);
+end

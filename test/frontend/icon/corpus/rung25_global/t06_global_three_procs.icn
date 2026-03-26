@@ -1,0 +1,15 @@
+global accum;
+
+procedure reset();
+  accum := 0;
+end
+
+procedure bump();
+  accum := accum + 1;
+end
+
+procedure main();
+  reset();
+  bump(); bump(); bump(); bump(); bump();
+  write(accum);
+end
