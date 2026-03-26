@@ -2690,6 +2690,65 @@ static void pj_emit_assertz_helpers(void) {
     J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
     J("    ireturn\n");
     J(".end method\n\n");
+
+    /* pj_alc_sep(Object list, String sep) -> String
+     * Walk a Prolog list of atoms/numbers, concat with separator string.
+     * locals: 0=list(Object) 1=sep(String) 2=sb(StringBuilder) 3=cur(Object) 4=first(I) */
+    J("; pj_alc_sep(Object list, String sep) -> String\n");
+    J(".method static pj_alc_sep(Ljava/lang/Object;Ljava/lang/String;)Ljava/lang/String;\n");
+    J("    .limit stack 6\n");
+    J("    .limit locals 5\n");
+    J("    new java/lang/StringBuilder\n");
+    J("    dup\n");
+    J("    invokespecial java/lang/StringBuilder/<init>()V\n");
+    J("    astore_2\n");
+    J("    iconst_1\n");  /* first = 1 */
+    J("    istore 4\n");
+    J("    aload_0\n");
+    J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+    J("    astore_3\n");
+    J("alcs_loop:\n");
+    J("    aload_3\n");
+    J("    checkcast [Ljava/lang/Object;\n");
+    J("    iconst_1\n");
+    J("    aaload\n");  /* tag/name field */
+    J("    ldc \"[]\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ifne alcs_done\n");
+    /* not first: append separator */
+    J("    iload 4\n");
+    J("    ifne alcs_skip_sep\n");
+    J("    aload_2\n");
+    J("    aload_1\n");
+    J("    invokevirtual java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;\n");
+    J("    pop\n");
+    J("alcs_skip_sep:\n");
+    J("    iconst_0\n");
+    J("    istore 4\n");
+    /* head = field[2] */
+    J("    aload_3\n");
+    J("    checkcast [Ljava/lang/Object;\n");
+    J("    iconst_2\n");
+    J("    aaload\n");
+    J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+    J("    invokestatic %s/pj_atom_name(Ljava/lang/Object;)Ljava/lang/String;\n", pj_classname);
+    J("    aload_2\n");
+    J("    swap\n");
+    J("    invokevirtual java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;\n");
+    J("    pop\n");
+    /* tail = field[3] */
+    J("    aload_3\n");
+    J("    checkcast [Ljava/lang/Object;\n");
+    J("    bipush 3\n");
+    J("    aaload\n");
+    J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+    J("    astore_3\n");
+    J("    goto alcs_loop\n");
+    J("alcs_done:\n");
+    J("    aload_2\n");
+    J("    invokevirtual java/lang/StringBuilder/toString()Ljava/lang/String;\n");
+    J("    areturn\n");
+    J(".end method\n\n");
 }
 
 /* -------------------------------------------------------------------------
@@ -3042,6 +3101,9 @@ static int pj_is_user_call(EXPR_t *goal) {
         "atom_string","number_string",
         "string_concat","string_length","string_lower","string_upper",
         "term_to_atom","term_string",
+        "copy_term",
+        "string_to_atom","concat_atom",
+        "atomic_list_concat",
         NULL
     };
     for (int i = 0; builtins[i]; i++)
@@ -3706,6 +3768,68 @@ static void pj_emit_goal(EXPR_t *goal, const char *lbl_γ, const char *lbl_ω,
             pj_emit_term(goal->children[0], var_locals, n_vars);
             pj_emit_term(goal->children[1], var_locals, n_vars);
             J("    invokestatic %s/pj_term_to_atom_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* copy_term(+Original, ?Copy) — deep copy with fresh variables */
+        if (strcmp(fn, "copy_term") == 0 && nargs == 2) {
+            pj_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pj_copy_term(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+            pj_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* string_to_atom(?Str, ?Atom) — bidirectional alias for atom_string */
+        if (strcmp(fn, "string_to_atom") == 0 && nargs == 2) {
+            pj_emit_term(goal->children[0], var_locals, n_vars);
+            pj_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pj_atom_string_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* atomic_list_concat(+List, ?Atom) — concat list with no separator */
+        if (strcmp(fn, "atomic_list_concat") == 0 && nargs == 2) {
+            pj_emit_term(goal->children[0], var_locals, n_vars);
+            J("    ldc \"\"\n");
+            J("    invokestatic %s/pj_alc_sep(Ljava/lang/Object;Ljava/lang/String;)Ljava/lang/String;\n", pj_classname);
+            J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+            pj_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* atomic_list_concat(+List, +Sep, ?Atom) — concat with separator */
+        if (strcmp(fn, "atomic_list_concat") == 0 && nargs == 3) {
+            pj_emit_term(goal->children[0], var_locals, n_vars);
+            pj_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+            J("    invokestatic %s/pj_atom_name(Ljava/lang/Object;)Ljava/lang/String;\n", pj_classname);
+            J("    invokestatic %s/pj_alc_sep(Ljava/lang/Object;Ljava/lang/String;)Ljava/lang/String;\n", pj_classname);
+            J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+            pj_emit_term(goal->children[2], var_locals, n_vars);
+            J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* concat_atom(+List, ?Atom) — SWI alias for atomic_list_concat/2 */
+        if (strcmp(fn, "concat_atom") == 0 && nargs == 2) {
+            pj_emit_term(goal->children[0], var_locals, n_vars);
+            J("    ldc \"\"\n");
+            J("    invokestatic %s/pj_alc_sep(Ljava/lang/Object;Ljava/lang/String;)Ljava/lang/String;\n", pj_classname);
+            J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+            pj_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
             J("    ifeq %s\n", lbl_ω);
             JI("goto", lbl_γ);
             return;
