@@ -1,0 +1,6 @@
+procedure main();
+  every x := 1 to 3 do {
+    y := x * 2;
+    write(y);
+  };
+end

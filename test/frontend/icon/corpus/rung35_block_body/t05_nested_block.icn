@@ -1,0 +1,7 @@
+procedure main();
+  total := 0;
+  every x := 1 to 3 do {
+    total +:= x;
+  };
+  write(total);
+end

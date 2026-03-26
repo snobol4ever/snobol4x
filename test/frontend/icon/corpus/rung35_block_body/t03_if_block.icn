@@ -1,0 +1,7 @@
+procedure main();
+  x := 5;
+  if x > 3 then {
+    write("big");
+    write(x);
+  };
+end

@@ -543,8 +543,31 @@ static IcnNode *parse_expr(IcnParser *p) {
  * Statement parsing
  * ======================================================================= */
 
+/* parse_block_or_expr — body of do/then/else/repeat.
+ * If next token is '{', consume { stmt; stmt; ... } as ICN_SEQ_EXPR.
+ * Otherwise fall back to a single parse_expr. */
+static IcnNode *parse_block_or_expr(IcnParser *p) {
+    if (!check(p, TK_LBRACE)) return parse_expr(p);
+    int line = p->cur.line;
+    advance(p); /* consume { */
+    IcnNode **children = malloc(8 * sizeof(IcnNode*));
+    int cap = 8, nc = 0;
+    while (!check(p, TK_RBRACE) && !check(p, TK_EOF)) {
+        IcnNode *s = parse_stmt(p);
+        if (!s) break;
+        if (nc >= cap) { cap *= 2; children = realloc(children, cap * sizeof(IcnNode*)); }
+        children[nc++] = s;
+    }
+    expect(p, TK_RBRACE, "compound block");
+    if (nc == 1) { IcnNode *only = children[0]; free(children); return only; }
+    IcnNode *seq = calloc(1, sizeof(IcnNode));
+    seq->kind = ICN_SEQ_EXPR; seq->line = line;
+    seq->nchildren = nc; seq->children = children;
+    return seq;
+}
+
 static IcnNode *parse_do_clause(IcnParser *p) {
-    if (check(p, TK_DO)) { advance(p); return parse_expr(p); }
+    if (check(p, TK_DO)) { advance(p); return parse_block_or_expr(p); }
     return NULL;
 }
 
@@ -563,9 +586,9 @@ static IcnNode *parse_stmt(IcnParser *p) {
         advance(p);
         IcnNode *cond = parse_expr(p);
         expect(p, TK_THEN, "if/then");
-        IcnNode *thenb = parse_expr(p);
+        IcnNode *thenb = parse_block_or_expr(p);
         IcnNode *elseb = NULL;
-        if (match(p, TK_ELSE)) elseb = parse_expr(p);
+        if (match(p, TK_ELSE)) elseb = parse_block_or_expr(p);
         expect(p, TK_SEMICOL, "if statement");
         if (elseb) return icn_node_new(ICN_IF, line, 3, cond, thenb, elseb);
         return icn_node_new(ICN_IF, line, 2, cond, thenb);
@@ -588,7 +611,7 @@ static IcnNode *parse_stmt(IcnParser *p) {
     }
     if (check(p, TK_REPEAT)) {
         advance(p);
-        IcnNode *body = parse_expr(p);
+        IcnNode *body = parse_block_or_expr(p);
         expect(p, TK_SEMICOL, "repeat statement");
         return icn_node_new(ICN_REPEAT, line, 1, body);
     }

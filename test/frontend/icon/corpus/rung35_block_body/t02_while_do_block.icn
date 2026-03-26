@@ -1,0 +1,7 @@
+procedure main();
+  i := 1;
+  while i <= 3 do {
+    write(i);
+    i +:= 1;
+  };
+end

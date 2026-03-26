@@ -1354,14 +1354,28 @@ static void ij_emit_if(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
     char cond_then[64]; snprintf(cond_then, sizeof cond_then, "icn_%d_then", id);
     char cond_else[64]; snprintf(cond_else, sizeof cond_else, "icn_%d_else", id);
 
+    int then_is_str = thenb ? ij_expr_is_string(thenb) : 0;
+    int else_is_str = elseb ? ij_expr_is_string(elseb) : 0;
+
+    /* If both branches produce the same width, route them directly to ports.γ.
+     * If widths differ, drain each independently and push lconst_0 at join. */
+    int mixed = thenb && elseb && (then_is_str != else_is_str);
+    char then_drain[64]; snprintf(then_drain, sizeof then_drain, "icn_%d_tdrain", id);
+    char else_drain[64]; snprintf(else_drain, sizeof else_drain, "icn_%d_edrain", id);
+    char join[64];       snprintf(join,       sizeof join,       "icn_%d_join",   id);
+
     char then_a[64]="", then_b[64]="", else_a[64]="";
     if (thenb) {
-        IjPorts tp; strncpy(tp.γ,ports.γ,63); strncpy(tp.ω,ports.ω,63);
+        IjPorts tp;
+        strncpy(tp.γ, mixed ? then_drain : ports.γ, 63);
+        strncpy(tp.ω, ports.ω, 63);
         ij_emit_expr(thenb, tp, then_a, then_b);
-    } else { strncpy(then_a,ports.γ,63); }
+    } else { strncpy(then_a, ports.γ, 63); }
 
     if (elseb) {
-        IjPorts ep; strncpy(ep.γ,ports.γ,63); strncpy(ep.ω,ports.ω,63);
+        IjPorts ep;
+        strncpy(ep.γ, mixed ? else_drain : ports.γ, 63);
+        strncpy(ep.ω, ports.ω, 63);
         char ea[64], eb[64];
         ij_emit_expr(elseb, ep, ea, eb);
         strncpy(else_a, ea, 63);
@@ -1371,15 +1385,22 @@ static void ij_emit_if(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
     char ca[64], cb[64];
     ij_emit_expr(cond, cp, ca, cb);
 
-    /* cond_then: condition succeeded — value on stack, discard it.
-     * Use pop for String (1 slot), pop2 for long/double (2 slots). */
     JL(cond_then);
-    if (ij_expr_is_string(cond)) JI("pop","");
-    else                         JI("pop2","");
+    if (ij_expr_is_string(cond)) JI("pop",""); else JI("pop2","");
     JGoto(thenb ? then_a : ports.γ);
 
     JL(cond_else);
     JGoto(else_a);
+
+    if (mixed) {
+        JL(then_drain);
+        if (then_is_str) JI("pop",""); else JI("pop2","");
+        JGoto(join);
+        JL(else_drain);
+        if (else_is_str) JI("pop",""); else JI("pop2","");
+        JGoto(join);
+        JL(join); JI("lconst_0",""); JGoto(ports.γ);
+    }
 
     JL(a); JGoto(ca);
     JL(b); JGoto(cb);
@@ -3549,7 +3570,8 @@ static void ij_emit_to(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
 static void ij_emit_every(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
     int id = ij_new_id(); char a[64], b[64];
     lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
-    char gbfwd[64]; snprintf(gbfwd, sizeof gbfwd, "icn_%d_genb", id);
+    /* pump_gen: arrived with NO value on stack — kick generator beta for next value */
+    char pump_gen[64]; snprintf(pump_gen, sizeof pump_gen, "icn_%d_pump", id);
     strncpy(oα,a,63); strncpy(oβ,b,63);
 
     IcnNode *gen  = n->children[0];
@@ -3557,22 +3579,35 @@ static void ij_emit_every(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
     char ga[64], gb[64];
 
     if (body) {
-        /* bstart: generator yielded a value — drain it, then run body */
-        char bstart[64]; snprintf(bstart, sizeof bstart, "icn_%d_body", id);
-        IjPorts bp; strncpy(bp.γ,gbfwd,63); strncpy(bp.ω,gbfwd,63);
+        /* gen_drain: generator yielded a value — pop it, then run body */
+        char gen_drain[64]; snprintf(gen_drain, sizeof gen_drain, "icn_%d_gdrain", id);
+        char body_drain[64];snprintf(body_drain,sizeof body_drain,"icn_%d_bdrain", id);
+        /* body.γ → drain body result, then pump gen again (no value on stack).
+         * body.ω → pump_gen (body failed/next: no value on stack, pump gen). */
+        IjPorts bp;
+        strncpy(bp.γ, body_drain, 63);
+        strncpy(bp.ω, pump_gen,   63);
         char ba[64], bb[64];
-        ij_loop_push(ports.ω, ga);   /* break→exit every, next→pump generator */
+        ij_loop_push(ports.ω, pump_gen);  /* break→exit every, next→pump_gen */
         ij_emit_expr(body, bp, ba, bb);
         ij_loop_pop();
-        IjPorts gp; strncpy(gp.γ,bstart,63); strncpy(gp.ω,ports.ω,63);
+        IjPorts gp; strncpy(gp.γ, gen_drain, 63); strncpy(gp.ω, ports.ω, 63);
         ij_emit_expr(gen, gp, ga, gb);
-        JL(bstart); JI(ij_expr_is_string(gen) ? "pop" : "pop2",""); JGoto(ba);
+        /* gen_drain: pop generator value, start body */
+        JL(gen_drain); JI(ij_expr_is_string(gen) ? "pop" : "pop2",""); JGoto(ba);
+        /* body_drain: pop body result (success), then pump gen */
+        JL(body_drain);
+        if (ij_expr_is_string(body)) { JI("pop",""); } else { JI("pop2",""); }
+        /* fall through to pump_gen */
     } else {
-        IjPorts gp; strncpy(gp.γ,gbfwd,63); strncpy(gp.ω,ports.ω,63);
+        /* no body: generator success → drain gen value → pump */
+        char gen_drain[64]; snprintf(gen_drain, sizeof gen_drain, "icn_%d_gdrain", id);
+        IjPorts gp; strncpy(gp.γ, gen_drain, 63); strncpy(gp.ω, ports.ω, 63);
         ij_emit_expr(gen, gp, ga, gb);
+        JL(gen_drain); JI(ij_expr_is_string(gen) ? "pop" : "pop2",""); /* fall through */
     }
-    /* gbfwd: generator yielded — drain value, kick beta to get next */
-    JL(gbfwd); JI(ij_expr_is_string(gen) ? "pop" : "pop2",""); JGoto(gb);
+    /* pump_gen: NO value on stack — kick generator beta to produce next value */
+    JL(pump_gen); JGoto(gb);
     JL(a); JGoto(ga);
     JL(b); JGoto(ports.ω);
 }
@@ -3762,7 +3797,16 @@ static int ij_expr_is_string(IcnNode *n) {
             return 0;
         }
         case ICN_IF: {
-            /* if/then/else: result type = then-branch type (conservative: check then) */
+            /* if/then/else: result type = then-branch type, BUT only if it matches
+             * the else-branch type (or there is no else). When branches differ in
+             * width (mixed: one String, one long), ij_emit_if drains both and pushes
+             * lconst_0 — so the result is a long (not a String). */
+            if (n->nchildren >= 3) {
+                int ts = ij_expr_is_string(n->children[1]);
+                int es = ij_expr_is_string(n->children[2]);
+                if (ts != es) return 0;  /* mixed: join pushes lconst_0 (long) */
+                return ts;
+            }
             if (n->nchildren >= 2) return ij_expr_is_string(n->children[1]);
             return 0;
         }
