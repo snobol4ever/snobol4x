@@ -1155,7 +1155,10 @@ static void pj_emit_assertz_helpers(void) {
 
     /* pj_db_assert_key(Object term) -> String
      * Returns "functor/arity" key for the term.
-     * atom → "atom/0", compound Object[] → "{sval}/{nargs}" */
+     * Term encoding: arr[0]=tag, arr[1]=name, arr[2..]=args
+     * atom  → arr[0]="atom",     arr[1]=name  → key = "name/0"
+     * compound → arr[0]="compound", arr[1]=functor, arr[2..n+1]=args → key = "functor/(n)"
+     */
     J("; pj_db_assert_key(Object) -> String\n");
     J(".method static pj_db_assert_key(Ljava/lang/Object;)Ljava/lang/String;\n");
     J("    .limit stack 6\n");
@@ -1165,17 +1168,17 @@ static void pj_emit_assertz_helpers(void) {
     JI("dup", "");
     J("    instanceof [Ljava/lang/Object;\n");
     J("    ifeq pj_db_key_atom\n");
-    /* compound: arr[0] = functor string */
+    /* compound: arr[0]=tag, arr[1]=functor, arr[2..]=args */
     JI("checkcast", "[Ljava/lang/Object;");
-    JI("iconst_0", "");
-    JI("aaload", "");  /* arr[0] = functor */
+    JI("iconst_1", "");
+    JI("aaload", "");  /* arr[1] = functor string */
     JI("checkcast", "java/lang/String");
     JI("astore_1", "");
-    /* arr.length - 1 = arity */
+    /* arity = arr.length - 2 */
     JI("aload_0", "");
     JI("checkcast", "[Ljava/lang/Object;");
     JI("arraylength", "");
-    JI("iconst_1", "");
+    JI("iconst_2", "");
     JI("isub", "");
     JI("istore_2", "");
     /* build "functor/arity" */
@@ -1214,38 +1217,29 @@ static void pj_emit_assertz_helpers(void) {
     J("    .limit stack 6\n");
     J("    .limit locals 4\n");
     /* local 0=key, 1=term, 2=prepend, 3=list */
-    /* get or create list */
+    /* get or create list — store to local 3 on BOTH paths, join with empty stack */
     J("    getstatic %s/pj_db Ljava/util/HashMap;\n", pj_classname);
     JI("aload_0", "");
     JI("invokevirtual", "java/util/HashMap/get(Ljava/lang/Object;)Ljava/lang/Object;");
     JI("dup", "");
     J("    ifnonnull pj_db_assert_have_list\n");
+    /* null path: create new ArrayList, store to local 3, put in map */
     JI("pop", "");
     JI("new", "java/util/ArrayList");
     JI("dup", "");
     JI("invokespecial", "java/util/ArrayList/<init>()V");
-    /* put new list in map */
-    J("    getstatic %s/pj_db Ljava/util/HashMap;\n", pj_classname);
-    JI("aload_0", "");
-    /* stack: new_list, map, key */
-    /* need: map.put(key, list); keep list on stack */
-    /* use dup strategy */
-    JI("dup_x2", "");  /* list, map, key, list -> list on top after dup_x2 -> nope, do it differently */
-    /* reset: just store list, then re-get */
-    /* stack here: new_list (TOS), map, key — dup_x2 inserts copy below map,key */
-    /* Actually simpler: store list, then get map + key + list, put */
-    J("    astore_3\n");  /* store new list */
+    J("    astore_3\n");          /* store new list; stack now empty */
     J("    getstatic %s/pj_db Ljava/util/HashMap;\n", pj_classname);
     JI("aload_0", "");
     JI("aload_3", "");
     JI("invokevirtual", "java/util/HashMap/put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
-    JI("pop", "");
-    JI("aload_3", "");
-    J("    goto pj_db_assert_have_list\n");
+    JI("pop", "");                /* discard old value (null); stack empty */
+    J("    goto pj_db_assert_join\n");
+    /* non-null path: cast and store to local 3 */
     J("pj_db_assert_have_list:\n");
-    /* stack: list (ArrayList) */
     JI("checkcast", "java/util/ArrayList");
-    JI("astore_3", "");
+    J("    astore_3\n");          /* stack now empty */
+    J("pj_db_assert_join:\n");   /* stack empty, local 3 = list */
     /* deep-copy the term for storage */
     JI("aload_1", "");
     J("    invokestatic %s/pj_copy_term_ground(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
@@ -3850,7 +3844,7 @@ static void pj_emit_choice(EXPR_t *choice) {
             for (int ai = 0; ai < arity; ai++) {
                 J("    aload %d\n", ai);  /* incoming arg */
                 J("    aload %d\n", db_term_local);
-                J("    ldc %d\n", ai + 1);
+                J("    ldc %d\n", ai + 2);
                 JI("aaload", ""); /* term->args[ai] */
                 J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
                 J("    ifeq %s\n", unify_fail);
@@ -4088,7 +4082,7 @@ void prolog_emit_jvm(Program *prog, FILE *out, const char *filename) {
                 for (int ai = 0; ai < dyn_arity; ai++) {
                     J("    aload %d\n", ai);
                     J("    aload %d\n", trm_loc);
-                    J("    ldc %d\n", ai + 1);
+                    J("    ldc %d\n", ai + 2);
                     JI("aaload", "");
                     J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
                     J("    ifeq %s\n", sb_fail);
