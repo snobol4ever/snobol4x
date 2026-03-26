@@ -95,6 +95,8 @@ const char *icn_kind_name(IcnKind kind) {
         case ICN_SIZE:     return "SIZE";
         case ICN_LIMIT:    return "LIMIT";
         case ICN_NOT:      return "NOT";
+        case ICN_NONNULL:  return "NONNULL";
+        case ICN_NULL:     return "NULL";
         case ICN_SEQ_EXPR: return "SEQ_EXPR";
         case ICN_EVERY:    return "EVERY";
         case ICN_WHILE:    return "WHILE";

@@ -284,7 +284,12 @@ static IcnNode *parse_unary(IcnParser *p) {
     if (check(p, TK_BACKSLASH)) {
         advance(p);
         IcnNode *inner = parse_unary(p);
-        return icn_node_new(ICN_NOT, line, 1, inner); /* \E = succeed if E fails */
+        return icn_node_new(ICN_NONNULL, line, 1, inner); /* \E = succeed if E succeeds */
+    }
+    if (check(p, TK_SLASH)) {
+        advance(p);
+        IcnNode *inner = parse_unary(p);
+        return icn_node_new(ICN_NULL, line, 1, inner); /* /E = succeed if E fails, yield &null */
     }
     if (check(p, TK_NOT)) {
         advance(p);

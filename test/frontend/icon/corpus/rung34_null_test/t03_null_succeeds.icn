@@ -1,0 +1,4 @@
+procedure main();
+  x := /(1 > 2);
+  write("ok");
+end

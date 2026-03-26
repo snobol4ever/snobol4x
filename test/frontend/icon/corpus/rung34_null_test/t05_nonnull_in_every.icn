@@ -1,0 +1,3 @@
+procedure main();
+  every write(\(1 to 3));
+end

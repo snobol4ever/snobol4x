@@ -73,7 +73,9 @@ typedef enum {
     ICN_BANG,      /* !E  (generate list/string elements) -- Tier 1 */
     ICN_SIZE,      /* *E  (size of string) -- Tier 2 */
     ICN_LIMIT,     /* E \ N  (limitation) */
-    ICN_NOT,       /* not E  (succeed if E fails) */
+    ICN_NOT,       /* not E  (succeed if E fails)    */
+    ICN_NONNULL,   /* \E    (succeed if E succeeds, yield E's value) */
+    ICN_NULL,      /* /E    (succeed if E fails, yield &null = 0L)   */
 
     /* --- Control flow --- */
     ICN_SEQ_EXPR,  /* E1 ; E2  (expression sequence) */

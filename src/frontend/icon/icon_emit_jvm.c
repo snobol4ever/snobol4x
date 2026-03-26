@@ -4140,6 +4140,56 @@ static void ij_emit_not(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
 }
 
 /* =========================================================================
+ * ICN_NONNULL — \E: succeed if E succeeds, produce E value unchanged.
+ * Semantics: transparent pass-through on success; fail on failure.
+ * α: emit child; child.γ → ports.γ (value already on stack); child.ω → ports.ω
+ * β: child.β (re-entry for generators)
+ * ======================================================================= */
+static void ij_emit_nonnull(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
+    int id = ij_new_id(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+    IcnNode *child = (n->nchildren >= 1) ? n->children[0] : NULL;
+    IjPorts cp;
+    strncpy(cp.γ, ports.γ, 63);  /* child success → caller success (value intact) */
+    strncpy(cp.ω, ports.ω, 63);  /* child fail    → caller fail */
+    char ca[64], cb[64];
+    ij_emit_expr(child, cp, ca, cb);
+    JC("NONNULL"); JL(a); JGoto(ca);
+    JL(b); JGoto(cb);
+}
+
+/* =========================================================================
+ * ICN_NULL — /E: succeed if E fails, produce &null (0L).
+ * Semantics: inverted — succeeds iff E fails; result is &null.
+ * α: emit child; child.γ → drain value, goto ports.ω (E succeeded → /E fails)
+ *                child.ω → push lconst_0, goto ports.γ (E failed → /E succeeds)
+ * β: child.β
+ * ======================================================================= */
+static void ij_emit_null(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
+    int id = ij_new_id(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+    IcnNode *child = (n->nchildren >= 1) ? n->children[0] : NULL;
+    char child_ok[64]; snprintf(child_ok, sizeof child_ok, "icn_%d_cok", id);
+    char succeed[64];  snprintf(succeed,  sizeof succeed,  "icn_%d_succ", id);
+    IjPorts cp;
+    strncpy(cp.γ, child_ok, 63);  /* child success → drain → /E fails */
+    strncpy(cp.ω, succeed,  63);  /* child fail    → /E succeeds */
+    char ca[64], cb[64];
+    ij_emit_expr(child, cp, ca, cb);
+    JC("NULL"); JL(a); JGoto(ca);
+    JL(b); JGoto(cb);
+    JL(child_ok);
+    /* drain child value off stack */
+    if (child && ij_expr_is_string(child)) { JI("pop",""); } else { JI("pop2",""); }
+    JGoto(ports.ω);  /* /E fails because E succeeded */
+    JL(succeed);
+    JI("lconst_0","");  /* &null */
+    JGoto(ports.γ);  /* /E succeeds */
+}
+
+/* =========================================================================
  * ICN_NEG — unary minus: -E
  * ======================================================================= */
 static void ij_emit_neg(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
@@ -5428,6 +5478,8 @@ static void ij_emit_expr(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
         case ICN_CALL:    ij_emit_call     (n,ports,oα,oβ); break;
         case ICN_SCAN:    ij_emit_scan     (n,ports,oα,oβ); break;
         case ICN_NOT:     ij_emit_not      (n,ports,oα,oβ); break;
+        case ICN_NONNULL: ij_emit_nonnull  (n,ports,oα,oβ); break;
+        case ICN_NULL:    ij_emit_null     (n,ports,oα,oβ); break;
         case ICN_INITIAL: ij_emit_initial  (n,ports,oα,oβ); break;
         case ICN_GLOBAL: {
             /* local 'global x,y;' decl inside proc body — declare icn_gvar_* fields,
