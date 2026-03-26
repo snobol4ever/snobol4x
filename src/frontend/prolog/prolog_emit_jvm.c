@@ -7357,11 +7357,20 @@ static void pj_emit_main(Program *prog) {
         }
     }
 
-    /* Call p_main_0(0) once. The internal fail-loop inside main/0 drives
-     * all backtracking via call_sfail→call_α. No outer retry needed. */
-    JI("iconst_0", ""); /* cs = 0 */
-    J("    invokestatic %s/p_main_0(I)[Ljava/lang/Object;\n", pj_classname);
-    JI("pop", "");
+    /* Call p_main_0(0) once — only if main/0 is actually defined.
+     * Plunit files use :- run_tests / :- halt directives and have no main/0. */
+    int has_main0 = 0;
+    for (STMT_t *s2 = prog->head; s2; s2 = s2->next) {
+        if (!s2->subject || s2->subject->kind != E_CHOICE) continue;
+        if (s2->subject->sval && strcmp(s2->subject->sval, "main/0") == 0) {
+            has_main0 = 1; break;
+        }
+    }
+    if (has_main0) {
+        JI("iconst_0", ""); /* cs = 0 */
+        J("    invokestatic %s/p_main_0(I)[Ljava/lang/Object;\n", pj_classname);
+        JI("pop", "");
+    }
     JI("return", "");
     J(".end method\n\n");
 }
