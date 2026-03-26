@@ -322,6 +322,21 @@ static char ij_statics[MAX_STATICS][64];
 static char ij_static_types[MAX_STATICS];  /* 'J'=long, 'I'=int */
 static int  ij_nstatics = 0;
 
+/* Returns 1 if this J-typed static should be saved/restored across a call.
+ * Exclude: globals (icn_gvar_*), call-convention fields (icn_retval, icn_arg_*),
+ * and control fields (icn_failed, icn_suspended, icn_suspend_id). */
+static int ij_static_needs_callsave(int idx) {
+    if (ij_static_types[idx] != 'J') return 0;
+    const char *n = ij_statics[idx];
+    if (strncmp(n, "icn_gvar_",   9) == 0) return 0;
+    if (strncmp(n, "icn_arg_",    8) == 0) return 0;
+    if (strcmp (n, "icn_retval")     == 0) return 0;
+    if (strcmp (n, "icn_failed")     == 0) return 0;
+    if (strcmp (n, "icn_suspended")  == 0) return 0;
+    if (strcmp (n, "icn_suspend_id") == 0) return 0;
+    return 1;
+}
+
 static void ij_declare_static_typed(const char *name, char type) {
     for (int i=0;i<ij_nstatics;i++) {
         if(!strcmp(ij_statics[i],name)) {
@@ -3093,8 +3108,32 @@ static void ij_emit_call(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
             /* Resume: clear suspend_id AFTER we're done — entry dispatch uses icn_suspend_id!=0 */
             /* (icn_suspended stays set until proc itself clears on fresh call) */
             /* Just invoke — proc entry dispatches via icn_suspend_id */
+            /* Save ALL long statics before re-entrant call */
+            {
+                int base = ij_jvm_locals_count();
+                int k = 0;
+                for (int i = 0; i < ij_nstatics; i++) {
+                    if (ij_static_needs_callsave(i)) {
+                        ij_get_long(ij_statics[i]);
+                        J("    lstore %d\n", base + 2*k);
+                        k++;
+                    }
+                }
+            }
             char sig[384]; snprintf(sig, sizeof sig, "%s/icn_%s()V", ij_classname, fname);
             JI("invokestatic", sig);
+            /* Restore all long statics after call */
+            {
+                int base = ij_jvm_locals_count();
+                int k = 0;
+                for (int i = 0; i < ij_nstatics; i++) {
+                    if (ij_static_needs_callsave(i)) {
+                        J("    lload %d\n", base + 2*k);
+                        ij_put_long(ij_statics[i]);
+                        k++;
+                    }
+                }
+            }
             /* Check result */
             char after_resume[64]; snprintf(after_resume, sizeof after_resume, "icn_%d_after_resume", id);
             ij_jmp_if_failed(after_resume);
@@ -3111,9 +3150,36 @@ static void ij_emit_call(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
         JL(do_call);
         /* Load args into static arg fields — already done above.
          * Proc pops from icn_arg_0..N-1. */
+
+        /* Save ALL long statics to JVM locals before the call (recursion safety).
+         * Excludes globals (icn_gvar_*), icn_retval, icn_arg_*, control fields.
+         * Save slots start at ij_jvm_locals_count(); each long occupies 2 slots. */
+        {
+            int base = ij_jvm_locals_count();
+            int k = 0;
+            for (int i = 0; i < ij_nstatics; i++) {
+                if (ij_static_needs_callsave(i)) {
+                    ij_get_long(ij_statics[i]);
+                    J("    lstore %d\n", base + 2*k);
+                    k++;
+                }
+            }
+        }
         {
             char sig[384]; snprintf(sig, sizeof sig, "%s/icn_%s()V", ij_classname, fname);
             JI("invokestatic", sig);
+        }
+        /* Restore long statics (excludes globals/retval/args) */
+        {
+            int base = ij_jvm_locals_count();
+            int k = 0;
+            for (int i = 0; i < ij_nstatics; i++) {
+                if (ij_static_needs_callsave(i)) {
+                    J("    lload %d\n", base + 2*k);
+                    ij_put_long(ij_statics[i]);
+                    k++;
+                }
+            }
         }
         /* Check icn_failed */
         char after_call[64]; snprintf(after_call, sizeof after_call, "icn_%d_after_call", id);
@@ -5907,7 +5973,7 @@ static void ij_emit_proc(IcnNode *proc, FILE *out_target) {
     jout = out_target;
 
     /* Emit method header */
-    int jvm_locals = ij_jvm_locals_count() + 10; /* generous padding */
+    int jvm_locals = ij_jvm_locals_count() + 10 + 2 * ij_nstatics; /* +save area for all-statics spill at call sites */
     J(".method public static icn_%s()V\n", pname);
     J("    .limit stack 16\n");
     J("    .limit locals %d\n", jvm_locals);
