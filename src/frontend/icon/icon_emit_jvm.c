@@ -3105,7 +3105,7 @@ static void ij_emit_call(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
         if (nargs > 0) JGoto(prev_succ);
         else           JGoto(do_call);
 
-        /* β: for generators, resume if suspended; else fail */
+        /* β: for generator procs, resume suspended frame; else re-pump last arg */
         JL(b);
         if (is_gen) {
             char b_resume[64]; snprintf(b_resume, sizeof b_resume, "icn_%d_b_resume", id);
@@ -3150,7 +3150,10 @@ static void ij_emit_call(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
             JL(after_resume); JGoto(ports.ω);
             JL(b_fail); JGoto(ports.ω);
         } else {
-            JGoto(ports.ω);
+            /* Non-generator proc: β re-pumps the last arg (handles generator args).
+             * If no args, just fail. */
+            if (nargs > 0) JGoto(arg_betas[nargs-1]);
+            else           JGoto(ports.ω);
         }
 
         /* do_call: push args from static fields, invoke proc */
