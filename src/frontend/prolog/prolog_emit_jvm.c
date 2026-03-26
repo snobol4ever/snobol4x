@@ -826,6 +826,356 @@ static void pj_emit_runtime_helpers(void) {
     J(".end method\n\n");
 
     /* ------------------------------------------------------------------
+     * pj_needs_quote(String name) → Z
+     * True if atom name requires single-quote wrapping in writeq/write_canonical.
+     * Rules: empty string, starts with uppercase or '_', contains non-alnum/underscore.
+     * locals: 0=name 1=len 2=i 3=ch
+     * ------------------------------------------------------------------ */
+    J(".method static pj_needs_quote(Ljava/lang/String;)Z\n");
+    J("    .limit stack 4\n");
+    J("    .limit locals 4\n");
+    JI("aload_0", "");
+    JI("invokevirtual", "java/lang/String/length()I");
+    JI("istore_1", "");
+    /* empty string → needs quote */
+    JI("iload_1", ""); JI("ifne", "pjnq_check_first");
+    JI("iconst_1", ""); JI("ireturn", "");
+    J("pjnq_check_first:\n");
+    /* Special atoms that never need quotes: [] {} , | ! ; */
+    JI("aload_0", ""); JI("ldc", "\"[]\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z"); JI("ifne", "pjnq_no");
+    JI("aload_0", ""); JI("ldc", "\"{}\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z"); JI("ifne", "pjnq_no");
+    JI("aload_0", ""); JI("ldc", "\",\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z"); JI("ifne", "pjnq_no");
+    JI("aload_0", ""); JI("ldc", "\"|\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z"); JI("ifne", "pjnq_no");
+    JI("aload_0", ""); JI("ldc", "\"!\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z"); JI("ifne", "pjnq_no");
+    JI("aload_0", ""); JI("ldc", "\";\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z"); JI("ifne", "pjnq_no");
+    /* Scan all chars: classify as alpha-id (starts lower, rest alnum/_)
+       or symbolic (all in #&*+-./:<=>?@\\^~!)  or neither (needs quote) */
+    /* Check first char */
+    JI("aload_0", ""); JI("iconst_0", "");
+    JI("invokevirtual", "java/lang/String/charAt(I)C"); JI("istore_2", "");
+    /* starts lower → alpha-id path */
+    JI("iload_2", "");
+    JI("invokestatic", "java/lang/Character/isLowerCase(C)Z"); JI("ifne", "pjnq_alphaid");
+    /* starts symbolic char → symbolic path */
+    JI("iload_2", "");
+    J("    invokestatic %s/pj_is_sym_char(I)Z\n", pj_classname);
+    JI("ifne", "pjnq_symbolic");
+    /* anything else (upper, digit, _, space, etc.) → quote */
+    JI("iconst_1", ""); JI("ireturn", "");
+
+    J("pjnq_alphaid:\n");
+    /* all chars must be alnum or _ */
+    JI("iconst_1", ""); JI("istore_2", "");  /* i=1 */
+    J("pjnq_ai_loop:\n");
+    JI("iload_2", ""); JI("iload_1", ""); JI("if_icmpge", "pjnq_no");
+    JI("aload_0", ""); JI("iload_2", "");
+    JI("invokevirtual", "java/lang/String/charAt(I)C"); JI("istore_3", "");
+    JI("iload_3", ""); JI("invokestatic", "java/lang/Character/isLetterOrDigit(C)Z"); JI("ifne", "pjnq_ai_next");
+    JI("iload_3", ""); JI("bipush", "95"); JI("if_icmpeq", "pjnq_ai_next");
+    JI("goto", "pjnq_yes");
+    J("pjnq_ai_next:\n"); JI("iinc", "2 1"); JI("goto", "pjnq_ai_loop");
+
+    J("pjnq_symbolic:\n");
+    /* all chars must be symbolic */
+    JI("iconst_1", ""); JI("istore_2", "");
+    J("pjnq_sym_loop:\n");
+    JI("iload_2", ""); JI("iload_1", ""); JI("if_icmpge", "pjnq_no");
+    JI("aload_0", ""); JI("iload_2", "");
+    JI("invokevirtual", "java/lang/String/charAt(I)C"); JI("istore_3", "");
+    JI("iload_3", "");
+    J("    invokestatic %s/pj_is_sym_char(I)Z\n", pj_classname);
+    JI("ifeq", "pjnq_yes");
+    JI("iinc", "2 1"); JI("goto", "pjnq_sym_loop");
+
+    J("pjnq_yes:\n"); JI("iconst_1", ""); JI("ireturn", "");
+    J("pjnq_no:\n");  JI("iconst_0", ""); JI("ireturn", "");
+    J(".end method\n\n");
+
+    /* pj_is_sym_char(int ch) → Z: true if ch is a Prolog symbolic char */
+    J(".method static pj_is_sym_char(I)Z\n");
+    J("    .limit stack 2\n");
+    J("    .limit locals 1\n");
+    /* symbolic chars: # & * + - . / : < = > ? @ \\ ^ ~ */
+    JI("iload_0", ""); JI("bipush", "35"); JI("if_icmpeq", "pjsc_yes"); /* # */
+    JI("iload_0", ""); JI("bipush", "38"); JI("if_icmpeq", "pjsc_yes"); /* & */
+    JI("iload_0", ""); JI("bipush", "42"); JI("if_icmpeq", "pjsc_yes"); /* * */
+    JI("iload_0", ""); JI("bipush", "43"); JI("if_icmpeq", "pjsc_yes"); /* + */
+    JI("iload_0", ""); JI("bipush", "45"); JI("if_icmpeq", "pjsc_yes"); /* - */
+    JI("iload_0", ""); JI("bipush", "46"); JI("if_icmpeq", "pjsc_yes"); /* . */
+    JI("iload_0", ""); JI("bipush", "47"); JI("if_icmpeq", "pjsc_yes"); /* / */
+    JI("iload_0", ""); JI("bipush", "58"); JI("if_icmpeq", "pjsc_yes"); /* : */
+    JI("iload_0", ""); JI("bipush", "60"); JI("if_icmpeq", "pjsc_yes"); /* < */
+    JI("iload_0", ""); JI("bipush", "61"); JI("if_icmpeq", "pjsc_yes"); /* = */
+    JI("iload_0", ""); JI("bipush", "62"); JI("if_icmpeq", "pjsc_yes"); /* > */
+    JI("iload_0", ""); JI("bipush", "63"); JI("if_icmpeq", "pjsc_yes"); /* ? */
+    JI("iload_0", ""); JI("bipush", "64"); JI("if_icmpeq", "pjsc_yes"); /* @ */
+    JI("iload_0", ""); JI("bipush", "92"); JI("if_icmpeq", "pjsc_yes"); /* \ */
+    JI("iload_0", ""); JI("bipush", "94"); JI("if_icmpeq", "pjsc_yes"); /* ^ */
+    JI("iload_0", ""); JI("bipush", "126"); JI("if_icmpeq", "pjsc_yes"); /* ~ */
+    JI("iconst_0", ""); JI("ireturn", "");
+    J("pjsc_yes:\n"); JI("iconst_1", ""); JI("ireturn", "");
+    J(".end method\n\n");
+
+    /* ------------------------------------------------------------------
+     * pj_quoted_atom_str(String name) → String
+     * Wraps name in single quotes, escaping any embedded single quotes.
+     * locals: 0=name 1=sb 2=len 3=i 4=ch
+     * ------------------------------------------------------------------ */
+    J(".method static pj_quoted_atom_str(Ljava/lang/String;)Ljava/lang/String;\n");
+    J("    .limit stack 4\n");
+    J("    .limit locals 5\n");
+    JI("new", "java/lang/StringBuilder");
+    JI("dup", ""); JI("invokespecial", "java/lang/StringBuilder/<init>()V");
+    JI("astore_1", "");
+    JI("aload_1", ""); JI("ldc", "\"'\"");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
+    JI("pop", "");
+    JI("aload_0", ""); JI("invokevirtual", "java/lang/String/length()I"); JI("istore_2", "");
+    JI("iconst_0", ""); JI("istore_3", "");
+    J("pjqa_loop:\n");
+    JI("iload_3", ""); JI("iload_2", ""); JI("if_icmpge", "pjqa_close");
+    JI("aload_0", ""); JI("iload_3", "");
+    JI("invokevirtual", "java/lang/String/charAt(I)C"); JI("istore", "4");
+    JI("iload", "4"); JI("bipush", "39"); /* '\'' */
+    JI("if_icmpne", "pjqa_append");
+    /* escape: append '' */
+    JI("aload_1", ""); JI("ldc", "\"''\"");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
+    JI("pop", ""); JI("iinc", "3 1"); JI("goto", "pjqa_loop");
+    J("pjqa_append:\n");
+    JI("aload_1", ""); JI("iload", "4"); JI("i2c", "");
+    JI("invokevirtual", "java/lang/StringBuilder/append(C)Ljava/lang/StringBuilder;");
+    JI("pop", ""); JI("iinc", "3 1"); JI("goto", "pjqa_loop");
+    J("pjqa_close:\n");
+    JI("aload_1", ""); JI("ldc", "\"'\"");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
+    JI("pop", "");
+    JI("aload_1", ""); JI("invokevirtual", "java/lang/StringBuilder/toString()Ljava/lang/String;");
+    JI("areturn", "");
+    J(".end method\n\n");
+
+    /* ------------------------------------------------------------------
+     * pj_term_str_q(Object) → String   (writeq: quoted atoms, operator notation)
+     * locals: 0=term 1=tag 2=sb 3=cur 4=scratch
+     * ------------------------------------------------------------------ */
+    J(".method static pj_term_str_q(Ljava/lang/Object;)Ljava/lang/String;\n");
+    J("    .limit stack 8\n");
+    J("    .limit locals 5\n");
+    JI("aload_0", "");
+    J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+    JI("astore_0", "");
+    JI("aload_0", ""); JI("ifnonnull", "ptsq_notnull");
+    JI("ldc", "\"_\""); JI("areturn", "");
+    J("ptsq_notnull:\n");
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_0", ""); JI("aaload", ""); JI("astore_1", "");
+    /* atom/int/float: return quoted name if atom */
+    JI("aload_1", ""); JI("ldc", "\"int\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z"); JI("ifne", "ptsq_scalar");
+    JI("aload_1", ""); JI("ldc", "\"float\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z"); JI("ifne", "ptsq_scalar");
+    JI("aload_1", ""); JI("ldc", "\"atom\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z"); JI("ifeq", "ptsq_compound_or_var");
+    /* atom: check if needs quoting */
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", ""); JI("aaload", ""); JI("checkcast", "java/lang/String");
+    JI("astore_2", "");
+    JI("aload_2", "");
+    J("    invokestatic %s/pj_needs_quote(Ljava/lang/String;)Z\n", pj_classname);
+    JI("ifeq", "ptsq_atom_plain");
+    JI("aload_2", "");
+    J("    invokestatic %s/pj_quoted_atom_str(Ljava/lang/String;)Ljava/lang/String;\n", pj_classname);
+    JI("areturn", "");
+    J("ptsq_atom_plain:\n"); JI("aload_2", ""); JI("areturn", "");
+    J("ptsq_scalar:\n");
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", ""); JI("aaload", ""); JI("checkcast", "java/lang/String"); JI("areturn", "");
+    J("ptsq_compound_or_var:\n");
+    JI("aload_1", ""); JI("ldc", "\"var\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z"); JI("ifne", "ptsq_var");
+    /* compound: build functor(args) with quoted functors and recursive _q args */
+    /* arity = arraylength - 2 */
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("arraylength", ""); JI("iconst_2", ""); JI("isub", ""); JI("istore_3", "");
+    JI("new", "java/lang/StringBuilder"); JI("dup", "");
+    JI("invokespecial", "java/lang/StringBuilder/<init>()V"); JI("astore_2", "");
+    /* functor name */
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", ""); JI("aaload", ""); JI("checkcast", "java/lang/String"); JI("astore", "4");
+    /* for list functor '.' use plain pj_term_str for the whole thing */
+    JI("aload", "4"); JI("ldc", "\".\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "ptsq_not_list");
+    JI("iload_3", ""); JI("bipush", "2"); JI("if_icmpne", "ptsq_not_list");
+    /* it's a list: delegate to pj_term_str */
+    JI("aload_0", "");
+    J("    invokestatic %s/pj_term_str(Ljava/lang/Object;)Ljava/lang/String;\n", pj_classname);
+    JI("areturn", "");
+    J("ptsq_not_list:\n");
+    /* quote functor if needed */
+    JI("aload", "4");
+    J("    invokestatic %s/pj_needs_quote(Ljava/lang/String;)Z\n", pj_classname);
+    JI("ifeq", "ptsq_fn_plain");
+    JI("aload", "4");
+    J("    invokestatic %s/pj_quoted_atom_str(Ljava/lang/String;)Ljava/lang/String;\n", pj_classname);
+    JI("goto", "ptsq_fn_app");
+    J("ptsq_fn_plain:\n"); JI("aload", "4");
+    J("ptsq_fn_app:\n");
+    JI("aload_2", ""); JI("swap", "");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;"); JI("pop", "");
+    JI("iload_3", ""); JI("ifne", "ptsq_open_p");
+    JI("aload_2", ""); JI("invokevirtual", "java/lang/StringBuilder/toString()Ljava/lang/String;"); JI("areturn", "");
+    J("ptsq_open_p:\n");
+    JI("aload_2", ""); JI("ldc", "\"(\"");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;"); JI("pop", "");
+    JI("iconst_0", ""); JI("istore", "4");
+    J("ptsq_arg_loop:\n");
+    JI("iload", "4"); JI("iload_3", ""); JI("if_icmpge", "ptsq_close_p");
+    JI("iload", "4"); JI("ifle", "ptsq_no_c");
+    JI("aload_2", ""); JI("ldc", "\",\"");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;"); JI("pop", "");
+    J("ptsq_no_c:\n");
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("iload", "4"); JI("iconst_2", ""); JI("iadd", ""); JI("aaload", "");
+    J("    invokestatic %s/pj_term_str_q(Ljava/lang/Object;)Ljava/lang/String;\n", pj_classname);
+    JI("aload_2", ""); JI("swap", "");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;"); JI("pop", "");
+    JI("iinc", "4 1"); JI("goto", "ptsq_arg_loop");
+    J("ptsq_close_p:\n");
+    JI("aload_2", ""); JI("ldc", "\")\"");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;"); JI("pop", "");
+    JI("aload_2", ""); JI("invokevirtual", "java/lang/StringBuilder/toString()Ljava/lang/String;"); JI("areturn", "");
+    J("ptsq_var:\n"); JI("ldc", "\"_\""); JI("areturn", "");
+    J(".end method\n\n");
+
+    /* ------------------------------------------------------------------
+     * pj_term_str_canonical(Object) → String
+     * write_canonical: no operator notation, always functor(args), quoted atoms.
+     * locals: 0=term 1=tag 2=sb 3=arity 4=i
+     * ------------------------------------------------------------------ */
+    J(".method static pj_term_str_canonical(Ljava/lang/Object;)Ljava/lang/String;\n");
+    J("    .limit stack 8\n");
+    J("    .limit locals 5\n");
+    JI("aload_0", "");
+    J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+    JI("astore_0", "");
+    JI("aload_0", ""); JI("ifnonnull", "ptsc_notnull");
+    JI("ldc", "\"_\""); JI("areturn", "");
+    J("ptsc_notnull:\n");
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_0", ""); JI("aaload", ""); JI("astore_1", "");
+    /* int/float → scalar */
+    JI("aload_1", ""); JI("ldc", "\"int\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z"); JI("ifne", "ptsc_scalar");
+    JI("aload_1", ""); JI("ldc", "\"float\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z"); JI("ifne", "ptsc_scalar");
+    JI("aload_1", ""); JI("ldc", "\"atom\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z"); JI("ifeq", "ptsc_compound_or_var");
+    /* atom: quote if needed */
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", ""); JI("aaload", ""); JI("checkcast", "java/lang/String");
+    JI("astore_2", "");
+    JI("aload_2", "");
+    J("    invokestatic %s/pj_needs_quote(Ljava/lang/String;)Z\n", pj_classname);
+    JI("ifeq", "ptsc_atom_plain");
+    JI("aload_2", "");
+    J("    invokestatic %s/pj_quoted_atom_str(Ljava/lang/String;)Ljava/lang/String;\n", pj_classname);
+    JI("areturn", "");
+    J("ptsc_atom_plain:\n"); JI("aload_2", ""); JI("areturn", "");
+    J("ptsc_scalar:\n");
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", ""); JI("aaload", ""); JI("checkcast", "java/lang/String"); JI("areturn", "");
+    J("ptsc_compound_or_var:\n");
+    JI("aload_1", ""); JI("ldc", "\"var\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z"); JI("ifne", "ptsc_var");
+    /* compound: check for list ('.'/2) → print as [a,b,...] */
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", ""); JI("aaload", "");
+    JI("ldc", "\".\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "ptsc_plain_compound");
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("arraylength", ""); JI("iconst_4", ""); JI("if_icmpne", "ptsc_plain_compound");
+    /* list: delegate to pj_term_str for the list notation */
+    JI("aload_0", "");
+    J("    invokestatic %s/pj_term_str(Ljava/lang/Object;)Ljava/lang/String;\n", pj_classname);
+    JI("areturn", "");
+    J("ptsc_plain_compound:\n");
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("arraylength", ""); JI("iconst_2", ""); JI("isub", ""); JI("istore_3", "");
+    /* sb = new StringBuilder */
+    JI("new", "java/lang/StringBuilder"); JI("dup", "");
+    JI("invokespecial", "java/lang/StringBuilder/<init>()V"); JI("astore_2", "");
+    /* append functor (quoted if needed) */
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", ""); JI("aaload", ""); JI("checkcast", "java/lang/String"); JI("astore", "4");
+    JI("aload", "4");
+    J("    invokestatic %s/pj_needs_quote(Ljava/lang/String;)Z\n", pj_classname);
+    JI("ifeq", "ptsc_fn_plain");
+    JI("aload", "4");
+    J("    invokestatic %s/pj_quoted_atom_str(Ljava/lang/String;)Ljava/lang/String;\n", pj_classname);
+    JI("goto", "ptsc_fn_append");
+    J("ptsc_fn_plain:\n"); JI("aload", "4");
+    J("ptsc_fn_append:\n");
+    JI("aload_2", ""); JI("swap", "");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;"); JI("pop", "");
+    /* if arity == 0 → just functor */
+    JI("iload_3", ""); JI("ifne", "ptsc_open_paren");
+    JI("aload_2", ""); JI("invokevirtual", "java/lang/StringBuilder/toString()Ljava/lang/String;"); JI("areturn", "");
+    J("ptsc_open_paren:\n");
+    JI("aload_2", ""); JI("ldc", "\"(\"");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;"); JI("pop", "");
+    JI("iconst_0", ""); JI("istore", "4");  /* i = 0 */
+    J("ptsc_arg_loop:\n");
+    JI("iload", "4"); JI("iload_3", ""); JI("if_icmpge", "ptsc_close_paren");
+    JI("iload", "4"); JI("ifle", "ptsc_no_comma");
+    JI("aload_2", ""); JI("ldc", "\",\"");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;"); JI("pop", "");
+    J("ptsc_no_comma:\n");
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("iload", "4"); JI("iconst_2", ""); JI("iadd", ""); JI("aaload", "");
+    J("    invokestatic %s/pj_term_str_canonical(Ljava/lang/Object;)Ljava/lang/String;\n", pj_classname);
+    JI("aload_2", ""); JI("swap", "");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;"); JI("pop", "");
+    JI("iinc", "4 1"); JI("goto", "ptsc_arg_loop");
+    J("ptsc_close_paren:\n");
+    JI("aload_2", ""); JI("ldc", "\")\"");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;"); JI("pop", "");
+    JI("aload_2", ""); JI("invokevirtual", "java/lang/StringBuilder/toString()Ljava/lang/String;"); JI("areturn", "");
+    J("ptsc_var:\n"); JI("ldc", "\"_\""); JI("areturn", "");
+    J(".end method\n\n");
+
+    /* pj_writeq(Object) → V */
+    J(".method static pj_writeq(Ljava/lang/Object;)V\n");
+    J("    .limit stack 3\n");
+    J("    .limit locals 1\n");
+    JI("aload_0", "");
+    J("    invokestatic %s/pj_term_str_q(Ljava/lang/Object;)Ljava/lang/String;\n", pj_classname);
+    JI("getstatic", "java/lang/System/out Ljava/io/PrintStream;");
+    JI("swap", "");
+    JI("invokevirtual", "java/io/PrintStream/print(Ljava/lang/String;)V");
+    JI("return", "");
+    J(".end method\n\n");
+
+    /* pj_write_canonical(Object) → V */
+    J(".method static pj_write_canonical(Ljava/lang/Object;)V\n");
+    J("    .limit stack 3\n");
+    J("    .limit locals 1\n");
+    JI("aload_0", "");
+    J("    invokestatic %s/pj_term_str_canonical(Ljava/lang/Object;)Ljava/lang/String;\n", pj_classname);
+    JI("getstatic", "java/lang/System/out Ljava/io/PrintStream;");
+    JI("swap", "");
+    JI("invokevirtual", "java/io/PrintStream/print(Ljava/lang/String;)V");
+    JI("return", "");
+    J(".end method\n\n");
+
+    /* ------------------------------------------------------------------
      * pj_term_to_list(Object term) -> Object[] list
      * Implements =../2 (univ): atom -> [atom], compound -> [F|args]
      * Returns a proper Prolog list as nested cons cells.
@@ -2520,6 +2870,7 @@ static int pj_is_user_call(EXPR_t *goal) {
         "format",
         "numbervars",
         "char_type",
+        "writeq","write_canonical",
         NULL
     };
     for (int i = 0; builtins[i]; i++)
@@ -2942,6 +3293,27 @@ static void pj_emit_goal(EXPR_t *goal, const char *lbl_γ, const char *lbl_ω,
             pj_emit_term(goal->children[1], var_locals, n_vars);
             J("    invokestatic %s/pj_char_type_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
             J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+        /* writeq/1 */
+        if (strcmp(fn, "writeq") == 0 && nargs == 1) {
+            pj_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pj_writeq(Ljava/lang/Object;)V\n", pj_classname);
+            JI("goto", lbl_γ);
+            return;
+        }
+        /* write_canonical/1 */
+        if (strcmp(fn, "write_canonical") == 0 && nargs == 1) {
+            pj_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pj_write_canonical(Ljava/lang/Object;)V\n", pj_classname);
+            JI("goto", lbl_γ);
+            return;
+        }
+        /* print/1 — same as write/1 */
+        if (strcmp(fn, "print") == 0 && nargs == 1) {
+            pj_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pj_write(Ljava/lang/Object;)V\n", pj_classname);
             JI("goto", lbl_γ);
             return;
         }
