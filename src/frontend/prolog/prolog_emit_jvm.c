@@ -2028,6 +2028,227 @@ static void pj_emit_assertz_helpers(void) {
     J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
     JI("ireturn", "");
     J(".end method\n\n");
+
+    /* ------------------------------------------------------------------
+     * pj_char_type_2(Object ch, Object type) -> Z
+     * char_type(+Char, +Type): tests/queries character properties.
+     * Supported types: alpha, alnum, digit, digit(V), space, white,
+     *   end_of_line, upper, upper(L), lower, lower(U),
+     *   to_upper(U), to_lower(L), ascii(Code).
+     * locals:
+     *   0 = ch (Object)   1 = type (Object)
+     *   2 = ch_str (String) 3 = ch_char (char/int)
+     *   4 = type_name (String) 5 = scratch (Object)
+     * ------------------------------------------------------------------ */
+    J("; pj_char_type_2(Object ch, Object type) -> Z\n");
+    J(".method static pj_char_type_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n");
+    J("    .limit stack 6\n");
+    J("    .limit locals 6\n");
+    /* deref ch → get char string */
+    JI("aload_0", "");
+    J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+    JI("astore_0", "");
+    JI("aload_0", "");
+    J("    invokestatic %s/pj_atom_name(Ljava/lang/Object;)Ljava/lang/String;\n", pj_classname);
+    JI("astore_2", "");  /* ch_str */
+    /* ch_char = ch_str.charAt(0) */
+    JI("aload_2", "");
+    JI("iconst_0", "");
+    JI("invokevirtual", "java/lang/String/charAt(I)C");
+    JI("istore_3", "");  /* ch_char (int) */
+    /* deref type */
+    JI("aload_1", "");
+    J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+    JI("astore_1", "");
+    /* get type tag */
+    JI("aload_1", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_0", ""); JI("aaload", "");
+    /* if tag == "compound" → has argument (digit(V), upper(L), etc.) */
+    JI("ldc", "\"compound\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifne", "pjct_compound_type");
+    /* atom type: get name */
+    JI("aload_1", "");
+    J("    invokestatic %s/pj_atom_name(Ljava/lang/Object;)Ljava/lang/String;\n", pj_classname);
+    JI("astore", "4");  /* type_name */
+
+    /* alpha */
+    JI("aload", "4"); JI("ldc", "\"alpha\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pjct_try_alnum");
+    JI("iload_3", "");
+    JI("invokestatic", "java/lang/Character/isLetter(C)Z");
+    JI("ireturn", "");
+
+    J("pjct_try_alnum:\n");
+    JI("aload", "4"); JI("ldc", "\"alnum\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pjct_try_digit");
+    JI("iload_3", "");
+    JI("invokestatic", "java/lang/Character/isLetterOrDigit(C)Z");
+    JI("ireturn", "");
+
+    J("pjct_try_digit:\n");
+    JI("aload", "4"); JI("ldc", "\"digit\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pjct_try_space");
+    JI("iload_3", "");
+    JI("invokestatic", "java/lang/Character/isDigit(C)Z");
+    JI("ireturn", "");
+
+    J("pjct_try_space:\n");
+    JI("aload", "4"); JI("ldc", "\"space\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pjct_try_white");
+    JI("iload_3", "");
+    JI("invokestatic", "java/lang/Character/isWhitespace(C)Z");
+    JI("ireturn", "");
+
+    J("pjct_try_white:\n");
+    JI("aload", "4"); JI("ldc", "\"white\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pjct_try_eol");
+    JI("iload_3", "");
+    JI("invokestatic", "java/lang/Character/isWhitespace(C)Z");
+    JI("ireturn", "");
+
+    J("pjct_try_eol:\n");
+    JI("aload", "4"); JI("ldc", "\"end_of_line\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pjct_try_upper");
+    /* end_of_line: ch == '\n' (10) or '\r' (13) */
+    JI("iload_3", ""); JI("bipush", "10"); JI("if_icmpeq", "pjct_true");
+    JI("iload_3", ""); JI("bipush", "13"); JI("if_icmpeq", "pjct_true");
+    JI("iconst_0", ""); JI("ireturn", "");
+
+    J("pjct_try_upper:\n");
+    JI("aload", "4"); JI("ldc", "\"upper\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pjct_try_lower");
+    JI("iload_3", "");
+    JI("invokestatic", "java/lang/Character/isUpperCase(C)Z");
+    JI("ireturn", "");
+
+    J("pjct_try_lower:\n");
+    JI("aload", "4"); JI("ldc", "\"lower\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pjct_fail");
+    JI("iload_3", "");
+    JI("invokestatic", "java/lang/Character/isLowerCase(C)Z");
+    JI("ireturn", "");
+
+    J("pjct_true:\n");
+    JI("iconst_1", ""); JI("ireturn", "");
+    J("pjct_fail:\n");
+    JI("iconst_0", ""); JI("ireturn", "");
+
+    /* compound type: functor + 1 arg */
+    J("pjct_compound_type:\n");
+    JI("aload_1", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", ""); JI("aaload", "");
+    JI("checkcast", "java/lang/String");
+    JI("astore", "4");  /* type functor name */
+
+    /* digit(V): unify V with numeric value */
+    JI("aload", "4"); JI("ldc", "\"digit\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pjct_try_upper_l");
+    JI("iload_3", "");
+    JI("invokestatic", "java/lang/Character/isDigit(C)Z");
+    JI("ifeq", "pjct_fail");
+    /* value = ch - '0' */
+    JI("iload_3", ""); JI("bipush", "48"); JI("isub", "");
+    JI("i2l", "");
+    J("    invokestatic %s/pj_term_int(J)[Ljava/lang/Object;\n", pj_classname);
+    JI("aload_1", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_2", ""); JI("aaload", "");  /* arg of digit(V) */
+    J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+    JI("ireturn", "");
+
+    /* upper(L): ch is upper, L is lower version */
+    J("pjct_try_upper_l:\n");
+    JI("aload", "4"); JI("ldc", "\"upper\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pjct_try_lower_u");
+    JI("iload_3", "");
+    JI("invokestatic", "java/lang/Character/isUpperCase(C)Z");
+    JI("ifeq", "pjct_fail");
+    /* build atom for toLowerCase(ch) */
+    JI("iload_3", "");
+    JI("invokestatic", "java/lang/Character/toLowerCase(C)C");
+    JI("invokestatic", "java/lang/Character/toString(C)Ljava/lang/String;");
+    J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+    JI("aload_1", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_2", ""); JI("aaload", "");
+    J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+    JI("ireturn", "");
+
+    /* lower(U): ch is lower, U is upper version */
+    J("pjct_try_lower_u:\n");
+    JI("aload", "4"); JI("ldc", "\"lower\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pjct_try_to_upper");
+    JI("iload_3", "");
+    JI("invokestatic", "java/lang/Character/isLowerCase(C)Z");
+    JI("ifeq", "pjct_fail");
+    JI("iload_3", "");
+    JI("invokestatic", "java/lang/Character/toUpperCase(C)C");
+    JI("invokestatic", "java/lang/Character/toString(C)Ljava/lang/String;");
+    J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+    JI("aload_1", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_2", ""); JI("aaload", "");
+    J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+    JI("ireturn", "");
+
+    /* to_upper(U): unify U with uppercase of ch (always succeeds) */
+    J("pjct_try_to_upper:\n");
+    JI("aload", "4"); JI("ldc", "\"to_upper\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pjct_try_to_lower");
+    JI("iload_3", "");
+    JI("invokestatic", "java/lang/Character/toUpperCase(C)C");
+    JI("invokestatic", "java/lang/Character/toString(C)Ljava/lang/String;");
+    J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+    JI("aload_1", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_2", ""); JI("aaload", "");
+    J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+    JI("ireturn", "");
+
+    /* to_lower(L): unify L with lowercase of ch (always succeeds) */
+    J("pjct_try_to_lower:\n");
+    JI("aload", "4"); JI("ldc", "\"to_lower\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pjct_try_ascii");
+    JI("iload_3", "");
+    JI("invokestatic", "java/lang/Character/toLowerCase(C)C");
+    JI("invokestatic", "java/lang/Character/toString(C)Ljava/lang/String;");
+    J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+    JI("aload_1", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_2", ""); JI("aaload", "");
+    J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+    JI("ireturn", "");
+
+    /* ascii(Code): unify Code with char code */
+    J("pjct_try_ascii:\n");
+    JI("aload", "4"); JI("ldc", "\"ascii\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pjct_fail");
+    JI("iload_3", "");
+    JI("i2l", "");
+    J("    invokestatic %s/pj_term_int(J)[Ljava/lang/Object;\n", pj_classname);
+    JI("aload_1", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_2", ""); JI("aaload", "");
+    J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+    JI("ireturn", "");
+    J(".end method\n\n");
 }
 
 /* -------------------------------------------------------------------------
@@ -2298,6 +2519,7 @@ static int pj_is_user_call(EXPR_t *goal) {
         "succ","plus",
         "format",
         "numbervars",
+        "char_type",
         NULL
     };
     for (int i = 0; builtins[i]; i++)
@@ -2710,6 +2932,15 @@ static void pj_emit_goal(EXPR_t *goal, const char *lbl_γ, const char *lbl_ω,
             pj_emit_term(goal->children[1], var_locals, n_vars);
             pj_emit_term(goal->children[2], var_locals, n_vars);
             J("    invokestatic %s/pj_numbervars_3(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+        /* char_type/2: char_type(+Char, +Type) */
+        if (strcmp(fn, "char_type") == 0 && nargs == 2) {
+            pj_emit_term(goal->children[0], var_locals, n_vars);
+            pj_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pj_char_type_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
             J("    ifeq %s\n", lbl_ω);
             JI("goto", lbl_γ);
             return;
