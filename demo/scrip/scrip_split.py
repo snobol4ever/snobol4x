@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""scrip_split.py — split a .scrip polyglot source file into per-language files.
+"""scrip_split.py — split a SCRIP polyglot source file into per-language files.
 
-Usage: python3 scrip_split.py INPUT.scrip OUTDIR
+Usage: python3 scrip_split.py INPUT.md OUTDIR
 
 Writes one file per fenced block:
   OUTDIR/snobol4.sno
