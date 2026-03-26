@@ -1,0 +1,5 @@
+procedure main();
+  write(numeric("42"));
+  write(numeric("100"));
+  if numeric("abc") then write("yes") else write("no");
+end

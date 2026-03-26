@@ -1,0 +1,5 @@
+procedure main();
+  s := copy("hello");
+  write(s);
+  write(type(s));
+end

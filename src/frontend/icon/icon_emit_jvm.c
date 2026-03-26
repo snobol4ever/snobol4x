@@ -2468,6 +2468,94 @@ static void ij_emit_call(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
         return;
     }
 
+    /* === M-IJ-BUILTINS-TYPE === */
+
+    /* --- type(x) --- returns "integer", "real", or "string" (compile-time constant) */
+    if (strcmp(fname, "type") == 0 && nargs >= 1 && !ij_is_user_proc(fname)) {
+        IcnNode *arg = n->children[1];
+        char after[64]; snprintf(after, sizeof after, "icn_%d_type_after", id);
+        IjPorts ap; strncpy(ap.γ, after, 63); strncpy(ap.ω, ports.ω, 63);
+        char aa[64], ab[64]; ij_emit_expr(arg, ap, aa, ab);
+        JL(a); JGoto(aa);
+        JL(b); JGoto(ab);
+        JL(after);
+        /* pop the evaluated value (size-aware), then push compile-time type name */
+        if (ij_expr_is_string(arg)) {
+            JI("pop", "");
+            JI("ldc", "\"string\"");
+        } else if (ij_expr_is_real(arg)) {
+            JI("pop2", "");
+            JI("ldc", "\"real\"");
+        } else {
+            JI("pop2", "");
+            JI("ldc", "\"integer\"");
+        }
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* --- copy(x) --- shallow copy; strings/integers/reals are immutable → identity */
+    if (strcmp(fname, "copy") == 0 && nargs >= 1 && !ij_is_user_proc(fname)) {
+        IcnNode *arg = n->children[1];
+        char after[64]; snprintf(after, sizeof after, "icn_%d_copy_after", id);
+        IjPorts ap; strncpy(ap.γ, after, 63); strncpy(ap.ω, ports.ω, 63);
+        char aa[64], ab[64]; ij_emit_expr(arg, ap, aa, ab);
+        JL(a); JGoto(aa);
+        JL(b); JGoto(ab);
+        JL(after);
+        /* value already on stack — identity copy for immutable types */
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* --- image(x) --- string representation of any value */
+    if (strcmp(fname, "image") == 0 && nargs >= 1 && !ij_is_user_proc(fname)) {
+        IcnNode *arg = n->children[1];
+        char after[64]; snprintf(after, sizeof after, "icn_%d_image_after", id);
+        IjPorts ap; strncpy(ap.γ, after, 63); strncpy(ap.ω, ports.ω, 63);
+        char aa[64], ab[64]; ij_emit_expr(arg, ap, aa, ab);
+        JL(a); JGoto(aa);
+        JL(b); JGoto(ab);
+        JL(after);
+        if (ij_expr_is_string(arg)) {
+            /* already a String — no-op */
+        } else if (ij_expr_is_real(arg)) {
+            JI("invokestatic", "java/lang/Double/toString(D)Ljava/lang/String;");
+        } else {
+            JI("invokestatic", "java/lang/Long/toString(J)Ljava/lang/String;");
+        }
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* --- numeric(x) --- convert string to integer; fail if not numeric */
+    if (strcmp(fname, "numeric") == 0 && nargs >= 1 && !ij_is_user_proc(fname)) {
+        IcnNode *arg = n->children[1];
+        char after[64]; snprintf(after, sizeof after, "icn_%d_num_after", id);
+        IjPorts ap; strncpy(ap.γ, after, 63); strncpy(ap.ω, ports.ω, 63);
+        char aa[64], ab[64]; ij_emit_expr(arg, ap, aa, ab);
+        JL(a); JGoto(aa);
+        JL(b); JGoto(ab);
+        JL(after);
+        if (ij_expr_is_string(arg)) {
+            /* call icn_builtin_numeric(String) → long; Long.MIN_VALUE sentinel = fail */
+            JI("invokestatic", ij_classname_buf("icn_builtin_numeric(Ljava/lang/String;)J"));
+            J("    dup2\n");
+            J("    ldc2_w -9223372036854775808\n");
+            J("    lcmp\n");
+            char ok[64]; snprintf(ok, sizeof ok, "icn_%d_num_ok", id);
+            J("    ifne %s\n", ok);
+            J("    pop2\n");
+            JGoto(ports.ω);
+            JL(ok);
+        }
+        /* else already numeric — pass through */
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* === END M-IJ-BUILTINS-TYPE === */
+
     /* === END M-IJ-BUILTINS-STR === */
 
     if (ij_is_user_proc(fname)) {
@@ -3146,6 +3234,11 @@ static int ij_expr_is_string(IcnNode *n) {
                     if (strcmp(fn_name, "trim")    == 0) return 1;
                     if (strcmp(fn_name, "map")     == 0) return 1;
                     if (strcmp(fn_name, "char")    == 0) return 1;
+                    /* M-IJ-BUILTINS-TYPE: string-returning */
+                    if (strcmp(fn_name, "type")    == 0) return 1;
+                    if (strcmp(fn_name, "image")   == 0) return 1;
+                    if (strcmp(fn_name, "copy")    == 0 && n->nchildren >= 2
+                        && ij_expr_is_string(n->children[1])) return 1;
                     /* ord() returns long — not listed here */
                     /* match returns a long position, not a String */
                     /* user-defined proc — check proc table */
@@ -5650,6 +5743,26 @@ void ij_emit_file(IcnNode **nodes, int count, FILE *out, const char *filename, c
     J("    aload_3\n    invokevirtual java/lang/StringBuilder/toString()Ljava/lang/String;\n");
     J("    areturn\n");
     J(".end method\n\n");
+
+    /* === M-IJ-BUILTINS-TYPE helpers === */
+
+    /* icn_builtin_numeric(String s) → long
+     * Tries Long.parseLong; returns Long.MIN_VALUE sentinel on failure. */
+    J(".method public static icn_builtin_numeric(Ljava/lang/String;)J\n");
+    J("    .limit stack 2\n    .limit locals 2\n");
+    J("    .catch java/lang/NumberFormatException from icn_num_L0 to icn_num_L1 using icn_num_catch\n");
+    J("icn_num_L0:\n");
+    J("    aload_0\n");
+    J("    invokestatic java/lang/Long/parseLong(Ljava/lang/String;)J\n");
+    J("icn_num_L1:\n");
+    J("    lreturn\n");
+    J("icn_num_catch:\n");
+    J("    pop\n");
+    J("    ldc2_w -9223372036854775808\n");
+    J("    lreturn\n");
+    J(".end method\n\n");
+
+    /* === END M-IJ-BUILTINS-TYPE helpers === */
 
     /* === END M-IJ-BUILTINS-STR helpers === */
 

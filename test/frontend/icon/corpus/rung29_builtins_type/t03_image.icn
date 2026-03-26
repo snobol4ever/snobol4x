@@ -1,0 +1,5 @@
+procedure main();
+  write(image(42));
+  write(image("hello"));
+  write(image(3.14));
+end
