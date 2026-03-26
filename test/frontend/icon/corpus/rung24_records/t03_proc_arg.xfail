@@ -1,3 +1,0 @@
-Record objects passed as proc arguments not yet supported.
-ij_emit_call stores 0L for record args; param var not typed as Object.
-Fix: detect record-type args in ij_emit_call, store icn_retval_obj into icn_pv_{proc}_{param} Object field.
