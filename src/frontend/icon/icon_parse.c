@@ -181,6 +181,10 @@ static IcnNode *parse_primary(IcnParser *p) {
         advance(p);
         return icn_node_new(ICN_NEXT, line, 0);
     }
+    if (t.kind == TK_CASE) {
+        /* Delegate to parse_expr which handles TK_CASE */
+        return parse_expr(p);
+    }
 
     parser_error(p, "expected expression");
     advance(p); /* skip bad token */
@@ -496,6 +500,37 @@ static IcnNode *parse_expr(IcnParser *p) {
     }
     if (check(p, TK_BREAK)) { advance(p); return icn_node_new(ICN_BREAK, line, 0); }
     if (check(p, TK_NEXT))  { advance(p); return icn_node_new(ICN_NEXT,  line, 0); }
+    if (check(p, TK_CASE)) {
+        advance(p);
+        IcnNode *disp = parse_expr(p);
+        expect(p, TK_OF, "case expression");
+        expect(p, TK_LBRACE, "case body");
+        /* Collect clauses: val: result pairs, optional default: result */
+        IcnNode **children = NULL; int nc = 0, cap = 0;
+        #define CASE_PUSH(n) do { if (nc+1>cap){cap=cap?cap*2:8;children=realloc(children,cap*sizeof(IcnNode*));} children[nc++]=(n); } while(0)
+        CASE_PUSH(disp);
+        while (!check(p, TK_RBRACE) && !check(p, TK_EOF)) {
+            if (check(p, TK_DEFAULT)) {
+                advance(p);
+                expect(p, TK_COLON, "case default");
+                IcnNode *res = parse_expr(p);
+                CASE_PUSH(res);   /* default result as last child, no value */
+                match(p, TK_SEMICOL);
+                break;
+            }
+            IcnNode *val = parse_expr(p);
+            expect(p, TK_COLON, "case clause");
+            IcnNode *res = parse_expr(p);
+            CASE_PUSH(val); CASE_PUSH(res);
+            match(p, TK_SEMICOL);
+        }
+        #undef CASE_PUSH
+        expect(p, TK_RBRACE, "case body end");
+        IcnNode *node = calloc(1, sizeof(IcnNode));
+        node->kind = ICN_CASE; node->line = line;
+        node->nchildren = nc; node->children = children;
+        return node;
+    }
     return parse_assign(p);
 }
 
@@ -577,6 +612,12 @@ static IcnNode *parse_stmt(IcnParser *p) {
         advance(p);
         IcnNode *body = parse_stmt(p); /* single stmt or block */
         return icn_node_new(ICN_INITIAL, line, body ? 1 : 0, body);
+    }
+    if (check(p, TK_CASE)) {
+        /* case E of { ... } — parse via parse_expr, no trailing semicolon required */
+        IcnNode *e = parse_expr(p);
+        match(p, TK_SEMICOL);
+        return e;
     }
     if (check(p, TK_LOCAL)) {
         int line2 = p->cur.line; advance(p);

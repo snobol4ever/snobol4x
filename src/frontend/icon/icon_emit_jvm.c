@@ -1221,6 +1221,109 @@ static void ij_emit_suspend(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
 }
 
 /* =========================================================================
+/* =========================================================================
+ * ICN_CASE — case E of { V1: R1  V2: R2 ... [default: RD] }
+ * children: [0]=dispatch, [1]=v1,[2]=r1, [3]=v2,[4]=r2, ..., [last]=default_result
+ * if (nc-1) is even → no default (odd clause pairs); if (nc-1) is odd → has default.
+ * Semantics: eval dispatch once; compare to each Vi in order; first match → eval Ri → γ;
+ * no match → eval default → γ (or fail → ω if no default).
+ * ======================================================================= */
+static void ij_emit_case(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
+    int id = ij_new_id(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+
+    if (n->nchildren < 1) { JL(a); JGoto(ports.ω); JL(b); JGoto(ports.ω); return; }
+
+    IcnNode *disp = n->children[0];
+    int nc = n->nchildren;
+    /* nc-1 remaining children: pairs (val,res) + optional default */
+    int npairs = (nc - 1) / 2;
+    int has_default = ((nc - 1) % 2 == 1);
+
+    /* Dispatch value storage */
+    char disp_fld[80]; snprintf(disp_fld, sizeof disp_fld, "icn_%d_case_disp", id);
+    int disp_is_str = ij_expr_is_string(disp);
+    int disp_is_dbl = !disp_is_str && ij_expr_is_real(disp);
+    if (disp_is_str)      ij_declare_static_str(disp_fld);
+    else if (disp_is_dbl) ij_declare_static_real(disp_fld);
+    else                  ij_declare_static(disp_fld);
+
+    /* Eval dispatch */
+    char disp_relay[64]; snprintf(disp_relay, sizeof disp_relay, "icn_%d_case_dr", id);
+    IjPorts dp; strncpy(dp.γ, disp_relay, 63); strncpy(dp.ω, ports.ω, 63);
+    char da[64], db[64]; ij_emit_expr(disp, dp, da, db);
+    JL(a); JGoto(da);
+    JL(b); JGoto(db);
+    JL(disp_relay);
+    if (disp_is_str)      ij_put_str_field(disp_fld);
+    else if (disp_is_dbl) ij_put_dbl(disp_fld);
+    else                  ij_put_long(disp_fld);
+
+    /* For each clause: eval Vi, compare to dispatch, branch to Ri or next */
+    for (int ci = 0; ci < npairs; ci++) {
+        IcnNode *vnode = n->children[1 + ci*2];
+        IcnNode *rnode = n->children[2 + ci*2];
+        char vcmp[64];  snprintf(vcmp,  sizeof vcmp,  "icn_%d_cv%d",  id, ci);
+        char vmatch[64];snprintf(vmatch,sizeof vmatch,"icn_%d_cm%d",  id, ci);
+        char vnext[64]; snprintf(vnext, sizeof vnext, "icn_%d_cn%d",  id, ci);
+
+        /* Eval clause value */
+        char vrelay[64]; snprintf(vrelay, sizeof vrelay, "icn_%d_cvr%d", id, ci);
+        IjPorts vp; strncpy(vp.γ, vrelay, 63); strncpy(vp.ω, vnext, 63);
+        char va[64], vb[64]; ij_emit_expr(vnode, vp, va, vb);
+        JL(vcmp); JGoto(va);
+        JL(vrelay);
+        /* Compare: if disp_is_str: String.equals; else lcmp */
+        if (disp_is_str) {
+            /* stack: String (clause val) */
+            ij_get_str_field(disp_fld);
+            JI("invokevirtual", "java/lang/String/equals(Ljava/lang/Object;)Z");
+            J("    ifne %s\n", vmatch);
+        } else {
+            /* stack: long (clause val); compare to stored disp */
+            ij_get_long(disp_fld);
+            JI("lcmp", "");
+            J("    ifeq %s\n", vmatch);
+        }
+        JGoto(vnext);
+
+        /* Result branch: emit result expression first, then wire vmatch → ra */
+        {
+            char rrelay[64]; snprintf(rrelay, sizeof rrelay, "icn_%d_crr%d", id, ci);
+            IjPorts rp; strncpy(rp.γ, rrelay, 63); strncpy(rp.ω, ports.ω, 63);
+            char ra[64], rb[64]; ij_emit_expr(rnode, rp, ra, rb);
+            JL(vmatch); JGoto(ra);
+            JL(rrelay); JGoto(ports.γ);
+        }
+
+        JL(vnext);
+        /* Falls through to next clause vcmp, or exits on last clause */
+        if (ci == npairs - 1) {
+            if (has_default) {
+                /* Will jump to dstart after default expr is emitted below */
+                /* Store dstart name for use after the loop */
+                char dstart_tmp[64]; snprintf(dstart_tmp, sizeof dstart_tmp, "icn_%d_cdef", id);
+                JGoto(dstart_tmp);
+            } else {
+                JGoto(ports.ω);
+            }
+        }
+    }
+
+    /* Default or fail */
+    if (has_default) {
+        IcnNode *dnode = n->children[nc-1];
+        char drelay[64]; snprintf(drelay, sizeof drelay, "icn_%d_cdefr", id);
+        char dstart[64]; snprintf(dstart, sizeof dstart, "icn_%d_cdef",  id);
+        IjPorts defp; strncpy(defp.γ, drelay, 63); strncpy(defp.ω, ports.ω, 63);
+        char dea[64], deb[64]; ij_emit_expr(dnode, defp, dea, deb);
+        JL(dstart); JGoto(dea);
+        JL(drelay); JGoto(ports.γ);
+    }
+}
+
+/* =========================================================================
  * ICN_IF — if cond then E2 [else E3]
  * ======================================================================= */
 static void ij_emit_if(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
@@ -3622,6 +3725,11 @@ static int ij_expr_is_string(IcnNode *n) {
             if (n->nchildren >= 2) return ij_expr_is_string(n->children[1]);
             return 0;
         }
+        case ICN_CASE: {
+            /* case: result type = first result branch type (children[2] if exists) */
+            if (n->nchildren >= 3) return ij_expr_is_string(n->children[2]);
+            return 0;
+        }
         case ICN_ALT: {
             /* ALT is string-typed if all alternatives are strings */
             if (n->nchildren == 0) return 0;
@@ -5206,6 +5314,7 @@ static void ij_emit_expr(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
         case ICN_SUSPEND: ij_emit_suspend  (n,ports,oα,oβ); break;
         case ICN_FAIL:    ij_emit_fail_node(n,ports,oα,oβ); break;
         case ICN_IF:      ij_emit_if       (n,ports,oα,oβ); break;
+        case ICN_CASE:    ij_emit_case     (n,ports,oα,oβ); break;
         case ICN_ALT:     ij_emit_alt      (n,ports,oα,oβ); break;
         case ICN_AND: {
             /* n-ary conjunction: E1 & E2 & ... & En

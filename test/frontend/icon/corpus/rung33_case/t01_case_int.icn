@@ -1,0 +1,4 @@
+procedure main();
+  write(case 2 of { 1: "one"; 2: "two"; 3: "three"; default: "other"; });
+  write(case 5 of { 1: "one"; 2: "two"; 3: "three"; default: "other"; });
+end

@@ -1,0 +1,3 @@
+procedure main();
+  write(case "b" of { "a": 1; "b": 2; "c": 3; default: 0; });
+end

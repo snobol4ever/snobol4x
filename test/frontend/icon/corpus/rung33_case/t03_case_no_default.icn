@@ -1,0 +1,4 @@
+procedure main();
+  x := case 3 of { 1: 10; 2: 20; 3: 30; };
+  write(x);
+end
