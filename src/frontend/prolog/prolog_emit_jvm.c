@@ -1319,6 +1319,56 @@ static void pj_emit_assertz_helpers(void) {
     JI("areturn", "");
     J(".end method\n\n");
 
+    /* pj_db_abolish(String key) -> void
+     * Removes the entire ArrayList for key from pj_db (no-op if absent). */
+    J("; pj_db_abolish(String key) -> void\n");
+    J(".method static pj_db_abolish(Ljava/lang/String;)V\n");
+    J("    .limit stack 2\n");
+    J("    .limit locals 1\n");
+    J("    getstatic %s/pj_db Ljava/util/HashMap;\n", pj_classname);
+    JI("aload_0", "");
+    JI("invokevirtual", "java/util/HashMap/remove(Ljava/lang/Object;)Ljava/lang/Object;");
+    JI("pop", "");
+    JI("return", "");
+    J(".end method\n\n");
+
+    /* pj_db_abolish_key(Object slashTerm) -> String
+     * slashTerm is a compound /(Name, Arity) — arr[0]="compound", arr[1]="/",
+     * arr[2]=Name (pj atom term), arr[3]=Arity (pj int term).
+     * Returns "Name/Arity" string matching pj_db_assert_key format. */
+    J("; pj_db_abolish_key(Object) -> String\n");
+    J(".method static pj_db_abolish_key(Ljava/lang/Object;)Ljava/lang/String;\n");
+    J("    .limit stack 6\n");
+    J("    .limit locals 4\n");
+    /* arr[2] = Name pj-term → extract via pj_atom_name */
+    JI("aload_0", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_2", "");
+    JI("aaload", "");   /* pj atom term for Name */
+    J("    invokestatic %s/pj_atom_name(Ljava/lang/Object;)Ljava/lang/String;\n", pj_classname);
+    JI("astore_1", "");   /* local1 = Name string */
+    /* arr[3] = Arity pj-term → extract via pj_int_val -> long -> int */
+    JI("aload_0", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_3", "");
+    JI("aaload", "");   /* pj int term for Arity */
+    J("    invokestatic %s/pj_int_val(Ljava/lang/Object;)J\n", pj_classname);
+    JI("l2i", "");
+    JI("istore_2", "");   /* local2 = arity int */
+    /* build "Name/Arity" */
+    JI("new", "java/lang/StringBuilder");
+    JI("dup", "");
+    JI("invokespecial", "java/lang/StringBuilder/<init>()V");
+    JI("aload_1", "");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
+    JI("ldc", "\"/\"");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
+    JI("iload_2", "");
+    JI("invokevirtual", "java/lang/StringBuilder/append(I)Ljava/lang/StringBuilder;");
+    JI("invokevirtual", "java/lang/StringBuilder/toString()Ljava/lang/String;");
+    JI("areturn", "");
+    J(".end method\n\n");
+
     /* pj_copy_term_ground(Object) -> Object
      * Deep-copy a ground term (atoms, ints, compounds) for DB storage.
      * Variables are stored as-is (for future retract support). */
@@ -1960,6 +2010,16 @@ static void pj_emit_goal(EXPR_t *goal, const char *lbl_γ, const char *lbl_ω,
 
             J("%s:\n", miss);
             J("    goto %s\n", lbl_ω);
+            return;
+        }
+        /* abolish(+Functor/Arity) — remove entire predicate from dynamic DB.
+         * Always succeeds (even if predicate absent). */
+        if (strcmp(fn, "abolish") == 0 && nargs == 1) {
+            pj_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+            J("    invokestatic %s/pj_db_abolish_key(Ljava/lang/Object;)Ljava/lang/String;\n", pj_classname);
+            J("    invokestatic %s/pj_db_abolish(Ljava/lang/String;)V\n", pj_classname);
+            JI("goto", lbl_γ);
             return;
         }
         if (strcmp(fn, "atom_length") == 0 && nargs == 2) {
