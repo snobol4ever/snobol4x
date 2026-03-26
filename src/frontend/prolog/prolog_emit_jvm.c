@@ -2599,6 +2599,82 @@ static void pj_emit_assertz_helpers(void) {
     J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
     JI("ireturn", "");
     J(".end method\n\n");
+
+    /* pj_atom_string_2(Object a, Object s) -> Z
+     * atom_string/2: bidirectional atom<->string (strings treated as atoms).
+     * Forward (atom bound): extract name, box as atom, unify with s.
+     * Reverse (atom unbound): deref s, extract name, box as atom, unify with a. */
+    J("; pj_atom_string_2\n");
+    J(".method static pj_atom_string_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n");
+    J("    .limit stack 4\n");
+    J("    .limit locals 4\n");
+    J("    aload_0\n");
+    J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+    J("    checkcast [Ljava/lang/Object;\n");
+    J("    astore_2\n");
+    J("    aload_2\n");
+    J("    iconst_0\n");
+    J("    aaload\n");
+    J("    ldc \"var\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ifne as2_rev\n");
+    J("    aload_2\n");
+    J("    invokestatic %s/pj_atom_name(Ljava/lang/Object;)Ljava/lang/String;\n", pj_classname);
+    J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+    J("    aload_1\n");
+    J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+    J("    ireturn\n");
+    J("as2_rev:\n");
+    J("    aload_1\n");
+    J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+    J("    checkcast [Ljava/lang/Object;\n");
+    J("    astore_3\n");
+    J("    aload_3\n");
+    J("    invokestatic %s/pj_atom_name(Ljava/lang/Object;)Ljava/lang/String;\n", pj_classname);
+    J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+    J("    aload_0\n");
+    J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+    J("    ireturn\n");
+    J(".end method\n\n");
+
+    /* pj_number_string_2(Object n, Object s) -> Z
+     * number_string/2: bidirectional.
+     * Forward (n bound): convert to string atom, unify with s.
+     * Reverse (n unbound): parse string, build int term, unify with n. */
+    J("; pj_number_string_2\n");
+    J(".method static pj_number_string_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n");
+    J("    .limit stack 4\n");
+    J("    .limit locals 5\n");
+    J("    aload_0\n");
+    J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+    J("    checkcast [Ljava/lang/Object;\n");
+    J("    astore_2\n");
+    J("    aload_2\n");
+    J("    iconst_0\n");
+    J("    aaload\n");
+    J("    ldc \"var\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ifne ns2_rev\n");
+    J("    aload_2\n");
+    J("    invokestatic %s/pj_atom_name(Ljava/lang/Object;)Ljava/lang/String;\n", pj_classname);
+    J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+    J("    aload_1\n");
+    J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+    J("    ireturn\n");
+    J("ns2_rev:\n");
+    J("    aload_1\n");
+    J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+    J("    astore_3\n");
+    J("    aload_3\n");
+    J("    invokestatic %s/pj_atom_name(Ljava/lang/Object;)Ljava/lang/String;\n", pj_classname);
+    J("    astore 4\n");
+    J("    aload 4\n");
+    J("    invokestatic java/lang/Long/parseLong(Ljava/lang/String;)J\n");
+    J("    invokestatic %s/pj_term_int(J)[Ljava/lang/Object;\n", pj_classname);
+    J("    aload_0\n");
+    J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+    J("    ireturn\n");
+    J(".end method\n\n");
 }
 
 /* -------------------------------------------------------------------------
@@ -2948,6 +3024,8 @@ static int pj_is_user_call(EXPR_t *goal) {
         "numbervars",
         "char_type",
         "writeq","write_canonical",
+        "atom_string","number_string",
+        "string_concat","string_length","string_lower","string_upper",
         NULL
     };
     for (int i = 0; builtins[i]; i++)
@@ -3505,6 +3583,86 @@ static void pj_emit_goal(EXPR_t *goal, const char *lbl_γ, const char *lbl_ω,
 
         /* downcase_atom(+Atom, ?Lower) */
         if (strcmp(fn, "downcase_atom") == 0 && nargs == 2) {
+            pj_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+            J("    invokestatic %s/pj_atom_name(Ljava/lang/Object;)Ljava/lang/String;\n", pj_classname);
+            J("    invokevirtual java/lang/String/toLowerCase()Ljava/lang/String;\n");
+            J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+            pj_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* atom_string(?Atom, ?Str) — bidirectional via helper */
+        if (strcmp(fn, "atom_string") == 0 && nargs == 2) {
+            pj_emit_term(goal->children[0], var_locals, n_vars);
+            pj_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pj_atom_string_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* number_string(?Num, ?Str) — bidirectional via helper */
+        if (strcmp(fn, "number_string") == 0 && nargs == 2) {
+            pj_emit_term(goal->children[0], var_locals, n_vars);
+            pj_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pj_number_string_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* string_concat(+A, +B, ?C) — identical to atom_concat */
+        if (strcmp(fn, "string_concat") == 0 && nargs == 3) {
+            pj_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+            J("    invokestatic %s/pj_atom_name(Ljava/lang/Object;)Ljava/lang/String;\n", pj_classname);
+            pj_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+            J("    invokestatic %s/pj_atom_name(Ljava/lang/Object;)Ljava/lang/String;\n", pj_classname);
+            J("    invokevirtual java/lang/String/concat(Ljava/lang/String;)Ljava/lang/String;\n");
+            J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+            pj_emit_term(goal->children[2], var_locals, n_vars);
+            J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* string_length(+Str, ?Len) — identical to atom_length */
+        if (strcmp(fn, "string_length") == 0 && nargs == 2) {
+            pj_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+            J("    invokestatic %s/pj_atom_name(Ljava/lang/Object;)Ljava/lang/String;\n", pj_classname);
+            J("    invokevirtual java/lang/String/length()I\n");
+            J("    i2l\n");
+            J("    invokestatic %s/pj_term_int(J)[Ljava/lang/Object;\n", pj_classname);
+            pj_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* string_upper(+Str, ?Upper) — identical to upcase_atom */
+        if (strcmp(fn, "string_upper") == 0 && nargs == 2) {
+            pj_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+            J("    invokestatic %s/pj_atom_name(Ljava/lang/Object;)Ljava/lang/String;\n", pj_classname);
+            J("    invokevirtual java/lang/String/toUpperCase()Ljava/lang/String;\n");
+            J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+            pj_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* string_lower(+Str, ?Lower) — identical to downcase_atom */
+        if (strcmp(fn, "string_lower") == 0 && nargs == 2) {
             pj_emit_term(goal->children[0], var_locals, n_vars);
             J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
             J("    invokestatic %s/pj_atom_name(Ljava/lang/Object;)Ljava/lang/String;\n", pj_classname);
