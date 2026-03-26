@@ -1420,6 +1420,210 @@ static void pj_emit_assertz_helpers(void) {
     JI("aload_3", "");
     JI("areturn", "");
     J(".end method\n\n");
+
+    /* pj_list_to_arraylist(Object list) -> ArrayList<Object>
+     * Walks a pj cons list ([H|T] = compound(".",H,T), [] = atom("[]"))
+     * and collects elements into a new ArrayList. */
+    J("; pj_list_to_arraylist(Object) -> ArrayList\n");
+    J(".method static pj_list_to_arraylist(Ljava/lang/Object;)Ljava/util/ArrayList;\n");
+    J("    .limit stack 4\n");
+    J("    .limit locals 3\n");
+    JI("new", "java/util/ArrayList");
+    JI("dup", "");
+    JI("invokespecial", "java/util/ArrayList/<init>()V");
+    JI("astore_1", "");   /* local1 = result ArrayList */
+    JI("aload_0", "");
+    J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+    JI("astore_2", "");   /* local2 = current cell */
+    J("pj_lta_loop:\n");
+    /* check if [] atom */
+    JI("aload_2", "");
+    J("    instanceof [Ljava/lang/Object;\n");
+    J("    ifeq pj_lta_done\n");
+    JI("aload_2", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", "");
+    JI("aaload", "");   /* arr[1] = functor */
+    JI("checkcast", "java/lang/String");
+    JI("astore_0", "");
+    JI("aload_0", "");
+    JI("ldc", "\"[]\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    J("    ifne pj_lta_done\n");
+    /* add head (arr[2]) to list */
+    JI("aload_1", "");
+    JI("aload_2", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_2", "");
+    JI("aaload", "");
+    JI("invokevirtual", "java/util/ArrayList/add(Ljava/lang/Object;)Z");
+    JI("pop", "");
+    /* advance to tail (arr[3]) */
+    JI("aload_2", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_3", "");
+    JI("aaload", "");
+    J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+    JI("astore_2", "");
+    J("    goto pj_lta_loop\n");
+    J("pj_lta_done:\n");
+    JI("aload_1", "");
+    JI("areturn", "");
+    J(".end method\n\n");
+
+    /* pj_arraylist_to_list(ArrayList) -> Object
+     * Rebuilds a pj cons list from an ArrayList (last element first). */
+    J("; pj_arraylist_to_list(ArrayList) -> Object\n");
+    J(".method static pj_arraylist_to_list(Ljava/util/ArrayList;)Ljava/lang/Object;\n");
+    J("    .limit stack 8\n");
+    J("    .limit locals 4\n");
+    /* start with [] */
+    J("    ldc \"[]\"\n");
+    J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+    JI("astore_1", "");   /* local1 = accumulated list (tail-first) */
+    JI("aload_0", "");
+    JI("invokevirtual", "java/util/ArrayList/size()I");
+    JI("iconst_1", "");
+    JI("isub", "");
+    JI("istore_2", "");   /* local2 = i = size-1 */
+    J("pj_atl_loop:\n");
+    JI("iload_2", "");
+    J("    iflt pj_atl_done\n");
+    /* build cons cell: [arr[i] | acc] */
+    JI("bipush", "4");
+    JI("anewarray", "java/lang/Object");
+    JI("dup", "");
+    JI("iconst_0", "");
+    JI("ldc", "\"compound\"");
+    JI("aastore", "");
+    JI("dup", "");
+    JI("iconst_1", "");
+    JI("ldc", "\".\"");
+    JI("aastore", "");
+    JI("dup", "");
+    JI("iconst_2", "");
+    JI("aload_0", "");
+    JI("iload_2", "");
+    JI("invokevirtual", "java/util/ArrayList/get(I)Ljava/lang/Object;");
+    JI("aastore", "");
+    JI("dup", "");
+    JI("iconst_3", "");
+    JI("aload_1", "");
+    JI("aastore", "");
+    JI("astore_1", "");
+    JI("iinc", "2 -1");
+    J("    goto pj_atl_loop\n");
+    J("pj_atl_done:\n");
+    JI("aload_1", "");
+    JI("areturn", "");
+    J(".end method\n\n");
+
+    /* pj_sort_list(Object list, int dedup) -> Object
+     * Sorts a pj list by pj_term_str order (insertion sort).
+     * dedup=1 → remove duplicates (sort/2); dedup=0 → keep (msort/2). */
+    J("; pj_sort_list(Object list, int dedup) -> Object\n");
+    J(".method static pj_sort_list(Ljava/lang/Object;I)Ljava/lang/Object;\n");
+    J("    .limit stack 8\n");
+    J("    .limit locals 8\n");
+    /* collect to ArrayList */
+    JI("aload_0", "");
+    J("    invokestatic %s/pj_list_to_arraylist(Ljava/lang/Object;)Ljava/util/ArrayList;\n", pj_classname);
+    JI("astore_2", "");   /* local2 = al */
+    JI("aload_2", "");
+    JI("invokevirtual", "java/util/ArrayList/size()I");
+    JI("istore_3", "");   /* local3 = n */
+    /* insertion sort: for i=1..n-1: key=al[i]; j=i-1; while j>=0 && al[j]>key: al[j+1]=al[j]; j--; al[j+1]=key */
+    JI("iconst_1", "");
+    JI("istore", "4");   /* i */
+    J("pj_sl_outer:\n");
+    JI("iload", "4");
+    JI("iload_3", "");
+    J("    if_icmpge pj_sl_sorted\n");
+    JI("aload_2", "");
+    JI("iload", "4");
+    JI("invokevirtual", "java/util/ArrayList/get(I)Ljava/lang/Object;");
+    JI("astore", "5");   /* key */
+    JI("iload", "4");
+    JI("iconst_1", "");
+    JI("isub", "");
+    JI("istore", "6");   /* j */
+    J("pj_sl_inner:\n");
+    JI("iload", "6");
+    J("    iflt pj_sl_insert\n");
+    /* compare al[j] vs key via pj_term_str */
+    JI("aload_2", "");
+    JI("iload", "6");
+    JI("invokevirtual", "java/util/ArrayList/get(I)Ljava/lang/Object;");
+    J("    invokestatic %s/pj_term_str(Ljava/lang/Object;)Ljava/lang/String;\n", pj_classname);
+    JI("aload", "5");
+    J("    invokestatic %s/pj_term_str(Ljava/lang/Object;)Ljava/lang/String;\n", pj_classname);
+    JI("invokevirtual", "java/lang/String/compareTo(Ljava/lang/String;)I");
+    J("    ifle pj_sl_insert\n");   /* al[j] <= key → stop */
+    /* al[j+1] = al[j] */
+    JI("aload_2", "");
+    JI("iload", "6");
+    JI("iconst_1", "");
+    JI("iadd", "");
+    JI("aload_2", "");
+    JI("iload", "6");
+    JI("invokevirtual", "java/util/ArrayList/get(I)Ljava/lang/Object;");
+    JI("invokevirtual", "java/util/ArrayList/set(ILjava/lang/Object;)Ljava/lang/Object;");
+    JI("pop", "");
+    JI("iinc", "6 -1");
+    J("    goto pj_sl_inner\n");
+    J("pj_sl_insert:\n");
+    JI("aload_2", "");
+    JI("iload", "6");
+    JI("iconst_1", "");
+    JI("iadd", "");
+    JI("aload", "5");
+    JI("invokevirtual", "java/util/ArrayList/set(ILjava/lang/Object;)Ljava/lang/Object;");
+    JI("pop", "");
+    JI("iinc", "4 1");
+    J("    goto pj_sl_outer\n");
+    J("pj_sl_sorted:\n");
+    /* dedup if requested */
+    JI("iload_1", "");
+    J("    ifeq pj_sl_build\n");
+    /* dedup: walk forward, remove consecutive equal elements */
+    JI("iconst_0", "");
+    JI("istore", "4");   /* i */
+    J("pj_sl_dedup:\n");
+    JI("iload", "4");
+    JI("aload_2", "");
+    JI("invokevirtual", "java/util/ArrayList/size()I");
+    JI("iconst_1", "");
+    JI("isub", "");
+    J("    if_icmpge pj_sl_build\n");
+    /* compare al[i] vs al[i+1] */
+    JI("aload_2", "");
+    JI("iload", "4");
+    JI("invokevirtual", "java/util/ArrayList/get(I)Ljava/lang/Object;");
+    J("    invokestatic %s/pj_term_str(Ljava/lang/Object;)Ljava/lang/String;\n", pj_classname);
+    JI("aload_2", "");
+    JI("iload", "4");
+    JI("iconst_1", "");
+    JI("iadd", "");
+    JI("invokevirtual", "java/util/ArrayList/get(I)Ljava/lang/Object;");
+    J("    invokestatic %s/pj_term_str(Ljava/lang/Object;)Ljava/lang/String;\n", pj_classname);
+    JI("invokevirtual", "java/lang/String/compareTo(Ljava/lang/String;)I");
+    J("    ifne pj_sl_dedup_next\n");
+    /* equal: remove al[i+1] */
+    JI("aload_2", "");
+    JI("iload", "4");
+    JI("iconst_1", "");
+    JI("iadd", "");
+    JI("invokevirtual", "java/util/ArrayList/remove(I)Ljava/lang/Object;");
+    JI("pop", "");
+    J("    goto pj_sl_dedup\n");
+    J("pj_sl_dedup_next:\n");
+    JI("iinc", "4 1");
+    J("    goto pj_sl_dedup\n");
+    J("pj_sl_build:\n");
+    JI("aload_2", "");
+    J("    invokestatic %s/pj_arraylist_to_list(Ljava/util/ArrayList;)Ljava/lang/Object;\n", pj_classname);
+    JI("areturn", "");
+    J(".end method\n\n");
 }
 
 /* -------------------------------------------------------------------------
@@ -1686,6 +1890,7 @@ static int pj_is_user_call(EXPR_t *goal) {
         "number_chars","number_codes","upcase_atom","downcase_atom",
         "between","findall",
         "assertz","asserta","abolish","retract",
+        "sort","msort",
         NULL
     };
     for (int i = 0; builtins[i]; i++)
@@ -2036,6 +2241,22 @@ static void pj_emit_goal(EXPR_t *goal, const char *lbl_γ, const char *lbl_ω,
             J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
             J("    invokestatic %s/pj_db_abolish_key(Ljava/lang/Object;)Ljava/lang/String;\n", pj_classname);
             J("    invokestatic %s/pj_db_abolish(Ljava/lang/String;)V\n", pj_classname);
+            JI("goto", lbl_γ);
+            return;
+        }
+        /* sort(+List, -Sorted) — sort with deduplication */
+        /* msort(+List, -Sorted) — sort without deduplication */
+        if ((strcmp(fn, "sort") == 0 || strcmp(fn, "msort") == 0) && nargs == 2) {
+            int dedup = (strcmp(fn, "sort") == 0) ? 1 : 0;
+            int uid = pj_fresh_label();
+            char ok[64]; snprintf(ok, sizeof ok, "sort%d_ok", uid);
+            pj_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+            J("    %s\n", dedup ? "iconst_1" : "iconst_0");
+            J("    invokestatic %s/pj_sort_list(Ljava/lang/Object;I)Ljava/lang/Object;\n", pj_classname);
+            pj_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+            J("    ifeq %s\n", lbl_ω);
             JI("goto", lbl_γ);
             return;
         }
