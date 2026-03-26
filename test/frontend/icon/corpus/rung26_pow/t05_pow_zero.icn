@@ -1,0 +1,4 @@
+procedure main();
+  write(5 ^ 0);
+  write(0 ^ 5);
+end

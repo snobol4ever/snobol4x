@@ -1,0 +1,4 @@
+procedure main();
+  write(2 ^ 10);
+  write(3 ^ 3);
+end
