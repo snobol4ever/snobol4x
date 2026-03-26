@@ -2851,6 +2851,8 @@ static void pj_emit_class_header(void) {
     J(".super java/lang/Object\n\n");
     JC("Trail field");
     J(".field static pj_trail Ljava/util/ArrayList;\n\n");
+    JC("M-PJ-EXCEPTIONS — throw/catch term carrier");
+    J(".field static pj_throw_term Ljava/lang/Object;\n\n");
     JC("Dynamic DB field: HashMap<String, ArrayList<Object[]>>");
     J(".field static pj_db Ljava/util/HashMap;\n\n");
     JC("Global nb_setval/nb_getval store: HashMap<String, Object[]>");
@@ -3204,6 +3206,7 @@ static int pj_is_user_call(EXPR_t *goal) {
         "nb_setval","nb_getval",
         "aggregate_all",
         "succ_or_zero",
+        "throw","catch",
         NULL
     };
     for (int i = 0; builtins[i]; i++)
@@ -3980,6 +3983,91 @@ static void pj_emit_goal(EXPR_t *goal, const char *lbl_γ, const char *lbl_ω,
             JI("goto", lbl_γ);
             return;
         }
+
+        /* M-PJ-EXCEPTIONS -------------------------------------------------- */
+
+        /* throw/1 — store term in pj_throw_term, throw RuntimeException("PROLOG_THROW") */
+        if (strcmp(fn, "throw") == 0 && nargs == 1) {
+            pj_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+            J("    putstatic %s/pj_throw_term Ljava/lang/Object;\n", pj_classname);
+            J("    new java/lang/RuntimeException\n");
+            J("    dup\n");
+            J("    ldc \"PROLOG_THROW\"\n");
+            J("    invokespecial java/lang/RuntimeException/<init>(Ljava/lang/String;)V\n");
+            J("    athrow\n");
+            /* unreachable, but lbl_ω is still valid target for verifier */
+            return;
+        }
+
+        /* catch/3 — catch(Goal, Catcher, Recovery)
+         * Wrap Goal in a .catch block.  On RuntimeException("PROLOG_THROW"),
+         * attempt to unify pj_throw_term with Catcher.  If unification
+         * succeeds run Recovery (→ lbl_γ), otherwise re-throw.
+         * If no exception, Goal success → lbl_γ, Goal failure → lbl_ω. */
+        if (strcmp(fn, "catch") == 0 && nargs == 3) {
+            static int catch_ctr = 0;
+            int cid = catch_ctr++;
+            char lbl_try_start[64], lbl_try_end[64], lbl_catch_h[64];
+            char lbl_match_ok[64], lbl_rethrow[64], lbl_goal_ok[64];
+            snprintf(lbl_try_start, sizeof lbl_try_start, "pj_catch%d_try_start", cid);
+            snprintf(lbl_try_end,   sizeof lbl_try_end,   "pj_catch%d_try_end",   cid);
+            snprintf(lbl_catch_h,   sizeof lbl_catch_h,   "pj_catch%d_handler",   cid);
+            snprintf(lbl_match_ok,  sizeof lbl_match_ok,  "pj_catch%d_match_ok",  cid);
+            snprintf(lbl_rethrow,   sizeof lbl_rethrow,   "pj_catch%d_rethrow",   cid);
+            snprintf(lbl_goal_ok,   sizeof lbl_goal_ok,   "pj_catch%d_goal_ok",   cid);
+
+            int exc_local = (*next_local)++;   /* stores the caught exception */
+
+            /* Emit .catch directive before the try block */
+            J("    .catch java/lang/RuntimeException from %s to %s using %s\n",
+              lbl_try_start, lbl_try_end, lbl_catch_h);
+
+            /* --- try block: emit Goal --- */
+            J("%s:\n", lbl_try_start);
+            /* Inline the goal; on success fall through to lbl_goal_ok */
+            pj_emit_goal(goal->children[0], lbl_goal_ok, lbl_ω,
+                         trail_local, var_locals, n_vars,
+                         cut_cs_seal, cs_local_for_cut, next_local, lbl_cutγ);
+            J("%s:\n", lbl_try_end);
+            J("    goto %s\n", lbl_ω);   /* goal failed without exception → fail */
+
+            /* goal_ok: goal succeeded without exception */
+            J("%s:\n", lbl_goal_ok);
+            JI("goto", lbl_γ);
+
+            /* --- exception handler --- */
+            J("%s:\n", lbl_catch_h);
+            J("    astore %d\n", exc_local);  /* save exception */
+            /* Is it a Prolog throw? Check getMessage() == "PROLOG_THROW" */
+            J("    aload %d\n", exc_local);
+            J("    invokevirtual java/lang/Throwable/getMessage()Ljava/lang/String;\n");
+            J("    ldc \"PROLOG_THROW\"\n");
+            J("    invokevirtual java/lang/String/equals(Ljava/lang/Object;)Z\n");
+            J("    ifeq %s\n", lbl_rethrow);  /* not a Prolog throw → re-throw */
+
+            /* It is a Prolog throw — try to unify pj_throw_term with Catcher */
+            J("    getstatic %s/pj_throw_term Ljava/lang/Object;\n", pj_classname);
+            pj_emit_term(goal->children[1], var_locals, n_vars);  /* Catcher */
+            J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+            J("    ifeq %s\n", lbl_rethrow);   /* unification failed → re-throw */
+
+            /* Catcher matched — run Recovery */
+            J("    goto %s\n", lbl_match_ok);
+
+            J("%s:\n", lbl_rethrow);
+            J("    aload %d\n", exc_local);
+            J("    athrow\n");
+
+            J("%s:\n", lbl_match_ok);
+            /* Emit Recovery goal */
+            pj_emit_goal(goal->children[2], lbl_γ, lbl_ω,
+                         trail_local, var_locals, n_vars,
+                         cut_cs_seal, cs_local_for_cut, next_local, lbl_cutγ);
+            return;
+        }
+
+        /* END M-PJ-EXCEPTIONS ---------------------------------------------- */
 
         /* ,/2 (now n-ary after lowering) — conjunction.
          * All children are conjuncts; pass directly to pj_emit_body. */
@@ -5423,7 +5511,7 @@ static void pj_emit_findall_builtin(void) {
     J("; === pj_reflect_call (reflection dispatch for findall) ==============\n");
     J(".method static pj_reflect_call(Ljava/lang/String;I[Ljava/lang/Object;I)[Ljava/lang/Object;\n");
     J("    .limit stack 20\n");
-    J("    .limit locals 14\n");
+    J("    .limit locals 15\n");
     /* wrap entire body in try/catch Exception → return null */
     J("    .catch java/lang/Exception from pj_rc_try_start to pj_rc_try_end using pj_rc_catch\n");
     J("pj_rc_try_start:\n");
@@ -5495,7 +5583,18 @@ static void pj_emit_findall_builtin(void) {
     J("    checkcast [Ljava/lang/Object;\n");
     J("    areturn\n");
     J("pj_rc_catch:\n");
-    J("    pop\n");  /* discard exception */
+    J("    astore 10\n");   /* save exception */
+    J("    aload 10\n");
+    J("    invokevirtual java/lang/Throwable/getMessage()Ljava/lang/String;\n");
+    J("    ifnull pj_rc_swallow\n");
+    J("    aload 10\n");
+    J("    invokevirtual java/lang/Throwable/getMessage()Ljava/lang/String;\n");
+    J("    ldc \"PROLOG_THROW\"\n");
+    J("    invokevirtual java/lang/String/equals(Ljava/lang/Object;)Z\n");
+    J("    ifeq pj_rc_swallow\n");
+    J("    aload 10\n");
+    J("    athrow\n");       /* re-throw Prolog exceptions */
+    J("pj_rc_swallow:\n");
     J("    aconst_null\n");
     J("    areturn\n");
     J(".end method\n\n");
