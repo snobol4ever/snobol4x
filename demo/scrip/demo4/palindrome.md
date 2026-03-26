@@ -6,7 +6,9 @@
         &TRIM  = 1
         DEFINE('check(s)')                  :(check_end)
 check   s      = REPLACE(s, &LCASE, &UCASE)
-        check  = IDENT(s, REVERSE(s)) 'yes' :S(RETURN)
+                 IDENT(s, REVERSE(s))       :F(check_no)
+        check  = 'yes'                      :(RETURN)
+check_no
         check  = 'no'                       :(RETURN)
 check_end
         OUTPUT = check('racecar')

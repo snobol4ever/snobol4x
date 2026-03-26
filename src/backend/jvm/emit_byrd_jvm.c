@@ -1064,14 +1064,16 @@ static void jvm_emit_expr(EXPR_t *e) {
             JI("ldc", "\"\"");
             break;
         }
-        /* ARRAY(n) — create indexed array, return an array-id string */
+        /* ARRAY(n) or ARRAY(n, init) — create indexed array, return an array-id string */
         if (strcasecmp(fname, "ARRAY") == 0) {
             jvm_need_array_helpers = 1;
             EXPR_t *a0 = (e->children && e->children[0]) ? e->children[0] : NULL;
+            EXPR_t *a1 = (e->children && e->children[1]) ? e->children[1] : NULL;
             if (a0) jvm_emit_expr(a0); else JI("ldc", "\"1\"");
+            if (a1) jvm_emit_expr(a1); else JI("ldc", "\"\"");
             char ardesc[512];
             snprintf(ardesc, sizeof ardesc,
-                "%s/sno_array_new(Ljava/lang/String;)Ljava/lang/String;", jvm_classname);
+                "%s/sno_array_new2(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;", jvm_classname);
             JI("invokestatic", ardesc);
             break;
         }
@@ -3580,7 +3582,7 @@ static void jvm_emit_runtime_helpers(void) {
     /* Array/Table helpers */
     if (jvm_need_array_helpers) {
         char am[512]; snprintf(am, sizeof am, "%s/sno_arrays Ljava/util/HashMap;", jvm_classname);
-        /* sno_array_new(String size) → String (array-id) */
+        /* sno_array_new(String size) → String (array-id) — no init, kept for 2D alloc */
         J(".method static sno_array_new(Ljava/lang/String;)Ljava/lang/String;\n");
         J("    .limit stack 6\n");
         J("    .limit locals 2\n");
@@ -3599,6 +3601,55 @@ static void jvm_emit_runtime_helpers(void) {
         J("    aload_1\n");  /* map */
         J("    invokevirtual java/util/HashMap/put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;\n");
         J("    pop\n");
+        J("    areturn\n");
+        J(".end method\n\n");
+
+        /* sno_array_new2(String size, String init) → String (array-id)
+         * Creates a 1-based array of <size> elements each pre-set to <init>. */
+        J(".method static sno_array_new2(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;\n");
+        J("    .limit stack 8\n");
+        J("    .limit locals 6\n");
+        /* local 0=size_str, 1=init_str, 2=HashMap, 3=id, 4=n(int), 5=i(int) */
+        J("    new java/util/HashMap\n");
+        J("    dup\n");
+        J("    invokespecial java/util/HashMap/<init>()V\n");
+        J("    astore_2\n");
+        J("    aload_2\n");
+        J("    invokestatic java/lang/System/identityHashCode(Ljava/lang/Object;)I\n");
+        J("    invokestatic java/lang/Integer/toString(I)Ljava/lang/String;\n");
+        J("    astore_3\n");
+        /* sno_arrays.put(id, map) */
+        J("    getstatic %s\n", am);
+        J("    aload_3\n");
+        J("    aload_2\n");
+        J("    invokevirtual java/util/HashMap/put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;\n");
+        J("    pop\n");
+        /* n = Integer.parseInt(size_str) — use Double to be safe */
+        J("    aload_0\n");
+        J("    invokestatic java/lang/Double/parseDouble(Ljava/lang/String;)D\n");
+        J("    d2i\n");
+        J("    istore 4\n");
+        /* if init is empty string, skip fill loop */
+        J("    aload_1\n");
+        J("    invokevirtual java/lang/String/isEmpty()Z\n");
+        J("    ifne La2_done\n");
+        /* fill loop: for i=1; i<=n; i++ put(i, init) */
+        J("    iconst_1\n");
+        J("    istore 5\n");
+        J("La2_loop:\n");
+        J("    iload 5\n");
+        J("    iload 4\n");
+        J("    if_icmpgt La2_done\n");
+        J("    aload_2\n");
+        J("    iload 5\n");
+        J("    invokestatic java/lang/Integer/toString(I)Ljava/lang/String;\n");
+        J("    aload_1\n");
+        J("    invokevirtual java/util/HashMap/put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;\n");
+        J("    pop\n");
+        J("    iinc 5 1\n");
+        J("    goto La2_loop\n");
+        J("La2_done:\n");
+        J("    aload_3\n");
         J("    areturn\n");
         J(".end method\n\n");
 
@@ -3622,7 +3673,6 @@ static void jvm_emit_runtime_helpers(void) {
         J("    areturn\n");
         J(".end method\n\n");
 
-        /* sno_array_get(String array_id, String key) → String */
         J(".method static sno_array_get(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;\n");
         J("    .limit stack 4\n");
         J("    .limit locals 3\n");

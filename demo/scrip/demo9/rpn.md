@@ -25,11 +25,16 @@ get_tok expr   digits . tok =              :S(do_num)
 do_num  push(tok)                           :(tok_loop)
 do_op   a      = pop()
         b      = pop()
-        tok    = IDENT(tok, '+') b + a      :S(do_push)
-        tok    = IDENT(tok, '-') b - a      :S(do_push)
-        tok    = IDENT(tok, '*') b * a      :S(do_push)
-        tok    = IDENT(tok, '/') b / a
-do_push push(tok)                           :(tok_loop)
+        IDENT(tok, '+')                     :F(try_minus)
+        push(b + a)                         :(tok_loop)
+try_minus
+        IDENT(tok, '-')                     :F(try_star)
+        push(b - a)                         :(tok_loop)
+try_star
+        IDENT(tok, '*')                     :F(try_slash)
+        push(b * a)                         :(tok_loop)
+try_slash
+        push(b / a)
 done    OUTPUT = pop()
 END
 ```
