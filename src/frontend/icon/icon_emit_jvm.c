@@ -317,7 +317,7 @@ static void ij_var_field(const char *varname, char *out, size_t outsz) {
 /* =========================================================================
  * Static fields emitted at class level
  * ======================================================================= */
-#define MAX_STATICS 256
+#define MAX_STATICS 512
 static char ij_statics[MAX_STATICS][64];
 static char ij_static_types[MAX_STATICS];  /* 'J'=long, 'I'=int */
 static int  ij_nstatics = 0;
@@ -3047,7 +3047,7 @@ static void ij_emit_alt(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
             ij_get_dbl(alt_val_fld);
         } else {
             /* Long (or mixed) — store to temp long field, set gate, reload */
-            if (ij_expr_is_string(n->children[i])) JI("pop","");
+            if (ij_expr_is_string(n->children[i])) { JI("pop",""); JI("lconst_0",""); }
             else if (ij_expr_is_real(n->children[i])) {
                 JI("invokestatic","java/lang/Double/doubleToRawLongBits(D)J");
             }
@@ -5247,16 +5247,12 @@ static void ij_emit_expr(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
             for (int i = 0; i < nc-1; i++) {
                 char drain_fld[80];
                 snprintf(drain_fld, sizeof drain_fld, "icn_%d_and_drain_%d", cid, i);
-                int child_is_str  = (n->children[i]->kind != ICN_ALT)
-                                    && ij_expr_is_string(n->children[i]);
-                int child_is_list = !child_is_str && (n->children[i]->kind != ICN_ALT)
-                                    && ij_expr_is_list(n->children[i]);
+                int child_is_str  = ij_expr_is_string(n->children[i]);
+                int child_is_list = !child_is_str && ij_expr_is_list(n->children[i]);
                 int child_is_tbl  = !child_is_str && !child_is_list
-                                    && (n->children[i]->kind != ICN_ALT)
                                     && ij_expr_is_table(n->children[i]);
                 int child_is_ref  = child_is_str || child_is_list || child_is_tbl;
-                int child_is_dbl  = !child_is_ref && (n->children[i]->kind != ICN_ALT)
-                                    && ij_expr_is_real(n->children[i]);
+                int child_is_dbl  = !child_is_ref && ij_expr_is_real(n->children[i]);
                 if (child_is_ref)      ij_declare_static_str(drain_fld);
                 else if (child_is_dbl) ij_declare_static_dbl(drain_fld);
                 else                   ij_declare_static(drain_fld);
