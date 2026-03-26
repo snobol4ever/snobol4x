@@ -2675,6 +2675,21 @@ static void pj_emit_assertz_helpers(void) {
     J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
     J("    ireturn\n");
     J(".end method\n\n");
+
+    /* pj_term_to_atom_2(Object term, Object atom_or_var) -> Z
+     * term_to_atom/2 and term_string/2 — forward only (term bound).
+     * Converts term to its write-representation string, boxes as atom, unifies. */
+    J("; pj_term_to_atom_2\n");
+    J(".method static pj_term_to_atom_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n");
+    J("    .limit stack 4\n");
+    J("    .limit locals 2\n");
+    J("    aload_0\n");
+    J("    invokestatic %s/pj_term_str(Ljava/lang/Object;)Ljava/lang/String;\n", pj_classname);
+    J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+    J("    aload_1\n");
+    J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+    J("    ireturn\n");
+    J(".end method\n\n");
 }
 
 /* -------------------------------------------------------------------------
@@ -3026,6 +3041,7 @@ static int pj_is_user_call(EXPR_t *goal) {
         "writeq","write_canonical",
         "atom_string","number_string",
         "string_concat","string_length","string_lower","string_upper",
+        "term_to_atom","term_string",
         NULL
     };
     for (int i = 0; builtins[i]; i++)
@@ -3670,6 +3686,26 @@ static void pj_emit_goal(EXPR_t *goal, const char *lbl_γ, const char *lbl_ω,
             J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
             pj_emit_term(goal->children[1], var_locals, n_vars);
             J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* term_to_atom(+Term, ?Atom) — forward: serialize term → atom string */
+        if (strcmp(fn, "term_to_atom") == 0 && nargs == 2) {
+            pj_emit_term(goal->children[0], var_locals, n_vars);
+            pj_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pj_term_to_atom_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* term_string(+Term, ?Str) — identical to term_to_atom */
+        if (strcmp(fn, "term_string") == 0 && nargs == 2) {
+            pj_emit_term(goal->children[0], var_locals, n_vars);
+            pj_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pj_term_to_atom_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
             J("    ifeq %s\n", lbl_ω);
             JI("goto", lbl_γ);
             return;
