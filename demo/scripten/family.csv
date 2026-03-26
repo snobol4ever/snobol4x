@@ -1,0 +1,10 @@
+name,uid,birthyear,gender,parent_uid
+Eleanor,U001,1921,F,
+George,U002,1923,M,
+Margaret,U003,1948,F,U001
+Thomas,U004,1950,M,U002
+Alice,U005,1975,F,U003
+Robert,U006,1977,M,U003
+Diana,U007,1978,F,U004
+James,U008,2001,M,U005
+Sophie,U009,2003,F,U006

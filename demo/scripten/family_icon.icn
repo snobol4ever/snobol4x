@@ -1,0 +1,113 @@
+# family_icon.icn -- Icon block of the Scripten family-tree demo.
+# Calls cross-language Prolog query stubs replaced by inject_linkage.py.
+# Workarounds: no \E//E (use table default "0" sentinel); no {} bodies.
+
+# -- Cross-language stubs (bodies replaced by inject_linkage.py) -----------
+
+procedure prolog_query_count();
+  return "0";
+end
+
+procedure prolog_query_grandparents();
+  return "";
+end
+
+procedure prolog_query_siblings();
+  return "";
+end
+
+procedure prolog_query_cousins();
+  return "";
+end
+
+procedure prolog_query_generations();
+  return "";
+end
+
+procedure prolog_query_ancestors(uid);
+  return "";
+end
+
+# -- Helpers ---------------------------------------------------------------
+
+# split_nl(s, i) -- recursive generator; suspend each newline-delimited line.
+procedure split_nl(s, i);
+  local j, n;
+  n := *s;
+  if i > n then fail;
+  j := find("
+", s, i) | (n + 1);
+  if j > i then suspend s[i : j];
+  return split_nl(s, j + 1);
+end
+
+# pipe_a(s) -- substring before first | character.
+procedure pipe_a(s);
+  local i;
+  i := find("|", s) | fail;
+  return s[1 : i];
+end
+
+# pipe_b(s) -- substring after first | character.
+procedure pipe_b(s);
+  local i;
+  i := find("|", s) | fail;
+  return s[i + 1 : *s + 1];
+end
+
+# canon(a, b) -- "lesser|greater" dedup key without \E//E.
+procedure canon(a, b);
+  if a > b then return b || "|" || a;
+  return a || "|" || b;
+end
+
+# new_key(t, k) -- succeed and record k if not already in t; else fail.
+# Workaround for missing \E//E: table() returns &null for missing keys,
+# but we cannot test &null without \E. So we use a string sentinel "1".
+# t is created with table("0") so t[k] = "0" means unseen.
+procedure new_key(t, k);
+  if t[k] ~= "0" then fail;
+  t[k] := "1";
+end
+
+# print_pairs(raw, suffix, t) -- print unique canonical pairs with suffix.
+procedure print_pairs(raw, suffix, t);
+  local line, a, b;
+  every line := split_nl(raw, 1) do
+    a := pipe_a(line) &
+    b := pipe_b(line) &
+    new_key(t, canon(a, b)) &
+    write("  " || a || " and " || b || " " || suffix);
+end
+
+# -- Main ------------------------------------------------------------------
+
+procedure main();
+  local raw, line, t;
+
+  write("Parsed " || prolog_query_count() || " family members.");
+  write("");
+
+  write("=== Grandparent relationships ===");
+  every write("  " || split_nl(prolog_query_grandparents(), 1));
+  write("");
+
+  write("=== Siblings ===");
+  print_pairs(prolog_query_siblings(), "are siblings", table("0"));
+  write("");
+
+  write("=== Cousins ===");
+  print_pairs(prolog_query_cousins(), "are cousins", table("0"));
+  write("");
+
+  write("=== Generations (root=0) ===");
+  raw := prolog_query_generations();
+  every line := split_nl(raw, 1) do
+    write("  " || pipe_b(line) || " : generation " || pipe_a(line));
+  write("");
+
+  write("=== Ancestors of James (U008) ===");
+  raw := prolog_query_ancestors("U008");
+  every line := split_nl(raw, 1) do
+    write("  " || pipe_b(line) || " (generation " || pipe_a(line) || ")");
+end
