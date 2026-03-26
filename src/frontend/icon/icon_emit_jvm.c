@@ -323,8 +323,9 @@ static char ij_static_types[MAX_STATICS];  /* 'J'=long, 'I'=int */
 static int  ij_nstatics = 0;
 
 /* Returns 1 if this J-typed static should be saved/restored across a call.
- * Exclude: globals (icn_gvar_*), call-convention fields (icn_retval, icn_arg_*),
- * and control fields (icn_failed, icn_suspended, icn_suspend_id). */
+ * Save: scratch intermediates (icn_N_*) and caller's own proc-locals (icn_pv_<cur>_*).
+ * Do NOT save: globals (icn_gvar_*), call-convention fields (icn_retval, icn_arg_*),
+ * control fields, or OTHER procs' persistent locals (icn_pv_<other>_*). */
 static int ij_static_needs_callsave(int idx) {
     if (ij_static_types[idx] != 'J') return 0;
     const char *n = ij_statics[idx];
@@ -334,6 +335,12 @@ static int ij_static_needs_callsave(int idx) {
     if (strcmp (n, "icn_failed")     == 0) return 0;
     if (strcmp (n, "icn_suspended")  == 0) return 0;
     if (strcmp (n, "icn_suspend_id") == 0) return 0;
+    /* icn_pv_<proc>_* — only save caller's own proc locals, not other procs' */
+    if (strncmp(n, "icn_pv_", 7) == 0) {
+        char caller_prefix[80];
+        snprintf(caller_prefix, sizeof caller_prefix, "icn_pv_%s_", ij_cur_proc);
+        if (strncmp(n, caller_prefix, strlen(caller_prefix)) != 0) return 0;
+    }
     return 1;
 }
 
