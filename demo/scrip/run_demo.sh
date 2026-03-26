@@ -33,10 +33,10 @@ if [ -z "$DEMO_DIR" ]; then
 fi
 DEMO_DIR="$(cd "$DEMO_DIR" && pwd)"
 
-# Locate .scrip source
-SCRIP_FILE="$(ls "$DEMO_DIR"/*.scrip 2>/dev/null | head -1)"
+# Locate .md source
+SCRIP_FILE="$(ls "$DEMO_DIR"/*.md 2>/dev/null | head -1)"
 if [ -z "$SCRIP_FILE" ]; then
-    echo "ERROR: no .scrip file found in $DEMO_DIR" >&2
+    echo "ERROR: no .md file found in $DEMO_DIR" >&2
     exit 1
 fi
 
