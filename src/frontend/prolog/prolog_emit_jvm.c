@@ -6769,7 +6769,10 @@ static const char pj_plunit_shim_src[] =
     "    nb_getval(pj_p,P), nb_getval(pj_f,F), nb_getval(pj_s,S),\n"
     "    format('~n% ~w passed, ~w failed, ~w skipped~n',[P,F,S]).\n"
     "run_tests :- pj_init, run_all_suites, pj_summary.\n"
+    "run_tests(Suite) :- is_list(Suite), !, pj_init, run_suites_list(Suite), pj_summary.\n"
     "run_tests(Suite) :- pj_init, run_suite(Suite), pj_summary.\n"
+    "run_suites_list([]).\n"
+    "run_suites_list([H|T]) :- run_suite(H), run_suites_list(T).\n"
     "run_all_suites :- pj_suite(S), run_suite(S), fail.\n"
     "run_all_suites.\n"
     "run_suite(Suite) :-\n"
@@ -7370,6 +7373,30 @@ static void pj_emit_main(Program *prog) {
         JI("iconst_0", ""); /* cs = 0 */
         J("    invokestatic %s/p_main_0(I)[Ljava/lang/Object;\n", pj_classname);
         JI("pop", "");
+    }
+
+    /* Auto run_tests: if this is a plunit file with no main/0 and no explicit
+     * :- run_tests directive, emit run_tests + halt automatically so plunit-only
+     * files (e.g. SWI test_*.pl) execute without needing a wrapper. */
+    if (pj_linker_ntest > 0 && !has_main0) {
+        /* Check whether :- run_tests was already emitted as a directive */
+        int has_run_tests_dir = 0;
+        for (STMT_t *s2 = prog->head; s2; s2 = s2->next) {
+            if (!s2->subject || s2->subject->kind == E_CHOICE) continue;
+            EXPR_t *g = s2->subject;
+            if (g->kind == E_FNC && g->sval &&
+                (strcmp(g->sval, "run_tests") == 0)) {
+                has_run_tests_dir = 1; break;
+            }
+        }
+        if (!has_run_tests_dir) {
+            JC("auto run_tests (M-PJ-LINKER: no main/0, no :- run_tests)");
+            J("    ldc \"run_tests\"\n");
+            J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+            J("    iconst_0\n");
+            J("    invokestatic %s/pj_call_goal(Ljava/lang/Object;I)I\n", pj_classname);
+            J("    pop\n");
+        }
     }
     JI("return", "");
     J(".end method\n\n");
