@@ -1,0 +1,7 @@
+record box(w, h)
+procedure main();
+  b := box(10, 20);
+  b.w := 99;
+  write(b.w);
+  write(b.h);
+end

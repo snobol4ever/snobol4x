@@ -1,7 +1,7 @@
 #!/bin/bash
 # run_rung22.sh — rung22_lists corpus runner
 set -e
-cd "$(dirname "$0")/../.."
+cd "$(dirname "$0")/../../.."
 PASS=0; FAIL=0
 for icn in test/frontend/icon/corpus/rung22_lists/t*.icn; do
   base="${icn%.icn}"; exp="$base.expected"; [ -f "$exp" ] || continue

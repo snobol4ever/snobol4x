@@ -15,7 +15,7 @@
 #include <string.h>
 
 /* Forward declaration for JVM emitter */
-void ij_emit_file(IcnNode **nodes, int count, FILE *out, const char *filename);
+void ij_emit_file(IcnNode **nodes, int count, FILE *out, const char *filename, const char *outpath);
 
 static char *read_file(const char *path) {
     FILE *f = fopen(path, "r");
@@ -66,7 +66,7 @@ int main(int argc, char **argv) {
     if (output) { out_file = fopen(output, "w"); if (!out_file) { perror(output); return 1; } }
 
     if (do_jvm) {
-        ij_emit_file(procs, count, out_file, input);
+        ij_emit_file(procs, count, out_file, input, output);
     } else {
         IcnEmitter em;
         icn_emit_init(&em, out_file);

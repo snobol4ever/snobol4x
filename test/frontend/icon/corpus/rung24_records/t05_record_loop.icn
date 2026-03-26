@@ -1,0 +1,6 @@
+record counter(n)
+procedure main();
+  c := counter(0);
+  every c.n := 1 to 3 do
+    write(c.n);
+end

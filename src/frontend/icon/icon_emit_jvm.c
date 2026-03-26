@@ -155,6 +155,45 @@ static int ij_nparams_for(const char *name) {
         if(!strcmp(ij_user_procs[i],name)) return ij_user_nparams[i];
     return 0;
 }
+/* -------------------------------------------------------------------------
+ * Record type registry
+ * Maps record type name → array of field names, nfields
+ * Used by ICN_CALL (constructor) and ICN_FIELD (getfield/putfield).
+ * ------------------------------------------------------------------------- */
+#define MAX_RECORD_TYPES 32
+#define MAX_RECORD_FIELDS 16
+static char ij_rec_names[MAX_RECORD_TYPES][64];
+static char ij_rec_fields[MAX_RECORD_TYPES][MAX_RECORD_FIELDS][64];
+static int  ij_rec_nfields[MAX_RECORD_TYPES];
+static int  ij_nrec = 0;
+
+static void ij_register_record(const char *name, IcnNode *rn) {
+    for (int i = 0; i < ij_nrec; i++) if (!strcmp(ij_rec_names[i], name)) return;
+    if (ij_nrec >= MAX_RECORD_TYPES) return;
+    strncpy(ij_rec_names[ij_nrec], name, 63);
+    int nf = rn->nchildren < MAX_RECORD_FIELDS ? rn->nchildren : MAX_RECORD_FIELDS;
+    ij_rec_nfields[ij_nrec] = nf;
+    for (int i = 0; i < nf; i++)
+        strncpy(ij_rec_fields[ij_nrec][i], rn->children[i]->val.sval, 63);
+    ij_nrec++;
+}
+static int ij_is_record_type(const char *name) {
+    for (int i = 0; i < ij_nrec; i++) if (!strcmp(ij_rec_names[i], name)) return 1;
+    return 0;
+}
+static int ij_record_nfields(const char *name) {
+    for (int i = 0; i < ij_nrec; i++) if (!strcmp(ij_rec_names[i], name)) return ij_rec_nfields[i];
+    return 0;
+}
+/* Returns field name at index idx for named record type, or NULL */
+static const char *ij_record_field(const char *name, int idx) {
+    for (int i = 0; i < ij_nrec; i++)
+        if (!strcmp(ij_rec_names[i], name)) {
+            if (idx < ij_rec_nfields[i]) return ij_rec_fields[i][idx];
+        }
+    return NULL;
+}
+
 static int ij_has_suspend(IcnNode *n) {
     if (!n) return 0;
     if (n->kind == ICN_SUSPEND) return 1;
@@ -262,7 +301,14 @@ static char ij_static_types[MAX_STATICS];  /* 'J'=long, 'I'=int */
 static int  ij_nstatics = 0;
 
 static void ij_declare_static_typed(const char *name, char type) {
-    for (int i=0;i<ij_nstatics;i++) if(!strcmp(ij_statics[i],name)) return;
+    for (int i=0;i<ij_nstatics;i++) {
+        if(!strcmp(ij_statics[i],name)) {
+            /* Allow upgrade to Object type if previously declared as J (long) */
+            if (type == 'O' && ij_static_types[i] == 'J')
+                ij_static_types[i] = 'O';
+            return;
+        }
+    }
     if (ij_nstatics < MAX_STATICS) {
         strncpy(ij_statics[ij_nstatics], name, 63);
         ij_static_types[ij_nstatics] = type;
@@ -411,6 +457,19 @@ static void ij_put_real_field(const char *fname) {
 static int ij_expr_is_string(IcnNode *n);
 static int ij_expr_is_list(IcnNode *n);
 static int ij_expr_is_table(IcnNode *n);
+static int ij_expr_is_record(IcnNode *n) {
+    if (!n) return 0;
+    if (n->kind == ICN_CALL && n->nchildren >= 1 && n->children[0]->kind == ICN_VAR)
+        return ij_is_record_type(n->children[0]->val.sval);
+    return 0;
+}
+/* Returns record type name if expr is a record constructor, else NULL */
+static const char *ij_expr_record_type(IcnNode *n) {
+    if (!n || n->kind != ICN_CALL || n->nchildren < 1) return NULL;
+    if (n->children[0]->kind != ICN_VAR) return NULL;
+    const char *nm = n->children[0]->val.sval;
+    return ij_is_record_type(nm) ? nm : NULL;
+}
 
 /* Push 0 to icn_failed (success) */
 static void ij_set_ok(void) {
@@ -610,12 +669,13 @@ static void ij_emit_var(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
         /* Named local/param: use per-proc static field (suspend-safe) */
         char fld[128]; ij_var_field(n->val.sval, fld, sizeof fld);
         /* Determine type: look up in statics table */
-        int is_str = 0, is_dbl = 0, is_list = 0, is_table = 0;
+        int is_str = 0, is_dbl = 0, is_list = 0, is_table = 0, is_obj = 0;
         for (int i = 0; i < ij_nstatics; i++) {
             if (!strcmp(ij_statics[i], fld) && ij_static_types[i] == 'A') { is_str  = 1; break; }
             if (!strcmp(ij_statics[i], fld) && ij_static_types[i] == 'D') { is_dbl  = 1; break; }
             if (!strcmp(ij_statics[i], fld) && ij_static_types[i] == 'L') { is_list = 1; break; }
             if (!strcmp(ij_statics[i], fld) && ij_static_types[i] == 'T') { is_table= 1; break; }
+            if (!strcmp(ij_statics[i], fld) && ij_static_types[i] == 'O') { is_obj  = 1; break; }
         }
         if (is_str) {
             ij_declare_static_str(fld);
@@ -629,6 +689,10 @@ static void ij_emit_var(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
         } else if (is_dbl) {
             ij_declare_static_dbl(fld);
             ij_get_dbl(fld);
+        } else if (is_obj) {
+            /* Record variable — push 0L as placeholder; ICN_FIELD relay will reload Object */
+            ij_declare_static_obj(fld);
+            JI("lconst_0","");
         } else {
             ij_declare_static(fld);
             ij_get_long(fld);
@@ -636,17 +700,19 @@ static void ij_emit_var(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
     } else {
         char gname[80]; snprintf(gname, sizeof gname, "icn_gvar_%s", n->val.sval);
         /* Check global type */
-        int is_str = 0, is_dbl = 0, is_list = 0, is_table = 0;
+        int is_str = 0, is_dbl = 0, is_list = 0, is_table = 0, is_obj = 0;
         for (int i = 0; i < ij_nstatics; i++) {
             if (!strcmp(ij_statics[i], gname) && ij_static_types[i] == 'A') { is_str  = 1; break; }
             if (!strcmp(ij_statics[i], gname) && ij_static_types[i] == 'D') { is_dbl  = 1; break; }
             if (!strcmp(ij_statics[i], gname) && ij_static_types[i] == 'L') { is_list = 1; break; }
             if (!strcmp(ij_statics[i], gname) && ij_static_types[i] == 'T') { is_table= 1; break; }
+            if (!strcmp(ij_statics[i], gname) && ij_static_types[i] == 'O') { is_obj  = 1; break; }
         }
         if (is_str)        { ij_declare_static_str(gname);   ij_get_str_field(gname); }
         else if (is_list)  { ij_declare_static_list(gname);  ij_get_list_field(gname); }
         else if (is_table) { ij_declare_static_table(gname); ij_get_table_field(gname); }
         else if (is_dbl)   { ij_declare_static_dbl(gname);   ij_get_dbl(gname); }
+        else if (is_obj)   { ij_declare_static_obj(gname);   JI("lconst_0",""); }
         else              { ij_declare_static(gname);      ij_get_long(gname); }
     }
     JGoto(ports.γ);
@@ -664,6 +730,60 @@ static void ij_emit_assign(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
         lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
         strncpy(oα,a,63); strncpy(oβ,b,63);
         JL(a); JGoto(ports.ω); JL(b); JGoto(ports.ω); return;
+    }
+
+    /* -----------------------------------------------------------------------
+     * EARLY EXIT: p.field := v   (record field assignment)
+     * Flow: eval v → relay → box → load record obj → putfield → v_long → γ
+     * --------------------------------------------------------------------- */
+    {
+        IcnNode *lhs = n->children[0];
+        IcnNode *rhs = n->children[1];
+        if (lhs && lhs->kind == ICN_FIELD && lhs->nchildren >= 2) {
+            IcnNode *rec_expr  = lhs->children[0];
+            IcnNode *field_var = lhs->children[1];
+            const char *fname  = field_var->val.sval;
+            /* Determine record type */
+            const char *rtype = NULL;
+            for (int ri = 0; ri < ij_nrec && !rtype; ri++)
+                for (int fi = 0; fi < ij_rec_nfields[ri]; fi++)
+                    if (!strcmp(ij_rec_fields[ri][fi], fname)) { rtype = ij_rec_names[ri]; break; }
+            if (rtype && rec_expr && rec_expr->kind == ICN_VAR) {
+                int sid = ij_new_id();
+                char a[64], b[64]; lbl_α(sid,a,sizeof a); lbl_β(sid,b,sizeof b);
+                strncpy(oα,a,63); strncpy(oβ,b,63);
+                char v_relay[64]; snprintf(v_relay, sizeof v_relay, "icn_%d_fa_vr", sid);
+                char val_long[80]; snprintf(val_long, sizeof val_long, "icn_%d_fa_vl", sid);
+                char val_obj[80];  snprintf(val_obj,  sizeof val_obj,  "icn_%d_fa_vo", sid);
+                ij_declare_static(val_long);
+                ij_declare_static_obj(val_obj);
+                IjPorts vp; strncpy(vp.γ, v_relay, 63); strncpy(vp.ω, ports.ω, 63);
+                char va[64], vb[64]; ij_emit_expr(rhs, vp, va, vb);
+                JL(a); JGoto(va);
+                JL(b); JGoto(vb);
+                JL(v_relay);
+                /* Save long value */
+                JI("dup2",""); ij_put_long(val_long);
+                /* Box to Object */
+                JI("invokestatic","java/lang/Long/valueOf(J)Ljava/lang/Long;");
+                ij_put_obj_field(val_obj);
+                /* Load record object */
+                char recfld[128];
+                int slot = ij_locals_find(rec_expr->val.sval);
+                if (slot >= 0) ij_var_field(rec_expr->val.sval, recfld, sizeof recfld);
+                else           snprintf(recfld, sizeof recfld, "icn_gvar_%s", rec_expr->val.sval);
+                J("    getstatic %s/%s Ljava/lang/Object;\n", ij_classname, recfld);
+                J("    checkcast %s$%s\n", ij_classname, rtype);
+                /* Load boxed value */
+                ij_get_obj_field(val_obj);
+                /* putfield */
+                J("    putfield %s$%s/%s Ljava/lang/Object;\n", ij_classname, rtype, fname);
+                /* result = original long value */
+                ij_get_long(val_long);
+                JGoto(ports.γ);
+                return;
+            }
+        }
     }
 
     /* -----------------------------------------------------------------------
@@ -756,6 +876,7 @@ static void ij_emit_assign(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
     int is_list = !is_str && ij_expr_is_list(rhs);
     int is_tbl  = !is_str && !is_list && ij_expr_is_table(rhs);
     int is_dbl  = !is_str && !is_list && !is_tbl && ij_expr_is_real(rhs);
+    int is_rec  = !is_str && !is_list && !is_tbl && !is_dbl && ij_expr_is_record(rhs);
 
     if (lhs && lhs->kind == ICN_VAR) {
         int slot = ij_locals_find(lhs->val.sval);
@@ -775,6 +896,15 @@ static void ij_emit_assign(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
                 }
             }
             else if (is_dbl)  { ij_declare_static_dbl(fld);   ij_put_dbl(fld); }
+            else if (is_rec)  {
+                /* Pop the 0L placeholder, load the record object from icn_retval_obj */
+                JI("pop2","");
+                J("    getstatic %s/icn_retval_obj Ljava/lang/Object;\n", ij_classname);
+                ij_declare_static_obj(fld);
+                ij_put_obj_field(fld);
+                /* push 0L as result for assign expression value */
+                JI("lconst_0","");
+            }
             else              { ij_declare_static(fld);       ij_put_long(fld); }
         } else {
             char gname[80]; snprintf(gname, sizeof gname, "icn_gvar_%s", lhs->val.sval);
@@ -791,6 +921,13 @@ static void ij_emit_assign(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
                 }
             }
             else if (is_dbl)  { ij_declare_static_dbl(gname);   ij_put_dbl(gname); }
+            else if (is_rec)  {
+                JI("pop2","");
+                J("    getstatic %s/icn_retval_obj Ljava/lang/Object;\n", ij_classname);
+                ij_declare_static_obj(gname);
+                ij_put_obj_field(gname);
+                JI("lconst_0","");
+            }
             else              { ij_declare_static(gname);       ij_put_long(gname); }
         }
     } else {
@@ -807,6 +944,7 @@ static void ij_emit_assign(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
             else if (is_list) ij_get_list_field(fld);
             else if (is_tbl)  ij_get_table_field(fld);
             else if (is_dbl)  ij_get_dbl(fld);
+            else if (is_rec)  JI("lconst_0","");
             else              ij_get_long(fld);
         } else {
             char gname[80]; snprintf(gname, sizeof gname, "icn_gvar_%s", lhs->val.sval);
@@ -814,6 +952,7 @@ static void ij_emit_assign(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
             else if (is_list) ij_get_list_field(gname);
             else if (is_tbl)  ij_get_table_field(gname);
             else if (is_dbl)  ij_get_dbl(gname);
+            else if (is_rec)  JI("lconst_0","");
             else              ij_get_long(gname);
         }
     } else {
@@ -1005,6 +1144,84 @@ static void ij_emit_call(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
     int id = ij_new_id(); char a[64], b[64];
     lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
     strncpy(oα,a,63); strncpy(oβ,b,63);
+
+    /* --- record constructor: RecordType(v1, v2, ...) --- */
+    if (ij_is_record_type(fname)) {
+        int nf = ij_record_nfields(fname);
+        /* Relay labels per arg */
+        char **relays = malloc((nargs+1) * sizeof(char*));
+        char **arg_flds = malloc(nargs * sizeof(char*));
+        for (int i = 0; i <= nargs; i++) {
+            relays[i] = malloc(64);
+            snprintf(relays[i], 64, "icn_%d_rc_r%d", id, i);
+        }
+        for (int i = 0; i < nargs; i++) {
+            arg_flds[i] = malloc(80);
+            snprintf(arg_flds[i], 80, "icn_%d_rc_a%d", id, i);
+            ij_declare_static_obj(arg_flds[i]);
+        }
+        /* Static Object field to hold the new record object */
+        char rec_obj_fld[80]; snprintf(rec_obj_fld, sizeof rec_obj_fld, "icn_%d_rc_obj", id);
+        ij_declare_static_obj(rec_obj_fld);
+
+        /* Emit each arg expression, chained through relays */
+        char (*arg_a)[64] = malloc(nargs * sizeof(*arg_a));
+        char (*arg_b)[64] = malloc(nargs * sizeof(*arg_b));
+        for (int i = 0; i < nargs; i++) {
+            const char *next_relay = (i+1 < nargs) ? relays[i+1] : relays[nargs];
+            IjPorts ap; strncpy(ap.γ, (i < nargs-1) ? relays[i+1] : relays[nargs], 63);
+            strncpy(ap.ω, ports.ω, 63);
+            /* override gamma to relay through constructor assembly */
+            snprintf(ap.γ, 64, "icn_%d_rc_r%d", id, i+1);
+            ij_emit_expr(n->children[1+i], ap, arg_a[i], arg_b[i]);
+            (void)next_relay;
+        }
+
+        JL(a); if (nargs > 0) JGoto(arg_a[0]); else JGoto(relays[0]);
+        JL(b); JGoto(ports.ω);
+
+        /* build label — jumped to after all args boxed */
+        char build_lbl[64]; snprintf(build_lbl, sizeof build_lbl, "icn_%d_rc_build", id);
+
+        /* arg relay chain: box each arg into its Object static */
+        for (int i = 0; i < nargs; i++) {
+            JL(relays[i+1]);  /* relay[i+1] is gamma of arg[i] */
+            JI("invokestatic","java/lang/Long/valueOf(J)Ljava/lang/Long;");
+            ij_put_obj_field(arg_flds[i]);
+            if (i+1 < nargs) JGoto(arg_a[i+1]);
+            else              JGoto(build_lbl);  /* all args done → build */
+        }
+
+        /* Build the record object */
+        if (nargs == 0) JL(relays[0]);
+        JL(build_lbl);
+        J("    new %s$%s\n", ij_classname, fname);
+        JI("dup","");
+        J("    invokespecial %s$%s/<init>()V\n", ij_classname, fname);
+        /* putfield for each arg */
+        for (int i = 0; i < nargs && i < nf; i++) {
+            const char *fldname = ij_record_field(fname, i);
+            if (!fldname) continue;
+            JI("dup","");
+            ij_get_obj_field(arg_flds[i]);
+            J("    putfield %s$%s/%s Ljava/lang/Object;\n", ij_classname, fname, fldname);
+        }
+        /* Store object reference into rec_obj_fld (as Object) */
+        ij_put_obj_field(rec_obj_fld);
+        /* Also store into icn_retval_obj so ICN_ASSIGN can retrieve it */
+        ij_get_obj_field(rec_obj_fld);
+        J("    putstatic %s/icn_retval_obj Ljava/lang/Object;\n", ij_classname);
+
+        /* Result: push 0L as numeric placeholder, then γ */
+        JI("lconst_0","");
+        char done_lbl[64]; snprintf(done_lbl, sizeof done_lbl, "icn_%d_rc_done", id);
+        JGoto(ports.γ);
+
+        for (int i = 0; i <= nargs; i++) free(relays[i]);
+        for (int i = 0; i < nargs; i++) free(arg_flds[i]);
+        free(relays); free(arg_flds); free(arg_a); free(arg_b);
+        return;
+    }
 
     /* --- built-in write --- */
     if (strcmp(fname, "write") == 0) {
@@ -3339,6 +3556,128 @@ static void ij_emit_makelist(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
  *
  * Children: [0]=E (the generator), [1]=N (the bound)
  * ======================================================================= */
+/* =========================================================================
+ * ICN_FIELD — E.name  (record field access / lvalue)
+ *
+ * E.name is a one-shot expression: eval E (must succeed once), then
+ * getfield name from the resulting Object.  On resume → fail.
+ * Fields are stored as Object (boxed Long or String).
+ *
+ * Children: [0] = record expression, [1] = ICN_VAR with field name
+ *
+ * Read path (α):
+ *   eval E → relay → checkcast RecordType → getfield → unbox → γ
+ * β → ω (one-shot)
+ *
+ * Assignment (p.x := v) is handled in ICN_ASSIGN by detecting ICN_FIELD lhs.
+ * ======================================================================= */
+static void ij_emit_field(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
+    int id = ij_new_id(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+
+    if (n->nchildren < 2) { JL(a); JGoto(ports.ω); JL(b); JGoto(ports.ω); return; }
+
+    IcnNode *rec_expr  = n->children[0];
+    IcnNode *field_var = n->children[1];   /* ICN_VAR — field name */
+    const char *fname  = field_var->val.sval;
+
+    /* Determine record type from expression (must be a variable) */
+    const char *rtype = NULL;
+    if (rec_expr && rec_expr->kind == ICN_VAR) {
+        /* Walk record registry: find a type that has this field */
+        for (int ri = 0; ri < ij_nrec; ri++) {
+            for (int fi = 0; fi < ij_rec_nfields[ri]; fi++) {
+                if (!strcmp(ij_rec_fields[ri][fi], fname)) {
+                    rtype = ij_rec_names[ri]; break;
+                }
+            }
+            if (rtype) break;
+        }
+    }
+
+    char obj_fld[80]; snprintf(obj_fld, sizeof obj_fld, "icn_%d_fld_obj", id);
+    ij_declare_static_obj(obj_fld);
+
+    char e_relay[64]; snprintf(e_relay, sizeof e_relay, "icn_%d_fld_er", id);
+    IjPorts ep; strncpy(ep.γ, e_relay, 63); strncpy(ep.ω, ports.ω, 63);
+    char ea[64], eb[64]; ij_emit_expr(rec_expr, ep, ea, eb);
+
+    JL(a); JGoto(ea);
+    JL(b); JGoto(ports.ω);
+
+    JL(e_relay);
+    /* Stack: long (Object reference stored as long via icn_retval pathway)
+     * Actually record objects are stored in Object statics — pop the long,
+     * reload from the Object static of the record variable. */
+    /* Pop the long placeholder off stack */
+    JI("pop2", "");
+    /* Load the record object from its static field */
+    if (rec_expr && rec_expr->kind == ICN_VAR) {
+        char vfld[128];
+        int slot = ij_locals_find(rec_expr->val.sval);
+        if (slot >= 0) {
+            ij_var_field(rec_expr->val.sval, vfld, sizeof vfld);
+        } else {
+            snprintf(vfld, sizeof vfld, "icn_gvar_%s", rec_expr->val.sval);
+        }
+        J("    getstatic %s/%s Ljava/lang/Object;\n", ij_classname, vfld);
+    }
+    /* checkcast to record type and getfield */
+    if (rtype) {
+        J("    checkcast %s$%s\n", ij_classname, rtype);
+        J("    getfield %s$%s/%s Ljava/lang/Object;\n", ij_classname, rtype, fname);
+    } else {
+        /* fallback: just fail if we can't resolve type */
+        JI("pop", "");
+        JGoto(ports.ω);
+        JL(b); JGoto(ports.ω);
+        return;
+    }
+    /* Unbox: if Long → longValue, else treat as string → push 0L as placeholder */
+    J("    dup\n");
+    J("    instanceof java/lang/Long\n");
+    char is_long[64], not_long[64], done[64];
+    snprintf(is_long,  sizeof is_long,  "icn_%d_fld_il", id);
+    snprintf(not_long, sizeof not_long, "icn_%d_fld_nl", id);
+    snprintf(done,     sizeof done,     "icn_%d_fld_dn", id);
+    J("    ifne %s\n", is_long);
+    /* String path: store as string static, push 0 as numeric value, goto γ */
+    JL(not_long);
+    J("    checkcast java/lang/String\n");
+    ij_put_str_field(obj_fld);   /* reuse obj_fld as str temporarily */
+    JI("lconst_0", "");
+    JGoto(ports.γ);
+    JL(is_long);
+    J("    checkcast java/lang/Long\n");
+    J("    invokevirtual java/lang/Long/longValue()J\n");
+    JGoto(ports.γ);
+}
+
+/* =========================================================================
+ * ij_emit_record_class — emit a Jasmin inner-class for a record type
+ *
+ * Emits a nested class  OuterClass$RecordName  with:
+ *   - One `public Object` field per record field
+ *   - A no-arg <init> that calls super
+ * ======================================================================= */
+static void ij_emit_record_class(const char *rec_name, int nfields,
+                                 const char (*fields)[64], FILE *out) {
+    FILE *save = jout; jout = out;
+    J("; --- record %s ---\n", rec_name);
+    J(".class public %s$%s\n", ij_classname, rec_name);
+    J(".super java/lang/Object\n");
+    for (int i = 0; i < nfields; i++)
+        J(".field public %s Ljava/lang/Object;\n", fields[i]);
+    J("\n.method public <init>()V\n");
+    J("    .limit stack 1\n    .limit locals 1\n");
+    J("    aload_0\n");
+    J("    invokespecial java/lang/Object/<init>()V\n");
+    J("    return\n");
+    J(".end method\n\n");
+    jout = save;
+}
+
 static void ij_emit_limit(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
     int id = ij_new_id(); char a[64], b[64];
     lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
@@ -3998,6 +4337,7 @@ static void ij_emit_expr(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
         case ICN_BANG:    ij_emit_bang     (n,ports,oα,oβ); break;
         case ICN_SIZE:    ij_emit_size     (n,ports,oα,oβ); break;
         case ICN_LIMIT:   ij_emit_limit    (n,ports,oα,oβ); break;
+        case ICN_FIELD:   ij_emit_field    (n,ports,oα,oβ); break;
         case ICN_SEQ: case ICN_SNE: case ICN_SLT:
         case ICN_SLE: case ICN_SGT: case ICN_SGE:
                           ij_emit_strrelop (n,ports,oα,oβ); break;
@@ -4248,12 +4588,13 @@ static void ij_emit_proc(IcnNode *proc, FILE *out_target) {
 /* =========================================================================
  * ij_emit_file — entry point
  * ======================================================================= */
-void ij_emit_file(IcnNode **nodes, int count, FILE *out, const char *filename) {
+void ij_emit_file(IcnNode **nodes, int count, FILE *out, const char *filename, const char *outpath) {
     ij_node_id = 0;
     ij_user_count = 0;
     ij_nstatics = 0;
     ij_nstrings = 0;
     ij_ntdflt = 0;
+    ij_nrec = 0;
 
     ij_set_classname(filename ? filename : "IconProg");
 
@@ -4264,7 +4605,10 @@ void ij_emit_file(IcnNode **nodes, int count, FILE *out, const char *filename) {
     ij_nglobals = 0;
     for (int pi = 0; pi < count; pi++) {
         IcnNode *nd = nodes[pi];
-        if (!nd || nd->kind != ICN_GLOBAL) continue;
+        if (!nd) continue;
+        if (nd->kind == ICN_RECORD)
+            ij_register_record(nd->val.sval, nd);
+        if (nd->kind != ICN_GLOBAL) continue;
         for (int ci = 0; ci < nd->nchildren; ci++) {
             IcnNode *v = nd->children[ci];
             if (!v || v->kind != ICN_VAR) continue;
@@ -4284,6 +4628,55 @@ void ij_emit_file(IcnNode **nodes, int count, FILE *out, const char *filename) {
         for (int si = body_start; si < proc->nchildren; si++)
             if (ij_has_suspend(proc->children[si])) { gen = 1; break; }
         ij_register_proc(pname, np, gen);
+    }
+
+    /* Pass 1b: pre-register variables assigned from record constructors as Object-typed.
+     * This ensures ij_emit_var emits lconst_0 (not getstatic J) even for var reads
+     * that are emitted before the assignment in the Byrd-box layout. */
+    {
+        /* Helper: walk an AST node looking for ASSIGN(VAR, CALL(RecordType,...)) */
+        /* We do a simple recursive scan of all proc bodies */
+        void scan_record_assigns(IcnNode *n, int is_proc_scope);
+        /* Inline recursive lambda not in C — use a stack-based worklist */
+        #define MAX_SCAN_STACK 512
+        IcnNode *stack[MAX_SCAN_STACK]; int top = 0;
+        for (int pi = 0; pi < count; pi++) {
+            IcnNode *proc = nodes[pi];
+            if (!proc || proc->kind != ICN_PROC) continue;
+            /* Set up locals context for this proc */
+            ij_locals_reset();
+            strncpy(ij_cur_proc, proc->children[0]->val.sval, 63);
+            int np = (int)proc->val.ival;
+            for (int i = 1; i <= np; i++)
+                if (proc->children[i] && proc->children[i]->kind == ICN_VAR)
+                    ij_locals_add(proc->children[i]->val.sval);
+            /* Push all body nodes */
+            top = 0;
+            for (int i = 1 + np; i < proc->nchildren; i++)
+                if (top < MAX_SCAN_STACK) stack[top++] = proc->children[i];
+            while (top > 0) {
+                IcnNode *cur = stack[--top];
+                if (!cur) continue;
+                if (cur->kind == ICN_ASSIGN && cur->nchildren >= 2) {
+                    IcnNode *lhs = cur->children[0];
+                    IcnNode *rhs = cur->children[1];
+                    if (lhs && lhs->kind == ICN_VAR && ij_expr_is_record(rhs)) {
+                        /* Pre-declare this var as Object */
+                        int slot = ij_locals_find(lhs->val.sval);
+                        if (slot >= 0) {
+                            char fld[128]; ij_var_field(lhs->val.sval, fld, sizeof fld);
+                            ij_declare_static_obj(fld);
+                        } else {
+                            char gname[80]; snprintf(gname, sizeof gname, "icn_gvar_%s", lhs->val.sval);
+                            ij_declare_static_obj(gname);
+                        }
+                    }
+                }
+                for (int i = 0; i < cur->nchildren && top < MAX_SCAN_STACK; i++)
+                    stack[top++] = cur->children[i];
+            }
+        }
+        #undef MAX_SCAN_STACK
     }
 
     /* Pass 2: emit each proc to a buffer */
@@ -4313,6 +4706,7 @@ void ij_emit_file(IcnNode **nodes, int count, FILE *out, const char *filename) {
     J(".field public static icn_suspend_id I\n");
 
     /* Long fields */
+    J(".field public static icn_retval_obj Ljava/lang/Object;\n");
     J(".field public static icn_retval J\n");
     /* Per-user-proc arg static fields (already in statics array from emit_call) */
     for (int i = 0; i < ij_nstatics; i++) {
@@ -4517,5 +4911,28 @@ void ij_emit_file(IcnNode **nodes, int count, FILE *out, const char *filename) {
     /* Emit all procedure methods */
     fputs(procs_text, jout);
     free(procs_text);
+
+    /* Emit record inner classes as separate .j files */
+    for (int ri = 0; ri < ij_nrec; ri++) {
+        /* Derive sibling filename: replace main .j basename with ClassName$RecordName.j */
+        char rec_jpath[512] = "/tmp/icn_record_tmp.j";
+        if (outpath) {
+            /* Copy outpath, replace basename with ClassName$RecordName.j */
+            const char *slash = strrchr(outpath, '/');
+            size_t dirlen = slash ? (size_t)(slash - outpath + 1) : 0;
+            snprintf(rec_jpath, sizeof rec_jpath, "%.*s%s$%s.j",
+                     (int)dirlen, outpath, ij_classname, ij_rec_names[ri]);
+        } else {
+            snprintf(rec_jpath, sizeof rec_jpath, "/tmp/%s$%s.j",
+                     ij_classname, ij_rec_names[ri]);
+        }
+        FILE *rf = fopen(rec_jpath, "w");
+        if (rf) {
+            ij_emit_record_class(ij_rec_names[ri], ij_rec_nfields[ri],
+                                 (const char (*)[64])ij_rec_fields[ri], rf);
+            fclose(rf);
+        }
+    }
+
     jout = save;
 }

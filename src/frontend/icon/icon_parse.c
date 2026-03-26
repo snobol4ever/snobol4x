@@ -603,6 +603,46 @@ static IcnNode *parse_stmt(IcnParser *p) {
 }
 
 /* =========================================================================
+ * Record declaration parsing
+ *   record Name(field1, field2, ...)
+ * Produces ICN_RECORD node:
+ *   val.sval = record type name (owned)
+ *   children = ICN_VAR nodes for each field name
+ * ======================================================================= */
+
+static IcnNode *parse_record(IcnParser *p) {
+    int line = p->cur.line;
+    expect(p, TK_RECORD, "record");
+    if (p->cur.kind != TK_IDENT) { parser_error(p, "expected record name"); return NULL; }
+    IcnToken name_tok = p->cur; advance(p);
+
+    IcnNode **fields = NULL; int nfields = 0, fcap = 0;
+    expect(p, TK_LPAREN, "record fields");
+    while (!check(p, TK_RPAREN) && !check(p, TK_EOF)) {
+        if (p->cur.kind == TK_IDENT) {
+            IcnNode *fv = icn_leaf_str(ICN_VAR, p->cur.line,
+                p->cur.val.sval.data, p->cur.val.sval.len);
+            if (nfields+1 > fcap) { fcap=fcap?fcap*2:4; fields=realloc(fields,fcap*sizeof(IcnNode*)); }
+            fields[nfields++] = fv; advance(p);
+        }
+        if (!match(p, TK_COMMA)) break;
+    }
+    expect(p, TK_RPAREN, "record fields");
+    match(p, TK_SEMICOL);
+
+    IcnNode *rn = calloc(1, sizeof(IcnNode));
+    rn->kind = ICN_RECORD; rn->line = line;
+    /* Store record name as sval (owned copy) */
+    size_t nlen = name_tok.val.sval.len;
+    char *nm = malloc(nlen + 1);
+    memcpy(nm, name_tok.val.sval.data, nlen); nm[nlen] = '\0';
+    rn->val.sval = nm;
+    rn->nchildren = nfields;
+    rn->children = fields ? fields : NULL;
+    return rn;
+}
+
+/* =========================================================================
  * Procedure parsing
  * ======================================================================= */
 
@@ -680,7 +720,9 @@ IcnNode **icn_parse_file(IcnParser *p, int *out_count) {
         IcnNode *proc = NULL;
         if (check(p, TK_PROCEDURE))
             proc = parse_proc(p);
-        else if (check(p, TK_GLOBAL)) {
+        else if (check(p, TK_RECORD)) {
+            proc = parse_record(p);
+        } else if (check(p, TK_GLOBAL)) {
             int gline = p->cur.line; advance(p);
             IcnNode **gvars = NULL; int ngv = 0, gcap = 0;
             while (!check(p, TK_SEMICOL) && !check(p, TK_EOF)) {

@@ -1,0 +1,8 @@
+record pair(a, b)
+procedure sum(p);
+  return p.a + p.b;
+end
+procedure main();
+  q := pair(7, 8);
+  write(sum(q));
+end

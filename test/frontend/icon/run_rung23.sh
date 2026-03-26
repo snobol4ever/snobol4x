@@ -1,6 +1,6 @@
 #!/bin/bash
 # run_rung23.sh — rung23_table corpus runner
-cd "$(dirname "$0")/../.."
+cd "$(dirname "$0")/../../.."
 PASS=0; FAIL=0
 for icn in test/frontend/icon/corpus/rung23_table/t*.icn; do
   [ -f "$icn" ] || continue
