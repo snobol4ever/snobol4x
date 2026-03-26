@@ -636,6 +636,55 @@ static void pj_emit_runtime_helpers(void) {
     JI("areturn", "");
     /* plain compound: functor(arg1,...) */
     J("pts_plain_compound:\n");
+    /* Check for '$VAR'(N) — numbervars marker: print as A,B,...Z,A1,B1,... */
+    JI("aload_0", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("arraylength", "");
+    JI("iconst_3", "");  /* arity 1 → length 3 */
+    JI("if_icmpne", "pts_not_var_term");
+    JI("aload_0", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", ""); JI("aaload", "");
+    JI("ldc", "\"$VAR\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pts_not_var_term");
+    /* it's '$VAR'(N): compute name = chr('A'+N%26) + (N/26==0 ? "" : str(N/26)) */
+    /* get N as int */
+    JI("aload_0", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_2", ""); JI("aaload", "");
+    J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+    J("    invokestatic %s/pj_int_val(Ljava/lang/Object;)J\n", pj_classname);
+    JI("l2i", "");       /* int n */
+    JI("istore_1", ""); /* local 1 = n */
+    /* letter = (char)('A' + n%26) */
+    JI("iload_1", "");
+    JI("bipush", "26"); JI("irem", "");
+    JI("bipush", "65"); JI("iadd", "");  /* 'A'=65 */
+    JI("i2c", "");
+    JI("invokestatic", "java/lang/Character/toString(C)Ljava/lang/String;");
+    JI("astore_2", "");  /* local 2 = letter string */
+    /* suffix = n/26 */
+    JI("iload_1", "");
+    JI("bipush", "26"); JI("idiv", "");
+    JI("istore_3", "");  /* local 3 = suffix int */
+    JI("iload_3", "");
+    JI("ifne", "pts_var_suffix");
+    /* no suffix: return letter */
+    JI("aload_2", "");
+    JI("areturn", "");
+    J("pts_var_suffix:\n");
+    /* return letter + Integer.toString(suffix) */
+    JI("new", "java/lang/StringBuilder");
+    JI("dup", "");
+    JI("invokespecial", "java/lang/StringBuilder/<init>()V");
+    JI("aload_2", "");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
+    JI("iload_3", "");
+    JI("invokevirtual", "java/lang/StringBuilder/append(I)Ljava/lang/StringBuilder;");
+    JI("invokevirtual", "java/lang/StringBuilder/toString()Ljava/lang/String;");
+    JI("areturn", "");
+    J("pts_not_var_term:\n");
     /* Check for infix operators: -/2, +/2, */2, //2, mod/2 → print infix */
     JI("aload_0", "");
     JI("checkcast", "[Ljava/lang/Object;");
@@ -1858,6 +1907,127 @@ static void pj_emit_assertz_helpers(void) {
     J("pjfmt_done:\n");
     JI("return", "");
     J(".end method\n\n");
+
+    /* ------------------------------------------------------------------
+     * pj_numbervars_walk(Object term, int[] counter) -> V
+     * Recursive tree walk for numbervars.
+     * Binds each unbound var to '$VAR'(N) and increments counter[0].
+     * locals: 0=term(Object) 1=counter(int[]) 2=tag(Object) 3=arity(int) 4=i(int)
+     * ------------------------------------------------------------------ */
+    J("; pj_numbervars_walk(Object term, int[] counter) -> V\n");
+    J(".method static pj_numbervars_walk(Ljava/lang/Object;[I)V\n");
+    J("    .limit stack 8\n");
+    J("    .limit locals 6\n");
+    /* deref term */
+    JI("aload_0", "");
+    J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+    JI("astore_0", "");
+    /* get tag */
+    JI("aload_0", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_0", ""); JI("aaload", "");
+    JI("astore_2", "");
+    /* if tag == "var" → bind to '$VAR'(counter[0]) */
+    JI("aload_2", "");
+    JI("ldc", "\"var\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pjnv_not_var");
+    /* check [1] is null (unbound) */
+    JI("aload_0", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", ""); JI("aaload", "");
+    JI("ifnonnull", "pjnv_done");  /* already bound, skip */
+    /* build '$VAR'(N) compound: ["compound","$VAR", int_term(counter[0])] */
+    JI("aload_1", "");  /* counter */
+    JI("iconst_0", ""); JI("iaload", "");  /* counter[0] */
+    JI("istore_3", "");  /* local3 = n */
+    /* make int term for n */
+    JI("iload_3", "");
+    JI("i2l", "");
+    J("    invokestatic %s/pj_term_int(J)[Ljava/lang/Object;\n", pj_classname);
+    JI("astore", "4");  /* local4 = int_term */
+    /* build ["compound","$VAR",int_term] */
+    JI("bipush", "3"); JI("anewarray", "java/lang/Object");
+    JI("dup", ""); JI("iconst_0", ""); JI("ldc", "\"compound\""); JI("aastore", "");
+    JI("dup", ""); JI("iconst_1", ""); JI("ldc", "\"$VAR\""); JI("aastore", "");
+    JI("dup", ""); JI("iconst_2", ""); JI("aload", "4"); JI("aastore", "");
+    JI("astore", "5");  /* local5 = $VAR compound */
+    /* bind: turn var into a ref pointing at $VAR compound */
+    /* var_cell[0] = "ref" */
+    JI("aload_0", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_0", "");
+    JI("ldc", "\"ref\"");
+    JI("aastore", "");
+    /* var_cell[1] = $VAR compound */
+    JI("aload_0", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", "");
+    JI("aload", "5");
+    JI("aastore", "");
+    /* counter[0]++ */
+    JI("aload_1", "");
+    JI("iconst_0", "");
+    JI("aload_1", ""); JI("iconst_0", ""); JI("iaload", "");
+    JI("iconst_1", ""); JI("iadd", "");
+    JI("iastore", "");
+    JI("goto", "pjnv_done");
+
+    J("pjnv_not_var:\n");
+    /* if tag == "compound" → recurse into args */
+    JI("aload_2", "");
+    JI("ldc", "\"compound\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pjnv_done");
+    /* arity = arraylength - 2 */
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("arraylength", ""); JI("iconst_2", ""); JI("isub", "");
+    JI("istore_3", "");  /* local3 = arity */
+    JI("iconst_0", ""); JI("istore", "4");  /* i = 0 */
+    J("pjnv_arg_loop:\n");
+    JI("iload", "4"); JI("iload_3", ""); JI("if_icmpge", "pjnv_done");
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("iload", "4"); JI("iconst_2", ""); JI("iadd", ""); JI("aaload", "");
+    JI("aload_1", "");
+    J("    invokestatic %s/pj_numbervars_walk(Ljava/lang/Object;[I)V\n", pj_classname);
+    JI("iinc", "4 1");
+    JI("goto", "pjnv_arg_loop");
+
+    J("pjnv_done:\n");
+    JI("return", "");
+    J(".end method\n\n");
+
+    /* ------------------------------------------------------------------
+     * pj_numbervars_3(Object term, Object start, Object end) -> Z
+     * numbervars(+Term, +Start, -End)
+     * locals: 0=term 1=start 2=end 3=counter(int[1]) 4=final_n
+     * ------------------------------------------------------------------ */
+    J("; pj_numbervars_3(Object term, Object start, Object end) -> Z\n");
+    J(".method static pj_numbervars_3(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)Z\n");
+    J("    .limit stack 6\n");
+    J("    .limit locals 5\n");
+    /* counter = new int[1]; counter[0] = pj_int_val(deref(start)) */
+    JI("aload_1", "");
+    J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+    J("    invokestatic %s/pj_int_val(Ljava/lang/Object;)J\n", pj_classname);
+    JI("l2i", "");
+    JI("iconst_1", ""); JI("newarray", "int");
+    JI("dup_x1", "");
+    JI("swap", "");
+    JI("iconst_0", ""); JI("swap", ""); JI("iastore", "");
+    JI("astore_3", "");  /* counter */
+    /* walk */
+    JI("aload_0", ""); JI("aload_3", "");
+    J("    invokestatic %s/pj_numbervars_walk(Ljava/lang/Object;[I)V\n", pj_classname);
+    /* build int term for counter[0] */
+    JI("aload_3", ""); JI("iconst_0", ""); JI("iaload", "");
+    JI("i2l", "");
+    J("    invokestatic %s/pj_term_int(J)[Ljava/lang/Object;\n", pj_classname);
+    /* unify with end */
+    JI("aload_2", "");
+    J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+    JI("ireturn", "");
+    J(".end method\n\n");
 }
 
 /* -------------------------------------------------------------------------
@@ -2127,6 +2297,7 @@ static int pj_is_user_call(EXPR_t *goal) {
         "sort","msort",
         "succ","plus",
         "format",
+        "numbervars",
         NULL
     };
     for (int i = 0; builtins[i]; i++)
@@ -2530,6 +2701,16 @@ static void pj_emit_goal(EXPR_t *goal, const char *lbl_γ, const char *lbl_ω,
             pj_emit_term(goal->children[0], var_locals, n_vars);
             pj_emit_term(goal->children[1], var_locals, n_vars);
             J("    invokestatic %s/pj_format_2(Ljava/lang/Object;Ljava/lang/Object;)V\n", pj_classname);
+            JI("goto", lbl_γ);
+            return;
+        }
+        /* numbervars/3: numbervars(+Term, +Start, -End) */
+        if (strcmp(fn, "numbervars") == 0 && nargs == 3) {
+            pj_emit_term(goal->children[0], var_locals, n_vars);
+            pj_emit_term(goal->children[1], var_locals, n_vars);
+            pj_emit_term(goal->children[2], var_locals, n_vars);
+            J("    invokestatic %s/pj_numbervars_3(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+            J("    ifeq %s\n", lbl_ω);
             JI("goto", lbl_γ);
             return;
         }
