@@ -2176,6 +2176,300 @@ static void ij_emit_call(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
     }
 
     /* === END TABLE BUILTINS === */
+
+    /* === M-IJ-BUILTINS-STR === */
+
+    /* --- repl(s, n) --- repeat string s n times */
+    if (strcmp(fname, "repl") == 0 && nargs >= 2 && !ij_is_user_proc(fname)) {
+        IcnNode *sarg = n->children[1];
+        IcnNode *narg = n->children[2];
+        char mid[64]; snprintf(mid, sizeof mid, "icn_%d_repl_mid", id);
+        char after[64]; snprintf(after, sizeof after, "icn_%d_repl_after", id);
+        IjPorts ap; strncpy(ap.γ, mid, 63); strncpy(ap.ω, ports.ω, 63);
+        char sa[64], sb[64]; ij_emit_expr(sarg, ap, sa, sb);
+        IjPorts bp; strncpy(bp.γ, after, 63); strncpy(bp.ω, ports.ω, 63);
+        char na[64], nb[64]; ij_emit_expr(narg, bp, na, nb);
+        JL(a); JGoto(sa);
+        JL(b); JGoto(sb);
+        JL(mid);
+        /* stack: String s */
+        int scratch_s = ij_locals_alloc_tmp();
+        J("    astore %d\n", slot_jvm(scratch_s));
+        JGoto(na);
+        JL(after);
+        /* stack: long n — convert to int */
+        JI("l2i", "");
+        int scratch_n = ij_locals_alloc_tmp();
+        J("    istore %d\n", slot_jvm(scratch_n));
+        /* StringBuilder sb = new StringBuilder() */
+        JI("new", "java/lang/StringBuilder");
+        JI("dup", "");
+        JI("invokespecial", "java/lang/StringBuilder/<init>()V");
+        int scratch_sb = ij_locals_alloc_tmp();
+        J("    astore %d\n", slot_jvm(scratch_sb));
+        /* loop i=0; i<n; i++ */
+        char loop[64], done[64];
+        snprintf(loop, sizeof loop, "icn_%d_repl_loop", id);
+        snprintf(done, sizeof done, "icn_%d_repl_done", id);
+        int scratch_i = ij_locals_alloc_tmp();
+        J("    iconst_0\n");
+        J("    istore %d\n", slot_jvm(scratch_i));
+        JL(loop);
+        J("    iload %d\n", slot_jvm(scratch_i));
+        J("    iload %d\n", slot_jvm(scratch_n));
+        J("    if_icmpge %s\n", done);
+        J("    aload %d\n", slot_jvm(scratch_sb));
+        J("    aload %d\n", slot_jvm(scratch_s));
+        JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
+        JI("pop", "");
+        J("    iinc %d 1\n", slot_jvm(scratch_i));
+        JGoto(loop);
+        JL(done);
+        J("    aload %d\n", slot_jvm(scratch_sb));
+        JI("invokevirtual", "java/lang/StringBuilder/toString()Ljava/lang/String;");
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* --- reverse(s) --- */
+    if (strcmp(fname, "reverse") == 0 && nargs >= 1 && !ij_is_user_proc(fname)) {
+        IcnNode *sarg = n->children[1];
+        char after[64]; snprintf(after, sizeof after, "icn_%d_rev_after", id);
+        IjPorts ap; strncpy(ap.γ, after, 63); strncpy(ap.ω, ports.ω, 63);
+        char sa[64], sb[64]; ij_emit_expr(sarg, ap, sa, sb);
+        JL(a); JGoto(sa);
+        JL(b); JGoto(sb);
+        JL(after);
+        /* stack: String — wrap in StringBuilder, reverse, toString */
+        JI("new", "java/lang/StringBuilder");
+        JI("dup_x1", "");
+        JI("swap", "");
+        JI("invokespecial", "java/lang/StringBuilder/<init>(Ljava/lang/String;)V");
+        JI("invokevirtual", "java/lang/StringBuilder/reverse()Ljava/lang/StringBuilder;");
+        JI("invokevirtual", "java/lang/StringBuilder/toString()Ljava/lang/String;");
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* --- left(s, n [, pad]) --- pad/truncate to width n, left-aligned */
+    if (strcmp(fname, "left") == 0 && nargs >= 2 && !ij_is_user_proc(fname)) {
+        IcnNode *sarg = n->children[1];
+        IcnNode *narg = n->children[2];
+        /* pad arg optional — use space if absent */
+        char mid[64]; snprintf(mid, sizeof mid, "icn_%d_left_mid", id);
+        char after[64]; snprintf(after, sizeof after, "icn_%d_left_after", id);
+        IjPorts ap; strncpy(ap.γ, mid, 63); strncpy(ap.ω, ports.ω, 63);
+        char sa[64], sb[64]; ij_emit_expr(sarg, ap, sa, sb);
+        IjPorts bp; strncpy(bp.γ, after, 63); strncpy(bp.ω, ports.ω, 63);
+        char na[64], nb[64]; ij_emit_expr(narg, bp, na, nb);
+        JL(a); JGoto(sa);
+        JL(b); JGoto(sb);
+        JL(mid);
+        int scratch_s = ij_locals_alloc_tmp();
+        J("    astore %d\n", slot_jvm(scratch_s));
+        JGoto(na);
+        JL(after);
+        JI("l2i", "");
+        int scratch_n = ij_locals_alloc_tmp();
+        J("    istore %d\n", slot_jvm(scratch_n));
+        /* call static helper */
+        J("    aload %d\n", slot_jvm(scratch_s));
+        J("    iload %d\n", slot_jvm(scratch_n));
+        if (nargs >= 3) {
+            char mid2[64]; snprintf(mid2, sizeof mid2, "icn_%d_left_mid2", id);
+            IjPorts cp; strncpy(cp.γ, mid2, 63); strncpy(cp.ω, ports.ω, 63);
+            char ca[64], cb[64]; ij_emit_expr(n->children[3], cp, ca, cb);
+            JGoto(ca);
+            JL(mid2);
+            /* pad string on stack */
+            JI("invokestatic", ij_classname_buf("icn_builtin_left(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;"));
+        } else {
+            JI("ldc", "\" \"");
+            JI("invokestatic", ij_classname_buf("icn_builtin_left(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;"));
+        }
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* --- right(s, n [, pad]) --- pad/truncate to width n, right-aligned */
+    if (strcmp(fname, "right") == 0 && nargs >= 2 && !ij_is_user_proc(fname)) {
+        IcnNode *sarg = n->children[1];
+        IcnNode *narg = n->children[2];
+        char mid[64]; snprintf(mid, sizeof mid, "icn_%d_right_mid", id);
+        char after[64]; snprintf(after, sizeof after, "icn_%d_right_after", id);
+        IjPorts ap; strncpy(ap.γ, mid, 63); strncpy(ap.ω, ports.ω, 63);
+        char sa[64], sb[64]; ij_emit_expr(sarg, ap, sa, sb);
+        IjPorts bp; strncpy(bp.γ, after, 63); strncpy(bp.ω, ports.ω, 63);
+        char na[64], nb[64]; ij_emit_expr(narg, bp, na, nb);
+        JL(a); JGoto(sa);
+        JL(b); JGoto(sb);
+        JL(mid);
+        int scratch_s = ij_locals_alloc_tmp();
+        J("    astore %d\n", slot_jvm(scratch_s));
+        JGoto(na);
+        JL(after);
+        JI("l2i", "");
+        int scratch_n = ij_locals_alloc_tmp();
+        J("    istore %d\n", slot_jvm(scratch_n));
+        J("    aload %d\n", slot_jvm(scratch_s));
+        J("    iload %d\n", slot_jvm(scratch_n));
+        if (nargs >= 3) {
+            char mid2[64]; snprintf(mid2, sizeof mid2, "icn_%d_right_mid2", id);
+            IjPorts cp; strncpy(cp.γ, mid2, 63); strncpy(cp.ω, ports.ω, 63);
+            char ca[64], cb[64]; ij_emit_expr(n->children[3], cp, ca, cb);
+            JGoto(ca);
+            JL(mid2);
+            JI("invokestatic", ij_classname_buf("icn_builtin_right(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;"));
+        } else {
+            JI("ldc", "\" \"");
+            JI("invokestatic", ij_classname_buf("icn_builtin_right(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;"));
+        }
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* --- center(s, n [, pad]) --- */
+    if (strcmp(fname, "center") == 0 && nargs >= 2 && !ij_is_user_proc(fname)) {
+        IcnNode *sarg = n->children[1];
+        IcnNode *narg = n->children[2];
+        char mid[64]; snprintf(mid, sizeof mid, "icn_%d_ctr_mid", id);
+        char after[64]; snprintf(after, sizeof after, "icn_%d_ctr_after", id);
+        IjPorts ap; strncpy(ap.γ, mid, 63); strncpy(ap.ω, ports.ω, 63);
+        char sa[64], sb[64]; ij_emit_expr(sarg, ap, sa, sb);
+        IjPorts bp; strncpy(bp.γ, after, 63); strncpy(bp.ω, ports.ω, 63);
+        char na[64], nb[64]; ij_emit_expr(narg, bp, na, nb);
+        JL(a); JGoto(sa);
+        JL(b); JGoto(sb);
+        JL(mid);
+        int scratch_s = ij_locals_alloc_tmp();
+        J("    astore %d\n", slot_jvm(scratch_s));
+        JGoto(na);
+        JL(after);
+        JI("l2i", "");
+        int scratch_n = ij_locals_alloc_tmp();
+        J("    istore %d\n", slot_jvm(scratch_n));
+        J("    aload %d\n", slot_jvm(scratch_s));
+        J("    iload %d\n", slot_jvm(scratch_n));
+        if (nargs >= 3) {
+            char mid2[64]; snprintf(mid2, sizeof mid2, "icn_%d_ctr_mid2", id);
+            IjPorts cp; strncpy(cp.γ, mid2, 63); strncpy(cp.ω, ports.ω, 63);
+            char ca[64], cb[64]; ij_emit_expr(n->children[3], cp, ca, cb);
+            JGoto(ca);
+            JL(mid2);
+            JI("invokestatic", ij_classname_buf("icn_builtin_center(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;"));
+        } else {
+            JI("ldc", "\" \"");
+            JI("invokestatic", ij_classname_buf("icn_builtin_center(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;"));
+        }
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* --- trim(s [, cs]) --- remove trailing chars in cs (default whitespace) */
+    if (strcmp(fname, "trim") == 0 && nargs >= 1 && !ij_is_user_proc(fname)) {
+        IcnNode *sarg = n->children[1];
+        char after[64]; snprintf(after, sizeof after, "icn_%d_trim_after", id);
+        if (nargs >= 2) {
+            char mid[64]; snprintf(mid, sizeof mid, "icn_%d_trim_mid", id);
+            IjPorts ap; strncpy(ap.γ, mid, 63); strncpy(ap.ω, ports.ω, 63);
+            char sa[64], sb[64]; ij_emit_expr(sarg, ap, sa, sb);
+            IjPorts bp; strncpy(bp.γ, after, 63); strncpy(bp.ω, ports.ω, 63);
+            char ca[64], cb[64]; ij_emit_expr(n->children[2], bp, ca, cb);
+            JL(a); JGoto(sa);
+            JL(b); JGoto(sb);
+            JL(mid);
+            int scratch_s = ij_locals_alloc_tmp();
+            J("    astore %d\n", slot_jvm(scratch_s));
+            JGoto(ca);
+            JL(after);
+            J("    aload %d\n", slot_jvm(scratch_s));
+            JI("swap", "");  /* stack: cs, s → s, cs */
+            JI("invokestatic", ij_classname_buf("icn_builtin_trim(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"));
+        } else {
+            IjPorts ap; strncpy(ap.γ, after, 63); strncpy(ap.ω, ports.ω, 63);
+            char sa[64], sb[64]; ij_emit_expr(sarg, ap, sa, sb);
+            JL(a); JGoto(sa);
+            JL(b); JGoto(sb);
+            JL(after);
+            JI("ldc", "\" \\t\\n\\r\"");
+            JI("invokestatic", ij_classname_buf("icn_builtin_trim(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"));
+        }
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* --- map(s, src, dst) --- translate chars in s: src[i]→dst[i] */
+    if (strcmp(fname, "map") == 0 && nargs >= 3 && !ij_is_user_proc(fname)) {
+        IcnNode *sarg   = n->children[1];
+        IcnNode *srcarg = n->children[2];
+        IcnNode *dstarg = n->children[3];
+        char mid1[64]; snprintf(mid1, sizeof mid1, "icn_%d_map_mid1", id);
+        char mid2[64]; snprintf(mid2, sizeof mid2, "icn_%d_map_mid2", id);
+        char after[64]; snprintf(after, sizeof after, "icn_%d_map_after", id);
+        IjPorts ap; strncpy(ap.γ, mid1, 63); strncpy(ap.ω, ports.ω, 63);
+        char sa[64], sb[64]; ij_emit_expr(sarg, ap, sa, sb);
+        IjPorts bp; strncpy(bp.γ, mid2, 63); strncpy(bp.ω, ports.ω, 63);
+        char srca[64], srcb[64]; ij_emit_expr(srcarg, bp, srca, srcb);
+        IjPorts cp; strncpy(cp.γ, after, 63); strncpy(cp.ω, ports.ω, 63);
+        char dsta[64], dstb[64]; ij_emit_expr(dstarg, cp, dsta, dstb);
+        JL(a); JGoto(sa);
+        JL(b); JGoto(sb);
+        JL(mid1);
+        int scratch_s = ij_locals_alloc_tmp();
+        J("    astore %d\n", slot_jvm(scratch_s));
+        JGoto(srca);
+        JL(mid2);
+        int scratch_src = ij_locals_alloc_tmp();
+        J("    astore %d\n", slot_jvm(scratch_src));
+        JGoto(dsta);
+        JL(after);
+        /* stack: dst String */
+        int scratch_dst = ij_locals_alloc_tmp();
+        J("    astore %d\n", slot_jvm(scratch_dst));
+        J("    aload %d\n", slot_jvm(scratch_s));
+        J("    aload %d\n", slot_jvm(scratch_src));
+        J("    aload %d\n", slot_jvm(scratch_dst));
+        JI("invokestatic", ij_classname_buf("icn_builtin_map(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"));
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* --- char(i) --- integer → single-char String */
+    if (strcmp(fname, "char") == 0 && nargs >= 1 && !ij_is_user_proc(fname)) {
+        IcnNode *iarg = n->children[1];
+        char after[64]; snprintf(after, sizeof after, "icn_%d_char_after", id);
+        IjPorts ap; strncpy(ap.γ, after, 63); strncpy(ap.ω, ports.ω, 63);
+        char ia[64], ib[64]; ij_emit_expr(iarg, ap, ia, ib);
+        JL(a); JGoto(ia);
+        JL(b); JGoto(ib);
+        JL(after);
+        /* stack: long → int → char → String.valueOf(char) */
+        JI("l2i", "");
+        JI("i2c", "");
+        JI("invokestatic", "java/lang/String/valueOf(C)Ljava/lang/String;");
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* --- ord(s) --- first char of string → long */
+    if (strcmp(fname, "ord") == 0 && nargs >= 1 && !ij_is_user_proc(fname)) {
+        IcnNode *sarg = n->children[1];
+        char after[64]; snprintf(after, sizeof after, "icn_%d_ord_after", id);
+        IjPorts ap; strncpy(ap.γ, after, 63); strncpy(ap.ω, ports.ω, 63);
+        char sa[64], sb[64]; ij_emit_expr(sarg, ap, sa, sb);
+        JL(a); JGoto(sa);
+        JL(b); JGoto(sb);
+        JL(after);
+        /* stack: String → charAt(0) → int → long */
+        JI("iconst_0", "");
+        JI("invokevirtual", "java/lang/String/charAt(I)C");
+        JI("i2l", "");
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* === END M-IJ-BUILTINS-STR === */
+
     if (ij_is_user_proc(fname)) {
         int is_gen = ij_is_gen_proc(fname);
         int np = ij_nparams_for(fname);
@@ -2843,6 +3137,16 @@ static int ij_expr_is_string(IcnNode *n) {
                     /* read()/reads() return String (or fail) */
                     if (strcmp(fn_name, "read")  == 0) return 1;
                     if (strcmp(fn_name, "reads") == 0) return 1;
+                    /* M-IJ-BUILTINS-STR: all return String */
+                    if (strcmp(fn_name, "repl")    == 0) return 1;
+                    if (strcmp(fn_name, "reverse") == 0) return 1;
+                    if (strcmp(fn_name, "left")    == 0) return 1;
+                    if (strcmp(fn_name, "right")   == 0) return 1;
+                    if (strcmp(fn_name, "center")  == 0) return 1;
+                    if (strcmp(fn_name, "trim")    == 0) return 1;
+                    if (strcmp(fn_name, "map")     == 0) return 1;
+                    if (strcmp(fn_name, "char")    == 0) return 1;
+                    /* ord() returns long — not listed here */
                     /* match returns a long position, not a String */
                     /* user-defined proc — check proc table */
                     if (ij_proc_returns_str(fn_name)) return 1;
@@ -5195,6 +5499,159 @@ void ij_emit_file(IcnNode **nodes, int count, FILE *out, const char *filename, c
         J("    areturn\n");
         J(".end method\n\n");
     }
+
+    /* === Emit M-IJ-BUILTINS-STR helper methods (always emitted) === */
+
+    /* icn_builtin_left(String s, int n, String pad) → String */
+    J(".method public static icn_builtin_left(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;\n");
+    J("    .limit stack 4\n    .limit locals 5\n");
+    /* if s.length() >= n: return s.substring(0,n) */
+    J("    aload_0\n    invokevirtual java/lang/String/length()I\n");
+    J("    iload_1\n    if_icmplt icn_left_pad\n");
+    J("    aload_0\n    iconst_0\n    iload_1\n");
+    J("    invokevirtual java/lang/String/substring(II)Ljava/lang/String;\n");
+    J("    areturn\n");
+    J("icn_left_pad:\n");
+    /* build: sb = new StringBuilder(s); while sb.length()<n: sb.append(pad.charAt(0)) */
+    J("    new java/lang/StringBuilder\n    dup\n    aload_0\n");
+    J("    invokespecial java/lang/StringBuilder/<init>(Ljava/lang/String;)V\n");
+    J("    astore_3\n");
+    J("icn_left_loop:\n");
+    J("    aload_3\n    invokevirtual java/lang/StringBuilder/length()I\n");
+    J("    iload_1\n    if_icmpge icn_left_done\n");
+    J("    aload_3\n    aload_2\n    iconst_0\n");
+    J("    invokevirtual java/lang/String/charAt(I)C\n");
+    J("    invokevirtual java/lang/StringBuilder/append(C)Ljava/lang/StringBuilder;\n");
+    J("    pop\n");
+    J("    goto icn_left_loop\n");
+    J("icn_left_done:\n");
+    J("    aload_3\n    invokevirtual java/lang/StringBuilder/toString()Ljava/lang/String;\n");
+    J("    areturn\n");
+    J(".end method\n\n");
+
+    /* icn_builtin_right(String s, int n, String pad) → String */
+    J(".method public static icn_builtin_right(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;\n");
+    J("    .limit stack 4\n    .limit locals 5\n");
+    J("    aload_0\n    invokevirtual java/lang/String/length()I\n");
+    J("    iload_1\n    if_icmplt icn_right_pad\n");
+    /* truncate: return s.substring(s.length()-n) */
+    J("    aload_0\n    invokevirtual java/lang/String/length()I\n");
+    J("    iload_1\n    isub\n");
+    J("    aload_0\n    swap\n");
+    J("    invokevirtual java/lang/String/substring(I)Ljava/lang/String;\n");
+    J("    areturn\n");
+    J("icn_right_pad:\n");
+    /* pad left: build pad prefix then append s */
+    J("    new java/lang/StringBuilder\n    dup\n");
+    J("    invokespecial java/lang/StringBuilder/<init>()V\n");
+    J("    astore_3\n");
+    /* fill until length = n - s.length() */
+    J("    iload_1\n    aload_0\n    invokevirtual java/lang/String/length()I\n    isub\n    istore 4\n");
+    J("    iconst_0\n");  /* i=0 */
+    J("icn_right_loop:\n");
+    J("    dup\n    iload 4\n    if_icmpge icn_right_append\n");
+    J("    aload_3\n    aload_2\n    iconst_0\n");
+    J("    invokevirtual java/lang/String/charAt(I)C\n");
+    J("    invokevirtual java/lang/StringBuilder/append(C)Ljava/lang/StringBuilder;\n    pop\n");
+    J("    iconst_1\n    iadd\n    goto icn_right_loop\n");
+    J("icn_right_append:\n    pop\n");
+    J("    aload_3\n    aload_0\n");
+    J("    invokevirtual java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;\n    pop\n");
+    J("    aload_3\n    invokevirtual java/lang/StringBuilder/toString()Ljava/lang/String;\n");
+    J("    areturn\n");
+    J(".end method\n\n");
+
+    /* icn_builtin_center(String s, int n, String pad) → String
+     * pad_left = (n - s.length()) / 2  (integer division, truncate)
+     * pad_right = n - s.length() - pad_left */
+    J(".method public static icn_builtin_center(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;\n");
+    J("    .limit stack 5\n    .limit locals 7\n");
+    J("    aload_0\n    invokevirtual java/lang/String/length()I\n");
+    J("    iload_1\n    if_icmplt icn_ctr_pad\n");
+    /* truncate */
+    J("    aload_0\n    iconst_0\n    iload_1\n");
+    J("    invokevirtual java/lang/String/substring(II)Ljava/lang/String;\n    areturn\n");
+    J("icn_ctr_pad:\n");
+    /* total_pad = n - s.length() */
+    J("    iload_1\n    aload_0\n    invokevirtual java/lang/String/length()I\n    isub\n    istore_3\n");
+    /* pad_left = total_pad / 2 */
+    J("    iload_3\n    iconst_2\n    idiv\n    istore 4\n");
+    /* pad_right = total_pad - pad_left */
+    J("    iload_3\n    iload 4\n    isub\n    istore 5\n");
+    J("    new java/lang/StringBuilder\n    dup\n");
+    J("    invokespecial java/lang/StringBuilder/<init>()V\n    astore 6\n");
+    /* emit pad_left pad chars */
+    J("    iconst_0\n");
+    J("icn_ctr_lloop:\n    dup\n    iload 4\n    if_icmpge icn_ctr_mid\n");
+    J("    aload 6\n    aload_2\n    iconst_0\n");
+    J("    invokevirtual java/lang/String/charAt(I)C\n");
+    J("    invokevirtual java/lang/StringBuilder/append(C)Ljava/lang/StringBuilder;\n    pop\n");
+    J("    iconst_1\n    iadd\n    goto icn_ctr_lloop\n");
+    J("icn_ctr_mid:\n    pop\n");
+    /* append s */
+    J("    aload 6\n    aload_0\n");
+    J("    invokevirtual java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;\n    pop\n");
+    /* emit pad_right pad chars */
+    J("    iconst_0\n");
+    J("icn_ctr_rloop:\n    dup\n    iload 5\n    if_icmpge icn_ctr_done\n");
+    J("    aload 6\n    aload_2\n    iconst_0\n");
+    J("    invokevirtual java/lang/String/charAt(I)C\n");
+    J("    invokevirtual java/lang/StringBuilder/append(C)Ljava/lang/StringBuilder;\n    pop\n");
+    J("    iconst_1\n    iadd\n    goto icn_ctr_rloop\n");
+    J("icn_ctr_done:\n    pop\n");
+    J("    aload 6\n    invokevirtual java/lang/StringBuilder/toString()Ljava/lang/String;\n");
+    J("    areturn\n");
+    J(".end method\n\n");
+
+    /* icn_builtin_trim(String s, String cs) → String  (remove trailing chars in cs) */
+    J(".method public static icn_builtin_trim(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;\n");
+    J("    .limit stack 4\n    .limit locals 3\n");
+    /* end = s.length() */
+    J("    aload_0\n    invokevirtual java/lang/String/length()I\n    istore_2\n");
+    J("icn_trim_loop:\n");
+    J("    iload_2\n    ifle icn_trim_done\n");
+    /* check cs.indexOf(s.charAt(end-1)) >= 0 */
+    J("    aload_1\n    aload_0\n    iload_2\n    iconst_1\n    isub\n");
+    J("    invokevirtual java/lang/String/charAt(I)C\n");
+    J("    invokevirtual java/lang/String/indexOf(I)I\n");
+    J("    iflt icn_trim_done\n");
+    J("    iinc 2 -1\n    goto icn_trim_loop\n");
+    J("icn_trim_done:\n");
+    J("    aload_0\n    iconst_0\n    iload_2\n");
+    J("    invokevirtual java/lang/String/substring(II)Ljava/lang/String;\n");
+    J("    areturn\n");
+    J(".end method\n\n");
+
+    /* icn_builtin_map(String s, String src, String dst) → String */
+    J(".method public static icn_builtin_map(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;\n");
+    J("    .limit stack 5\n    .limit locals 7\n");
+    J("    new java/lang/StringBuilder\n    dup\n");
+    J("    invokespecial java/lang/StringBuilder/<init>()V\n    astore_3\n");
+    J("    iconst_0\n    istore 4\n");  /* i = 0 */
+    J("icn_map_loop:\n");
+    J("    iload 4\n    aload_0\n    invokevirtual java/lang/String/length()I\n");
+    J("    if_icmpge icn_map_done\n");
+    J("    aload_0\n    iload 4\n    invokevirtual java/lang/String/charAt(I)C\n    istore 5\n");
+    J("    aload_1\n    iload 5\n    invokevirtual java/lang/String/indexOf(I)I\n    istore 6\n");
+    J("    iload 6\n    iflt icn_map_notfound\n");
+    /* found: append dst.charAt(idx) */
+    J("    iload 6\n    aload_2\n    invokevirtual java/lang/String/length()I\n");
+    J("    if_icmpge icn_map_notfound\n");
+    J("    aload_3\n    aload_2\n    iload 6\n");
+    J("    invokevirtual java/lang/String/charAt(I)C\n");
+    J("    invokevirtual java/lang/StringBuilder/append(C)Ljava/lang/StringBuilder;\n    pop\n");
+    J("    goto icn_map_next\n");
+    J("icn_map_notfound:\n");
+    J("    aload_3\n    iload 5\n");
+    J("    invokevirtual java/lang/StringBuilder/append(C)Ljava/lang/StringBuilder;\n    pop\n");
+    J("icn_map_next:\n");
+    J("    iinc 4 1\n    goto icn_map_loop\n");
+    J("icn_map_done:\n");
+    J("    aload_3\n    invokevirtual java/lang/StringBuilder/toString()Ljava/lang/String;\n");
+    J("    areturn\n");
+    J(".end method\n\n");
+
+    /* === END M-IJ-BUILTINS-STR helpers === */
 
     /* Emit all procedure methods */
     fputs(procs_text, jout);

@@ -1,0 +1,5 @@
+procedure main();
+  write(char(65));
+  write(ord("A"));
+  write(char(ord("z")));
+end

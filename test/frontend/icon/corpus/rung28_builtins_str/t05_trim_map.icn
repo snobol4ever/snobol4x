@@ -1,0 +1,4 @@
+procedure main();
+  write(trim("  hello  "));
+  write(map("Hello World", "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"));
+end

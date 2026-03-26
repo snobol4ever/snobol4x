@@ -1,0 +1,5 @@
+procedure main();
+  write(left("hi", 5));
+  write(right("hi", 5));
+  write(center("hi", 6));
+end
