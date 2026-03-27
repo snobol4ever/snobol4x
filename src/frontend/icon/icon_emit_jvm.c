@@ -525,6 +525,7 @@ static int ij_expr_is_list(IcnNode *n);
 static int ij_expr_is_strlist(IcnNode *n);
 static int ij_expr_is_table(IcnNode *n);
 static int ij_expr_is_record_list(IcnNode *n);
+static int ij_expr_is_obj(IcnNode *n);  /* any 1-slot ref: String, list, table, record */
 /* Returns the type tag for a declared static field, or 0 if not found */
 static char ij_field_type_tag(const char *name) {
     for (int i = 0; i < ij_nstatics; i++)
@@ -1494,7 +1495,7 @@ static void ij_emit_if(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
     ij_emit_expr(cond, cp, ca, cb);
 
     JL(cond_then);
-    if (ij_expr_is_string(cond)) JI("pop",""); else JI("pop2","");
+    if (ij_expr_is_obj(cond)) JI("pop",""); else JI("pop2","");
     JGoto(thenb ? then_a : ports.γ);
 
     JL(cond_else);
@@ -3352,7 +3353,7 @@ static void ij_emit_alt(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
             ij_get_dbl(alt_val_fld);
         } else {
             /* Long (or mixed) — store to temp long field, set gate, reload */
-            if (ij_expr_is_string(n->children[i])) { JI("pop",""); JI("lconst_0",""); }
+            if (ij_expr_is_obj(n->children[i])) { JI("pop",""); JI("lconst_0",""); }
             else if (ij_expr_is_real(n->children[i])) {
                 JI("invokestatic","java/lang/Double/doubleToRawLongBits(D)J");
             }
@@ -3759,17 +3760,17 @@ static void ij_emit_every(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
         IjPorts gp; strncpy(gp.γ, gen_drain, 63); strncpy(gp.ω, ports.ω, 63);
         ij_emit_expr(gen, gp, ga, gb);
         /* gen_drain: pop generator value, start body */
-        JL(gen_drain); JI(ij_expr_is_string(gen) ? "pop" : "pop2",""); JGoto(ba);
+        JL(gen_drain); JI(ij_expr_is_obj(gen) ? "pop" : "pop2",""); JGoto(ba);
         /* body_drain: pop body result (success), then pump gen */
         JL(body_drain);
-        if (ij_expr_is_string(body)) { JI("pop",""); } else { JI("pop2",""); }
+        if (ij_expr_is_obj(body)) { JI("pop",""); } else { JI("pop2",""); }
         /* fall through to pump_gen */
     } else {
         /* no body: generator success → drain gen value → pump */
         char gen_drain[64]; snprintf(gen_drain, sizeof gen_drain, "icn_%d_gdrain", id);
         IjPorts gp; strncpy(gp.γ, gen_drain, 63); strncpy(gp.ω, ports.ω, 63);
         ij_emit_expr(gen, gp, ga, gb);
-        JL(gen_drain); JI(ij_expr_is_string(gen) ? "pop" : "pop2",""); /* fall through */
+        JL(gen_drain); JI(ij_expr_is_obj(gen) ? "pop" : "pop2",""); /* fall through */
     }
     /* pump_gen: NO value on stack — kick generator beta to produce next value */
     JL(pump_gen); JGoto(gb);
@@ -3795,7 +3796,7 @@ static void ij_emit_while(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
     char ca[64], cb[64]; ij_emit_expr(cond, cp, ca, cb);
 
     JL(cond_ok);
-    if (ij_expr_is_string(cond)) { JI("pop",""); } else { JI("pop2",""); }  /* discard condition value */
+    if (ij_expr_is_obj(cond)) { JI("pop",""); } else { JI("pop2",""); }  /* discard condition value */
     if (body) {
         char ba[64], bb[64];
         char body_start[64]; snprintf(body_start, sizeof body_start, "icn_%d_wbstart", id);
@@ -3811,7 +3812,7 @@ static void ij_emit_while(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
         JL(body_start); JGoto(ba);
         /* drain body return value then loop */
         JL(body_drain);
-        if (ij_expr_is_string(body)) { JI("pop",""); }
+        if (ij_expr_is_obj(body)) { JI("pop",""); }
         else if (ij_expr_is_real(body)) { JI("pop2",""); }
         else { JI("pop2",""); }
         JL(loop_top); JGoto(ca);
@@ -3843,7 +3844,7 @@ static void ij_emit_until(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
 
     /* cond succeeded → discard value, jump to ports.ω */
     JL(cond_ok);
-    if (!ij_expr_is_string(cond)) { JI("pop2",""); } else { JI("pop",""); }
+    if (!ij_expr_is_obj(cond)) { JI("pop2",""); } else { JI("pop",""); }
     JGoto(ports.ω);
 
     /* cond failed → run body */
@@ -3858,7 +3859,7 @@ static void ij_emit_until(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
         JGoto(ba);
         /* body succeeded: drain value, loop */
         JL(body_ok);
-        if (!ij_expr_is_string(body)) { JI("pop2",""); } else { JI("pop",""); }
+        if (!ij_expr_is_obj(body)) { JI("pop2",""); } else { JI("pop",""); }
         JL(loop_top); JGoto(ca);
     } else {
         JL(loop_top); JGoto(ca);
@@ -3888,7 +3889,7 @@ static void ij_emit_repeat(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
         JL(a); JL(loop_top); JGoto(ba);
         /* body succeeded: drain value, loop again */
         JL(body_ok);
-        if (!ij_expr_is_string(body)) { JI("pop2",""); } else { JI("pop",""); }
+        if (!ij_expr_is_obj(body)) { JI("pop2",""); } else { JI("pop",""); }
         JGoto(loop_top);
     } else {
         JL(a); JL(loop_top); JGoto(loop_top);  /* infinite empty loop */
@@ -4003,6 +4004,15 @@ static int ij_expr_is_string(IcnNode *n) {
             if (n->nchildren >= 1) return ij_expr_is_string(n->children[0]);
             return 0;
         }
+        case ICN_IDENTICAL: {
+            /* E1 === E2: result is lhs value pushed at gamma.
+             * String if either operand is string. */
+            if (n->nchildren >= 2)
+                return ij_expr_is_string(n->children[0]) ||
+                       ij_expr_is_string(n->children[1]);
+            if (n->nchildren >= 1) return ij_expr_is_string(n->children[0]);
+            return 0;
+        }
         case ICN_LT: case ICN_LE: case ICN_GT: case ICN_GE: case ICN_EQ: case ICN_NE:
             /* Numeric relops yield long; string relops yield the rc String value */
             if (n->nchildren >= 2)
@@ -4030,6 +4040,15 @@ static int ij_expr_is_string(IcnNode *n) {
             return 1;  /* s[i] always yields a single-char String */
         case ICN_SECTION:
             return 1;  /* s[i:j] always yields a String */
+        case ICN_SECTION_PLUS: case ICN_SECTION_MINUS:
+            return 1;  /* s[i+:n] / s[i-:n] are also String sections */
+        case ICN_MATCH:
+            return 1;  /* =E matches and returns a substring String */
+        case ICN_NONNULL: {
+            /* \E: transparent passthrough — same type as child */
+            if (n->nchildren >= 1) return ij_expr_is_string(n->children[0]);
+            return 0;
+        }
         case ICN_SEQ_EXPR: {
             /* Result type is that of the last child */
             if (n->nchildren >= 1) return ij_expr_is_string(n->children[n->nchildren-1]);
@@ -4050,6 +4069,37 @@ static int ij_expr_is_string(IcnNode *n) {
         }
         default: return 0;
     }
+}
+
+/* =========================================================================
+ * ij_expr_is_obj — returns 1 if the expression produces a 1-slot JVM reference
+ * (String, ArrayList list/strlist, table, or record object).
+ * Used to decide pop vs pop2 in drains.
+ * ======================================================================= */
+static int ij_expr_is_obj(IcnNode *n) {
+    if (!n) return 0;
+    if (ij_expr_is_string(n)) return 1;
+    if (ij_expr_is_list(n))   return 1;
+    if (ij_expr_is_table(n))  return 1;
+    if (ij_expr_is_record(n)) return 1;
+    /* Built-in calls that return a list/table object */
+    if (n->kind == ICN_CALL && n->nchildren >= 1 && n->children[0]->kind == ICN_VAR) {
+        const char *fn = n->children[0]->val.sval;
+        if (strcmp(fn, "list")  == 0) return 1;
+        if (strcmp(fn, "table") == 0) return 1;
+        if (strcmp(fn, "copy")  == 0) return 1;
+        if (strcmp(fn, "sort")  == 0) return 1;
+        if (strcmp(fn, "sortf") == 0) return 1;
+        if (strcmp(fn, "put")   == 0) return 1;
+        if (strcmp(fn, "push")  == 0) return 1;
+        if (strcmp(fn, "pull")  == 0 && n->nchildren >= 2
+                && ij_expr_is_list(n->children[1])) return 1;
+        if (strcmp(fn, "pop")   == 0 && n->nchildren >= 2
+                && ij_expr_is_list(n->children[1])) return 1;
+        if (strcmp(fn, "key")   == 0) return 1;  /* key(T) returns a String */
+        if (strcmp(fn, "open")  == 0) return 1;  /* file object */
+    }
+    return 0;
 }
 
 /* =========================================================================
@@ -4387,7 +4437,7 @@ static void ij_emit_not(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
     JC("NOT"); JL(a); JGoto(ca);
     JL(b); JGoto(cb);
     JL(child_ok);
-    if (ij_expr_is_string(child)) { JI("pop",""); } else { JI("pop2",""); }
+    if (ij_expr_is_obj(child)) { JI("pop",""); } else { JI("pop2",""); }
     JGoto(ports.ω);
     JL(succeed);
     JI("lconst_0","");   /* push dummy long 0 as result */
@@ -4437,7 +4487,7 @@ static void ij_emit_null(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
     JL(b); JGoto(cb);
     JL(child_ok);
     /* drain child value off stack */
-    if (child && ij_expr_is_string(child)) { JI("pop",""); } else { JI("pop2",""); }
+    if (child && ij_expr_is_obj(child)) { JI("pop",""); } else { JI("pop2",""); }
     JGoto(ports.ω);  /* /E fails because E succeeded */
     JL(succeed);
     JI("lconst_0","");  /* &null */
@@ -6303,10 +6353,7 @@ static void ij_emit_proc(IcnNode *proc, FILE *out_target) {
             continue;
         }
         /* Determine if statement produces a 1-slot ref (String or ArrayList) or 2-slot (long/double) */
-        int stmt_is_str  = ij_expr_is_string(stmt);
-        int stmt_is_list = !stmt_is_str && ij_expr_is_list(stmt);
-        int stmt_is_tbl  = !stmt_is_str && !stmt_is_list && ij_expr_is_table(stmt);
-        int stmt_is_ref  = stmt_is_str || stmt_is_list || stmt_is_tbl;
+        int stmt_is_ref  = ij_expr_is_obj(stmt);
         /* Build a drain label for this statement's success port */
         char sdrain[64]; snprintf(sdrain, sizeof sdrain, "icn_s%d_sdrain", i);
         IjPorts sp; strncpy(sp.γ, sdrain, 63); strncpy(sp.ω, next_a, 63);
