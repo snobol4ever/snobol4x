@@ -184,7 +184,7 @@ static Token scan_number(Lexer *lx) {
             }
         }
         Token t = make_tok(TK_INT, buf, line);
-        t.ival = (long)(unsigned long long)strtoull(buf+2, NULL, radix);
+        t.ival = strtol(buf+2, NULL, radix);
         return t;
     }
 
@@ -235,7 +235,7 @@ static Token scan_number(Lexer *lx) {
         return t;
     } else {
         Token t = make_tok(TK_INT, buf, line);
-        t.ival = (long)(unsigned long long)strtoull(buf, NULL, 10);
+        t.ival = atol(buf);
         return t;
     }
 }

@@ -16,6 +16,8 @@
 
 #include "sno2c.h"
 #include "prolog_atom.h"
+#include "prolog_parse.h"
+#include "prolog_lower.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -47,6 +49,18 @@ static void JI(const char *instr, const char *ops) {
         J("    %s %s\n", instr, ops);
     else
         J("    %s\n", instr);
+}
+
+/* Emit:  ldc "escaped_string"
+ * Escapes backslash and double-quote so Jasmin accepts any atom name. */
+static void pj_ldc_str(const char *s) {
+    J("    ldc \"");
+    for (; s && *s; s++) {
+        if      (*s == '\\') J("\\\\");
+        else if (*s == '"')  J("\\\"");
+        else                 fputc(*s, pj_out);
+    }
+    J("\"\n");
 }
 
 static void JL(const char *label, const char *instr, const char *ops) {
@@ -94,7 +108,7 @@ static void pj_safe_name(const char *src, char *dst, int dstlen) {
     for (int si = 0; src[si] && di < dstlen - 1; si++) {
         char c = src[si];
         if (isalnum((unsigned char)c) || c == '_')
-            dst[di++] = (char)tolower((unsigned char)c);
+            dst[di++] = c;
         else
             dst[di++] = '_';
     }
@@ -263,6 +277,24 @@ static void pj_emit_runtime_helpers(void) {
     JI("iconst_1", "");
     JI("lload_0", "");
     JI("invokestatic", "java/lang/Long/toString(J)Ljava/lang/String;");
+    JI("aastore", "");
+    JI("areturn", "");
+    J(".end method\n\n");
+
+    /* term_float(D) — allocate float term: Object[]{"float", Double.toString(d)} */
+    J(".method static pj_term_float(D)[Ljava/lang/Object;\n");
+    J("    .limit stack 5\n");
+    J("    .limit locals 2\n");
+    JI("iconst_2", "");
+    JI("anewarray", "java/lang/Object");
+    JI("dup", "");
+    JI("iconst_0", "");
+    JI("ldc", "\"float\"");
+    JI("aastore", "");
+    JI("dup", "");
+    JI("iconst_1", "");
+    JI("dload_0", "");
+    JI("invokestatic", "java/lang/Double/toString(D)Ljava/lang/String;");
     JI("aastore", "");
     JI("areturn", "");
     J(".end method\n\n");
@@ -1260,6 +1292,136 @@ static void pj_emit_runtime_helpers(void) {
     J(".end method\n\n");
 
     /* ------------------------------------------------------------------
+     * pj_list_to_term(Object list) -> Object[]
+     * Compose direction of =../2: [F|Args] -> F(Args...)
+     * list is a proper Prolog list: cons cells or nil.
+     * Returns null on bad input.
+     * local 0 = list (current cell), local 1 = arity, local 2 = functor string
+     * local 3 = result term array, local 4 = tmp, local 5 = i
+     * ------------------------------------------------------------------ */
+    /* ------------------------------------------------------------------
+     * pj_list_to_term(Object list) -> Object[]
+     * Compose direction of =../2: [F|Args] -> F(Args...)
+     * Uses a 32-slot scratch array; returns null on bad input.
+     * local 0 = list cursor, local 1 = scratch Object[34], local 2 = count,
+     * local 3 = tmp cell, local 4 = head
+     * ------------------------------------------------------------------ */
+    J(".method static pj_list_to_term(Ljava/lang/Object;)[Ljava/lang/Object;\n");
+    J("    .limit stack 8\n");
+    J("    .limit locals 6\n");
+    /* deref first cell — must be cons */
+    JI("aload_0", "");
+    J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+    JI("astore_0", "");
+    JI("aload_0", ""); JI("ifnull", "ltl_fail");
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_0", ""); JI("aaload", "");
+    JI("ldc", "\"compound\""); JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "ltl_fail");
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", ""); JI("aaload", "");
+    JI("ldc", "\".\""); JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "ltl_fail");
+    /* extract functor term (head of first cons) */
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_2", ""); JI("aaload", "");
+    J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+    JI("astore", "4");  /* local 4 = functor term */
+    /* advance to args list */
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("bipush", "3"); JI("aaload", "");
+    J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+    JI("astore_0", "");
+    /* allocate scratch array of 34 elements */
+    JI("bipush", "34"); JI("anewarray", "java/lang/Object"); JI("astore_1", "");
+    JI("iconst_0", ""); JI("istore_2", "");  /* count = 0 */
+    J("ltl_loop:\n");
+    JI("aload_0", ""); JI("ifnull", "ltl_build");
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_0", ""); JI("aaload", "");
+    JI("ldc", "\"atom\""); JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifne", "ltl_build");  /* nil atom -> done */
+    /* check not overflowing scratch */
+    JI("iload_2", ""); JI("bipush", "32"); JI("if_icmpge", "ltl_fail");
+    /* store head into scratch[count] */
+    JI("aload_1", ""); JI("iload_2", "");
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_2", ""); JI("aaload", "");
+    JI("aastore", "");
+    JI("iinc", "2 1");
+    /* advance */
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("bipush", "3"); JI("aaload", "");
+    J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+    JI("astore_0", "");
+    JI("goto", "ltl_loop");
+    J("ltl_build:\n");
+    /* arity 0: return functor term as-is (it's already an atom cell) */
+    JI("iload_2", ""); JI("ifne", "ltl_compound");
+    JI("aload", "4"); JI("checkcast", "[Ljava/lang/Object;"); JI("areturn", "");
+    J("ltl_compound:\n");
+    /* allocate result: Object[2 + count] */
+    JI("iload_2", ""); JI("iconst_2", ""); JI("iadd", "");
+    JI("anewarray", "java/lang/Object");
+    JI("astore_3", "");
+    JI("aload_3", ""); JI("iconst_0", ""); JI("ldc", "\"compound\""); JI("aastore", "");
+    JI("aload_3", ""); JI("iconst_1", "");
+    JI("aload", "4");
+    J("    invokestatic %s/pj_atom_name(Ljava/lang/Object;)Ljava/lang/String;\n", pj_classname);
+    JI("aastore", "");
+    /* copy args */
+    JI("iconst_0", ""); JI("istore", "5");
+    J("ltl_copy:\n");
+    JI("iload", "5"); JI("iload_2", ""); JI("if_icmpge", "ltl_ret");
+    JI("aload_3", ""); JI("iload", "5"); JI("iconst_2", ""); JI("iadd", "");
+    JI("aload_1", ""); JI("iload", "5"); JI("aaload", "");
+    JI("aastore", "");
+    JI("iinc", "5 1"); JI("goto", "ltl_copy");
+    J("ltl_ret:\n");
+    JI("aload_3", ""); JI("areturn", "");
+    J("ltl_fail:\n");
+    JI("aconst_null", ""); JI("areturn", "");
+    J(".end method\n\n");
+
+    /* ------------------------------------------------------------------
+     * pj_univ(Object term, Object list) -> boolean (Z)
+     * Bidirectional =../2 at runtime.
+     * If term is bound: decompose to list via pj_term_to_list, unify.
+     * If term is unbound: compose from list via pj_list_to_term, unify.
+     * local 0 = term, local 1 = list, local 2 = deref'd term, local 3 = result
+     * ------------------------------------------------------------------ */
+    J(".method static pj_univ(Ljava/lang/Object;Ljava/lang/Object;)Z\n");
+    J("    .limit stack 4\n");
+    J("    .limit locals 4\n");
+    JI("aload_0", "");
+    J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+    JI("astore_2", "");  /* local 2 = deref term */
+    /* check if term is var (unbound): tag == null or tag == "var" */
+    JI("aload_2", ""); JI("ifnull", "univ_compose");
+    JI("aload_2", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_0", ""); JI("aaload", "");
+    JI("ldc", "\"var\""); JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifne", "univ_compose");
+    /* term is bound: decompose */
+    JI("aload_2", "");
+    J("    invokestatic %s/pj_term_to_list(Ljava/lang/Object;)[Ljava/lang/Object;\n", pj_classname);
+    JI("aload_1", "");
+    J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+    JI("ireturn", "");
+    J("univ_compose:\n");
+    /* term is unbound: build term from list */
+    JI("aload_1", "");
+    J("    invokestatic %s/pj_list_to_term(Ljava/lang/Object;)[Ljava/lang/Object;\n", pj_classname);
+    JI("astore_3", "");
+    JI("aload_3", ""); JI("ifnull", "univ_fail");
+    JI("aload_0", ""); JI("aload_3", "");
+    J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+    JI("ireturn", "");
+    J("univ_fail:\n");
+    JI("iconst_0", ""); JI("ireturn", "");
+    J(".end method\n\n");
+
+    /* ------------------------------------------------------------------
      * M-PJ-ATOM-BUILTINS — PJ-48 runtime helpers
      * ------------------------------------------------------------------ */
 
@@ -1868,6 +2030,51 @@ static void pj_emit_assertz_helpers(void) {
     J("pj_lta_done:\n");
     JI("aload_1", "");
     JI("areturn", "");
+    J(".end method\n\n");
+
+    /* pj_length_2(Object list, Object n) -> Z
+     * length(+List, ?N): count cons cells, unify N with result.
+     * locals: 0=list, 1=n, 2=cur(deref'd cell), 3=count(int) */
+    J("; pj_length_2(Object list, Object n) -> Z\n");
+    J(".method static pj_length_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n");
+    J("    .limit stack 6\n");
+    J("    .limit locals 4\n");
+    JI("aload_0", "");
+    J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+    JI("astore_2", "");   /* cur = deref(list) */
+    JI("iconst_0", "");
+    JI("istore_3", "");   /* count = 0 */
+    J("pj_len_loop:\n");
+    /* if cur is not Object[] → it's [] atom, done */
+    JI("aload_2", "");
+    J("    instanceof [Ljava/lang/Object;\n");
+    J("    ifeq pj_len_done\n");
+    /* check functor == "[]" → done */
+    JI("aload_2", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", "");
+    JI("aaload", "");   /* arr[1] = functor */
+    JI("ldc", "\"[]\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    J("    ifne pj_len_done\n");
+    /* count++ */
+    JI("iinc", "3 1");
+    /* advance to tail arr[3] */
+    JI("aload_2", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_3", "");
+    JI("aaload", "");
+    J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+    JI("astore_2", "");
+    J("    goto pj_len_loop\n");
+    J("pj_len_done:\n");
+    /* build int term from count and unify with n */
+    JI("iload_3", "");
+    JI("i2l", "");
+    J("    invokestatic %s/pj_term_int(J)[Ljava/lang/Object;\n", pj_classname);
+    JI("aload_1", "");
+    J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+    JI("ireturn", "");
     J(".end method\n\n");
 
     /* pj_arraylist_to_list(ArrayList) -> Object
@@ -2888,6 +3095,44 @@ static void pj_emit_goal(EXPR_t *goal, const char *lbl_γ, const char *lbl_ω,
                          int *next_local, const char *lbl_cutγ);
 static void pj_emit_term(EXPR_t *term, int *var_locals, int n_vars);
 static void pj_emit_arith(EXPR_t *e, int *var_locals, int n_vars);
+
+/* pj_arith_is_float — returns 1 if arithmetic expression produces a float result */
+/* pj_emit_dbl_const — emit a double constant onto the JVM stack as D.
+ * Jasmin truncates ldc2_w decimal literals to float32, so we use the raw
+ * bit pattern: ldc2_w <longbits> then longBitsToDouble. */
+static void pj_emit_dbl_const(double v) {
+    /* reinterpret double bits as long */
+    long long bits;
+    memcpy(&bits, &v, sizeof bits);
+    J("    ldc2_w %lld\n", (long long)bits);
+    JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+}
+
+static int pj_arith_is_float(EXPR_t *e) {
+    if (!e) return 0;
+    if (e->kind == E_FLIT) return 1;
+    if (e->kind == E_FNC && e->sval) {
+        const char *fn = e->sval;
+        /* these always produce float regardless of input */
+        if (strcmp(fn,"sqrt")==0 || strcmp(fn,"sin")==0 || strcmp(fn,"cos")==0 ||
+            strcmp(fn,"tan")==0  || strcmp(fn,"exp")==0 || strcmp(fn,"log")==0 ||
+            strcmp(fn,"atan")==0 || strcmp(fn,"atan2")==0 || strcmp(fn,"float")==0 ||
+            strcmp(fn,"float_integer_part")==0 || strcmp(fn,"float_fractional_part")==0 ||
+            strcmp(fn,"pi")==0   || strcmp(fn,"e")==0)
+            return 1;
+        /* these always produce integer regardless of input */
+        if (strcmp(fn,"truncate")==0 || strcmp(fn,"integer")==0 ||
+            strcmp(fn,"round")==0    || strcmp(fn,"ceiling")==0 ||
+            strcmp(fn,"floor")==0    || strcmp(fn,"gcd")==0)
+            return 0;
+    }
+    /* propagate: if any child is float, result is float */
+    for (int i = 0; i < (int)e->nchildren; i++)
+        if (pj_arith_is_float(e->children[i])) return 1;
+    return 0;
+}
+
+
 /* M-PJ-CUT-UCALL: forward decls for callee cut-sentinel helpers */
 static int pj_predicate_base_nclauses(const char *fn, int arity);
 static int pj_callee_has_cut_no_last_ucall(const char *fn, int arity);
@@ -2907,7 +3152,7 @@ static void pj_emit_term(EXPR_t *e, int *var_locals, int n_vars) {
     case E_QLIT: {
         /* atom — push atom term */
         pj_intern_atom(e->sval ? e->sval : "");
-        J("    ldc \"%s\"\n", e->sval ? e->sval : "");
+        pj_ldc_str(e->sval ? e->sval : "");
         J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n",
           pj_classname);
         break;
@@ -2915,6 +3160,11 @@ static void pj_emit_term(EXPR_t *e, int *var_locals, int n_vars) {
     case E_ILIT: {
         J("    ldc2_w %ld\n", e->ival);
         J("    invokestatic %s/pj_term_int(J)[Ljava/lang/Object;\n", pj_classname);
+        break;
+    }
+    case E_FLIT: {
+        pj_emit_dbl_const(e->dval);   /* push double constant */
+        J("    invokestatic %s/pj_term_float(D)[Ljava/lang/Object;\n", pj_classname);
         break;
     }
     case E_VART: {
@@ -2936,7 +3186,7 @@ static void pj_emit_term(EXPR_t *e, int *var_locals, int n_vars) {
         int arity = e->nchildren;
         if (arity == 0) {
             /* arity-0 compound = atom */
-            J("    ldc \"%s\"\n", e->sval ? e->sval : "");
+            pj_ldc_str(e->sval ? e->sval : "");
             J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n",
               pj_classname);
         } else {
@@ -2951,7 +3201,7 @@ static void pj_emit_term(EXPR_t *e, int *var_locals, int n_vars) {
             /* [1] = functor string */
             JI("dup", "");
             JI("iconst_1", "");
-            J("    ldc \"%s\"\n", e->sval ? e->sval : "");
+            pj_ldc_str(e->sval ? e->sval : "");
             JI("aastore", "");
             /* [2..] = args */
             for (int ai = 0; ai < arity; ai++) {
@@ -3007,41 +3257,115 @@ static void pj_emit_arith(EXPR_t *e, int *var_locals, int n_vars) {
     case E_ILIT:
         J("    ldc2_w %ld\n", e->ival);
         break;
+    case E_FLIT:
+        /* float literal: push as double, convert to long bits */
+        pj_emit_dbl_const(e->dval);
+        JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+        break;
     case E_VART: {
         int slot = e->ival;
-        /* load var, deref, get [1] (string), parse to long */
+        /* load var, deref; if float tag → parseDouble→bits, else parseLong */
         if (slot >= 0 && slot < n_vars && var_locals)
             J("    aload %d\n", var_locals[slot]);
         else
             JI("aconst_null", "");
         J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
         JI("checkcast", "[Ljava/lang/Object;");
+        JI("dup", "");
+        JI("iconst_0", "");
+        JI("aaload", "");          /* tag string */
+        JI("ldc", "\"float\"");
+        JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+        char lbl_flt[64], lbl_done[64];
+        static int pj_vart_cnt = 0; pj_vart_cnt++;
+        snprintf(lbl_flt,  sizeof lbl_flt,  "pj_vart_flt_%d",  pj_vart_cnt);
+        snprintf(lbl_done, sizeof lbl_done, "pj_vart_done_%d", pj_vart_cnt);
+        J("    ifne %s\n", lbl_flt);
+        /* int path */
         JI("iconst_1", "");
         JI("aaload", "");
         JI("checkcast", "java/lang/String");
         JI("invokestatic", "java/lang/Long/parseLong(Ljava/lang/String;)J");
+        J("    goto %s\n", lbl_done);
+        /* float path */
+        J("%s:\n", lbl_flt);
+        JI("iconst_1", "");
+        JI("aaload", "");
+        JI("checkcast", "java/lang/String");
+        JI("invokestatic", "java/lang/Double/parseDouble(Ljava/lang/String;)D");
+        JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+        J("%s:\n", lbl_done);
         break;
     }
-    case E_ADD:
-        pj_emit_arith(e->children[0], var_locals, n_vars);
-        pj_emit_arith(e->children[1], var_locals, n_vars);
-        JI("ladd", "");
+    case E_ADD: {
+        int lf = pj_arith_is_float(e->children[0]);
+        int rf = pj_arith_is_float(e->children[1]);
+        if (lf || rf) {
+            /* float addition */
+            pj_emit_arith(e->children[0], var_locals, n_vars);
+            if (!lf) JI("l2d", ""); else JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+            pj_emit_arith(e->children[1], var_locals, n_vars);
+            if (!rf) JI("l2d", ""); else JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+            JI("dadd", "");
+            JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+        } else {
+            pj_emit_arith(e->children[0], var_locals, n_vars);
+            pj_emit_arith(e->children[1], var_locals, n_vars);
+            JI("ladd", "");
+        }
         break;
-    case E_SUB:
-        pj_emit_arith(e->children[0], var_locals, n_vars);
-        pj_emit_arith(e->children[1], var_locals, n_vars);
-        JI("lsub", "");
+    }
+    case E_SUB: {
+        int lf = pj_arith_is_float(e->children[0]);
+        int rf = pj_arith_is_float(e->children[1]);
+        if (lf || rf) {
+            pj_emit_arith(e->children[0], var_locals, n_vars);
+            if (!lf) JI("l2d", ""); else JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+            pj_emit_arith(e->children[1], var_locals, n_vars);
+            if (!rf) JI("l2d", ""); else JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+            JI("dsub", "");
+            JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+        } else {
+            pj_emit_arith(e->children[0], var_locals, n_vars);
+            pj_emit_arith(e->children[1], var_locals, n_vars);
+            JI("lsub", "");
+        }
         break;
-    case E_MPY:
-        pj_emit_arith(e->children[0], var_locals, n_vars);
-        pj_emit_arith(e->children[1], var_locals, n_vars);
-        JI("lmul", "");
+    }
+    case E_MPY: {
+        int lf = pj_arith_is_float(e->children[0]);
+        int rf = pj_arith_is_float(e->children[1]);
+        if (lf || rf) {
+            pj_emit_arith(e->children[0], var_locals, n_vars);
+            if (!lf) JI("l2d", ""); else JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+            pj_emit_arith(e->children[1], var_locals, n_vars);
+            if (!rf) JI("l2d", ""); else JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+            JI("dmul", "");
+            JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+        } else {
+            pj_emit_arith(e->children[0], var_locals, n_vars);
+            pj_emit_arith(e->children[1], var_locals, n_vars);
+            JI("lmul", "");
+        }
         break;
-    case E_DIV:
-        pj_emit_arith(e->children[0], var_locals, n_vars);
-        pj_emit_arith(e->children[1], var_locals, n_vars);
-        JI("ldiv", "");
+    }
+    case E_DIV: {
+        int lf = pj_arith_is_float(e->children[0]);
+        int rf = pj_arith_is_float(e->children[1]);
+        if (lf || rf) {
+            pj_emit_arith(e->children[0], var_locals, n_vars);
+            if (!lf) JI("l2d", ""); else JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+            pj_emit_arith(e->children[1], var_locals, n_vars);
+            if (!rf) JI("l2d", ""); else JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+            JI("ddiv", "");
+            JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+        } else {
+            pj_emit_arith(e->children[0], var_locals, n_vars);
+            pj_emit_arith(e->children[1], var_locals, n_vars);
+            JI("ldiv", "");
+        }
         break;
+    }
     case E_FNC:
         /* mod/2, rem/2, //2 (integer div) — not given dedicated opcodes by lowerer */
         if (e->sval && e->nchildren >= 2) {
@@ -3088,15 +3412,37 @@ static void pj_emit_arith(EXPR_t *e, int *var_locals, int n_vars) {
                 break;
             }
             if (strcmp(e->sval, "max") == 0 && e->nchildren == 2) {
-                pj_emit_arith(e->children[0], var_locals, n_vars);
-                pj_emit_arith(e->children[1], var_locals, n_vars);
-                J("    invokestatic java/lang/Math/max(JJ)J\n");
+                int lf = pj_arith_is_float(e->children[0]);
+                int rf = pj_arith_is_float(e->children[1]);
+                if (lf || rf) {
+                    pj_emit_arith(e->children[0], var_locals, n_vars);
+                    if (!lf) JI("l2d", ""); else JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                    pj_emit_arith(e->children[1], var_locals, n_vars);
+                    if (!rf) JI("l2d", ""); else JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                    J("    invokestatic java/lang/Math/max(DD)D\n");
+                    JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                } else {
+                    pj_emit_arith(e->children[0], var_locals, n_vars);
+                    pj_emit_arith(e->children[1], var_locals, n_vars);
+                    J("    invokestatic java/lang/Math/max(JJ)J\n");
+                }
                 break;
             }
             if (strcmp(e->sval, "min") == 0 && e->nchildren == 2) {
-                pj_emit_arith(e->children[0], var_locals, n_vars);
-                pj_emit_arith(e->children[1], var_locals, n_vars);
-                J("    invokestatic java/lang/Math/min(JJ)J\n");
+                int lf = pj_arith_is_float(e->children[0]);
+                int rf = pj_arith_is_float(e->children[1]);
+                if (lf || rf) {
+                    pj_emit_arith(e->children[0], var_locals, n_vars);
+                    if (!lf) JI("l2d", ""); else JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                    pj_emit_arith(e->children[1], var_locals, n_vars);
+                    if (!rf) JI("l2d", ""); else JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                    J("    invokestatic java/lang/Math/min(DD)D\n");
+                    JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                } else {
+                    pj_emit_arith(e->children[0], var_locals, n_vars);
+                    pj_emit_arith(e->children[1], var_locals, n_vars);
+                    J("    invokestatic java/lang/Math/min(JJ)J\n");
+                }
                 break;
             }
             if ((strcmp(e->sval, "**") == 0 || strcmp(e->sval, "^") == 0) && e->nchildren == 2) {
@@ -3112,24 +3458,96 @@ static void pj_emit_arith(EXPR_t *e, int *var_locals, int n_vars) {
         /* unary arithmetic functions */
         if (e->sval && e->nchildren >= 1) {
             if (strcmp(e->sval, "abs") == 0 && e->nchildren == 1) {
-                pj_emit_arith(e->children[0], var_locals, n_vars);
-                /* abs: dup, negate, take max */
-                J("    dup2\n    lneg\n");
-                J("    invokestatic java/lang/Math/max(JJ)J\n");
+                if (pj_arith_is_float(e->children[0])) {
+                    pj_emit_arith(e->children[0], var_locals, n_vars);
+                    JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                    J("    invokestatic java/lang/Math/abs(D)D\n");
+                    JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                } else {
+                    pj_emit_arith(e->children[0], var_locals, n_vars);
+                    J("    invokestatic java/lang/Math/abs(J)J\n");
+                }
                 break;
             }
             if (strcmp(e->sval, "sign") == 0 && e->nchildren == 1) {
-                pj_emit_arith(e->children[0], var_locals, n_vars);
-                /* sign: Long.signum returns int, convert to long */
-                J("    invokestatic java/lang/Long/signum(J)I\n");
-                JI("i2l", "");
+                if (pj_arith_is_float(e->children[0])) {
+                    /* float sign: Math.signum returns double */
+                    pj_emit_arith(e->children[0], var_locals, n_vars);
+                    JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                    J("    invokestatic java/lang/Math/signum(D)D\n");
+                    JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                } else {
+                    /* integer sign: Long.signum returns int, convert to long */
+                    pj_emit_arith(e->children[0], var_locals, n_vars);
+                    J("    invokestatic java/lang/Long/signum(J)I\n");
+                    JI("i2l", "");
+                }
                 break;
             }
-            if ((strcmp(e->sval, "truncate") == 0 || strcmp(e->sval, "integer") == 0
-                 || strcmp(e->sval, "round") == 0 || strcmp(e->sval, "ceiling") == 0
-                 || strcmp(e->sval, "floor") == 0) && e->nchildren == 1) {
-                /* for integer inputs these are identity */
-                pj_emit_arith(e->children[0], var_locals, n_vars);
+            if (strcmp(e->sval, "copysign") == 0 && e->nchildren == 2) {
+                /* copysign(Mag, Sign): copy sign of Sign to magnitude of Mag */
+                int mag_float = pj_arith_is_float(e->children[0]);
+                int sgn_float = pj_arith_is_float(e->children[1]);
+                if (mag_float || sgn_float) {
+                    /* float version: Math.copySign */
+                    pj_emit_arith(e->children[0], var_locals, n_vars);
+                    if (!mag_float) { JI("l2d", ""); } else { JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D"); }
+                    pj_emit_arith(e->children[1], var_locals, n_vars);
+                    if (!sgn_float) { JI("l2d", ""); } else { JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D"); }
+                    J("    invokestatic java/lang/Math/copySign(DD)D\n");
+                    JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                } else {
+                    /* integer copysign: abs(Mag) * signum(Sign) */
+                    pj_emit_arith(e->children[0], var_locals, n_vars);
+                    J("    invokestatic java/lang/Math/abs(J)J\n");
+                    pj_emit_arith(e->children[1], var_locals, n_vars);
+                    J("    invokestatic java/lang/Long/signum(J)I\n");
+                    JI("i2l", "");
+                    JI("lmul", "");
+                }
+                break;
+            }
+            if ((strcmp(e->sval, "truncate") == 0 || strcmp(e->sval, "integer") == 0) && e->nchildren == 1) {
+                if (pj_arith_is_float(e->children[0])) {
+                    /* float→int: convert bits back to double, truncate to long */
+                    pj_emit_arith(e->children[0], var_locals, n_vars);
+                    JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                    JI("d2l", "");
+                } else {
+                    pj_emit_arith(e->children[0], var_locals, n_vars);
+                }
+                break;
+            }
+            if (strcmp(e->sval, "round") == 0 && e->nchildren == 1) {
+                if (pj_arith_is_float(e->children[0])) {
+                    pj_emit_arith(e->children[0], var_locals, n_vars);
+                    JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                    JI("invokestatic", "java/lang/Math/round(D)J");
+                } else {
+                    pj_emit_arith(e->children[0], var_locals, n_vars);
+                }
+                break;
+            }
+            if (strcmp(e->sval, "ceiling") == 0 && e->nchildren == 1) {
+                if (pj_arith_is_float(e->children[0])) {
+                    pj_emit_arith(e->children[0], var_locals, n_vars);
+                    JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                    JI("invokestatic", "java/lang/Math/ceil(D)D");
+                    JI("d2l", "");
+                } else {
+                    pj_emit_arith(e->children[0], var_locals, n_vars);
+                }
+                break;
+            }
+            if (strcmp(e->sval, "floor") == 0 && e->nchildren == 1) {
+                if (pj_arith_is_float(e->children[0])) {
+                    pj_emit_arith(e->children[0], var_locals, n_vars);
+                    JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                    JI("invokestatic", "java/lang/Math/floor(D)D");
+                    JI("d2l", "");
+                } else {
+                    pj_emit_arith(e->children[0], var_locals, n_vars);
+                }
                 break;
             }
             if (strcmp(e->sval, "msb") == 0 && e->nchildren == 1) {
@@ -3142,12 +3560,194 @@ static void pj_emit_arith(EXPR_t *e, int *var_locals, int n_vars) {
                 break;
             }
         }  /* end unary */
+        /* ---- float math functions ---- */
+        if (e->sval && e->nchildren == 1) {
+            if (strcmp(e->sval, "sqrt") == 0) {
+                pj_emit_arith(e->children[0], var_locals, n_vars);
+                JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                JI("invokestatic", "java/lang/Math/sqrt(D)D");
+                JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                break;
+            }
+            if (strcmp(e->sval, "sin") == 0) {
+                pj_emit_arith(e->children[0], var_locals, n_vars);
+                JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                JI("invokestatic", "java/lang/Math/sin(D)D");
+                JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                break;
+            }
+            if (strcmp(e->sval, "cos") == 0) {
+                pj_emit_arith(e->children[0], var_locals, n_vars);
+                JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                JI("invokestatic", "java/lang/Math/cos(D)D");
+                JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                break;
+            }
+            if (strcmp(e->sval, "tan") == 0) {
+                pj_emit_arith(e->children[0], var_locals, n_vars);
+                JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                JI("invokestatic", "java/lang/Math/tan(D)D");
+                JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                break;
+            }
+            if (strcmp(e->sval, "exp") == 0) {
+                pj_emit_arith(e->children[0], var_locals, n_vars);
+                JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                JI("invokestatic", "java/lang/Math/exp(D)D");
+                JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                break;
+            }
+            if (strcmp(e->sval, "log") == 0) {
+                pj_emit_arith(e->children[0], var_locals, n_vars);
+                JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                JI("invokestatic", "java/lang/Math/log(D)D");
+                JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                break;
+            }
+            if (strcmp(e->sval, "atan") == 0) {
+                pj_emit_arith(e->children[0], var_locals, n_vars);
+                JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                JI("invokestatic", "java/lang/Math/atan(D)D");
+                JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                break;
+            }
+            if (strcmp(e->sval, "float") == 0) {
+                /* float(X): convert integer to float */
+                pj_emit_arith(e->children[0], var_locals, n_vars);
+                JI("l2d", "");
+                JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                break;
+            }
+            if (strcmp(e->sval, "float_integer_part") == 0) {
+                pj_emit_arith(e->children[0], var_locals, n_vars);
+                /* promote integer to float if needed */
+                if (!pj_arith_is_float(e->children[0])) {
+                    JI("l2d", ""); JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                }
+                JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                /* truncate toward zero: (double)(long)x */
+                JI("d2l", "");
+                JI("l2d", "");
+                JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                break;
+            }
+            if (strcmp(e->sval, "float_fractional_part") == 0) {
+                pj_emit_arith(e->children[0], var_locals, n_vars);
+                /* promote integer to float if needed */
+                if (!pj_arith_is_float(e->children[0])) {
+                    JI("l2d", ""); JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                }
+                JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                JI("dup2", "");  /* x x */
+                JI("d2l", ""); JI("l2d", "");  /* x trunc(x) */
+                JI("dsub", "");
+                JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                break;
+            }
+        }
+        if (e->sval && e->nchildren == 2) {
+            if (strcmp(e->sval, "atan2") == 0) {
+                pj_emit_arith(e->children[0], var_locals, n_vars);
+                JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                pj_emit_arith(e->children[1], var_locals, n_vars);
+                JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                J("    invokestatic java/lang/Math/atan2(DD)D\n");
+                JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                break;
+            }
+            if (strcmp(e->sval, "gcd") == 0) {
+                /* gcd via Euclidean: emit helper call */
+                pj_emit_arith(e->children[0], var_locals, n_vars);
+                pj_emit_arith(e->children[1], var_locals, n_vars);
+                J("    invokestatic %s/pj_gcd(JJ)J\n", pj_classname);
+                break;
+            }
+        }
+        /* pi and e constants */
+        if (e->sval && e->nchildren == 0) {
+            if (strcmp(e->sval, "pi") == 0) {
+                pj_emit_dbl_const(3.141592653589793);
+                JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                break;
+            }
+            if (strcmp(e->sval, "e") == 0) {
+                pj_emit_dbl_const(2.718281828459045);
+                JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                break;
+            }
+        }
         JI("lconst_0", "");
         break;
     default:
         JI("lconst_0", "");
         break;
     }
+}
+
+/* pj_emit_stdlib_shim — always-emitted pure-Prolog stdlib predicates.
+ * member/2 and memberchk/2 are general builtins, skipped if user defines them. */
+static void pj_emit_choice(EXPR_t *choice); /* forward decl */
+
+static int pj_prog_defines(Program *prog, const char *name, int arity) {
+    char key[128]; snprintf(key, sizeof key, "%s/%d", name, arity);
+    for (STMT_t *s = prog->head; s; s = s->next) {
+        if (!s->subject || s->subject->kind != E_CHOICE) continue;
+        if (s->subject->sval && strcmp(s->subject->sval, key) == 0)
+            return 1;
+    }
+    return 0;
+}
+
+static void pj_emit_stdlib_pred(const char *src) {
+    PlProgram *pl = prolog_parse(src, "stdlib");
+    if (!pl) return;
+    PlProgram *lowered = prolog_lower(pl);
+    if (!lowered) return;
+    for (STMT_t *s = lowered->head; s; s = s->next) {
+        if (!s->subject) continue;
+        if (s->subject->kind == E_CHOICE)
+            pj_emit_choice(s->subject);
+    }
+}
+
+static void pj_emit_stdlib_shim(Program *prog) {
+    if (!pj_prog_defines(prog, "member", 2))
+        pj_emit_stdlib_pred("member(X, [X|_]).\nmember(X, [_|T]) :- member(X, T).\n");
+    if (!pj_prog_defines(prog, "memberchk", 2))
+        pj_emit_stdlib_pred("memberchk(X, [X|_]) :- !.\nmemberchk(X, [_|T]) :- memberchk(X, T).\n");
+    if (!pj_prog_defines(prog, "forall", 2)) {
+        /* forall/2 is now a synthetic JVM method — no pure-Prolog shim needed */
+    }
+}
+
+/* pj_gcd(J,J)J emitter — emitted once into the class */
+static void pj_emit_gcd_helper(void) {
+    J(".method static pj_gcd(JJ)J\n");
+    J("    .limit stack 4\n");
+    J("    .limit locals 4\n");
+    /* Euclidean gcd: while b != 0 { t=b; b=a%b; a=t; } return abs(a) */
+    J("    lload_0\n");
+    J("    invokestatic java/lang/Math/abs(J)J\n");
+    J("    lstore_0\n");
+    J("    lload_2\n");
+    J("    invokestatic java/lang/Math/abs(J)J\n");
+    J("    lstore_2\n");
+    J("pj_gcd_loop:\n");
+    J("    lload_2\n");
+    JI("lconst_0", "");
+    JI("lcmp", "");
+    J("    ifeq pj_gcd_done\n");
+    J("    lload_0\n");
+    J("    lload_2\n");
+    JI("lrem", "");
+    J("    lload_2\n");
+    J("    lstore_0\n");
+    J("    lstore_2\n");
+    J("    goto pj_gcd_loop\n");
+    J("pj_gcd_done:\n");
+    J("    lload_0\n");
+    JI("lreturn", "");
+    J(".end method\n\n");
 }
 
 /* -------------------------------------------------------------------------
@@ -3198,6 +3798,8 @@ static int pj_is_user_call(EXPR_t *goal) {
         "char_type",
         "writeq","write_canonical",
         "atom_string","number_string",
+        "string_chars","string_codes",
+        "length",
         "string_concat","string_length","string_lower","string_upper",
         "term_to_atom","term_string",
         "copy_term",
@@ -3207,6 +3809,8 @@ static int pj_is_user_call(EXPR_t *goal) {
         "aggregate_all",
         "succ_or_zero",
         "throw","catch",
+        "garbage_collect","trim_stacks",
+        "?=",
         NULL
     };
     for (int i = 0; builtins[i]; i++)
@@ -3410,9 +4014,14 @@ static void pj_emit_goal(EXPR_t *goal, const char *lbl_γ, const char *lbl_ω,
         }
         /* is/2 — arithmetic */
         if (strcmp(fn, "is") == 0 && nargs == 2) {
-            /* evaluate RHS, create int term, unify with LHS */
+            /* evaluate RHS, create int or float term, unify with LHS */
             pj_emit_arith(goal->children[1], var_locals, n_vars);
-            J("    invokestatic %s/pj_term_int(J)[Ljava/lang/Object;\n", pj_classname);
+            if (pj_arith_is_float(goal->children[1])) {
+                JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                J("    invokestatic %s/pj_term_float(D)[Ljava/lang/Object;\n", pj_classname);
+            } else {
+                J("    invokestatic %s/pj_term_int(J)[Ljava/lang/Object;\n", pj_classname);
+            }
             pj_emit_term(goal->children[0], var_locals, n_vars);
             /* swap: stack = [int_term, lhs_term] — need (lhs, rhs) for unify */
             JI("swap", "");
@@ -3425,9 +4034,13 @@ static void pj_emit_goal(EXPR_t *goal, const char *lbl_γ, const char *lbl_ω,
         if ((strcmp(fn, "=:=") == 0 || strcmp(fn, "=\\=") == 0 ||
              strcmp(fn, "<")   == 0 || strcmp(fn, ">")    == 0 ||
              strcmp(fn, "=<")  == 0 || strcmp(fn, ">=")   == 0) && nargs == 2) {
+            int flt = pj_arith_is_float(goal->children[0]) ||
+                      pj_arith_is_float(goal->children[1]);
             pj_emit_arith(goal->children[0], var_locals, n_vars);
+            if (flt) JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
             pj_emit_arith(goal->children[1], var_locals, n_vars);
-            JI("lcmp", "");
+            if (flt) JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+            if (flt) JI("dcmpl", ""); else JI("lcmp", "");
             /* result: -1, 0, +1 */
             if (strcmp(fn, "=:=") == 0)      J("    ifne %s\n", lbl_ω);
             else if (strcmp(fn, "=\\=") == 0) J("    ifeq %s\n", lbl_ω);
@@ -3560,6 +4173,16 @@ static void pj_emit_goal(EXPR_t *goal, const char *lbl_γ, const char *lbl_ω,
             JI("goto", lbl_γ);
             return;
         }
+        /* length(+List, ?N) — count list elements, unify N */
+        if (strcmp(fn, "length") == 0 && nargs == 2) {
+            pj_emit_term(goal->children[0], var_locals, n_vars);
+            pj_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pj_length_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
         /* sort(+List, -Sorted) — sort with deduplication */
         /* msort(+List, -Sorted) — sort without deduplication */
         if ((strcmp(fn, "sort") == 0 || strcmp(fn, "msort") == 0) && nargs == 2) {
@@ -3702,6 +4325,26 @@ static void pj_emit_goal(EXPR_t *goal, const char *lbl_γ, const char *lbl_ω,
 
         /* atom_codes(+Atom, ?Codes) or atom_codes(?Atom, +Codes) */
         if (strcmp(fn, "atom_codes") == 0 && nargs == 2) {
+            pj_emit_term(goal->children[0], var_locals, n_vars);
+            pj_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pj_atom_codes_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* string_chars(+Str, ?Chars) — identical semantics to atom_chars on JVM */
+        if (strcmp(fn, "string_chars") == 0 && nargs == 2) {
+            pj_emit_term(goal->children[0], var_locals, n_vars);
+            pj_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pj_atom_chars_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* string_codes(+Str, ?Codes) — identical semantics to atom_codes on JVM */
+        if (strcmp(fn, "string_codes") == 0 && nargs == 2) {
             pj_emit_term(goal->children[0], var_locals, n_vars);
             pj_emit_term(goal->children[1], var_locals, n_vars);
             J("    invokestatic %s/pj_atom_codes_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
@@ -3871,6 +4514,29 @@ static void pj_emit_goal(EXPR_t *goal, const char *lbl_γ, const char *lbl_ω,
             pj_emit_term(goal->children[0], var_locals, n_vars);
             pj_emit_term(goal->children[1], var_locals, n_vars);
             J("    invokestatic %s/pj_term_to_atom_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* garbage_collect/0 — no-op on JVM (GC is automatic) */
+        if (strcmp(fn, "garbage_collect") == 0 && nargs == 0) {
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* trim_stacks/0 — no-op on JVM */
+        if (strcmp(fn, "trim_stacks") == 0 && nargs == 0) {
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* ?=(X, Y) — can-compare: succeed if X and Y are ground (contain no vars)
+         * or are identical. Fails if either contains unbound variables. */
+        if (strcmp(fn, "?=") == 0 && nargs == 2) {
+            pj_emit_term(goal->children[0], var_locals, n_vars);
+            pj_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pj_can_compare(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
             J("    ifeq %s\n", lbl_ω);
             JI("goto", lbl_γ);
             return;
@@ -4349,13 +5015,20 @@ static void pj_emit_goal(EXPR_t *goal, const char *lbl_γ, const char *lbl_ω,
                 JI("dup", ""); JI("iconst_0", ""); JI("aaload", "");
                 JI("ldc", "\"var\"");
                 JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
-                J("    ifeq %s\n", vfail);   /* not var tag → fail */
-                /* tag=="var": check [1]==null (unbound) */
+                /* stack: [cast-ref, bool] - swap+pop to get bool alone, stack clean */
+                JI("swap", ""); JI("pop", "");
+                J("    ifeq %s\n", vfail);   /* not var tag → fail; stack empty */
+                /* tag=="var": re-deref and check [1]==null */
+                pj_emit_term(goal->children[0], var_locals, n_vars);
+                J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+                JI("checkcast", "[Ljava/lang/Object;");
                 JI("iconst_1", ""); JI("aaload", "");
-                J("    ifnonnull %s\n", vfail); /* bound → fail */
+                J("    ifnonnull %s\n", vfail); /* bound → fail; stack empty */
                 JI("goto", lbl_γ);
+                /* vok: reached via ifnull (which popped dup'd copy); original ref still on stack → pop it */
                 J("%s:\n", vok);   JI("pop", ""); JI("goto", lbl_γ);
-                J("%s:\n", vfail); JI("pop", ""); JI("goto", lbl_ω);
+                /* vfail: reached via ifeq/ifnonnull (which already popped); stack clean */
+                J("%s:\n", vfail); JI("goto", lbl_ω);
                 return;
             }
             if (strcmp(fn, "nonvar") == 0) {
@@ -4370,14 +5043,19 @@ static void pj_emit_goal(EXPR_t *goal, const char *lbl_γ, const char *lbl_ω,
                 JI("dup", ""); JI("iconst_0", ""); JI("aaload", "");
                 JI("ldc", "\"var\"");
                 JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
-                J("    ifeq %s\n", nok);   /* not var tag → nonvar → succeed */
-                /* tag=="var": check if [1]!=null (bound ref = nonvar) */
+                /* stack: [cast-ref, bool] - swap+pop to get bool alone */
+                JI("swap", ""); JI("pop", "");
+                J("    ifeq %s\n", nok);   /* not var tag → nonvar → succeed; stack empty */
+                /* tag=="var": re-deref, check if [1]!=null (bound ref = nonvar) */
+                pj_emit_term(goal->children[0], var_locals, n_vars);
+                J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+                JI("checkcast", "[Ljava/lang/Object;");
                 JI("iconst_1", ""); JI("aaload", "");
-                J("    ifnonnull %s\n", nok); /* bound ref → succeed */
+                J("    ifnonnull %s\n", nok); /* bound ref → succeed; stack empty */
                 /* unbound var → fail */
                 JI("goto", lbl_ω);
-                J("%s:\n", nok);   JI("pop", ""); JI("goto", lbl_γ);
-                J("%s:\n", nfail); JI("pop", ""); JI("goto", lbl_ω);
+                J("%s:\n", nok);   JI("goto", lbl_γ);
+                J("%s:\n", nfail); JI("goto", lbl_ω);
                 return;
             }
             /* For remaining type tests: get tag string */
@@ -4538,21 +5216,139 @@ static void pj_emit_goal(EXPR_t *goal, const char *lbl_γ, const char *lbl_ω,
             JI("goto", lbl_γ);
             return;
         }
-        /* =../2: Term =.. List (univ)
-         * foo(a,b) =.. [foo,a,b];  atom =.. [atom]
-         * Delegate entirely to pj_term_to_list helper. */
+        /* =../2: Term =.. List (univ) — bidirectional via pj_univ helper.
+         * Decompose: Term bound   -> list = pj_term_to_list(Term); unify list.
+         * Compose:   Term unbound -> term = pj_list_to_term(List); unify term.
+         * Both directions handled at runtime by pj_univ(term, list) -> bool. */
         if (strcmp(fn, "=..") == 0 && nargs == 2) {
             pj_emit_term(goal->children[0], var_locals, n_vars);
-            J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
-            J("    ifnull %s\n", lbl_ω);
-            pj_emit_term(goal->children[0], var_locals, n_vars);
-            J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
-            J("    invokestatic %s/pj_term_to_list(Ljava/lang/Object;)[Ljava/lang/Object;\n", pj_classname);
             pj_emit_term(goal->children[1], var_locals, n_vars);
-            J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+            J("    invokestatic %s/pj_univ(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
             J("    ifeq %s\n", lbl_ω);
             JI("goto", lbl_γ);
             return;
+        }
+        /* phrase/2 — phrase(NT, List) -> NT(List, [])\n         * phrase/3 — phrase(NT, List, Rest) -> NT(List, Rest)\n         * Rewrite into a direct NT/+2 call so the normal ucall retry loop\n         * handles backtracking correctly. */
+        if (strcmp(fn, "phrase") == 0 && (nargs == 2 || nargs == 3)) {
+            EXPR_t *nt_expr  = goal->children[0];
+            EXPR_t *list_arg = goal->children[1];
+            EXPR_t *rest_arg = (nargs == 3) ? goal->children[2] : NULL;
+
+            /* Variable NT: phrase(Var, List[, Rest]) — NT is unbound/runtime-determined.
+             * Build a phrase/N term and dispatch via pj_call_goal at runtime. */
+            if (nt_expr->kind == E_VART) {
+                int n_phrase = nargs; /* 2 or 3 */
+                /* build phrase(NT, List[, Rest]) as a compound term on stack */
+                J("    ldc %d\n", n_phrase + 2);
+                J("    anewarray java/lang/Object\n");
+                J("    dup\n"); J("    iconst_0\n"); J("    ldc \"compound\"\n"); J("    aastore\n");
+                J("    dup\n"); J("    iconst_1\n"); J("    ldc \"phrase\"\n");   J("    aastore\n");
+                J("    dup\n"); J("    iconst_2\n");
+                pj_emit_term(nt_expr, var_locals, n_vars);
+                J("    aastore\n");
+                J("    dup\n"); J("    iconst_3\n");
+                pj_emit_term(list_arg, var_locals, n_vars);
+                J("    aastore\n");
+                if (rest_arg) {
+                    J("    dup\n"); J("    bipush 4\n");
+                    pj_emit_term(rest_arg, var_locals, n_vars);
+                    J("    aastore\n");
+                }
+                J("    iconst_0\n");
+                J("    invokestatic %s/pj_call_goal(Ljava/lang/Object;I)I\n", pj_classname);
+                J("    ldc -1\n");
+                J("    if_icmpeq %s\n", lbl_ω);
+                J("    goto %s\n", lbl_γ);
+                return;
+            }
+
+            /* Special case: NT = [] (empty list body).
+             * phrase([], List)       -> List = []
+             * phrase([], List, Rest) -> List = Rest */
+            int nt_is_nil = (nt_expr->sval && strcmp(nt_expr->sval, "[]") == 0 &&
+                             nt_expr->nchildren == 0);
+            if (nt_is_nil) {
+                EXPR_t *rhs;
+                if (rest_arg) {
+                    rhs = rest_arg;
+                } else {
+                    rhs = expr_new(E_QLIT);
+                    rhs->sval = strdup("[]");
+                }
+                /* emit: pj_unify(list_arg, rhs); ifeq omega; goto gamma */
+                pj_emit_term(list_arg, var_locals, n_vars);
+                pj_emit_term(rhs, var_locals, n_vars);
+                J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+                J("    ifeq %s\n", lbl_ω);
+                J("    goto %s\n", lbl_γ);
+                return;
+            }
+
+            /* Special case: NT = '.'(H, T) — list terminal body.
+             * phrase([H|T], L0)       -> L0 = [H|L1], phrase(T, L1)
+             * phrase([H|T], L0, L)    -> L0 = [H|L1], phrase(T, L1, L)
+             * Allocate a fresh local for L1, extend var_locals so pj_emit_term
+             * can address it via an E_VART at index n_vars, then recurse. */
+            int nt_is_cons = (nt_expr->sval && strcmp(nt_expr->sval, ".") == 0 &&
+                              nt_expr->nchildren == 2);
+            if (nt_is_cons) {
+                EXPR_t *head_elem = nt_expr->children[0];
+                EXPR_t *tail_nt   = nt_expr->children[1];
+                int l1_local = *next_local; *next_local += 1;
+                J("    invokestatic %s/pj_term_var()[Ljava/lang/Object;\n", pj_classname);
+                J("    astore %d\n", l1_local);
+                /* emit: L0 = [H | L1] */
+                pj_emit_term(list_arg, var_locals, n_vars);
+                J("    ldc 4\n"); J("    anewarray java/lang/Object\n");
+                J("    dup\n"); J("    iconst_0\n"); J("    ldc \"compound\"\n"); J("    aastore\n");
+                J("    dup\n"); J("    iconst_1\n"); J("    ldc \".\"\n");       J("    aastore\n");
+                J("    dup\n"); J("    iconst_2\n");
+                pj_emit_term(head_elem, var_locals, n_vars);
+                J("    aastore\n");
+                J("    dup\n"); J("    iconst_3\n"); J("    aload %d\n", l1_local); J("    aastore\n");
+                J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+                J("    ifeq %s\n", lbl_ω);
+                /* extend var_locals: index n_vars → l1_local */
+                int *vl2 = malloc((n_vars + 1) * sizeof(int));
+                for (int i = 0; i < n_vars; i++) vl2[i] = var_locals ? var_locals[i] : 0;
+                vl2[n_vars] = l1_local;
+                /* build E_VART for L1 at index n_vars */
+                EXPR_t *l1_vart = expr_new(E_VART); l1_vart->ival = n_vars;
+                /* build phrase(tail_nt, L1 [, rest_arg]) goal */
+                EXPR_t *rec = expr_new(E_FNC);
+                rec->sval = strdup("phrase");
+                rec->nchildren = rest_arg ? 3 : 2;
+                rec->children = malloc(rec->nchildren * sizeof(EXPR_t *));
+                rec->children[0] = tail_nt;
+                rec->children[1] = l1_vart;
+                if (rest_arg) rec->children[2] = rest_arg;
+                pj_emit_goal(rec, lbl_γ, lbl_ω,
+                             trail_local, vl2, n_vars + 1,
+                             cut_cs_seal, cs_local_for_cut, next_local, lbl_cutγ);
+                free(vl2);
+                return;
+            }
+
+            /* General NT (atom or compound, non-list): phrase(NT, List[, Rest]) -> NT/+2 call */
+            {
+                EXPR_t *nil_node = NULL;
+                if (!rest_arg) {
+                    nil_node = expr_new(E_QLIT);
+                    nil_node->sval = strdup("[]");
+                }
+                EXPR_t *call = expr_new(E_FNC);
+                int base = (nt_expr->kind == E_FNC) ? nt_expr->nchildren : 0;
+                call->sval = strdup(nt_expr->sval ? nt_expr->sval : "unknown");
+                call->nchildren = base + 2;
+                call->children  = malloc(call->nchildren * sizeof(EXPR_t *));
+                for (int i = 0; i < base; i++) call->children[i] = nt_expr->children[i];
+                call->children[base]   = list_arg;
+                call->children[base+1] = rest_arg ? rest_arg : nil_node;
+                pj_emit_goal(call, lbl_γ, lbl_ω,
+                             trail_local, var_locals, n_vars,
+                             cut_cs_seal, cs_local_for_cut, next_local, lbl_cutγ);
+                return;
+            }
         }
         /* user-defined predicate call — deterministic single-solution call.
          * For backtracking calls in a clause body, pj_emit_body() wraps
@@ -4574,6 +5370,27 @@ static void pj_emit_goal(EXPR_t *goal, const char *lbl_γ, const char *lbl_ω,
             JI("goto", lbl_γ);
             return;
         }
+    }
+
+    /* E_VART: variable used as goal — dispatch via pj_call_goal at runtime.
+     * This handles catch(Goal,...) and call(Var) where Goal/Var is a variable. */
+    if (goal->kind == E_VART) {
+        int slot = goal->ival;
+        if (slot >= 0 && slot < n_vars) {
+            J("    aload %d\n", var_locals[slot]);
+        } else {
+            /* shouldn't happen — emit atom 'fail' as safe fallback */
+            J("    ldc \"fail\"\n");
+            J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+        }
+        J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+        J("    iconst_0\n");
+        J("    invokestatic %s/pj_call_goal(Ljava/lang/Object;I)I\n", pj_classname);
+        /* pj_call_goal returns -1 on failure, >=0 (next cs) on success */
+        J("    ldc -1\n");
+        J("    if_icmpeq %s\n", lbl_ω);
+        JI("goto", lbl_γ);
+        return;
     }
 
     /* fallthrough */
@@ -4626,6 +5443,126 @@ static void pj_emit_body(EXPR_t **goals, int ngoals, const char *lbl_γ,
     }
 
     if (pj_is_user_call(g)) {
+        /* PJ-72: phrase/N rewrite in ucall path.
+         * phrase/2,3 is recognised as a user call by pj_is_user_call, so it
+         * reaches here before pj_emit_goal's phrase handler fires.  Rewrite
+         * phrase(NT, List) -> NT(List, []) and phrase(NT, List, Rest) ->
+         * NT(List, Rest) so the retry loop below operates on the real NT. */
+        if (g->sval && strcmp(g->sval, "phrase") == 0 &&
+            (g->nchildren == 2 || g->nchildren == 3)) {
+            EXPR_t *nt_expr  = g->children[0];
+            EXPR_t *list_arg = g->children[1];
+            EXPR_t *rest_arg = (g->nchildren == 3) ? g->children[2] : NULL;
+
+            /* Variable NT: dispatch at runtime via pj_call_goal */
+            if (nt_expr->kind == E_VART) {
+                int np = g->nchildren;
+                J("    ldc %d\n", np + 2);
+                J("    anewarray java/lang/Object\n");
+                J("    dup\n"); J("    iconst_0\n"); J("    ldc \"compound\"\n"); J("    aastore\n");
+                J("    dup\n"); J("    iconst_1\n"); J("    ldc \"phrase\"\n");   J("    aastore\n");
+                J("    dup\n"); J("    iconst_2\n");
+                pj_emit_term(nt_expr, var_locals, n_vars);
+                J("    aastore\n");
+                J("    dup\n"); J("    iconst_3\n");
+                pj_emit_term(list_arg, var_locals, n_vars);
+                J("    aastore\n");
+                if (rest_arg) {
+                    J("    dup\n"); J("    bipush 4\n");
+                    pj_emit_term(rest_arg, var_locals, n_vars);
+                    J("    aastore\n");
+                }
+                J("    iconst_0\n");
+                J("    invokestatic %s/pj_call_goal(Ljava/lang/Object;I)I\n", pj_classname);
+                J("    ldc -1\n"); J("    if_icmpeq %s\n", lbl_ω);
+                pj_emit_body(goals + 1, ngoals - 1, lbl_γ, lbl_ω, lbl_outer_ω,
+                             trail_local, var_locals, n_vars, next_local,
+                             init_cs_local, sub_cs_out_local,
+                             cut_cs_seal, cs_local_for_cut, lbl_pred_ω, lbl_cutγ);
+                return;
+            }
+
+            /* Special case: NT = [] — phrase([], List) -> List = []
+             *                        phrase([], List, Rest) -> List = Rest */
+            int nt_is_nil = (nt_expr->sval && strcmp(nt_expr->sval, "[]") == 0 &&
+                             nt_expr->nchildren == 0);
+            if (nt_is_nil) {
+                EXPR_t *rhs;
+                if (rest_arg) {
+                    rhs = rest_arg;
+                } else {
+                    rhs = expr_new(E_QLIT);
+                    rhs->sval = strdup("[]");
+                }
+                pj_emit_term(list_arg, var_locals, n_vars);
+                pj_emit_term(rhs, var_locals, n_vars);
+                J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+                J("    ifeq %s\n", lbl_ω);
+                pj_emit_body(goals + 1, ngoals - 1, lbl_γ, lbl_ω, lbl_outer_ω,
+                             trail_local, var_locals, n_vars, next_local,
+                             init_cs_local, sub_cs_out_local,
+                             cut_cs_seal, cs_local_for_cut, lbl_pred_ω, lbl_cutγ);
+                return;
+            }
+
+            EXPR_t *nil_node = NULL;
+            if (!rest_arg) {
+                nil_node = expr_new(E_QLIT);
+                nil_node->sval = strdup("[]");
+            }
+
+            /* Special case: NT = '.'(H, T) — list terminal.
+             * Allocate L1 local, extend var_locals, recurse via pj_emit_body. */
+            int nt_is_cons2 = (nt_expr->sval && strcmp(nt_expr->sval, ".") == 0 &&
+                               nt_expr->nchildren == 2);
+            if (nt_is_cons2) {
+                EXPR_t *hd2 = nt_expr->children[0];
+                EXPR_t *tl2 = nt_expr->children[1];
+                int l1_loc = *next_local; *next_local += 1;
+                J("    invokestatic %s/pj_term_var()[Ljava/lang/Object;\n", pj_classname);
+                J("    astore %d\n", l1_loc);
+                pj_emit_term(list_arg, var_locals, n_vars);
+                J("    ldc 4\n"); J("    anewarray java/lang/Object\n");
+                J("    dup\n"); J("    iconst_0\n"); J("    ldc \"compound\"\n"); J("    aastore\n");
+                J("    dup\n"); J("    iconst_1\n"); J("    ldc \".\"\n");       J("    aastore\n");
+                J("    dup\n"); J("    iconst_2\n"); pj_emit_term(hd2, var_locals, n_vars); J("    aastore\n");
+                J("    dup\n"); J("    iconst_3\n"); J("    aload %d\n", l1_loc); J("    aastore\n");
+                J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+                J("    ifeq %s\n", lbl_ω);
+                /* extend var_locals: new index n_vars → l1_loc */
+                int *vl2b = malloc((n_vars + 1) * sizeof(int));
+                for (int i = 0; i < n_vars; i++) vl2b[i] = var_locals ? var_locals[i] : 0;
+                vl2b[n_vars] = l1_loc;
+                EXPR_t *l1v2 = expr_new(E_VART); l1v2->ival = n_vars;
+                EXPR_t *rec2 = expr_new(E_FNC);
+                rec2->sval = strdup("phrase");
+                rec2->nchildren = rest_arg ? 3 : 2;
+                rec2->children = malloc(rec2->nchildren * sizeof(EXPR_t *));
+                rec2->children[0] = tl2; rec2->children[1] = l1v2;
+                if (rest_arg) rec2->children[2] = rest_arg;
+                /* Prepend rec2 to remaining goals */
+                int ngoals2 = ngoals; /* total remaining including current phrase */
+                EXPR_t **goals2 = malloc((ngoals2) * sizeof(EXPR_t *));
+                goals2[0] = rec2;
+                for (int gi = 1; gi < ngoals2; gi++) goals2[gi] = goals[gi]; /* goals[0]=current phrase, rest follow */
+                pj_emit_body(goals2, ngoals2, lbl_γ, lbl_ω, lbl_outer_ω,
+                             trail_local, vl2b, n_vars + 1, next_local,
+                             init_cs_local, sub_cs_out_local,
+                             cut_cs_seal, cs_local_for_cut, lbl_pred_ω, lbl_cutγ);
+                free(goals2); free(vl2b);
+                return;
+            }
+
+            EXPR_t *call = expr_new(E_FNC);
+            int base = (nt_expr->kind == E_FNC) ? nt_expr->nchildren : 0;
+            call->sval      = strdup(nt_expr->sval ? nt_expr->sval : "unknown");
+            call->nchildren = base + 2;
+            call->children  = malloc(call->nchildren * sizeof(EXPR_t *));
+            for (int i = 0; i < base; i++) call->children[i] = nt_expr->children[i];
+            call->children[base]   = list_arg;
+            call->children[base+1] = rest_arg ? rest_arg : nil_node;
+            g = call;
+        }
         const char *fn = g->sval;
         int nargs = g->nchildren;
         char safe[256]; pj_safe_name(fn, safe, sizeof safe);
@@ -4674,14 +5611,25 @@ static void pj_emit_body(EXPR_t **goals, int ngoals, const char *lbl_γ,
         /* M-PJ-CUT-UCALL: if callee has cut and reliable sentinel, propagate cutgamma.
          * MAX_VALUE (2147483647) is the unambiguous sentinel — check rv[0] >= it. */
         if (pj_callee_has_cut_no_last_ucall(fn, nargs)) {
-            const char *cut_dest = lbl_cutγ ? lbl_cutγ : call_ω;
+            /* M-PJ-CUT-SCOPE: A cut inside a *called* predicate is scoped to
+             * that predicate only and must NOT propagate into the caller.
+             * Clamp MAX_VALUE return to 1 (deterministic success) so the
+             * caller's gamma body continues normally. */
+            char clamp_done[128];
+            snprintf(clamp_done, sizeof clamp_done, "clamp_done_%d", uid);
             J("    aload %d\n", local_rv);
             JI("iconst_0", "");
             JI("aaload", "");
             JI("checkcast", "java/lang/Integer");
             JI("invokevirtual", "java/lang/Integer/intValue()I");
             J("    ldc 2147483647\n");
-            J("    if_icmpeq %s\n", cut_dest);
+            J("    if_icmpne %s\n", clamp_done);
+            J("    aload %d\n", local_rv);
+            J("    iconst_0\n");
+            J("    iconst_1\n");
+            J("    invokestatic java/lang/Integer/valueOf(I)Ljava/lang/Integer;\n");
+            J("    aastore\n");
+            J("%s:\n", clamp_done);
         }
         /* extract returned cs — store into sub_cs_out_local for γ encoding,
          * and advance local_cs for the next β-retry of THIS call. */
@@ -4860,8 +5808,165 @@ static void pj_emit_body(EXPR_t **goals, int ngoals, const char *lbl_γ,
 }
 
 /* -------------------------------------------------------------------------
+ * pj_emit_reverse_builtin — emit synthetic p_reverse_2 method.
+ * Signature: p_reverse_2([List], [Result], cs) → Object[] | null
+ * Deterministic: reverses the Prolog list in List and unifies with Result.
+ * cs > 0 → always fail (no retry).
+ * ------------------------------------------------------------------------- */
+static void pj_emit_reverse_builtin(void) {
+    J("; === reverse/2 synthetic predicate ========================================\n");
+    J(".method static p_reverse_2([Ljava/lang/Object;[Ljava/lang/Object;I)[Ljava/lang/Object;\n");
+    J("    .limit stack 8\n");
+    J("    .limit locals 8\n");
+    /* cs > 0 → already used, fail */
+    J("    iload_2\n");
+    J("    ifne p_reverse_2_fail\n");
+    /* Walk list into ArrayList */
+    J("    new java/util/ArrayList\n");
+    J("    dup\n");
+    J("    invokespecial java/util/ArrayList/<init>()V\n");
+    J("    astore_3\n");
+    J("    aload_0\n");
+    J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+    J("    astore 4\n");
+    J("p_rev_walk:\n");
+    J("    aload 4\n");
+    J("    checkcast [Ljava/lang/Object;\n");
+    J("    iconst_1\n");
+    J("    aaload\n");
+    J("    ldc \"[]\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ifne p_rev_build\n");
+    /* head = list[2] */
+    J("    aload_3\n");
+    J("    aload 4\n");
+    J("    checkcast [Ljava/lang/Object;\n");
+    J("    iconst_2\n");
+    J("    aaload\n");
+    J("    invokevirtual java/util/ArrayList/add(Ljava/lang/Object;)Z\n");
+    J("    pop\n");
+    /* tail = list[3], deref, loop */
+    J("    aload 4\n");
+    J("    checkcast [Ljava/lang/Object;\n");
+    J("    iconst_3\n");
+    J("    aaload\n");
+    J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+    J("    astore 4\n");
+    J("    goto p_rev_walk\n");
+    /* Build reversed Prolog list: prepend each element front-to-back.
+     * Walking i=0..size-1 and prepending gives [arr[N-1],...,arr[0]] = reversed. */
+    J("p_rev_build:\n");
+    J("    ldc \"[]\"\n");
+    J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+    J("    astore 5\n");     /* accumulator, starts as [] */
+    J("    iconst_0\n");
+    J("    istore 6\n");     /* i = 0, iterate forward */
+    J("p_rev_loop:\n");
+    J("    iload 6\n");
+    J("    aload_3\n");
+    J("    invokevirtual java/util/ArrayList/size()I\n");
+    J("    if_icmpge p_rev_unify\n");
+    J("    bipush 4\n");
+    J("    anewarray java/lang/Object\n");
+    J("    dup\n");
+    J("    iconst_0\n");
+    J("    ldc \"compound\"\n");
+    J("    aastore\n");
+    J("    dup\n");
+    J("    iconst_1\n");
+    J("    ldc \".\"\n");
+    J("    aastore\n");
+    J("    dup\n");
+    J("    iconst_2\n");
+    J("    aload_3\n");
+    J("    iload 6\n");
+    J("    invokevirtual java/util/ArrayList/get(I)Ljava/lang/Object;\n");
+    J("    aastore\n");
+    J("    dup\n");
+    J("    iconst_3\n");
+    J("    aload 5\n");
+    J("    aastore\n");
+    J("    astore 5\n");
+    J("    iinc 6 1\n");
+    J("    goto p_rev_loop\n");
+    /* Unify result */
+    J("p_rev_unify:\n");
+    J("    aload 5\n");
+    J("    aload_1\n");
+    J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+    J("    ifeq p_reverse_2_fail\n");
+    J("    iconst_1\n");
+    J("    anewarray java/lang/Object\n");
+    J("    dup\n");
+    J("    iconst_0\n");
+    J("    iconst_1\n");
+    J("    invokestatic java/lang/Integer/valueOf(I)Ljava/lang/Integer;\n");
+    J("    aastore\n");
+    J("    areturn\n");
+    J("p_reverse_2_fail:\n");
+    J("    aconst_null\n");
+    J("    areturn\n");
+    J(".end method\n\n");
+}
+
+/* -------------------------------------------------------------------------
+ * pj_emit_forall_builtin — emit synthetic p_forall_2 method.
+ * forall(Cond, Action): for each solution of Cond call Action; succeed iff
+ * all Actions succeed (vacuously true if Cond has no solutions).
+ * Signature: p_forall_2([Cond], [Action], cs) → Object[] | null
+ * cs is ignored (forall always deterministic); returns singleton {0} on success.
+ * Uses pj_call_goal to drive Cond with backtracking and call Action for each.
+ * ------------------------------------------------------------------------- */
+static void pj_emit_forall_builtin(void) {
+    J("; === forall/2 synthetic predicate =========================================\n");
+    J(".method static p_forall_2([Ljava/lang/Object;[Ljava/lang/Object;I)[Ljava/lang/Object;\n");
+    J("    .limit stack 6\n");
+    J("    .limit locals 6\n");
+    /* locals: 0=Cond[], 1=Action[], 2=cs(ignored), 3=cs_cond(int), 4=r(int) */
+    /* deref Cond */
+    J("    aload_0\n");
+    J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+    J("    iconst_0\n");
+    J("    istore 3\n");             /* cs_cond = 0 */
+    J("p_forall_2_loop:\n");
+    /* call Cond with cs_cond */
+    J("    dup\n");                  /* Cond still on stack */
+    J("    iload 3\n");
+    J("    invokestatic %s/pj_call_goal(Ljava/lang/Object;I)I\n", pj_classname);
+    J("    istore 4\n");
+    J("    iload 4\n");
+    J("    ldc -1\n");
+    J("    if_icmpeq p_forall_2_done\n");  /* Cond exhausted → success */
+    J("    iload 4\n");
+    J("    istore 3\n");             /* cs_cond = next cs */
+    /* call Action */
+    J("    aload_1\n");
+    J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+    J("    iconst_0\n");
+    J("    invokestatic %s/pj_call_goal(Ljava/lang/Object;I)I\n", pj_classname);
+    J("    ldc -1\n");
+    J("    if_icmpeq p_forall_2_fail\n");  /* Action failed → fail */
+    J("    goto p_forall_2_loop\n");
+    J("p_forall_2_done:\n");
+    J("    pop\n");                  /* pop Cond ref */
+    J("    iconst_1\n");
+    J("    anewarray java/lang/Object\n");
+    J("    dup\n");
+    J("    iconst_0\n");
+    J("    iconst_0\n");
+    J("    invokestatic java/lang/Integer/valueOf(I)Ljava/lang/Integer;\n");
+    J("    aastore\n");
+    J("    areturn\n");
+    J("p_forall_2_fail:\n");
+    J("    pop\n");                  /* pop Cond ref */
+    J("    aconst_null\n");
+    J("    areturn\n");
+    J(".end method\n\n");
+}
+
+/* -------------------------------------------------------------------------
  * pj_emit_between_builtin — emit synthetic p_between_3 method.
- * Signature: p_between_3([Low], [High], [Var], cs) → Object[] | null
+ * Signature: p_between_3([Low], [High], [Var], cs) -> Object[] | null
  * cs = offset from Low: try value Low+cs each invocation.
  * Returns {cs+1} on success so caller retries with the next value.
  * ------------------------------------------------------------------------- */
@@ -5325,6 +6430,75 @@ static void pj_emit_findall_builtin(void) {
     J("    areturn\n");
     J(".end method\n\n");
 
+    /* ---- pj_is_ground: check if a term contains no unbound variables ---- */
+    J("; === pj_is_ground (recursive ground check) ===========================\n");
+    J(".method static pj_is_ground(Ljava/lang/Object;)Z\n");
+    J("    .limit stack 8\n");
+    J("    .limit locals 5\n");
+    /* deref */
+    J("    aload_0\n");
+    J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+    J("    astore_0\n");
+    /* null = unbound var → not ground */
+    J("    aload_0\n");
+    J("    ifnull pj_isg_false\n");
+    J("    aload_0\n");
+    J("    instanceof [Ljava/lang/Object;\n");
+    J("    ifeq pj_isg_string\n");
+    J("    aload_0\n"); J("    checkcast [Ljava/lang/Object;\n"); J("    astore 1\n");
+    J("    aload 1\n"); J("    iconst_0\n"); J("    aaload\n");
+    J("    checkcast java/lang/String\n"); J("    astore 2\n");
+    /* var tag → not ground */
+    J("    aload 2\n"); J("    ldc \"var\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ifne pj_isg_false\n");
+    /* ref tag → recurse on [1] */
+    J("    aload 2\n"); J("    ldc \"ref\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ifeq pj_isg_not_ref\n");
+    J("    aload 1\n"); J("    iconst_1\n"); J("    aaload\n");
+    J("    invokestatic %s/pj_is_ground(Ljava/lang/Object;)Z\n", pj_classname);
+    J("    ireturn\n");
+    J("pj_isg_not_ref:\n");
+    /* atom or int → ground */
+    J("    aload 2\n"); J("    ldc \"atom\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ifne pj_isg_true\n");
+    J("    aload 2\n"); J("    ldc \"int\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ifne pj_isg_true\n");
+    J("    aload 2\n"); J("    ldc \"float\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ifne pj_isg_true\n");
+    /* compound: check all args */
+    J("    aload 1\n"); J("    arraylength\n"); J("    iconst_2\n"); J("    isub\n"); J("    istore 3\n"); /* arity */
+    J("    iconst_0\n"); J("    istore 4\n"); /* i=0 */
+    J("pj_isg_compound_loop:\n");
+    J("    iload 4\n"); J("    iload 3\n"); J("    if_icmpge pj_isg_true\n");
+    J("    aload 1\n"); J("    iload 4\n"); J("    iconst_2\n"); J("    iadd\n"); J("    aaload\n");
+    J("    invokestatic %s/pj_is_ground(Ljava/lang/Object;)Z\n", pj_classname);
+    J("    ifeq pj_isg_false\n");
+    J("    iinc 4 1\n"); J("    goto pj_isg_compound_loop\n");
+    J("pj_isg_string:\n");
+    J("pj_isg_true:\n"); J("    iconst_1\n"); J("    ireturn\n");
+    J("pj_isg_false:\n"); J("    iconst_0\n"); J("    ireturn\n");
+    J(".end method\n\n");
+
+    /* ---- pj_can_compare(?X, ?Y) → Z: succeed if both ground or identical -- */
+    J("; === pj_can_compare (?= operator) ====================================\n");
+    J(".method static pj_can_compare(Ljava/lang/Object;Ljava/lang/Object;)Z\n");
+    J("    .limit stack 4\n");
+    J("    .limit locals 2\n");
+    J("    aload_0\n");
+    J("    invokestatic %s/pj_is_ground(Ljava/lang/Object;)Z\n", pj_classname);
+    J("    ifeq pj_cc_false\n");
+    J("    aload_1\n");
+    J("    invokestatic %s/pj_is_ground(Ljava/lang/Object;)Z\n", pj_classname);
+    J("    ifeq pj_cc_false\n");
+    J("    iconst_1\n"); J("    ireturn\n");
+    J("pj_cc_false:\n"); J("    iconst_0\n"); J("    ireturn\n");
+    J(".end method\n\n");
+
     /* ---- pj_call_goal: interpret a goal term.
      * Returns new_cs (>=0) on success so caller can resume, -1 on failure.
      * For user predicates: extracts result[0].intValue() as the new cs.
@@ -5334,7 +6508,7 @@ static void pj_emit_findall_builtin(void) {
     J("; === pj_call_goal (goal interpreter for findall) ====================\n");
     J(".method static pj_call_goal(Ljava/lang/Object;I)I\n");
     J("    .limit stack 20\n");
-    J("    .limit locals 12\n");
+    J("    .limit locals 16\n");
     /* local 0 = goal, local 1 = cs, local 2..11 = scratch */
     J("    aload_0\n");
     J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
@@ -5420,6 +6594,98 @@ static void pj_emit_findall_builtin(void) {
     J("    ifeq pj_cg_fail\n");
     J("    iconst_0\n"); J("    ireturn\n");
     J("pj_cg_not_is:\n");
+    /* phrase/2,3 — rewrite to NT/+2 then reflect-call NT.
+     * phrase(NT, List)       -> p_NT_2(List, [])
+     * phrase(NT, List, Rest) -> p_NT_3(List, Rest)   (arity = NT_base+2)
+     * NT may itself be a compound: item(X) -> p_item_3(X, List, Rest).
+     * We detect phrase by functor name and arity 2 or 3, then build a new
+     * args array [nt_arg0..., list, rest] and reflect-call the NT functor. */
+    J("    aload 4\n"); J("    ldc \"phrase\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ifeq pj_cg_not_phrase\n");
+    /* compute arity = t.length - 2 inline (local 5 not yet set at this point) */
+    J("    aload 2\n"); J("    arraylength\n"); J("    iconst_2\n"); J("    isub\n"); J("    istore 5\n");
+    J("    iload 5\n"); J("    iconst_2\n"); J("    if_icmplt pj_cg_not_phrase\n");
+    J("    iload 5\n"); J("    iconst_3\n"); J("    if_icmpgt pj_cg_not_phrase\n");
+    /* NT term = t[2] (first arg of phrase), deref */
+    J("    aload 2\n"); J("    iconst_2\n"); J("    aaload\n");
+    J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+    J("    astore 6\n");  /* nt_term */
+    /* Determine NT functor name and base arity */
+    J("    aload 6\n");
+    J("    instanceof [Ljava/lang/Object;\n");
+    J("    ifeq pj_cg_phrase_atom_nt\n");
+    /* compound NT: functor = nt[1], base_arity = nt.length-2 */
+    J("    aload 6\n"); J("    checkcast [Ljava/lang/Object;\n"); J("    astore 7\n");
+    J("    aload 7\n"); J("    iconst_1\n"); J("    aaload\n");
+    J("    checkcast java/lang/String\n"); J("    astore 8\n"); /* nt_fn */
+    J("    aload 7\n"); J("    arraylength\n"); J("    iconst_2\n"); J("    isub\n"); J("    istore 9\n"); /* nt_base */
+    J("    goto pj_cg_phrase_have_nt\n");
+    J("pj_cg_phrase_atom_nt:\n");
+    /* atom NT: functor = nt itself, base_arity = 0 */
+    J("    aconst_null\n"); J("    astore 7\n"); /* local 7 unused but must be typed */
+    J("    aload 6\n"); J("    checkcast java/lang/String\n"); J("    astore 8\n"); /* nt_fn */
+    J("    iconst_0\n"); J("    istore 9\n"); /* nt_base = 0 */
+    J("pj_cg_phrase_have_nt:\n");
+    /* nil-NT shortcut: phrase([], List) -> List=[] ; phrase([], List, Rest) -> List=Rest */
+    J("    aload 8\n"); J("    ldc \"[]\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ifeq pj_cg_phrase_not_nil_nt\n");
+    /* nt_fn == "[]": List unifies with Rest (or []) */
+    J("    aload 2\n"); J("    iconst_3\n"); J("    aaload\n"); /* list arg */
+    J("    iload 5\n"); J("    iconst_3\n"); J("    if_icmpeq pj_cg_phrase_nil_has_rest\n");
+    J("    ldc \"[]\"\n");
+    J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+    J("    goto pj_cg_phrase_nil_do_unify\n");
+    J("pj_cg_phrase_nil_has_rest:\n");
+    J("    aload 2\n"); J("    bipush 4\n"); J("    aaload\n"); /* rest arg */
+    J("pj_cg_phrase_nil_do_unify:\n");
+    J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+    J("    ifeq pj_cg_fail\n");
+    J("    iconst_0\n"); J("    ireturn\n");
+    J("pj_cg_phrase_not_nil_nt:\n");
+    /* total call arity = nt_base + 2 */
+    J("    iload 9\n"); J("    iconst_2\n"); J("    iadd\n"); J("    istore 10\n"); /* call_arity */
+    /* build args array: [nt_args..., list, rest_or_nil] */
+    J("    iload 10\n");
+    J("    anewarray java/lang/Object\n"); J("    astore 11\n");
+    /* copy nt_args (indices 2..nt_base+1 from nt_term if compound) */
+    J("    iconst_0\n"); J("    istore 12\n"); /* j=0 */
+    J("pj_cg_phrase_nt_args_loop:\n");
+    J("    iload 12\n"); J("    iload 9\n"); J("    if_icmpge pj_cg_phrase_nt_args_done\n");
+    J("    aload 11\n"); J("    iload 12\n");
+    J("    aload 7\n"); J("    iload 12\n"); J("    iconst_2\n"); J("    iadd\n"); J("    aaload\n"); /* nt[j+2] */
+    J("    aastore\n");
+    J("    iinc 12 1\n"); J("    goto pj_cg_phrase_nt_args_loop\n");
+    J("pj_cg_phrase_nt_args_done:\n");
+    /* args[nt_base] = list arg = t[3] */
+    J("    aload 11\n"); J("    iload 9\n");
+    J("    aload 2\n"); J("    iconst_3\n"); J("    aaload\n"); /* t[3] = list */
+    J("    aastore\n");
+    /* args[nt_base+1] = rest: t[4] if phrase/3, else [] */
+    J("    aload 11\n"); J("    iload 9\n"); J("    iconst_1\n"); J("    iadd\n");
+    J("    iload 5\n"); J("    iconst_3\n"); J("    if_icmpeq pj_cg_phrase_has_rest\n");
+    /* phrase/2: rest = [] (nil atom term, not bare string) */
+    J("    ldc \"[]\"\n");
+    J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+    J("    goto pj_cg_phrase_store_rest\n");
+    J("pj_cg_phrase_has_rest:\n");
+    J("    aload 2\n"); J("    bipush 4\n"); J("    aaload\n"); /* t[4] = rest */
+    J("pj_cg_phrase_store_rest:\n");
+    J("    aastore\n");
+    /* reflect-call NT */
+    J("    aload 8\n");   /* nt functor */
+    J("    iload 10\n");  /* call arity */
+    J("    aload 11\n");  /* args */
+    J("    iload_1\n");   /* cs */
+    J("    invokestatic %s/pj_reflect_call(Ljava/lang/String;I[Ljava/lang/Object;I)[Ljava/lang/Object;\n", pj_classname);
+    J("    astore 13\n");
+    J("    aload 13\n"); J("    ifnull pj_cg_fail\n");
+    J("    aload 13\n"); J("    iconst_0\n"); J("    aaload\n");
+    J("    checkcast java/lang/Integer\n");
+    J("    invokevirtual java/lang/Integer/intValue()I\n");
+    J("    ireturn\n");
+    J("pj_cg_not_phrase:\n");
     /* user predicate: build args array, call via reflection, return new cs */
     J("    aload 2\n"); J("    arraylength\n"); J("    iconst_2\n"); J("    isub\n"); J("    istore 5\n"); /* arity */
     J("    iload 5\n");
@@ -5897,7 +7163,7 @@ static void pj_emit_choice(EXPR_t *choice) {
      * ensuring the JVM verifier types the slot as int (avoids ClassCastException on iinc). */
     int db_idx_local_slot  = locals_needed - 2;
 
-    J("    .limit stack %d\n", max_stack < 16 ? 16 : max_stack);
+    J("    .limit stack %d\n", max_stack < 512 ? 512 : max_stack);
     J("    .limit locals %d\n", locals_needed);
     /* Pre-initialise db_idx slot as int so iinc is always valid */
     J("    iconst_0\n");
@@ -5923,11 +7189,103 @@ static void pj_emit_choice(EXPR_t *choice) {
     }
     J("    iload %d\n", cs_local);
     J("    istore %d\n", init_cs_local);   /* will be refined per clause below */
+    /* PJ-81: method splitting.
+     * When nclauses > PJ_SPLIT_THRESHOLD the combined clause bodies can exceed
+     * the JVM 16-bit branch-offset limit (~32 KB of bytecode per method).
+     * Fix: emit each clause as its own static sub-method
+     *   p_fn_arity__cN(args..., I init_cs) → Object[]
+     * The main dispatcher calls invokestatic for the matched clause and returns
+     * the result directly.  Branch distances in the dispatcher stay tiny.
+     *
+     * Sub-method signature: same args as parent + I (init_cs), no outer cs.
+     * Returns: null = clause failed (→ try next), Object[] = gamma/cutgamma result.
+     */
+#define PJ_SPLIT_THRESHOLD 16
+    int do_split = (nclauses > PJ_SPLIT_THRESHOLD);
+
+    if (!do_split) {
     /* Linear scan from last to first */
     for (int ci = nclauses - 1; ci >= 0; ci--)
         J("    iload %d ; cs >= %d? → clause%d\n    ldc %d\n    if_icmpge p_%s_%d_clause%d\n",
           cs_local, base[ci], ci, base[ci], safe_fn, arity, ci);
     J("    goto p_%s_%d_omega\n", safe_fn, arity);
+    }
+
+    /* PJ-81 split threshold */
+    /* When nclauses > PJ_SPLIT_THRESHOLD the combined clause bodies can exceed
+     * the JVM 16-bit branch-offset limit (~32 KB of bytecode per method).
+     * Fix: emit each clause as its own static sub-method
+     *   p_fn_arity__cN(args..., I init_cs) → Object[]
+     * The main dispatcher calls invokestatic for the matched clause and returns
+     * the result directly.  Branch distances in the dispatcher stay tiny.
+     *
+     * Sub-method signature: same args as parent + I (init_cs), no outer cs.
+     * Returns: null = clause failed (→ try next), Object[] = gamma/cutgamma result.
+     */
+    if (do_split) {
+        /* ---- SPLIT PATH: dispatcher calls per-clause sub-methods ---- */
+
+        /* Dispatcher: linear scan, invokestatic to sub-method, areturn result.
+         * On null return try next clause. */
+        for (int ci = nclauses - 1; ci >= 0; ci--)
+            J("    iload %d ; cs >= %d? → clause%d\n    ldc %d\n    if_icmpge p_%s_%d_clause%d\n",
+              cs_local, base[ci], ci, base[ci], safe_fn, arity, ci);
+        J("    goto p_%s_%d_omega\n", safe_fn, arity);
+
+        /* Emit per-clause dispatch stubs in the main method */
+        for (int ci = 0; ci < nclauses; ci++) {
+            EXPR_t *clause = choice->children[ci];
+            if (!clause || clause->kind != E_CLAUSE) continue;
+
+            /* label */
+            J("p_%s_%d_clause%d:\n", safe_fn, arity, ci);
+
+            /* compute init_cs = max(0, cs - base[ci]) */
+            J("    iload %d\n", cs_local);
+            J("    ldc %d\n", base[ci]);
+            J("    isub\n");
+            J("    dup\n");
+            {
+                char lbl_clamp[128];
+                snprintf(lbl_clamp, sizeof lbl_clamp, "p_%s_%d_dc_clamp_%d", safe_fn, arity, ci);
+                J("    ifge %s\n", lbl_clamp);
+                J("    pop\n");
+                J("    iconst_0\n");
+                J("%s:\n", lbl_clamp);
+            }
+            /* init_cs is on stack from clamp above — save it, then load args, then reload */
+            J("    istore %d\n", init_cs_local);
+            for (int ai = 0; ai < arity; ai++)
+                J("    aload %d\n", ai);
+            J("    iload %d\n", init_cs_local);
+            /* invokestatic p_fn_arity__cN */
+            J("    invokestatic %s/p_%s_%d__c%d(", pj_classname, safe_fn, arity, ci);
+            for (int ai = 0; ai < arity; ai++) J("[Ljava/lang/Object;");
+            J("I)[Ljava/lang/Object;\n");
+            /* null → next clause; non-null → return to caller */
+            {
+                char lbl_null[128];
+                snprintf(lbl_null, sizeof lbl_null, "p_%s_%d_split_null_%d", safe_fn, arity, ci);
+                char next_lbl[128];
+                if (ci + 1 < nclauses)
+                    snprintf(next_lbl, sizeof next_lbl, "p_%s_%d_clause%d", safe_fn, arity, ci + 1);
+                else
+                    snprintf(next_lbl, sizeof next_lbl, "p_%s_%d_omega", safe_fn, arity);
+                J("    dup\n");
+                J("    ifnull %s\n", lbl_null);
+                J("    areturn\n");
+                J("%s:\n", lbl_null);
+                J("    pop\n");
+                J("    goto %s\n", next_lbl);
+            }
+        }
+
+        /* Close the main dispatcher method before sub-methods */
+        J("p_%s_%d_omega:\n", safe_fn, arity);
+        /* (dynamic DB walker follows below — we fall through to it) */
+
+    } else {
+    /* ---- INLINE PATH (original): emit all clause bodies in main method ---- */
 
     /* emit each clause block */
     for (int ci = 0; ci < nclauses; ci++) {
@@ -6181,9 +7539,11 @@ static void pj_emit_choice(EXPR_t *choice) {
 
         free(var_locals);
     }
+    } /* end inline else */
 
     /* ω port — first try dynamic DB, then truly fail */
-    J("p_%s_%d_omega:\n", safe_fn, arity);
+    if (!do_split)
+        J("p_%s_%d_omega:\n", safe_fn, arity);
 
     /* Dynamic DB walker: key = "name/arity", cs encodes db index as base[nclauses]+idx */
     {
@@ -6303,6 +7663,1054 @@ static void pj_emit_choice(EXPR_t *choice) {
         fclose(pj_helper_buf);
         pj_helper_buf = NULL;
     }
+
+    /* PJ-81: emit per-clause sub-methods for split predicates */
+    if (do_split) {
+        for (int ci = 0; ci < nclauses; ci++) {
+            EXPR_t *clause = choice->children[ci];
+            if (!clause || clause->kind != E_CLAUSE) continue;
+
+            int n_vars = (int)clause->ival;
+            int n_args = (int)clause->dval;
+
+            /* Sub-method signature: p_fn_arity__cN(args..., I init_cs) → Object[] */
+            J("; --- split clause %d of %s/%d ---\n", ci, name_only, arity);
+            J(".method static p_%s_%d__c%d(", safe_fn, arity, ci);
+            for (int ai = 0; ai < arity; ai++) J("[Ljava/lang/Object;");
+            J("I)[Ljava/lang/Object;\n");
+
+            /* locals layout in sub-method:
+             *   0..arity-1  : args (same as parent)
+             *   arity       : init_cs  (was arity+2 in parent; here it's the last param)
+             *   arity+1     : trail_mark
+             *   arity+2     : sub_cs_out
+             *   arity+3..   : vars + ucall temps
+             */
+            int sm_init_cs   = arity;       /* parameter */
+            int sm_trail     = arity + 1;
+            int sm_subcs_out = arity + 2;
+            int sm_vars_base = arity + 3;
+
+            /* recompute max_ucalls/stack for this clause only */
+            int sm_max_vars  = n_vars;
+            int sm_max_uc    = 0, sm_max_neq = 0, sm_max_disj = 0, sm_max_stack = 16;
+            {
+                int n_args_ci = (int)clause->dval;
+                int nb = clause->nchildren - n_args_ci; if (nb < 0) nb = 0;
+                sm_max_uc   = pj_count_ucalls(clause->children + n_args_ci, nb);
+                sm_max_neq  = pj_count_neq(clause->children + n_args_ci, nb);
+                sm_max_disj = pj_count_disj_locals(clause->children + n_args_ci, nb);
+                sm_max_stack = pj_clause_stack_needed(clause->children + n_args_ci, nb);
+                for (int hi = 0; hi < n_args_ci; hi++) {
+                    int d = pj_term_stack_depth(clause->children[hi]) + 4;
+                    if (d > sm_max_stack) sm_max_stack = d;
+                }
+                if (sm_max_stack < 512) sm_max_stack = 512;
+            }
+            int sm_locals = sm_vars_base + sm_max_vars + 5*sm_max_uc + 2*sm_max_neq + sm_max_disj + 16 + 4;
+            J("    .limit stack %d\n", sm_max_stack);
+            J("    .limit locals %d\n", sm_locals);
+
+            /* var_locals for this sub-method */
+            int *var_locals = calloc(n_vars + 1, sizeof(int));
+            for (int vi = 0; vi < n_vars; vi++)
+                var_locals[vi] = sm_vars_base + vi;
+
+            /* omega label = return null */
+            char sm_omega[128];
+            snprintf(sm_omega, sizeof sm_omega, "p_%s_%d__c%d_omega", safe_fn, arity, ci);
+
+            /* trail mark */
+            J("    invokestatic %s/pj_trail_mark()I\n", pj_classname);
+            J("    istore %d\n", sm_trail);
+
+            /* init sub_cs_out = 0 */
+            J("    iconst_0\n");
+            J("    istore %d\n", sm_subcs_out);
+
+            /* allocate var cells */
+            {
+                int *jaf = calloc(n_vars + 1, sizeof(int));
+                for (int vi = 0; vi < n_vars; vi++) jaf[vi] = -1;
+                for (int ai2 = 0; ai2 < n_args && ai2 < clause->nchildren; ai2++) {
+                    EXPR_t *ht = clause->children[ai2];
+                    if (ht && ht->kind == E_VART && ht->ival >= 0 && ht->ival < n_vars)
+                        if (jaf[ht->ival] < 0) jaf[ht->ival] = ai2;
+                }
+                for (int vi = 0; vi < n_vars; vi++) {
+                    if (jaf[vi] >= 0) {
+                        J("    aload %d\n", jaf[vi]);
+                        J("    astore %d\n", var_locals[vi]);
+                    } else {
+                        J("    invokestatic %s/pj_term_var()[Ljava/lang/Object;\n", pj_classname);
+                        J("    astore %d\n", var_locals[vi]);
+                    }
+                }
+                free(jaf);
+            }
+
+            /* head unification */
+            {
+                char sm_alphafail[128];
+                snprintf(sm_alphafail, sizeof sm_alphafail, "p_%s_%d__c%d_af", safe_fn, arity, ci);
+                int *seen_at = calloc(n_vars + 1, sizeof(int));
+                for (int vi = 0; vi < n_vars; vi++) seen_at[vi] = -1;
+                for (int ai2 = 0; ai2 < n_args && ai2 < clause->nchildren; ai2++) {
+                    EXPR_t *ht = clause->children[ai2];
+                    if (ht && ht->kind == E_VART && ht->ival >= 0 && ht->ival < n_vars)
+                        if (seen_at[ht->ival] < 0) seen_at[ht->ival] = ai2;
+                }
+                for (int ai2 = 0; ai2 < n_args && ai2 < clause->nchildren; ai2++) {
+                    EXPR_t *ht = clause->children[ai2];
+                    if (!ht) continue;
+                    if (ht->kind == E_VART) {
+                        int slot = ht->ival;
+                        if (slot < 0 || slot >= n_vars) continue;
+                        if (seen_at[slot] == ai2) continue;
+                        J("    aload %d\n", ai2);
+                        J("    aload %d\n", var_locals[slot]);
+                        J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+                        J("    ifeq %s\n", sm_alphafail);
+                        continue;
+                    }
+                    J("    aload %d\n", ai2);
+                    pj_emit_term(ht, var_locals, n_vars);
+                    J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+                    J("    ifeq %s\n", sm_alphafail);
+                }
+                free(seen_at);
+
+                J("    goto p_%s_%d__c%d_beta\n", safe_fn, arity, ci);
+                J("%s:\n", sm_alphafail);
+                J("    iload %d\n", sm_trail);
+                J("    invokestatic %s/pj_trail_unwind(I)V\n", pj_classname);
+                J("    aconst_null\n");
+                J("    areturn\n");
+            }
+
+            /* retry_head (alpha) label */
+            J("p_%s_%d__c%d_alpha:\n", safe_fn, arity, ci);
+            J("    iload %d\n", sm_trail);
+            J("    invokestatic %s/pj_trail_unwind(I)V\n", pj_classname);
+            {
+                int *jaf = calloc(n_vars + 1, sizeof(int));
+                for (int vi = 0; vi < n_vars; vi++) jaf[vi] = -1;
+                for (int ai2 = 0; ai2 < n_args && ai2 < clause->nchildren; ai2++) {
+                    EXPR_t *ht = clause->children[ai2];
+                    if (ht && ht->kind == E_VART && ht->ival >= 0 && ht->ival < n_vars)
+                        jaf[ht->ival] = ai2;
+                }
+                for (int vi = 0; vi < n_vars; vi++) {
+                    if (jaf[vi] >= 0) { J("    aload %d\n", jaf[vi]); J("    astore %d\n", var_locals[vi]); }
+                    else { J("    invokestatic %s/pj_term_var()[Ljava/lang/Object;\n", pj_classname); J("    astore %d\n", var_locals[vi]); }
+                }
+                free(jaf);
+            }
+            for (int ai2 = 0; ai2 < n_args && ai2 < clause->nchildren; ai2++) {
+                EXPR_t *ht = clause->children[ai2];
+                if (!ht || ht->kind == E_VART) continue;
+                J("    aload %d\n", ai2);
+                pj_emit_term(ht, var_locals, n_vars);
+                J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+                J("    ifeq %s\n", sm_omega);
+            }
+
+            /* beta label + body */
+            J("p_%s_%d__c%d_beta:\n", safe_fn, arity, ci);
+            {
+                int nbody = clause->nchildren - n_args;
+                EXPR_t **body_goals = clause->children + n_args;
+                char γ_lbl[128], cutγ_lbl[128], bodyfail_lbl[128];
+                snprintf(γ_lbl,        sizeof γ_lbl,        "p_%s_%d__c%d_gamma",    safe_fn, arity, ci);
+                snprintf(cutγ_lbl,     sizeof cutγ_lbl,     "p_%s_%d__c%d_cutgamma", safe_fn, arity, ci);
+                snprintf(bodyfail_lbl, sizeof bodyfail_lbl,  "p_%s_%d__c%d_bodyfail", safe_fn, arity, ci);
+                int next_local_sm = sm_vars_base + n_vars;
+                /* lbl_outer_ω = sm_omega (null return = clause failed) */
+                pj_emit_body(body_goals, nbody, γ_lbl, bodyfail_lbl, sm_omega,
+                             sm_trail, var_locals, n_vars, &next_local_sm,
+                             sm_init_cs, sm_subcs_out,
+                             base[nclauses], sm_init_cs, sm_omega, cutγ_lbl);
+                J("%s:\n", bodyfail_lbl);
+                J("    iload %d\n", sm_trail);
+                J("    invokestatic %s/pj_trail_unwind(I)V\n", pj_classname);
+                J("    aconst_null\n");
+                J("    areturn\n");
+            }
+
+            /* gamma port */
+            J("p_%s_%d__c%d_gamma:\n", safe_fn, arity, ci);
+            J("    iconst_1\n");
+            J("    anewarray java/lang/Object\n");
+            J("    dup\n");
+            J("    iconst_0\n");
+            if (nclauses == 1 && last_has_ucall) {
+                J("    iload %d\n", sm_subcs_out);
+            } else {
+                J("    ldc %d\n", base[ci]);
+                J("    iload %d\n", sm_init_cs);
+                J("    iadd\n");
+                J("    iconst_1\n");
+                J("    iadd\n");
+            }
+            J("    invokestatic java/lang/Integer/valueOf(I)Ljava/lang/Integer;\n");
+            J("    aastore\n");
+            J("    areturn\n");
+
+            /* cutgamma port */
+            J("p_%s_%d__c%d_cutgamma:\n", safe_fn, arity, ci);
+            J("    iconst_1\n");
+            J("    anewarray java/lang/Object\n");
+            J("    dup\n");
+            J("    iconst_0\n");
+            J("    ldc 2147483647\n");
+            J("    invokestatic java/lang/Integer/valueOf(I)Ljava/lang/Integer;\n");
+            J("    aastore\n");
+            J("    areturn\n");
+
+            /* omega: null return */
+            J("%s:\n", sm_omega);
+            J("    aconst_null\n");
+            J("    areturn\n");
+
+            J(".end method\n\n");
+            free(var_locals);
+        }
+    }
+}
+
+/* =========================================================================
+ * M-PJ-LINKER: plunit linker
+ *
+ * When a program contains :- use_module(library(plunit)), the linker:
+ *   1. Compiles the embedded plunit.pl shim (parse→lower→emit choices)
+ *   2. Emits empty dynamic stubs for pj_suite/1 and pj_test/4
+ *   3. In pj_emit_main, assertz pj_suite/pj_test facts statically derived
+ *      from the test/1 and test/2 clause heads between begin_tests/end_tests
+ *   4. Emits bridge predicates suite_name/0 :- test(name)
+ *
+ * This is the Wizard of Oz approach: SWI files load unchanged.
+ * ========================================================================= */
+
+/* plunit.pl shim source embedded as a C string */
+static const char pj_plunit_shim_src[] =
+    "begin_tests(_).\n"
+    "end_tests(_).\n"
+    "forall(Cond, Action) :- \\+ forall_fails(Cond, Action).\n"
+    "forall_fails(Cond, Action) :- Cond, \\+ Action.\n"
+    "acyclic_term(_).\n"
+    "cyclic_term(_) :- fail.\n"
+    "maplist(_, []).\n"
+    "maplist(Goal, [H|T]) :- call_1(Goal, H), maplist(Goal, T).\n"
+    "maplist(_, [], []).\n"
+    "maplist(Goal, [H1|T1], [H2|T2]) :- call_2(Goal, H1, H2), maplist(Goal, T1, T2).\n"
+    "call_1(Goal, Arg) :- Goal =.. L, append(L, [Arg], L2), G2 =.. L2, G2.\n"
+    "call_2(Goal, A1, A2) :- Goal =.. L, append(L, [A1,A2], L2), G2 =.. L2, G2.\n"
+    "append([], L, L).\n"
+    "append([H|T], L, [H|R]) :- append(T, L, R).\n"
+    "pj_init :- nb_setval(pj_p,0), nb_setval(pj_f,0), nb_setval(pj_s,0).\n"
+    "pj_inc_pass :- nb_getval(pj_p,N), N1 is N+1, nb_setval(pj_p,N1).\n"
+    "pj_inc_fail :- nb_getval(pj_f,N), N1 is N+1, nb_setval(pj_f,N1).\n"
+    "pj_inc_skip :- nb_getval(pj_s,N), N1 is N+1, nb_setval(pj_s,N1).\n"
+    "pj_summary :-\n"
+    "    nb_getval(pj_p,P), nb_getval(pj_f,F), nb_getval(pj_s,S),\n"
+    "    format('~n% ~w passed, ~w failed, ~w skipped~n',[P,F,S]).\n"
+    "run_tests :- pj_init, run_all_suites, pj_summary.\n"
+    "run_tests(Suite) :- is_list(Suite), !, pj_init, run_suites_list(Suite), pj_summary.\n"
+    "run_tests(Suite) :- pj_init, run_suite(Suite), pj_summary.\n"
+    "run_suites_list([]).\n"
+    "run_suites_list([H|T]) :- run_suite(H), run_suites_list(T).\n"
+    "run_all_suites :- pj_suite(S), run_suite(S), fail.\n"
+    "run_all_suites.\n"
+    "run_suite(Suite) :-\n"
+    "    format('~n% PL-Unit: ~w~n',[Suite]), !,\n"
+    "    run_suite_tests(Suite).\n"
+    "run_suite_tests(Suite) :-\n"
+    "    pj_test(Suite, Name, Opts, Goal),\n"
+    "    run_one(Suite, Name, Opts, Goal),\n"
+    "    fail.\n"
+    "run_suite_tests(_).\n"
+    "run_one(Suite, Name, Opts, Goal) :-\n"
+    "    ( Opts = pj_inline ->\n"
+    "        ( catch(Goal, _E, fail) -> true ; true )\n"
+    "    ; pj_has_sto(Opts) ->\n"
+    "        pj_inc_skip, format('  skip: ~w:~w  [sto]~n',[Suite,Name])\n"
+    "    ; pj_skip_condition(Opts) ->\n"
+    "        pj_inc_skip, format('  skip: ~w:~w  [condition]~n',[Suite,Name])\n"
+    "    ; pj_has_error(Opts, ExpErr) ->\n"
+    "        run_error(Suite, Name, Goal, ExpErr)\n"
+    "    ; pj_has_throws(Opts, ExpThrow) ->\n"
+    "        run_throw(Suite, Name, Goal, ExpThrow)\n"
+    "    ; pj_wants_fail(Opts) ->\n"
+    "        run_fail(Suite, Name, Goal)\n"
+    "    ; pj_has_true(Opts, Expr) ->\n"
+    "        run_true(Suite, Name, Goal, Expr)\n"
+    "    ; pj_has_all(Opts, AllExpr) ->\n"
+    "        run_all(Suite, Name, Goal, AllExpr)\n"
+    "    ;\n"
+    "        run_succeed(Suite, Name, Goal, Opts)\n"
+    "    ).\n"
+    "pj_has_sto([H|_]) :- H = sto(_), !.\n"
+    "pj_has_sto([_|T]) :- pj_has_sto(T).\n"
+    "pj_skip_condition(Opts) :- member(condition(C), Opts), \\+ C.\n"
+    "pj_has_error([error(E)|_], E) :- !.\n"
+    "pj_has_error([_|T], E) :- pj_has_error(T, E).\n"
+    "pj_has_error(error(E), E).\n"
+    "pj_has_throws([throws(T)|_], T) :- !.\n"
+    "pj_has_throws([_|T2], T) :- pj_has_throws(T2, T).\n"
+    "pj_has_throws(throws(T), T).\n"
+    "pj_wants_fail([fail|_]) :- !.\n"
+    "pj_wants_fail([false|_]) :- !.\n"
+    "pj_wants_fail([_|T]) :- pj_wants_fail(T).\n"
+    "pj_wants_fail(fail).\n"
+    "pj_wants_fail(false).\n"
+    "pj_has_true([true(E)|_], E) :- !.\n"
+    "pj_has_true([_|T], E) :- pj_has_true(T, E).\n"
+    "pj_has_all([all(E)|_], E) :- !.\n"
+    "pj_has_all([_|T], E) :- pj_has_all(T, E).\n"
+    "run_succeed(Suite, Name, Goal, Opts) :-\n"
+    "    ( is_list(Opts), \\+ Opts = [] -> true ; Opts = [] ; Opts = true ),\n"
+    "    ( catch(Goal, _E, fail) ->\n"
+    "        pj_inc_pass, format('  pass: ~w:~w~n',[Suite,Name])\n"
+    "    ;   pj_inc_fail, format('  FAIL: ~w:~w  (goal failed)~n',[Suite,Name])\n"
+    "    ).\n"
+    "run_succeed(Suite, Name, Goal, Opts) :-\n"
+    "    Opts \\= [], \\+ is_list(Opts), Opts \\= true, Opts \\= fail, Opts \\= false,\n"
+    "    Opts \\= pj_inline,\n"
+    "    run_true(Suite, Name, Goal, Opts).\n"
+    "run_fail(Suite, Name, Goal) :-\n"
+    "    ( catch(Goal, _E, true) ->\n"
+    "        pj_inc_fail, format('  FAIL: ~w:~w  (expected fail, succeeded)~n',[Suite,Name])\n"
+    "    ;   pj_inc_pass, format('  pass: ~w:~w~n',[Suite,Name])\n"
+    "    ).\n"
+    "run_error(Suite, Name, Goal, ExpErr) :-\n"
+    "    ( catch(Goal, error(ActErr,_), pj_match_err(Suite,Name,ExpErr,ActErr)) ->\n"
+    "        true\n"
+    "    ;   pj_inc_fail, format('  FAIL: ~w:~w  (no exception)~n',[Suite,Name])\n"
+    "    ).\n"
+    "pj_match_err(Suite, Name, Exp, Act) :-\n"
+    "    copy_term(Exp, ExpC),\n"
+    "    ( ExpC = Act ->\n"
+    "        pj_inc_pass, format('  pass: ~w:~w~n',[Suite,Name])\n"
+    "    ; functor(ExpC,F,_), functor(Act,F,_) ->\n"
+    "        pj_inc_pass, format('  pass: ~w:~w~n',[Suite,Name])\n"
+    "    ;   pj_inc_fail, format('  FAIL: ~w:~w  (error mismatch ~w vs ~w)~n',[Suite,Name,Exp,Act])\n"
+    "    ).\n"
+    "run_throw(Suite, Name, Goal, ExpThrow) :-\n"
+    "    ( catch(Goal, Actual,\n"
+    "        ( Actual = ExpThrow ->\n"
+    "            pj_inc_pass, format('  pass: ~w:~w~n',[Suite,Name])\n"
+    "        ;   pj_inc_fail, format('  FAIL: ~w:~w  (throw mismatch)~n',[Suite,Name])\n"
+    "        )) ->\n"
+    "        true\n"
+    "    ;   pj_inc_fail, format('  FAIL: ~w:~w  (no throw)~n',[Suite,Name])\n"
+    "    ).\n"
+    "run_true(Suite, Name, Goal, Expr) :-\n"
+    "    ( catch(Goal, _E, fail) ->\n"
+    "        ( catch(Expr, _E2, fail) ->\n"
+    "            pj_inc_pass, format('  pass: ~w:~w~n',[Suite,Name])\n"
+    "        ;   pj_inc_fail, format('  FAIL: ~w:~w  (check failed: ~w)~n',[Suite,Name,Expr])\n"
+    "        )\n"
+    "    ;   pj_inc_fail, format('  FAIL: ~w:~w  (goal failed)~n',[Suite,Name])\n"
+    "    ).\n"
+    "run_all(Suite, Name, Goal, (Var == Expected)) :-\n"
+    "    findall(Var, Goal, Actual),\n"
+    "    ( Actual == Expected ->\n"
+    "        pj_inc_pass, format('  pass: ~w:~w~n',[Suite,Name])\n"
+    "    ;   pj_inc_fail, format('  FAIL: ~w:~w  (all mismatch)~n',[Suite,Name])\n"
+    "    ).\n";
+
+/* -------------------------------------------------------------------------
+ * pj_linker_has_plunit — returns 1 if program uses use_module(library(plunit))
+ * ------------------------------------------------------------------------- */
+static int pj_linker_has_plunit(Program *prog) {
+    for (STMT_t *s = prog->head; s; s = s->next) {
+        if (!s->subject) continue;
+        EXPR_t *g = s->subject;
+        if (g->kind == E_CHOICE) continue;
+        if (g->kind != E_FNC || !g->sval) continue;
+        if (strcmp(g->sval, "use_module") != 0 || g->nchildren != 1) continue;
+        /* use_module(library(plunit)) — child is library(plunit) */
+        EXPR_t *arg = g->children[0];
+        if (!arg || arg->kind != E_FNC || !arg->sval) continue;
+        if (strcmp(arg->sval, "library") != 0 || arg->nchildren != 1) continue;
+        EXPR_t *lib = arg->children[0];
+        if (!lib || !lib->sval) continue;
+        if (strcmp(lib->sval, "plunit") == 0) return 1;
+    }
+    return 0;
+}
+
+/* -------------------------------------------------------------------------
+ * pj_linker_emit_plunit_shim — parse+lower+emit the embedded plunit.pl
+ * Called from prolog_emit_jvm() before the user predicates are emitted.
+ * ------------------------------------------------------------------------- */
+static void pj_linker_emit_plunit_shim(void) {
+    JC("=== plunit shim (M-PJ-LINKER) ===");
+    PlProgram *pl = prolog_parse(pj_plunit_shim_src, "plunit.pl");
+    if (!pl) { fprintf(stderr, "plunit linker: parse failed\n"); return; }
+    Program *shim = prolog_lower(pl);
+    if (!shim) { fprintf(stderr, "plunit linker: lower failed\n"); return; }
+    /* Emit each E_CHOICE from the shim, but skip predicates already defined
+     * in the user program to avoid duplicate method errors. */
+    for (STMT_t *ss = shim->head; ss; ss = ss->next) {
+        if (!ss->subject || ss->subject->kind != E_CHOICE) continue;
+        const char *shim_key = ss->subject->sval; /* "name/arity" */
+        if (!shim_key) continue;
+        /* Check if user already defines this predicate */
+        int user_defines = 0;
+        for (STMT_t *us = pj_prog->head; us; us = us->next) {
+            if (!us->subject || us->subject->kind != E_CHOICE) continue;
+            if (us->subject->sval && strcmp(us->subject->sval, shim_key) == 0) {
+                user_defines = 1; break;
+            }
+        }
+        if (!user_defines) {
+            /* Also skip predicates emitted as JVM synthetics to avoid duplicates */
+            if (strcmp(shim_key, "forall/2") == 0 ||
+                strcmp(shim_key, "forall_fails/2") == 0)
+                continue;
+            pj_emit_choice(ss->subject);
+        }
+    }
+    /* Note: shim/pl memory intentionally not freed (static lifetime) */
+}
+
+/* -------------------------------------------------------------------------
+ * pj_linker_emit_db_stub — emit a proper dynamic-DB stub for name/arity.
+ * Mirrors the Bug 1 pure-dynamic stub pattern exactly.
+ * ------------------------------------------------------------------------- */
+static void pj_linker_emit_db_stub(const char *name, int arity) {
+    char safe[256];
+    pj_safe_name(name, safe, sizeof safe);
+    JC("dynamic DB stub (M-PJ-LINKER)");
+    J("; stub for linker-dynamic predicate %s/%d\n", name, arity);
+    J(".method static p_%s_%d(", safe, arity);
+    for (int i = 0; i < arity; i++) J("[Ljava/lang/Object;");
+    J("I)[Ljava/lang/Object;\n");
+    int stub_locals = arity + 50;
+    J("    .limit stack 16\n");
+    J("    .limit locals %d\n", stub_locals);
+    int cs_loc  = arity;
+    int tr_loc  = arity + 1;
+    int idx_loc = arity + 2;
+    int trm_loc = arity + 3;
+    int lbl = pj_fresh_label();
+    char sb_store[64], sb_loop[64], sb_hit[64], sb_miss[64], sb_ok[64], sb_fail[64];
+    snprintf(sb_store, sizeof sb_store, "lnk%d_store", lbl);
+    snprintf(sb_loop,  sizeof sb_loop,  "lnk%d_loop",  lbl);
+    snprintf(sb_hit,   sizeof sb_hit,   "lnk%d_hit",   lbl);
+    snprintf(sb_miss,  sizeof sb_miss,  "lnk%d_miss",  lbl);
+    snprintf(sb_ok,    sizeof sb_ok,    "lnk%d_ok",    lbl);
+    snprintf(sb_fail,  sizeof sb_fail,  "lnk%d_fail",  lbl);
+    J("    iload %d\n", cs_loc);
+    JI("dup", "");
+    J("    ifge %s\n", sb_store);
+    JI("pop", "");
+    JI("iconst_0", "");
+    J("%s:\n", sb_store);
+    J("    istore %d\n", idx_loc);
+    J("%s:\n", sb_loop);
+    J("    ldc \"%s/%d\"\n", name, arity);
+    J("    iload %d\n", idx_loc);
+    J("    invokestatic %s/pj_db_query(Ljava/lang/String;I)Ljava/lang/Object;\n", pj_classname);
+    JI("dup", "");
+    J("    ifnonnull %s\n", sb_hit);
+    JI("pop", "");
+    J("    goto %s\n", sb_miss);
+    J("%s:\n", sb_hit);
+    JI("checkcast", "[Ljava/lang/Object;");
+    J("    astore %d\n", trm_loc);
+    J("    invokestatic %s/pj_trail_mark()I\n", pj_classname);
+    J("    istore %d\n", tr_loc);
+    for (int ai = 0; ai < arity; ai++) {
+        J("    aload %d\n", ai);
+        J("    aload %d\n", trm_loc);
+        J("    ldc %d\n", ai + 2);
+        JI("aaload", "");
+        J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+        J("    ifeq %s\n", sb_fail);
+    }
+    J("    goto %s\n", sb_ok);
+    J("%s:\n", sb_fail);
+    J("    iload %d\n", tr_loc);
+    J("    invokestatic %s/pj_trail_unwind(I)V\n", pj_classname);
+    J("    iinc %d 1\n", idx_loc);
+    J("    goto %s\n", sb_loop);
+    J("%s:\n", sb_ok);
+    J("    ldc %d\n", arity + 1);
+    JI("anewarray", "java/lang/Object");
+    JI("dup", "");
+    JI("iconst_0", "");
+    J("    iload %d\n", idx_loc);
+    JI("iconst_1", "");
+    JI("iadd", "");
+    JI("invokestatic", "java/lang/Integer/valueOf(I)Ljava/lang/Integer;");
+    JI("aastore", "");
+    for (int ai = 0; ai < arity; ai++) {
+        JI("dup", "");
+        J("    ldc %d\n", ai + 1);
+        J("    aload %d\n", ai);
+        JI("aastore", "");
+    }
+    JI("areturn", "");
+    J("%s:\n", sb_miss);
+    JI("aconst_null", "");
+    JI("areturn", "");
+    J(".end method\n\n");
+}
+
+/* -------------------------------------------------------------------------
+ * pj_linker_emit_dynamic_stubs — emit proper DB stubs for pj_suite/1 and pj_test/4
+ * ------------------------------------------------------------------------- */
+static void pj_linker_emit_dynamic_stubs(void) {
+    pj_linker_emit_db_stub("pj_suite", 1);
+    pj_linker_emit_db_stub("pj_test",  4);
+}
+
+/* -------------------------------------------------------------------------
+ * pj_linker_prescan — called from main.c BEFORE prolog_program_free(),
+ * while PlProgram source order is still intact.
+ *
+ * Walks the flat PlClause list in source order, tracking begin_tests /
+ * end_tests directives, and records which suite each test/N clause belongs
+ * to by (functor_key, occurrence_index).
+ *
+ * Result is stored in pj_prescan_map[], consumed by pj_linker_scan pass-2.
+ * ------------------------------------------------------------------------- */
+#include "prolog_atom.h"
+#include "term.h"
+
+#define PJ_PRESCAN_MAX 512
+typedef struct {
+    char key[64];   /* "test/1" or "test/2" */
+    int  idx;       /* 0-based occurrence within that key */
+    char suite[64]; /* suite name from enclosing begin_tests */
+} PjPrescanEntry;
+static PjPrescanEntry pj_prescan_map[PJ_PRESCAN_MAX];
+static int            pj_prescan_n = 0;
+
+void pj_linker_prescan(PlProgram *pl_prog) {
+    pj_prescan_n = 0;
+    char current_suite[64] = "";
+    /* per-key occurrence counters */
+    int cnt1 = 0, cnt2 = 0;  /* test/1, test/2 */
+
+    for (PlClause *cl = pl_prog->head; cl; cl = cl->next) {
+        if (!cl->head) {
+            /* directive — check for begin_tests/end_tests */
+            if (cl->nbody > 0) {
+                Term *d = cl->body[0];
+                if (d && d->tag == TT_COMPOUND && d->compound.arity >= 1) {
+                    const char *fn = prolog_atom_name(d->compound.functor);
+                    Term *arg0 = d->compound.args[0];
+                    if (fn && strcmp(fn, "begin_tests") == 0 && arg0) {
+                        const char *sname = NULL;
+                        if (arg0->tag == TT_ATOM)
+                            sname = prolog_atom_name(arg0->atom_id);
+                        else if (arg0->tag == TT_COMPOUND)
+                            sname = prolog_atom_name(arg0->compound.functor);
+                        if (sname) strncpy(current_suite, sname, 63);
+                    } else if (fn && strcmp(fn, "end_tests") == 0) {
+                        current_suite[0] = '\0';
+                    }
+                }
+            }
+            continue;
+        }
+        /* clause — record if it's test/1 or test/2 */
+        if (!cl->head) continue;
+        if (cl->head->tag != TT_COMPOUND && cl->head->tag != TT_ATOM) continue;
+        const char *fn = NULL;
+        int arity = 0;
+        if (cl->head->tag == TT_COMPOUND) {
+            fn    = prolog_atom_name(cl->head->compound.functor);
+            arity = cl->head->compound.arity;
+        } else {
+            fn    = prolog_atom_name(cl->head->atom_id);
+            arity = 0;
+        }
+        if (!fn) continue;
+        int is1 = (strcmp(fn,"test") == 0 && arity == 1);
+        int is2 = (strcmp(fn,"test") == 0 && arity == 2);
+        if (!is1 && !is2) continue;
+        if (pj_prescan_n >= PJ_PRESCAN_MAX) continue;
+        PjPrescanEntry *e = &pj_prescan_map[pj_prescan_n++];
+        snprintf(e->key, sizeof e->key, "test/%d", arity);
+        e->idx = is1 ? cnt1++ : cnt2++;
+        strncpy(e->suite, current_suite[0] ? current_suite : "unknown", 63);
+    }
+}
+
+/* Forward declarations — pj_linker_emit_bridge needs the test array
+ * but the canonical definitions follow below. */
+#ifndef PJ_LINKER_MAX_TESTS
+#define PJ_LINKER_MAX_TESTS 512
+typedef struct {
+    char suite[64]; char name[64]; char bridge[128];
+    int  arity; EXPR_t *opts_expr;
+    EXPR_t *clause_expr;  /* full E_CLAUSE node — needed for true(Expr) var-sharing fix */
+} PjTestInfo;
+static PjTestInfo pj_linker_tests[PJ_LINKER_MAX_TESTS];
+static int        pj_linker_ntest = 0;
+static char       pj_linker_suites[32][64];
+static int        pj_linker_nsuite = 0;
+#endif
+
+/* -------------------------------------------------------------------------
+ * pj_linker_emit_bridge — emit a bridge predicate:
+ *   suite_name/0 :- test(name).          [arity==1]
+ *   suite_name/0 :- test(name, opts).    [arity==2]
+ * bridge_fn is "suite_name" (safe-name), test_name is the raw atom.
+ * For test/2 the opts term is emitted inline so p_test_2 gets both args.
+ * ------------------------------------------------------------------------- */
+static void pj_linker_emit_bridge(const char *bridge_fn, const char *test_name, const char *suite_name) {
+    /* arity and opts_expr are picked up from the PjTestInfo array by the caller;
+     * we need them here — find the matching entry */
+    int arity = 1;
+    EXPR_t *opts_expr   = NULL;
+    EXPR_t *clause_expr = NULL;
+    for (int i = 0; i < pj_linker_ntest; i++) {
+        if (strcmp(pj_linker_tests[i].bridge, bridge_fn) == 0) {
+            arity       = pj_linker_tests[i].arity;
+            opts_expr   = pj_linker_tests[i].opts_expr;
+            clause_expr = pj_linker_tests[i].clause_expr;
+            break;
+        }
+    }
+
+    /* Detect true(Expr) opts — may be bare true(E), a bare expression, or inside a list.
+     * Walk the list to find the first true(Expr) or bare-expression element. */
+    int has_true_expr = 0;
+    EXPR_t *true_expr_arg = NULL;
+    if (arity == 2 && opts_expr) {
+        /* bare true(Expr) */
+        if (opts_expr->sval && strcmp(opts_expr->sval, "true") == 0
+            && opts_expr->nchildren == 1) {
+            has_true_expr = 1;
+            true_expr_arg = opts_expr->children[0];
+        } else if (opts_expr->sval &&
+                   strcmp(opts_expr->sval, ".") != 0 &&
+                   strcmp(opts_expr->sval, "[]") != 0 &&
+                   strcmp(opts_expr->sval, "fail") != 0 &&
+                   strcmp(opts_expr->sval, "error") != 0 &&
+                   strcmp(opts_expr->sval, "throws") != 0 &&
+                   strcmp(opts_expr->sval, "all") != 0 &&
+                   strcmp(opts_expr->sval, "forall") != 0 &&
+                   strcmp(opts_expr->sval, "sto") != 0 &&
+                   strcmp(opts_expr->sval, "blocked") != 0 &&
+                   strcmp(opts_expr->sval, "setup") != 0 &&
+                   strcmp(opts_expr->sval, "cleanup") != 0 &&
+                   opts_expr->nchildren > 0) {
+            /* bare expression like X==y or Bs==[b]: treat as true(Expr) */
+            has_true_expr = 1;
+            true_expr_arg = opts_expr;
+        } else {
+            /* walk list .(Head, Tail): look for true(E) or bare expr as head */
+            EXPR_t *node = opts_expr;
+            while (node && node->sval && strcmp(node->sval, ".") == 0
+                   && node->nchildren >= 2) {
+                EXPR_t *head = node->children[0];
+                if (head && head->sval && strcmp(head->sval, "true") == 0
+                    && head->nchildren == 1) {
+                    has_true_expr = 1;
+                    true_expr_arg = head->children[0];
+                    break;
+                } else if (head && head->sval &&
+                           strcmp(head->sval, "fail") != 0 &&
+                           strcmp(head->sval, "error") != 0 &&
+                           strcmp(head->sval, "throws") != 0 &&
+                           strcmp(head->sval, "all") != 0 &&
+                           strcmp(head->sval, "forall") != 0 &&
+                           strcmp(head->sval, "sto") != 0 &&
+                           strcmp(head->sval, "blocked") != 0 &&
+                           strcmp(head->sval, "setup") != 0 &&
+                           strcmp(head->sval, "cleanup") != 0 &&
+                           strcmp(head->sval, ".") != 0 &&
+                           strcmp(head->sval, "[]") != 0 &&
+                           head->nchildren > 0) {
+                    has_true_expr = 1;
+                    true_expr_arg = head;
+                    break;
+                }
+                node = node->children[1];
+            }
+        }
+    }
+
+    JC("bridge predicate (M-PJ-LINKER)");
+    J(".method static p_%s_0(I)[Ljava/lang/Object;\n", bridge_fn);
+    J("    .limit stack 512\n");
+    /* For true(Expr) we need locals: 0=cs(I), 1=trail(I), 2..2+n_vars-1=vars, then scratch */
+    if (has_true_expr && clause_expr) {
+        int n_vars = (int)clause_expr->ival;
+        J("    .limit locals %d\n", 4 + n_vars + 32);  /* generous: vars + scratch for body/check */
+    } else {
+        J("    .limit locals 4\n");
+    }
+    /* cs dispatch — single clause, cs==0 only */
+    J("    iload 0\n");
+    J("    ifne p_%s_0_omega_empty\n", bridge_fn);
+
+    if (has_true_expr && clause_expr) {
+        /* true(Expr) opts: inline body + check in same frame so vars are shared.
+         * Locals layout: 0=cs(I), 1=trail(I), 2..2+n_vars-1=Prolog vars */
+        int n_vars = (int)clause_expr->ival;
+        int n_args = (int)clause_expr->dval;
+        int trail_local = 1;
+        int vars_base   = 2;
+        int *var_locals = (int*)calloc(n_vars + 1, sizeof(int));
+        for (int vi = 0; vi < n_vars; vi++) var_locals[vi] = vars_base + vi;
+        int next_local_val = vars_base + n_vars;
+        int *next_local = &next_local_val;
+
+        /* trail mark */
+        J("    invokestatic %s/pj_trail_mark()I\n", pj_classname);
+        J("    istore %d\n", trail_local);
+
+        /* allocate fresh var cells for all Prolog variables */
+        for (int vi = 0; vi < n_vars; vi++) {
+            J("    invokestatic %s/pj_term_var()[Ljava/lang/Object;\n", pj_classname);
+            J("    astore %d\n", var_locals[vi]);
+        }
+
+        /* allocate scratch locals for cs bookkeeping */
+        int init_cs_local    = (*next_local)++;
+        int sub_cs_out_local = (*next_local)++;
+        /* initialise them to 0 */
+        J("    iconst_0\n"); J("    istore %d\n", init_cs_local);
+        J("    iconst_0\n"); J("    istore %d\n", sub_cs_out_local);
+
+        /* emit body goals (children[n_args..nchildren-1]) */
+        int nbody = (int)clause_expr->nchildren - n_args;
+        if (nbody > 0) {
+            EXPR_t **body_goals = clause_expr->children + n_args;
+            char lbl_body_ok[128], lbl_body_fail[128];
+            snprintf(lbl_body_ok,   sizeof lbl_body_ok,   "p_%s_0_body_ok",   bridge_fn);
+            snprintf(lbl_body_fail, sizeof lbl_body_fail, "p_%s_0_omega_fail", bridge_fn);
+            pj_emit_body(body_goals, nbody,
+                         lbl_body_ok, lbl_body_fail, lbl_body_fail,
+                         trail_local, var_locals, n_vars, next_local,
+                         init_cs_local, sub_cs_out_local,
+                         /*cut_cs_seal=*/0, /*cs_local_for_cut=*/0,
+                         lbl_body_fail, NULL);
+            J("%s:\n", lbl_body_ok);
+        }
+
+        /* emit the true(Expr) check as a goal */
+        {
+            char lbl_check_ok[128], lbl_check_fail[128];
+            snprintf(lbl_check_ok,   sizeof lbl_check_ok,   "p_%s_0_check_ok",   bridge_fn);
+            snprintf(lbl_check_fail, sizeof lbl_check_fail, "p_%s_0_omega_fail",  bridge_fn);
+            pj_emit_goal(true_expr_arg, lbl_check_ok, lbl_check_fail,
+                         trail_local, var_locals, n_vars,
+                         /*cut_cs_seal=*/0, /*cs_local_for_cut=*/0,
+                         next_local, NULL);
+            J("%s:\n", lbl_check_ok);
+        }
+
+        free(var_locals);
+
+        /* check_ok: body+expr both succeeded — report pass, return null */
+        J("    iconst_0\n");
+        J("    invokestatic %s/p_pj_inc_pass_0(I)[Ljava/lang/Object;\n", pj_classname);
+        J("    pop\n");
+        J("    getstatic java/lang/System/out Ljava/io/PrintStream;\n");
+        J("    ldc \"  pass: %s:%s\"\n", suite_name, test_name);
+        J("    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V\n");
+        J("    aconst_null\n");
+        J("    areturn\n");
+        J("p_%s_0_omega_fail:\n", bridge_fn);
+        J("    iconst_0\n");
+        J("    invokestatic %s/p_pj_inc_fail_0(I)[Ljava/lang/Object;\n", pj_classname);
+        J("    pop\n");
+        J("    getstatic java/lang/System/out Ljava/io/PrintStream;\n");
+        J("    ldc \"  FAIL: %s:%s  (true-check failed)\"\n", suite_name, test_name);
+        J("    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V\n");
+        J("    aconst_null\n");
+        J("    areturn\n");
+        J("p_%s_0_omega_empty:\n", bridge_fn);
+        J("    aconst_null\n");
+        J("    areturn\n");
+        J(".end method\n\n");
+        return;
+
+    } else if (arity == 2) {
+        /* call test(name, opts) — emit as p_test_2(atom(name), opts_term, 0) */
+        J("    ldc \"%s\"\n", test_name);
+        J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+        /* opts: emit term if available, else [] */
+        if (opts_expr) {
+            int *dummy_locals = NULL;
+            pj_emit_term(opts_expr, dummy_locals, 0);
+        } else {
+            J("    ldc \"[]\"\n");
+            J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+        }
+        J("    iconst_0\n");
+        J("    invokestatic %s/p_test_2([Ljava/lang/Object;[Ljava/lang/Object;I)[Ljava/lang/Object;\n", pj_classname);
+    } else {
+        /* call test(name) — emit as p_test_1(atom(name), 0) */
+        J("    ldc \"%s\"\n", test_name);
+        J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+        J("    iconst_0\n");
+        J("    invokestatic %s/p_test_1([Ljava/lang/Object;I)[Ljava/lang/Object;\n", pj_classname);
+    }
+
+    /* if null → fail (result on stack) */
+    J("    dup\n");
+    J("    ifnull p_%s_0_omega_pop\n", bridge_fn);
+    /* success: return the result array as-is (non-null means success) */
+    J("    areturn\n");
+    /* omega_pop: result (null) on stack — pop then return null */
+    J("p_%s_0_omega_pop:\n", bridge_fn);
+    J("    pop\n");
+    J("    aconst_null\n");
+    J("    areturn\n");
+    /* omega_empty: nothing on stack */
+    J("p_%s_0_omega_empty:\n", bridge_fn);
+    J("    aconst_null\n");
+    J("    areturn\n");
+    J(".end method\n\n");
+}
+
+/* -------------------------------------------------------------------------
+ * Linker test registration info (declared earlier as forward decl)
+ * ------------------------------------------------------------------------- */
+
+/* -------------------------------------------------------------------------
+ * pj_linker_scan — walk program collecting suite/test info.
+ * Must be called before pj_emit_main and before bridge emission.
+ *
+ * NOTE: prolog_lower() batches all E_CHOICE nodes separately from directives.
+ * They are NOT interleaved in source order.  So we cannot track
+ * begin_tests/end_tests windows while walking E_CHOICE nodes.
+ *
+ * Strategy:
+ *   Pass 1 — collect suite names from begin_tests directives.
+ *   Pass 2 — collect test/1 and test/2 E_CHOICE nodes; assign all to
+ *             suite[0].  Correct for the universal case of one suite per file.
+ * ------------------------------------------------------------------------- */
+static void pj_linker_scan(Program *prog) {
+    pj_linker_ntest  = 0;
+    pj_linker_nsuite = 0;
+
+    /* Pass 1: collect suite names from begin_tests directives */
+    for (STMT_t *s = prog->head; s; s = s->next) {
+        if (!s->subject) continue;
+        EXPR_t *g = s->subject;
+        if (g->kind == E_CHOICE) continue;
+        if (g->kind != E_FNC || !g->sval) continue;
+        if (strcmp(g->sval, "begin_tests") != 0 || g->nchildren < 1) continue;
+        EXPR_t *suite_arg = g->children[0];
+        if (!suite_arg || !suite_arg->sval) continue;
+        const char *sname = suite_arg->sval;
+        int found = 0;
+        for (int i = 0; i < pj_linker_nsuite; i++)
+            if (strcmp(pj_linker_suites[i], sname) == 0) { found = 1; break; }
+        if (!found && pj_linker_nsuite < 32)
+            strncpy(pj_linker_suites[pj_linker_nsuite++], sname, 63);
+    }
+
+    if (pj_linker_nsuite == 0) return;
+
+    /* Pass 2: collect test/1 and test/2 clause heads.
+     * Suite assignment: use pj_prescan_map[] (populated by pj_linker_prescan
+     * before PlProgram was freed) to recover source-order suite context.
+     * Falls back to suite[0] if prescan map is empty (single-suite files). */
+    int cnt1 = 0, cnt2 = 0;  /* per-key occurrence counters, match prescan order */
+    for (STMT_t *s = prog->head; s; s = s->next) {
+        if (!s->subject || s->subject->kind != E_CHOICE) continue;
+        EXPR_t *g = s->subject;
+        const char *key = g->sval;
+        if (!key) continue;
+        int is_test1 = (strcmp(key, "test/1") == 0);
+        int is_test2 = (strcmp(key, "test/2") == 0);
+        if (!is_test1 && !is_test2) continue;
+
+        for (int ci = 0; ci < g->nchildren && pj_linker_ntest < PJ_LINKER_MAX_TESTS; ci++) {
+            EXPR_t *cl = g->children[ci];
+            if (!cl || cl->kind != E_CLAUSE) continue;
+            int n_args = (int)cl->dval;
+            if (n_args < 1) continue;
+            EXPR_t *name_arg = cl->children[0];
+            if (!name_arg || !name_arg->sval) continue;
+
+            /* Determine suite: consult prescan map by key+occurrence index */
+            int occ = is_test1 ? cnt1++ : cnt2++;
+            const char *suite = pj_linker_nsuite > 0 ? pj_linker_suites[0] : "unknown";
+            if (pj_prescan_n > 0) {
+                for (int pi = 0; pi < pj_prescan_n; pi++) {
+                    if (strcmp(pj_prescan_map[pi].key, key) == 0 &&
+                        pj_prescan_map[pi].idx == occ) {
+                        suite = pj_prescan_map[pi].suite;
+                        break;
+                    }
+                }
+            }
+
+            PjTestInfo *ti = &pj_linker_tests[pj_linker_ntest++];
+            strncpy(ti->suite, suite, 63);
+            strncpy(ti->name,  name_arg->sval, 63);
+            ti->arity       = is_test2 ? 2 : 1;
+            ti->opts_expr   = (is_test2 && n_args >= 2) ? cl->children[1] : NULL;
+            ti->clause_expr = cl;
+            /* Count prior entries with same suite+name to form a unique bridge name */
+            int dup = 0;
+            for (int di = 0; di < pj_linker_ntest - 1; di++)
+                if (strcmp(pj_linker_tests[di].suite, suite) == 0 &&
+                    strcmp(pj_linker_tests[di].name,  name_arg->sval) == 0)
+                    dup++;
+            char raw[128];
+            if (dup == 0)
+                snprintf(raw, sizeof raw, "pjt__%s_%s", suite, name_arg->sval);
+            else
+                snprintf(raw, sizeof raw, "pjt__%s_%s_%d", suite, name_arg->sval, dup);
+            pj_safe_name(raw, ti->bridge, sizeof ti->bridge);
+        }
+    }
+}
+
+/* -------------------------------------------------------------------------
+ * pj_linker_emit_main_assertz — emit assertz calls for pj_suite/pj_test facts.
+ * Called from inside pj_emit_main after the existing assertz loop.
+ *
+ * Each pj_suite(Suite) assertz:
+ *   ldc "Suite" → pj_term_atom → pj_db_assert_key → pj_term_atom → iconst_0
+ *   → pj_db_assert
+ *
+ * Each pj_test(Suite, Name, Opts, Goal) assertz:
+ *   build compound ["compound","pj_test", atom(Suite), atom(Name), Opts, atom(bridge)]
+ *   → pj_db_assert_key → same term → iconst_0 → pj_db_assert
+ * ------------------------------------------------------------------------- */
+static void pj_linker_emit_main_assertz(void) {
+    if (pj_linker_ntest == 0 && pj_linker_nsuite == 0) return;
+
+    JC("M-PJ-LINKER: assert pj_suite facts");
+    for (int i = 0; i < pj_linker_nsuite; i++) {
+        const char *sname = pj_linker_suites[i];
+        /* build pj_suite(Suite) term — compound arity 1 */
+        /* Emit twice: once for key derivation, once for the actual assert */
+        for (int pass = 0; pass < 2; pass++) {
+            J("    bipush 3\n");
+            J("    anewarray java/lang/Object\n");
+            J("    dup\n");
+            J("    iconst_0\n");
+            J("    ldc \"compound\"\n");
+            J("    aastore\n");
+            J("    dup\n");
+            J("    iconst_1\n");
+            J("    ldc \"pj_suite\"\n");
+            J("    aastore\n");
+            J("    dup\n");
+            J("    bipush 2\n");
+            J("    ldc \"%s\"\n", sname);
+            J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+            J("    aastore\n");
+            if (pass == 0) {
+                J("    invokestatic %s/pj_db_assert_key(Ljava/lang/Object;)Ljava/lang/String;\n", pj_classname);
+            }
+        }
+        J("    iconst_0\n");  /* asserta=1 / assertz=0 */
+        J("    invokestatic %s/pj_db_assert(Ljava/lang/String;Ljava/lang/Object;I)V\n", pj_classname);
+    }
+
+    JC("M-PJ-LINKER: assert pj_test facts");
+    int *dummy_locals = NULL;
+    for (int i = 0; i < pj_linker_ntest; i++) {
+        PjTestInfo *ti = &pj_linker_tests[i];
+        /* build pj_test(Suite, Name, Opts, BridgeAtom) — compound arity 4 */
+        for (int pass = 0; pass < 2; pass++) {
+            J("    bipush 6\n");  /* 2 + 4 args */
+            J("    anewarray java/lang/Object\n");
+            J("    dup\n");
+            J("    iconst_0\n");
+            J("    ldc \"compound\"\n");
+            J("    aastore\n");
+            J("    dup\n");
+            J("    iconst_1\n");
+            J("    ldc \"pj_test\"\n");
+            J("    aastore\n");
+            /* arg0: Suite atom */
+            J("    dup\n");
+            J("    bipush 2\n");
+            J("    ldc \"%s\"\n", ti->suite);
+            J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+            J("    aastore\n");
+            /* arg1: Name atom */
+            J("    dup\n");
+            J("    bipush 3\n");
+            J("    ldc \"%s\"\n", ti->name);
+            J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+            J("    aastore\n");
+            /* arg2: Opts — emit as term if available, else []
+             * If opts contain true(Expr) (var-sharing case), emit pj_inline atom
+             * so run_one delegates entirely to the self-reporting bridge. */
+            J("    dup\n");
+            J("    bipush 4\n");
+            if (ti->opts_expr) {
+                EXPR_t *oe = ti->opts_expr;
+                /* Check for true(Expr) — bare or inside list */
+                int is_true_expr = 0;
+                if (oe->sval && strcmp(oe->sval,"true")==0 && oe->nchildren==1) {
+                    is_true_expr = 1;
+                } else if (oe->sval && strcmp(oe->sval,".") != 0 &&
+                           strcmp(oe->sval,"[]") != 0 &&
+                           strcmp(oe->sval,"fail") != 0 && strcmp(oe->sval,"false") != 0 &&
+                           strcmp(oe->sval,"error") != 0 && strcmp(oe->sval,"throws") != 0 &&
+                           strcmp(oe->sval,"all") != 0 && strcmp(oe->sval,"sto") != 0 &&
+                           strcmp(oe->sval,"blocked") != 0 && strcmp(oe->sval,"setup") != 0 &&
+                           strcmp(oe->sval,"cleanup") != 0 && strcmp(oe->sval,"forall") != 0 &&
+                           oe->nchildren > 0) {
+                    is_true_expr = 1; /* bare expression like X==y */
+                } else if (oe->sval && strcmp(oe->sval,".")==0 && oe->nchildren>=2) {
+                    EXPR_t *nd = oe;
+                    while (nd && nd->sval && strcmp(nd->sval,".")==0 && nd->nchildren>=2) {
+                        EXPR_t *hd = nd->children[0];
+                        if (hd && hd->sval && strcmp(hd->sval,"true")==0 && hd->nchildren==1)
+                            { is_true_expr=1; break; }
+                        /* bare expression inside list */
+                        if (hd && hd->sval &&
+                            strcmp(hd->sval,"fail")!=0 && strcmp(hd->sval,"false")!=0 &&
+                            strcmp(hd->sval,"error")!=0 && strcmp(hd->sval,"throws")!=0 &&
+                            strcmp(hd->sval,"all")!=0 && strcmp(hd->sval,"sto")!=0 &&
+                            strcmp(hd->sval,"blocked")!=0 && strcmp(hd->sval,"setup")!=0 &&
+                            strcmp(hd->sval,"cleanup")!=0 && strcmp(hd->sval,"forall")!=0 &&
+                            strcmp(hd->sval,".")!=0 && strcmp(hd->sval,"[]")!=0 &&
+                            hd->nchildren > 0)
+                            { is_true_expr=1; break; }
+                        nd = nd->children[1];
+                    }
+                }
+                if (is_true_expr) {
+                    /* emit pj_inline atom — bridge is self-reporting.
+                     * For bare goals (X==y) this is essential: the check
+                     * shares variables with the body only inside the bridge
+                     * JVM frame, so we cannot re-evaluate the expression
+                     * from a disconnected assertz'd term. */
+                    J("    ldc \"pj_inline\"\n");
+                    J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+                } else {
+                    pj_emit_term(oe, dummy_locals, 0);
+                }
+            } else {
+                /* [] */
+                J("    ldc \"[]\"\n");
+                J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+            }
+            J("    aastore\n");
+            /* arg3: Goal — atom naming the bridge predicate */
+            J("    dup\n");
+            J("    bipush 5\n");
+            J("    ldc \"%s\"\n", ti->bridge);
+            J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+            J("    aastore\n");
+            if (pass == 0) {
+                J("    invokestatic %s/pj_db_assert_key(Ljava/lang/Object;)Ljava/lang/String;\n", pj_classname);
+            }
+        }
+        J("    iconst_0\n");
+        J("    invokestatic %s/pj_db_assert(Ljava/lang/String;Ljava/lang/Object;I)V\n", pj_classname);
+    }
 }
 
 /* -------------------------------------------------------------------------
@@ -6312,8 +8720,12 @@ static void pj_emit_choice(EXPR_t *choice) {
 
 static void pj_emit_main(Program *prog) {
     J(".method public static main([Ljava/lang/String;)V\n");
-    J("    .limit stack 8\n");
+    J("    .limit stack 512\n");
     J("    .limit locals 4\n");
+
+    /* M-PJ-LINKER: assert pj_suite/pj_test facts FIRST — before any directives
+     * (run_tests/:- halt may appear as directives and must find the DB populated) */
+    pj_linker_emit_main_assertz();
 
     /* Bug 2 fix: execute :- assertz/asserta directives before calling main/0.
      * Directives are STMT_t nodes whose subject is NOT E_CHOICE. */
@@ -6322,7 +8734,27 @@ static void pj_emit_main(Program *prog) {
         if (s->subject->kind == E_CHOICE) continue;
         EXPR_t *g = s->subject;
         if (g->kind != E_FNC || !g->sval) continue;
-        if ((strcmp(g->sval, "assertz") == 0 || strcmp(g->sval, "asserta") == 0)
+        /* Skip meta-directives that have no runtime effect */
+        if (strcmp(g->sval, "dynamic") == 0 ||
+            strcmp(g->sval, "discontiguous") == 0 ||
+            strcmp(g->sval, "module") == 0 ||
+            strcmp(g->sval, "use_module") == 0 ||
+            strcmp(g->sval, "begin_tests") == 0 ||
+            strcmp(g->sval, "end_tests") == 0 ||
+            strcmp(g->sval, "ensure_loaded") == 0 ||
+            strcmp(g->sval, "style_check") == 0 ||
+            strcmp(g->sval, "set_prolog_flag") == 0 ||
+            strcmp(g->sval, "module_transparent") == 0 ||
+            strcmp(g->sval, "meta_predicate") == 0 ||
+            strcmp(g->sval, "multifile") == 0 ||
+            strcmp(g->sval, "reexport") == 0 ||
+            strcmp(g->sval, "load_files") == 0 ||
+            strcmp(g->sval, "if") == 0 ||
+            strcmp(g->sval, "else") == 0 ||
+            strcmp(g->sval, "endif") == 0 ||
+            strcmp(g->sval, "initialization") == 0) {
+            /* silently skip */
+        } else if ((strcmp(g->sval, "assertz") == 0 || strcmp(g->sval, "asserta") == 0)
              && g->nchildren == 1) {
             /* emit assertz/asserta inline — same logic as pj_emit_goal assertz case */
             int is_asserta = (strcmp(g->sval, "asserta") == 0);
@@ -6334,15 +8766,54 @@ static void pj_emit_main(Program *prog) {
             J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
             J("    %s\n", is_asserta ? "iconst_1" : "iconst_0");
             J("    invokestatic %s/pj_db_assert(Ljava/lang/String;Ljava/lang/Object;I)V\n", pj_classname);
+        } else {
+            /* General directive: call via pj_call_goal at runtime */
+            int *dummy_locals = NULL;
+            pj_emit_term(s->subject, dummy_locals, 0);
+            J("    iconst_0\n");
+            J("    invokestatic %s/pj_call_goal(Ljava/lang/Object;I)I\n", pj_classname);
+            J("    pop\n");
         }
-        /* ignore :- dynamic and other directives silently */
     }
 
-    /* Call p_main_0(0) once. The internal fail-loop inside main/0 drives
-     * all backtracking via call_sfail→call_α. No outer retry needed. */
-    JI("iconst_0", ""); /* cs = 0 */
-    J("    invokestatic %s/p_main_0(I)[Ljava/lang/Object;\n", pj_classname);
-    JI("pop", "");
+    /* Call p_main_0(0) once — only if main/0 is actually defined.
+     * Plunit files use :- run_tests / :- halt directives and have no main/0. */
+    int has_main0 = 0;
+    for (STMT_t *s2 = prog->head; s2; s2 = s2->next) {
+        if (!s2->subject || s2->subject->kind != E_CHOICE) continue;
+        if (s2->subject->sval && strcmp(s2->subject->sval, "main/0") == 0) {
+            has_main0 = 1; break;
+        }
+    }
+    if (has_main0) {
+        JI("iconst_0", ""); /* cs = 0 */
+        J("    invokestatic %s/p_main_0(I)[Ljava/lang/Object;\n", pj_classname);
+        JI("pop", "");
+    }
+
+    /* Auto run_tests: if this is a plunit file with no main/0 and no explicit
+     * :- run_tests directive, emit run_tests + halt automatically so plunit-only
+     * files (e.g. SWI test_*.pl) execute without needing a wrapper. */
+    if (pj_linker_ntest > 0 && !has_main0) {
+        /* Check whether :- run_tests was already emitted as a directive */
+        int has_run_tests_dir = 0;
+        for (STMT_t *s2 = prog->head; s2; s2 = s2->next) {
+            if (!s2->subject || s2->subject->kind == E_CHOICE) continue;
+            EXPR_t *g = s2->subject;
+            if (g->kind == E_FNC && g->sval &&
+                (strcmp(g->sval, "run_tests") == 0)) {
+                has_run_tests_dir = 1; break;
+            }
+        }
+        if (!has_run_tests_dir) {
+            JC("auto run_tests (M-PJ-LINKER: no main/0, no :- run_tests)");
+            J("    ldc \"run_tests\"\n");
+            J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+            J("    iconst_0\n");
+            J("    invokestatic %s/pj_call_goal(Ljava/lang/Object;I)I\n", pj_classname);
+            J("    pop\n");
+        }
+    }
     JI("return", "");
     J(".end method\n\n");
 }
@@ -6364,6 +8835,19 @@ void prolog_emit_jvm(Program *prog, FILE *out, const char *filename) {
     pj_emit_class_header();
     pj_emit_runtime_helpers();
     pj_emit_assertz_helpers();
+
+    /* Always emit forall/2 synthetic (unless user defines it) */
+    {
+        int defines_forall = 0;
+        for (STMT_t *s = prog->head; s; s = s->next) {
+            if (!s->subject) continue;
+            if (s->subject->kind == E_CHOICE && s->subject->sval &&
+                strcmp(s->subject->sval, "forall") == 0)
+                defines_forall = 1;
+        }
+        if (!defines_forall)
+            pj_emit_forall_builtin();
+    }
 
     /* Check if program uses between/3 but doesn't define it — emit synthetic method */
     {
@@ -6405,11 +8889,44 @@ void prolog_emit_jvm(Program *prog, FILE *out, const char *filename) {
             pj_emit_aggregate_all_builtin();
     }
 
+    /* Check if program uses reverse/2 but doesn't define it — emit synthetic method */
+    {
+        int defines_reverse = 0;
+        for (STMT_t *s = prog->head; s; s = s->next) {
+            if (!s->subject) continue;
+            if (s->subject->kind == E_CHOICE && s->subject->sval &&
+                strcmp(s->subject->sval, "reverse") == 0)
+                defines_reverse = 1;
+        }
+        if (!defines_reverse)
+            pj_emit_reverse_builtin();
+    }
+
+    /* M-PJ-LINKER: plunit linker — scan + emit shim + stubs + bridges */
+    int use_plunit = pj_linker_has_plunit(prog);
+    if (use_plunit) {
+        pj_linker_scan(prog);
+        pj_linker_emit_plunit_shim();
+        pj_linker_emit_dynamic_stubs();
+    }
+
+    /* Always emit pj_gcd helper (used by gcd/2 in is/2) */
+    pj_emit_gcd_helper();
+
+    /* Always emit stdlib shim: member/2, memberchk/2 (skipped if user-defined) */
+    pj_emit_stdlib_shim(prog);
+
     /* emit each predicate */
     for (STMT_t *s = prog->head; s; s = s->next) {
         if (!s->subject) continue;
         if (s->subject->kind == E_CHOICE)
             pj_emit_choice(s->subject);
+    }
+
+    /* M-PJ-LINKER: emit bridge predicates suite_name/0 :- test(name). */
+    if (use_plunit) {
+        for (int i = 0; i < pj_linker_ntest; i++)
+            pj_linker_emit_bridge(pj_linker_tests[i].bridge, pj_linker_tests[i].name, pj_linker_tests[i].suite);
     }
 
     /* Bug 1 fix: emit stub methods for pure-dynamic predicates.
