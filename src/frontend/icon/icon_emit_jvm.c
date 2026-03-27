@@ -353,6 +353,9 @@ static void ij_declare_static_typed(const char *name, char type) {
             /* Allow upgrade to record-list if previously declared as plain list */
             if (type == 'R' && ij_static_types[i] == 'L')
                 ij_static_types[i] = 'R';
+            /* Don't overwrite 'S' (string-list) with 'L' (numeric-list) */
+            if (type == 'L' && ij_static_types[i] == 'S')
+                return;  /* keep 'S' */
             return;
         }
     }
@@ -515,6 +518,7 @@ static void ij_put_real_field(const char *fname) {
 /* Forward declaration needed for ij_expr_is_string */
 static int ij_expr_is_string(IcnNode *n);
 static int ij_expr_is_list(IcnNode *n);
+static int ij_expr_is_strlist(IcnNode *n);
 static int ij_expr_is_table(IcnNode *n);
 static int ij_expr_is_record_list(IcnNode *n);
 /* Returns the type tag for a declared static field, or 0 if not found */
@@ -649,6 +653,10 @@ static void ij_put_dbl(const char *fld) {
 /* ArrayList-typed static field helpers ('L' type tag) */
 static void ij_declare_static_list(const char *name) {
     ij_declare_static_typed(name, 'L');
+}
+/* 'S' = ArrayList of String elements */
+static void ij_declare_static_strlist(const char *name) {
+    ij_declare_static_typed(name, 'S');
 }
 /* Record-list helpers ('R' type tag — ArrayList of record Objects) */
 static void ij_declare_static_reclist(const char *name) {
@@ -843,7 +851,7 @@ static void ij_emit_var(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
         for (int i = 0; i < ij_nstatics; i++) {
             if (!strcmp(ij_statics[i], fld) && ij_static_types[i] == 'A') { is_str  = 1; break; }
             if (!strcmp(ij_statics[i], fld) && ij_static_types[i] == 'D') { is_dbl  = 1; break; }
-            if (!strcmp(ij_statics[i], fld) && (ij_static_types[i] == 'L' || ij_static_types[i] == 'R')) { is_list = 1; break; }
+            if (!strcmp(ij_statics[i], fld) && (ij_static_types[i] == 'L' || ij_static_types[i] == 'R' || ij_static_types[i] == 'S')) { is_list = 1; break; }
             if (!strcmp(ij_statics[i], fld) && ij_static_types[i] == 'T') { is_table= 1; break; }
             if (!strcmp(ij_statics[i], fld) && ij_static_types[i] == 'O') { is_obj  = 1; break; }
         }
@@ -874,7 +882,7 @@ static void ij_emit_var(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
         for (int i = 0; i < ij_nstatics; i++) {
             if (!strcmp(ij_statics[i], gname) && ij_static_types[i] == 'A') { is_str  = 1; break; }
             if (!strcmp(ij_statics[i], gname) && ij_static_types[i] == 'D') { is_dbl  = 1; break; }
-            if (!strcmp(ij_statics[i], gname) && (ij_static_types[i] == 'L' || ij_static_types[i] == 'R')) { is_list = 1; break; }
+            if (!strcmp(ij_statics[i], gname) && (ij_static_types[i] == 'L' || ij_static_types[i] == 'R' || ij_static_types[i] == 'S')) { is_list = 1; break; }
             if (!strcmp(ij_statics[i], gname) && ij_static_types[i] == 'T') { is_table= 1; break; }
             if (!strcmp(ij_statics[i], gname) && ij_static_types[i] == 'O') { is_obj  = 1; break; }
         }
@@ -1065,7 +1073,8 @@ static void ij_emit_assign(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
     IcnNode *lhs = n->children[0];
     IcnNode *rhs = n->children[1];
     int is_str  = ij_expr_is_string(rhs);
-    int is_list = !is_str && ij_expr_is_list(rhs);
+    int is_strlist = !is_str && ij_expr_is_strlist(rhs);
+    int is_list = !is_str && !is_strlist && ij_expr_is_list(rhs);
     int is_tbl  = !is_str && !is_list && ij_expr_is_table(rhs);
     int is_dbl  = !is_str && !is_list && !is_tbl && ij_expr_is_real(rhs);
     int is_rec  = !is_str && !is_list && !is_tbl && !is_dbl && ij_expr_is_record(rhs);
@@ -1077,7 +1086,7 @@ static void ij_emit_assign(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
         int slot = ij_locals_find(lhs->val.sval);
         if (slot >= 0) {
             char fld[128]; ij_var_field(lhs->val.sval, fld, sizeof fld);
-            if (is_str)       { ij_declare_static_str(fld);   ij_put_str_field(fld); }
+            if (is_str)         { ij_declare_static_str(fld);     ij_put_str_field(fld); }
             else if (is_list) {
                 if (is_reclist) ij_declare_static_reclist(fld);
                 else            ij_declare_static_list(fld);
@@ -1113,7 +1122,8 @@ static void ij_emit_assign(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
             else              { ij_declare_static(fld);       ij_put_long(fld); }
         } else {
             char gname[80]; snprintf(gname, sizeof gname, "icn_gvar_%s", lhs->val.sval);
-            if (is_str)       { ij_declare_static_str(gname);   ij_put_str_field(gname); }
+            if (is_str)         { ij_declare_static_str(gname);     ij_put_str_field(gname); }
+            else if (is_strlist){ ij_declare_static_strlist(gname); ij_put_list_field(gname); }
             else if (is_list) {
                 if (is_reclist) ij_declare_static_reclist(gname);
                 else            ij_declare_static_list(gname);
@@ -1147,33 +1157,35 @@ static void ij_emit_assign(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
         }
     } else {
         /* discard — pop appropriate type */
-        if (is_str || is_list || is_tbl) JI("pop", "");
-        else                             JI("pop2", "");
+        if (is_str || is_strlist || is_list || is_tbl) JI("pop", "");
+        else                                           JI("pop2", "");
     }
     /* Push back value for expression result (Icon := returns the value) */
     if (lhs && lhs->kind == ICN_VAR) {
         int slot = ij_locals_find(lhs->val.sval);
         if (slot >= 0) {
             char fld[128]; ij_var_field(lhs->val.sval, fld, sizeof fld);
-            if (is_str)       ij_get_str_field(fld);
-            else if (is_list) ij_get_list_field(fld);
-            else if (is_tbl)  ij_get_table_field(fld);
-            else if (is_dbl)  ij_get_dbl(fld);
-            else if (is_rec)  JI("lconst_0","");
-            else              ij_get_long(fld);
+            if (is_str)         ij_get_str_field(fld);
+            else if (is_strlist)ij_get_list_field(fld);
+            else if (is_list)   ij_get_list_field(fld);
+            else if (is_tbl)    ij_get_table_field(fld);
+            else if (is_dbl)    ij_get_dbl(fld);
+            else if (is_rec)    JI("lconst_0","");
+            else                ij_get_long(fld);
         } else {
             char gname[80]; snprintf(gname, sizeof gname, "icn_gvar_%s", lhs->val.sval);
-            if (is_str)       ij_get_str_field(gname);
-            else if (is_list) ij_get_list_field(gname);
-            else if (is_tbl)  ij_get_table_field(gname);
-            else if (is_dbl)  ij_get_dbl(gname);
-            else if (is_rec)  JI("lconst_0","");
-            else              ij_get_long(gname);
+            if (is_str)         ij_get_str_field(gname);
+            else if (is_strlist)ij_get_list_field(gname);
+            else if (is_list)   ij_get_list_field(gname);
+            else if (is_tbl)    ij_get_table_field(gname);
+            else if (is_dbl)    ij_get_dbl(gname);
+            else if (is_rec)    JI("lconst_0","");
+            else                ij_get_long(gname);
         }
     } else {
-        if (is_str || is_list || is_tbl) JI("aconst_null", "");
-        else if (is_dbl)                 JI("dconst_0", "");
-        else                             JI("lconst_0", "");
+        if (is_str || is_strlist || is_list || is_tbl) JI("aconst_null", "");
+        else if (is_dbl)                               JI("dconst_0", "");
+        else                                           JI("lconst_0", "");
     }
     JGoto(ports.γ);
 }
@@ -3987,6 +3999,9 @@ static int ij_expr_is_string(IcnNode *n) {
                 }
                 return 0;
             }
+            /* List subscript: return type depends on list element type */
+            if (n->nchildren >= 1 && ij_expr_is_strlist(n->children[0])) return 1;
+            if (n->nchildren >= 1 && ij_expr_is_list(n->children[0]))    return 0;
             return 1;  /* s[i] always yields a single-char String */
         case ICN_SECTION:
             return 1;  /* s[i:j] always yields a String */
@@ -4015,6 +4030,21 @@ static int ij_expr_is_string(IcnNode *n) {
 /* =========================================================================
  * List type predicate — returns 1 if node is known to produce an ArrayList
  * ======================================================================= */
+static int ij_expr_is_strlist(IcnNode *n) {
+    if (!n) return 0;
+    if (n->kind == ICN_MAKELIST)
+        return (n->nchildren > 0 && ij_expr_is_string(n->children[0]));
+    if (n->kind == ICN_VAR) {
+        char fld[128]; ij_var_field(n->val.sval, fld, sizeof fld);
+        for (int i = 0; i < ij_nstatics; i++)
+            if (!strcmp(ij_statics[i], fld) && ij_static_types[i] == 'S') return 1;
+        char gname[80]; snprintf(gname, sizeof gname, "icn_gvar_%s", n->val.sval);
+        for (int i = 0; i < ij_nstatics; i++)
+            if (!strcmp(ij_statics[i], gname) && ij_static_types[i] == 'S') return 1;
+    }
+    return 0;
+}
+
 static int ij_expr_is_list(IcnNode *n) {
     if (!n) return 0;
     if (n->kind == ICN_MAKELIST) return 1;
@@ -4037,13 +4067,13 @@ static int ij_expr_is_list(IcnNode *n) {
         return 0;
     }
     if (n->kind == ICN_VAR) {
-        /* Check local/global var static type tag 'L' */
+        /* Check local/global var static type tag 'L'/'R'/'S' */
         char fld[128]; ij_var_field(n->val.sval, fld, sizeof fld);
         for (int i = 0; i < ij_nstatics; i++)
-            if (!strcmp(ij_statics[i], fld) && (ij_static_types[i] == 'L' || ij_static_types[i] == 'R')) return 1;
+            if (!strcmp(ij_statics[i], fld) && (ij_static_types[i] == 'L' || ij_static_types[i] == 'R' || ij_static_types[i] == 'S')) return 1;
         char gname[80]; snprintf(gname, sizeof gname, "icn_gvar_%s", n->val.sval);
         for (int i = 0; i < ij_nstatics; i++)
-            if (!strcmp(ij_statics[i], gname) && (ij_static_types[i] == 'L' || ij_static_types[i] == 'R')) return 1;
+            if (!strcmp(ij_statics[i], gname) && (ij_static_types[i] == 'L' || ij_static_types[i] == 'R' || ij_static_types[i] == 'S')) return 1;
     }
     return 0;
 }
@@ -4849,7 +4879,9 @@ static void ij_emit_makelist(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
     strncpy(oα,a,63); strncpy(oβ,b,63);
 
     char list_fld[80]; snprintf(list_fld, sizeof list_fld, "icn_%d_mklist", id);
-    ij_declare_static_list(list_fld);
+    int list_is_strlist = (n->nchildren > 0 && ij_expr_is_string(n->children[0]));
+    if (list_is_strlist) ij_declare_static_strlist(list_fld);
+    else                 ij_declare_static_list(list_fld);
 
     JL(a);
     JI("new", "java/util/ArrayList");
@@ -5238,6 +5270,85 @@ static void ij_emit_subscript(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
                 JI("checkcast", "java/lang/Long");
                 JI("invokevirtual", "java/lang/Long/longValue()J");
             }
+        } else {
+            JI("checkcast", "java/lang/Long");
+            JI("invokevirtual", "java/lang/Long/longValue()J");
+        }
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* -----------------------------------------------------------------------
+     * LIST SUBSCRIPT: L[i]  (ArrayList element access, 1-based)
+     * Semantics: L[i] returns the element at 1-based position i.
+     *   Negative indices count from end.  Fails if out of bounds.
+     *   Elements are boxed Objects: Long for numeric lists, String for string-lists.
+     * ----------------------------------------------------------------------- */
+    if (ij_expr_is_list(str_child) || ij_expr_is_strlist(str_child)) {
+        int is_slist = ij_expr_is_strlist(str_child);
+        char l_fld[64], li_fld[64];
+        snprintf(l_fld,  sizeof l_fld,  "icn_%d_lsub_l", id);
+        snprintf(li_fld, sizeof li_fld, "icn_%d_lsub_i", id);
+        if (is_slist) ij_declare_static_strlist(l_fld);
+        else          ij_declare_static_list(l_fld);
+        ij_declare_static_int(li_fld);
+
+        char l_relay[64], li_relay[64], l_check[64];
+        snprintf(l_relay,  sizeof l_relay,  "icn_%d_lsub_lr",  id);
+        snprintf(li_relay, sizeof li_relay, "icn_%d_lsub_ir",  id);
+        snprintf(l_check,  sizeof l_check,  "icn_%d_lsub_chk", id);
+        char pos_b[64], neg_b[64], zero_b[64];
+        snprintf(pos_b,  sizeof pos_b,  "icn_%d_lsub_pos", id);
+        snprintf(neg_b,  sizeof neg_b,  "icn_%d_lsub_neg", id);
+        snprintf(zero_b, sizeof zero_b, "icn_%d_lsub_z",   id);
+
+        /* Emit list child */
+        IjPorts lp; strncpy(lp.γ, l_relay, 63); strncpy(lp.ω, ports.ω, 63);
+        char la[64], lb[64]; ij_emit_expr(str_child, lp, la, lb);
+        /* Emit index child */
+        IjPorts lip; strncpy(lip.γ, li_relay, 63); strncpy(lip.ω, ports.ω, 63);
+        char lia[64], lib[64]; ij_emit_expr(idx_child, lip, lia, lib);
+
+        JL(a); JGoto(la);
+        JL(b); JGoto(lib);
+
+        /* l_relay: ArrayList ref on stack → store, eval index */
+        JL(l_relay); ij_put_list_field(l_fld); JGoto(lia);
+
+        /* li_relay: long index on stack → convert to 0-based int */
+        JL(li_relay);
+        JI("l2i", "");
+        int idx_s = ij_alloc_int_scratch();
+        J("    istore %d\n", idx_s);
+        J("    iload %d\n",  idx_s);
+        J("    ifgt %s\n", pos_b);
+        J("    iload %d\n",  idx_s);
+        J("    iflt %s\n", neg_b);
+        JL(zero_b); JGoto(ports.ω);   /* i == 0 → fail */
+
+        JL(pos_b);
+        J("    iload %d\n", idx_s); JI("iconst_1",""); JI("isub","");
+        ij_put_int_field(li_fld); JGoto(l_check);
+
+        JL(neg_b);
+        ij_get_list_field(l_fld);
+        JI("invokevirtual", "java/util/ArrayList/size()I");
+        J("    iload %d\n", idx_s); JI("iadd","");
+        ij_put_int_field(li_fld); JGoto(l_check);
+
+        /* check: bounds, then get */
+        JL(l_check);
+        ij_get_int_field(li_fld);
+        J("    iflt %s\n", ports.ω);
+        ij_get_list_field(l_fld);
+        JI("invokevirtual", "java/util/ArrayList/size()I");
+        ij_get_int_field(li_fld);
+        JI("if_icmple", ports.ω);
+        ij_get_list_field(l_fld);
+        ij_get_int_field(li_fld);
+        JI("invokevirtual", "java/util/ArrayList/get(I)Ljava/lang/Object;");
+        if (is_slist) {
+            JI("checkcast", "java/lang/String");
         } else {
             JI("checkcast", "java/lang/Long");
             JI("invokevirtual", "java/lang/Long/longValue()J");
@@ -5783,6 +5894,17 @@ static void ij_prepass_types(IcnNode *n) {
             else           snprintf(fld, sizeof fld, "icn_gvar_%s", lhs->val.sval);
             if (ij_expr_is_string(rhs)) {
                 ij_declare_static_str(fld);
+            } else if (ij_expr_is_strlist(rhs)) {
+                ij_declare_static_strlist(fld);
+                /* Also register under the alternate name so subscript emit finds it
+                 * regardless of whether ij_locals sees the var as local or global. */
+                if (slot >= 0) {
+                    char gname2[80]; snprintf(gname2, sizeof gname2, "icn_gvar_%s", lhs->val.sval);
+                    ij_declare_static_strlist(gname2);
+                } else {
+                    char fld2[128]; ij_var_field(lhs->val.sval, fld2, sizeof fld2);
+                    ij_declare_static_strlist(fld2);
+                }
             } else if (ij_expr_is_list(rhs)) {
                 if (ij_expr_is_record_list(rhs))
                     ij_declare_static_reclist(fld);
@@ -6377,7 +6499,7 @@ void ij_emit_file(IcnNode **nodes, int count, FILE *out, const char *filename, c
         char type = ij_static_types[i];
         if (type == 'A')
             J(".field public static %s Ljava/lang/String;\n", ij_statics[i]);
-        else if (type == 'L' || type == 'R')
+        else if (type == 'L' || type == 'R' || type == 'S')
             J(".field public static %s Ljava/util/ArrayList;\n", ij_statics[i]);
         else if (type == 'T')
             J(".field public static %s Ljava/util/HashMap;\n", ij_statics[i]);
