@@ -108,7 +108,7 @@ static void pj_safe_name(const char *src, char *dst, int dstlen) {
     for (int si = 0; src[si] && di < dstlen - 1; si++) {
         char c = src[si];
         if (isalnum((unsigned char)c) || c == '_')
-            dst[di++] = (char)tolower((unsigned char)c);
+            dst[di++] = c;
         else
             dst[di++] = '_';
     }
@@ -6544,11 +6544,7 @@ static void pj_emit_choice(EXPR_t *choice) {
                 J("    iconst_0\n");
                 J("%s:\n", lbl_clamp);
             }
-            /* call sub-method: args 0..arity-1 then init_cs on stack */
-            for (int ai = 0; ai < arity; ai++)
-                J("    aload %d\n", ai);
-            /* init_cs already on stack from above — but we stored nothing yet;
-             * we need to pass it.  Use istore/iload via a spare local (init_cs_local). */
+            /* init_cs is on stack from clamp above — save it, then load args, then reload */
             J("    istore %d\n", init_cs_local);
             for (int ai = 0; ai < arity; ai++)
                 J("    aload %d\n", ai);
