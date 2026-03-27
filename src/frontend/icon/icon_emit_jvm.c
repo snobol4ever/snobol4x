@@ -48,6 +48,7 @@
 #define _POSIX_C_SOURCE 200809L
 #include "icon_ast.h"
 #include "icon_lex.h"
+#include "src/frontend/icon/icon_lex.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -777,6 +778,26 @@ static int ij_expr_is_real(IcnNode *n) {
 }
 
 /* =========================================================================
+ * ij_jasmin_ldc — emit a Jasmin ldc instruction with proper string escaping.
+ * Jasmin string literals require: \" for quote, \\ for backslash,
+ * \n \t \r for common control chars.
+ * ======================================================================= */
+static void ij_jasmin_ldc(const char *s) {
+    J("    ldc \"");
+    for (const char *p = s; *p; p++) {
+        switch (*p) {
+            case '"':  J("\\\""); break;
+            case '\\': J("\\\\"); break;
+            case '\n': J("\\n");  break;
+            case '\r': J("\\r");  break;
+            case '\t': J("\\t");  break;
+            default:   J("%c", *p); break;
+        }
+    }
+    J("\"\n");
+}
+
+/* =========================================================================
  * ICN_STR
  * α: push String ref via ldc, goto succeed
  * β: goto fail
@@ -787,8 +808,8 @@ static void ij_emit_str(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
     strncpy(oα,a,63); strncpy(oβ,b,63);
     (void)ij_intern_string(n->val.sval);
     JC("STR"); JL(a);
-    /* Push string — ldc with quoted string */
-    J("    ldc \"%s\"\n", n->val.sval);
+    /* Push string — ldc with properly escaped string */
+    ij_jasmin_ldc(n->val.sval);
     JGoto(ports.γ);
     JL(b); JGoto(ports.ω);
 }
@@ -3888,7 +3909,7 @@ static int ij_expr_is_string(IcnNode *n) {
             if (n->nchildren >= 1) return ij_expr_is_list(n->children[0]) ? 0 : 1;
             return 1;
         case ICN_AUGOP:  /* ||:= (TK_AUGCONCAT=36) yields String; arithmetic augops yield long */
-            return (n->val.ival == (int)TK_AUGCONCAT) ? 1 : 0;
+            return ((int)n->val.ival == TK_AUGCONCAT) ? 1 : 0;
         case ICN_CALL: {
             if (n->nchildren >= 1) {
                 IcnNode *fn = n->children[0];
@@ -4682,8 +4703,8 @@ static void ij_emit_augop(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
             snprintf(fld, sizeof fld, "icn_gvar_%s", lhs->val.sval);
         }
 
-        if ((int)aug_kind == (int)TK_AUGCONCAT) {
-            /* TK_AUGCONCAT=36: String ||:= String
+        if ((int)aug_kind == TK_AUGCONCAT) {
+            /* TK_AUGCONCAT: String ||:= String
              * Stack at rhs_ok: String ref (rhs). */
             char tmp_str_fld[128]; snprintf(tmp_str_fld, sizeof tmp_str_fld, "icn_%d_augtemp_s", id);
             ij_declare_static_str(tmp_str_fld);
@@ -4705,14 +4726,31 @@ static void ij_emit_augop(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
             ij_get_long(fld);                  /* load current lhs value */
             ij_get_long(tmp_fld);              /* reload rhs */
 
-            /* Apply arithmetic op. Actual TK_AUG* values (from icon_lex.h enum):
-             * TK_AUGPLUS=30 TK_AUGMINUS=31 TK_AUGSTAR=32 TK_AUGSLASH=33 TK_AUGMOD=34 */
+            /* Apply arithmetic op. */
             switch ((int)aug_kind) {
-                case 30: JI("ladd",""); break;  /* TK_AUGPLUS   */
-                case 31: JI("lsub",""); break;  /* TK_AUGMINUS  */
-                case 32: JI("lmul",""); break;  /* TK_AUGSTAR   */
-                case 33: JI("ldiv",""); break;  /* TK_AUGSLASH  */
-                case 34: JI("lrem",""); break;  /* TK_AUGMOD    */
+                case TK_AUGPLUS:  JI("ladd",""); break;
+                case TK_AUGMINUS: JI("lsub",""); break;
+                case TK_AUGSTAR:  JI("lmul",""); break;
+                case TK_AUGSLASH: JI("ldiv",""); break;
+                case TK_AUGMOD:   JI("lrem",""); break;
+                case TK_AUGPOW: {
+                    /* long ^ long via Math.pow, cast back to long */
+                    JI("l2d",""); JI("swap","");
+                    /* stack: (double rhs), (long lhs) — need lhs first */
+                    /* Actually: lhs is loaded first then rhs; stack = lhs, rhs both long */
+                    /* Reload properly via temp */
+                    /* Already have lhs long, rhs long on stack from ij_get_long calls above */
+                    /* Convert both to double for Math.pow */
+                    /* stack top = rhs (long) */
+                    JI("l2d","");
+                    /* stack: lhs(J), rhs(D) — swap to get lhs under: use local temp */
+                    J("    lstore %d\n", 116); /* temp slot for rhs double... */
+                    JI("l2d","");              /* lhs to double */
+                    J("    dload %d\n", 116);
+                    JI("invokestatic","java/lang/Math/pow(DD)D");
+                    JI("d2l","");
+                    break;
+                }
                 default: JI("ladd",""); break;
             }
 
@@ -6000,6 +6038,16 @@ static void ij_prepass_types(IcnNode *n) {
             else           snprintf(fld, sizeof fld, "icn_gvar_%s", lhs->val.sval);
             if (ij_expr_is_string(rhs)) {
                 ij_declare_static_str(fld);
+                /* dual-register under alternate name (local↔global) so loads
+                 * inside every-body / nested scopes find the 'A' type tag
+                 * regardless of which field name the emitter resolves. */
+                if (slot >= 0) {
+                    char gname2[80]; snprintf(gname2, sizeof gname2, "icn_gvar_%s", lhs->val.sval);
+                    ij_declare_static_str(gname2);
+                } else {
+                    char fld2[128]; ij_var_field(lhs->val.sval, fld2, sizeof fld2);
+                    ij_declare_static_str(fld2);
+                }
             } else if (ij_expr_is_strlist(rhs)) {
                 ij_declare_static_strlist(fld);
                 /* Also register under the alternate name so subscript emit finds it
@@ -6105,6 +6153,14 @@ static void ij_emit_proc(IcnNode *proc, FILE *out_target) {
         else           snprintf(fld, sizeof fld, "icn_gvar_%s", lhs->val.sval);
         if (ij_expr_is_string(rhs)) {
             ij_declare_static_str(fld);
+            /* dual-register under alternate name so every-body loads resolve correctly */
+            if (slot >= 0) {
+                char gname2[80]; snprintf(gname2, sizeof gname2, "icn_gvar_%s", lhs->val.sval);
+                ij_declare_static_str(gname2);
+            } else {
+                char fld2[128]; ij_var_field(lhs->val.sval, fld2, sizeof fld2);
+                ij_declare_static_str(fld2);
+            }
         } else if (ij_expr_is_list(rhs)) {
             if (ij_expr_is_record_list(rhs))
                 ij_declare_static_reclist(fld);
@@ -6166,11 +6222,12 @@ static void ij_emit_proc(IcnNode *proc, FILE *out_target) {
     for (int i = nstmts-1; i >= 0; i--) {
         IcnNode *stmt = proc->children[body_start + i];
         if (!stmt || stmt->kind == ICN_GLOBAL) { strncpy(alphas[i], next_a, 63); continue; }
-        /* ICN_EVERY / ICN_WHILE / ICN_UNTIL / ICN_REPEAT never fire ports.γ with a value —
-         * they always end via ports.ω (exhaustion/failure). Skip the drain to avoid
-         * JVM VerifyError on dead pop2 with empty stack. */
+        /* ICN_EVERY / ICN_WHILE / ICN_UNTIL / ICN_REPEAT / ICN_SUSPEND never
+         * fire ports.γ with a value on the stack — they yield via sret (suspend)
+         * or exhaust via ω. Skip the drain to avoid VerifyError on empty stack. */
         if (stmt->kind == ICN_EVERY || stmt->kind == ICN_WHILE ||
-            stmt->kind == ICN_UNTIL || stmt->kind == ICN_REPEAT) {
+            stmt->kind == ICN_UNTIL || stmt->kind == ICN_REPEAT ||
+            stmt->kind == ICN_SUSPEND) {
             IjPorts sp; strncpy(sp.γ, next_a, 63); strncpy(sp.ω, next_a, 63);
             char sa[64], sb[64]; ij_emit_expr(stmt, sp, sa, sb);
             strncpy(alphas[i], sa, 63);
@@ -6596,6 +6653,69 @@ void ij_emit_file(IcnNode **nodes, int count, FILE *out, const char *filename, c
         }
         } /* end pass1d loop */
         #undef MAX_SCAN_STACK3
+    }
+
+    /* Pass 1e: run type pre-passes for all non-main procs so that ij_statics is
+     * populated before we decide which procs return String.  The Pass 1 scan
+     * above runs ij_expr_is_string on ICN_VAR return children, but ij_statics
+     * is empty at that point — so vars like `result` look like long.  Here we
+     * set up each proc's local environment and run ij_prepass_types on every
+     * body statement, then re-check ICN_RETURN nodes. */
+    for (int pi = 0; pi < count; pi++) {
+        IcnNode *proc = nodes[pi];
+        if (!proc || proc->kind != ICN_PROC || proc->nchildren < 1) continue;
+        const char *pname = proc->children[0]->val.sval;
+        if (strcmp(pname, "main") == 0) continue;
+        int np = (int)proc->val.ival;
+        int body_start = 1 + np;
+        int nstmts = proc->nchildren - body_start;
+        /* Set up locals context */
+        ij_locals_reset();
+        strncpy(ij_cur_proc, pname, 63);
+        for (int i = 0; i < np; i++) {
+            IcnNode *pv = proc->children[1 + i];
+            if (pv && pv->kind == ICN_VAR) ij_locals_add(pv->val.sval);
+        }
+        /* Scan local declarations */
+        for (int si = 0; si < nstmts; si++) {
+            IcnNode *s = proc->children[body_start + si];
+            if (s && s->kind == ICN_GLOBAL) {
+                for (int ci = 0; ci < s->nchildren; ci++) {
+                    IcnNode *v = s->children[ci];
+                    if (v && v->kind == ICN_VAR && ij_locals_find(v->val.sval) < 0
+                            && !ij_is_global(v->val.sval))
+                        ij_locals_add(v->val.sval);
+                }
+            }
+        }
+        /* Run type pre-passes to populate ij_statics */
+        for (int si = 0; si < nstmts; si++) {
+            IcnNode *stmt = proc->children[body_start + si];
+            if (!stmt || stmt->kind != ICN_ASSIGN || stmt->nchildren < 2) continue;
+            IcnNode *lhs = stmt->children[0];
+            IcnNode *rhs = stmt->children[1];
+            if (!lhs || lhs->kind != ICN_VAR) continue;
+            int slot = ij_locals_find(lhs->val.sval);
+            char fld[128];
+            if (slot >= 0) ij_var_field(lhs->val.sval, fld, sizeof fld);
+            else           snprintf(fld, sizeof fld, "icn_gvar_%s", lhs->val.sval);
+            if (ij_expr_is_string(rhs)) {
+                ij_declare_static_str(fld);
+                if (slot >= 0) { char g[80]; snprintf(g,sizeof g,"icn_gvar_%s",lhs->val.sval); ij_declare_static_str(g); }
+                else           { char f2[128]; ij_var_field(lhs->val.sval,f2,sizeof f2); ij_declare_static_str(f2); }
+            }
+        }
+        for (int si = 0; si < nstmts; si++)
+            ij_prepass_types(proc->children[body_start + si]);
+        /* Now re-check: mark proc as string-returning if any return stmt yields String */
+        for (int si = 0; si < nstmts; si++) {
+            IcnNode *stmt = proc->children[body_start + si];
+            if (stmt && stmt->kind == ICN_RETURN &&
+                stmt->nchildren > 0 && ij_expr_is_string(stmt->children[0])) {
+                ij_mark_proc_returns_str(pname);
+                break;
+            }
+        }
     }
 
     /* Pass 2: emit each proc to a buffer */
