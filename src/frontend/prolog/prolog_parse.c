@@ -265,6 +265,28 @@ static Term *parse_primary(Parser *p) {
                 free(args);
                 return t;
             }
+            /* fx 1150 declaration keywords: dynamic, discontiguous, multifile,
+             * module_transparent, meta_predicate, use_module, ensure_loaded.
+             * When followed by a non-dot non-EOF token, treat as prefix fx 1150:
+             * parse the argument at prec 1150 and wrap as compound/1. */
+            if (strcmp(tk.text, "dynamic") == 0 ||
+                    strcmp(tk.text, "discontiguous") == 0 ||
+                    strcmp(tk.text, "multifile") == 0 ||
+                    strcmp(tk.text, "module_transparent") == 0 ||
+                    strcmp(tk.text, "meta_predicate") == 0 ||
+                    strcmp(tk.text, "use_module") == 0 ||
+                    strcmp(tk.text, "ensure_loaded") == 0 ||
+                    strcmp(tk.text, "mode") == 0) {
+                /* Only treat as prefix if next token can start a term */
+                if (pk.kind == TK_ATOM || pk.kind == TK_VAR || pk.kind == TK_INT ||
+                    pk.kind == TK_FLOAT || pk.kind == TK_LPAREN || pk.kind == TK_LBRACKET ||
+                    pk.kind == TK_OP) {
+                    int fid = prolog_atom_intern(tk.text);
+                    Term *arg = parse_term(p, 1150);
+                    Term *args1[1] = { arg };
+                    return term_new_compound(fid, 1, args1);
+                }
+            }
             /* Plain atom */
             int id = prolog_atom_intern(tk.text);
             return term_new_atom(id);
@@ -645,7 +667,7 @@ static PlClause *parse_clause(Parser *p) {
     /* Directive:  :- goal . */
     if (pk.kind == TK_NECK) {
         lexer_next(&p->lx); /* consume :- */
-        Term *goal = parse_term(p, 999);
+        Term *goal = parse_term(p, 1200);
         Token dot = lexer_next(&p->lx);
         if (dot.kind != TK_DOT)
             perror_at(p, dot.line, "expected . after directive");
