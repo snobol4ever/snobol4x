@@ -7651,8 +7651,13 @@ static void pj_linker_emit_plunit_shim(void) {
                 user_defines = 1; break;
             }
         }
-        if (!user_defines)
+        if (!user_defines) {
+            /* Also skip predicates emitted as JVM synthetics to avoid duplicates */
+            if (strcmp(shim_key, "forall/2") == 0 ||
+                strcmp(shim_key, "forall_fails/2") == 0)
+                continue;
             pj_emit_choice(ss->subject);
+        }
     }
     /* Note: shim/pl memory intentionally not freed (static lifetime) */
 }
@@ -8104,8 +8109,17 @@ static void pj_linker_scan(Program *prog) {
             ti->arity       = is_test2 ? 2 : 1;
             ti->opts_expr   = (is_test2 && n_args >= 2) ? cl->children[1] : NULL;
             ti->clause_expr = cl;
+            /* Count prior entries with same suite+name to form a unique bridge name */
+            int dup = 0;
+            for (int di = 0; di < pj_linker_ntest - 1; di++)
+                if (strcmp(pj_linker_tests[di].suite, suite) == 0 &&
+                    strcmp(pj_linker_tests[di].name,  name_arg->sval) == 0)
+                    dup++;
             char raw[128];
-            snprintf(raw, sizeof raw, "%s_%s", suite, name_arg->sval);
+            if (dup == 0)
+                snprintf(raw, sizeof raw, "pjt__%s_%s", suite, name_arg->sval);
+            else
+                snprintf(raw, sizeof raw, "pjt__%s_%s_%d", suite, name_arg->sval, dup);
             pj_safe_name(raw, ti->bridge, sizeof ti->bridge);
         }
     }
