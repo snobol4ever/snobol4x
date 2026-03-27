@@ -3,26 +3,26 @@
 
 # test type conversion and error handling in entab/detab
 
-procedure main ()
-   local s
+procedure main ();
+   local s;
 
-   s := "rutabaga"
-   if entab('1987') ~== "1789" then write ("oops 1")
-   if detab('1492') ~== "1249" then write ("oops 2")
-   if entab("    ","3") ~== "\t\t" then write ("oops 3")
-   if detab("\t\t","3") ~== "    " then write ("oops 4")
-   ferr (103, entab, [])
-   ferr (103, detab, [])
-   ferr (103, entab, [[]])
-   ferr (103, detab, [[]])
-   ferr (101, entab, [s,2,3,&lcase])
-   ferr (101, detab, [s,4,5,&ucase])
-   ferr (210, entab, [s,7,4])
-   ferr (210, entab, [s,6,6])
-   ferr (210, detab, [s,8,5])
-   ferr (210, detab, [s,3,3])
+   s := "rutabaga";
+   if entab('1987') ~== "1789" then write ("oops 1");
+   if detab('1492') ~== "1249" then write ("oops 2");
+   if entab("    ","3") ~== "\t\t" then write ("oops 3");
+   if detab("\t\t","3") ~== "    " then write ("oops 4");
+   ferr (103, entab, []);
+   ferr (103, detab, []);
+   ferr (103, entab, [[]]);
+   ferr (103, detab, [[]]);
+   ferr (101, entab, [s,2,3,&lcase]);
+   ferr (101, detab, [s,4,5,&ucase]);
+   ferr (210, entab, [s,7,4]);
+   ferr (210, entab, [s,6,6]);
+   ferr (210, detab, [s,8,5]);
+   ferr (210, detab, [s,3,3]);
 
-   endetab1()
+   endetab1();
 
 end
 
@@ -30,22 +30,22 @@ end
 
 # ferr(err,func,arglst) -- call func(args), verify that error "err" is produced
 
-procedure ferr (err, func, args)
-   local val, msg
+procedure ferr (err, func, args);
+   local val, msg;
 
-   val := ""
-   every val ||:= image(!args) || ","
-   val := val[1:-1]
-   msg := "oops -- " || image(func) || "(" || val || ") "
-   &error := 1
-   if func ! args
-      then write (msg, "succeeded")
-   else if &error ~= 0
-      then write (msg, "failed but no error")
-   else if &errornumber ~= err
-      then write (msg, "got error ",&errornumber," instead of ",err)
-   &error := 0
-   return
+   val := "";
+   every val ||:= image(!args) || ",";
+   val := val[1:-1];
+   msg := "oops -- " || image(func) || "(" || val || ") ";
+   &error := 1;
+   if func ! args;
+      then write (msg, "succeeded");
+   else if &error ~= 0;
+      then write (msg, "failed but no error");
+   else if &errornumber ~= err;
+      then write (msg, "got error ",&errornumber," instead of ",err);
+   &error := 0;
+   return;
 end
 
 
@@ -70,28 +70,28 @@ end
 #  The result of each entab call is then passed to detab, with results expected
 #  to match the original entab argument (or its detab, if it had any tabs).
 
-procedure endetab1 ()
-   local params, line, s, t
+procedure endetab1 ();
+   local params, line, s, t;
 
-   params := setup ("=")		# start with default tabs (no args)
+   params := setup ("=");		# start with default tabs (no args)
    while line := escape (read ()) do {	# read and preprocess line
       if line[1] == "=" then
-         params := setup (line)		# '=' line sets tab stops (arg list)
+         params := setup (line);		# '=' line sets tab stops (arg list)
       else {
-         s := map (line, "!.", "  ")	# turn "!." characters into spaces
-         params[1] := s
-         t := entab ! params		# run entab
+         s := map (line, "!.", "  ");	# turn "!." characters into spaces
+         params[1] := s;
+         t := entab ! params;		# run entab
          if t ~== interp (line) then {	# check results
-            write ("entab error: ", map(line,"\t\r\n\b\007","!RNBA"))
-            write ("   returned: ", map(t,   "\t\r\n\b\007","!RNBA"))
+            write ("entab error: ", map(line,"\t\r\n\b\007","!RNBA"));
+            write ("   returned: ", map(t,   "\t\r\n\b\007","!RNBA"));
          } else {
             if upto ('\t', s) then	# detab input if it had a tab
-               s := detab ! params
-            params[1] := t
-            t := detab ! params		# detab the result of the entab
+               s := detab ! params;
+            params[1] := t;
+            t := detab ! params;		# detab the result of the entab
             if t ~== s then {		# compare results
-               write ("detab error: ", map(line,"\t\r\n\b\007","!RNBA"))
-               write ("   returned: ", map(t,   "\t\r\n\b\007","!RNBA"))
+               write ("detab error: ", map(line,"\t\r\n\b\007","!RNBA"));
+               write ("   returned: ", map(t,   "\t\r\n\b\007","!RNBA"));
                }
             }
          }
@@ -100,51 +100,51 @@ end
 
 
 
-procedure escape (line)		# interpret escape sequences and trim one '$'
-   local s, c
+procedure escape (line);		# interpret escape sequences and trim one '$'
+   local s, c;
 
    if line[-1] == "$" then
-      line := line[1:-1]
-   s := ""
+      line := line[1:-1];
+   s := "";
    line ? 
       while not pos (0) do {
-         s ||:= tab (upto ('\\') | 0)
+         s ||:= tab (upto ('\\') | 0);
          s ||:= (="\\" & case (c := move(1)) of {
-	    "a": "\007"
-            "b": "\b"
-            "n": "\n"
-            "r": "\r"
-            "t": "\t"
-            default: "\\" || c
-         })
+	    "a": "\007";
+            "b": "\b";
+            "n": "\n";
+            "r": "\r";
+            "t": "\t";
+            default: "\\" || c;
+         });
       }
-   return s
+   return s;
 end
 
 
 
-procedure interp (pattern)	# interpret metacharacters '!.'
-   local s
+procedure interp (pattern);	# interpret metacharacters '!.'
+   local s;
 
-   s := ""
+   s := "";
    pattern ? 
       while not pos (0) do {
-         tab (many ('.'))
-         s ||:= tab (upto ('.') | 0)
+         tab (many ('.'));
+         s ||:= tab (upto ('.') | 0);
       }
-   return map (s, "!", "\t")
+   return map (s, "!", "\t");
 end
 
 
 
-procedure setup (line)		# interpret and report a column spec line
-   local p
+procedure setup (line);		# interpret and report a column spec line
+   local p;
 
-   p := [&null]
+   p := [&null];
    line ? while tab (upto (&digits)) do
-      put (p, integer (tab (many (&digits))))
-   writes ("testing entab/detab(s")
-   every writes (",", \!p)
-   write (")")
-   return p
+      put (p, integer (tab (many (&digits))));
+   writes ("testing entab/detab(s");
+   every writes (",", \!p);
+   write (")");
+   return p;
 end

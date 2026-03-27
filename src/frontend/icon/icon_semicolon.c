@@ -230,7 +230,6 @@ static int triggers_semi(SemiTkKind k) {
         case TK_CSET:
         case TK_RPAREN:
         case TK_RBRACK:
-        case TK_RBRACE:
         case TK_KW_RETURN:
         case TK_KW_SUSPEND:
         case TK_KW_FAIL:

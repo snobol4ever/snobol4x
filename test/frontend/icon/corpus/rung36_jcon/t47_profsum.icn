@@ -11,53 +11,53 @@
 
 
 
-record method(name, ncalls, tself, tcalled, tlocal)
+record method(name, ncalls, tself, tcalled, tlocal);
 
-global ptab
+global ptab;
 
 
 
-procedure main(args)
-   local f, line, p, l, tlocal, ttotal, pctlocal, pcttotal, sorttotal
+procedure main(args);
+   local f, line, p, l, tlocal, ttotal, pctlocal, pcttotal, sorttotal;
 
    if args[1] == "-t" then
-      sorttotal := get(args)
+      sorttotal := get(args);
 
    if *args > 0 then
-      f := open(args[1]) | stop(&progname, ": can't open ", args[1])
+      f := open(args[1]) | stop(&progname, ": can't open ", args[1]);
    else
-      f := &input
+      f := &input;
 
    while line := read(f) do line ? {
       if ="count" then
-          next
+          next;
       if not any(&digits) then
-          break
-      accumulate()
+          break;
+      accumulate();
       }
 
-   l := []
-   ttotal := 0
+   l := [];
+   ttotal := 0;
    every p := !ptab do {
-      p.tlocal := p.tself - p.tcalled
+      p.tlocal := p.tself - p.tcalled;
       if p.tlocal > 0 then
-         ttotal +:= p.tlocal
-      put(l, p)
+         ttotal +:= p.tlocal;
+      put(l, p);
    }
 
    if \sorttotal then
-      l := sortf(l, 3)
+      l := sortf(l, 3);
    else
-      l := sortf(l, 5)
+      l := sortf(l, 5);
 
-   write("  calls  totaltime   inmethod  method")
+   write("  calls  totaltime   inmethod  method");
 
    while p := pull(l) do {
       if p.tlocal > 0 then
-	 pctlocal := (100 * p.tlocal + ttotal / 2) / ttotal
+	 pctlocal := (100 * p.tlocal + ttotal / 2) / ttotal;
       else
-	 pctlocal := (100 * p.tlocal - ttotal / 2) / ttotal
-      pcttotal := ((100 * p.tself) + (ttotal / 2)) / ttotal
+	 pctlocal := (100 * p.tlocal - ttotal / 2) / ttotal;
+      pcttotal := ((100 * p.tself) + (ttotal / 2)) / ttotal;
       write(
 	 pad(p.ncalls, 7),
 	 pad(p.tself, 7), " ",
@@ -72,51 +72,51 @@ end
 
 
 
-procedure lookup(s)
-   local p
-   initial ptab := table()
+procedure lookup(s);
+   local p;
+   initial ptab := table();
 
    if p := \ptab[s] then
-      return p
+      return p;
    else
-      return ptab[s] := method(s, 0, 0, 0)
+      return ptab[s] := method(s, 0, 0, 0);
 end
 
 
 
-procedure accumulate()
-   local count, caller, callee, time, p, q
+procedure accumulate();
+   local count, caller, callee, time, p, q;
 
-   count := integer(tab(many(&digits)))
-   tab(many(' '))
-   callee := tab(upto(' '))
-   tab(many(' '))
-   caller := tab(upto(' '))
+   count := integer(tab(many(&digits)));
+   tab(many(' '));
+   callee := tab(upto(' '));
+   tab(many(' '));
+   caller := tab(upto(' '));
    if caller ||:= =" caller" then
-      caller ||:= tab(upto(' '))
-   tab(many(' '))
-   time := integer(tab(many(&digits)))
+      caller ||:= tab(upto(' '));
+   tab(many(' '));
+   time := integer(tab(many(&digits)));
 
-   caller := fixname(caller)
-   callee := fixname(callee)
+   caller := fixname(caller);
+   callee := fixname(callee);
 
-   p := lookup(callee)
-   p.tself +:= time
-   p.ncalls +:= count
+   p := lookup(callee);
+   p.tself +:= time;
+   p.ncalls +:= count;
 
-   q := lookup(caller)
-   q.tcalled +:= time
+   q := lookup(caller);
+   q.tcalled +:= time;
 
-   return
+   return;
 end
 
 
 
-procedure fixname(s)
+procedure fixname(s);
    s ? {
       # strip "meaningless" prefix
-      ="jcon/" | (="java/" & tab(upto('/') + 1)) | (="p_l$" & tab(upto('$')))
-      return tab(0)
+      ="jcon/" | (="java/" & tab(upto('/') + 1)) | (="p_l$" & tab(upto('$')));
+      return tab(0);
    }
 end
 
@@ -124,9 +124,9 @@ end
 
 #  pad(s, n) -- pad string to length n, never truncating
 
-procedure pad(s, n)
+procedure pad(s, n);
    if *s < n then
-      return right(s, n)
+      return right(s, n);
    else
-      return s
+      return s;
 end

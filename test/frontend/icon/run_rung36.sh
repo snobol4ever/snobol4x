@@ -1,13 +1,11 @@
 #!/bin/bash
 # run_rung36.sh — rung36_jcon JCON oracle corpus runner
 # 75 tests from JCON test suite, ordered easy→hard.
-# Uses icon_semi to convert standard Icon (newline-terminated) to
-# semicolon-explicit form before compilation.
+# Corpus .icn files are pre-converted to semicolon-explicit form.
 #
-# Usage: bash run_rung36.sh [/path/to/icon_driver] [/path/to/icon_semi]
+# Usage: bash run_rung36.sh [/path/to/icon_driver]
 
 DRIVER="${1:-/tmp/icon_driver}"
-SEMI="${2:-/tmp/icon_semi}"
 JASMIN="$(dirname "$0")/../../../src/backend/jvm/jasmin.jar"
 CORPUS="$(dirname "$0")/corpus/rung36_jcon"
 PASS=0; FAIL=0; XFAIL=0
@@ -23,11 +21,7 @@ for icn in "$CORPUS"/t*.icn; do
     continue
   fi
 
-  # Convert to semicolon-explicit form
-  semi_f="/tmp/rung36_$(basename ${icn%.icn})_semi.icn"
-  "$SEMI" "$icn" > "$semi_f" 2>/dev/null
-
-  "$DRIVER" -jvm "$semi_f" -o /tmp/t36.j 2>/dev/null
+  "$DRIVER" -jvm "$icn" -o /tmp/t36.j 2>/dev/null
   java -jar "$JASMIN" /tmp/t36.j -d /tmp/ 2>/dev/null
   cls=$(grep -m1 '\.class' /tmp/t36.j 2>/dev/null | awk '{print $NF}')
 
