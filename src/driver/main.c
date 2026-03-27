@@ -25,6 +25,7 @@ void jvm_emit(Program *prog, FILE *f, const char *filename);
 void net_emit(Program *prog, FILE *f, const char *filename);
 void pl_emit(Program *prog, FILE *f);   /* defined in prolog_emit.c */
 void prolog_emit_jvm(Program *prog, FILE *f, const char *filename); /* prolog_emit_jvm.c */
+void pj_linker_prescan(PlProgram *pl_prog);                         /* prolog_emit_jvm.c */
 
 static int asm_mode = 0;
 static int jvm_mode = 0;
@@ -141,6 +142,7 @@ int main(int argc, char *argv[]) {
             return 1;
         }
         prog = prolog_lower(pl_prog);
+        if (jvm_mode) pj_linker_prescan(pl_prog);  /* must precede prolog_program_free */
         prolog_program_free(pl_prog);
         if (!prog) { return 1; }
         /* Route: -pl -asm  -> x64 ASM backend

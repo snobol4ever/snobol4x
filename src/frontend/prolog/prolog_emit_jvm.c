@@ -7749,6 +7749,80 @@ static void pj_linker_emit_dynamic_stubs(void) {
     pj_linker_emit_db_stub("pj_test",  4);
 }
 
+/* -------------------------------------------------------------------------
+ * pj_linker_prescan — called from main.c BEFORE prolog_program_free(),
+ * while PlProgram source order is still intact.
+ *
+ * Walks the flat PlClause list in source order, tracking begin_tests /
+ * end_tests directives, and records which suite each test/N clause belongs
+ * to by (functor_key, occurrence_index).
+ *
+ * Result is stored in pj_prescan_map[], consumed by pj_linker_scan pass-2.
+ * ------------------------------------------------------------------------- */
+#include "prolog_atom.h"
+#include "term.h"
+
+#define PJ_PRESCAN_MAX 512
+typedef struct {
+    char key[64];   /* "test/1" or "test/2" */
+    int  idx;       /* 0-based occurrence within that key */
+    char suite[64]; /* suite name from enclosing begin_tests */
+} PjPrescanEntry;
+static PjPrescanEntry pj_prescan_map[PJ_PRESCAN_MAX];
+static int            pj_prescan_n = 0;
+
+void pj_linker_prescan(PlProgram *pl_prog) {
+    pj_prescan_n = 0;
+    char current_suite[64] = "";
+    /* per-key occurrence counters */
+    int cnt1 = 0, cnt2 = 0;  /* test/1, test/2 */
+
+    for (PlClause *cl = pl_prog->head; cl; cl = cl->next) {
+        if (!cl->head) {
+            /* directive — check for begin_tests/end_tests */
+            if (cl->nbody > 0) {
+                Term *d = cl->body[0];
+                if (d && d->tag == TT_COMPOUND && d->compound.arity >= 1) {
+                    const char *fn = prolog_atom_name(d->compound.functor);
+                    Term *arg0 = d->compound.args[0];
+                    if (fn && strcmp(fn, "begin_tests") == 0 && arg0) {
+                        const char *sname = NULL;
+                        if (arg0->tag == TT_ATOM)
+                            sname = prolog_atom_name(arg0->atom_id);
+                        else if (arg0->tag == TT_COMPOUND)
+                            sname = prolog_atom_name(arg0->compound.functor);
+                        if (sname) strncpy(current_suite, sname, 63);
+                    } else if (fn && strcmp(fn, "end_tests") == 0) {
+                        current_suite[0] = '\0';
+                    }
+                }
+            }
+            continue;
+        }
+        /* clause — record if it's test/1 or test/2 */
+        if (!cl->head) continue;
+        if (cl->head->tag != TT_COMPOUND && cl->head->tag != TT_ATOM) continue;
+        const char *fn = NULL;
+        int arity = 0;
+        if (cl->head->tag == TT_COMPOUND) {
+            fn    = prolog_atom_name(cl->head->compound.functor);
+            arity = cl->head->compound.arity;
+        } else {
+            fn    = prolog_atom_name(cl->head->atom_id);
+            arity = 0;
+        }
+        if (!fn) continue;
+        int is1 = (strcmp(fn,"test") == 0 && arity == 1);
+        int is2 = (strcmp(fn,"test") == 0 && arity == 2);
+        if (!is1 && !is2) continue;
+        if (pj_prescan_n >= PJ_PRESCAN_MAX) continue;
+        PjPrescanEntry *e = &pj_prescan_map[pj_prescan_n++];
+        snprintf(e->key, sizeof e->key, "test/%d", arity);
+        e->idx = is1 ? cnt1++ : cnt2++;
+        strncpy(e->suite, current_suite[0] ? current_suite : "unknown", 63);
+    }
+}
+
 /* Forward declarations — pj_linker_emit_bridge needs the test array
  * but the canonical definitions follow below. */
 #ifndef PJ_LINKER_MAX_TESTS
@@ -7990,8 +8064,10 @@ static void pj_linker_scan(Program *prog) {
     if (pj_linker_nsuite == 0) return;
 
     /* Pass 2: collect test/1 and test/2 clause heads.
-     * Assign to suite[0] — correct for single-suite files (universal case). */
-    const char *suite = pj_linker_suites[0];
+     * Suite assignment: use pj_prescan_map[] (populated by pj_linker_prescan
+     * before PlProgram was freed) to recover source-order suite context.
+     * Falls back to suite[0] if prescan map is empty (single-suite files). */
+    int cnt1 = 0, cnt2 = 0;  /* per-key occurrence counters, match prescan order */
     for (STMT_t *s = prog->head; s; s = s->next) {
         if (!s->subject || s->subject->kind != E_CHOICE) continue;
         EXPR_t *g = s->subject;
@@ -8008,6 +8084,20 @@ static void pj_linker_scan(Program *prog) {
             if (n_args < 1) continue;
             EXPR_t *name_arg = cl->children[0];
             if (!name_arg || !name_arg->sval) continue;
+
+            /* Determine suite: consult prescan map by key+occurrence index */
+            int occ = is_test1 ? cnt1++ : cnt2++;
+            const char *suite = pj_linker_nsuite > 0 ? pj_linker_suites[0] : "unknown";
+            if (pj_prescan_n > 0) {
+                for (int pi = 0; pi < pj_prescan_n; pi++) {
+                    if (strcmp(pj_prescan_map[pi].key, key) == 0 &&
+                        pj_prescan_map[pi].idx == occ) {
+                        suite = pj_prescan_map[pi].suite;
+                        break;
+                    }
+                }
+            }
+
             PjTestInfo *ti = &pj_linker_tests[pj_linker_ntest++];
             strncpy(ti->suite, suite, 63);
             strncpy(ti->name,  name_arg->sval, 63);
