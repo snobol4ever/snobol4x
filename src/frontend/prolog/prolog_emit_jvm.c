@@ -6447,11 +6447,110 @@ static void pj_emit_choice(EXPR_t *choice) {
     }
     J("    iload %d\n", cs_local);
     J("    istore %d\n", init_cs_local);   /* will be refined per clause below */
+    /* PJ-81: method splitting.
+     * When nclauses > PJ_SPLIT_THRESHOLD the combined clause bodies can exceed
+     * the JVM 16-bit branch-offset limit (~32 KB of bytecode per method).
+     * Fix: emit each clause as its own static sub-method
+     *   p_fn_arity__cN(args..., I init_cs) → Object[]
+     * The main dispatcher calls invokestatic for the matched clause and returns
+     * the result directly.  Branch distances in the dispatcher stay tiny.
+     *
+     * Sub-method signature: same args as parent + I (init_cs), no outer cs.
+     * Returns: null = clause failed (→ try next), Object[] = gamma/cutgamma result.
+     */
+#define PJ_SPLIT_THRESHOLD 16
+    int do_split = (nclauses > PJ_SPLIT_THRESHOLD);
+
+    if (!do_split) {
     /* Linear scan from last to first */
     for (int ci = nclauses - 1; ci >= 0; ci--)
         J("    iload %d ; cs >= %d? → clause%d\n    ldc %d\n    if_icmpge p_%s_%d_clause%d\n",
           cs_local, base[ci], ci, base[ci], safe_fn, arity, ci);
     J("    goto p_%s_%d_omega\n", safe_fn, arity);
+    }
+
+    /* PJ-81 split threshold */
+    /* When nclauses > PJ_SPLIT_THRESHOLD the combined clause bodies can exceed
+     * the JVM 16-bit branch-offset limit (~32 KB of bytecode per method).
+     * Fix: emit each clause as its own static sub-method
+     *   p_fn_arity__cN(args..., I init_cs) → Object[]
+     * The main dispatcher calls invokestatic for the matched clause and returns
+     * the result directly.  Branch distances in the dispatcher stay tiny.
+     *
+     * Sub-method signature: same args as parent + I (init_cs), no outer cs.
+     * Returns: null = clause failed (→ try next), Object[] = gamma/cutgamma result.
+     */
+#define PJ_SPLIT_THRESHOLD 16
+    int do_split = (nclauses > PJ_SPLIT_THRESHOLD);
+
+    if (do_split) {
+        /* ---- SPLIT PATH: dispatcher calls per-clause sub-methods ---- */
+
+        /* Dispatcher: linear scan, invokestatic to sub-method, areturn result.
+         * On null return try next clause. */
+        for (int ci = nclauses - 1; ci >= 0; ci--)
+            J("    iload %d ; cs >= %d? → clause%d\n    ldc %d\n    if_icmpge p_%s_%d_clause%d\n",
+              cs_local, base[ci], ci, base[ci], safe_fn, arity, ci);
+        J("    goto p_%s_%d_omega\n", safe_fn, arity);
+
+        /* Emit per-clause dispatch stubs in the main method */
+        for (int ci = 0; ci < nclauses; ci++) {
+            EXPR_t *clause = choice->children[ci];
+            if (!clause || clause->kind != E_CLAUSE) continue;
+
+            /* label */
+            J("p_%s_%d_clause%d:\n", safe_fn, arity, ci);
+
+            /* compute init_cs = max(0, cs - base[ci]) */
+            J("    iload %d\n", cs_local);
+            J("    ldc %d\n", base[ci]);
+            J("    isub\n");
+            J("    dup\n");
+            {
+                char lbl_clamp[128];
+                snprintf(lbl_clamp, sizeof lbl_clamp, "p_%s_%d_dc_clamp_%d", safe_fn, arity, ci);
+                J("    ifge %s\n", lbl_clamp);
+                J("    pop\n");
+                J("    iconst_0\n");
+                J("%s:\n", lbl_clamp);
+            }
+            /* call sub-method: args 0..arity-1 then init_cs on stack */
+            for (int ai = 0; ai < arity; ai++)
+                J("    aload %d\n", ai);
+            /* init_cs already on stack from above — but we stored nothing yet;
+             * we need to pass it.  Use istore/iload via a spare local (init_cs_local). */
+            J("    istore %d\n", init_cs_local);
+            for (int ai = 0; ai < arity; ai++)
+                J("    aload %d\n", ai);
+            J("    iload %d\n", init_cs_local);
+            /* invokestatic p_fn_arity__cN */
+            J("    invokestatic %s/p_%s_%d__c%d(", pj_classname, safe_fn, arity, ci);
+            for (int ai = 0; ai < arity; ai++) J("[Ljava/lang/Object;");
+            J("I)[Ljava/lang/Object;\n");
+            /* null → next clause; non-null → return to caller */
+            {
+                char lbl_null[128];
+                snprintf(lbl_null, sizeof lbl_null, "p_%s_%d_split_null_%d", safe_fn, arity, ci);
+                char next_lbl[128];
+                if (ci + 1 < nclauses)
+                    snprintf(next_lbl, sizeof next_lbl, "p_%s_%d_clause%d", safe_fn, arity, ci + 1);
+                else
+                    snprintf(next_lbl, sizeof next_lbl, "p_%s_%d_omega", safe_fn, arity);
+                J("    dup\n");
+                J("    ifnull %s\n", lbl_null);
+                J("    areturn\n");
+                J("%s:\n", lbl_null);
+                J("    pop\n");
+                J("    goto %s\n", next_lbl);
+            }
+        }
+
+        /* Close the main dispatcher method before sub-methods */
+        J("p_%s_%d_omega:\n", safe_fn, arity);
+        /* (dynamic DB walker follows below — we fall through to it) */
+
+    } else {
+    /* ---- INLINE PATH (original): emit all clause bodies in main method ---- */
 
     /* emit each clause block */
     for (int ci = 0; ci < nclauses; ci++) {
@@ -6705,9 +6804,11 @@ static void pj_emit_choice(EXPR_t *choice) {
 
         free(var_locals);
     }
+    } /* end inline else */
 
     /* ω port — first try dynamic DB, then truly fail */
-    J("p_%s_%d_omega:\n", safe_fn, arity);
+    if (!do_split)
+        J("p_%s_%d_omega:\n", safe_fn, arity);
 
     /* Dynamic DB walker: key = "name/arity", cs encodes db index as base[nclauses]+idx */
     {
@@ -6826,6 +6927,219 @@ static void pj_emit_choice(EXPR_t *choice) {
         while ((_hc = fgetc(pj_helper_buf)) != EOF) fputc(_hc, pj_out);
         fclose(pj_helper_buf);
         pj_helper_buf = NULL;
+    }
+
+    /* PJ-81: emit per-clause sub-methods for split predicates */
+    if (do_split) {
+        for (int ci = 0; ci < nclauses; ci++) {
+            EXPR_t *clause = choice->children[ci];
+            if (!clause || clause->kind != E_CLAUSE) continue;
+
+            int n_vars = (int)clause->ival;
+            int n_args = (int)clause->dval;
+
+            /* Sub-method signature: p_fn_arity__cN(args..., I init_cs) → Object[] */
+            J("; --- split clause %d of %s/%d ---\n", ci, name_only, arity);
+            J(".method static p_%s_%d__c%d(", safe_fn, arity, ci);
+            for (int ai = 0; ai < arity; ai++) J("[Ljava/lang/Object;");
+            J("I)[Ljava/lang/Object;\n");
+
+            /* locals layout in sub-method:
+             *   0..arity-1  : args (same as parent)
+             *   arity       : init_cs  (was arity+2 in parent; here it's the last param)
+             *   arity+1     : trail_mark
+             *   arity+2     : sub_cs_out
+             *   arity+3..   : vars + ucall temps
+             */
+            int sm_init_cs   = arity;       /* parameter */
+            int sm_trail     = arity + 1;
+            int sm_subcs_out = arity + 2;
+            int sm_vars_base = arity + 3;
+
+            /* recompute max_ucalls/stack for this clause only */
+            int sm_max_vars  = n_vars;
+            int sm_max_uc    = 0, sm_max_neq = 0, sm_max_disj = 0, sm_max_stack = 16;
+            {
+                int n_args_ci = (int)clause->dval;
+                int nb = clause->nchildren - n_args_ci; if (nb < 0) nb = 0;
+                sm_max_uc   = pj_count_ucalls(clause->children + n_args_ci, nb);
+                sm_max_neq  = pj_count_neq(clause->children + n_args_ci, nb);
+                sm_max_disj = pj_count_disj_locals(clause->children + n_args_ci, nb);
+                sm_max_stack = pj_clause_stack_needed(clause->children + n_args_ci, nb);
+                for (int hi = 0; hi < n_args_ci; hi++) {
+                    int d = pj_term_stack_depth(clause->children[hi]) + 4;
+                    if (d > sm_max_stack) sm_max_stack = d;
+                }
+                if (sm_max_stack < 16) sm_max_stack = 16;
+            }
+            int sm_locals = sm_vars_base + sm_max_vars + 5*sm_max_uc + 2*sm_max_neq + sm_max_disj + 16 + 4;
+            J("    .limit stack %d\n", sm_max_stack);
+            J("    .limit locals %d\n", sm_locals);
+
+            /* var_locals for this sub-method */
+            int *var_locals = calloc(n_vars + 1, sizeof(int));
+            for (int vi = 0; vi < n_vars; vi++)
+                var_locals[vi] = sm_vars_base + vi;
+
+            /* omega label = return null */
+            char sm_omega[128];
+            snprintf(sm_omega, sizeof sm_omega, "p_%s_%d__c%d_omega", safe_fn, arity, ci);
+
+            /* trail mark */
+            J("    invokestatic %s/pj_trail_mark()I\n", pj_classname);
+            J("    istore %d\n", sm_trail);
+
+            /* init sub_cs_out = 0 */
+            J("    iconst_0\n");
+            J("    istore %d\n", sm_subcs_out);
+
+            /* allocate var cells */
+            {
+                int *jaf = calloc(n_vars + 1, sizeof(int));
+                for (int vi = 0; vi < n_vars; vi++) jaf[vi] = -1;
+                for (int ai2 = 0; ai2 < n_args && ai2 < clause->nchildren; ai2++) {
+                    EXPR_t *ht = clause->children[ai2];
+                    if (ht && ht->kind == E_VART && ht->ival >= 0 && ht->ival < n_vars)
+                        if (jaf[ht->ival] < 0) jaf[ht->ival] = ai2;
+                }
+                for (int vi = 0; vi < n_vars; vi++) {
+                    if (jaf[vi] >= 0) {
+                        J("    aload %d\n", jaf[vi]);
+                        J("    astore %d\n", var_locals[vi]);
+                    } else {
+                        J("    invokestatic %s/pj_term_var()[Ljava/lang/Object;\n", pj_classname);
+                        J("    astore %d\n", var_locals[vi]);
+                    }
+                }
+                free(jaf);
+            }
+
+            /* head unification */
+            {
+                char sm_alphafail[128];
+                snprintf(sm_alphafail, sizeof sm_alphafail, "p_%s_%d__c%d_af", safe_fn, arity, ci);
+                int *seen_at = calloc(n_vars + 1, sizeof(int));
+                for (int vi = 0; vi < n_vars; vi++) seen_at[vi] = -1;
+                for (int ai2 = 0; ai2 < n_args && ai2 < clause->nchildren; ai2++) {
+                    EXPR_t *ht = clause->children[ai2];
+                    if (ht && ht->kind == E_VART && ht->ival >= 0 && ht->ival < n_vars)
+                        if (seen_at[ht->ival] < 0) seen_at[ht->ival] = ai2;
+                }
+                for (int ai2 = 0; ai2 < n_args && ai2 < clause->nchildren; ai2++) {
+                    EXPR_t *ht = clause->children[ai2];
+                    if (!ht) continue;
+                    if (ht->kind == E_VART) {
+                        int slot = ht->ival;
+                        if (slot < 0 || slot >= n_vars) continue;
+                        if (seen_at[slot] == ai2) continue;
+                        J("    aload %d\n", ai2);
+                        J("    aload %d\n", var_locals[slot]);
+                        J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+                        J("    ifeq %s\n", sm_alphafail);
+                        continue;
+                    }
+                    J("    aload %d\n", ai2);
+                    pj_emit_term(ht, var_locals, n_vars);
+                    J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+                    J("    ifeq %s\n", sm_alphafail);
+                }
+                free(seen_at);
+
+                J("    goto p_%s_%d__c%d_beta\n", safe_fn, arity, ci);
+                J("%s:\n", sm_alphafail);
+                J("    iload %d\n", sm_trail);
+                J("    invokestatic %s/pj_trail_unwind(I)V\n", pj_classname);
+                J("    aconst_null\n");
+                J("    areturn\n");
+            }
+
+            /* retry_head (alpha) label */
+            J("p_%s_%d__c%d_alpha:\n", safe_fn, arity, ci);
+            J("    iload %d\n", sm_trail);
+            J("    invokestatic %s/pj_trail_unwind(I)V\n", pj_classname);
+            {
+                int *jaf = calloc(n_vars + 1, sizeof(int));
+                for (int vi = 0; vi < n_vars; vi++) jaf[vi] = -1;
+                for (int ai2 = 0; ai2 < n_args && ai2 < clause->nchildren; ai2++) {
+                    EXPR_t *ht = clause->children[ai2];
+                    if (ht && ht->kind == E_VART && ht->ival >= 0 && ht->ival < n_vars)
+                        jaf[ht->ival] = ai2;
+                }
+                for (int vi = 0; vi < n_vars; vi++) {
+                    if (jaf[vi] >= 0) { J("    aload %d\n", jaf[vi]); J("    astore %d\n", var_locals[vi]); }
+                    else { J("    invokestatic %s/pj_term_var()[Ljava/lang/Object;\n", pj_classname); J("    astore %d\n", var_locals[vi]); }
+                }
+                free(jaf);
+            }
+            for (int ai2 = 0; ai2 < n_args && ai2 < clause->nchildren; ai2++) {
+                EXPR_t *ht = clause->children[ai2];
+                if (!ht || ht->kind == E_VART) continue;
+                J("    aload %d\n", ai2);
+                pj_emit_term(ht, var_locals, n_vars);
+                J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+                J("    ifeq %s\n", sm_omega);
+            }
+
+            /* beta label + body */
+            J("p_%s_%d__c%d_beta:\n", safe_fn, arity, ci);
+            {
+                int nbody = clause->nchildren - n_args;
+                EXPR_t **body_goals = clause->children + n_args;
+                char γ_lbl[128], cutγ_lbl[128], bodyfail_lbl[128];
+                snprintf(γ_lbl,        sizeof γ_lbl,        "p_%s_%d__c%d_gamma",    safe_fn, arity, ci);
+                snprintf(cutγ_lbl,     sizeof cutγ_lbl,     "p_%s_%d__c%d_cutgamma", safe_fn, arity, ci);
+                snprintf(bodyfail_lbl, sizeof bodyfail_lbl,  "p_%s_%d__c%d_bodyfail", safe_fn, arity, ci);
+                int next_local_sm = sm_vars_base + n_vars;
+                /* lbl_outer_ω = sm_omega (null return = clause failed) */
+                pj_emit_body(body_goals, nbody, γ_lbl, bodyfail_lbl, sm_omega,
+                             sm_trail, var_locals, n_vars, &next_local_sm,
+                             sm_init_cs, sm_subcs_out,
+                             base[nclauses], sm_init_cs, sm_omega, cutγ_lbl);
+                J("%s:\n", bodyfail_lbl);
+                J("    iload %d\n", sm_trail);
+                J("    invokestatic %s/pj_trail_unwind(I)V\n", pj_classname);
+                J("    aconst_null\n");
+                J("    areturn\n");
+            }
+
+            /* gamma port */
+            J("p_%s_%d__c%d_gamma:\n", safe_fn, arity, ci);
+            J("    iconst_1\n");
+            J("    anewarray java/lang/Object\n");
+            J("    dup\n");
+            J("    iconst_0\n");
+            if (nclauses == 1 && last_has_ucall) {
+                J("    iload %d\n", sm_subcs_out);
+            } else {
+                J("    ldc %d\n", base[ci]);
+                J("    iload %d\n", sm_init_cs);
+                J("    iadd\n");
+                J("    iconst_1\n");
+                J("    iadd\n");
+            }
+            J("    invokestatic java/lang/Integer/valueOf(I)Ljava/lang/Integer;\n");
+            J("    aastore\n");
+            J("    areturn\n");
+
+            /* cutgamma port */
+            J("p_%s_%d__c%d_cutgamma:\n", safe_fn, arity, ci);
+            J("    iconst_1\n");
+            J("    anewarray java/lang/Object\n");
+            J("    dup\n");
+            J("    iconst_0\n");
+            J("    ldc 2147483647\n");
+            J("    invokestatic java/lang/Integer/valueOf(I)Ljava/lang/Integer;\n");
+            J("    aastore\n");
+            J("    areturn\n");
+
+            /* omega: null return */
+            J("%s:\n", sm_omega);
+            J("    aconst_null\n");
+            J("    areturn\n");
+
+            J(".end method\n\n");
+            free(var_locals);
+        }
     }
 }
 
