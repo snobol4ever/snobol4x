@@ -26,6 +26,7 @@
 #include "prolog_lower.h"
 #include "prolog_atom.h"
 #include "term.h"
+#include "sno2c.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -328,17 +329,51 @@ Program *prolog_lower(PlProgram *pl_prog) {
         expr_add_child(choices[found], ec);
     }
 
-    /* ---- Pass 2: emit directives as plain E_FNC STMT_t nodes */
+    /* ---- Pass 2: handle directives.
+     * :- export(name/arity) or :- export(name) → prog->exports
+     * All other directives → plain E_FNC STMT_t nodes. */
     for (PlClause *cl = pl_prog->head; cl; cl = cl->next) {
         if (!cl->head && cl->nbody > 0) {
-            /* directive: :- goal */
-            STMT_t *s = stmt_new();
-            s->subject = lower_term(cl->body[0]);
-            s->lineno  = cl->lineno;
-            if (!prog->head) prog->head = s;
-            else             prog->tail->next = s;
-            prog->tail = s;
-            prog->nstmts++;
+            Term *goal = cl->body[0];
+            Term *dg   = term_deref(goal);
+            /* Check for :- export(Name/Arity) or :- export(Name) */
+            int is_export = 0;
+            if (dg && dg->tag == TT_COMPOUND
+                && dg->compound.arity == 1) {
+                int fn = dg->compound.functor;
+                const char *fname = prolog_atom_name(fn);
+                if (fname && strcasecmp(fname, "export") == 0) {
+                    is_export = 1;
+                    Term *arg = term_deref(dg->compound.args[0]);
+                    /* arg is Name/Arity compound or bare atom */
+                    const char *ename = NULL;
+                    if (arg && arg->tag == TT_COMPOUND
+                        && arg->compound.arity == 2) {
+                        /* Name/Arity — extract Name */
+                        Term *n = term_deref(arg->compound.args[0]);
+                        if (n && n->tag == TT_ATOM)
+                            ename = prolog_atom_name(n->atom_id);
+                    } else if (arg && arg->tag == TT_ATOM) {
+                        ename = prolog_atom_name(arg->atom_id);
+                    }
+                    if (ename) {
+                        ExportEntry *e = calloc(1, sizeof *e);
+                        e->name = strdup(ename);
+                        e->next = prog->exports;
+                        prog->exports = e;
+                    }
+                }
+            }
+            if (!is_export) {
+                /* Other directive → plain stmt */
+                STMT_t *s = stmt_new();
+                s->subject = lower_term(goal);
+                s->lineno  = cl->lineno;
+                if (!prog->head) prog->head = s;
+                else             prog->tail->next = s;
+                prog->tail = s;
+                prog->nstmts++;
+            }
         }
     }
 

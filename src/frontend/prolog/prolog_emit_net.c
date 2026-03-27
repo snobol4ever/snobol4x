@@ -93,6 +93,13 @@ static void pn_set_classname(const char *filename) {
  * Export predicate
  * ----------------------------------------------------------------------- */
 
+static int pn_is_exported(const char *name) {
+    for (ExportEntry *e = pn_prog->exports; e; e = e->next)
+        if (strcasecmp(e->name, name) == 0) return 1;
+    return 0;
+}
+
+
 /* -----------------------------------------------------------------------
  * Helpers: escape a string for CIL ldstr
  * ----------------------------------------------------------------------- */
@@ -305,8 +312,9 @@ static void pn_emit_predicate(STMT_t *stmt) {
     method[sizeof method - 1] = '\0';
     for (char *p = method; *p; p++) *p = (char)toupper((unsigned char)*p);
 
-    /* All predicates public — Prolog :- export directive parsing in future sprint */
-    const char *vis = "public";
+    /* public if :- export declared, private otherwise */
+    const char *vis = (pn_is_exported(functor) || pn_is_exported(method))
+                      ? "public" : "private";
     const char *ACT = "class [mscorlib]System.Action";
 
     /* Emit one clause method per clause */
