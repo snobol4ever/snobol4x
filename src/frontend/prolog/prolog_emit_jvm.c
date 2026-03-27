@@ -3155,7 +3155,8 @@ static int pj_arith_is_float(EXPR_t *e) {
             strcmp(fn,"asin")==0 || strcmp(fn,"acos")==0 ||
             strcmp(fn,"sinh")==0 || strcmp(fn,"cosh")==0 || strcmp(fn,"tanh")==0 ||
             strcmp(fn,"asinh")==0 || strcmp(fn,"acosh")==0 || strcmp(fn,"atanh")==0 ||
-            strcmp(fn,"pi")==0   || strcmp(fn,"e")==0)
+            strcmp(fn,"pi")==0   || strcmp(fn,"e")==0 ||
+            strcmp(fn,"nan")==0  || strcmp(fn,"inf")==0 || strcmp(fn,"infinity")==0)
             return 1;
         /* float_fractional_part: float if arg is float, integer (0) if arg is integer */
         if (strcmp(fn,"float_fractional_part")==0)
@@ -3473,12 +3474,14 @@ static void pj_emit_arith(EXPR_t *e, int *var_locals, int n_vars) {
             if (strcmp(e->sval, ">>") == 0 && e->nchildren == 2) {
                 pj_emit_arith(e->children[0], var_locals, n_vars);
                 pj_emit_arith(e->children[1], var_locals, n_vars);
-                JI("l2i", ""); JI("lshr", ""); break;
+                J("    invokestatic %s/pj_shr(JJ)J\n", pj_classname);
+                break;
             }
             if (strcmp(e->sval, "<<") == 0 && e->nchildren == 2) {
                 pj_emit_arith(e->children[0], var_locals, n_vars);
                 pj_emit_arith(e->children[1], var_locals, n_vars);
-                JI("l2i", ""); JI("lshl", ""); break;
+                J("    invokestatic %s/pj_shl(JJ)J\n", pj_classname);
+                break;
             }
             if (strcmp(e->sval, "\\") == 0 && e->nchildren == 1) {
                 pj_emit_arith(e->children[0], var_locals, n_vars);
@@ -3835,6 +3838,14 @@ static void pj_emit_arith(EXPR_t *e, int *var_locals, int n_vars) {
             if (strcmp(e->sval, "e") == 0) {
                 pj_emit_dbl_const(2.718281828459045);
                 JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                break;
+            }
+            if (strcmp(e->sval, "nan") == 0) {
+                J("    ldc2_w 9221120237041090560\n"); /* Double.NaN bits */
+                break;
+            }
+            if (strcmp(e->sval, "inf") == 0 || strcmp(e->sval, "infinity") == 0) {
+                J("    ldc2_w 9218868437227405312\n"); /* Double.POSITIVE_INFINITY bits */
                 break;
             }
         }
@@ -9171,6 +9182,25 @@ void prolog_emit_jvm(Program *prog, FILE *out, const char *filename) {
 
     /* Always emit pj_gcd helper (used by gcd/2 in is/2) */
     pj_emit_gcd_helper();
+
+    /* pj_shr(J val, J count) -> J: arithmetic right shift with saturation (count>=63 -> 0 or -1) */
+    J(".method static pj_shr(JJ)J\n");
+    J("    .limit stack 4\n"); J("    .limit locals 4\n");
+    J("    lload_2\n"); J("    ldc2_w 63\n"); J("    lcmp\n"); J("    ifle pj_shr_ok\n");
+    /* count > 63: result is sign extension of val */
+    J("    lload_0\n"); J("    ldc2_w 63\n"); J("    l2i\n"); J("    lshr\n"); J("    lreturn\n");
+    J("pj_shr_ok:\n");
+    J("    lload_0\n"); J("    lload_2\n"); J("    l2i\n"); J("    lshr\n"); J("    lreturn\n");
+    J(".end method\n\n");
+
+    /* pj_shl(J val, J count) -> J: left shift with saturation (count>=64 -> 0) */
+    J(".method static pj_shl(JJ)J\n");
+    J("    .limit stack 4\n"); J("    .limit locals 4\n");
+    J("    lload_2\n"); J("    ldc2_w 63\n"); J("    lcmp\n"); J("    ifle pj_shl_ok\n");
+    J("    lconst_0\n"); J("    lreturn\n");
+    J("pj_shl_ok:\n");
+    J("    lload_0\n"); J("    lload_2\n"); J("    l2i\n"); J("    lshl\n"); J("    lreturn\n");
+    J(".end method\n\n");
 
     /* pj_mod(J a, J b) -> J: floor remainder (SWI mod/2 semantics)
      * r = a rem b; if (r != 0 && signs differ) r += b */
