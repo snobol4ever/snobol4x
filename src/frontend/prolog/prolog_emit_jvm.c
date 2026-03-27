@@ -2298,7 +2298,7 @@ static void pj_emit_assertz_helpers(void) {
     J("; pj_succ_2(Object x, Object y) -> Z\n");
     J(".method static pj_succ_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n");
     J("    .limit stack 6\n");
-    J("    .limit locals 4\n");
+    J("    .limit locals 6\n");
     JI("aload_0", "");
     J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
     JI("astore_0", "");
@@ -2353,12 +2353,12 @@ static void pj_emit_assertz_helpers(void) {
     JI("dup", ""); JI("bipush", "3");
     JI("aload_1", ""); J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
     JI("aastore", "");
-    JI("astore_2", ""); /* save domain_error term */
+    JI("astore", "4"); /* save domain_error term in slot 4 (slots 2-3 = long) */
     /* build error(domain_error(...), succ/2) compound */
     JI("bipush", "4"); JI("anewarray", "java/lang/Object");
     JI("dup", ""); JI("iconst_0", ""); JI("ldc", "\"compound\""); JI("aastore", "");
     JI("dup", ""); JI("iconst_1", ""); JI("ldc", "\"error\""); JI("aastore", "");
-    JI("dup", ""); JI("iconst_2", ""); JI("aload_2", ""); JI("aastore", "");
+    JI("dup", ""); JI("iconst_2", ""); JI("aload", "4"); JI("aastore", "");
     JI("dup", ""); JI("bipush", "3");
     JI("ldc", "\"succ/2\"");
     J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
@@ -3162,6 +3162,7 @@ static void pj_emit_term(EXPR_t *term, int *var_locals, int n_vars);
 static void pj_emit_arith(EXPR_t *e, int *var_locals, int n_vars);
 static void pj_emit_arith_as_term(EXPR_t *e, int *var_locals, int n_vars);
 static void pj_emit_arith_as_double(EXPR_t *e, int *var_locals, int n_vars);
+static void pj_emit_arith_as_term(EXPR_t *e, int *var_locals, int n_vars);
 
 /* pj_arith_is_float — returns 1 if arithmetic expression produces a float result */
 /* pj_emit_dbl_const — emit a double constant onto the JVM stack as D.
@@ -3401,6 +3402,8 @@ static void pj_emit_arith(EXPR_t *e, int *var_locals, int n_vars) {
     case E_ADD: {
         int lf = pj_arith_is_float(e->children[0]);
         int rf = pj_arith_is_float(e->children[1]);
+        int lv = pj_arith_has_var(e->children[0]);
+        int rv = pj_arith_has_var(e->children[1]);
         if (lf || rf) {
             pj_emit_arith(e->children[0], var_locals, n_vars);
             if (!lf) JI("l2d", ""); else JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
@@ -3408,6 +3411,12 @@ static void pj_emit_arith(EXPR_t *e, int *var_locals, int n_vars) {
             if (!rf) JI("l2d", ""); else JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
             JI("dadd", "");
             JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+        } else if (pj_arith_has_var(e->children[0]) || pj_arith_has_var(e->children[1])) {
+            /* var operand: runtime dispatch via pj_varnum_* */
+            pj_emit_arith_as_term(e->children[0], var_locals, n_vars);
+            pj_emit_arith_as_term(e->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pj_varnum_add([Ljava/lang/Object;[Ljava/lang/Object;)[Ljava/lang/Object;\n", pj_classname);
+            J("    invokestatic %s/pj_obj_to_bits([Ljava/lang/Object;)J\n", pj_classname);
         } else {
             pj_emit_arith(e->children[0], var_locals, n_vars);
             pj_emit_arith(e->children[1], var_locals, n_vars);
@@ -3419,6 +3428,7 @@ static void pj_emit_arith(EXPR_t *e, int *var_locals, int n_vars) {
         int lf = pj_arith_is_float(e->children[0]);
         int rf = pj_arith_is_float(e->children[1]);
         int lv = pj_arith_has_var(e->children[0]);
+        int rv = pj_arith_has_var(e->children[1]);
         if (lf || rf) {
             pj_emit_arith(e->children[0], var_locals, n_vars);
             if (!lf) JI("l2d", ""); else JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
@@ -3426,6 +3436,12 @@ static void pj_emit_arith(EXPR_t *e, int *var_locals, int n_vars) {
             if (!rf) JI("l2d", ""); else JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
             JI("dsub", "");
             JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+        } else if (pj_arith_has_var(e->children[0]) || pj_arith_has_var(e->children[1])) {
+            /* var operand: runtime dispatch via pj_varnum_* */
+            pj_emit_arith_as_term(e->children[0], var_locals, n_vars);
+            pj_emit_arith_as_term(e->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pj_varnum_sub([Ljava/lang/Object;[Ljava/lang/Object;)[Ljava/lang/Object;\n", pj_classname);
+            J("    invokestatic %s/pj_obj_to_bits([Ljava/lang/Object;)J\n", pj_classname);
         } else {
             pj_emit_arith(e->children[0], var_locals, n_vars);
             pj_emit_arith(e->children[1], var_locals, n_vars);
@@ -3436,6 +3452,8 @@ static void pj_emit_arith(EXPR_t *e, int *var_locals, int n_vars) {
     case E_MPY: {
         int lf = pj_arith_is_float(e->children[0]);
         int rf = pj_arith_is_float(e->children[1]);
+        int lv = pj_arith_has_var(e->children[0]);
+        int rv = pj_arith_has_var(e->children[1]);
         if (lf || rf) {
             pj_emit_arith(e->children[0], var_locals, n_vars);
             if (!lf) JI("l2d", ""); else JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
@@ -3443,6 +3461,12 @@ static void pj_emit_arith(EXPR_t *e, int *var_locals, int n_vars) {
             if (!rf) JI("l2d", ""); else JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
             JI("dmul", "");
             JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+        } else if (pj_arith_has_var(e->children[0]) || pj_arith_has_var(e->children[1])) {
+            /* var operand: runtime dispatch via pj_varnum_* */
+            pj_emit_arith_as_term(e->children[0], var_locals, n_vars);
+            pj_emit_arith_as_term(e->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pj_varnum_mul([Ljava/lang/Object;[Ljava/lang/Object;)[Ljava/lang/Object;\n", pj_classname);
+            J("    invokestatic %s/pj_obj_to_bits([Ljava/lang/Object;)J\n", pj_classname);
         } else {
             pj_emit_arith(e->children[0], var_locals, n_vars);
             pj_emit_arith(e->children[1], var_locals, n_vars);
@@ -3453,6 +3477,8 @@ static void pj_emit_arith(EXPR_t *e, int *var_locals, int n_vars) {
     case E_DIV: {
         int lf = pj_arith_is_float(e->children[0]);
         int rf = pj_arith_is_float(e->children[1]);
+        int lv = pj_arith_has_var(e->children[0]);
+        int rv = pj_arith_has_var(e->children[1]);
         if (lf || rf) {
             pj_emit_arith(e->children[0], var_locals, n_vars);
             if (!lf) JI("l2d", ""); else JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
@@ -3460,6 +3486,12 @@ static void pj_emit_arith(EXPR_t *e, int *var_locals, int n_vars) {
             if (!rf) JI("l2d", ""); else JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
             JI("ddiv", "");
             JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+        } else if (pj_arith_has_var(e->children[0]) || pj_arith_has_var(e->children[1])) {
+            /* var operand: runtime dispatch via pj_varnum_* */
+            pj_emit_arith_as_term(e->children[0], var_locals, n_vars);
+            pj_emit_arith_as_term(e->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pj_varnum_div([Ljava/lang/Object;[Ljava/lang/Object;)[Ljava/lang/Object;\n", pj_classname);
+            J("    invokestatic %s/pj_obj_to_bits([Ljava/lang/Object;)J\n", pj_classname);
         } else {
             pj_emit_arith(e->children[0], var_locals, n_vars);
             pj_emit_arith(e->children[1], var_locals, n_vars);
@@ -3642,10 +3674,8 @@ static void pj_emit_arith(EXPR_t *e, int *var_locals, int n_vars) {
                 break;
             }
             if (strcmp(e->sval, "integer") == 0 && e->nchildren == 1) {
-                if (pj_arith_is_float(e->children[0])) {
-                    /* integer/1 rounds to nearest (same as round/1 in SWI) */
-                    pj_emit_arith(e->children[0], var_locals, n_vars);
-                    JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                if (pj_arith_is_float(e->children[0]) || pj_arith_has_var(e->children[0])) {
+                    pj_emit_arith_as_double(e->children[0], var_locals, n_vars);
                     JI("invokestatic", "java/lang/Math/round(D)J");
                 } else {
                     pj_emit_arith(e->children[0], var_locals, n_vars);
@@ -3653,9 +3683,8 @@ static void pj_emit_arith(EXPR_t *e, int *var_locals, int n_vars) {
                 break;
             }
             if (strcmp(e->sval, "round") == 0 && e->nchildren == 1) {
-                if (pj_arith_is_float(e->children[0])) {
-                    pj_emit_arith(e->children[0], var_locals, n_vars);
-                    JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                if (pj_arith_is_float(e->children[0]) || pj_arith_has_var(e->children[0])) {
+                    pj_emit_arith_as_double(e->children[0], var_locals, n_vars);
                     JI("invokestatic", "java/lang/Math/round(D)J");
                 } else {
                     pj_emit_arith(e->children[0], var_locals, n_vars);
@@ -3920,6 +3949,17 @@ static void pj_emit_arith_as_term(EXPR_t *e, int *var_locals, int n_vars) {
             J("    invokestatic %s/pj_min_mixed(JJ)[Ljava/lang/Object;\n", pj_classname);
         else
             J("    invokestatic %s/pj_max_mixed(JJ)[Ljava/lang/Object;\n", pj_classname);
+    } else if (pj_arith_has_var(e) && !pj_arith_is_float(e) &&
+               (e->kind == E_ADD || e->kind == E_SUB ||
+                e->kind == E_MPY || e->kind == E_DIV)) {
+        /* var-containing binary op: use runtime pj_varnum_* helper */
+        const char *vn_fn = (e->kind==E_ADD) ? "pj_varnum_add" :
+                            (e->kind==E_SUB) ? "pj_varnum_sub" :
+                            (e->kind==E_MPY) ? "pj_varnum_mul" : "pj_varnum_div";
+        pj_emit_arith_as_term(e->children[0], var_locals, n_vars);
+        pj_emit_arith_as_term(e->children[1], var_locals, n_vars);
+        J("    invokestatic %s/%s([Ljava/lang/Object;[Ljava/lang/Object;)[Ljava/lang/Object;\n",
+          pj_classname, vn_fn);
     } else {
         pj_emit_arith(e, var_locals, n_vars);
         if (pj_arith_is_float(e)) {
@@ -3937,8 +3977,8 @@ static void pj_emit_arith_as_term(EXPR_t *e, int *var_locals, int n_vars) {
  * For int exprs: pj_emit_arith then l2d. */
 static void pj_emit_arith_as_double(EXPR_t *e, int *var_locals, int n_vars) {
     if (!e) { JI("dconst_0", ""); return; }
-    if (e->kind == E_VART) {
-        /* runtime dispatch via pj_num_as_double */
+    if (e->kind == E_VART || pj_arith_has_var(e)) {
+        /* runtime dispatch: emit as term, then pj_num_as_double */
         pj_emit_arith_as_term(e, var_locals, n_vars);
         J("    invokestatic %s/pj_num_as_double([Ljava/lang/Object;)D\n", pj_classname);
     } else if (pj_arith_is_float(e)) {
@@ -4309,12 +4349,21 @@ static void pj_emit_goal(EXPR_t *goal, const char *lbl_γ, const char *lbl_ω,
                 JI("goto", lbl_γ);
                 return;
             }
-            pj_emit_arith(rhs, var_locals, n_vars);
-            if (pj_arith_is_float(rhs)) {
-                JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
-                J("    invokestatic %s/pj_term_float(D)[Ljava/lang/Object;\n", pj_classname);
+            /* When rhs has vars with no static float type, use pj_emit_arith_as_term
+             * which returns Object[] with correct int/float tag via pj_varnum_* helpers. */
+            int rhs_has_var = pj_arith_has_var(rhs);
+            int rhs_is_float = pj_arith_is_float(rhs);
+            if (rhs_has_var && !rhs_is_float) {
+                /* runtime dispatch: pj_emit_arith_as_term handles var+float correctly */
+                pj_emit_arith_as_term(rhs, var_locals, n_vars);
             } else {
-                J("    invokestatic %s/pj_term_int(J)[Ljava/lang/Object;\n", pj_classname);
+                pj_emit_arith(rhs, var_locals, n_vars);
+                if (rhs_is_float) {
+                    JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                    J("    invokestatic %s/pj_term_float(D)[Ljava/lang/Object;\n", pj_classname);
+                } else {
+                    J("    invokestatic %s/pj_term_int(J)[Ljava/lang/Object;\n", pj_classname);
+                }
             }
             pj_emit_term(goal->children[0], var_locals, n_vars);
             /* swap: stack = [int_term, lhs_term] — need (lhs, rhs) for unify */
@@ -7194,6 +7243,21 @@ static void pj_emit_findall_builtin(void) {
     J("    areturn\n");
     J("pj_rc_catch:\n");
     J("    astore 10\n");   /* save exception */
+    /* Unwrap InvocationTargetException so PROLOG_THROW survives reflection */
+    J("    aload 10\n");
+    J("    instanceof java/lang/reflect/InvocationTargetException\n");
+    J("    ifeq pj_rc_not_ite\n");
+    J("    aload 10\n");
+    J("    checkcast java/lang/reflect/InvocationTargetException\n");
+    J("    invokevirtual java/lang/reflect/InvocationTargetException/getCause()Ljava/lang/Throwable;\n");
+    J("    dup\n");
+    J("    ifnull pj_rc_ite_null\n");  /* no cause → swallow */
+    J("    astore 10\n");   /* replace with unwrapped cause */
+    J("    goto pj_rc_not_ite\n");
+    J("pj_rc_ite_null:\n");
+    J("    pop\n");   /* discard null from stack */
+    J("    goto pj_rc_swallow\n");
+    J("pj_rc_not_ite:\n");
     J("    aload 10\n");
     J("    invokevirtual java/lang/Throwable/getMessage()Ljava/lang/String;\n");
     J("    ifnull pj_rc_swallow\n");
@@ -9407,6 +9471,176 @@ void prolog_emit_jvm(Program *prog, FILE *out, const char *filename) {
     J(".end method\n\n");
 
     /* Always emit stdlib shim: member/2, memberchk/2 (skipped if user-defined) */
+    /* pj_varnum helpers: runtime arithmetic when one operand may be a var holding float.
+     * Each takes two Object[] terms (already deref'd), returns long bits
+     * (float raw bits if result is float, else raw long). */
+    J(".method static pj_obj_to_double([Ljava/lang/Object;)D\n");
+    J("    .limit stack 4\n");
+    J("    .limit locals 2\n");
+    J("    aload_0\n");
+    J("    iconst_0\n"); J("    aaload\n");
+    J("    ldc \"float\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ifeq pj_o2d_int\n");
+    J("    aload_0\n"); J("    iconst_1\n"); J("    aaload\n");
+    J("    checkcast java/lang/String\n");
+    J("    invokestatic java/lang/Double/parseDouble(Ljava/lang/String;)D\n");
+    J("    dreturn\n");
+    J("pj_o2d_int:\n");
+    J("    aload_0\n"); J("    iconst_1\n"); J("    aaload\n");
+    J("    checkcast java/lang/String\n");
+    J("    invokestatic java/lang/Long/parseLong(Ljava/lang/String;)J\n");
+    J("    l2d\n");
+    J("    dreturn\n");
+    J(".end method\n\n");
+
+    J(".method static pj_obj_is_float([Ljava/lang/Object;)Z\n");
+    J("    .limit stack 3\n");
+    J("    .limit locals 1\n");
+    J("    aload_0\n"); J("    iconst_0\n"); J("    aaload\n");
+    J("    ldc \"float\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ireturn\n");
+    J(".end method\n\n");
+
+    /* pj_varnum_mul(Object[] a, Object[] b) -> J */
+    J(".method static pj_varnum_mul([Ljava/lang/Object;[Ljava/lang/Object;)[Ljava/lang/Object;\n");
+    J("    .limit stack 8\n");
+    J("    .limit locals 2\n");
+    J("    aload_0\n");
+    J("    invokestatic %s/pj_obj_is_float([Ljava/lang/Object;)Z\n", pj_classname);
+    J("    aload_1\n");
+    J("    invokestatic %s/pj_obj_is_float([Ljava/lang/Object;)Z\n", pj_classname);
+    J("    ior\n");
+    J("    ifeq pj_vn_mul_int\n");
+    /* float path */
+    J("    aload_0\n");
+    J("    invokestatic %s/pj_obj_to_double([Ljava/lang/Object;)D\n", pj_classname);
+    J("    aload_1\n");
+    J("    invokestatic %s/pj_obj_to_double([Ljava/lang/Object;)D\n", pj_classname);
+    J("    dmul\n");
+    J("    invokestatic %s/pj_term_float(D)[Ljava/lang/Object;\n", pj_classname);
+    J("    areturn\n");
+    J("pj_vn_mul_int:\n");
+    J("    aload_0\n"); J("    iconst_1\n"); J("    aaload\n");
+    J("    checkcast java/lang/String\n");
+    J("    invokestatic java/lang/Long/parseLong(Ljava/lang/String;)J\n");
+    J("    aload_1\n"); J("    iconst_1\n"); J("    aaload\n");
+    J("    checkcast java/lang/String\n");
+    J("    invokestatic java/lang/Long/parseLong(Ljava/lang/String;)J\n");
+    J("    lmul\n");
+    J("    invokestatic %s/pj_term_int(J)[Ljava/lang/Object;\n", pj_classname);
+    J("    areturn\n");
+    J(".end method\n\n");
+
+    /* pj_varnum_add(Object[] a, Object[] b) -> J */
+    J(".method static pj_varnum_add([Ljava/lang/Object;[Ljava/lang/Object;)[Ljava/lang/Object;\n");
+    J("    .limit stack 8\n");
+    J("    .limit locals 2\n");
+    J("    aload_0\n");
+    J("    invokestatic %s/pj_obj_is_float([Ljava/lang/Object;)Z\n", pj_classname);
+    J("    aload_1\n");
+    J("    invokestatic %s/pj_obj_is_float([Ljava/lang/Object;)Z\n", pj_classname);
+    J("    ior\n");
+    J("    ifeq pj_vn_add_int\n");
+    J("    aload_0\n");
+    J("    invokestatic %s/pj_obj_to_double([Ljava/lang/Object;)D\n", pj_classname);
+    J("    aload_1\n");
+    J("    invokestatic %s/pj_obj_to_double([Ljava/lang/Object;)D\n", pj_classname);
+    J("    dadd\n");
+    J("    invokestatic %s/pj_term_float(D)[Ljava/lang/Object;\n", pj_classname);
+    J("    areturn\n");
+    J("pj_vn_add_int:\n");
+    J("    aload_0\n"); J("    iconst_1\n"); J("    aaload\n");
+    J("    checkcast java/lang/String\n");
+    J("    invokestatic java/lang/Long/parseLong(Ljava/lang/String;)J\n");
+    J("    aload_1\n"); J("    iconst_1\n"); J("    aaload\n");
+    J("    checkcast java/lang/String\n");
+    J("    invokestatic java/lang/Long/parseLong(Ljava/lang/String;)J\n");
+    J("    ladd\n");
+    J("    invokestatic %s/pj_term_int(J)[Ljava/lang/Object;\n", pj_classname);
+    J("    areturn\n");
+    J(".end method\n\n");
+
+    /* pj_varnum_sub(Object[] a, Object[] b) -> J */
+    J(".method static pj_varnum_sub([Ljava/lang/Object;[Ljava/lang/Object;)[Ljava/lang/Object;\n");
+    J("    .limit stack 8\n");
+    J("    .limit locals 2\n");
+    J("    aload_0\n");
+    J("    invokestatic %s/pj_obj_is_float([Ljava/lang/Object;)Z\n", pj_classname);
+    J("    aload_1\n");
+    J("    invokestatic %s/pj_obj_is_float([Ljava/lang/Object;)Z\n", pj_classname);
+    J("    ior\n");
+    J("    ifeq pj_vn_sub_int\n");
+    J("    aload_0\n");
+    J("    invokestatic %s/pj_obj_to_double([Ljava/lang/Object;)D\n", pj_classname);
+    J("    aload_1\n");
+    J("    invokestatic %s/pj_obj_to_double([Ljava/lang/Object;)D\n", pj_classname);
+    J("    dsub\n");
+    J("    invokestatic %s/pj_term_float(D)[Ljava/lang/Object;\n", pj_classname);
+    J("    areturn\n");
+    J("pj_vn_sub_int:\n");
+    J("    aload_0\n"); J("    iconst_1\n"); J("    aaload\n");
+    J("    checkcast java/lang/String\n");
+    J("    invokestatic java/lang/Long/parseLong(Ljava/lang/String;)J\n");
+    J("    aload_1\n"); J("    iconst_1\n"); J("    aaload\n");
+    J("    checkcast java/lang/String\n");
+    J("    invokestatic java/lang/Long/parseLong(Ljava/lang/String;)J\n");
+    J("    lsub\n");
+    J("    invokestatic %s/pj_term_int(J)[Ljava/lang/Object;\n", pj_classname);
+    J("    areturn\n");
+    J(".end method\n\n");
+
+    /* pj_varnum_div(Object[] a, Object[] b) -> J */
+    J(".method static pj_varnum_div([Ljava/lang/Object;[Ljava/lang/Object;)[Ljava/lang/Object;\n");
+    J("    .limit stack 8\n");
+    J("    .limit locals 2\n");
+    J("    aload_0\n");
+    J("    invokestatic %s/pj_obj_is_float([Ljava/lang/Object;)Z\n", pj_classname);
+    J("    aload_1\n");
+    J("    invokestatic %s/pj_obj_is_float([Ljava/lang/Object;)Z\n", pj_classname);
+    J("    ior\n");
+    J("    ifeq pj_vn_div_int\n");
+    J("    aload_0\n");
+    J("    invokestatic %s/pj_obj_to_double([Ljava/lang/Object;)D\n", pj_classname);
+    J("    aload_1\n");
+    J("    invokestatic %s/pj_obj_to_double([Ljava/lang/Object;)D\n", pj_classname);
+    J("    ddiv\n");
+    J("    invokestatic %s/pj_term_float(D)[Ljava/lang/Object;\n", pj_classname);
+    J("    areturn\n");
+    J("pj_vn_div_int:\n");
+    J("    aload_0\n"); J("    iconst_1\n"); J("    aaload\n");
+    J("    checkcast java/lang/String\n");
+    J("    invokestatic java/lang/Long/parseLong(Ljava/lang/String;)J\n");
+    J("    aload_1\n"); J("    iconst_1\n"); J("    aaload\n");
+    J("    checkcast java/lang/String\n");
+    J("    invokestatic java/lang/Long/parseLong(Ljava/lang/String;)J\n");
+    J("    ldiv\n");
+    J("    invokestatic %s/pj_term_int(J)[Ljava/lang/Object;\n", pj_classname);
+    J("    areturn\n");
+    J(".end method\n\n");
+
+    /* pj_obj_to_bits: extract J from Object[] term (raw long or float bits) */
+    J(".method static pj_obj_to_bits([Ljava/lang/Object;)J\n");
+    J("    .limit stack 4\n");
+    J("    .limit locals 1\n");
+    J("    aload_0\n");
+    J("    iconst_0\n"); J("    aaload\n");
+    J("    ldc \"float\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ifeq pj_otb_int\n");
+    J("    aload_0\n"); J("    iconst_1\n"); J("    aaload\n");
+    J("    checkcast java/lang/String\n");
+    J("    invokestatic java/lang/Double/parseDouble(Ljava/lang/String;)D\n");
+    J("    invokestatic java/lang/Double/doubleToRawLongBits(D)J\n");
+    J("    lreturn\n");
+    J("pj_otb_int:\n");
+    J("    aload_0\n"); J("    iconst_1\n"); J("    aaload\n");
+    J("    checkcast java/lang/String\n");
+    J("    invokestatic java/lang/Long/parseLong(Ljava/lang/String;)J\n");
+    J("    lreturn\n");
+    J(".end method\n\n");
+
     pj_emit_stdlib_shim(prog);
 
     /* emit each predicate */
