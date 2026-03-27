@@ -176,12 +176,12 @@ run_jvm_backend() {
             "$SNO2C" -jvm "$src" -o "$jfile" 2>/dev/null || true
             ;;
         ICON-JVM)
-            if [ -z "$ICON_DRIVER" ]; then
-                skip "$label  (icon_driver not found)"
+            if [ -z "$SNO2C" ]; then
+                skip "$label  (sno2c not found)"
                 SKIP_COUNT=$((SKIP_COUNT+1))
                 return
             fi
-            "$ICON_DRIVER" -jvm "$src" -o "$jfile" 2>/dev/null || true
+            "$SNO2C" -icn -jvm "$src" -o "$jfile" 2>/dev/null || true
             ;;
         PROLOG-JVM)
             if [ -z "$SNO2C" ]; then
