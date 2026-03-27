@@ -4,7 +4,7 @@
  * Grammar (explicit-semicolon Icon, Tier 0 + procedure shell):
  *
  *   file       := proc* EOF
- *   proc       := 'procedure' IDENT '(' params ')' ';' stmt* 'end'
+ *   proc       := 'procedure' IDENT '(' params ')' stmt* 'end'
  *   params     := (IDENT (',' IDENT)*)?
  *   stmt       := expr ';'
  *              |  'every' expr [do_clause] ';'
@@ -890,7 +890,6 @@ static IcnNode *parse_proc(IcnParser *p) {
         if (!match(p, TK_COMMA)) break;
     }
     expect(p, TK_RPAREN, "procedure params");
-    expect(p, TK_SEMICOL, "after procedure header");
 
     /* body: stmts until 'end' */
     IcnNode **stmts = NULL;

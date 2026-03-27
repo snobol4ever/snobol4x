@@ -21,21 +21,21 @@ END
 # SCRIP DEMO4 -- Palindrome (Icon section)
 # Idiom: subscript walk inward from both ends
 procedure palindrome(s)
-    s := map(s)
-    i := 1
-    j := *s
+    s := map(s);
+    i := 1;
+    j := *s;
     while i < j do {
-        if s[i] ~== s[j] then return "no"
-        i +:= 1
-        j -:= 1
-    }
-    return "yes"
+        if s[i] ~== s[j] then return "no";
+        i +:= 1;
+        j -:= 1;
+    };
+    return "yes";
 end
 
 procedure main()
-    write(palindrome("racecar"))
-    write(palindrome("hello"))
-    write(palindrome("level"))
+    write(palindrome("racecar"));
+    write(palindrome("hello"));
+    write(palindrome("level"));
 end
 ```
 
