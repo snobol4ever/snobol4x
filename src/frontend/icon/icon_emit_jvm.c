@@ -4815,11 +4815,15 @@ static void ij_emit_augop(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
         }
 
         if ((int)aug_kind == TK_AUGCONCAT) {
-            /* TK_AUGCONCAT: String ||:= String
-             * Stack at rhs_ok: String ref (rhs). */
+            /* TK_AUGCONCAT: String ||:= expr
+             * Stack at rhs_ok: String ref (rhs) OR long if rhs is numeric.
+             * Coerce numeric RHS to String via Long.toString before concat. */
             char tmp_str_fld[128]; snprintf(tmp_str_fld, sizeof tmp_str_fld, "icn_%d_augtemp_s", id);
             ij_declare_static_str(tmp_str_fld);
             ij_declare_static_str(fld);             /* ensure lhs field is str-typed */
+            if (!ij_expr_is_string(rhs)) {
+                JI("invokestatic", "java/lang/Long/toString(J)Ljava/lang/String;");
+            }
             ij_put_str_field(tmp_str_fld);          /* save rhs String */
             ij_get_str_field(fld);                  /* load current lhs String */
             ij_get_str_field(tmp_str_fld);          /* reload rhs String */
