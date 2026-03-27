@@ -1781,7 +1781,7 @@ static void net_emit_one_stmt(STMT_t *s, const char *next_lbl) {
         int loc_subj   = 2;
         int loc_cursor = 3;
         int loc_len    = 4;
-        int loc_mstart = 5;
+        int loc_mstart = 5; (void)loc_mstart;
         int next_int = 6;
         int next_str = 20;
 
@@ -1875,7 +1875,7 @@ static void net_emit_one_stmt(STMT_t *s, const char *next_lbl) {
         int loc_subj   = 2;
         int loc_cursor = 3;
         int loc_len    = 4;
-        int loc_mstart = 5;
+        int loc_mstart = 5; (void)loc_mstart;
         int next_int = 6;   /* int32 slots: V_6..V_19 */
         int next_str = 20;  /* string slots: V_20..V_29 */
 
