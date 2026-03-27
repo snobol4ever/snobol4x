@@ -349,9 +349,11 @@ static int ij_static_needs_callsave(int idx) {
 static void ij_declare_static_typed(const char *name, char type) {
     for (int i=0;i<ij_nstatics;i++) {
         if(!strcmp(ij_statics[i],name)) {
-            /* Allow upgrade to Object type if previously declared as J (long) */
+            /* Allow upgrade to Object or String type if previously declared as J (long) */
             if (type == 'O' && ij_static_types[i] == 'J')
                 ij_static_types[i] = 'O';
+            if (type == 'A' && ij_static_types[i] == 'J')
+                ij_static_types[i] = 'A';
             /* Allow upgrade to record-list if previously declared as plain list */
             if (type == 'R' && ij_static_types[i] == 'L')
                 ij_static_types[i] = 'R';
@@ -1109,6 +1111,7 @@ static void ij_emit_assign(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
         if (slot >= 0) {
             char fld[128]; ij_var_field(lhs->val.sval, fld, sizeof fld);
             if (is_str)         { ij_declare_static_str(fld);     ij_put_str_field(fld); }
+            else if (is_strlist){ ij_declare_static_strlist(fld); ij_put_list_field(fld); }
             else if (is_list) {
                 if (is_reclist) ij_declare_static_reclist(fld);
                 else            ij_declare_static_list(fld);
@@ -6136,9 +6139,36 @@ static void ij_emit_proc(IcnNode *proc, FILE *out_target) {
         }
     }
 
-    /* Pre-pass (forward): register string-typed and double-typed variable fields so
-     * ij_expr_is_string / ij_expr_is_real work correctly when the reverse emit loop
-     * checks statement result types.
+    /* Implicit locals: In Icon, any variable assigned in a procedure body that is
+     * not declared 'global' is local to that procedure.  Walk the body recursively
+     * and register every LHS VAR of an assignment as a local (if not already one
+     * and not a declared global).  This ensures i, j, result, etc. get
+     * icn_pv_<proc>_* fields instead of shared icn_gvar_* fields. */
+    {
+        #define IJ_IMPL_STACK 512
+        IcnNode *impl_stack[IJ_IMPL_STACK]; int impl_top = 0;
+        for (int si = 0; si < nstmts; si++)
+            if (proc->children[body_start + si] && impl_top < IJ_IMPL_STACK)
+                impl_stack[impl_top++] = proc->children[body_start + si];
+        while (impl_top > 0) {
+            IcnNode *cur = impl_stack[--impl_top];
+            if (!cur) continue;
+            /* Register LHS of assignment or augop as local */
+            if ((cur->kind == ICN_ASSIGN || cur->kind == ICN_AUGOP) &&
+                cur->nchildren >= 1 && cur->children[0] &&
+                cur->children[0]->kind == ICN_VAR) {
+                const char *vn = cur->children[0]->val.sval;
+                if (!ij_is_global(vn) && ij_locals_find(vn) < 0)
+                    ij_locals_add(vn);
+            }
+            /* Push children */
+            for (int ci = 0; ci < cur->nchildren && impl_top < IJ_IMPL_STACK-1; ci++)
+                if (cur->children[ci]) impl_stack[impl_top++] = cur->children[ci];
+        }
+        #undef IJ_IMPL_STACK
+    }
+
+    /* Pre-pass (forward): register string-typed and double-typed variable fields.
      * Walk assignments left-to-right: declare the LHS var's static field type
      * before emit begins. */
     for (int si = 0; si < nstmts; si++) {
@@ -6181,6 +6211,32 @@ static void ij_emit_proc(IcnNode *proc, FILE *out_target) {
             ij_declare_static_dbl(fld);
         }
         /* long-typed vars are declared on first use — no pre-declaration needed */
+    }
+    /* Pre-pass (augop): ||:= on a var marks it String even if := "" was not seen yet */
+    for (int si = 0; si < nstmts; si++) {
+        IcnNode *stmt = proc->children[body_start + si];
+        if (!stmt) continue;
+        /* Recursive walk: find ICN_AUGOP with TK_AUGCONCAT anywhere in subtree */
+        #define IJ_AUGOP_STACK 256
+        IcnNode *aug_stk[IJ_AUGOP_STACK]; int aug_top = 0;
+        aug_stk[aug_top++] = stmt;
+        while (aug_top > 0) {
+            IcnNode *cur = aug_stk[--aug_top];
+            if (!cur) continue;
+            if (cur->kind == ICN_AUGOP && (int)cur->val.ival == (int)TK_AUGCONCAT &&
+                cur->nchildren >= 1 && cur->children[0] &&
+                cur->children[0]->kind == ICN_VAR) {
+                const char *vn = cur->children[0]->val.sval;
+                int slot = ij_locals_find(vn);
+                char fld[128];
+                if (slot >= 0) ij_var_field(vn, fld, sizeof fld);
+                else           snprintf(fld, sizeof fld, "icn_gvar_%s", vn);
+                ij_declare_static_str(fld);
+            }
+            for (int ci = 0; ci < cur->nchildren && aug_top < IJ_AUGOP_STACK-1; ci++)
+                if (cur->children[ci]) aug_stk[aug_top++] = cur->children[ci];
+        }
+        #undef IJ_AUGOP_STACK
     }
 
     /* Pre-pass 2: scan ICN_EVERY generators for `v := !reclist` assigns.
@@ -6228,6 +6284,18 @@ static void ij_emit_proc(IcnNode *proc, FILE *out_target) {
         if (stmt->kind == ICN_EVERY || stmt->kind == ICN_WHILE ||
             stmt->kind == ICN_UNTIL || stmt->kind == ICN_REPEAT ||
             stmt->kind == ICN_SUSPEND) {
+            IjPorts sp; strncpy(sp.γ, next_a, 63); strncpy(sp.ω, next_a, 63);
+            char sa[64], sb[64]; ij_emit_expr(stmt, sp, sa, sb);
+            strncpy(alphas[i], sa, 63);
+            strncpy(next_a, sa, 63);
+            continue;
+        }
+        /* ICN_RETURN / ICN_SUSPEND / ICN_FAIL / ICN_BREAK / ICN_NEXT also never
+         * fire ports.γ with a value on the stack — they jump directly to ret/done labels.
+         * Skip drain to avoid dead pop2 VerifyError. */
+        if (stmt->kind == ICN_RETURN || stmt->kind == ICN_SUSPEND ||
+            stmt->kind == ICN_FAIL   || stmt->kind == ICN_BREAK   ||
+            stmt->kind == ICN_NEXT) {
             IjPorts sp; strncpy(sp.γ, next_a, 63); strncpy(sp.ω, next_a, 63);
             char sa[64], sb[64]; ij_emit_expr(stmt, sp, sa, sb);
             strncpy(alphas[i], sa, 63);
