@@ -3436,10 +3436,17 @@ static void pj_emit_arith(EXPR_t *e, int *var_locals, int n_vars) {
     case E_FNC:
         /* mod/2, rem/2, //2 (integer div) — not given dedicated opcodes by lowerer */
         if (e->sval && e->nchildren >= 2) {
-            if (strcmp(e->sval, "mod") == 0 || strcmp(e->sval, "rem") == 0) {
+            if (strcmp(e->sval, "rem") == 0) {
                 pj_emit_arith(e->children[0], var_locals, n_vars);
                 pj_emit_arith(e->children[1], var_locals, n_vars);
-                JI("lrem", "");
+                JI("lrem", "");  /* truncating remainder = SWI rem/2 */
+                break;
+            }
+            if (strcmp(e->sval, "mod") == 0) {
+                /* floor remainder: r = a rem b; if (r != 0 && (r^b) < 0) r += b */
+                pj_emit_arith(e->children[0], var_locals, n_vars);
+                pj_emit_arith(e->children[1], var_locals, n_vars);
+                J("    invokestatic %s/pj_mod(JJ)J\n", pj_classname);
                 break;
             }
             if (strcmp(e->sval, "//") == 0) {
@@ -9165,6 +9172,21 @@ void prolog_emit_jvm(Program *prog, FILE *out, const char *filename) {
     /* Always emit pj_gcd helper (used by gcd/2 in is/2) */
     pj_emit_gcd_helper();
 
+    /* pj_mod(J a, J b) -> J: floor remainder (SWI mod/2 semantics)
+     * r = a rem b; if (r != 0 && signs differ) r += b */
+    J(".method static pj_mod(JJ)J\n");
+    J("    .limit stack 6\n"); J("    .limit locals 6\n");
+    J("    lload_0\n"); J("    lload_2\n"); J("    lrem\n"); J("    lstore 4\n"); /* r = a%b, local4 */
+    /* if r == 0, return 0 */
+    J("    lload 4\n"); J("    lconst_0\n"); J("    lcmp\n"); J("    ifeq pj_mod_done\n");
+    /* if (r XOR b) >= 0 (same sign), return r */
+    J("    lload 4\n"); J("    lload_2\n"); J("    lxor\n");
+    J("    lconst_0\n"); J("    lcmp\n"); J("    ifge pj_mod_done\n");
+    /* different signs: r += b */
+    J("    lload 4\n"); J("    lload_2\n"); J("    ladd\n"); J("    lstore 4\n");
+    J("pj_mod_done:\n"); J("    lload 4\n"); J("    lreturn\n");
+    J(".end method\n\n");
+
     /* Hyperbolic inverse function helpers (not in java.lang.Math pre-Java 21) */
     J(".method static pj_asinh(D)D\n");
     J("    .limit stack 6\n"); J("    .limit locals 2\n");
@@ -9231,7 +9253,8 @@ void prolog_emit_jvm(Program *prog, FILE *out, const char *filename) {
     J("    invokestatic %s/pj_num_as_double([Ljava/lang/Object;)D\n", pj_classname);
     J("    aload_1\n");
     J("    invokestatic %s/pj_num_as_double([Ljava/lang/Object;)D\n", pj_classname);
-    J("    invokestatic java/lang/Double/compare(DD)I\n");
+    /* Use dcmpl for IEEE semantics: -0.0 == 0.0, NaN comparisons return -1 */
+    J("    dcmpl\n");
     J("    ireturn\n");
     J(".end method\n\n");
 
