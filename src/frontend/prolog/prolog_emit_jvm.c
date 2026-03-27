@@ -3297,26 +3297,75 @@ static void pj_emit_arith(EXPR_t *e, int *var_locals, int n_vars) {
         J("%s:\n", lbl_done);
         break;
     }
-    case E_ADD:
-        pj_emit_arith(e->children[0], var_locals, n_vars);
-        pj_emit_arith(e->children[1], var_locals, n_vars);
-        JI("ladd", "");
+    case E_ADD: {
+        int lf = pj_arith_is_float(e->children[0]);
+        int rf = pj_arith_is_float(e->children[1]);
+        if (lf || rf) {
+            /* float addition */
+            pj_emit_arith(e->children[0], var_locals, n_vars);
+            if (!lf) JI("l2d", ""); else JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+            pj_emit_arith(e->children[1], var_locals, n_vars);
+            if (!rf) JI("l2d", ""); else JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+            JI("dadd", "");
+            JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+        } else {
+            pj_emit_arith(e->children[0], var_locals, n_vars);
+            pj_emit_arith(e->children[1], var_locals, n_vars);
+            JI("ladd", "");
+        }
         break;
-    case E_SUB:
-        pj_emit_arith(e->children[0], var_locals, n_vars);
-        pj_emit_arith(e->children[1], var_locals, n_vars);
-        JI("lsub", "");
+    }
+    case E_SUB: {
+        int lf = pj_arith_is_float(e->children[0]);
+        int rf = pj_arith_is_float(e->children[1]);
+        if (lf || rf) {
+            pj_emit_arith(e->children[0], var_locals, n_vars);
+            if (!lf) JI("l2d", ""); else JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+            pj_emit_arith(e->children[1], var_locals, n_vars);
+            if (!rf) JI("l2d", ""); else JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+            JI("dsub", "");
+            JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+        } else {
+            pj_emit_arith(e->children[0], var_locals, n_vars);
+            pj_emit_arith(e->children[1], var_locals, n_vars);
+            JI("lsub", "");
+        }
         break;
-    case E_MPY:
-        pj_emit_arith(e->children[0], var_locals, n_vars);
-        pj_emit_arith(e->children[1], var_locals, n_vars);
-        JI("lmul", "");
+    }
+    case E_MPY: {
+        int lf = pj_arith_is_float(e->children[0]);
+        int rf = pj_arith_is_float(e->children[1]);
+        if (lf || rf) {
+            pj_emit_arith(e->children[0], var_locals, n_vars);
+            if (!lf) JI("l2d", ""); else JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+            pj_emit_arith(e->children[1], var_locals, n_vars);
+            if (!rf) JI("l2d", ""); else JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+            JI("dmul", "");
+            JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+        } else {
+            pj_emit_arith(e->children[0], var_locals, n_vars);
+            pj_emit_arith(e->children[1], var_locals, n_vars);
+            JI("lmul", "");
+        }
         break;
-    case E_DIV:
-        pj_emit_arith(e->children[0], var_locals, n_vars);
-        pj_emit_arith(e->children[1], var_locals, n_vars);
-        JI("ldiv", "");
+    }
+    case E_DIV: {
+        int lf = pj_arith_is_float(e->children[0]);
+        int rf = pj_arith_is_float(e->children[1]);
+        if (lf || rf) {
+            pj_emit_arith(e->children[0], var_locals, n_vars);
+            if (!lf) JI("l2d", ""); else JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+            pj_emit_arith(e->children[1], var_locals, n_vars);
+            if (!rf) JI("l2d", ""); else JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+            JI("ddiv", "");
+            JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+        } else {
+            pj_emit_arith(e->children[0], var_locals, n_vars);
+            pj_emit_arith(e->children[1], var_locals, n_vars);
+            JI("ldiv", "");
+        }
         break;
+    }
     case E_FNC:
         /* mod/2, rem/2, //2 (integer div) — not given dedicated opcodes by lowerer */
         if (e->sval && e->nchildren >= 2) {
@@ -3363,15 +3412,37 @@ static void pj_emit_arith(EXPR_t *e, int *var_locals, int n_vars) {
                 break;
             }
             if (strcmp(e->sval, "max") == 0 && e->nchildren == 2) {
-                pj_emit_arith(e->children[0], var_locals, n_vars);
-                pj_emit_arith(e->children[1], var_locals, n_vars);
-                J("    invokestatic java/lang/Math/max(JJ)J\n");
+                int lf = pj_arith_is_float(e->children[0]);
+                int rf = pj_arith_is_float(e->children[1]);
+                if (lf || rf) {
+                    pj_emit_arith(e->children[0], var_locals, n_vars);
+                    if (!lf) JI("l2d", ""); else JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                    pj_emit_arith(e->children[1], var_locals, n_vars);
+                    if (!rf) JI("l2d", ""); else JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                    J("    invokestatic java/lang/Math/max(DD)D\n");
+                    JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                } else {
+                    pj_emit_arith(e->children[0], var_locals, n_vars);
+                    pj_emit_arith(e->children[1], var_locals, n_vars);
+                    J("    invokestatic java/lang/Math/max(JJ)J\n");
+                }
                 break;
             }
             if (strcmp(e->sval, "min") == 0 && e->nchildren == 2) {
-                pj_emit_arith(e->children[0], var_locals, n_vars);
-                pj_emit_arith(e->children[1], var_locals, n_vars);
-                J("    invokestatic java/lang/Math/min(JJ)J\n");
+                int lf = pj_arith_is_float(e->children[0]);
+                int rf = pj_arith_is_float(e->children[1]);
+                if (lf || rf) {
+                    pj_emit_arith(e->children[0], var_locals, n_vars);
+                    if (!lf) JI("l2d", ""); else JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                    pj_emit_arith(e->children[1], var_locals, n_vars);
+                    if (!rf) JI("l2d", ""); else JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                    J("    invokestatic java/lang/Math/min(DD)D\n");
+                    JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                } else {
+                    pj_emit_arith(e->children[0], var_locals, n_vars);
+                    pj_emit_arith(e->children[1], var_locals, n_vars);
+                    J("    invokestatic java/lang/Math/min(JJ)J\n");
+                }
                 break;
             }
             if ((strcmp(e->sval, "**") == 0 || strcmp(e->sval, "^") == 0) && e->nchildren == 2) {
@@ -3387,17 +3458,53 @@ static void pj_emit_arith(EXPR_t *e, int *var_locals, int n_vars) {
         /* unary arithmetic functions */
         if (e->sval && e->nchildren >= 1) {
             if (strcmp(e->sval, "abs") == 0 && e->nchildren == 1) {
-                pj_emit_arith(e->children[0], var_locals, n_vars);
-                /* abs: dup, negate, take max */
-                J("    dup2\n    lneg\n");
-                J("    invokestatic java/lang/Math/max(JJ)J\n");
+                if (pj_arith_is_float(e->children[0])) {
+                    pj_emit_arith(e->children[0], var_locals, n_vars);
+                    JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                    J("    invokestatic java/lang/Math/abs(D)D\n");
+                    JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                } else {
+                    pj_emit_arith(e->children[0], var_locals, n_vars);
+                    J("    invokestatic java/lang/Math/abs(J)J\n");
+                }
                 break;
             }
             if (strcmp(e->sval, "sign") == 0 && e->nchildren == 1) {
-                pj_emit_arith(e->children[0], var_locals, n_vars);
-                /* sign: Long.signum returns int, convert to long */
-                J("    invokestatic java/lang/Long/signum(J)I\n");
-                JI("i2l", "");
+                if (pj_arith_is_float(e->children[0])) {
+                    /* float sign: Math.signum returns double */
+                    pj_emit_arith(e->children[0], var_locals, n_vars);
+                    JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                    J("    invokestatic java/lang/Math/signum(D)D\n");
+                    JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                } else {
+                    /* integer sign: Long.signum returns int, convert to long */
+                    pj_emit_arith(e->children[0], var_locals, n_vars);
+                    J("    invokestatic java/lang/Long/signum(J)I\n");
+                    JI("i2l", "");
+                }
+                break;
+            }
+            if (strcmp(e->sval, "copysign") == 0 && e->nchildren == 2) {
+                /* copysign(Mag, Sign): copy sign of Sign to magnitude of Mag */
+                int mag_float = pj_arith_is_float(e->children[0]);
+                int sgn_float = pj_arith_is_float(e->children[1]);
+                if (mag_float || sgn_float) {
+                    /* float version: Math.copySign */
+                    pj_emit_arith(e->children[0], var_locals, n_vars);
+                    if (!mag_float) { JI("l2d", ""); } else { JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D"); }
+                    pj_emit_arith(e->children[1], var_locals, n_vars);
+                    if (!sgn_float) { JI("l2d", ""); } else { JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D"); }
+                    J("    invokestatic java/lang/Math/copySign(DD)D\n");
+                    JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                } else {
+                    /* integer copysign: abs(Mag) * signum(Sign) */
+                    pj_emit_arith(e->children[0], var_locals, n_vars);
+                    J("    invokestatic java/lang/Math/abs(J)J\n");
+                    pj_emit_arith(e->children[1], var_locals, n_vars);
+                    J("    invokestatic java/lang/Long/signum(J)I\n");
+                    JI("i2l", "");
+                    JI("lmul", "");
+                }
                 break;
             }
             if ((strcmp(e->sval, "truncate") == 0 || strcmp(e->sval, "integer") == 0) && e->nchildren == 1) {
@@ -3513,6 +3620,10 @@ static void pj_emit_arith(EXPR_t *e, int *var_locals, int n_vars) {
             }
             if (strcmp(e->sval, "float_integer_part") == 0) {
                 pj_emit_arith(e->children[0], var_locals, n_vars);
+                /* promote integer to float if needed */
+                if (!pj_arith_is_float(e->children[0])) {
+                    JI("l2d", ""); JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                }
                 JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
                 /* truncate toward zero: (double)(long)x */
                 JI("d2l", "");
@@ -3521,12 +3632,12 @@ static void pj_emit_arith(EXPR_t *e, int *var_locals, int n_vars) {
                 break;
             }
             if (strcmp(e->sval, "float_fractional_part") == 0) {
-                /* frac = x - trunc(x): need x twice; use local scratch */
                 pj_emit_arith(e->children[0], var_locals, n_vars);
-                /* stack: bits_J */
+                /* promote integer to float if needed */
+                if (!pj_arith_is_float(e->children[0])) {
+                    JI("l2d", ""); JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                }
                 JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
-                /* stack: x_D — store, compute trunc, subtract */
-                /* We need a temp; use dup2 */
                 JI("dup2", "");  /* x x */
                 JI("d2l", ""); JI("l2d", "");  /* x trunc(x) */
                 JI("dsub", "");
@@ -3698,6 +3809,8 @@ static int pj_is_user_call(EXPR_t *goal) {
         "aggregate_all",
         "succ_or_zero",
         "throw","catch",
+        "garbage_collect","trim_stacks",
+        "?=",
         NULL
     };
     for (int i = 0; builtins[i]; i++)
@@ -4401,6 +4514,29 @@ static void pj_emit_goal(EXPR_t *goal, const char *lbl_γ, const char *lbl_ω,
             pj_emit_term(goal->children[0], var_locals, n_vars);
             pj_emit_term(goal->children[1], var_locals, n_vars);
             J("    invokestatic %s/pj_term_to_atom_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* garbage_collect/0 — no-op on JVM (GC is automatic) */
+        if (strcmp(fn, "garbage_collect") == 0 && nargs == 0) {
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* trim_stacks/0 — no-op on JVM */
+        if (strcmp(fn, "trim_stacks") == 0 && nargs == 0) {
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* ?=(X, Y) — can-compare: succeed if X and Y are ground (contain no vars)
+         * or are identical. Fails if either contains unbound variables. */
+        if (strcmp(fn, "?=") == 0 && nargs == 2) {
+            pj_emit_term(goal->children[0], var_locals, n_vars);
+            pj_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pj_can_compare(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
             J("    ifeq %s\n", lbl_ω);
             JI("goto", lbl_γ);
             return;
@@ -6292,6 +6428,75 @@ static void pj_emit_findall_builtin(void) {
     J("pj_ct_done:\n");
     J("    aload 4\n");
     J("    areturn\n");
+    J(".end method\n\n");
+
+    /* ---- pj_is_ground: check if a term contains no unbound variables ---- */
+    J("; === pj_is_ground (recursive ground check) ===========================\n");
+    J(".method static pj_is_ground(Ljava/lang/Object;)Z\n");
+    J("    .limit stack 8\n");
+    J("    .limit locals 5\n");
+    /* deref */
+    J("    aload_0\n");
+    J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+    J("    astore_0\n");
+    /* null = unbound var → not ground */
+    J("    aload_0\n");
+    J("    ifnull pj_isg_false\n");
+    J("    aload_0\n");
+    J("    instanceof [Ljava/lang/Object;\n");
+    J("    ifeq pj_isg_string\n");
+    J("    aload_0\n"); J("    checkcast [Ljava/lang/Object;\n"); J("    astore 1\n");
+    J("    aload 1\n"); J("    iconst_0\n"); J("    aaload\n");
+    J("    checkcast java/lang/String\n"); J("    astore 2\n");
+    /* var tag → not ground */
+    J("    aload 2\n"); J("    ldc \"var\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ifne pj_isg_false\n");
+    /* ref tag → recurse on [1] */
+    J("    aload 2\n"); J("    ldc \"ref\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ifeq pj_isg_not_ref\n");
+    J("    aload 1\n"); J("    iconst_1\n"); J("    aaload\n");
+    J("    invokestatic %s/pj_is_ground(Ljava/lang/Object;)Z\n", pj_classname);
+    J("    ireturn\n");
+    J("pj_isg_not_ref:\n");
+    /* atom or int → ground */
+    J("    aload 2\n"); J("    ldc \"atom\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ifne pj_isg_true\n");
+    J("    aload 2\n"); J("    ldc \"int\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ifne pj_isg_true\n");
+    J("    aload 2\n"); J("    ldc \"float\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ifne pj_isg_true\n");
+    /* compound: check all args */
+    J("    aload 1\n"); J("    arraylength\n"); J("    iconst_2\n"); J("    isub\n"); J("    istore 3\n"); /* arity */
+    J("    iconst_0\n"); J("    istore 4\n"); /* i=0 */
+    J("pj_isg_compound_loop:\n");
+    J("    iload 4\n"); J("    iload 3\n"); J("    if_icmpge pj_isg_true\n");
+    J("    aload 1\n"); J("    iload 4\n"); J("    iconst_2\n"); J("    iadd\n"); J("    aaload\n");
+    J("    invokestatic %s/pj_is_ground(Ljava/lang/Object;)Z\n", pj_classname);
+    J("    ifeq pj_isg_false\n");
+    J("    iinc 4 1\n"); J("    goto pj_isg_compound_loop\n");
+    J("pj_isg_string:\n");
+    J("pj_isg_true:\n"); J("    iconst_1\n"); J("    ireturn\n");
+    J("pj_isg_false:\n"); J("    iconst_0\n"); J("    ireturn\n");
+    J(".end method\n\n");
+
+    /* ---- pj_can_compare(?X, ?Y) → Z: succeed if both ground or identical -- */
+    J("; === pj_can_compare (?= operator) ====================================\n");
+    J(".method static pj_can_compare(Ljava/lang/Object;Ljava/lang/Object;)Z\n");
+    J("    .limit stack 4\n");
+    J("    .limit locals 2\n");
+    J("    aload_0\n");
+    J("    invokestatic %s/pj_is_ground(Ljava/lang/Object;)Z\n", pj_classname);
+    J("    ifeq pj_cc_false\n");
+    J("    aload_1\n");
+    J("    invokestatic %s/pj_is_ground(Ljava/lang/Object;)Z\n", pj_classname);
+    J("    ifeq pj_cc_false\n");
+    J("    iconst_1\n"); J("    ireturn\n");
+    J("pj_cc_false:\n"); J("    iconst_0\n"); J("    ireturn\n");
     J(".end method\n\n");
 
     /* ---- pj_call_goal: interpret a goal term.
