@@ -5156,14 +5156,25 @@ static void pj_emit_body(EXPR_t **goals, int ngoals, const char *lbl_γ,
         /* M-PJ-CUT-UCALL: if callee has cut and reliable sentinel, propagate cutgamma.
          * MAX_VALUE (2147483647) is the unambiguous sentinel — check rv[0] >= it. */
         if (pj_callee_has_cut_no_last_ucall(fn, nargs)) {
-            const char *cut_dest = lbl_cutγ ? lbl_cutγ : call_ω;
+            /* M-PJ-CUT-SCOPE: A cut inside a *called* predicate is scoped to
+             * that predicate only and must NOT propagate into the caller.
+             * Clamp MAX_VALUE return to 1 (deterministic success) so the
+             * caller's gamma body continues normally. */
+            char clamp_done[128];
+            snprintf(clamp_done, sizeof clamp_done, "clamp_done_%d", uid);
             J("    aload %d\n", local_rv);
             JI("iconst_0", "");
             JI("aaload", "");
             JI("checkcast", "java/lang/Integer");
             JI("invokevirtual", "java/lang/Integer/intValue()I");
             J("    ldc 2147483647\n");
-            J("    if_icmpeq %s\n", cut_dest);
+            J("    if_icmpne %s\n", clamp_done);
+            J("    aload %d\n", local_rv);
+            J("    iconst_0\n");
+            J("    iconst_1\n");
+            J("    invokestatic java/lang/Integer/valueOf(I)Ljava/lang/Integer;\n");
+            J("    aastore\n");
+            J("%s:\n", clamp_done);
         }
         /* extract returned cs — store into sub_cs_out_local for γ encoding,
          * and advance local_cs for the next β-retry of THIS call. */
@@ -5339,6 +5350,108 @@ static void pj_emit_body(EXPR_t **goals, int ngoals, const char *lbl_γ,
         J("%s:\n", g_ω);
         JI("goto", lbl_ω);
     }
+}
+
+/* -------------------------------------------------------------------------
+ * pj_emit_reverse_builtin — emit synthetic p_reverse_2 method.
+ * Signature: p_reverse_2([List], [Result], cs) → Object[] | null
+ * Deterministic: reverses the Prolog list in List and unifies with Result.
+ * cs > 0 → always fail (no retry).
+ * ------------------------------------------------------------------------- */
+static void pj_emit_reverse_builtin(void) {
+    J("; === reverse/2 synthetic predicate ========================================\n");
+    J(".method static p_reverse_2([Ljava/lang/Object;[Ljava/lang/Object;I)[Ljava/lang/Object;\n");
+    J("    .limit stack 8\n");
+    J("    .limit locals 8\n");
+    /* cs > 0 → already used, fail */
+    J("    iload_2\n");
+    J("    ifne p_reverse_2_fail\n");
+    /* Walk list into ArrayList */
+    J("    new java/util/ArrayList\n");
+    J("    dup\n");
+    J("    invokespecial java/util/ArrayList/<init>()V\n");
+    J("    astore_3\n");
+    J("    aload_0\n");
+    J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+    J("    astore 4\n");
+    J("p_rev_walk:\n");
+    J("    aload 4\n");
+    J("    checkcast [Ljava/lang/Object;\n");
+    J("    iconst_1\n");
+    J("    aaload\n");
+    J("    ldc \"[]\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ifne p_rev_build\n");
+    /* head = list[2] */
+    J("    aload_3\n");
+    J("    aload 4\n");
+    J("    checkcast [Ljava/lang/Object;\n");
+    J("    iconst_2\n");
+    J("    aaload\n");
+    J("    invokevirtual java/util/ArrayList/add(Ljava/lang/Object;)Z\n");
+    J("    pop\n");
+    /* tail = list[3], deref, loop */
+    J("    aload 4\n");
+    J("    checkcast [Ljava/lang/Object;\n");
+    J("    iconst_3\n");
+    J("    aaload\n");
+    J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+    J("    astore 4\n");
+    J("    goto p_rev_walk\n");
+    /* Build reversed Prolog list: prepend each element front-to-back.
+     * Walking i=0..size-1 and prepending gives [arr[N-1],...,arr[0]] = reversed. */
+    J("p_rev_build:\n");
+    J("    ldc \"[]\"\n");
+    J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+    J("    astore 5\n");     /* accumulator, starts as [] */
+    J("    iconst_0\n");
+    J("    istore 6\n");     /* i = 0, iterate forward */
+    J("p_rev_loop:\n");
+    J("    iload 6\n");
+    J("    aload_3\n");
+    J("    invokevirtual java/util/ArrayList/size()I\n");
+    J("    if_icmpge p_rev_unify\n");
+    J("    bipush 4\n");
+    J("    anewarray java/lang/Object\n");
+    J("    dup\n");
+    J("    iconst_0\n");
+    J("    ldc \"compound\"\n");
+    J("    aastore\n");
+    J("    dup\n");
+    J("    iconst_1\n");
+    J("    ldc \".\"\n");
+    J("    aastore\n");
+    J("    dup\n");
+    J("    iconst_2\n");
+    J("    aload_3\n");
+    J("    iload 6\n");
+    J("    invokevirtual java/util/ArrayList/get(I)Ljava/lang/Object;\n");
+    J("    aastore\n");
+    J("    dup\n");
+    J("    iconst_3\n");
+    J("    aload 5\n");
+    J("    aastore\n");
+    J("    astore 5\n");
+    J("    iinc 6 1\n");
+    J("    goto p_rev_loop\n");
+    /* Unify result */
+    J("p_rev_unify:\n");
+    J("    aload 5\n");
+    J("    aload_1\n");
+    J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+    J("    ifeq p_reverse_2_fail\n");
+    J("    iconst_1\n");
+    J("    anewarray java/lang/Object\n");
+    J("    dup\n");
+    J("    iconst_0\n");
+    J("    iconst_1\n");
+    J("    invokestatic java/lang/Integer/valueOf(I)Ljava/lang/Integer;\n");
+    J("    aastore\n");
+    J("    areturn\n");
+    J("p_reverse_2_fail:\n");
+    J("    aconst_null\n");
+    J("    areturn\n");
+    J(".end method\n\n");
 }
 
 /* -------------------------------------------------------------------------
@@ -8036,6 +8149,19 @@ void prolog_emit_jvm(Program *prog, FILE *out, const char *filename) {
         }
         if (!defines_agg)
             pj_emit_aggregate_all_builtin();
+    }
+
+    /* Check if program uses reverse/2 but doesn't define it — emit synthetic method */
+    {
+        int defines_reverse = 0;
+        for (STMT_t *s = prog->head; s; s = s->next) {
+            if (!s->subject) continue;
+            if (s->subject->kind == E_CHOICE && s->subject->sval &&
+                strcmp(s->subject->sval, "reverse") == 0)
+                defines_reverse = 1;
+        }
+        if (!defines_reverse)
+            pj_emit_reverse_builtin();
     }
 
     /* M-PJ-LINKER: plunit linker — scan + emit shim + stubs + bridges */
