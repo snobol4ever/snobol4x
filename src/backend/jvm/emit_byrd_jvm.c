@@ -65,6 +65,20 @@
 
 static FILE *jvm_out;
 
+static int jvm_is_exported(Program *prog, const char *name) {
+    if (!prog) return 0;
+    for (ExportEntry *e = prog->exports; e; e = e->next)
+        if (strcasecmp(e->name, name) == 0) return 1;
+    return 0;
+}
+
+static ImportEntry *jvm_find_import(Program *prog, const char *name) {
+    if (!prog) return NULL;
+    for (ImportEntry *ie = prog->imports; ie; ie = ie->next)
+        if (strcmp(ie->method, name) == 0) return ie;
+    return NULL;
+}
+
 /* J(fmt, ...) — emit raw text (no column management) */
 static void J(const char *fmt, ...) {
     va_list ap;
@@ -166,8 +180,7 @@ static void jvm_set_classname(const char *filename) {
     if (!isalpha((unsigned char)*p) && *p != '_') *p = '_';
     for (; *p; p++)
         if (!isalnum((unsigned char)*p) && *p != '_') *p = '_';
-    /* capitalise first letter (Java class convention) */
-    buf[0] = (char)toupper((unsigned char)buf[0]);
+    /* ABI §5: lowercase classnames — do NOT capitalize */
     strncpy(jvm_classname, buf, sizeof jvm_classname - 1);
 }
 
@@ -4769,6 +4782,47 @@ void jvm_emit(Program *prog, FILE *out, const char *filename) {
     /* Emit user-defined function methods */
     for (int i = 0; i < jvm_fn_count; i++)
         jvm_emit_fn_method(&jvm_fn_table[i], prog, i);
+
+    /* M-LINK-JVM-1: EXPORT wrappers — public Byrd-box ABI (ARCH-scrip-abi.md §3) */
+    for (int i = 0; i < jvm_fn_count; i++) {
+        const JvmFnDef *fn = &jvm_fn_table[i];
+        /* Find the matching ExportEntry to get verbatim method name */
+        ExportEntry *matched_export = NULL;
+        if (prog) for (ExportEntry *e = prog->exports; e; e = e->next)
+            if (strcasecmp(e->name, fn->name) == 0) { matched_export = e; break; }
+        if (!matched_export) continue;
+        const char *export_name = matched_export->name;  /* verbatim from -EXPORT directive */
+        J("\n; EXPORT wrapper for %s\n", export_name);
+        J(".method public static %s([Ljava/lang/Object;Ljava/lang/Runnable;Ljava/lang/Runnable;)V\n", export_name);
+        J("    .limit stack 16\n"); J("    .limit locals 4\n");
+        for (int a = 0; a < fn->nargs; a++) {
+            J("    aload_0\n"); J("    ldc %d\n", a);
+            J("    aaload\n"); J("    checkcast java/lang/String\n");
+        }
+        char udesc[1024]; int dp = 0; udesc[dp++] = '(';
+        for (int a = 0; a < fn->nargs; a++) {
+            const char *s = "Ljava/lang/String;";
+            for (const char *p = s; *p; p++) udesc[dp++] = *p;
+        }
+        udesc[dp++] = ')';
+        const char *rs = "Ljava/lang/String;";
+        for (const char *p = rs; *p; p++) udesc[dp++] = *p;
+        udesc[dp] = '\0';
+        J("    invokestatic %s/sno_userfn_%s%s\n", jvm_classname, fn->name, udesc);
+        J("    astore_3\n");
+        J("    aload_3\n"); J("    ifnull export_omega_%s\n", export_name);
+        J("    getstatic ByrdBoxLinkage/RESULT Ljava/util/concurrent/atomic/AtomicReference;\n");
+        J("    aload_3\n");
+        J("    invokevirtual java/util/concurrent/atomic/AtomicReference/set(Ljava/lang/Object;)V\n");
+        J("    aload_1\n"); J("    ifnull export_done_%s\n", export_name);
+        J("    aload_1\n"); J("    invokeinterface java/lang/Runnable/run()V 1\n");
+        J("    goto export_done_%s\n", export_name);
+        J("export_omega_%s:\n", export_name);
+        J("    aload_2\n"); J("    ifnull export_done_%s\n", export_name);
+        J("    aload_2\n"); J("    invokeinterface java/lang/Runnable/run()V 1\n");
+        J("export_done_%s:\n", export_name);
+        J("    return\n"); J(".end method\n");
+    }
 
     jvm_emit_parse_helper();
     jvm_emit_runtime_helpers();

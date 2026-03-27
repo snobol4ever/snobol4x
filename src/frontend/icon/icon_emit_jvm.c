@@ -73,6 +73,8 @@ static void JL(const char *label) {
 static void JGoto(const char *lbl) {
     J("    goto %s\n", lbl);
 }
+/* JBarrier: no-op — dead-code suppression is handled by j_suppress in J(). */
+static void JBarrier(void) { }
 static void JC(const char *comment) {
     J(";  %s\n", comment);
 }

@@ -98,7 +98,7 @@ static void pj_set_classname(const char *filename) {
     if (!isalpha((unsigned char)*p) && *p != '_') *p = '_';
     for (; *p; p++)
         if (!isalnum((unsigned char)*p) && *p != '_') *p = '_';
-    buf[0] = (char)toupper((unsigned char)buf[0]);
+    /* ABI §5: lowercase classnames — do NOT capitalize */
     strncpy(pj_classname, buf, sizeof pj_classname - 1);
 }
 
@@ -7079,6 +7079,19 @@ static void pj_emit_findall_builtin(void) {
     J("    invokevirtual java/lang/Integer/intValue()I\n");
     J("    ireturn\n");
     J("pj_cg_not_phrase:\n");
+    /* assertz/1 — dynamic fact assertion */
+    J("    aload 4\n");
+    J("    ldc \"assertz\"\n");
+    J("    invokevirtual java/lang/String/equals(Ljava/lang/Object;)Z\n");
+    J("    ifeq pj_cg_not_assertz\n");
+    J("    aload 2\n"); J("    iconst_2\n"); J("    aaload\n");   /* assertz arg */
+    J("    invokestatic %s/pj_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", pj_classname);
+    J("    dup\n");
+    J("    invokestatic %s/pj_db_assert_key(Ljava/lang/Object;)Ljava/lang/String;\n", pj_classname);
+    J("    swap\n"); J("    iconst_0\n");
+    J("    invokestatic %s/pj_db_assert(Ljava/lang/String;Ljava/lang/Object;I)V\n", pj_classname);
+    J("    iconst_0\n"); J("    ireturn\n");
+    J("pj_cg_not_assertz:\n");
     /* user predicate: build args array, call via reflection, return new cs */
     J("    aload 2\n"); J("    arraylength\n"); J("    iconst_2\n"); J("    isub\n"); J("    istore 5\n"); /* arity */
     J("    iload 5\n");
@@ -9793,6 +9806,108 @@ void prolog_emit_jvm(Program *prog, FILE *out, const char *filename) {
             JI("aconst_null", "");
             JI("areturn", "");
             J(".end method\n\n");
+        }
+    }
+
+    /* -----------------------------------------------------------------------
+     * M-LINK-JVM: EXPORT wrappers for Prolog predicates.
+     * ----------------------------------------------------------------------- */
+    if (prog && prog->exports) {
+        typedef struct { char name[64]; int arity; } PjExportArity;
+        #define PJ_EXPORT_MAX 64
+        PjExportArity pj_ea[PJ_EXPORT_MAX];
+        int pj_nea = 0;
+        for (STMT_t *s = prog->head; s; s = s->next) {
+            if (!s->subject || s->subject->kind != E_CHOICE) continue;
+            if (!s->subject->sval) continue;
+            const char *sv = s->subject->sval;
+            const char *slash = strchr(sv, '/');
+            if (!slash) continue;
+            int ar = atoi(slash + 1);
+            int namelen = (int)(slash - sv);
+            if (namelen <= 0 || namelen >= 64) continue;
+            char fn[64]; strncpy(fn, sv, namelen); fn[namelen] = '\0';
+            int found = 0;
+            for (int k = 0; k < pj_nea; k++)
+                if (strcmp(pj_ea[k].name, fn) == 0) { found = 1; break; }
+            if (!found && pj_nea < PJ_EXPORT_MAX) {
+                strncpy(pj_ea[pj_nea].name, fn, 63);
+                pj_ea[pj_nea].arity = ar;
+                pj_nea++;
+            }
+        }
+
+        for (ExportEntry *e = prog->exports; e; e = e->next) {
+            int arity = -1;
+            char lname[64]; strncpy(lname, e->name, 63); lname[63] = '\0';
+            for (int k = 0; lname[k]; k++) lname[k] = (char)tolower((unsigned char)lname[k]);
+            for (int k = 0; k < pj_nea; k++) {
+                char kl[64]; strncpy(kl, pj_ea[k].name, 63); kl[63] = '\0';
+                for (int j = 0; kl[j]; j++) kl[j] = (char)tolower((unsigned char)kl[j]);
+                if (strcmp(kl, lname) == 0) { arity = pj_ea[k].arity; break; }
+            }
+            if (arity < 0) {
+                J("; EXPORT %s — predicate not found, skipping\n", e->name);
+                continue;
+            }
+
+            J("\n; EXPORT wrapper for %s/%d (M-LINK-JVM)\n", e->name, arity);
+            J(".method public static %s([Ljava/lang/Object;Ljava/lang/Runnable;Ljava/lang/Runnable;)V\n", e->name);
+            J("    .limit stack 16\n");
+            J("    .limit locals %d\n", 4 + arity);
+
+            /* Each arg: if args non-null and args[a] non-null → atom; else fresh var */
+            for (int a = 0; a < arity; a++) {
+                char ok[64], var[64], done[64];
+                snprintf(ok,   sizeof ok,   "pj_exp_%s_a%d_ok",   e->name, a);
+                snprintf(var,  sizeof var,  "pj_exp_%s_a%d_var",  e->name, a);
+                snprintf(done, sizeof done, "pj_exp_%s_a%d_done", e->name, a);
+                J("    aload_0\n"); J("    ifnull %s\n", var);
+                J("    aload_0\n"); J("    ldc %d\n", a); J("    aaload\n");
+                J("    ifnull %s\n", var);
+                J("    aload_0\n"); J("    ldc %d\n", a); J("    aaload\n");
+                J("    checkcast java/lang/String\n");
+                J("    invokestatic %s/pj_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", pj_classname);
+                J("    astore %d\n", 4 + a);
+                J("    goto %s\n", done);
+                J("%s:\n", var);
+                J("    invokestatic %s/pj_term_var()[Ljava/lang/Object;\n", pj_classname);
+                J("    astore %d\n", 4 + a);
+                J("%s:\n", done);
+            }
+
+            /* Call p_name_arity(arg0, ..., 0) */
+            char internal[128];
+            snprintf(internal, sizeof internal, "p_%s_%d", lname, arity);
+            char desc[512]; int dp = 0;
+            for (int a = 0; a < arity; a++) {
+                const char *s2 = "[Ljava/lang/Object;";
+                for (const char *p = s2; *p; p++) desc[dp++] = *p;
+            }
+            desc[dp++] = 'I'; desc[dp++] = ')';
+            const char *rs = "[Ljava/lang/Object;";
+            for (const char *p = rs; *p; p++) desc[dp++] = *p;
+            desc[dp] = '\0';
+            for (int a = 0; a < arity; a++) J("    aload %d\n", 4 + a);
+            J("    ldc 0\n");
+            J("    invokestatic %s/%s(%s\n", pj_classname, internal, desc);
+            J("    astore_3\n");
+
+            J("    aload_3\n"); J("    ifnull pj_exp_omega_%s\n", e->name);
+            J("    aload_3\n");
+            J("    invokestatic %s/pj_term_str(Ljava/lang/Object;)Ljava/lang/String;\n", pj_classname);
+            J("    getstatic ByrdBoxLinkage/RESULT Ljava/util/concurrent/atomic/AtomicReference;\n");
+            J("    swap\n");
+            J("    invokevirtual java/util/concurrent/atomic/AtomicReference/set(Ljava/lang/Object;)V\n");
+            J("    aload_1\n"); J("    ifnull pj_exp_done_%s\n", e->name);
+            J("    aload_1\n"); J("    invokeinterface java/lang/Runnable/run()V 1\n");
+            J("    goto pj_exp_done_%s\n", e->name);
+            J("pj_exp_omega_%s:\n", e->name);
+            J("    aload_2\n"); J("    ifnull pj_exp_done_%s\n", e->name);
+            J("    aload_2\n"); J("    invokeinterface java/lang/Runnable/run()V 1\n");
+            J("pj_exp_done_%s:\n", e->name);
+            J("    return\n");
+            J(".end method\n");
         }
     }
 
