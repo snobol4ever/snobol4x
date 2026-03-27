@@ -48,7 +48,6 @@
 #define _POSIX_C_SOURCE 200809L
 #include "icon_ast.h"
 #include "icon_lex.h"
-#include "src/frontend/icon/icon_lex.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1346,7 +1345,7 @@ static void ij_emit_suspend(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
 }
 
 /* =========================================================================
-/* =========================================================================
+ * =========================================================================
  * ICN_CASE — case E of { V1: R1  V2: R2 ... [default: RD] }
  * children: [0]=dispatch, [1]=v1,[2]=r1, [3]=v2,[4]=r2, ..., [last]=default_result
  * if (nc-1) is even → no default (odd clause pairs); if (nc-1) is odd → has default.
@@ -2752,6 +2751,23 @@ static void ij_emit_call(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
         return;
     }
 
+    /* --- map(s) --- 1-arg form: lowercase s using default &ucase/&lcase tables */
+    if (strcmp(fname, "map") == 0 && nargs == 1 && !ij_is_user_proc(fname)) {
+        IcnNode *sarg = n->children[1];
+        char after[64]; snprintf(after, sizeof after, "icn_%d_map1_after", id);
+        IjPorts ap; strncpy(ap.γ, after, 63); strncpy(ap.ω, ports.ω, 63);
+        char sa[64], sb[64]; ij_emit_expr(sarg, ap, sa, sb);
+        JL(a); JGoto(sa);
+        JL(b); JGoto(sb);
+        JL(after);
+        /* stack: String s — call map(s, &ucase, &lcase) */
+        JI("ldc", "\"ABCDEFGHIJKLMNOPQRSTUVWXYZ\"");
+        JI("ldc", "\"abcdefghijklmnopqrstuvwxyz\"");
+        JI("invokestatic", ij_classname_buf("icn_builtin_map(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"));
+        JGoto(ports.γ);
+        return;
+    }
+
     /* --- map(s, src, dst) --- translate chars in s: src[i]→dst[i] */
     if (strcmp(fname, "map") == 0 && nargs >= 3 && !ij_is_user_proc(fname)) {
         IcnNode *sarg   = n->children[1];
@@ -3137,6 +3153,7 @@ static void ij_emit_call(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
             int arg_is_rec = ij_expr_is_record(n->children[i+1]);
             int arg_is_str = !arg_is_rec && ij_expr_is_string(n->children[i+1]);
             int arg_is_dbl = !arg_is_rec && !arg_is_str && ij_expr_is_real(n->children[i+1]);
+            (void)arg_is_dbl;
             char argstrfield[64]; snprintf(argstrfield, sizeof argstrfield, "icn_arg_str_%d", i);
             JL(push_relay);
             if (arg_is_rec) {
@@ -3329,6 +3346,7 @@ static void ij_emit_alt(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
     /* For uniform-typed ALT (all str, all dbl, or all long): pass value through.
      * For mixed: discard and use lconst_0 sentinel (legacy behaviour). */
     int alt_uniform = alt_is_str || alt_is_dbl || (!alt_is_str && !alt_is_dbl);
+    (void)alt_uniform;
     /* alt_val_fld: temp static to hold the yielded value while we set gate */
     char alt_val_fld[80]; snprintf(alt_val_fld, sizeof alt_val_fld, "icn_%d_alt_val", id);
     if (!alt_is_str) {
@@ -3803,13 +3821,53 @@ static void ij_emit_while(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
         char body_drain[64]; snprintf(body_drain, sizeof body_drain, "icn_%d_wbdrain", id);
         /* Jump explicitly to body start (avoid fall-through into mid-body code) */
         JGoto(body_start);
-        /* body.γ → drain (pop body result), body.ω → loop_top (no value) */
-        IjPorts bp; strncpy(bp.γ, body_drain, 63); strncpy(bp.ω, loop_top, 63);
         ij_loop_push(ports.ω, ca);   /* break→exit, next→re-eval cond */
-        ij_emit_expr(body, bp, ba, bb);
+        /* ICN_SEQ_EXPR body: emit each child as an independent statement.
+         * A failing child (e.g. `if` with no else) must NOT abort remaining
+         * statements — it should fall through to the next child's alpha.
+         * Only the last child's ω goes to loop_top (re-check condition). */
+        if (body->kind == ICN_SEQ_EXPR && body->nchildren >= 2) {
+            int nc = body->nchildren;
+            char (*cca)[64] = malloc(nc * 64);
+            char (*ccb)[64] = malloc(nc * 64);
+            char (*relay_g)[64] = malloc(nc * 64);
+            char (*relay_f)[64] = malloc(nc * 64); /* failure relay: stmt fail → next alpha */
+            for (int i = 0; i < nc; i++) {
+                snprintf(relay_g[i], 64, "icn_%d_wb_rg_%d", id, i);
+                snprintf(relay_f[i], 64, "icn_%d_wb_rf_%d", id, i);
+                cca[i][0] = '\0'; ccb[i][0] = '\0';
+            }
+            /* Emit children: each stmt's γ → relay_g[i] (drain+next), ω → relay_f[i] (skip+next) */
+            for (int i = 0; i < nc; i++) {
+                IjPorts ep;
+                strncpy(ep.γ, (i == nc-1) ? body_drain : relay_g[i], 63);
+                strncpy(ep.ω, (i == nc-1) ? loop_top   : relay_f[i], 63);
+                ij_emit_expr(body->children[i], ep, cca[i], ccb[i]);
+            }
+            /* Jump over relay block */
+            JGoto(body_start);
+            /* γ relays: drain value, go to next stmt */
+            for (int i = 0; i < nc-1; i++) {
+                JL(relay_g[i]);
+                int is_ref = ij_expr_is_obj(body->children[i]);
+                JI(is_ref ? "pop" : "pop2", "");
+                JGoto(cca[i+1]);
+            }
+            /* ω relays: stmt failed → skip to next stmt alpha (no value on stack) */
+            for (int i = 0; i < nc-1; i++) {
+                JL(relay_f[i]);
+                JGoto(cca[i+1]);
+            }
+            JL(body_start); JGoto(cca[0]);
+            strncpy(ba, cca[0], 63);
+            free(cca); free(ccb); free(relay_g); free(relay_f);
+        } else {
+            /* Single-statement body: body.γ → drain, body.ω → loop_top */
+            IjPorts bp; strncpy(bp.γ, body_drain, 63); strncpy(bp.ω, loop_top, 63);
+            ij_emit_expr(body, bp, ba, bb);
+            JL(body_start); JGoto(ba);
+        }
         ij_loop_pop();
-        /* body_start label anchors the explicit jump from cond_ok */
-        JL(body_start); JGoto(ba);
         /* drain body return value then loop */
         JL(body_drain);
         if (ij_expr_is_obj(body)) { JI("pop",""); }
@@ -6355,7 +6413,7 @@ static void ij_emit_proc(IcnNode *proc, FILE *out_target) {
         /* Determine if statement produces a 1-slot ref (String or ArrayList) or 2-slot (long/double) */
         int stmt_is_ref  = ij_expr_is_obj(stmt);
         /* Build a drain label for this statement's success port */
-        char sdrain[64]; snprintf(sdrain, sizeof sdrain, "icn_s%d_sdrain", i);
+        char sdrain[64]; snprintf(sdrain, sizeof sdrain, "icn_%s_s%d_sdrain", pname, i);
         IjPorts sp; strncpy(sp.γ, sdrain, 63); strncpy(sp.ω, next_a, 63);
         char sa[64], sb[64]; ij_emit_expr(stmt, sp, sa, sb);
         /* Emit the drain: pop result (1-slot String or 2-slot long) then fall through */
