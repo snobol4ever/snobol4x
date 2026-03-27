@@ -80,6 +80,60 @@ static void JC(const char *comment) {
 }
 
 /* =========================================================================
+ * Forward-emit buffer
+ *
+ * Problem: backward-emit puts child subtrees inline before the parent's
+ * entry goto.  Two live paths converge on a label with different JVM
+ * operand-stack types → VerifyError (live-code stack-merge).
+ *
+ * Fix: redirect J() to a memory buffer during child emission, then:
+ *   1. Emit  goto child_α   directly to jout  (parent entry — first in bytecode)
+ *   2. Flush buffer         to jout           (child subtree — after the goto)
+ *
+ * Each child_α label then has exactly one predecessor (the goto), so the
+ * verifier sees a single clean stack type at every label.
+ *
+ * API:
+ *   ij_buf_open()    — redirect J() to a fresh memory stream; returns token.
+ *   ij_buf_flush()   — restore jout, write buffered bytes, free buffer.
+ *   ij_buf_discard() — restore jout without writing (error paths).
+ * ======================================================================= */
+typedef struct { FILE *saved_jout; char *buf; size_t bufsz; FILE *mem; } IjBuf;
+
+static IjBuf ij_buf_open(void) {
+    IjBuf b;
+    b.saved_jout = jout;
+    b.buf = NULL; b.bufsz = 0;
+    b.mem = open_memstream(&b.buf, &b.bufsz);
+    jout = b.mem;
+    return b;
+}
+
+static void ij_buf_flush(IjBuf *b) {
+    fflush(b->mem); fclose(b->mem);
+    jout = b->saved_jout;
+    if (b->buf && b->bufsz > 0) fwrite(b->buf, 1, b->bufsz, jout);
+    free(b->buf); b->buf = NULL;
+}
+
+static void ij_buf_discard(IjBuf *b) {
+    fflush(b->mem); fclose(b->mem);
+    jout = b->saved_jout;
+    free(b->buf); b->buf = NULL;
+}
+
+/* Emit  goto entry_lbl  to real jout, then flush the buffered child code.
+ * Use this after ij_emit_expr() has populated entry_lbl (oα). */
+static void ij_buf_flush_entry(IjBuf *b, const char *entry_lbl) {
+    fflush(b->mem); fclose(b->mem);
+    jout = b->saved_jout;
+    J("    goto %s\n", entry_lbl);          /* parent entry goto — FIRST */
+    if (b->buf && b->bufsz > 0)
+        fwrite(b->buf, 1, b->bufsz, jout);  /* child subtree — AFTER */
+    free(b->buf); b->buf = NULL;
+}
+
+/* =========================================================================
  * Class name
  * ======================================================================= */
 static char ij_classname[256];
@@ -334,9 +388,25 @@ static int ij_jvm_locals_count(void) {
 /* Current procedure name — used to namespace per-proc static var fields */
 static char ij_cur_proc[64] = "";
 
-/* Static field name for a named local/param in current proc */
+/* Static field name for a named local/param in current proc.
+ * JVM field names must not contain '&' (used in Icon keyword names like &subject).
+ * Sanitize by replacing '&' → "_kw_". */
+static void ij_sanitize_name(const char *varname, char *safe, size_t safesz) {
+    size_t si = 0;
+    for (const char *p = varname; *p && si + 4 < safesz; p++) {
+        if (*p == '&') { safe[si++]='_'; safe[si++]='k'; safe[si++]='w'; safe[si++]='_'; }
+        else safe[si++] = *p;
+    }
+    safe[si] = '\0';
+}
+/* Build a sanitized icn_gvar_NAME into buf (size bufsz). */
+static void ij_gvar_field(const char *varname, char *buf, size_t bufsz) {
+    char safe[128]; ij_sanitize_name(varname, safe, sizeof safe);
+    snprintf(buf, bufsz, "icn_gvar_%s", safe);
+}
 static void ij_var_field(const char *varname, char *out, size_t outsz) {
-    snprintf(out, outsz, "icn_pv_%s_%s", ij_cur_proc, varname);
+    char safe[128]; ij_sanitize_name(varname, safe, sizeof safe);
+    snprintf(out, outsz, "icn_pv_%s_%s", ij_cur_proc, safe);
 }
 
 /* =========================================================================
@@ -1724,43 +1794,91 @@ static void ij_emit_call(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
             JL(b); JGoto(ports.ω);
             return;
         }
-        IcnNode *arg = n->children[1];
-        char after[64]; snprintf(after, sizeof after, "icn_%d_call", id);
-        IjPorts ap; strncpy(ap.γ, after, 63); strncpy(ap.ω, ports.ω, 63);
-        char arg_a[64], arg_b[64];
-        ij_emit_expr(arg, ap, arg_a, arg_b);
-        JL(a); JGoto(arg_a);
-        JL(b); JGoto(arg_b);
-        JL(after);
-        /* Value on stack: String ref or long depending on arg type */
-        if (ij_expr_is_string(arg)) {
-            /* String ref on stack — store to scratch, push stream, load, println */
-            int scratch = ij_alloc_ref_scratch();
-            J("    astore %d\n", scratch);
-            JI("getstatic", "java/lang/System/out Ljava/io/PrintStream;");
-            J("    aload %d\n", scratch);
-            JI("invokevirtual", "java/io/PrintStream/println(Ljava/lang/String;)V");
-            /* write() returns its argument — reload String for caller */
-            J("    aload %d\n", scratch);
-        } else if (ij_expr_is_real(arg)) {
-            /* Double on stack — print as real */
-            int scratch = ij_locals_alloc_tmp();
-            J("    dstore %d\n", slot_jvm(scratch));
-            JI("getstatic", "java/lang/System/out Ljava/io/PrintStream;");
-            J("    dload %d\n", slot_jvm(scratch));
-            JI("invokevirtual", "java/io/PrintStream/println(D)V");
-            J("    dload %d\n", slot_jvm(scratch));
-        } else {
-            /* Long on stack — print as integer */
-            int scratch = ij_locals_alloc_tmp();
-            J("    lstore %d\n", slot_jvm(scratch));
-            JI("getstatic", "java/lang/System/out Ljava/io/PrintStream;");
-            J("    lload %d\n", slot_jvm(scratch));
-            JI("invokevirtual", "java/io/PrintStream/println(J)V");
-            /* Reload: write() returns its argument */
-            J("    lload %d\n", slot_jvm(scratch));
+        /* Multi-arg write: System.out.print() per arg, then println("").
+         * write() returns its last argument on γ; β → ports.ω.
+         *
+         * Stack-merge safety: emit all arg subtrees first (they reference waft
+         * labels as their γ).  Then emit a JGoto(entry) to jump OVER the relay
+         * blocks.  Each waft label then has exactly one predecessor (the goto
+         * from the arg's γ), so the verifier sees a clean single-type stack. */
+        char **ra  = malloc(nargs * sizeof(char*));
+        char **rb  = malloc(nargs * sizeof(char*));
+        char **aft = malloc(nargs * sizeof(char*));
+        for (int i = 0; i < nargs; i++) {
+            ra[i] = malloc(64); rb[i] = malloc(64); aft[i] = malloc(64);
+            snprintf(aft[i], 64, "icn_%d_waft_%d", id, i);
         }
-        JGoto(ports.γ);
+        char entry[64]; snprintf(entry, sizeof entry, "icn_%d_wentry", id);
+
+        /* Emit each arg subtree; their γ fires into aft[i] */
+        for (int i = 0; i < nargs; i++) {
+            IcnNode *arg = n->children[i+1];
+            IjPorts ap;
+            strncpy(ap.γ, aft[i], 63);
+            strncpy(ap.ω, ports.ω, 63);
+            ij_emit_expr(arg, ap, ra[i], rb[i]);
+        }
+
+        /* Entry/β trampolines, then jump over relay blocks */
+        JL(a); JGoto(ra[0]);
+        JL(b); JGoto(rb[0]);
+        JGoto(entry);   /* skip over relay blocks — each waft label gets single predecessor */
+
+        /* Relay blocks: one per arg */
+        for (int i = 0; i < nargs; i++) {
+            IcnNode *arg = n->children[i+1];
+            int is_last = (i == nargs - 1);
+            JL(aft[i]);
+            if (ij_expr_is_string(arg)) {
+                int scratch = ij_alloc_ref_scratch();
+                J("    astore %d\n", scratch);
+                JI("getstatic", "java/lang/System/out Ljava/io/PrintStream;");
+                J("    aload %d\n", scratch);
+                JI("invokevirtual", "java/io/PrintStream/print(Ljava/lang/String;)V");
+                if (is_last) {
+                    JI("getstatic", "java/lang/System/out Ljava/io/PrintStream;");
+                    JI("ldc", "\"\"");
+                    JI("invokevirtual", "java/io/PrintStream/println(Ljava/lang/String;)V");
+                    J("    aload %d\n", scratch);
+                    JGoto(ports.γ);
+                } else {
+                    JGoto(ra[i+1]);
+                }
+            } else if (ij_expr_is_real(arg)) {
+                int scratch = ij_locals_alloc_tmp();
+                J("    dstore %d\n", slot_jvm(scratch));
+                JI("getstatic", "java/lang/System/out Ljava/io/PrintStream;");
+                J("    dload %d\n", slot_jvm(scratch));
+                JI("invokevirtual", "java/io/PrintStream/print(D)V");
+                if (is_last) {
+                    JI("getstatic", "java/lang/System/out Ljava/io/PrintStream;");
+                    JI("ldc", "\"\"");
+                    JI("invokevirtual", "java/io/PrintStream/println(Ljava/lang/String;)V");
+                    J("    dload %d\n", slot_jvm(scratch));
+                    JGoto(ports.γ);
+                } else {
+                    JGoto(ra[i+1]);
+                }
+            } else {
+                int scratch = ij_locals_alloc_tmp();
+                J("    lstore %d\n", slot_jvm(scratch));
+                JI("getstatic", "java/lang/System/out Ljava/io/PrintStream;");
+                J("    lload %d\n", slot_jvm(scratch));
+                JI("invokevirtual", "java/io/PrintStream/print(J)V");
+                if (is_last) {
+                    JI("getstatic", "java/lang/System/out Ljava/io/PrintStream;");
+                    JI("ldc", "\"\"");
+                    JI("invokevirtual", "java/io/PrintStream/println(Ljava/lang/String;)V");
+                    J("    lload %d\n", slot_jvm(scratch));
+                    JGoto(ports.γ);
+                } else {
+                    JGoto(ra[i+1]);
+                }
+            }
+        }
+        JL(entry); JGoto(ra[0]);   /* real entry point — after relay blocks */
+        for (int i = 0; i < nargs; i++) { free(ra[i]); free(rb[i]); free(aft[i]); }
+        free(ra); free(rb); free(aft);
         return;
     }
 
@@ -1882,21 +2000,32 @@ static void ij_emit_call(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
     if (strcmp(fname, "integer") == 0 && nargs >= 1 && !ij_is_user_proc(fname)) {
         IcnNode *arg = n->children[1];
         char after[64]; snprintf(after, sizeof after, "icn_%d_int_after", id);
+        char fail_lbl[64]; snprintf(fail_lbl, sizeof fail_lbl, "icn_%d_int_fail", id);
         IjPorts ap; strncpy(ap.γ, after, 63); strncpy(ap.ω, ports.ω, 63);
         char aa[64], ab[64]; ij_emit_expr(arg, ap, aa, ab);
         JL(a); JGoto(aa);
         JL(b); JGoto(ab);
         JL(after);
-        if (ij_expr_is_real(arg))        JI("d2l", "");   /* double → long */
-        else if (ij_expr_is_string(arg)) {
-            /* String → Long.parseLong */
+        if (ij_expr_is_real(arg)) {
+            JI("d2l", "");   /* double → long */
+        } else if (ij_expr_is_string(arg)) {
+            /* String → icn_builtin_parse_long; sentinel → fail */
             int scratch = ij_alloc_ref_scratch();
             J("    astore %d\n", scratch);
             J("    aload %d\n",  scratch);
-            JI("invokestatic", "java/lang/Long/parseLong(Ljava/lang/String;)J");
+            JI("invokestatic", ij_classname_buf("icn_builtin_parse_long(Ljava/lang/String;)J"));
+            /* check sentinel Long.MIN_VALUE */
+            int tmp = ij_locals_alloc_tmp();
+            J("    lstore %d\n", slot_jvm(tmp));
+            J("    lload %d\n",  slot_jvm(tmp));
+            JI("ldc2_w", "-9223372036854775808");
+            JI("lcmp", "");
+            J("    ifeq %s\n", fail_lbl);
+            J("    lload %d\n", slot_jvm(tmp));
         }
         /* else already long — no conversion needed */
         JGoto(ports.γ);
+        JL(fail_lbl); JGoto(ports.ω);
         return;
     }
 
@@ -2748,7 +2877,12 @@ static void ij_emit_call(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
             char sa[64], sb[64]; ij_emit_expr(sarg, ap, sa, sb);
             JL(a); JGoto(sa);
             JL(b); JGoto(sb);
-            JL(mid); ij_put_str_field(sfld_left);
+            JL(mid);
+            if (!ij_expr_is_string(sarg)) {
+                if (ij_expr_is_real(sarg)) JI("invokestatic","java/lang/Double/toString(D)Ljava/lang/String;");
+                else JI("invokestatic","java/lang/Long/toString(J)Ljava/lang/String;");
+            }
+            ij_put_str_field(sfld_left);
             JI("iconst_1",""); J("    istore %d\n", scratch_n);
             ij_get_str_field(sfld_left);
             J("    iload %d\n", scratch_n);
@@ -2759,7 +2893,13 @@ static void ij_emit_call(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
             char na[64], nb[64]; ij_emit_expr(narg, bp, na, nb);
             JL(a); JGoto(sa);
             JL(b); JGoto(sb);
-            JL(mid); ij_put_str_field(sfld_left);
+            JL(mid);
+            /* coerce numeric sarg to String */
+            if (!ij_expr_is_string(sarg)) {
+                if (ij_expr_is_real(sarg)) JI("invokestatic","java/lang/Double/toString(D)Ljava/lang/String;");
+                else JI("invokestatic","java/lang/Long/toString(J)Ljava/lang/String;");
+            }
+            ij_put_str_field(sfld_left);
             JGoto(na);
             JL(after); JI("l2i",""); J("    istore %d\n", scratch_n);
             ij_get_str_field(sfld_left);
@@ -2817,7 +2957,12 @@ static void ij_emit_call(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
             IjPorts ap; strncpy(ap.γ, mid, 63); strncpy(ap.ω, ports.ω, 63);
             char sa[64], sb[64]; ij_emit_expr(sarg, ap, sa, sb);
             JL(a); JGoto(sa); JL(b); JGoto(sb);
-            JL(mid); ij_put_str_field(sfld_right);
+            JL(mid);
+            if (!ij_expr_is_string(sarg)) {
+                if (ij_expr_is_real(sarg)) JI("invokestatic","java/lang/Double/toString(D)Ljava/lang/String;");
+                else JI("invokestatic","java/lang/Long/toString(J)Ljava/lang/String;");
+            }
+            ij_put_str_field(sfld_right);
             JI("iconst_1",""); J("    istore %d\n", scratch_n);
             ij_get_str_field(sfld_right); J("    iload %d\n", scratch_n);
         } else {
@@ -2826,7 +2971,12 @@ static void ij_emit_call(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
             IjPorts bp; strncpy(bp.γ, after, 63); strncpy(bp.ω, ports.ω, 63);
             char na[64], nb[64]; ij_emit_expr(narg, bp, na, nb);
             JL(a); JGoto(sa); JL(b); JGoto(sb);
-            JL(mid); ij_put_str_field(sfld_right); JGoto(na);
+            JL(mid);
+            if (!ij_expr_is_string(sarg)) {
+                if (ij_expr_is_real(sarg)) JI("invokestatic","java/lang/Double/toString(D)Ljava/lang/String;");
+                else JI("invokestatic","java/lang/Long/toString(J)Ljava/lang/String;");
+            }
+            ij_put_str_field(sfld_right); JGoto(na);
             JL(after); JI("l2i",""); J("    istore %d\n", scratch_n);
             ij_get_str_field(sfld_right); J("    iload %d\n", scratch_n);
         }
@@ -2880,7 +3030,12 @@ static void ij_emit_call(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
             IjPorts ap; strncpy(ap.γ, mid, 63); strncpy(ap.ω, ports.ω, 63);
             char sa[64], sb[64]; ij_emit_expr(sarg, ap, sa, sb);
             JL(a); JGoto(sa); JL(b); JGoto(sb);
-            JL(mid); ij_put_str_field(sfld_ctr);
+            JL(mid);
+            if (!ij_expr_is_string(sarg)) {
+                if (ij_expr_is_real(sarg)) JI("invokestatic","java/lang/Double/toString(D)Ljava/lang/String;");
+                else JI("invokestatic","java/lang/Long/toString(J)Ljava/lang/String;");
+            }
+            ij_put_str_field(sfld_ctr);
             JI("iconst_1",""); J("    istore %d\n", scratch_n);
             ij_get_str_field(sfld_ctr); J("    iload %d\n", scratch_n);
         } else {
@@ -2889,7 +3044,12 @@ static void ij_emit_call(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
             IjPorts bp; strncpy(bp.γ, after, 63); strncpy(bp.ω, ports.ω, 63);
             char na[64], nb[64]; ij_emit_expr(narg, bp, na, nb);
             JL(a); JGoto(sa); JL(b); JGoto(sb);
-            JL(mid); ij_put_str_field(sfld_ctr); JGoto(na);
+            JL(mid);
+            if (!ij_expr_is_string(sarg)) {
+                if (ij_expr_is_real(sarg)) JI("invokestatic","java/lang/Double/toString(D)Ljava/lang/String;");
+                else JI("invokestatic","java/lang/Long/toString(J)Ljava/lang/String;");
+            }
+            ij_put_str_field(sfld_ctr); JGoto(na);
             JL(after); JI("l2i",""); J("    istore %d\n", scratch_n);
             ij_get_str_field(sfld_ctr); J("    iload %d\n", scratch_n);
         }
@@ -3432,9 +3592,9 @@ static void ij_emit_call(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
             ij_emit_expr(n->children[i+1], ap, arg_alphas[i], arg_betas[i]);
             char argfield[64];    snprintf(argfield,    sizeof argfield,    "icn_arg_%d",     i);
             char argobjfield[64]; snprintf(argobjfield, sizeof argobjfield, "icn_arg_obj_%d", i);
-            int arg_is_rec = ij_expr_is_record(n->children[i+1]);
-            int arg_is_str = !arg_is_rec && ij_expr_is_string(n->children[i+1]);
-            int arg_is_dbl = !arg_is_rec && !arg_is_str && ij_expr_is_real(n->children[i+1]);
+            int arg_is_rec  = ij_expr_is_record(n->children[i+1]);
+            int arg_is_str  = !arg_is_rec && ij_expr_is_string(n->children[i+1]);
+            int arg_is_dbl  = !arg_is_rec && !arg_is_str && ij_expr_is_real(n->children[i+1]);
             (void)arg_is_dbl;
             char argstrfield[64]; snprintf(argstrfield, sizeof argstrfield, "icn_arg_str_%d", i);
             JL(push_relay);
@@ -4253,15 +4413,20 @@ static int ij_expr_is_string(IcnNode *n) {
             if (n->nchildren >= 1) return ij_expr_is_list(n->children[0]) ? 0 : 1;
             return 1;
         case ICN_AUGOP:  /* ||:= (TK_AUGCONCAT=36) yields String; arithmetic augops yield long */
-            return ((int)n->val.ival == TK_AUGCONCAT) ? 1 : 0;
+            if ((int)n->val.ival == TK_AUGCONCAT) return 1;
+            /* String comparison augops yield String (the rhs) */
+            if ((int)n->val.ival == TK_AUGSEQ || (int)n->val.ival == TK_AUGSLT ||
+                (int)n->val.ival == TK_AUGSLE || (int)n->val.ival == TK_AUGSGT ||
+                (int)n->val.ival == TK_AUGSGE || (int)n->val.ival == TK_AUGSNE) return 1;
+            return 0;
         case ICN_CALL: {
             if (n->nchildren >= 1) {
                 IcnNode *fn = n->children[0];
                 if (fn && fn->kind == ICN_VAR) {
                     const char *fn_name = fn->val.sval;
-                    /* write(str_arg) returns its argument */
+                    /* write(args...) returns its last argument */
                     if (strcmp(fn_name, "write") == 0 && n->nchildren >= 2)
-                        return ij_expr_is_string(n->children[1]);
+                        return ij_expr_is_string(n->children[n->nchildren - 1]);
                     /* tab/move return String substrings */
                     if (strcmp(fn_name, "tab") == 0)    return 1;
                     if (strcmp(fn_name, "move") == 0)   return 1;
@@ -5116,6 +5281,71 @@ static void ij_emit_augop(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
             JI("dup","");                           /* one copy stays on stack for γ */
             ij_put_str_field(fld);                  /* store result back to lhs */
             JGoto(ports.γ);
+        } else if ((int)aug_kind == TK_AUGEQ  || (int)aug_kind == TK_AUGLT ||
+                   (int)aug_kind == TK_AUGLE  || (int)aug_kind == TK_AUGGT ||
+                   (int)aug_kind == TK_AUGGE  || (int)aug_kind == TK_AUGNE) {
+            /* Numeric comparison augop: lhs op:= rhs
+             * Semantics: if lhs op rhs succeeds → lhs := rhs, return rhs; else fail.
+             * rhs (long) is on stack at rhs_ok. */
+            char tmp_fld[128]; snprintf(tmp_fld, sizeof tmp_fld, "icn_%d_augtemp", id);
+            ij_declare_static(tmp_fld);
+            ij_put_long(tmp_fld);              /* save rhs */
+            ij_declare_static(fld);
+            ij_get_long(fld);                  /* load lhs */
+            ij_get_long(tmp_fld);              /* load rhs */
+            /* Compare lhs vs rhs: lcmp → int (-1,0,1) */
+            char pass_lbl[64], fail_lbl[64];
+            snprintf(pass_lbl, sizeof pass_lbl, "icn_%d_augcmp_pass", id);
+            snprintf(fail_lbl, sizeof fail_lbl, "icn_%d_augcmp_fail", id);
+            JI("lcmp", "");
+            switch ((int)aug_kind) {
+                case TK_AUGEQ: J("    ifeq %s\n", pass_lbl); break;
+                case TK_AUGLT: J("    iflt %s\n", pass_lbl); break;
+                case TK_AUGLE: J("    ifle %s\n", pass_lbl); break;
+                case TK_AUGGT: J("    ifgt %s\n", pass_lbl); break;
+                case TK_AUGGE: J("    ifge %s\n", pass_lbl); break;
+                case TK_AUGNE: J("    ifne %s\n", pass_lbl); break;
+                default:       J("    ifeq %s\n", pass_lbl); break;
+            }
+            JL(fail_lbl); JGoto(ports.ω);
+            JL(pass_lbl);
+            /* Comparison passed: assign rhs to lhs, return rhs */
+            ij_get_long(tmp_fld);
+            JI("dup2", "");
+            ij_put_long(fld);
+            JGoto(ports.γ);
+        } else if ((int)aug_kind == TK_AUGSEQ || (int)aug_kind == TK_AUGSLT ||
+                   (int)aug_kind == TK_AUGSLE || (int)aug_kind == TK_AUGSGT ||
+                   (int)aug_kind == TK_AUGSGE || (int)aug_kind == TK_AUGSNE) {
+            /* String comparison augop: lhs op:= rhs
+             * rhs (String) is on stack at rhs_ok. */
+            char tmp_str[128]; snprintf(tmp_str, sizeof tmp_str, "icn_%d_augstemp", id);
+            ij_declare_static_str(tmp_str);
+            ij_declare_static_str(fld);
+            ij_put_str_field(tmp_str);              /* save rhs String */
+            char pass_lbl[64], fail_lbl[64];
+            snprintf(pass_lbl, sizeof pass_lbl, "icn_%d_augscmp_pass", id);
+            snprintf(fail_lbl, sizeof fail_lbl, "icn_%d_augscmp_fail", id);
+            /* Compare: lhs.compareTo(rhs) → int */
+            ij_get_str_field(fld);
+            ij_get_str_field(tmp_str);
+            JI("invokevirtual", "java/lang/String/compareTo(Ljava/lang/String;)I");
+            switch ((int)aug_kind) {
+                case TK_AUGSEQ:  J("    ifeq %s\n", pass_lbl); break;
+                case TK_AUGSLT:  J("    iflt %s\n", pass_lbl); break;
+                case TK_AUGSLE:  J("    ifle %s\n", pass_lbl); break;
+                case TK_AUGSGT:  J("    ifgt %s\n", pass_lbl); break;
+                case TK_AUGSGE:  J("    ifge %s\n", pass_lbl); break;
+                case TK_AUGSNE:  J("    ifne %s\n", pass_lbl); break;
+                default:         J("    ifeq %s\n", pass_lbl); break;
+            }
+            JL(fail_lbl); JGoto(ports.ω);
+            JL(pass_lbl);
+            /* Passed: assign rhs to lhs, return rhs String */
+            ij_get_str_field(tmp_str);
+            JI("dup", "");
+            ij_put_str_field(fld);
+            JGoto(ports.γ);
         } else {
             /* Arithmetic augop: rhs is long on stack. */
             char tmp_fld[128]; snprintf(tmp_fld, sizeof tmp_fld, "icn_%d_augtemp", id);
@@ -5134,19 +5364,15 @@ static void ij_emit_augop(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
                 case TK_AUGSLASH: JI("ldiv",""); break;
                 case TK_AUGMOD:   JI("lrem",""); break;
                 case TK_AUGPOW: {
-                    /* long ^ long via Math.pow, cast back to long */
-                    JI("l2d",""); JI("swap","");
-                    /* stack: (double rhs), (long lhs) — need lhs first */
-                    /* Actually: lhs is loaded first then rhs; stack = lhs, rhs both long */
-                    /* Reload properly via temp */
-                    /* Already have lhs long, rhs long on stack from ij_get_long calls above */
-                    /* Convert both to double for Math.pow */
-                    /* stack top = rhs (long) */
-                    JI("l2d","");
-                    /* stack: lhs(J), rhs(D) — swap to get lhs under: use local temp */
-                    J("    lstore %d\n", 116); /* temp slot for rhs double... */
-                    JI("l2d","");              /* lhs to double */
-                    J("    dload %d\n", 116);
+                    /* Stack: lhs(J), rhs(J).  Convert both to D for Math.pow → d2l.
+                     * Cannot use JVM 'swap' on 2-word doubles — use a static D field. */
+                    char pow_rhs[128];
+                    snprintf(pow_rhs, sizeof pow_rhs, "icn_%d_augpow_rhs", id);
+                    ij_declare_static_real(pow_rhs);
+                    JI("l2d","");                    /* rhs J → D */
+                    ij_put_real_field(pow_rhs);      /* store rhs D */
+                    JI("l2d","");                    /* lhs J → D */
+                    ij_get_real_field(pow_rhs);      /* reload rhs D */
                     JI("invokestatic","java/lang/Math/pow(DD)D");
                     JI("d2l","");
                     break;
@@ -7600,19 +7826,57 @@ void ij_emit_file(IcnNode **nodes, int count, FILE *out, const char *filename, c
 
     /* === M-IJ-BUILTINS-TYPE helpers === */
 
-    /* icn_builtin_numeric(String s) → long
-     * Tries Long.parseLong; returns Long.MIN_VALUE sentinel on failure. */
-    J(".method public static icn_builtin_numeric(Ljava/lang/String;)J\n");
-    J("    .limit stack 2\n    .limit locals 2\n");
-    J("    .catch java/lang/NumberFormatException from icn_num_L0 to icn_num_L1 using icn_num_catch\n");
-    J("icn_num_L0:\n");
+    /* icn_builtin_parse_long(String s) → long
+     * Trims whitespace, handles <base>r<digits> radix notation (JCON),
+     * returns Long.MIN_VALUE sentinel on any parse failure. */
+    J(".method public static icn_builtin_parse_long(Ljava/lang/String;)J\n");
+    J("    .limit stack 4\n    .limit locals 4\n");
+    /* local 0 = input String, local 2 = trimmed String (wide: uses 2/3) */
+    J("    .catch java/lang/Exception from icn_plong_L0 to icn_plong_L1 using icn_plong_catch\n");
+    J("icn_plong_L0:\n");
+    /* trim whitespace */
     J("    aload_0\n");
+    J("    invokevirtual java/lang/String/trim()Ljava/lang/String;\n");
+    J("    astore_1\n");
+    /* check for 'r' (radix notation: e.g. "16r1F") */
+    J("    aload_1\n");
+    J("    ldc \"r\"\n");
+    J("    invokevirtual java/lang/String/contains(Ljava/lang/CharSequence;)Z\n");
+    J("    ifeq icn_plong_plain\n");
+    /* radix form: split on 'r' */
+    J("    aload_1\n");
+    J("    ldc \"r\"\n");
+    J("    iconst_2\n");
+    J("    invokevirtual java/lang/String/split(Ljava/lang/String;I)[Ljava/lang/String;\n");
+    J("    astore_2\n");
+    J("    aload_2\n");
+    J("    iconst_0\n");
+    J("    aaload\n");
+    J("    invokestatic java/lang/Integer/parseInt(Ljava/lang/String;)I\n");  /* base */
+    J("    istore_3\n");
+    J("    aload_2\n");
+    J("    iconst_1\n");
+    J("    aaload\n");
+    J("    iload_3\n");
+    J("    invokestatic java/lang/Long/parseLong(Ljava/lang/String;I)J\n");
+    J("    goto icn_plong_L1\n");
+    J("icn_plong_plain:\n");
+    J("    aload_1\n");
     J("    invokestatic java/lang/Long/parseLong(Ljava/lang/String;)J\n");
-    J("icn_num_L1:\n");
+    J("icn_plong_L1:\n");
     J("    lreturn\n");
-    J("icn_num_catch:\n");
+    J("icn_plong_catch:\n");
     J("    pop\n");
     J("    ldc2_w -9223372036854775808\n");
+    J("    lreturn\n");
+    J(".end method\n\n");
+
+    /* icn_builtin_numeric(String s) → long
+     * Delegates to icn_builtin_parse_long; returns Long.MIN_VALUE sentinel on failure. */
+    J(".method public static icn_builtin_numeric(Ljava/lang/String;)J\n");
+    J("    .limit stack 2\n    .limit locals 2\n");
+    J("    aload_0\n");
+    J("    invokestatic %s/icn_builtin_parse_long(Ljava/lang/String;)J\n", ij_classname);
     J("    lreturn\n");
     J(".end method\n\n");
 
