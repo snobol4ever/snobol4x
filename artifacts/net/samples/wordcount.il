@@ -23,6 +23,8 @@
   .field static string kw_anchor
   .field static class [mscorlib]System.Collections.Generic.Dictionary`2<string,string> sno_vars
   .field static class [mscorlib]System.Collections.Generic.Dictionary`2<string,class [mscorlib]System.Collections.Generic.Dictionary`2<string,string>> sno_arrays
+  .field static class [mscorlib]System.IO.StreamWriter net_mon_sw
+  .field static class [mscorlib]System.IO.Stream net_mon_ack
 
   .method static void .cctor() cil managed
   {
@@ -89,6 +91,79 @@
     ret
   }
 
+  .method static void net_mon_init() cil managed
+  {
+    .maxstack 8
+    .locals init (string V_fifo, string V_ack)
+    ldstr      "MONITOR_READY_PIPE"
+    call       string [mscorlib]System.Environment::GetEnvironmentVariable(string)
+    stloc.0
+    ldloc.0
+    brfalse    Nnmi_done
+    ldloc.0
+    callvirt   instance int32 [mscorlib]System.String::get_Length()
+    brfalse    Nnmi_done
+    ldloc.0
+    ldc.i4.1
+    newobj     instance void [mscorlib]System.IO.StreamWriter::.ctor(string, bool)
+    stsfld     class [mscorlib]System.IO.StreamWriter Wordcount::net_mon_sw
+    ldstr      "MONITOR_GO_PIPE"
+    call       string [mscorlib]System.Environment::GetEnvironmentVariable(string)
+    stloc.1
+    ldloc.1
+    brfalse    Nnmi_done
+    ldloc.1
+    callvirt   instance int32 [mscorlib]System.String::get_Length()
+    brfalse    Nnmi_done
+    ldloc.1
+    ldc.i4.3
+    ldc.i4.1
+    newobj     instance void [mscorlib]System.IO.FileStream::.ctor(string, valuetype [mscorlib]System.IO.FileMode, valuetype [mscorlib]System.IO.FileAccess)
+    stsfld     class [mscorlib]System.IO.Stream Wordcount::net_mon_ack
+  Nnmi_done:
+    ret
+  }
+
+  .method static void net_mon_var(string name, string val) cil managed
+  {
+    .maxstack 8
+    .locals init (string V_line, int32 V_ack, uint8[] V_bytes)
+    ldsfld     class [mscorlib]System.IO.StreamWriter Wordcount::net_mon_sw
+    brfalse    Nmv_done
+    newobj     instance void [mscorlib]System.Text.StringBuilder::.ctor()
+    ldstr      "VALUE"
+    callvirt   instance class [mscorlib]System.Text.StringBuilder [mscorlib]System.Text.StringBuilder::Append(string)
+    ldc.i4     30
+    callvirt   instance class [mscorlib]System.Text.StringBuilder [mscorlib]System.Text.StringBuilder::Append(char)
+    ldarg.0
+    callvirt   instance class [mscorlib]System.Text.StringBuilder [mscorlib]System.Text.StringBuilder::Append(string)
+    ldc.i4     31
+    callvirt   instance class [mscorlib]System.Text.StringBuilder [mscorlib]System.Text.StringBuilder::Append(char)
+    ldarg.1
+    callvirt   instance class [mscorlib]System.Text.StringBuilder [mscorlib]System.Text.StringBuilder::Append(string)
+    ldc.i4     30
+    callvirt   instance class [mscorlib]System.Text.StringBuilder [mscorlib]System.Text.StringBuilder::Append(char)
+    callvirt   instance string [mscorlib]System.Text.StringBuilder::ToString()
+    stloc.0
+    ldsfld     class [mscorlib]System.IO.StreamWriter Wordcount::net_mon_sw
+    ldloc.0
+    callvirt   instance void [mscorlib]System.IO.TextWriter::Write(string)
+    ldsfld     class [mscorlib]System.IO.StreamWriter Wordcount::net_mon_sw
+    callvirt   instance void [mscorlib]System.IO.StreamWriter::Flush()
+    ldsfld     class [mscorlib]System.IO.Stream Wordcount::net_mon_ack
+    brfalse    Nmv_done
+    ldsfld     class [mscorlib]System.IO.Stream Wordcount::net_mon_ack
+    callvirt   instance int32 [mscorlib]System.IO.Stream::ReadByte()
+    stloc.1
+    ldloc.1
+    ldc.i4     71
+    beq        Nmv_done
+    ldc.i4.0
+    call       void [mscorlib]System.Environment::Exit(int32)
+  Nmv_done:
+    ret
+  }
+
   .method public static void main(string[] args) cil managed
   {
     .entrypoint
@@ -101,8 +176,10 @@
                   int32 V_18, int32 V_19,
                   string V_20, string V_21, string V_22, string V_23,
                   string V_24, string V_25, string V_26, string V_27,
-                  string V_28, string V_29)
+                  string V_28, string V_29,
+                  string V_mon_val)
 
+    call       void Wordcount::net_mon_init()
     ldsfld     string Wordcount::kw_stno
     ldstr      "1"
     call       string [snobol4lib]Snobol4Lib::sno_add(string, string)
@@ -117,7 +194,12 @@
     call       string [snobol4lib]Snobol4Lib::sno_add(string, string)
     stsfld     string Wordcount::kw_stno
     ldstr      "0123456789"
+    dup
+    stloc      V_mon_val
     stsfld     string Wordcount::NUMERALS
+    ldstr      "NUMERALS"
+    ldloc      V_mon_val
+    call       void Wordcount::net_mon_var(string, string)
     ldc.i4.1
     stloc.0
   L_Nasgn1_skip:
@@ -132,7 +214,12 @@
     call       string [mscorlib]System.String::Concat(string, string)
     ldstr      "abcdefghijklmnopqrstuvwxyz"
     call       string [mscorlib]System.String::Concat(string, string)
+    dup
+    stloc      V_mon_val
     stsfld     string Wordcount::WORD
+    ldstr      "WORD"
+    ldloc      V_mon_val
+    call       void Wordcount::net_mon_var(string, string)
     ldc.i4.1
     stloc.0
   L_Nasgn2_skip:
@@ -145,7 +232,12 @@
     // unhandled E_FNC stub
     ldstr      ""
     call       string [mscorlib]System.String::Concat(string, string)
+    dup
+    stloc      V_mon_val
     stsfld     string Wordcount::WPAT
+    ldstr      "WPAT"
+    ldloc      V_mon_val
+    call       void Wordcount::net_mon_var(string, string)
     ldc.i4.1
     stloc.0
   L_Nasgn3_skip:
@@ -165,7 +257,12 @@
     br         L_DONE
     ldstr      ""
   Ninp0_ok:
+    dup
+    stloc      V_mon_val
     stsfld     string Wordcount::LINE
+    ldstr      "LINE"
+    ldloc      V_mon_val
+    call       void Wordcount::net_mon_var(string, string)
     ldc.i4.1
     stloc.0
     ldloc.0
@@ -290,7 +387,12 @@
     ldsfld     string Wordcount::N
     ldstr      "1"
     call       string [snobol4lib]Snobol4Lib::sno_add(string, string)
+    dup
+    stloc      V_mon_val
     stsfld     string Wordcount::N
+    ldstr      "N"
+    ldloc      V_mon_val
+    call       void Wordcount::net_mon_var(string, string)
     ldc.i4.1
     stloc.0
     br         L_NEXTW

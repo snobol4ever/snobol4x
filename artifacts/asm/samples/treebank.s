@@ -24,6 +24,7 @@ extern  stmt_aref, stmt_aset, stmt_field_set
 extern  stmt_aref2, stmt_aset2
 extern  comm_stno
 extern  blk_alloc, blk_free, memcpy  ; per-invocation DATA block runtime
+extern  pat_ref  ; B-287: deferred *VAR pattern ref (XDSAR)
 global  cursor, subject_data, subject_len_val
 
 section .note.GNU-stack noalloc noexec nowrite progbits
@@ -72,6 +73,8 @@ scan_start_61            resq 1
 scan_start_64            resq 1
 scan_start_88            resq 1
 scan_start_89            resq 1
+nref3_r12                resq 1
+nref9_r12                resq 1
 span12_saved             resq 1
 seq_r13_α_saved         resq 1
 ucall0_sv_0_t            resq 1
@@ -737,18 +740,22 @@ dol2_child_α: ; REF(word)
                             mov         [P_word_ret_γ], rax
                             lea         rax, [rel nref3_ω]
                             mov         [P_word_ret_ω], rax
+                            mov         [nref3_r12], r12
                             lea         r12, [rel box_word_data_template]
                             jmp         P_word_α
 dol2_child_β:               lea         rax, [rel nref3_γ] ; REF(%s)
                             mov         [P_word_ret_γ], rax
                             lea         rax, [rel nref3_ω]
                             mov         [P_word_ret_ω], rax
+                            mov         [nref3_r12], r12
                             lea         r12, [rel box_word_data_template]
                             jmp         P_word_β
 
 nref3_γ:
+                            mov         r12, [nref3_r12]
                             jmp         dol2_γ
-nref3_ω:                    jmp         dol2_ω
+nref3_ω:                    mov         r12, [nref3_r12]
+                            jmp         dol2_ω
 dol2_γ:                     DOL_CAPTURE r12+72, cursor, cap_tag_buf, cap_tag_len, subject_data, P_57_γ ; DOL γ — capture span
 dol2_ω:                     jmp         seq_l1_β ; DOL ω — child failed
 
@@ -943,18 +950,22 @@ dol8_child_α: ; REF(word)
                             mov         [P_word_ret_γ], rax
                             lea         rax, [rel nref9_ω]
                             mov         [P_word_ret_ω], rax
+                            mov         [nref9_r12], r12
                             lea         r12, [rel box_word_data_template]
                             jmp         P_word_α
 dol8_child_β:               lea         rax, [rel nref9_γ] ; REF(%s)
                             mov         [P_word_ret_γ], rax
                             lea         rax, [rel nref9_ω]
                             mov         [P_word_ret_ω], rax
+                            mov         [nref9_r12], r12
                             lea         r12, [rel box_word_data_template]
                             jmp         P_word_β
 
 nref9_γ:
+                            mov         r12, [nref9_r12]
                             jmp         dol8_γ
-nref9_ω:                    jmp         dol8_ω
+nref9_ω:                    mov         r12, [nref9_r12]
+                            jmp         dol8_ω
 dol8_γ:                     DOL_CAPTURE r12+96, cursor, cap_wrd_buf, cap_wrd_len, subject_data, P_61_γ ; DOL γ — capture span
 dol8_ω:                     jmp         seq_l7_β ; DOL ω — child failed
 
@@ -2594,7 +2605,10 @@ fn_print_node_ω:            FN_ω        P_print_node_ret_ω ; fn ω
 P_print_node_β:             jmp         [P_print_node_ret_ω] ; fn β — backtrack = fail
 
 ; P_word_α (α entry) [r12=DATA block]
-P_word_α:                   jmp         seq_l14_α ; SEQ
+;  word ================================================================================================================
+P_word_α:                   mov         qword [r12+16], 0
+                            mov         qword [r12+24], 0
+pat_word_body:              jmp         seq_l14_α ; SEQ
 P_word_β:                   jmp         seq_r14_β
 seq_l14_α:                  NOTANY_α_VAR S_WBRKS, r12+16, cursor, subject_data, subject_len_val, seq_r14_α, patdef_word_ω ; NOTANY(var) α
 seq_l14_β:                  NOTANY_β_VAR r12+16, cursor, patdef_word_ω ; NOTANY(var) β
@@ -2603,7 +2617,6 @@ seq_r14_β:                  BREAK_β_VAR r12+24, cursor, seq_l14_β ; BREAK(var
 ;  γ/ω ---------------------------------------------------------------------------------------------------------------
 patdef_word_γ:              NAMED_PAT_γ P_word_ret_γ ; named pat γ
 patdef_word_ω:              NAMED_PAT_ω P_word_ret_ω ; named pat ω
-;  word ================================================================================================================
 
 section .text
 ;  STUB LABELS =========================================================================================================

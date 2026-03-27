@@ -11,9 +11,13 @@
 .field static sno_kw_TRIM I
 .field static sno_kw_ANCHOR I
 .field static sno_kw_STNO I
+.field static sno_kw_STLIMIT I
+.field static sno_kw_STCOUNT I
 .field static sno_vars Ljava/util/HashMap;
 .field static sno_arrays Ljava/util/HashMap;
 .field static sno_data_types Ljava/util/HashMap;
+.field static sno_mon_fd Ljava/io/OutputStream;
+.field static sno_mon_go_fd Ljava/io/InputStream;
 .field static sno_var_N Ljava/lang/String;
 .field static sno_var_T Ljava/lang/String;
 .field static sno_var_ROMAN Ljava/lang/String;
@@ -32,6 +36,10 @@
     putstatic       Roman/sno_kw_ANCHOR I
     iconst_0
     putstatic       Roman/sno_kw_STNO I
+    iconst_m1
+    putstatic       Roman/sno_kw_STLIMIT I
+    iconst_0
+    putstatic       Roman/sno_kw_STCOUNT I
     new java/util/HashMap
     dup
     invokespecial java/util/HashMap/<init>()V
@@ -89,14 +97,50 @@
     return
 .end method
 
+.method static sno_mon_init()V
+    .limit stack 6
+    .limit locals 2
+    ldc "MONITOR_READY_PIPE"
+    invokestatic java/lang/System/getenv(Ljava/lang/String;)Ljava/lang/String;
+    astore_0
+    aload_0
+    ifnull Lsmi_done
+    aload_0
+    invokevirtual java/lang/String/isEmpty()Z
+    ifne Lsmi_done
+    new java/io/FileOutputStream
+    dup
+    aload_0
+    iconst_1
+    invokespecial java/io/FileOutputStream/<init>(Ljava/lang/String;Z)V
+    putstatic Roman/sno_mon_fd Ljava/io/OutputStream;
+    ldc "MONITOR_GO_PIPE"
+    invokestatic java/lang/System/getenv(Ljava/lang/String;)Ljava/lang/String;
+    astore_1
+    aload_1
+    ifnull Lsmi_done
+    aload_1
+    invokevirtual java/lang/String/isEmpty()Z
+    ifne Lsmi_done
+    new java/io/FileInputStream
+    dup
+    aload_1
+    invokespecial java/io/FileInputStream/<init>(Ljava/lang/String;)V
+    putstatic Roman/sno_mon_go_fd Ljava/io/InputStream;
+Lsmi_done:
+    return
+.end method
+
 .method public static main([Ljava/lang/String;)V
     .limit stack 16
     .limit locals 32
 
+    invokestatic Roman/sno_mon_init()V
     getstatic Roman/sno_kw_STNO I
     iconst_1
     iadd
     putstatic Roman/sno_kw_STNO I
+    invokestatic Roman/sno_stcount_tick()V
     ldc "TRIM"
     ldc "1"
     invokestatic Roman/sno_kw_set(Ljava/lang/String;Ljava/lang/String;)V
@@ -104,6 +148,7 @@
     iconst_1
     iadd
     putstatic Roman/sno_kw_STNO I
+    invokestatic Roman/sno_stcount_tick()V
     ldc "STLIMIT"
     ldc "1000000000"
     invokestatic Roman/sno_kw_set(Ljava/lang/String;Ljava/lang/String;)V
@@ -111,6 +156,7 @@
     iconst_1
     iadd
     putstatic Roman/sno_kw_STNO I
+    invokestatic Roman/sno_stcount_tick()V
     ldc ""
     pop
     goto L_ROMAN_END
@@ -120,6 +166,7 @@ L_ROMAN_END:
     iconst_1
     iadd
     putstatic Roman/sno_kw_STNO I
+    invokestatic Roman/sno_stcount_tick()V
     ldc ""
     dup
     ifnonnull Lvar_ok_0
@@ -134,6 +181,7 @@ Lvar_fail_0:
     iconst_1
     iadd
     putstatic Roman/sno_kw_STNO I
+    invokestatic Roman/sno_stcount_tick()V
     ldc "0"
     dup
     ifnonnull Lvar_ok_1
@@ -150,6 +198,7 @@ L_LOOP:
     iconst_1
     iadd
     putstatic Roman/sno_kw_STNO I
+    invokestatic Roman/sno_stcount_tick()V
     ldc "1776"
     invokestatic Roman/sno_userfn_ROMAN(Ljava/lang/String;)Ljava/lang/String;
     dup
@@ -165,6 +214,7 @@ Lvar_fail_2:
     iconst_1
     iadd
     putstatic Roman/sno_kw_STNO I
+    invokestatic Roman/sno_stcount_tick()V
     new java/lang/StringBuilder
     dup
     invokespecial java/lang/StringBuilder/<init>()V
@@ -234,6 +284,7 @@ Lvar_fail_3:
     iconst_1
     iadd
     putstatic Roman/sno_kw_STNO I
+    invokestatic Roman/sno_stcount_tick()V
     ldc ""
     dup
     ifnonnull Lvar_ok_4
@@ -248,6 +299,7 @@ Lvar_fail_4:
     iconst_1
     iadd
     putstatic Roman/sno_kw_STNO I
+    invokestatic Roman/sno_stcount_tick()V
     new java/lang/StringBuilder
     dup
     invokespecial java/lang/StringBuilder/<init>()V
@@ -285,6 +337,7 @@ Lout_fail_0:
     iconst_1
     iadd
     putstatic Roman/sno_kw_STNO I
+    invokestatic Roman/sno_stcount_tick()V
     new java/lang/StringBuilder
     dup
     invokespecial java/lang/StringBuilder/<init>()V
@@ -368,11 +421,12 @@ L_END:
     ldc ""
     invokestatic Roman/sno_var_put(Ljava/lang/String;Ljava/lang/String;)V
 ; === ROMAN ===========================================================
-L_ROMAN:
+Lf0_ROMAN:
     getstatic Roman/sno_kw_STNO I
     iconst_1
     iadd
     putstatic Roman/sno_kw_STNO I
+    invokestatic Roman/sno_stcount_tick()V
 ; --- pattern match statement ---
     ldc "N"
     invokestatic Roman/sno_indr_get(Ljava/lang/String;)Ljava/lang/String;
@@ -461,6 +515,7 @@ Jpat0_after:
     iconst_1
     iadd
     putstatic Roman/sno_kw_STNO I
+    invokestatic Roman/sno_stcount_tick()V
 ; --- pattern match statement ---
     ldc "0,1I,2II,3III,4IV,5V,6VI,7VII,8VIII,9IX,"
     astore 6
@@ -500,7 +555,7 @@ Jn4_seq_mid:
 Jn7_brk_lp:
     iload 7
     iload 8
-    if_icmpge Jn7_brk_dn
+    if_icmpge Jn7_brk_eos
     aload 6
     iload 7
     invokevirtual java/lang/String/charAt(I)C
@@ -512,6 +567,8 @@ Jn7_brk_lp:
     ifne Jn7_brk_dn
     iinc 7 1
     goto Jn7_brk_lp
+Jn7_brk_eos:
+    goto Jpat1_tfail
 Jn7_brk_dn:
     goto Jn6_nam_ok
 Jn6_nam_ok:
@@ -543,6 +600,7 @@ Jpat1_after:
     iconst_1
     iadd
     putstatic Roman/sno_kw_STNO I
+    invokestatic Roman/sno_stcount_tick()V
     new java/lang/StringBuilder
     dup
     invokespecial java/lang/StringBuilder/<init>()V
@@ -709,6 +767,22 @@ Lkwg_not_trim:
     invokestatic java/lang/Integer/toString(I)Ljava/lang/String;
     areturn
 Lkwg_not_anchor:
+    aload_0
+    ldc "STLIMIT"
+    invokevirtual java/lang/String/equalsIgnoreCase(Ljava/lang/String;)Z
+    ifeq Lkwg_not_stlimit
+    getstatic Roman/sno_kw_STLIMIT I
+    invokestatic java/lang/Integer/toString(I)Ljava/lang/String;
+    areturn
+Lkwg_not_stlimit:
+    aload_0
+    ldc "STCOUNT"
+    invokevirtual java/lang/String/equalsIgnoreCase(Ljava/lang/String;)Z
+    ifeq Lkwg_not_stcount
+    getstatic Roman/sno_kw_STCOUNT I
+    invokestatic java/lang/Integer/toString(I)Ljava/lang/String;
+    areturn
+Lkwg_not_stcount:
     ldc ""
     areturn
 .end method
@@ -743,6 +817,24 @@ Lkws_not_anchor:
     putstatic Roman/sno_kw_STNO I
     return
 Lkws_not_stno:
+    aload_0
+    ldc "STLIMIT"
+    invokevirtual java/lang/String/equalsIgnoreCase(Ljava/lang/String;)Z
+    ifeq Lkws_not_stlimit
+    aload_1
+    invokestatic java/lang/Integer/parseInt(Ljava/lang/String;)I
+    putstatic Roman/sno_kw_STLIMIT I
+    return
+Lkws_not_stlimit:
+    aload_0
+    ldc "STCOUNT"
+    invokevirtual java/lang/String/equalsIgnoreCase(Ljava/lang/String;)Z
+    ifeq Lkws_not_stcount
+    aload_1
+    invokestatic java/lang/Integer/parseInt(Ljava/lang/String;)I
+    putstatic Roman/sno_kw_STCOUNT I
+    return
+Lkws_not_stcount:
     return
 .end method
 
@@ -763,6 +855,71 @@ Lsvp_not_output:
     aload_1
     invokevirtual java/util/HashMap/put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
     pop
+    aload_0
+    aload_1
+    invokestatic Roman/sno_mon_var(Ljava/lang/String;Ljava/lang/String;)V
+    return
+.end method
+
+.method static sno_mon_var(Ljava/lang/String;Ljava/lang/String;)V
+    .limit stack 6
+    .limit locals 3
+    getstatic Roman/sno_mon_fd Ljava/io/OutputStream;
+    ifnull Lsmv_done
+    new java/lang/StringBuilder
+    dup
+    invokespecial java/lang/StringBuilder/<init>()V
+    ldc "VALUE"
+    invokevirtual java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+    bipush 30
+    invokevirtual java/lang/StringBuilder/append(C)Ljava/lang/StringBuilder;
+    aload_0
+    invokevirtual java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+    bipush 31
+    invokevirtual java/lang/StringBuilder/append(C)Ljava/lang/StringBuilder;
+    aload_1
+    invokevirtual java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+    bipush 30
+    invokevirtual java/lang/StringBuilder/append(C)Ljava/lang/StringBuilder;
+    invokevirtual java/lang/StringBuilder/toString()Ljava/lang/String;
+    ldc "UTF-8"
+    invokevirtual java/lang/String/getBytes(Ljava/lang/String;)[B
+    astore_2
+    getstatic Roman/sno_mon_fd Ljava/io/OutputStream;
+    aload_2
+    invokevirtual java/io/OutputStream/write([B)V
+    getstatic Roman/sno_mon_go_fd Ljava/io/InputStream;
+    ifnull Lsmv_done
+    getstatic Roman/sno_mon_go_fd Ljava/io/InputStream;
+    invokevirtual java/io/InputStream/read()I
+    istore_2
+    iload_2
+    bipush 71
+    if_icmpeq Lsmv_done
+    iconst_0
+    invokestatic java/lang/System/exit(I)V
+Lsmv_done:
+    return
+.end method
+
+.method static sno_stcount_tick()V
+    .limit stack 4
+    .limit locals 0
+    getstatic Roman/sno_kw_STCOUNT I
+    iconst_1
+    iadd
+    putstatic Roman/sno_kw_STCOUNT I
+    getstatic Roman/sno_kw_STLIMIT I
+    iflt Lstick_ok
+    getstatic Roman/sno_kw_STCOUNT I
+    getstatic Roman/sno_kw_STLIMIT I
+    if_icmple Lstick_ok
+    getstatic java/lang/System/err Ljava/io/PrintStream;
+    ldc "Termination: statement limit"
+    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+    iconst_1
+    invokestatic java/lang/System/exit(I)V
+Lstick_ok:
     return
 .end method
 
@@ -774,10 +931,10 @@ Lsvp_not_output:
     invokevirtual java/util/HashMap/get(Ljava/lang/Object;)Ljava/lang/Object;
     checkcast java/lang/String
     dup
-    ifnonnull Lsig_done
+    ifnonnull Lsig_done_indr
     pop
     ldc ""
-Lsig_done:
+Lsig_done_indr:
     areturn
 .end method
 

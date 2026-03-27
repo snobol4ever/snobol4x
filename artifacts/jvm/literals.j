@@ -7,12 +7,79 @@
 
 ; Runtime fields
 .field static sno_stdout Ljava/io/PrintStream;
+.field static sno_input_br Ljava/io/BufferedReader;
+.field static sno_kw_TRIM I
+.field static sno_kw_ANCHOR I
+.field static sno_kw_STNO I
+.field static sno_kw_STLIMIT I
+.field static sno_kw_STCOUNT I
+.field static sno_vars Ljava/util/HashMap;
+.field static sno_arrays Ljava/util/HashMap;
+.field static sno_data_types Ljava/util/HashMap;
+.field static sno_mon_fd Ljava/io/OutputStream;
+.field static sno_mon_go_fd Ljava/io/InputStream;
 
 .method static <clinit>()V
-    .limit stack 2
+    .limit stack 4
     .limit locals 0
     getstatic       java/lang/System/out Ljava/io/PrintStream;
     putstatic       Literals/sno_stdout Ljava/io/PrintStream;
+    iconst_0
+    putstatic       Literals/sno_kw_TRIM I
+    iconst_0
+    putstatic       Literals/sno_kw_ANCHOR I
+    iconst_0
+    putstatic       Literals/sno_kw_STNO I
+    iconst_m1
+    putstatic       Literals/sno_kw_STLIMIT I
+    iconst_0
+    putstatic       Literals/sno_kw_STCOUNT I
+    new java/util/HashMap
+    dup
+    invokespecial java/util/HashMap/<init>()V
+    putstatic       Literals/sno_vars Ljava/util/HashMap;
+    new java/util/HashMap
+    dup
+    invokespecial java/util/HashMap/<init>()V
+    putstatic       Literals/sno_arrays Ljava/util/HashMap;
+    new java/util/HashMap
+    dup
+    invokespecial java/util/HashMap/<init>()V
+    putstatic       Literals/sno_data_types Ljava/util/HashMap;
+    return
+.end method
+
+.method static sno_mon_init()V
+    .limit stack 6
+    .limit locals 2
+    ldc "MONITOR_READY_PIPE"
+    invokestatic java/lang/System/getenv(Ljava/lang/String;)Ljava/lang/String;
+    astore_0
+    aload_0
+    ifnull Lsmi_done
+    aload_0
+    invokevirtual java/lang/String/isEmpty()Z
+    ifne Lsmi_done
+    new java/io/FileOutputStream
+    dup
+    aload_0
+    iconst_1
+    invokespecial java/io/FileOutputStream/<init>(Ljava/lang/String;Z)V
+    putstatic Literals/sno_mon_fd Ljava/io/OutputStream;
+    ldc "MONITOR_GO_PIPE"
+    invokestatic java/lang/System/getenv(Ljava/lang/String;)Ljava/lang/String;
+    astore_1
+    aload_1
+    ifnull Lsmi_done
+    aload_1
+    invokevirtual java/lang/String/isEmpty()Z
+    ifne Lsmi_done
+    new java/io/FileInputStream
+    dup
+    aload_1
+    invokespecial java/io/FileInputStream/<init>(Ljava/lang/String;)V
+    putstatic Literals/sno_mon_go_fd Ljava/io/InputStream;
+Lsmi_done:
     return
 .end method
 
@@ -20,24 +87,87 @@
     .limit stack 16
     .limit locals 32
 
-; === START ===========================================================
-L_START:
-    getstatic Literals/sno_stdout Ljava/io/PrintStream;
+    invokestatic Literals/sno_mon_init()V
+    getstatic Literals/sno_kw_STNO I
+    iconst_1
+    iadd
+    putstatic Literals/sno_kw_STNO I
+    invokestatic Literals/sno_stcount_tick()V
     ldc ""
-    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+    dup
+    ifnonnull Lout_ok_0
+    pop
+    goto Lout_fail_0
+Lout_ok_0:
     getstatic Literals/sno_stdout Ljava/io/PrintStream;
+    swap
+    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+Lout_fail_0:
+    getstatic Literals/sno_kw_STNO I
+    iconst_1
+    iadd
+    putstatic Literals/sno_kw_STNO I
+    invokestatic Literals/sno_stcount_tick()V
     ldc ""
-    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+    dup
+    ifnonnull Lout_ok_1
+    pop
+    goto Lout_fail_1
+Lout_ok_1:
     getstatic Literals/sno_stdout Ljava/io/PrintStream;
+    swap
+    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+Lout_fail_1:
+    getstatic Literals/sno_kw_STNO I
+    iconst_1
+    iadd
+    putstatic Literals/sno_kw_STNO I
+    invokestatic Literals/sno_stcount_tick()V
     ldc "Hello World!"
-    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+    dup
+    ifnonnull Lout_ok_2
+    pop
+    goto Lout_fail_2
+Lout_ok_2:
     getstatic Literals/sno_stdout Ljava/io/PrintStream;
+    swap
+    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+Lout_fail_2:
+    getstatic Literals/sno_kw_STNO I
+    iconst_1
+    iadd
+    putstatic Literals/sno_kw_STNO I
+    invokestatic Literals/sno_stcount_tick()V
     ldc "0"
-    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+    dup
+    ifnonnull Lout_ok_3
+    pop
+    goto Lout_fail_3
+Lout_ok_3:
     getstatic Literals/sno_stdout Ljava/io/PrintStream;
+    swap
+    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+Lout_fail_3:
+    getstatic Literals/sno_kw_STNO I
+    iconst_1
+    iadd
+    putstatic Literals/sno_kw_STNO I
+    invokestatic Literals/sno_stcount_tick()V
     ldc "1"
-    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+    dup
+    ifnonnull Lout_ok_4
+    pop
+    goto Lout_fail_4
+Lout_ok_4:
     getstatic Literals/sno_stdout Ljava/io/PrintStream;
+    swap
+    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+Lout_fail_4:
+    getstatic Literals/sno_kw_STNO I
+    iconst_1
+    iadd
+    putstatic Literals/sno_kw_STNO I
+    invokestatic Literals/sno_stcount_tick()V
     ldc "1"
     invokestatic Literals/sno_to_double(Ljava/lang/String;)D
     dneg
@@ -57,26 +187,110 @@ Lmnsf_0:
     dload 2
     invokestatic java/lang/Double/toString(D)Ljava/lang/String;
 Lmnsd_0:
-    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+    dup
+    ifnonnull Lout_ok_5
+    pop
+    goto Lout_fail_5
+Lout_ok_5:
     getstatic Literals/sno_stdout Ljava/io/PrintStream;
+    swap
+    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+Lout_fail_5:
+    getstatic Literals/sno_kw_STNO I
+    iconst_1
+    iadd
+    putstatic Literals/sno_kw_STNO I
+    invokestatic Literals/sno_stcount_tick()V
     ldc "1."
-    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+    dup
+    ifnonnull Lout_ok_6
+    pop
+    goto Lout_fail_6
+Lout_ok_6:
     getstatic Literals/sno_stdout Ljava/io/PrintStream;
+    swap
+    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+Lout_fail_6:
+    getstatic Literals/sno_kw_STNO I
+    iconst_1
+    iadd
+    putstatic Literals/sno_kw_STNO I
+    invokestatic Literals/sno_stcount_tick()V
     ldc "1"
-    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+    dup
+    ifnonnull Lout_ok_7
+    pop
+    goto Lout_fail_7
+Lout_ok_7:
     getstatic Literals/sno_stdout Ljava/io/PrintStream;
+    swap
+    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+Lout_fail_7:
+    getstatic Literals/sno_kw_STNO I
+    iconst_1
+    iadd
+    putstatic Literals/sno_kw_STNO I
+    invokestatic Literals/sno_stcount_tick()V
     ldc "1"
-    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+    dup
+    ifnonnull Lout_ok_8
+    pop
+    goto Lout_fail_8
+Lout_ok_8:
     getstatic Literals/sno_stdout Ljava/io/PrintStream;
+    swap
+    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+Lout_fail_8:
+    getstatic Literals/sno_kw_STNO I
+    iconst_1
+    iadd
+    putstatic Literals/sno_kw_STNO I
+    invokestatic Literals/sno_stcount_tick()V
     ldc "1.0"
-    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+    dup
+    ifnonnull Lout_ok_9
+    pop
+    goto Lout_fail_9
+Lout_ok_9:
     getstatic Literals/sno_stdout Ljava/io/PrintStream;
+    swap
+    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+Lout_fail_9:
+    getstatic Literals/sno_kw_STNO I
+    iconst_1
+    iadd
+    putstatic Literals/sno_kw_STNO I
+    invokestatic Literals/sno_stcount_tick()V
     ldc "I'm here"
-    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+    dup
+    ifnonnull Lout_ok_10
+    pop
+    goto Lout_fail_10
+Lout_ok_10:
     getstatic Literals/sno_stdout Ljava/io/PrintStream;
+    swap
+    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+Lout_fail_10:
+    getstatic Literals/sno_kw_STNO I
+    iconst_1
+    iadd
+    putstatic Literals/sno_kw_STNO I
+    invokestatic Literals/sno_stcount_tick()V
     ldc "\"Quote of the day\""
-    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+    dup
+    ifnonnull Lout_ok_11
+    pop
+    goto Lout_fail_11
+Lout_ok_11:
     getstatic Literals/sno_stdout Ljava/io/PrintStream;
+    swap
+    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+Lout_fail_11:
+    getstatic Literals/sno_kw_STNO I
+    iconst_1
+    iadd
+    putstatic Literals/sno_kw_STNO I
+    invokestatic Literals/sno_stcount_tick()V
     ldc ""
     invokestatic Literals/sno_to_double(Ljava/lang/String;)D
     ldc ""
@@ -98,8 +312,20 @@ Larf_0:
     dload 2
     invokestatic java/lang/Double/toString(D)Ljava/lang/String;
 Lard_0:
-    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+    dup
+    ifnonnull Lout_ok_12
+    pop
+    goto Lout_fail_12
+Lout_ok_12:
     getstatic Literals/sno_stdout Ljava/io/PrintStream;
+    swap
+    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+Lout_fail_12:
+    getstatic Literals/sno_kw_STNO I
+    iconst_1
+    iadd
+    putstatic Literals/sno_kw_STNO I
+    invokestatic Literals/sno_stcount_tick()V
     ldc ""
     invokestatic Literals/sno_to_double(Ljava/lang/String;)D
     ldc "1"
@@ -121,8 +347,20 @@ Larf_1:
     dload 2
     invokestatic java/lang/Double/toString(D)Ljava/lang/String;
 Lard_1:
-    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+    dup
+    ifnonnull Lout_ok_13
+    pop
+    goto Lout_fail_13
+Lout_ok_13:
     getstatic Literals/sno_stdout Ljava/io/PrintStream;
+    swap
+    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+Lout_fail_13:
+    getstatic Literals/sno_kw_STNO I
+    iconst_1
+    iadd
+    putstatic Literals/sno_kw_STNO I
+    invokestatic Literals/sno_stcount_tick()V
     ldc "1"
     invokestatic Literals/sno_to_double(Ljava/lang/String;)D
     ldc ""
@@ -144,48 +382,168 @@ Larf_2:
     dload 2
     invokestatic java/lang/Double/toString(D)Ljava/lang/String;
 Lard_2:
-    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+    dup
+    ifnonnull Lout_ok_14
+    pop
+    goto Lout_fail_14
+Lout_ok_14:
     getstatic Literals/sno_stdout Ljava/io/PrintStream;
+    swap
+    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+Lout_fail_14:
+    getstatic Literals/sno_kw_STNO I
+    iconst_1
+    iadd
+    putstatic Literals/sno_kw_STNO I
+    invokestatic Literals/sno_stcount_tick()V
     new java/lang/StringBuilder
     dup
     invokespecial java/lang/StringBuilder/<init>()V
     ldc ""
+    dup
+    ifnonnull Lconc_ok_0_0
+    pop
+    pop
+    aconst_null
+    goto Lconc_done_0
+Lconc_ok_0_0:
     invokevirtual java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;
     ldc ""
+    dup
+    ifnonnull Lconc_ok_0_1
+    pop
+    pop
+    aconst_null
+    goto Lconc_done_0
+Lconc_ok_0_1:
     invokevirtual java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;
     invokevirtual java/lang/StringBuilder/toString()Ljava/lang/String;
-    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+Lconc_done_0:
+    dup
+    ifnonnull Lout_ok_15
+    pop
+    goto Lout_fail_15
+Lout_ok_15:
     getstatic Literals/sno_stdout Ljava/io/PrintStream;
+    swap
+    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+Lout_fail_15:
+    getstatic Literals/sno_kw_STNO I
+    iconst_1
+    iadd
+    putstatic Literals/sno_kw_STNO I
+    invokestatic Literals/sno_stcount_tick()V
     new java/lang/StringBuilder
     dup
     invokespecial java/lang/StringBuilder/<init>()V
     ldc ""
+    dup
+    ifnonnull Lconc_ok_1_0
+    pop
+    pop
+    aconst_null
+    goto Lconc_done_1
+Lconc_ok_1_0:
     invokevirtual java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;
     ldc "Z"
+    dup
+    ifnonnull Lconc_ok_1_1
+    pop
+    pop
+    aconst_null
+    goto Lconc_done_1
+Lconc_ok_1_1:
     invokevirtual java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;
     invokevirtual java/lang/StringBuilder/toString()Ljava/lang/String;
-    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+Lconc_done_1:
+    dup
+    ifnonnull Lout_ok_16
+    pop
+    goto Lout_fail_16
+Lout_ok_16:
     getstatic Literals/sno_stdout Ljava/io/PrintStream;
+    swap
+    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+Lout_fail_16:
+    getstatic Literals/sno_kw_STNO I
+    iconst_1
+    iadd
+    putstatic Literals/sno_kw_STNO I
+    invokestatic Literals/sno_stcount_tick()V
     new java/lang/StringBuilder
     dup
     invokespecial java/lang/StringBuilder/<init>()V
     ldc "A"
+    dup
+    ifnonnull Lconc_ok_2_0
+    pop
+    pop
+    aconst_null
+    goto Lconc_done_2
+Lconc_ok_2_0:
     invokevirtual java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;
     ldc ""
+    dup
+    ifnonnull Lconc_ok_2_1
+    pop
+    pop
+    aconst_null
+    goto Lconc_done_2
+Lconc_ok_2_1:
     invokevirtual java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;
     invokevirtual java/lang/StringBuilder/toString()Ljava/lang/String;
-    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+Lconc_done_2:
+    dup
+    ifnonnull Lout_ok_17
+    pop
+    goto Lout_fail_17
+Lout_ok_17:
     getstatic Literals/sno_stdout Ljava/io/PrintStream;
+    swap
+    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+Lout_fail_17:
+    getstatic Literals/sno_kw_STNO I
+    iconst_1
+    iadd
+    putstatic Literals/sno_kw_STNO I
+    invokestatic Literals/sno_stcount_tick()V
     new java/lang/StringBuilder
     dup
     invokespecial java/lang/StringBuilder/<init>()V
     ldc "A"
+    dup
+    ifnonnull Lconc_ok_3_0
+    pop
+    pop
+    aconst_null
+    goto Lconc_done_3
+Lconc_ok_3_0:
     invokevirtual java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;
     ldc "Z"
+    dup
+    ifnonnull Lconc_ok_3_1
+    pop
+    pop
+    aconst_null
+    goto Lconc_done_3
+Lconc_ok_3_1:
     invokevirtual java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;
     invokevirtual java/lang/StringBuilder/toString()Ljava/lang/String;
-    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+Lconc_done_3:
+    dup
+    ifnonnull Lout_ok_18
+    pop
+    goto Lout_fail_18
+Lout_ok_18:
     getstatic Literals/sno_stdout Ljava/io/PrintStream;
+    swap
+    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+Lout_fail_18:
+    getstatic Literals/sno_kw_STNO I
+    iconst_1
+    iadd
+    putstatic Literals/sno_kw_STNO I
+    invokestatic Literals/sno_stcount_tick()V
     ldc "1"
     invokestatic Literals/sno_to_double(Ljava/lang/String;)D
     ldc "2"
@@ -207,8 +565,20 @@ Larf_3:
     dload 2
     invokestatic java/lang/Double/toString(D)Ljava/lang/String;
 Lard_3:
-    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+    dup
+    ifnonnull Lout_ok_19
+    pop
+    goto Lout_fail_19
+Lout_ok_19:
     getstatic Literals/sno_stdout Ljava/io/PrintStream;
+    swap
+    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+Lout_fail_19:
+    getstatic Literals/sno_kw_STNO I
+    iconst_1
+    iadd
+    putstatic Literals/sno_kw_STNO I
+    invokestatic Literals/sno_stcount_tick()V
     ldc "1"
     invokestatic Literals/sno_to_double(Ljava/lang/String;)D
     ldc "2"
@@ -250,8 +620,20 @@ Larf_5:
     dload 2
     invokestatic java/lang/Double/toString(D)Ljava/lang/String;
 Lard_5:
-    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+    dup
+    ifnonnull Lout_ok_20
+    pop
+    goto Lout_fail_20
+Lout_ok_20:
     getstatic Literals/sno_stdout Ljava/io/PrintStream;
+    swap
+    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+Lout_fail_20:
+    getstatic Literals/sno_kw_STNO I
+    iconst_1
+    iadd
+    putstatic Literals/sno_kw_STNO I
+    invokestatic Literals/sno_stcount_tick()V
     ldc "1"
     invokestatic Literals/sno_to_double(Ljava/lang/String;)D
     ldc "2"
@@ -293,8 +675,20 @@ Larf_7:
     dload 2
     invokestatic java/lang/Double/toString(D)Ljava/lang/String;
 Lard_7:
-    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+    dup
+    ifnonnull Lout_ok_21
+    pop
+    goto Lout_fail_21
+Lout_ok_21:
     getstatic Literals/sno_stdout Ljava/io/PrintStream;
+    swap
+    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+Lout_fail_21:
+    getstatic Literals/sno_kw_STNO I
+    iconst_1
+    iadd
+    putstatic Literals/sno_kw_STNO I
+    invokestatic Literals/sno_stcount_tick()V
     ldc "1"
     invokestatic Literals/sno_to_double(Ljava/lang/String;)D
     ldc "2"
@@ -336,10 +730,15 @@ Larf_9:
     dload 2
     invokestatic java/lang/Double/toString(D)Ljava/lang/String;
 Lard_9:
+    dup
+    ifnonnull Lout_ok_22
+    pop
+    goto Lout_fail_22
+Lout_ok_22:
+    getstatic Literals/sno_stdout Ljava/io/PrintStream;
+    swap
     invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
-; === END =============================================================
-L_END:
-    nop
+Lout_fail_22:
 ; program end
     return
 .end method
@@ -358,5 +757,270 @@ L_END:
 Lsno_pd_zero:
     dconst_0
     dreturn
+.end method
+
+.method static sno_str_eq(Ljava/lang/String;Ljava/lang/String;)Z
+    .limit stack 4
+    .limit locals 2
+    aload_0
+    ifnull Lstreq_false
+    aload_1
+    ifnull Lstreq_false
+    aload_0
+    aload_1
+    invokevirtual java/lang/String/equalsIgnoreCase(Ljava/lang/String;)Z
+    ireturn
+Lstreq_false:
+    iconst_0
+    ireturn
+.end method
+
+.method static sno_kw_get(Ljava/lang/String;)Ljava/lang/String;
+    .limit stack 4
+    .limit locals 3
+    aload_0
+    ldc "ALPHABET"
+    invokevirtual java/lang/String/equalsIgnoreCase(Ljava/lang/String;)Z
+    ifeq Lkwg_not_alphabet
+    new java/lang/StringBuilder
+    dup
+    invokespecial java/lang/StringBuilder/<init>()V
+    astore_1
+    iconst_0
+    istore_2
+Lkwg_alpha_loop:
+    iload_2
+    sipush 256
+    if_icmpge Lkwg_alpha_done
+    aload_1
+    iload_2
+    i2c
+    invokevirtual java/lang/StringBuilder/append(C)Ljava/lang/StringBuilder;
+    pop
+    iinc 2 1
+    goto Lkwg_alpha_loop
+Lkwg_alpha_done:
+    aload_1
+    invokevirtual java/lang/StringBuilder/toString()Ljava/lang/String;
+    areturn
+Lkwg_not_alphabet:
+    aload_0
+    ldc "UCASE"
+    invokevirtual java/lang/String/equalsIgnoreCase(Ljava/lang/String;)Z
+    ifeq Lkwg_not_ucase
+    ldc "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    areturn
+Lkwg_not_ucase:
+    aload_0
+    ldc "LCASE"
+    invokevirtual java/lang/String/equalsIgnoreCase(Ljava/lang/String;)Z
+    ifeq Lkwg_not_lcase
+    ldc "abcdefghijklmnopqrstuvwxyz"
+    areturn
+Lkwg_not_lcase:
+    aload_0
+    ldc "STNO"
+    invokevirtual java/lang/String/equalsIgnoreCase(Ljava/lang/String;)Z
+    ifeq Lkwg_not_stno
+    getstatic Literals/sno_kw_STNO I
+    invokestatic java/lang/Integer/toString(I)Ljava/lang/String;
+    areturn
+Lkwg_not_stno:
+    aload_0
+    ldc "TRIM"
+    invokevirtual java/lang/String/equalsIgnoreCase(Ljava/lang/String;)Z
+    ifeq Lkwg_not_trim
+    getstatic Literals/sno_kw_TRIM I
+    invokestatic java/lang/Integer/toString(I)Ljava/lang/String;
+    areturn
+Lkwg_not_trim:
+    aload_0
+    ldc "ANCHOR"
+    invokevirtual java/lang/String/equalsIgnoreCase(Ljava/lang/String;)Z
+    ifeq Lkwg_not_anchor
+    getstatic Literals/sno_kw_ANCHOR I
+    invokestatic java/lang/Integer/toString(I)Ljava/lang/String;
+    areturn
+Lkwg_not_anchor:
+    aload_0
+    ldc "STLIMIT"
+    invokevirtual java/lang/String/equalsIgnoreCase(Ljava/lang/String;)Z
+    ifeq Lkwg_not_stlimit
+    getstatic Literals/sno_kw_STLIMIT I
+    invokestatic java/lang/Integer/toString(I)Ljava/lang/String;
+    areturn
+Lkwg_not_stlimit:
+    aload_0
+    ldc "STCOUNT"
+    invokevirtual java/lang/String/equalsIgnoreCase(Ljava/lang/String;)Z
+    ifeq Lkwg_not_stcount
+    getstatic Literals/sno_kw_STCOUNT I
+    invokestatic java/lang/Integer/toString(I)Ljava/lang/String;
+    areturn
+Lkwg_not_stcount:
+    ldc ""
+    areturn
+.end method
+
+.method static sno_kw_set(Ljava/lang/String;Ljava/lang/String;)V
+    .limit stack 4
+    .limit locals 2
+    aload_0
+    ldc "TRIM"
+    invokevirtual java/lang/String/equalsIgnoreCase(Ljava/lang/String;)Z
+    ifeq Lkws_not_trim
+    aload_1
+    invokestatic java/lang/Integer/parseInt(Ljava/lang/String;)I
+    putstatic Literals/sno_kw_TRIM I
+    return
+Lkws_not_trim:
+    aload_0
+    ldc "ANCHOR"
+    invokevirtual java/lang/String/equalsIgnoreCase(Ljava/lang/String;)Z
+    ifeq Lkws_not_anchor
+    aload_1
+    invokestatic java/lang/Integer/parseInt(Ljava/lang/String;)I
+    putstatic Literals/sno_kw_ANCHOR I
+    return
+Lkws_not_anchor:
+    aload_0
+    ldc "STNO"
+    invokevirtual java/lang/String/equalsIgnoreCase(Ljava/lang/String;)Z
+    ifeq Lkws_not_stno
+    aload_1
+    invokestatic java/lang/Integer/parseInt(Ljava/lang/String;)I
+    putstatic Literals/sno_kw_STNO I
+    return
+Lkws_not_stno:
+    aload_0
+    ldc "STLIMIT"
+    invokevirtual java/lang/String/equalsIgnoreCase(Ljava/lang/String;)Z
+    ifeq Lkws_not_stlimit
+    aload_1
+    invokestatic java/lang/Integer/parseInt(Ljava/lang/String;)I
+    putstatic Literals/sno_kw_STLIMIT I
+    return
+Lkws_not_stlimit:
+    aload_0
+    ldc "STCOUNT"
+    invokevirtual java/lang/String/equalsIgnoreCase(Ljava/lang/String;)Z
+    ifeq Lkws_not_stcount
+    aload_1
+    invokestatic java/lang/Integer/parseInt(Ljava/lang/String;)I
+    putstatic Literals/sno_kw_STCOUNT I
+    return
+Lkws_not_stcount:
+    return
+.end method
+
+.method static sno_var_put(Ljava/lang/String;Ljava/lang/String;)V
+    .limit stack 4
+    .limit locals 2
+    aload_0
+    ldc "OUTPUT"
+    invokevirtual java/lang/String/equalsIgnoreCase(Ljava/lang/String;)Z
+    ifeq Lsvp_not_output
+    getstatic Literals/sno_stdout Ljava/io/PrintStream;
+    aload_1
+    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+    return
+Lsvp_not_output:
+    getstatic Literals/sno_vars Ljava/util/HashMap;
+    aload_0
+    aload_1
+    invokevirtual java/util/HashMap/put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+    pop
+    aload_0
+    aload_1
+    invokestatic Literals/sno_mon_var(Ljava/lang/String;Ljava/lang/String;)V
+    return
+.end method
+
+.method static sno_mon_var(Ljava/lang/String;Ljava/lang/String;)V
+    .limit stack 6
+    .limit locals 3
+    getstatic Literals/sno_mon_fd Ljava/io/OutputStream;
+    ifnull Lsmv_done
+    new java/lang/StringBuilder
+    dup
+    invokespecial java/lang/StringBuilder/<init>()V
+    ldc "VALUE"
+    invokevirtual java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+    bipush 30
+    invokevirtual java/lang/StringBuilder/append(C)Ljava/lang/StringBuilder;
+    aload_0
+    invokevirtual java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+    bipush 31
+    invokevirtual java/lang/StringBuilder/append(C)Ljava/lang/StringBuilder;
+    aload_1
+    invokevirtual java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+    bipush 30
+    invokevirtual java/lang/StringBuilder/append(C)Ljava/lang/StringBuilder;
+    invokevirtual java/lang/StringBuilder/toString()Ljava/lang/String;
+    ldc "UTF-8"
+    invokevirtual java/lang/String/getBytes(Ljava/lang/String;)[B
+    astore_2
+    getstatic Literals/sno_mon_fd Ljava/io/OutputStream;
+    aload_2
+    invokevirtual java/io/OutputStream/write([B)V
+    getstatic Literals/sno_mon_go_fd Ljava/io/InputStream;
+    ifnull Lsmv_done
+    getstatic Literals/sno_mon_go_fd Ljava/io/InputStream;
+    invokevirtual java/io/InputStream/read()I
+    istore_2
+    iload_2
+    bipush 71
+    if_icmpeq Lsmv_done
+    iconst_0
+    invokestatic java/lang/System/exit(I)V
+Lsmv_done:
+    return
+.end method
+
+.method static sno_stcount_tick()V
+    .limit stack 4
+    .limit locals 0
+    getstatic Literals/sno_kw_STCOUNT I
+    iconst_1
+    iadd
+    putstatic Literals/sno_kw_STCOUNT I
+    getstatic Literals/sno_kw_STLIMIT I
+    iflt Lstick_ok
+    getstatic Literals/sno_kw_STCOUNT I
+    getstatic Literals/sno_kw_STLIMIT I
+    if_icmple Lstick_ok
+    getstatic java/lang/System/err Ljava/io/PrintStream;
+    ldc "Termination: statement limit"
+    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+    iconst_1
+    invokestatic java/lang/System/exit(I)V
+Lstick_ok:
+    return
+.end method
+
+.method static sno_indr_get(Ljava/lang/String;)Ljava/lang/String;
+    .limit stack 4
+    .limit locals 1
+    getstatic Literals/sno_vars Ljava/util/HashMap;
+    aload_0
+    invokevirtual java/util/HashMap/get(Ljava/lang/Object;)Ljava/lang/Object;
+    checkcast java/lang/String
+    dup
+    ifnonnull Lsig_done_indr
+    pop
+    ldc ""
+Lsig_done_indr:
+    areturn
+.end method
+
+.method static sno_indr_set(Ljava/lang/String;Ljava/lang/String;)V
+    .limit stack 4
+    .limit locals 2
+    getstatic Literals/sno_vars Ljava/util/HashMap;
+    aload_0
+    aload_1
+    invokevirtual java/util/HashMap/put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+    pop
+    return
 .end method
 

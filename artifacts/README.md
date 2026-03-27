@@ -7,10 +7,12 @@ Overwrite and commit when the artifact changes. `git log -p artifacts/asm/beauty
 
 | Directory | Owned by | Session may NOT write |
 |-----------|----------|-----------------------|
-| `artifacts/asm/` | ASM backend session | JVM session, NET session |
-| `artifacts/jvm/` | JVM backend session | ASM session, NET session |
-| `artifacts/net/` | NET backend session | ASM session, JVM session |
-| `artifacts/c/`   | C backend session   | all others |
+| `artifacts/asm/` | ASM backend session (B-) | JVM session, NET session, SD session |
+| `artifacts/jvm/` | JVM backend session (J-) | ASM session, NET session |
+| `artifacts/jvm/samples/` | JVM session (J-) **and** Scrip Demo session (SD-) | ASM session, NET session |
+| `artifacts/net/` | NET backend session (N-) | ASM session, JVM session |
+| `artifacts/icon/` | Icon JVM session (IJ-) **and** SD session | all others |
+| `artifacts/prolog/` | Prolog JVM session (PJ-) **and** SD session | all others |
 
 Toolchain verification (e.g. "does jasmin.jar work?") goes to `/tmp/` — never to another backend's artifact directory.
 
@@ -94,3 +96,45 @@ the state of `emit_byrd.c` at session114. Kept for historical reference; `beauty
 | artifacts/jvm/literals.j | c9419f5bd4ca01a00acfcf1683e73ec7 | 362 | assembles clean |
 
 Sprint: J1 complete → M-JVM-LIT ✅. Active bug: none. Next: J2 (assign/ + arith/).
+
+---
+
+## icon/samples/ — Icon frontend artifacts
+
+| File | What | Status |
+|------|------|--------|
+| hello.icn + hello.j | Hello World | ✅ ICON-JVM PASS |
+| wordcount.icn + wordcount.j | Word count | ✅ ICON-JVM PASS |
+| roman.icn + roman.j | Roman numerals (SCRIP demo idiom) | ✅ ICON-JVM PASS |
+| palindrome.icn + palindrome.j | Palindrome test | ✅ ICON-JVM PASS |
+| generators.icn | range/divisors/fibs/perfect generators | ✅ icont PASS · IJ-JVM pending rung36 fix |
+| queens.icn | N-Queens backtracking | ✅ icont PASS · IJ-JVM pending rung36 fix |
+
+**Regenerate .j files after IJ rung36 VerifyError fix:**
+```bash
+for icn in artifacts/icon/samples/*.icn; do
+    base="${icn%.icn}"
+    /tmp/icon_driver -jvm "$icn" -o "${base}.j" 2>/dev/null
+done
+```
+
+---
+
+## prolog/samples/ — Prolog frontend artifacts
+
+| File | What | Status |
+|------|------|--------|
+| hello.pro + hello.j | Hello World | ✅ SWIPL + PROLOG-JVM PASS |
+| wordcount.pro + wordcount.j | Word count | ✅ SWIPL + PROLOG-JVM PASS |
+| roman.pro + roman.j | Roman numerals | ✅ SWIPL + PROLOG-JVM PASS |
+| palindrome.pro + palindrome.j | Palindrome test | ✅ SWIPL + PROLOG-JVM PASS |
+| queens.pro | N-Queens via backtracking | ✅ SWIPL PASS · PJ-JVM pending forall/2 fix |
+| sentences.pro | DCG sentence parser + generator | ✅ SWIPL PASS · PJ-JVM pending DCG fix |
+
+**Regenerate .j files after PJ fixes:**
+```bash
+for pro in artifacts/prolog/samples/*.pro; do
+    base="${pro%.pro}"
+    ./sno2c -pl -jvm "$pro" > "${base}.j" 2>/dev/null
+done
+```

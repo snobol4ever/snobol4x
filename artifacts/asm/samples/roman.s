@@ -24,6 +24,7 @@ extern  stmt_aref, stmt_aset, stmt_field_set
 extern  stmt_aref2, stmt_aset2
 extern  comm_stno
 extern  blk_alloc, blk_free, memcpy  ; per-invocation DATA block runtime
+extern  pat_ref  ; B-287: deferred *VAR pattern ref (XDSAR)
 global  cursor, subject_data, subject_len_val
 
 section .note.GNU-stack noalloc noexec nowrite progbits
@@ -136,15 +137,28 @@ scan_retry_4:
 P_4_α:                      jmp         seq_l3_α ; SEQ
 P_4_β:                      jmp         seq_r3_β
 
-; E_VART T → LIT_VAR (stmt_match_var)
-seq_l3_α:                   LIT_VAR_α   S_T, r12+80, cursor, seq_r3_α, P_4_ω
-seq_l3_β:                   LIT_VAR_β   r12+80, cursor, P_4_ω
+; E_VART T → CALL_PAT (runtime DT_P/DT_S dispatch)
+seq_l3_α:                   lea         rdi, [rel S_T]
+                            call        stmt_get
+                            mov         [r12+80], rax
+                            mov         [r12+88], rdx
+                            mov         rax, [cursor]
+                            mov         [r12+96], rax
+                            mov         rdi, [r12+80]
+                            mov         rsi, [r12+88]
+                            call        stmt_match_descr
+                            test        eax, eax
+                            jz          P_4_ω
+                            jmp         seq_r3_α
+seq_l3_β:                   mov         rax, [r12+96]
+                            mov         [cursor], rax
+                            jmp         P_4_ω
 
 seq_r3_α: ; DOL(T $  T)
                             DOL_SAVE    r12+64, cursor, dol5_child_α ; DOL α — save entry cursor
 seq_r3_β:                   jmp         dol5_child_β ; DOL β
-dol5_child_α:               BREAK_α     lit_str_1, 1, r12+88, cursor, subject_data, subject_len_val, dol5_γ, dol5_ω ; BREAK α
-dol5_child_β:               BREAK_β     r12+88, cursor, dol5_ω ; BREAK β
+dol5_child_α:               BREAK_α     lit_str_1, 1, r12+104, cursor, subject_data, subject_len_val, dol5_γ, dol5_ω ; BREAK α
+dol5_child_β:               BREAK_β     r12+104, cursor, dol5_ω ; BREAK β
 dol5_γ:                     DOL_CAPTURE r12+64, cursor, cap_T_buf, cap_T_len, subject_data, P_4_γ ; DOL γ — capture span
 dol5_ω:                     jmp         seq_l3_β ; DOL ω — child failed
 
@@ -489,7 +503,7 @@ global  box_ROMAN_data_template, box_ROMAN_data_size
 section .data
 ;  BOX DATA TEMPLATES ==================================================================================================
                             align       8
-box_ROMAN_data_size: dq 112
+box_ROMAN_data_size: dq 128
 box_ROMAN_data_template:
 dq 0  ; [r12+0] = P_ROMAN_ret_γ
 dq 0  ; [r12+8] = P_ROMAN_ret_ω
@@ -501,10 +515,12 @@ dq 0  ; [r12+48] = fn_ROMAN_tmp3_t
 dq 0  ; [r12+56] = fn_ROMAN_tmp3_p
 dq 0  ; [r12+64] = dol_entry_T
 dq 0  ; [r12+72] = len2_saved
-dq 0  ; [r12+80] = litvar4_saved
-dq 0  ; [r12+88] = brk6_saved
-dq 0  ; [r12+96] = scan_start_3
-dq 0  ; [r12+104] = scan_start_4
+dq 0  ; [r12+80] = rpat4_t
+dq 0  ; [r12+88] = rpat4_p
+dq 0  ; [r12+96] = rpat4_s
+dq 0  ; [r12+104] = brk6_saved
+dq 0  ; [r12+112] = scan_start_3
+dq 0  ; [r12+120] = scan_start_4
 
 
 section .data

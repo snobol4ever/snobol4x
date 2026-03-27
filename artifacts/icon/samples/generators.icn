@@ -1,0 +1,58 @@
+# generators.icn — Generator composition showcase
+# Icon idiom: suspend, goal-directed evaluation, lazy sequences
+# Shows: user-defined generators, every, alternation, filtering
+
+# Generate integers from lo to hi (inclusive)
+procedure range(lo, hi)
+    local i;
+    every i := lo to hi do
+        suspend i;
+end
+
+# Generate all divisors of n
+procedure divisors(n)
+    local i;
+    every i := 1 to n do
+        if n % i = 0 then suspend i;
+end
+
+# Generate Fibonacci numbers up to limit
+procedure fibs(limit)
+    local a, b, tmp;
+    a := 0; b := 1;
+    while a <= limit do {
+        suspend a;
+        tmp := a + b; a := b; b := tmp;
+    };
+end
+
+# Compose: generate only perfect numbers (n = sum of proper divisors)
+procedure perfect(limit)
+    local n, s;
+    every n := range(2, limit) do {
+        s := 0;
+        every s +:= divisors(n);
+        s -:= n;                        # exclude n itself (proper divisors only)
+        if s = n then suspend n;
+    };
+end
+
+procedure main()
+    local out;
+
+    write("Fibs to 100:");
+    out := "";
+    every out ||:= " " || fibs(100);
+    write(" " || out[2:0]);
+
+    write("Perfect numbers to 10000:");
+    every write("  " || perfect(10000));
+
+    write("Primes to 50 (trial division by generators):");
+    out := "";
+    every out ||:= " " || (
+        n := range(2, 50),
+        (not (0 = n % range(2, integer(n ^ 0.5)))) & n
+    );
+    write(" " || out[2:0]);
+end

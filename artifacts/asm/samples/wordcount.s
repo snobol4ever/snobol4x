@@ -24,6 +24,7 @@ extern  stmt_aref, stmt_aset, stmt_field_set
 extern  stmt_aref2, stmt_aset2
 extern  comm_stno
 extern  blk_alloc, blk_free, memcpy  ; per-invocation DATA block runtime
+extern  pat_ref  ; B-287: deferred *VAR pattern ref (XDSAR)
 global  cursor, subject_data, subject_len_val
 
 section .note.GNU-stack noalloc noexec nowrite progbits
@@ -33,6 +34,7 @@ subject_len_val          resq 1
 P_WPAT_ret_γ            resq 1
 P_WPAT_ret_ω            resq 1
 scan_start_5             resq 1
+nref0_r12                resq 1
 conc_tmp0_rax            resq 1
 conc_tmp0_rdx            resq 1
 subject_data             resb 65536
@@ -150,18 +152,22 @@ P_5_α: ; REF(WPAT)
                             mov         [P_WPAT_ret_γ], rax
                             lea         rax, [rel nref0_ω]
                             mov         [P_WPAT_ret_ω], rax
+                            mov         [nref0_r12], r12
                             lea         r12, [rel box_WPAT_data_template]
                             jmp         P_WPAT_α
 P_5_β:                      lea         rax, [rel nref0_γ] ; REF(%s)
                             mov         [P_WPAT_ret_γ], rax
                             lea         rax, [rel nref0_ω]
                             mov         [P_WPAT_ret_ω], rax
+                            mov         [nref0_r12], r12
                             lea         r12, [rel box_WPAT_data_template]
                             jmp         P_WPAT_β
 
 nref0_γ:
+                            mov         r12, [nref0_r12]
                             jmp         P_5_γ
-nref0_ω:                    jmp         P_5_ω
+nref0_ω:                    mov         r12, [nref0_r12]
+                            jmp         P_5_ω
 
 P_5_γ:                      mov         qword [rbp-32], 1
                             mov         qword [rbp-24], 0
@@ -205,7 +211,10 @@ section .text
 ;  NAMED PATTERN BODIES ================================================================================================
 
 ; P_WPAT_α (α entry) [r12=DATA block]
-P_WPAT_α:                   jmp         seq_l1_α ; SEQ
+;  WPAT ================================================================================================================
+P_WPAT_α:                   mov         qword [r12+16], 0
+                            mov         qword [r12+24], 0
+pat_WPAT_body:              jmp         seq_l1_α ; SEQ
 P_WPAT_β:                   jmp         seq_r1_β
 seq_l1_α:                   BREAK_α_VAR S_WORD, r12+16, cursor, subject_data, subject_len_val, seq_r1_α, patdef_WPAT_ω ; BREAK(var) α
 seq_l1_β:                   BREAK_β_VAR r12+16, cursor, patdef_WPAT_ω ; BREAK(var) β
@@ -214,7 +223,6 @@ seq_r1_β:                   SPAN_β_VAR  r12+24, cursor, seq_l1_β ; SPAN(var) 
 ;  γ/ω ---------------------------------------------------------------------------------------------------------------
 patdef_WPAT_γ:              NAMED_PAT_γ P_WPAT_ret_γ ; named pat γ
 patdef_WPAT_ω:              NAMED_PAT_ω P_WPAT_ret_ω ; named pat ω
-;  WPAT ================================================================================================================
 
 section .text
 ;  STUB LABELS =========================================================================================================

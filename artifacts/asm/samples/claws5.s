@@ -24,6 +24,7 @@ extern  stmt_aref, stmt_aset, stmt_field_set
 extern  stmt_aref2, stmt_aset2
 extern  comm_stno
 extern  blk_alloc, blk_free, memcpy  ; per-invocation DATA block runtime
+extern  pat_ref  ; B-287: deferred *VAR pattern ref (XDSAR)
 global  cursor, subject_data, subject_len_val
 
 section .note.GNU-stack noalloc noexec nowrite progbits
@@ -65,6 +66,7 @@ P_do_add_tok_ret_ω      resq 1
 P_claws_info_ret_γ      resq 1
 P_claws_info_ret_ω      resq 1
 scan_start_70            resq 1
+nref0_r12                resq 1
 spn_expr_tmp_23_t        resq 1
 spn_expr_tmp_23_p        resq 1
 arb5_stack               resq 64
@@ -1172,7 +1174,7 @@ Ln_63:                      mov         edi, 106
                             push        rdx
                             push        rax
                             lea         rdi, [rel S_do_mem_init]
-                            call        stmt_get
+                            call        pat_ref
                             STORE_RESULT
                             mov         rcx, rdx
                             mov         rdx, rax
@@ -1195,7 +1197,7 @@ Ln_63:                      mov         edi, 106
                             push        rdx
                             push        rax
                             lea         rdi, [rel S_do_new_sent]
-                            call        stmt_get
+                            call        pat_ref
                             STORE_RESULT
                             mov         rcx, rdx
                             mov         rdx, rax
@@ -1205,9 +1207,33 @@ Ln_63:                      mov         edi, 106
                             mov         [rbp-32], rax
                             mov         [rbp-24], rdx
                             STORE_ARG32 0
+                            CALL1_STR   S_NOTANY, S_75
+                            push        rdx
+                            push        rax
+                            CALL1_STR   S_BREAK, S_75
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            pop         rdi
+                            pop         rsi
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            push        rdx
+                            push        rax
+                            lea         rdi, [rel S_wrd]
+                            call        stmt_get
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
                             mov         qword [rbp-32], 9
-                            lea         rax, [rel S_81]
+                            lea         rax, [rel S_wrd]
                             mov         [rbp-24], rax
+                            mov         rcx, [rbp-24]
+                            mov         rdx, [rbp-32]
+                            pop         rdi
+                            pop         rsi
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
                             push        rdx
                             push        rax
                             LOAD_STR    S_75
@@ -1218,9 +1244,38 @@ Ln_63:                      mov         edi, 106
                             call        stmt_concat
                             push        rdx
                             push        rax
+                            CALL1_VAR   S_ANY, S_UCASE
+                            push        rdx
+                            push        rax
+                            sub         rsp, 16
+                            CAT2_VV     S_DIGITS, S_UCASE
+                            STORE_ARG32 0
+                            APPLY_FN_N  S_SPAN, 1
+                            add         rsp, 16
+                            STORE_RESULT
+                            mov         rcx, rdx
+                            mov         rdx, rax
+                            pop         rdi
+                            pop         rsi
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
+                            push        rdx
+                            push        rax
+                            lea         rdi, [rel S_tag]
+                            call        stmt_get
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
                             mov         qword [rbp-32], 9
-                            lea         rax, [rel S_81]
+                            lea         rax, [rel S_tag]
                             mov         [rbp-24], rax
+                            mov         rcx, [rbp-24]
+                            mov         rdx, [rbp-32]
+                            pop         rdi
+                            pop         rsi
+                            call        stmt_concat
+                            mov         [rbp-32], rax
+                            mov         [rbp-24], rdx
                             mov         rcx, rdx
                             mov         rdx, rax
                             pop         rdi
@@ -1229,7 +1284,7 @@ Ln_63:                      mov         edi, 106
                             push        rdx
                             push        rax
                             lea         rdi, [rel S_do_add_tok]
-                            call        stmt_get
+                            call        pat_ref
                             STORE_RESULT
                             mov         rcx, rdx
                             mov         rdx, rax
@@ -1460,18 +1515,22 @@ P_70_α: ; REF(claws_info)
                             mov         [P_claws_info_ret_γ], rax
                             lea         rax, [rel nref0_ω]
                             mov         [P_claws_info_ret_ω], rax
+                            mov         [nref0_r12], r12
                             lea         r12, [rel box_claws_info_data_template]
                             jmp         P_claws_info_α
 P_70_β:                     lea         rax, [rel nref0_γ] ; REF(%s)
                             mov         [P_claws_info_ret_γ], rax
                             lea         rax, [rel nref0_ω]
                             mov         [P_claws_info_ret_ω], rax
+                            mov         [nref0_r12], r12
                             lea         r12, [rel box_claws_info_data_template]
                             jmp         P_claws_info_β
 
 nref0_γ:
+                            mov         r12, [nref0_r12]
                             jmp         P_70_γ
-nref0_ω:                    jmp         P_70_ω
+nref0_ω:                    mov         r12, [nref0_r12]
+                            jmp         P_70_ω
 
 P_70_γ:                     mov         rax, [cursor]
                             mov         [scan_start_70], rax
@@ -1697,7 +1756,22 @@ fn_do_add_tok_ω:            FN_ω        P_do_add_tok_ret_ω ; fn ω
 P_do_add_tok_β:             jmp         [P_do_add_tok_ret_ω] ; fn β — backtrack = fail
 
 ; P_claws_info_α (α entry) [r12=DATA block]
-P_claws_info_α:             jmp         seq_l1_α ; SEQ
+;  claws_info ==========================================================================================================
+P_claws_info_α:             mov         qword [r12+16], 0
+                            mov         qword [r12+24], 0
+                            mov         qword [r12+32], 0
+                            mov         qword [r12+40], 0
+                            mov         qword [r12+48], 0
+                            mov         qword [r12+56], 0
+                            mov         qword [r12+64], 0
+                            mov         qword [r12+72], 0
+                            mov         qword [r12+80], 0
+                            mov         qword [r12+88], 0
+                            mov         qword [r12+96], 0
+                            mov         qword [r12+104], 0
+                            mov         qword [r12+112], 0
+                            mov         qword [r12+120], 0
+pat_claws_info_body:        jmp         seq_l1_α ; SEQ
 P_claws_info_β:             jmp         seq_r1_β
 seq_l1_α:                   POS_α       0, cursor, seq_r1_α, patdef_claws_info_ω ; POS(%ld)
 seq_l1_β:                   POS_β       cursor, patdef_claws_info_ω
@@ -1705,7 +1779,6 @@ seq_r1_α:                   jmp         seq_l2_α ; SEQ
 seq_r1_β:                   jmp         seq_r2_β
 
 seq_l2_α: ; REF(do_mem_init)
-;  claws_info ==========================================================================================================
                             lea         rax, [rel nref3_γ]
                             mov         [P_do_mem_init_ret_γ], rax
                             lea         rax, [rel nref3_ω]

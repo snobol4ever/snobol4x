@@ -2,7 +2,7 @@
 ; Assemble: java -jar jasmin.jar <file>.j -d .
 ; Run:      java <classname>
 
-.class public Null
+.class public Null_prog
 .super java/lang/Object
 
 ; Runtime fields
@@ -11,33 +11,75 @@
 .field static sno_kw_TRIM I
 .field static sno_kw_ANCHOR I
 .field static sno_kw_STNO I
+.field static sno_kw_STLIMIT I
+.field static sno_kw_STCOUNT I
 .field static sno_vars Ljava/util/HashMap;
 .field static sno_arrays Ljava/util/HashMap;
 .field static sno_data_types Ljava/util/HashMap;
+.field static sno_mon_fd Ljava/io/OutputStream;
+.field static sno_mon_go_fd Ljava/io/InputStream;
 
 .method static <clinit>()V
     .limit stack 4
     .limit locals 0
     getstatic       java/lang/System/out Ljava/io/PrintStream;
-    putstatic       Null/sno_stdout Ljava/io/PrintStream;
+    putstatic       Null_prog/sno_stdout Ljava/io/PrintStream;
     iconst_0
-    putstatic       Null/sno_kw_TRIM I
+    putstatic       Null_prog/sno_kw_TRIM I
     iconst_0
-    putstatic       Null/sno_kw_ANCHOR I
+    putstatic       Null_prog/sno_kw_ANCHOR I
     iconst_0
-    putstatic       Null/sno_kw_STNO I
+    putstatic       Null_prog/sno_kw_STNO I
+    iconst_m1
+    putstatic       Null_prog/sno_kw_STLIMIT I
+    iconst_0
+    putstatic       Null_prog/sno_kw_STCOUNT I
     new java/util/HashMap
     dup
     invokespecial java/util/HashMap/<init>()V
-    putstatic       Null/sno_vars Ljava/util/HashMap;
+    putstatic       Null_prog/sno_vars Ljava/util/HashMap;
     new java/util/HashMap
     dup
     invokespecial java/util/HashMap/<init>()V
-    putstatic       Null/sno_arrays Ljava/util/HashMap;
+    putstatic       Null_prog/sno_arrays Ljava/util/HashMap;
     new java/util/HashMap
     dup
     invokespecial java/util/HashMap/<init>()V
-    putstatic       Null/sno_data_types Ljava/util/HashMap;
+    putstatic       Null_prog/sno_data_types Ljava/util/HashMap;
+    return
+.end method
+
+.method static sno_mon_init()V
+    .limit stack 6
+    .limit locals 2
+    ldc "MONITOR_READY_PIPE"
+    invokestatic java/lang/System/getenv(Ljava/lang/String;)Ljava/lang/String;
+    astore_0
+    aload_0
+    ifnull Lsmi_done
+    aload_0
+    invokevirtual java/lang/String/isEmpty()Z
+    ifne Lsmi_done
+    new java/io/FileOutputStream
+    dup
+    aload_0
+    iconst_1
+    invokespecial java/io/FileOutputStream/<init>(Ljava/lang/String;Z)V
+    putstatic Null_prog/sno_mon_fd Ljava/io/OutputStream;
+    ldc "MONITOR_GO_PIPE"
+    invokestatic java/lang/System/getenv(Ljava/lang/String;)Ljava/lang/String;
+    astore_1
+    aload_1
+    ifnull Lsmi_done
+    aload_1
+    invokevirtual java/lang/String/isEmpty()Z
+    ifne Lsmi_done
+    new java/io/FileInputStream
+    dup
+    aload_1
+    invokespecial java/io/FileInputStream/<init>(Ljava/lang/String;)V
+    putstatic Null_prog/sno_mon_go_fd Ljava/io/InputStream;
+Lsmi_done:
     return
 .end method
 
@@ -45,6 +87,7 @@
     .limit stack 16
     .limit locals 32
 
+    invokestatic Null_prog/sno_mon_init()V
 ; === END =============================================================
 L_END:
     nop
@@ -114,7 +157,7 @@ Lkwg_not_lcase:
     ldc "STNO"
     invokevirtual java/lang/String/equalsIgnoreCase(Ljava/lang/String;)Z
     ifeq Lkwg_not_stno
-    getstatic Null/sno_kw_STNO I
+    getstatic Null_prog/sno_kw_STNO I
     invokestatic java/lang/Integer/toString(I)Ljava/lang/String;
     areturn
 Lkwg_not_stno:
@@ -122,7 +165,7 @@ Lkwg_not_stno:
     ldc "TRIM"
     invokevirtual java/lang/String/equalsIgnoreCase(Ljava/lang/String;)Z
     ifeq Lkwg_not_trim
-    getstatic Null/sno_kw_TRIM I
+    getstatic Null_prog/sno_kw_TRIM I
     invokestatic java/lang/Integer/toString(I)Ljava/lang/String;
     areturn
 Lkwg_not_trim:
@@ -130,10 +173,26 @@ Lkwg_not_trim:
     ldc "ANCHOR"
     invokevirtual java/lang/String/equalsIgnoreCase(Ljava/lang/String;)Z
     ifeq Lkwg_not_anchor
-    getstatic Null/sno_kw_ANCHOR I
+    getstatic Null_prog/sno_kw_ANCHOR I
     invokestatic java/lang/Integer/toString(I)Ljava/lang/String;
     areturn
 Lkwg_not_anchor:
+    aload_0
+    ldc "STLIMIT"
+    invokevirtual java/lang/String/equalsIgnoreCase(Ljava/lang/String;)Z
+    ifeq Lkwg_not_stlimit
+    getstatic Null_prog/sno_kw_STLIMIT I
+    invokestatic java/lang/Integer/toString(I)Ljava/lang/String;
+    areturn
+Lkwg_not_stlimit:
+    aload_0
+    ldc "STCOUNT"
+    invokevirtual java/lang/String/equalsIgnoreCase(Ljava/lang/String;)Z
+    ifeq Lkwg_not_stcount
+    getstatic Null_prog/sno_kw_STCOUNT I
+    invokestatic java/lang/Integer/toString(I)Ljava/lang/String;
+    areturn
+Lkwg_not_stcount:
     ldc ""
     areturn
 .end method
@@ -147,7 +206,7 @@ Lkwg_not_anchor:
     ifeq Lkws_not_trim
     aload_1
     invokestatic java/lang/Integer/parseInt(Ljava/lang/String;)I
-    putstatic Null/sno_kw_TRIM I
+    putstatic Null_prog/sno_kw_TRIM I
     return
 Lkws_not_trim:
     aload_0
@@ -156,7 +215,7 @@ Lkws_not_trim:
     ifeq Lkws_not_anchor
     aload_1
     invokestatic java/lang/Integer/parseInt(Ljava/lang/String;)I
-    putstatic Null/sno_kw_ANCHOR I
+    putstatic Null_prog/sno_kw_ANCHOR I
     return
 Lkws_not_anchor:
     aload_0
@@ -165,9 +224,27 @@ Lkws_not_anchor:
     ifeq Lkws_not_stno
     aload_1
     invokestatic java/lang/Integer/parseInt(Ljava/lang/String;)I
-    putstatic Null/sno_kw_STNO I
+    putstatic Null_prog/sno_kw_STNO I
     return
 Lkws_not_stno:
+    aload_0
+    ldc "STLIMIT"
+    invokevirtual java/lang/String/equalsIgnoreCase(Ljava/lang/String;)Z
+    ifeq Lkws_not_stlimit
+    aload_1
+    invokestatic java/lang/Integer/parseInt(Ljava/lang/String;)I
+    putstatic Null_prog/sno_kw_STLIMIT I
+    return
+Lkws_not_stlimit:
+    aload_0
+    ldc "STCOUNT"
+    invokevirtual java/lang/String/equalsIgnoreCase(Ljava/lang/String;)Z
+    ifeq Lkws_not_stcount
+    aload_1
+    invokestatic java/lang/Integer/parseInt(Ljava/lang/String;)I
+    putstatic Null_prog/sno_kw_STCOUNT I
+    return
+Lkws_not_stcount:
     return
 .end method
 
@@ -178,38 +255,103 @@ Lkws_not_stno:
     ldc "OUTPUT"
     invokevirtual java/lang/String/equalsIgnoreCase(Ljava/lang/String;)Z
     ifeq Lsvp_not_output
-    getstatic Null/sno_stdout Ljava/io/PrintStream;
+    getstatic Null_prog/sno_stdout Ljava/io/PrintStream;
     aload_1
     invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
     return
 Lsvp_not_output:
-    getstatic Null/sno_vars Ljava/util/HashMap;
+    getstatic Null_prog/sno_vars Ljava/util/HashMap;
     aload_0
     aload_1
     invokevirtual java/util/HashMap/put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
     pop
+    aload_0
+    aload_1
+    invokestatic Null_prog/sno_mon_var(Ljava/lang/String;Ljava/lang/String;)V
+    return
+.end method
+
+.method static sno_mon_var(Ljava/lang/String;Ljava/lang/String;)V
+    .limit stack 6
+    .limit locals 3
+    getstatic Null_prog/sno_mon_fd Ljava/io/OutputStream;
+    ifnull Lsmv_done
+    new java/lang/StringBuilder
+    dup
+    invokespecial java/lang/StringBuilder/<init>()V
+    ldc "VALUE"
+    invokevirtual java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+    bipush 30
+    invokevirtual java/lang/StringBuilder/append(C)Ljava/lang/StringBuilder;
+    aload_0
+    invokevirtual java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+    bipush 31
+    invokevirtual java/lang/StringBuilder/append(C)Ljava/lang/StringBuilder;
+    aload_1
+    invokevirtual java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+    bipush 30
+    invokevirtual java/lang/StringBuilder/append(C)Ljava/lang/StringBuilder;
+    invokevirtual java/lang/StringBuilder/toString()Ljava/lang/String;
+    ldc "UTF-8"
+    invokevirtual java/lang/String/getBytes(Ljava/lang/String;)[B
+    astore_2
+    getstatic Null_prog/sno_mon_fd Ljava/io/OutputStream;
+    aload_2
+    invokevirtual java/io/OutputStream/write([B)V
+    getstatic Null_prog/sno_mon_go_fd Ljava/io/InputStream;
+    ifnull Lsmv_done
+    getstatic Null_prog/sno_mon_go_fd Ljava/io/InputStream;
+    invokevirtual java/io/InputStream/read()I
+    istore_2
+    iload_2
+    bipush 71
+    if_icmpeq Lsmv_done
+    iconst_0
+    invokestatic java/lang/System/exit(I)V
+Lsmv_done:
+    return
+.end method
+
+.method static sno_stcount_tick()V
+    .limit stack 4
+    .limit locals 0
+    getstatic Null_prog/sno_kw_STCOUNT I
+    iconst_1
+    iadd
+    putstatic Null_prog/sno_kw_STCOUNT I
+    getstatic Null_prog/sno_kw_STLIMIT I
+    iflt Lstick_ok
+    getstatic Null_prog/sno_kw_STCOUNT I
+    getstatic Null_prog/sno_kw_STLIMIT I
+    if_icmple Lstick_ok
+    getstatic java/lang/System/err Ljava/io/PrintStream;
+    ldc "Termination: statement limit"
+    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V
+    iconst_1
+    invokestatic java/lang/System/exit(I)V
+Lstick_ok:
     return
 .end method
 
 .method static sno_indr_get(Ljava/lang/String;)Ljava/lang/String;
     .limit stack 4
     .limit locals 1
-    getstatic Null/sno_vars Ljava/util/HashMap;
+    getstatic Null_prog/sno_vars Ljava/util/HashMap;
     aload_0
     invokevirtual java/util/HashMap/get(Ljava/lang/Object;)Ljava/lang/Object;
     checkcast java/lang/String
     dup
-    ifnonnull Lsig_done
+    ifnonnull Lsig_done_indr
     pop
     ldc ""
-Lsig_done:
+Lsig_done_indr:
     areturn
 .end method
 
 .method static sno_indr_set(Ljava/lang/String;Ljava/lang/String;)V
     .limit stack 4
     .limit locals 2
-    getstatic Null/sno_vars Ljava/util/HashMap;
+    getstatic Null_prog/sno_vars Ljava/util/HashMap;
     aload_0
     aload_1
     invokevirtual java/util/HashMap/put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
