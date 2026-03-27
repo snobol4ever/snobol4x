@@ -335,6 +335,17 @@ static Term *parse_primary(Parser *p) {
                     return term_new_compound(fid, 1, args);
                 }
             }
+            if (strcmp(tk.text, "+") == 0) {
+                Token pk = lexer_peek(&p->lx);
+                /* +atom, +compound, +Variable: treat as +(Arg) prefix compound (prec 200) */
+                if (pk.kind == TK_ATOM || pk.kind == TK_OP || pk.kind == TK_VAR ||
+                    pk.kind == TK_LPAREN || pk.kind == TK_INT || pk.kind == TK_FLOAT) {
+                    Term *arg = parse_term(p, 200);
+                    int fid = prolog_atom_intern("+");
+                    Term *args[1] = { arg };
+                    return term_new_compound(fid, 1, args);
+                }
+            }
             /* Fallthrough: treat as atom, but check for compound f(...) */
             {
                 int id = prolog_atom_intern(tk.text);
