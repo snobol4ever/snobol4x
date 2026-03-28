@@ -1,0 +1,358 @@
+# icon_parser.icn -- Icon source parser using suspend combinators
+# Reads Icon source from stdin, prints parse tree as S-expressions.
+# Milestone: M-PARSE-ICON
+#
+# Each parser procedure takes a token list and generates [tree, rest] pairs.
+# Failure = no generation. Backtracking via Icon's built-in generator model.
+#
+# Output format (treebank-style S-expressions):
+#   (proc main () () (seq (expr (:= cnt (call read))) (expr (call write cnt))))
+#   (global x y z)
+#   (record point x y)
+
+global keywords, ops2
+
+record tok(kind, val)
+
+# ── Tokeniser ────────────────────────────────────────────────────────────────
+
+procedure tokenise(src)
+  local toks, i, n, c, start, s, op2
+  toks := []; i := 1; n := *src
+  while i <= n do {
+    c := src[i]
+    if any(' \t\n\r', c) then { i +:= 1; next }
+    if c == "#" then {
+      while i <= n & src[i] ~== "\n" do i +:= 1
+      next
+    }
+    if c == "\"" then {
+      i +:= 1; s := ""
+      while i <= n & src[i] ~== "\"" do {
+        if src[i] == "\\" then { i +:= 1 }
+        s ||:= src[i]; i +:= 1
+      }
+      i +:= 1; put(toks, tok("str", s)); next
+    }
+    if any('0123456789', c) then {
+      start := i
+      while i <= n & any('0123456789.', src[i]) do i +:= 1
+      put(toks, tok("int", src[start:i])); next
+    }
+    if any(&letters ++ '_', c) then {
+      start := i
+      while i <= n & any(&letters ++ &digits ++ '_', src[i]) do i +:= 1
+      s := src[start:i]
+      if member(keywords, s) then put(toks, tok("kw", s))
+      else put(toks, tok("id", s))
+      next
+    }
+    if i + 1 <= n then {
+      op2 := src[i:i+2]
+      if member(ops2, op2) then {
+        put(toks, tok("op", op2)); i +:= 2; next
+      }
+    }
+    put(toks, tok("op", c)); i +:= 1
+  }
+  return toks
+end
+
+procedure init_globals()
+  keywords := set()
+  every insert(keywords, !["procedure","end","global","local","static",
+    "record","if","then","else","while","do","until","every","to","by",
+    "break","next","return","suspend","fail","create","not","initial"])
+  ops2 := set()
+  every insert(ops2, ![":=","||","+:=","-:=","*:=","/:=","%:=","^:=",
+    "||:=","++","--","**","//","<=",">=","==","~=","~==","<<",">>",
+    "->","<->","=:=","\\=","..","|:="])
+end
+
+# ── Combinator primitives ─────────────────────────────────────────────────────
+
+procedure p_tok(toks, kind, val)
+  if *toks = 0 then fail
+  if toks[1].kind == kind then
+    if /val | toks[1].val == val then
+      suspend [toks[1].val, toks[2:0]]
+end
+
+procedure p_kw(toks, word);  suspend p_tok(toks, "kw", word); end
+procedure p_op(toks, sym);   suspend p_tok(toks, "op", sym);  end
+procedure p_id(toks);        suspend p_tok(toks, "id", &null); end
+procedure p_int(toks);       suspend p_tok(toks, "int", &null); end
+procedure p_str(toks);       suspend p_tok(toks, "str", &null); end
+
+# ── Operator precedence ───────────────────────────────────────────────────────
+
+procedure op_prec(op)
+  case op of {
+    ":=" | "+:=" | "-:=" | "*:=" | "/:=" | "%:=" |
+    "^:=" | "||:=" | "<->" : return [10, "right"]
+    "->"   : return [12, "right"]
+    "|"    : return [14, "left"]
+    "to"   : return [18, "left"]
+    "by"   : return [19, "left"]
+    "<" | ">" | "<=" | ">=" | "=" | "~=" | "==" | "~==" |
+    "<<" | ">>" | "?" : return [30, "left"]
+    "||"   : return [40, "left"]
+    "+"|"-": return [50, "left"]
+    "*"|"/"|"%"|"//"|"**" : return [60, "left"]
+    "^"    : return [70, "right"]
+    "."    : return [80, "left"]
+  }
+  fail
+end
+
+# ── Expression parser ─────────────────────────────────────────────────────────
+
+procedure p_primary(toks)
+  local r, name, rest, inner, args, elts, uop
+  # parenthesised
+  every r := p_op(toks, "(") do
+    every inner := p_expr(r[2], 0) do
+      every p_op(inner[2], ")") do
+        suspend [inner[1], inner[2][2:0]]
+  # list [ ... ]
+  every r := p_op(toks, "[") do {
+    if *r[2] > 0 & r[2][1].kind == "op" & r[2][1].val == "]" then
+      suspend [["list"], r[2][2:0]]
+    every elts := p_exprlist(r[2]) do
+      every p_op(elts[2], "]") do
+        suspend [["list"] ||| elts[1], elts[2][2:0]]
+  }
+  # string, int
+  every r := p_str(toks) do suspend [["str", r[1]], r[2]]
+  every r := p_int(toks) do suspend [["int", r[1]], r[2]]
+  # unary prefix: ! \ @ ~ &
+  every uop := ("!" | "\\" | "@" | "~") do
+    every r := p_op(toks, uop) do
+      every inner := p_primary(r[2]) do
+        suspend [["unary", uop, inner[1]], inner[2]]
+  every r := p_kw(toks, "not") do
+    every inner := p_primary(r[2]) do
+      suspend [["not", inner[1]], inner[2]]
+  every r := p_kw(toks, "create") do
+    every inner := p_expr(r[2], 0) do
+      suspend [["create", inner[1]], inner[2]]
+  # id or call
+  every r := p_id(toks) do {
+    name := r[1]; rest := r[2]
+    if *rest > 0 & rest[1].kind == "op" & rest[1].val == "(" then {
+      if *rest[2:0] > 0 & rest[2:0][1].kind == "op" & rest[2:0][1].val == ")" then
+        suspend [["call", name], rest[2:0][2:0]]
+      every args := p_exprlist(rest[2:0]) do
+        every p_op(args[2], ")") do
+          suspend [["call", name] ||| args[1], args[2][2:0]]
+    }
+    suspend [["id", name], rest]
+  }
+end
+
+procedure p_exprlist(toks)
+  local r, more
+  every r := p_expr(toks, 0) do {
+    if *r[2] > 0 & r[2][1].kind == "op" & r[2][1].val == "," then
+      every more := p_exprlist(r[2][2:0]) do
+        suspend [[r[1]] ||| more[1], more[2]]
+    suspend [[r[1]], r[2]]
+  }
+end
+
+procedure p_expr(toks, min_prec)
+  local lhs, rest, op, info, prec, rhs_prec, rhs, found
+  every lhs := p_primary(toks) do {
+    rest := lhs[2]; lhs := lhs[1]
+    repeat {
+      if *rest = 0 then break
+      op := rest[1].val
+      info := op_prec(op) | break
+      prec := info[1]
+      if prec <= min_prec then break
+      rhs_prec := if info[2] == "right" then prec - 1 else prec
+      found := &null
+      every rhs := p_expr(rest[2:0], rhs_prec) do {
+        lhs := [op, lhs, rhs[1]]; rest := rhs[2]; found := 1; break
+      }
+      if /found then break
+    }
+    suspend [lhs, rest]
+  }
+end
+
+# ── Statement parser ──────────────────────────────────────────────────────────
+
+procedure p_block(toks)
+  local stmts, rest, r, found
+  stmts := []; rest := toks
+  repeat {
+    while *rest > 0 & rest[1].kind == "op" & rest[1].val == ";" do
+      rest := rest[2:0]
+    if *rest = 0 then break
+    if rest[1].kind == "kw" & member(set(["end","else"]), rest[1].val) then break
+    if rest[1].kind == "op" & rest[1].val == "}" then break
+    found := &null
+    every r := p_stmt(rest) do { put(stmts, r[1]); rest := r[2]; found := 1; break }
+    if /found then { rest := rest[2:0] }
+  }
+  suspend [stmts, rest]
+end
+
+procedure p_braced_block(toks)
+  local r, b
+  every r := p_op(toks, "{") do
+    every b := p_block(r[2]) do
+      every p_op(b[2], "}") do
+        suspend [["block"] ||| b[1], b[2][2:0]]
+end
+
+procedure p_stmt(toks)
+  local r, cond, body, els, test, decl
+  # if
+  every r := p_kw(toks, "if") do
+    every cond := p_expr(r[2], 0) do
+      every p_kw(cond[2], "then") do {
+        every body := (p_braced_block | p_stmt)(cond[2][2:0]) do {
+          if *body[2] > 0 & body[2][1].kind == "kw" & body[2][1].val == "else" then
+            every els := (p_braced_block | p_stmt)(body[2][2:0]) do
+              suspend [["if", cond[1], body[1], els[1]], els[2]]
+          suspend [["if", cond[1], body[1]], body[2]]
+        }
+      }
+  # while
+  every r := p_kw(toks, "while") do
+    every test := p_expr(r[2], 0) do
+      every p_kw(test[2], "do") do
+        every body := (p_braced_block | p_stmt)(test[2][2:0]) do
+          suspend [["while", test[1], body[1]], body[2]]
+  # every
+  every r := p_kw(toks, "every") do
+    every test := p_expr(r[2], 0) do {
+      every p_kw(test[2], "do") do
+        every body := (p_braced_block | p_stmt)(test[2][2:0]) do
+          suspend [["every", test[1], body[1]], body[2]]
+      suspend [["every", test[1]], test[2]]
+    }
+  # return / suspend / fail / break / next
+  every r := p_kw(toks, "return") do {
+    every body := p_expr(r[2], 0) do suspend [["return", body[1]], body[2]]
+    suspend [["return"], r[2]]
+  }
+  every r := p_kw(toks, "suspend") do
+    every body := p_expr(r[2], 0) do
+      suspend [["suspend", body[1]], body[2]]
+  every r := p_kw(toks, "fail")  do suspend [["fail"],  r[2]]
+  every r := p_kw(toks, "break") do suspend [["break"], r[2]]
+  every r := p_kw(toks, "next")  do suspend [["next"],  r[2]]
+  # braced block
+  every r := p_braced_block(toks) do suspend r
+  # expression statement
+  every r := p_expr(toks, 0) do suspend [["expr", r[1]], r[2]]
+end
+
+# ── Top-level forms ───────────────────────────────────────────────────────────
+
+procedure p_namelist(toks)
+  local names, rest
+  names := []; rest := toks
+  while *rest > 0 & rest[1].kind == "id" do {
+    put(names, rest[1].val); rest := rest[2:0]
+    if *rest > 0 & rest[1].kind == "op" & rest[1].val == "," then
+      rest := rest[2:0]
+  }
+  suspend [names, rest]
+end
+
+procedure p_proc(toks)
+  local r, n, params, decls, rest, body, dr, dk
+  every r := p_kw(toks, "procedure") do
+    every n := p_id(r[2]) do
+      every p_op(n[2], "(") do {
+        every params := p_namelist(n[2][2:0]) do {
+          rest := params[2]
+          if *rest > 0 & rest[1].kind == "op" & rest[1].val == ")" then
+            rest := rest[2:0]
+          # collect local/static/initial declarations
+          decls := []
+          repeat {
+            found := &null
+            every dk := ("local" | "static" | "initial") do
+              every dr := p_kw(rest, dk) do {
+                every nl := p_namelist(dr[2]) do {
+                  put(decls, [dk] ||| nl[1])
+                  rest := nl[2]; found := 1; break
+                }
+                break
+              }
+            if /found then break
+          }
+          every body := p_block(rest) do {
+            if *body[2] > 0 & body[2][1].kind == "kw" & body[2][1].val == "end" then
+              rest := body[2][2:0]
+            else rest := body[2]
+            suspend [["proc", n[1], params[1], decls, body[1]], rest]
+            break
+          }
+        }
+        break
+      }
+end
+
+procedure p_global(toks)
+  local r
+  every r := p_kw(toks, "global") do
+    every nl := p_namelist(r[2]) do
+      suspend [["global"] ||| nl[1], nl[2]]
+end
+
+procedure p_record(toks)
+  local r, n, fields, rest
+  every r := p_kw(toks, "record") do
+    every n := p_id(r[2]) do
+      every p_op(n[2], "(") do {
+        every fields := p_namelist(n[2][2:0]) do {
+          rest := fields[2]
+          if *rest > 0 & rest[1].kind == "op" & rest[1].val == ")" then
+            rest := rest[2:0]
+          suspend [["record", n[1]] ||| fields[1], rest]
+          break
+        }
+        break
+      }
+end
+
+# ── S-expression printer ──────────────────────────────────────────────────────
+
+procedure print_sexp(tree)
+  if type(tree) ~== "list" then { writes(image(tree)); return }
+  if *tree = 0 then { writes("()"); return }
+  writes("(")
+  every i := 1 to *tree do {
+    if i > 1 then writes(" ")
+    print_sexp(tree[i])
+  }
+  writes(")")
+end
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+
+procedure main()
+  local src, line, toks, rest, r, found
+  init_globals()
+  src := ""
+  while line := read() do src ||:= line || "\n"
+  toks := tokenise(src)
+  rest := toks
+  while *rest > 0 do {
+    while *rest > 0 & rest[1].kind == "op" & rest[1].val == ";" do
+      rest := rest[2:0]
+    if *rest = 0 then break
+    found := &null
+    every r := p_proc(rest) | p_global(rest) | p_record(rest) do {
+      print_sexp(r[1]); write("")
+      rest := r[2]; found := 1; break
+    }
+    if /found then rest := rest[2:0]
+  }
+end
