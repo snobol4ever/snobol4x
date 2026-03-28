@@ -47,7 +47,8 @@ BACKEND_NET = \
     backend/net/emit_byrd_net.c
 
 IR = \
-    ir/ir_print.c
+    ir/ir_print.c \
+    ir/ir_verify.c
 
 FRONTEND_ICON = \
     frontend/icon/icn_main.c \
@@ -80,6 +81,9 @@ $(BIN): $(OBJS)
 
 clean:
 	rm -f $(BIN) $(OBJS)
+
+debug: CFLAGS += -DDEBUG
+debug: $(BIN)
 
 # icn_main — Icon JVM frontend (standalone binary)
 ICON_SRCS = \
