@@ -257,6 +257,8 @@ procedure p_namelist(toks)
   local names, rest
   names := []; rest := toks
   while *rest > 0 & rest[1].kind == "id" do {
+    # stop if this id is immediately followed by ( — it's a call, not a decl name
+    if *rest > 1 & rest[2].kind == "op" & rest[2].val == "(" then break
     put(names, rest[1].val); rest := rest[2:0]
     if *rest > 0 & rest[1].kind == "op" & rest[1].val == "," then
       rest := rest[2:0]
@@ -265,7 +267,7 @@ procedure p_namelist(toks)
 end
 
 procedure p_proc(toks)
-  local r, n, params, decls, rest, body, dr, dk
+  local r, n, params, decls, rest, body, dr, dk, found, nl2
   every r := p_kw(toks, "procedure") do
     every n := p_id(r[2]) do
       every p_op(n[2], "(") do {
@@ -273,18 +275,18 @@ procedure p_proc(toks)
           rest := params[2]
           if *rest > 0 & rest[1].kind == "op" & rest[1].val == ")" then
             rest := rest[2:0]
-          # collect local/static/initial declarations
           decls := []
           repeat {
             found := &null
-            every dk := ("local" | "static" | "initial") do
-              every dr := p_kw(rest, dk) do {
-                every nl := p_namelist(dr[2]) do {
-                  put(decls, [dk] ||| nl[1])
-                  rest := nl[2]; found := 1; break
-                }
-                break
+            if *rest > 0 & rest[1].kind == "kw" &
+               (rest[1].val == "local" | rest[1].val == "static" |
+                rest[1].val == "initial") then {
+              dk := rest[1].val
+              every nl2 := p_namelist(rest[2:0]) do {
+                put(decls, [dk] ||| nl2[1])
+                rest := nl2[2]; found := 1; break
               }
+            }
             if /found then break
           }
           every body := p_block(rest) do {
@@ -338,8 +340,12 @@ end
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 procedure main()
-  local src, line, toks, rest, r, found
+  local src, line, toks, rest, r, found, w
   init_globals()
+  MAX_WIDTH := 120
+  # check command-line args for --width=N
+  every w := !&progname do &null  # warm up
+  if w := getenv("PARSE_WIDTH") then MAX_WIDTH := integer(w)
   src := ""
   while line := read() do src ||:= line || "\n"
   toks := tokenise(src)
@@ -350,9 +356,75 @@ procedure main()
     if *rest = 0 then break
     found := &null
     every r := p_proc(rest) | p_global(rest) | p_record(rest) do {
-      print_sexp(r[1]); write("")
+      pp_top(r[1])
       rest := r[2]; found := 1; break
     }
     if /found then rest := rest[2:0]
   }
+end
+
+# ── Pretty-printer ───────────────────────────────────────────────────────────
+# Replaces print_sexp. Configurable via MAX_WIDTH global (default 120).
+
+global MAX_WIDTH
+
+procedure flat(tree)
+  local s, i, item, tag
+  if type(tree) == "string"  then return tree
+  if type(tree) == "integer" then return string(tree)
+  if type(tree) ~== "list"   then return "(???)"
+  if *tree = 0 then return "()"
+  tag := tree[1]
+  s := "("
+  every i := 1 to *tree do {
+    if i > 1 then s ||:= " "
+    item := tree[i]
+    if type(item) == "list" then s ||:= flat(item)
+    else if type(item) == "string" then {
+      # quote string values (i.e. the payload of a str node)
+      if tag == "str" & i = 2 then s ||:= "\"" || item || "\""
+      else s ||:= item
+    }
+    else if type(item) == "integer" then s ||:= string(item)
+    else s ||:= "(???)"
+  }
+  return s || ")"
+end
+
+procedure pp(tree, indent, col)
+  local f, flen, tag, children, c, cflat, cflen, newcol
+  /indent := 0; /col := 0
+  f := flat(tree)
+  flen := *f
+  if col + flen <= MAX_WIDTH then {
+    writes(f); return col + flen
+  }
+  if type(tree) ~== "list" | *tree = 0 then {
+    writes(f); return col + flen
+  }
+  tag := tree[1]
+  children := tree[2:0]
+  writes("(")
+  if type(tag) == "string" then writes(tag)
+  else writes(flat(tag))
+  col := col + 1 + *flat(tag)
+  every c := !children do {
+    cflat := flat(c)
+    cflen := *cflat
+    if col + 1 + cflen <= MAX_WIDTH then {
+      writes(" ")
+      col := pp(c, indent, col + 1)
+    } else {
+      write("")
+      writes(repl(" ", indent + 2))
+      col := pp(c, indent + 2, indent + 2)
+    }
+  }
+  writes(")")
+  return col + 1
+end
+
+procedure pp_top(tree)
+  pp(tree, 0, 0)
+  write("")
 end

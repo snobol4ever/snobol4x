@@ -225,6 +225,7 @@ read_all_lines(Acc, S) :-
 % ------ Main ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 main :-
+    set_width,
     read_all(Src),
     tokenise(Src, Toks),
     parse_loop(Toks).
@@ -232,8 +233,124 @@ main :-
 parse_loop([]) :- !.
 parse_loop(Toks) :-
     ( parse_clause(Toks, Tree, Rest) ->
-        ( Tree \= empty -> print_sx(Tree), nl ; true ),
+        ( Tree \= empty -> pp_top(Tree) ; true ),
         parse_loop(Rest)
     ;   Toks = [_|Rest],
         parse_loop(Rest)
     ).
+
+set_width :-
+    ( current_prolog_flag(argv, Args),
+      member(A, Args),
+      atom_concat('--width=', W, A),
+      atom_number(W, N), integer(N), N > 0
+    -> retractall(max_width(_)), assert(max_width(N))
+    ; true ).
+
+% ── Pretty-printer (replaces print_sx) ───────────────────────────────────────
+% max_width/1: configurable line width, default 120
+:- dynamic max_width/1.
+max_width(120).
+
+% sx_to_atom(+Tree, -Atom): render tree as flat atom
+sx_flat(atom(A), A) :- !.
+sx_flat(var(V),  V) :- !.
+sx_flat(int(N),  S) :- !, number_codes(N,Cs), atom_codes(S,Cs).
+sx_flat(float(F),S) :- !, number_codes(F,Cs), atom_codes(S,Cs).
+sx_flat(str(S),  Q) :- !, atom_concat('"', S, T), atom_concat(T, '"', Q).
+sx_flat(atom('[]'), '[]') :- !.
+sx_flat(lst(H,T), R) :- !,
+    sx_flat(H, HS), sx_flat(T, TS),
+    atom_concat('(list ', HS, A), atom_concat(A, ' ', B), atom_concat(B, TS, C),
+    atom_concat(C, ')', R).
+sx_flat(op2(Op,L,R2), S) :- !,
+    sx_flat(L, LS), sx_flat(R2, RS),
+    atomic_list_concat(['(', Op, ' ', LS, ' ', RS, ')'], S).
+sx_flat(op1(Op,A), S) :- !,
+    sx_flat(A, AS),
+    atomic_list_concat(['(', Op, ' ', AS, ')'], S).
+sx_flat(call(F,[]), S) :- !, atomic_list_concat(['(call ', F, ')'], S).
+sx_flat(call(F,Args), S) :- !,
+    maplist(sx_flat, Args, AS),
+    atomic_list_concat(AS, ' ', ArgStr),
+    atomic_list_concat(['(call ', F, ' ', ArgStr, ')'], S).
+sx_flat(braces(T), S) :- !, sx_flat(T, TS), atom_concat('(braces ', TS, A), atom_concat(A, ')', S).
+sx_flat(fact(T), S)       :- !, sx_flat(T, TS), atom_concat('(fact ', TS, A), atom_concat(A, ')', S).
+sx_flat(clause(H,B), S)   :- !, sx_flat(H, HS), sx_flat(B, BS),
+    atomic_list_concat(['(clause ', HS, ' ', BS, ')'], S).
+sx_flat(dcg(H,B), S)      :- !, sx_flat(H, HS), sx_flat(B, BS),
+    atomic_list_concat(['(dcg ', HS, ' ', BS, ')'], S).
+sx_flat(directive(D), S)  :- !, sx_flat(D, DS), atom_concat('(directive ', DS, A), atom_concat(A, ')', S).
+sx_flat(query(Q), S)      :- !, sx_flat(Q, QS), atom_concat('(query ', QS, A), atom_concat(A, ')', S).
+sx_flat(empty, '(empty)') :- !.
+
+% sx_tag(+Tree, -Tag, -Children): decompose into head label + child trees
+sx_tag(lst(H,T),    list,      [H,T])     :- !.
+sx_tag(op2(Op,L,R), Op,        [L,R])     :- !.
+sx_tag(op1(Op,A),   Op,        [A])       :- !.
+sx_tag(call(F,As),  call(F),   As)        :- !.
+sx_tag(braces(T),   braces,    [T])       :- !.
+sx_tag(fact(T),     fact,      [T])       :- !.
+sx_tag(clause(H,B), clause,    [H,B])     :- !.
+sx_tag(dcg(H,B),    dcg,       [H,B])     :- !.
+sx_tag(directive(D),directive, [D])       :- !.
+sx_tag(query(Q),    query,     [Q])       :- !.
+sx_tag(empty,       empty,     [])        :- !.
+
+% pp(+Tree, +Indent, +Col) — pretty-print, tracking current column
+pp(Tree, Indent, Col) :-
+    sx_flat(Tree, Flat), !,
+    atom_length(Flat, Len),
+    max_width(W),
+    ( Col + Len =< W ->
+        write(Flat)                          % fits on this line
+    ;
+        ( sx_tag(Tree, Tag, []) ->
+            write('('), write(Tag), write(')')  % leaf compound, no children
+        ; sx_tag(Tree, Tag, Children) ->
+            write('('), write(Tag),
+            atom_length(Tag, TLen),
+            Col2 is Col + 1 + TLen,
+            Indent2 is Indent + 2,
+            pp_children(Children, Indent2, Col2)
+        ;
+            write(Flat)                      % fallback
+        )
+    ).
+
+pp_children([], _, _) :- write(')').
+pp_children([C|Cs], Indent, Col) :-
+    sx_flat(C, CF), atom_length(CF, CL),
+    max_width(W),
+    ( Col + 1 + CL =< W ->
+        write(' '), pp(C, Indent, Col + 1),
+        Col2 is Col + 1 + CL,
+        pp_children_rest(Cs, Indent, Col2)
+    ;
+        nl, write_indent(Indent),
+        pp(C, Indent, Indent),
+        sx_flat(C, _), atom_length(CF, CL2),
+        Col2 is Indent + CL2,
+        pp_children_rest(Cs, Indent, Col2)
+    ).
+
+pp_children_rest([], _, _) :- write(')').
+pp_children_rest([C|Cs], Indent, Col) :-
+    sx_flat(C, CF), atom_length(CF, CL),
+    max_width(W),
+    ( Col + 1 + CL =< W ->
+        write(' '), pp(C, Indent, Col + 1),
+        Col2 is Col + 1 + CL,
+        pp_children_rest(Cs, Indent, Col2)
+    ;
+        nl, write_indent(Indent),
+        pp(C, Indent, Indent),
+        Col2 is Indent + CL,
+        pp_children_rest(Cs, Indent, Col2)
+    ).
+
+write_indent(0) :- !.
+write_indent(N) :- N > 0, write(' '), N1 is N - 1, write_indent(N1).
+
+% Replace print_sx calls in parse_loop
+pp_top(Tree) :- pp(Tree, 0, 0), nl.
