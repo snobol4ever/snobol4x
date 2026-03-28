@@ -1,0 +1,580 @@
+# icon_recognizer.icn -- Icon source recognizer, SNOBOL4 BEAUTY paradigm
+# No separate lexer. Procedures mirror BNF. suspend for every terminal.
+# nPush/nInc/nDec/nPop manage a counter stack; Shift/Reduce build the tree.
+# Top-level: compiland() matches the whole source as one string scan.
+
+# ── Tree node ─────────────────────────────────────────────────────────────────
+
+record tnode(tag, val, children)
+
+# ── Stack ─────────────────────────────────────────────────────────────────────
+
+global _stk          # tree stack: list used as stack (push/pop from back)
+global _cstk         # counter stack: list of integers
+
+procedure stack_init()
+  _stk  := []
+  _cstk := []
+end
+
+procedure Shift(tag, val)
+  push(_stk, tnode(tag, val, []))
+end
+
+procedure Reduce(tag, n)
+  local kids, i
+  kids := list(n)
+  every i := n to 1 by -1 do kids[i] := pop(_stk)
+  push(_stk, tnode(tag, "", kids))
+end
+
+procedure nPush()
+  push(_cstk, 0)
+end
+
+procedure nInc()
+  _cstk[1] +:= 1
+end
+
+procedure nDec()
+  _cstk[1] -:= 1
+end
+
+procedure nTop()
+  return _cstk[1]
+end
+
+procedure nPop()
+  return pop(_cstk)
+end
+
+# ── Character-level primitives ─────────────────────────────────────────────────
+# All operate on &subject / &pos via string scanning.
+
+# ws() -- optional whitespace (zero or more); always succeeds
+procedure ws()
+  many(' \t\n\r')
+  suspend &pos
+end
+
+procedure ws1()                          # one or more whitespace
+  ="  " | ="\t" | ="\n" | ="\r"
+  ws()
+  suspend &pos
+end
+
+# many(cset) -- Icon tab() equivalent: advance past chars in cset, return pos
+procedure many(cs)
+  local p
+  p := &pos
+  tab(upto(~cs)) | tab(0)
+  if &pos > p then return &pos
+end
+
+# lit(s) -- match literal string, skipping leading whitespace
+procedure lit(s)
+  ws()
+  suspend =s
+end
+
+# kw(s) -- match keyword s (not followed by alphanum/_)
+procedure kw(s)
+  local p
+  ws()
+  p := &pos
+  if =s then {
+    if &pos = *&subject + 1 then suspend &pos
+    else if any('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_', &subject, &pos, &pos+1)
+         then { &pos := p; fail }
+    else suspend &pos
+  }
+end
+
+# op(s) -- match operator/punctuation (no word-boundary check needed)
+procedure op(s)
+  ws()
+  suspend =s
+end
+
+# ident() -- match an identifier, return the name
+procedure ident()
+  local p, name
+  skip_ws_comments()
+  p := &pos
+  if any('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_') then {
+    many('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_')
+    name := &subject[p:&pos]
+    suspend name
+  }
+end
+
+# integer_lit() -- match integer literal
+procedure integer_lit()
+  local p, v
+  skip_ws_comments()
+  p := &pos
+  if any('0123456789') then {
+    many('0123456789')
+    v := &subject[p:&pos]
+    suspend v
+  }
+end
+
+# string_lit() -- match double-quoted string (with escape handling)
+procedure string_lit()
+  local p, v
+  ws()
+  p := &pos
+  if ="\"" then {
+    until pos(0) do {
+      if ="\"" then { v := &subject[p:&pos]; suspend v; fail }
+      if ="\\" then (=&subject[&pos:&pos+1] | break)
+      else tab(&pos + 1)
+    }
+  }
+end
+
+# line_comment() -- match # comment to end of line
+procedure line_comment()
+  ws()
+  if ="#" then {
+    tab(upto('\n') | 0)
+    suspend &pos
+  }
+end
+
+# skip_ws_comments() -- skip whitespace and # comments; always succeeds
+procedure skip_ws_comments()
+  local p
+  repeat {
+    p := &pos
+    many(' \t\n\r')
+    if ="#" then tab(upto('\n') | 0)
+    if &pos = p then break    # no progress -- done
+  }
+  suspend &pos
+end
+
+# ── Keywords set ──────────────────────────────────────────────────────────────
+
+global _kws
+procedure init_kws()
+  _kws := set(["procedure","end","global","local","static","record",
+               "if","then","else","while","do","until","every","to","by",
+               "break","next","return","suspend","fail","create","not","initial"])
+end
+
+# ── Operator precedence ───────────────────────────────────────────────────────
+
+procedure op_prec(s)
+  case s of {
+    ":="|"+:="|"-:="|"*:="|"/:="|"%:="|"^:="|"||:="|"<->" : suspend [10,"right"]
+    "->"    : suspend [12,"right"]
+    "|"     : suspend [14,"left"]
+    "to"    : suspend [18,"left"]
+    "by"    : suspend [19,"left"]
+    "<"|">"|"<="|">="|"="|"~="|"=="|"~=="|"<<"|">>"|"?" : suspend [30,"left"]
+    "||"    : suspend [40,"left"]
+    "+"|"-" : suspend [50,"left"]
+    "*"|"/"|"%"|"//"|"**" : suspend [60,"left"]
+    "^"     : suspend [70,"right"]
+    "."     : suspend [80,"left"]
+  }
+end
+
+# ── Expression recognizer ─────────────────────────────────────────────────────
+
+procedure r_exprlist()
+  nPush()
+  r_xlist()
+  if nTop() > 1 then Reduce("ExprList", nTop())
+  nPop()
+  suspend &pos
+end
+
+procedure r_xlist()
+  if r_expr() then {
+    nInc()
+    if op(",") then r_xlist()
+  }
+  suspend &pos
+end
+
+procedure r_expr()
+  suspend r_expr_prec(0)
+end
+
+procedure r_expr_prec(min_prec)
+  local p0, p1, op_s, info, prec, assoc, rp
+  p0 := &pos
+  r_primary() | fail     # if no primary, whole expression fails
+  if &pos = p0 then fail  # primary made no progress -- fail to avoid infinite loop
+  p0 := &pos
+  repeat {
+    skip_ws_comments()
+    p1 := &pos
+    op_s := r_try_op2() | break
+    info := op_prec(op_s) | { &pos := p1; break }
+    prec := info[1]; assoc := info[2]
+    if prec <= min_prec then { &pos := p1; break }
+    rp := if assoc == "right" then prec - 1 else prec
+    r_expr_prec(rp) | { &pos := p1; break }
+    Reduce(op_s, 2)
+    p0 := &pos
+  }
+  suspend &pos
+end
+
+# Try to scan a two-character or one-character binary operator
+procedure r_try_op2()
+  local p, s2, s1
+  p := &pos
+  ws()
+  s2 := &subject[&pos:&pos+2]
+  s1 := &subject[&pos:&pos+1]
+  if member(set([":=","+:=","-:=","*:=","/:=","%:=","^:=","||:=",
+                 "<->","->","||","++","--","**","//","<=",">=","==",
+                 "~=","~==","<<",">>","=:=","\\=","..","by","to","|"]), s2) then {
+    &pos +:= *s2; suspend s2
+  } else if member(set(["<",">","=","+","-","*","/","%","^",".","|","?"]), s1) & *s1 > 0 then {
+    &pos +:= 1; suspend s1
+  }
+  &pos := p
+end
+
+procedure r_primary()
+  local p, name, v, uop
+  skip_ws_comments()
+  p := &pos
+
+  # parenthesised expression
+  if op("(") then {
+    r_expr()
+    if op(")") then { suspend &pos; fail }
+    &pos := p
+  }
+
+  # list constructor [ ... ]
+  &pos := p
+  if op("[") then {
+    nPush()
+    (r_exprlist() | &pos)
+    if op("]") then {
+      Reduce("list", nTop()); nPop()
+      suspend &pos; fail
+    }
+    nPop(); &pos := p
+  }
+
+  # string literal
+  &pos := p
+  every v := string_lit() do {
+    Shift("str", v); suspend &pos; fail
+  }
+
+  # integer literal
+  &pos := p
+  every v := integer_lit() do {
+    Shift("int", v); suspend &pos; fail
+  }
+
+  # unary prefix operators: save pos, try each
+  &pos := p
+  if any('!\\@~', &subject, &pos, &pos+1) then {
+    uop := &subject[&pos:&pos+1]
+    &pos +:= 1
+    if r_primary() then { Reduce(uop, 1); suspend &pos; fail }
+    &pos := p
+  }
+
+  # not
+  &pos := p
+  if kw("not") then {
+    if r_primary() then { Reduce("not", 1); suspend &pos; fail }
+    &pos := p
+  }
+
+  # create
+  &pos := p
+  if kw("create") then {
+    r_expr()
+    Reduce("create", 1); suspend &pos; fail
+  }
+
+  # id or call
+  &pos := p
+  every name := ident() do {
+    if member(_kws, name) then { &pos := p; fail }
+    skip_ws_comments()
+    if op("(") then {
+      nPush()
+      (r_exprlist() | &pos)
+      if op(")") then {
+        Shift("id", name)
+        if nTop() > 0 then Reduce("call", nTop() + 1)
+        nPop()
+        suspend &pos
+      }
+      nPop(); &pos := p; fail
+    }
+    Shift("id", name); suspend &pos; fail
+  }
+
+  fail
+end
+
+# ── Statement recognizer ──────────────────────────────────────────────────────
+
+procedure r_block()
+  local stmts, p
+  stmts := 0
+  skip_ws_comments()
+  repeat {
+    skip_ws_comments()
+    p := &pos
+    if pos(0) then break
+    # peek for block-ending tokens without consuming them
+    if kw("end") | kw("else") | op("}") then { &pos := p; break }
+    &pos := p
+    if op(";") then next   # skip bare semicolons
+    if r_stmt() then stmts +:= 1
+    else break
+  }
+  if stmts > 0 then Reduce("block", stmts)
+  suspend &pos
+end
+
+procedure r_braced_block()
+  if op("{") then {
+    r_block()
+    if op("}") then suspend &pos
+  }
+end
+
+procedure r_stmt()
+  local p, kw_s
+  p := &pos
+
+  # if
+  if kw("if") then {
+    r_expr()
+    if kw("then") then {
+      (r_braced_block() | r_stmt())
+      skip_ws_comments()
+      if kw("else") then {
+        (r_braced_block() | r_stmt())
+        Reduce("if", 3)
+      } else Reduce("if", 2)
+      suspend &pos; fail
+    }
+    &pos := p
+  }
+
+  # while
+  &pos := p
+  if kw("while") then {
+    r_expr()
+    if kw("do") then {
+      (r_braced_block() | r_stmt())
+      Reduce("while", 2); suspend &pos; fail
+    }
+    &pos := p
+  }
+
+  # every
+  &pos := p
+  if kw("every") then {
+    r_expr()
+    if kw("do") then {
+      (r_braced_block() | r_stmt())
+      Reduce("every", 2)
+    } else Reduce("every", 1)
+    suspend &pos; fail
+  }
+
+  # return
+  &pos := p
+  if kw("return") then {
+    (r_expr() & Reduce("return", 1)) | Shift("return", "")
+    suspend &pos; fail
+  }
+
+  # suspend
+  &pos := p
+  if kw("suspend") then {
+    r_expr()
+    Reduce("suspend", 1); suspend &pos; fail
+  }
+
+  # fail / break / next
+  &pos := p
+  every kw_s := "fail" | "break" | "next" do {
+    if kw(kw_s) then { Shift(kw_s, ""); suspend &pos; fail }
+  }
+
+  # braced block
+  &pos := p
+  if r_braced_block() then { suspend &pos; fail }
+
+  # expression statement
+  &pos := p
+  if r_expr() then { Reduce("expr", 1); suspend &pos; fail }
+
+  fail
+end
+
+# ── Top-level forms ───────────────────────────────────────────────────────────
+
+procedure r_namelist()
+  local names, p, name
+  names := 0
+  repeat {
+    skip_ws_comments()
+    p := &pos
+    name := ident() | break
+    if member(_kws, name) then { &pos := p; break }
+    # stop if followed by ( -- it's a call target, not a decl
+    skip_ws_comments()
+    if op("(") then { &pos := p; break }
+    Shift("id", name); names +:= 1
+    skip_ws_comments()
+    op(",") | break
+  }
+  if names > 0 then Reduce("namelist", names)
+  suspend &pos
+end
+
+procedure r_decls()
+  local found, dk
+  repeat {
+    found := &null
+    skip_ws_comments()
+    every dk := "local" | "static" | "initial" do {
+      if kw(dk) then {
+        r_namelist()
+        Reduce(dk, 1); found := 1; break
+      }
+    }
+    /found & break
+  }
+  suspend &pos
+end
+
+procedure r_proc()
+  local p, name, nparams, ndecls, stk_before
+  p := &pos
+  if kw("procedure") then {
+    every name := ident() do {
+      if member(_kws, name) then { &pos := p; fail }
+      if op("(") then {
+        Shift("id", name)                          # kids[1]: name
+        # params
+        nPush()
+        r_namelist()
+        nparams := nTop(); nPop()
+        if nparams = 0 then Shift("namelist", "")  # empty params placeholder
+        if op(")") then {
+          # decls: use stack-size delta to count
+          stk_before := *_stk
+          r_decls()
+          ndecls := *_stk - stk_before
+          if ndecls = 0 then Shift("decls", "")   # empty decls placeholder
+          else if ndecls > 1 then Reduce("decls", ndecls)  # wrap multiple
+          # body
+          r_block()
+          if kw("end") then {
+            Reduce("proc", 4)   # kids: [id, params, decls, body]
+            suspend &pos; fail
+          }
+        }
+      }
+    }
+  }
+  &pos := p
+end
+
+procedure r_global()
+  local p
+  p := &pos
+  if kw("global") then {
+    r_namelist()
+    Reduce("global", 1)
+    suspend &pos; fail
+  }
+  &pos := p
+end
+
+procedure r_record()
+  local p, name
+  p := &pos
+  if kw("record") then {
+    every name := ident() do {
+      if op("(") then {
+        nPush()
+        r_namelist()
+        nPop()
+        if op(")") then {
+          Shift("id", name)
+          Reduce("record", 2)
+          suspend &pos; fail
+        }
+      }
+    }
+  }
+  &pos := p
+end
+
+procedure r_top()
+  suspend r_proc() | r_global() | r_record()
+end
+
+# ── Compiland ─────────────────────────────────────────────────────────────────
+
+procedure compiland()
+  local n
+  n := 0
+  skip_ws_comments()
+  repeat {
+    skip_ws_comments()
+    if pos(0) then break
+    if r_top() then { nInc(); n +:= 1 }
+    else { tab(&pos + 1) }  # skip unrecognised
+  }
+  Reduce("compiland", n)
+  suspend &pos
+end
+
+# ── Tree dump ─────────────────────────────────────────────────────────────────
+
+procedure tdump(nd, indent)
+  local i
+  /nd & { write(repl(" ", indent) || "(null)"); return }
+  if type(nd) ~== "tnode" then { write(repl(" ", indent) || image(nd)); return }
+  if *nd.children = 0 then {
+    write(repl(" ", indent) || "(" || nd.tag || " " || image(nd.val) || ")")
+    return
+  }
+  write(repl(" ", indent) || "(" || nd.tag)
+  every tdump(!nd.children, indent + 2)
+  write(repl(" ", indent) || ")")
+end
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+
+procedure main()
+  local src, line
+  init_kws()
+  stack_init()
+  src := ""
+  while line := read() do src ||:= line || "\n"
+  src ? {
+    compiland()
+    if not pos(0) then
+      write(&errout, "Warning: stopped at pos " || &pos || ": " ||
+            &subject[&pos:&pos+40])
+  }
+  if *_stk > 0 then
+    tdump(_stk[1], 0)
+  else
+    write(&errout, "No tree produced")
+end
