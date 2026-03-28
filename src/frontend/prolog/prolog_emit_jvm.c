@@ -7282,6 +7282,63 @@ static void pj_emit_findall_builtin(void) {
     J("    aload 10\n");
     J("    athrow\n");       /* re-throw Prolog exceptions */
     J("pj_rc_swallow:\n");
+    /* DB fallback: try pj_db_query(functor+\"/\"+arity, cs) for dynamic predicates */
+    J("    new java/lang/StringBuilder\n");
+    J("    dup\n");
+    J("    invokespecial java/lang/StringBuilder/<init>()V\n");
+    J("    aload_0\n");   /* functor */
+    J("    invokevirtual java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;\n");
+    J("    ldc \"/\"\n");
+    J("    invokevirtual java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;\n");
+    J("    iload_1\n");   /* arity */
+    J("    invokevirtual java/lang/StringBuilder/append(I)Ljava/lang/StringBuilder;\n");
+    J("    invokevirtual java/lang/StringBuilder/toString()Ljava/lang/String;\n");
+    J("    iload_3\n");   /* cs */
+    J("    invokestatic %s/pj_db_query(Ljava/lang/String;I)Ljava/lang/Object;\n", pj_classname);
+    J("    dup\n");
+    J("    ifnull pj_rc_db_miss\n");
+    /* Got a fact — unify each arg with fact[2..arity+1] */
+    J("    checkcast [Ljava/lang/Object;\n");
+    J("    astore 11\n");
+    J("    aconst_null\n");
+    J("    astore 12\n");  /* result placeholder */
+    J("    iconst_0\n");   /* unify_ok flag */
+    J("    istore 13\n");
+    J("    iconst_0\n");   /* i */
+    J("    istore 14\n");
+    J("pj_rc_db_unify_loop:\n");
+    J("    iload 14\n");
+    J("    iload_1\n");    /* arity */
+    J("    if_icmpge pj_rc_db_unify_done\n");
+    J("    aload_2\n");    /* args[] */
+    J("    iload 14\n");
+    J("    aaload\n");     /* args[i] */
+    J("    aload 11\n");   /* fact Object[] */
+    J("    iload 14\n");
+    J("    iconst_2\n");
+    J("    iadd\n");       /* fact[i+2] */
+    J("    aaload\n");
+    J("    invokestatic %s/pj_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", pj_classname);
+    J("    ifeq pj_rc_db_unify_fail\n");
+    J("    iinc 14 1\n");
+    J("    goto pj_rc_db_unify_loop\n");
+    J("pj_rc_db_unify_done:\n");
+    /* Unification succeeded — return Object[]{Integer(cs+1)} matching reflect_call convention */
+    J("    iconst_1\n");
+    J("    anewarray java/lang/Object\n");
+    J("    dup\n");
+    J("    iconst_0\n");
+    J("    iload_3\n");   /* cs */
+    J("    iconst_1\n");
+    J("    iadd\n");
+    J("    invokestatic java/lang/Integer/valueOf(I)Ljava/lang/Integer;\n");
+    J("    aastore\n");
+    J("    areturn\n");
+    J("pj_rc_db_unify_fail:\n");
+    J("    aconst_null\n");
+    J("    areturn\n");
+    J("pj_rc_db_miss:\n");
+    J("    pop\n");
     J("    aconst_null\n");
     J("    areturn\n");
     J(".end method\n\n");
