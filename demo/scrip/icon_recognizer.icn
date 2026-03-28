@@ -26,6 +26,7 @@ procedure Reduce(tag, n)
   kids := list(n)
   every i := n to 1 by -1 do kids[i] := pop(_stk)
   push(_stk, tnode(tag, "", kids))
+  return
 end
 
 procedure nPush()
@@ -452,7 +453,9 @@ procedure r_decls()
     every dk := "local" | "static" | "initial" do {
       if kw(dk) then {
         r_namelist()
-        Reduce(dk, 1); found := 1; break
+        Reduce(dk, 1)
+        nInc()          # count this decl for the enclosing nPush/nPop
+        found := 1; break
       }
     }
     /found & break
@@ -461,29 +464,30 @@ procedure r_decls()
 end
 
 procedure r_proc()
-  local p, name, nparams, ndecls, stk_before
+  local p, name, ndecls, stk0
   p := &pos
   if kw("procedure") then {
     every name := ident() do {
       if member(_kws, name) then { &pos := p; fail }
       if op("(") then {
-        Shift("id", name)                          # kids[1]: name
-        # params
-        nPush()
+        Shift("id", name)                          # kid 1: name node
+        # params: r_namelist pushes exactly one node if any params, zero if none
+        stk0 := *_stk
         r_namelist()
-        nparams := nTop(); nPop()
-        if nparams = 0 then Shift("namelist", "")  # empty params placeholder
+        if *_stk = stk0 then Shift("namelist", "") # kid 2: empty params
+        # else r_namelist already pushed namelist node
         if op(")") then {
-          # decls: use stack-size delta to count
-          stk_before := *_stk
+          # decls: r_decls calls nInc() for each decl found
+          nPush()
           r_decls()
-          ndecls := *_stk - stk_before
-          if ndecls = 0 then Shift("decls", "")   # empty decls placeholder
-          else if ndecls > 1 then Reduce("decls", ndecls)  # wrap multiple
+          ndecls := nTop(); nPop()
+          if ndecls = 0 then Shift("decls", "")    # kid 3: empty decls
+          else if ndecls > 1 then Reduce("decls", ndecls)  # kid 3: wrap multiple
+          # else ndecls=1: single decl node already on stack as kid 3
           # body
-          r_block()
+          r_block()                                 # kid 4: block
           if kw("end") then {
-            Reduce("proc", 4)   # kids: [id, params, decls, body]
+            Reduce("proc", 4)   # [id, params, decls, body]
             suspend &pos; fail
           }
         }
