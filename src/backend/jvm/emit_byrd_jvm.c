@@ -2581,12 +2581,13 @@ static void jvm_emit_stmt(STMT_t *s, int stmt_idx) {
 
     /* Case 1b: array/table subscript assignment — A<I> = expr or T['key'] = expr */
     if (s->has_eq && s->subject &&
-        (s->subject->kind == E_ARY || s->subject->kind == E_IDX) &&
+        s->subject->kind == E_IDX &&
         !s->pattern) {
         jvm_need_array_helpers = 1;
         /* Push array-id */
-        if (s->subject->kind == E_ARY) {
-            char nameesc[256]; jvm_escape_string(s->subject->sval ? s->subject->sval : "", nameesc, sizeof nameesc);
+        if (s->subject->sval) {
+            /* Named array: sval holds name */
+            char nameesc[256]; jvm_escape_string(s->subject->sval, nameesc, sizeof nameesc);
             JI("ldc", nameesc);
             char igdesc[512]; snprintf(igdesc, sizeof igdesc,
                 "%s/sno_indr_get(Ljava/lang/String;)Ljava/lang/String;", jvm_classname);
@@ -2594,7 +2595,7 @@ static void jvm_emit_stmt(STMT_t *s, int stmt_idx) {
             /* subscript */
             if (s->subject->children && s->subject->children[0]) jvm_emit_expr(s->subject->children[0]);
             else JI("ldc", "\"1\"");
-        } else { /* E_IDX */
+        } else { /* postfix subscript: children[0]=array expr, [1..]=keys */
             jvm_emit_expr(s->subject->children[0]);
             if (s->subject->nchildren >= 3 && s->subject->children[1] && s->subject->children[2]) {
                 /* 2D: build "row,col" key */

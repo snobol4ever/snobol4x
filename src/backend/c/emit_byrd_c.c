@@ -3282,25 +3282,28 @@ static void emit_assign_target(EXPR_t *lhs, const char *rhs_str) {
     if (lhs->kind == E_VART) {
         C("set(%s, %s);\n", cs(lhs->sval), rhs_str);
         C("NV_SET_fn(\"%s\", %s);\n", lhs->sval, cs(lhs->sval));
-    } else if (lhs->kind == E_ARY) {
-        /* var<i,...> = x  — sval is array var name, children are subscripts */
-        C("aset(%s,(DESCR_t[]){", cs(lhs->sval));
-        for (int i=0; i<lhs->nchildren; i++) {
-            if (i) C(",");
-            PP_EXPR(lhs->children[i], 0);
+    } else if (lhs->kind == E_IDX) {
+        /* E_IDX = canonical (absorbs E_ARY).
+         * Named array (sval set): aset(name, subs, val)
+         * Postfix subscript (sval NULL): aset(expr, subs, val) */
+        if (lhs->sval) {
+            C("aset(%s,(DESCR_t[]){", cs(lhs->sval));
+            for (int i=0; i<lhs->nchildren; i++) {
+                if (i) C(",");
+                PP_EXPR(lhs->children[i], 0);
+            }
+            C("},%d,%s);\n", lhs->nchildren, rhs_str);
+        } else {
+            C("aset("); PP_EXPR(lhs->children[0], 0);
+            C(",(DESCR_t[]){");
+            for (int i=1; i<lhs->nchildren; i++) {
+                if (i>1) C(",");
+                PP_EXPR(lhs->children[i], 0);
+            }
+            C("},%d,%s);\n", lhs->nchildren - 1, rhs_str);
         }
-        C("},%d,%s);\n", lhs->nchildren, rhs_str);
     } else if (lhs->kind == E_KW) {
         C("kw_set(\"%s\",%s);\n", lhs->sval, rhs_str);
-    } else if (lhs->kind == E_IDX) {
-        /* expr<i,...> = x  — children[0]=array expr, children[1..n-1]=subscripts */
-        C("aset("); PP_EXPR(lhs->children[0], 0);
-        C(",(DESCR_t[]){");
-        for (int i=1; i<lhs->nchildren; i++) {
-            if (i>1) C(",");
-            PP_EXPR(lhs->children[i], 0);
-        }
-        C("},%d,%s);\n", lhs->nchildren - 1, rhs_str);
     } else if (lhs->kind == E_INDR) {
         /* $X = val: flat tree children[0]=operand */
         C("iset("); PP_EXPR(lhs->children[0], 0); C(",%s);\n", rhs_str);

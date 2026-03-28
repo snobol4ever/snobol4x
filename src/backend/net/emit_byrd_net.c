@@ -1754,19 +1754,18 @@ static void net_emit_one_stmt(STMT_t *s, const char *next_lbl) {
 
     /* Case 1c: array/table subscript assignment — A<I> = expr or T<'key'> = expr */
     if (s->has_eq && s->subject &&
-        (s->subject->kind == E_ARY || s->subject->kind == E_IDX) &&
+        s->subject->kind == E_IDX &&
         !s->pattern) {
         net_need_array_helpers = 1;
-        if (s->subject->kind == E_ARY) {
-            /* push array-id from the variable holding the array */
+        if (s->subject->sval) {
+            /* Named array: A<sub> — sval holds array name, children[0] = subscript */
             char fn_ary[256];
-            net_field_name(fn_ary, sizeof fn_ary, s->subject->sval ? s->subject->sval : "");
+            net_field_name(fn_ary, sizeof fn_ary, s->subject->sval);
             N("    ldsfld     string %s::%s\n", net_classname, fn_ary);
-            /* push subscript */
             EXPR_t *sub = (s->subject->nchildren > 0 && s->subject->children)
                           ? s->subject->children[0] : NULL;
             if (sub) net_emit_expr(sub); else net_ldstr("1");
-        } else { /* E_IDX */
+        } else { /* postfix subscript: children[0]=array expr, children[1]=key */
             if (s->subject->nchildren >= 1 && s->subject->children && s->subject->children[0])
                 net_emit_expr(s->subject->children[0]);
             else net_ldstr("");
