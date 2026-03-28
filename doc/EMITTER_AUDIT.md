@@ -421,46 +421,51 @@ scratch in **M-G3-NAME-WASM** — no deviations to document here. Target convent
 
 ## Deviation Summary Table
 
-This table drives Phase 3 work. Each column is one change type; each row is one file.
-`✓` = already conforms. `✗` = deviates, must be fixed in M-G3-NAME-*.
+This table drives Phase 3 work. Greek letters (α β γ ω) in C source and generated
+labels are **correct** — the law mandates Greek everywhere. The deviations are in
+function prefixes and output macros only.
 
-| File | Output macro | Port param names | Function prefix | Label prefix |
-|------|-------------|-----------------|-----------------|--------------|
-| emit_byrd_asm.c (SNOBOL4) | `A()` → `E()` ✗ | `α/β/γ/ω` → `lbl_alpha` etc ✗ | `emit_<kind>` ✓ | `P_<id>_α` → `P_<id>_alpha` ✗ |
-| emit_byrd_asm.c (Prolog x64) | `A()` → `E()` ✗ | mixed Unicode/ASCII ✗ | `emit_pl_*` → `emit_x64_prolog_*` ✗ | `pl_<pred>_c<N>_α` → `_alpha` ✗ |
-| emit_byrd_jvm.c (SNOBOL4) | `J()` ✓ | `gamma/omega` → `lbl_gamma/lbl_omega` ✗ | `jvm_emit_*` → `emit_jvm_*` ✗ | `Jn<uid>_*` → `L<id>_*` ✗ |
-| emit_byrd_net.c (SNOBOL4) | `N()` ✓ | `gamma/omega` → `lbl_gamma/lbl_omega` ✗ | `net_emit_*` → `emit_net_*` ✗ | `Nn<uid>_*` → `L<id>_*` ✗ |
-| icon_emit.c (Icon x64) | `E()` ✓* | `IcnPorts.γ/ω` → `lbl_gamma/lbl_omega` ✗ | `emit_*` → `emit_x64_icon_*` ✗ | `icon_<id>_α` → `_alpha` ✗ |
-| icon_emit_jvm.c (Icon JVM) | `J()` ✓ | `IjPorts.γ/ω`, `oα/oβ` → ASCII ✗ | `ij_emit_*` → `emit_jvm_icon_*` ✗ | `icn_<id>_α` → `_alpha` ✗ |
-| prolog_emit_jvm.c (Prolog JVM) | `J()` ✓ | `lbl_γ/lbl_ω` → `lbl_gamma/lbl_omega` ✗ | `pj_emit_*` → `emit_jvm_prolog_*` ✗ | `pj_*` ✓ (runtime names) |
-| emit_wasm.c | establish `W()` | establish `lbl_alpha` etc | establish `emit_wasm_*` | establish `W<id>_*` |
+| File | Output macro | Func prefix → target | Port params | Labels |
+|------|-------------|----------------------|-------------|--------|
+| emit_byrd_asm.c (SNO x64) | `A()` → `E()` ✗ | `emit_<kind>` ✓ | `α/β/γ/ω` ✓ | `P_<id>_α` ✓ |
+| emit_byrd_asm.c (PL x64) | `A()` → `E()` ✗ | `emit_pl_*` → `emit_x64_prolog_*` ✗ | `α/β` ✓ | `pl_<pred>_c<N>_α` ✓ |
+| emit_byrd_jvm.c (SNO JVM) | `J()` ✓ | `jvm_emit_*` → `emit_jvm_*` ✗ | `gamma/omega` → `γ/ω` ✗ | `Jn<uid>_*` → `L<id>_α/β` ✗ |
+| emit_byrd_net.c (SNO .NET) | `N()` ✓ | `net_emit_*` → `emit_net_*` ✗ | `gamma/omega` → `γ/ω` ✗ | `Nn<uid>_*` → `L<id>_α/β` ✗ |
+| icon_emit.c (Icon x64) | `E()` ✓* | `emit_*` → `emit_x64_icon_*` ✗ | `IcnPorts.γ/ω` ✓ | `icon_<id>_α` ✓ |
+| icon_emit_jvm.c (Icon JVM) | `J()` ✓ | `ij_emit_*` → `emit_jvm_icon_*` ✗ | `IjPorts.γ/ω`, `oα/oβ` ✓ | `icn_<id>_α` ✓ |
+| prolog_emit_jvm.c (PL JVM) | `J()` ✓ | `pj_emit_*` → `emit_jvm_prolog_*` ✗ | `lbl_γ/lbl_ω` → `γ/ω` ✗ | `pj_*` ✓ (runtime names) |
+| emit_wasm.c | establish `W()` | establish `emit_wasm_*` | establish `γ/ω` | establish `W<id>_α/β` |
 
 *`icon_emit.c`'s `E()` writes to an `IcnEmitter` buffer — same letter as the law's
 x64 output macro but different mechanism. M-G3-NAME-X64-ICON must rename it to
-`EI_ICN()` or similar to eliminate the collision, then apply the law's `E()` for
-actual x64 output.
+distinguish from the law's `E()` for x64 instruction output.
+
+**The two real deviations by file:**
+
+1. **Output macro name** — `emit_byrd_asm.c` uses `A()` instead of `E()`. All others correct.
+2. **Function prefix** — every file uses its own legacy prefix (`jvm_emit_*`, `net_emit_*`, `ij_emit_*`, `pj_emit_*`, `emit_pl_*`). Law requires `emit_<backend>_<kind>` or `emit_<backend>_<frontend>_*`.
+3. **Port parameter spelling** — `emit_byrd_jvm.c` and `emit_byrd_net.c` use ASCII `gamma`/`omega` instead of `γ`/`ω`. `prolog_emit_jvm.c` uses `lbl_γ`/`lbl_ω` instead of bare `γ`/`ω`. All Icon emitters already use Greek correctly.
+4. **Generated label prefix** — JVM and .NET use `Jn<uid>_*` and `Nn<uid>_*` instead of `L<id>_α`/`L<id>_β`.
 
 ---
 
-## Key Finding: Unicode Greek Letters Are a Deviation — Not a Choice
+## Key Finding: The Existing Code Is Largely Correct
 
-Every current emitter uses Unicode Greek characters (α β γ ω) in C source code:
-parameter names, struct fields, label strings, local variable names, and comments.
+The current emitters' use of Greek letters (α β γ ω) in C source code, struct
+fields, and generated labels is **right** — it conforms to the law. The law
+mandates Greek everywhere, no ASCII spelling-out.
 
-The naming law is unambiguous: **Greek letters are prohibited everywhere** — in C
-source variables, in C comments, and in generated output labels. The law already
-prescribes ASCII throughout:
+The actual deviations requiring Phase 3 work are narrower than initially assessed:
+- Output macro `A()` → `E()` in `emit_byrd_asm.c`
+- Function prefixes throughout (mechanical rename, one file at a time)
+- ASCII `gamma`/`omega` parameter names in JVM and NET SNOBOL4 emitters → `γ`/`ω`
+- `lbl_γ`/`lbl_ω` prefix in Prolog JVM → bare `γ`/`ω`
+- Label prefix `Jn<uid>_*` / `Nn<uid>_*` → `L<id>_α` / `L<id>_β`
 
-- C source: `lbl_alpha`, `lbl_beta`, `lbl_gamma`, `lbl_omega`
-- Generated labels: `P_<id>_alpha` / `P_<id>_beta` (x64), `L<id>_alpha` / `L<id>_beta` (JVM/.NET)
-- Comments: spell out `alpha`, `beta`, `gamma`, `omega`
-
-Greek letters appear in the law document itself only in the **semantic description
-column** — explaining what the port means. They are never prescribed for use in
-code or output.
-
-Phase 3 mechanically replaces all Unicode Greek in C source and generated labels
-with the ASCII equivalents. This is not a design decision — it is already decided.
+Note: an earlier version of this document incorrectly called the Greek usage a
+"deviation" and recommended switching to ASCII. That was wrong. The law was also
+incorrectly written (using `lbl_alpha` etc.) and has been corrected in
+GRAND_MASTER_REORG.md as of G-7.
 
 ---
 
