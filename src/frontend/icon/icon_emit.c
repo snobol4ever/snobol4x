@@ -183,7 +183,8 @@ static char icn_expr_kind(IcnNode *n) {
                     strcmp(fn,"reverse")==0)
                     return 'S';
                 if (strcmp(fn,"any")==0  || strcmp(fn,"many")==0 ||
-                    strcmp(fn,"upto")==0)
+                    strcmp(fn,"upto")==0 || strcmp(fn,"match")==0 ||
+                    strcmp(fn,"find")==0)
                     return 'I';
             }
             return '?';
@@ -605,6 +606,122 @@ static void emit_call(IcnEmitter *em, IcnNode *n, IcnPorts ports,
         /* returns new pos (1-based int) or 0 on fail */
         E(em,"    test    rax, rax\n");
         E(em,"    jz      %s\n",ports.ω);
+        E(em,"    push    rax\n");
+        Jmp(em,ports.γ);
+        return;
+    }
+
+    /* --- match(s): one-shot — match s at current scan pos, return new 1-based pos --- */
+    if(strcmp(fname,"match")==0 && !is_user_proc(fname)){
+        char after[64]; snprintf(after,sizeof after,"icon_%d_maft",id);
+        if(nargs<1){ Ldef(em,a); Jmp(em,ports.ω); Ldef(em,b); Jmp(em,ports.ω); return; }
+        IcnNode *arg=n->children[1];
+        IcnPorts ap; strncpy(ap.γ,after,63); strncpy(ap.ω,ports.ω,63);
+        char aa[64],ab[64]; emit_expr(em,arg,ap,aa,ab);
+        Ldef(em,a); Jmp(em,aa);
+        Ldef(em,b); Jmp(em,ports.ω);
+        Ldef(em,after);
+        if(arg->kind==ICN_STR||arg->kind==ICN_CSET){ /* rdi already set */ }
+        else { E(em,"    pop     rdi\n"); }
+        E(em,"    call    icn_match\n");
+        E(em,"    test    rax, rax\n");
+        E(em,"    jz      %s\n",ports.ω);
+        E(em,"    push    rax\n");
+        Jmp(em,ports.γ);
+        return;
+    }
+
+    /* --- tab(n): one-shot — return subject[pos..n-1], set pos=n-1 (returns char*) --- */
+    if(strcmp(fname,"tab")==0 && !is_user_proc(fname)){
+        char after[64]; snprintf(after,sizeof after,"icon_%d_taft",id);
+        if(nargs<1){ Ldef(em,a); Jmp(em,ports.ω); Ldef(em,b); Jmp(em,ports.ω); return; }
+        IcnNode *arg=n->children[1];
+        IcnPorts ap; strncpy(ap.γ,after,63); strncpy(ap.ω,ports.ω,63);
+        char aa[64],ab[64]; emit_expr(em,arg,ap,aa,ab);
+        Ldef(em,a); Jmp(em,aa);
+        Ldef(em,b); Jmp(em,ports.ω);
+        Ldef(em,after);
+        E(em,"    pop     rdi\n");   /* n (long) */
+        E(em,"    call    icn_tab\n");
+        E(em,"    test    rax, rax\n");
+        E(em,"    jz      %s\n",ports.ω);
+        E(em,"    push    rax\n");   /* push char* result */
+        Jmp(em,ports.γ);
+        return;
+    }
+
+    /* --- move(n): one-shot — return subject[pos..pos+n-1], advance pos by n (returns char*) --- */
+    if(strcmp(fname,"move")==0 && !is_user_proc(fname)){
+        char after[64]; snprintf(after,sizeof after,"icon_%d_mvaft",id);
+        if(nargs<1){ Ldef(em,a); Jmp(em,ports.ω); Ldef(em,b); Jmp(em,ports.ω); return; }
+        IcnNode *arg=n->children[1];
+        IcnPorts ap; strncpy(ap.γ,after,63); strncpy(ap.ω,ports.ω,63);
+        char aa[64],ab[64]; emit_expr(em,arg,ap,aa,ab);
+        Ldef(em,a); Jmp(em,aa);
+        Ldef(em,b); Jmp(em,ports.ω);
+        Ldef(em,after);
+        E(em,"    pop     rdi\n");   /* n (long) */
+        E(em,"    call    icn_move\n");
+        E(em,"    test    rax, rax\n");
+        E(em,"    jz      %s\n",ports.ω);
+        E(em,"    push    rax\n");   /* push char* result */
+        Jmp(em,ports.γ);
+        return;
+    }
+
+    /* --- find(s1, s2): generator — successive 1-based positions of s1 in s2 ---
+     * State: icn_find_s1_N (char* BSS), icn_find_s2_N (char* BSS),
+     *        icn_find_pos_N (long BSS, next 0-based search offset).
+     * α: evaluate args, init pos=0, enter check.
+     * β: pos = last_result (1-based), re-enter check.
+     * check: call icn_str_find(s1,s2,pos); 0→ω, else store result as new pos, push→γ. */
+    if(strcmp(fname,"find")==0 && nargs>=2 && !is_user_proc(fname)){
+        char s1bss[80],s2bss[80],posbss[80];
+        snprintf(s1bss,  sizeof s1bss,  "icn_find_s1_%d",  id);
+        snprintf(s2bss,  sizeof s2bss,  "icn_find_s2_%d",  id);
+        snprintf(posbss, sizeof posbss, "icn_find_pos_%d", id);
+        bss_declare(s1bss); bss_declare(s2bss); bss_declare(posbss);
+
+        char after1[64],after2[64],chk[64];
+        snprintf(after1,sizeof after1,"icon_%d_fa1",id);
+        snprintf(after2,sizeof after2,"icon_%d_fa2",id);
+        snprintf(chk,   sizeof chk,   "icon_%d_fchk",id);
+
+        IcnNode *s1arg=n->children[1], *s2arg=n->children[2];
+        IcnPorts ap1; strncpy(ap1.γ,after1,63); strncpy(ap1.ω,ports.ω,63);
+        char a1[64],b1[64]; emit_expr(em,s1arg,ap1,a1,b1);
+        IcnPorts ap2; strncpy(ap2.γ,after2,63); strncpy(ap2.ω,ports.ω,63);
+        char a2[64],b2[64]; emit_expr(em,s2arg,ap2,a2,b2);
+
+        /* α: eval s1 → store, eval s2 → store, init pos=0, check */
+        Ldef(em,a); Jmp(em,a1);
+        Ldef(em,after1);
+        if(s1arg->kind==ICN_STR||s1arg->kind==ICN_CSET)
+            E(em,"    mov     [rel %s], rdi\n",s1bss);
+        else { E(em,"    pop     rax\n"); E(em,"    mov     [rel %s], rax\n",s1bss); }
+        Jmp(em,a2);
+        Ldef(em,after2);
+        if(s2arg->kind==ICN_STR||s2arg->kind==ICN_CSET)
+            E(em,"    mov     [rel %s], rdi\n",s2bss);
+        else { E(em,"    pop     rax\n"); E(em,"    mov     [rel %s], rax\n",s2bss); }
+        E(em,"    mov     qword [rel %s], 0\n",posbss);
+        Jmp(em,chk);
+
+        /* β: last result was 1-based; next search starts at that same index (0-based=result) */
+        Ldef(em,b);
+        /* pos is already stored as last 1-based result → use as next 0-based from */
+        Jmp(em,chk);
+
+        /* check */
+        Ldef(em,chk);
+        E(em,"    mov     rdi, [rel %s]\n",s1bss);
+        E(em,"    mov     rsi, [rel %s]\n",s2bss);
+        E(em,"    mov     rdx, [rel %s]\n",posbss);
+        E(em,"    call    icn_str_find\n");
+        E(em,"    test    rax, rax\n");
+        E(em,"    jz      %s\n",ports.ω);
+        /* store result as new pos (next β will search from result, i.e. 0-based=result) */
+        E(em,"    mov     [rel %s], rax\n",posbss);
         E(em,"    push    rax\n");
         Jmp(em,ports.γ);
         return;
@@ -1657,6 +1774,7 @@ void icn_emit_file(IcnEmitter *em, IcnNode **nodes, int count) {
     E(em,"section .text\n    global _start\n    extern icn_write_int\n    extern icn_write_str\n");
     E(em,"    extern icn_push\n    extern icn_pop\n    extern icn_str_concat\n    extern icn_str_eq\n");
     E(em,"    extern icn_any\n    extern icn_many\n    extern icn_upto\n");
+    E(em,"    extern icn_str_find\n    extern icn_match\n    extern icn_tab\n    extern icn_move\n");
     E(em,"    extern icn_subject\n    extern icn_pos\n\n");
     E(em,"_start:\n    call    icn_main\n    mov     rax, 60\n    xor     rdi, rdi\n    syscall\n\n");
 
