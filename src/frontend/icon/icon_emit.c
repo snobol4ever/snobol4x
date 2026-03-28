@@ -108,7 +108,8 @@ static int has_suspend(IcnNode *n) {
  * Per-procedure local variable table
  * ======================================================================= */
 #define MAX_LOCALS 32
-typedef struct { char name[32]; int slot; } LocalVar;
+/* type: '?' unknown, 'I' integer, 'S' string/cset pointer */
+typedef struct { char name[32]; int slot; char type; } LocalVar;
 static LocalVar cur_locals[MAX_LOCALS];
 static int      cur_nlocals=0, cur_nparams=0;
 static char     cur_ret_label[64]="";   /* label to jump to for return */
@@ -121,7 +122,11 @@ static void locals_reset(void) { cur_nlocals=0; cur_nparams=0; }
  * Returns the slot index; use slot_offset(slot) for rbp-relative access. */
 static int locals_alloc_tmp(void) {
     int slot=cur_nlocals;
-    if(cur_nlocals<MAX_LOCALS){ cur_locals[cur_nlocals].name[0]='\0'; cur_locals[cur_nlocals++].slot=slot; }
+    if(cur_nlocals<MAX_LOCALS){
+        cur_locals[cur_nlocals].name[0]='\0';
+        cur_locals[cur_nlocals].type='?';
+        cur_locals[cur_nlocals++].slot=slot;
+    }
     return slot;
 }
 
@@ -132,11 +137,87 @@ static int locals_find(const char *name) {
 }
 static int locals_add(const char *name) {
     int slot=cur_nlocals;
-    if(cur_nlocals<MAX_LOCALS){ strncpy(cur_locals[cur_nlocals].name,name,31); cur_locals[cur_nlocals++].slot=slot; }
+    if(cur_nlocals<MAX_LOCALS){
+        strncpy(cur_locals[cur_nlocals].name,name,31);
+        cur_locals[cur_nlocals].type='?';
+        cur_locals[cur_nlocals++].slot=slot;
+    }
     return slot;
+}
+static void locals_set_type(const char *name, char type) {
+    for(int i=0;i<cur_nlocals;i++)
+        if(!strcmp(cur_locals[i].name,name)){ cur_locals[i].type=type; return; }
+}
+static char locals_type(const char *name) {
+    for(int i=0;i<cur_nlocals;i++)
+        if(!strcmp(cur_locals[i].name,name)) return cur_locals[i].type;
+    return '?';
 }
 /* Frame offset for slot N: rbp - 8*(N+1) */
 static int slot_offset(int slot) { return -8*(slot+1); }
+
+/* Walk an expression node and return its Tiny-ICON value kind:
+ * 'S' = string/cset pointer, 'I' = integer, '?' = unknown. */
+static char icn_expr_kind(IcnNode *n) {
+    if (!n) return '?';
+    switch (n->kind) {
+        case ICN_STR:    return 'S';
+        case ICN_CSET:   return 'S';
+        case ICN_INT:    return 'I';
+        case ICN_CONCAT: case ICN_LCONCAT: return 'S';
+        case ICN_ADD: case ICN_SUB: case ICN_MUL:
+        case ICN_DIV: case ICN_MOD:        return 'I';
+        case ICN_VAR:
+            if (strcmp(n->val.sval, "&subject") == 0) return 'S';
+            if (strcmp(n->val.sval, "&pos")     == 0) return 'I';
+            return locals_type(n->val.sval);
+        case ICN_CALL:
+            /* Known string-returning builtins */
+            if (n->nchildren >= 1 && n->children[0] &&
+                n->children[0]->kind == ICN_VAR) {
+                const char *fn = n->children[0]->val.sval;
+                /* tab/move return substrings (char*); any/many/upto return long pos */
+                if (strcmp(fn,"tab")==0   || strcmp(fn,"move")==0  ||
+                    strcmp(fn,"string")==0 || strcmp(fn,"read")==0  ||
+                    strcmp(fn,"reads")==0  || strcmp(fn,"repl")==0  ||
+                    strcmp(fn,"reverse")==0)
+                    return 'S';
+                if (strcmp(fn,"any")==0  || strcmp(fn,"many")==0 ||
+                    strcmp(fn,"upto")==0)
+                    return 'I';
+            }
+            return '?';
+        default:         return '?';
+    }
+}
+
+/* Pre-pass: walk top-level and one level of nesting in proc body to record
+ * rhs type for each ICN_ASSIGN so write() can dispatch correctly. */
+static void infer_local_types(IcnNode *proc, int body_start) {
+    int nstmts = proc->nchildren - body_start;
+    for (int si = 0; si < nstmts; si++) {
+        IcnNode *s = proc->children[body_start + si];
+        if (!s) continue;
+        if (s->kind == ICN_ASSIGN && s->nchildren >= 2) {
+            IcnNode *lhs = s->children[0], *rhs = s->children[1];
+            if (lhs && lhs->kind == ICN_VAR) {
+                char k = icn_expr_kind(rhs);
+                if (k != '?') locals_set_type(lhs->val.sval, k);
+            }
+        }
+        for (int ci = 0; ci < s->nchildren; ci++) {
+            IcnNode *c = s->children[ci];
+            if (!c) continue;
+            if (c->kind == ICN_ASSIGN && c->nchildren >= 2) {
+                IcnNode *lhs = c->children[0], *rhs = c->children[1];
+                if (lhs && lhs->kind == ICN_VAR) {
+                    char k = icn_expr_kind(rhs);
+                    if (k != '?') locals_set_type(lhs->val.sval, k);
+                }
+            }
+        }
+    }
+}
 
 /* =========================================================================
  * Forward declaration
@@ -235,9 +316,9 @@ static void emit_assign(IcnEmitter *em, IcnNode *n, IcnPorts ports,
     Ldef(em,b); Jmp(em,rb);
 
     Ldef(em,store);
-    /* ICN_STR leaves pointer in rdi (nothing pushed); all others push a value */
+    /* ICN_STR/ICN_CSET leave pointer in rdi (nothing pushed); all others push a value */
     IcnNode *rhs = n->children[1];
-    int rhs_is_str = (rhs && rhs->kind == ICN_STR);
+    int rhs_is_str = (rhs && (rhs->kind == ICN_STR || rhs->kind == ICN_CSET));
     if (rhs_is_str) {
         E(em,"    ; str assign: rdi already has pointer\n");
     } else {
@@ -477,19 +558,22 @@ static void emit_call(IcnEmitter *em, IcnNode *n, IcnPorts ports,
         if(arg->kind==ICN_STR){
             /* emit_str sets rdi via lea; nothing on hw stack — just call */
             E(em,"    call    icn_write_str\n");
+        } else if(arg->kind==ICN_CSET){
+            /* emit_cset sets rdi via lea; nothing on hw stack — just call */
+            E(em,"    call    icn_write_str\n");
         } else if(arg->kind==ICN_CONCAT || arg->kind==ICN_LCONCAT){
             /* emit_concat pushes result char* onto hw stack */
             E(em,"    pop     rdi\n");
             E(em,"    call    icn_write_str\n");
-        } else if(arg->kind==ICN_VAR){
-            /* var could be a string pointer or an int — for now treat as str pointer
-             * (Tier-2: full type tracking needed for mixed programs) */
-            E(em,"    pop     rdi\n");
-            E(em,"    call    icn_write_str\n");
         } else {
-            /* numeric value on the hardware stack */
+            /* Everything else (VAR, CALL, INT, binop…) pushed a value.
+             * Use type inference to pick the right runtime call. */
             E(em,"    pop     rdi\n");
-            E(em,"    call    icn_write_int\n");
+            char k = icn_expr_kind(arg);
+            if (k == 'S')
+                E(em,"    call    icn_write_str\n");
+            else
+                E(em,"    call    icn_write_int\n");
         }
         Jmp(em,ports.γ);
         return;
@@ -1338,27 +1422,45 @@ static void emit_expr(IcnEmitter *em, IcnNode *n, IcnPorts ports,
              * irgen.icn ir_conjunction wiring:
              *   α → E1.α; E1.γ → E2.α; ...; En.γ → node.γ
              *   Ei.ω → E(i-1).β (backtrack left); E1.ω → node.ω
-             *   β → En.β (resume rightmost) */
+             *   β → En.β (resume rightmost)
+             *
+             * Fix: emit LEFT-TO-RIGHT so ccb[i-1] is already populated when
+             * we wire Ei.ω.  Ei.γ needs E(i+1).α which isn't known yet, so
+             * pre-generate a relay label for each child's γ; emit relay
+             * trampolines (pop rax; jmp cca[i+1]) after all children. */
             int nc = n->nchildren;
             int cid = icn_new_id(em); char ca2[64],cb2[64];
             icn_label_α(cid,ca2,sizeof ca2); icn_label_β(cid,cb2,sizeof cb2);
             strncpy(oa,ca2,63); strncpy(ob,cb2,63);
 
-            char (*cca)[64] = malloc(nc*64);
-            char (*ccb)[64] = malloc(nc*64);
+            char (*cca)[64]     = malloc(nc*64);
+            char (*ccb)[64]     = malloc(nc*64);
+            char (*relay_g)[64] = malloc(nc*64);
+            for (int i = 0; i < nc; i++) {
+                snprintf(relay_g[i], 64, "icon_%d_and_rg_%d", cid, i);
+                cca[i][0] = '\0'; ccb[i][0] = '\0';
+            }
 
-            /* Emit right-to-left: Ei.ω → E(i-1).β, En.ω → node.ω */
-            for (int i = nc-1; i >= 0; i--) {
+            /* Emit children left-to-right */
+            for (int i = 0; i < nc; i++) {
                 IcnPorts ep;
-                strncpy(ep.γ, ports.γ, 63);
+                /* γ: last child → ports.γ; otherwise relay_g[i] trampoline */
+                strncpy(ep.γ, (i == nc-1) ? ports.γ : relay_g[i], 63);
+                /* ω: first child → ports.ω; others ccb[i-1] (already filled) */
                 strncpy(ep.ω, (i == 0) ? ports.ω : ccb[i-1], 63);
                 emit_expr(em, n->children[i], ep, cca[i], ccb[i]);
             }
-            /* Chain γ left-to-right: Ei.γ → E(i+1).α already handled via
-             * ports.γ threading; just wire the node entry/resume */
+
+            /* Relay trampolines: discard Ei's value then jump to E(i+1).α */
+            Jmp(em, ca2);
+            for (int i = 0; i < nc-1; i++) {
+                Ldef(em, relay_g[i]);
+                E(em, "    add     rsp, 8\n");   /* discard Ei result */
+                Jmp(em, cca[i+1]);
+            }
             Ldef(em,ca2); Jmp(em,cca[0]);
             Ldef(em,cb2); Jmp(em,ccb[nc-1]);
-            free(cca); free(ccb);
+            free(cca); free(ccb); free(relay_g);
             break;
         }
         default:{
@@ -1442,6 +1544,9 @@ void icn_emit_file(IcnEmitter *em, IcnNode **nodes, int count) {
                 }
             }
         }
+        /* Infer local var types from assignments (for write() dispatch) */
+        infer_local_types(proc, body_start);
+
         /* Chain statements in reverse — skip ICN_GLOBAL (local decl) nodes */
         char **alphas=calloc(nstmts,sizeof(char*));
         for(int i=0;i<nstmts;i++) alphas[i]=malloc(64);
