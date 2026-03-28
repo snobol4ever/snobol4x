@@ -5750,16 +5750,14 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
         A("    mov     [rbp - %d], rax    ; var slot %d\n", (5 + max_ucalls + max_ucalls + k)*8, k);
     }
 
-    /* Trail mark — save in clause frame slot [rbp-8].
-     * Also store at UCALL_MARK_OFFSET(0) when there are ucalls, so β0 can
-     * unwind to it uniformly (β0 uses UCALL_MARK_OFFSET(0), not [rbp-8]).
+    /* Trail mark — save in [rbp-8] for head-unification failure handlers.
+     * UCALL_MARK_OFFSET(0) will be taken after head unification succeeds,
+     * so β0 unwinds only body bindings, not head bindings.
      * Zero all sub_cs slots so restore-before-call emits 0 on first entry. */
     A("    lea     rdi, [rel pl_trail]\n");
     A("    call    trail_mark_fn\n");
     A("    mov     [rbp - 8], eax          ; clause trail mark\n");
     if (max_ucalls > 0) {
-        A("    mov     [rbp - %d], eax     ; UCALL_MARK_OFFSET(0) = β0 unwind target\n",
-          UCALL_MARK_OFFSET(0));
         for (int s = 0; s < max_ucalls; s++)
             A("    mov     dword [rbp - %d], 0  ; init sub_cs slot %d\n",
               UCALL_SLOT_OFFSET(s), s);
@@ -5798,7 +5796,52 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
     }
 
     A("pl_%s_c%d_body:\n", pred_safe, idx);
-    /* edx=0 on fresh entry — all ucres labels fall through with this value on first call */
+    /* Take UCALL_MARK_OFFSET(0) here — after all head unification — so that
+     * β0 unwinds only body bindings.  For β>0 these marks are taken on the
+     * success paths of prior ucalls (same rationale: only undo later work). */
+    if (max_ucalls > 0) {
+        A("    lea     rdi, [rel pl_trail]\n");
+        A("    call    trail_mark_fn\n");
+        A("    mov     [rbp - %d], eax     ; UCALL_MARK_OFFSET(0) = β0 unwind target\n",
+          UCALL_MARK_OFFSET(0));
+    }
+    /* On fresh entry (start==base): edx=0, slots pre-zeroed — fall through to α0.
+     * On re-entry (start > base): decode inner = start - base into per-ucall sub_cs slots.
+     * inner encodes: ucall_0_sub_cs + ucall_1_sub_cs*STRIDE + ucall_2_sub_cs*STRIDE^2 ...
+     * Pre-load each slot; α0 restores from slot 0, γ0 resets slot 1 to 0 (correct —
+     * when ucall 0 gives a *new* answer we start ucall 1 fresh), but α1 restores
+     * from slot 1 for the case where β1 fired and drove us back to α0 which then
+     * succeeded with the same answer, arriving at γ0 which re-zeros slot 1 — that
+     * zero is what we want because ucall 1 is starting fresh for the new ucall 0 answer.
+     *
+     * The re-entry path jumps past var-alloc/head-unif so we need a resume label. */
+    if (body_user_call_count > 0) {
+        A("    ; re-entry decode: inner = start - %d\n", base);
+        A("    mov     eax, [rbp - 32]        ; start\n");
+        A("    sub     eax, %d                ; inner = start - base\n", base);
+        A("    test    eax, eax\n");
+        A("    jz      pl_%s_c%d_body_fresh\n", pred_safe, idx);
+        /* inner > 0: decode stride-packed sub_cs into slots */
+        A("    dec     eax                    ; inner - 1 = packed sub_cs\n");
+        A("    mov     ecx, eax               ; work register\n");
+        for (int _di = 0; _di < max_ucalls; _di++) {
+            if (_di == 0) {
+                A("    mov     edx, ecx\n");
+                A("    and     edx, %d        ; ucall 0 sub_cs = packed %% STRIDE\n",
+                  PL_RESUME_BIG - 1);
+            } else {
+                A("    shr     ecx, 12        ; >> log2(STRIDE) per level\n");
+                A("    mov     edx, ecx\n");
+                A("    and     edx, %d        ; ucall %d sub_cs\n",
+                  PL_RESUME_BIG - 1, _di);
+            }
+            A("    mov     [rbp - %d], edx    ; pre-load slot %d\n",
+              UCALL_SLOT_OFFSET(_di), _di);
+        }
+        A("    ; fall into α0 — it restores edx from slot 0\n");
+        A("    jmp     pl_%s_c%d_α0\n", pred_safe, idx);
+        A("pl_%s_c%d_body_fresh:\n", pred_safe, idx);
+    }
     A("    xor     edx, edx               ; sub_cs=0 for first ucall\n");
 
     /* Body goals */
@@ -6745,18 +6788,45 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                     A("    add     rsp, %d\n", ALIGN16(garity*8));
                 A("    test    eax, eax\n");
                 A("    js      %s\n", β_lbl);
-                /* success: save returned sub_cs */
+                /* success path: save returned sub_cs, then take trail mark for the
+                 * NEXT ucall NOW (while we know ucall N's bindings are live).
+                 * βN+1 will unwind to this mark, cleanly reverting only ucall N+1's
+                 * bindings without touching ucall N's.  Must be done before γN so
+                 * the mark is always initialised when βN+1 fires.
+                 * Guard: only when ucall_seq+1 < max_ucalls to prevent
+                 * UCALL_MARK_OFFSET(max_ucalls) == VAR_SLOT_OFFSET(0) collision. */
                 A("    mov     [rbp - %d], eax        ; ucall slot %d sub_cs\n",
                   UCALL_SLOT_OFFSET(ucall_seq), ucall_seq);
-                A("    mov     [rbp - 16], eax        ; sub_cs_acc\n");
+                /* Accumulate stride-encoded sub_cs: acc += eax * STRIDE^ucall_seq.
+                 * This lets callers decode which ucall to resume and with what sub_cs.
+                 * ucall 0 contributes bits [0..11], ucall 1 bits [12..23], etc. */
+                if (ucall_seq == 0) {
+                    A("    mov     [rbp - 16], eax        ; sub_cs_acc = ucall0 sub_cs\n");
+                } else {
+                    A("    push    rax                    ; save ucall %d sub_cs\n", ucall_seq);
+                    A("    mov     eax, [rsp]             ; reload\n");
+                    for (int _si = 0; _si < ucall_seq; _si++)
+                        A("    imul    eax, %d            ; * STRIDE (level %d)\n",
+                          PL_RESUME_BIG, _si);
+                    A("    add     [rbp - 16], eax        ; acc += ucall %d contribution\n",
+                      ucall_seq);
+                    A("    pop     rax                    ; restore (for trail mark call below)\n");
+                }
+                if (ucall_seq + 1 < max_ucalls) {
+                    A("    lea     rdi, [rel pl_trail]\n");
+                    A("    call    trail_mark_fn\n");
+                    A("    mov     [rbp - %d], eax    ; trail mark for ucall %d\n",
+                      UCALL_MARK_OFFSET(ucall_seq + 1), ucall_seq + 1);
+                }
+                /* jump to γN, skipping the β failure block below */
                 A("    jmp     pl_%s_c%d_γ%d\n", pred_safe, idx, bi);
                 A("%s:\n", β_lbl);
-                /* βN unwinds to OWN mark UCALL_MARK_OFFSET(ucall_seq) — not [rbp-8].
-                 * This clears only this ucall's bindings; prior bindings survive.
-                 * Then retry the previous ucall (or fail the whole clause). */
+                /* βN: ucall N failed.  Undo ucall N-1's bindings (and N's) by
+                 * unwinding to UCALL_MARK_OFFSET(N-1) for N>0, or UCALL_MARK_OFFSET(0)
+                 * (body-entry mark, after head unif) for N=0 → jump next clause. */
                 A("    lea     rdi, [rel pl_trail]\n");
-                A("    mov     esi, [rbp - %d]    ; own mark ucall %d\n",
-                  UCALL_MARK_OFFSET(ucall_seq), ucall_seq);
+                A("    mov     esi, [rbp - %d]    ; unwind to before ucall %d\n",
+                  UCALL_MARK_OFFSET(ucall_seq > 0 ? ucall_seq - 1 : 0), ucall_seq);
                 A("    call    trail_unwind\n");
                 if (ucall_seq > 0) {
                     A("    mov     edx, [rbp - %d]    ; restore sub_cs ucall %d\n",
@@ -6764,17 +6834,6 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                     A("    jmp     pl_%s_c%d_α%d\n", pred_safe, idx, ucall_seq - 1);
                 } else {
                     A("    jmp     %s\n", next_clause);
-                }
-                /* γN: emit trail mark for the NEXT ucall BEFORE this label.
-                 * Mark is taken after ucall N has bound its variable, so βN+1
-                 * can unwind exactly those bindings without touching earlier ones.
-                 * Guard: only when ucall_seq+1 < max_ucalls to prevent
-                 * UCALL_MARK_OFFSET(max_ucalls) == VAR_SLOT_OFFSET(0) collision. */
-                if (ucall_seq + 1 < max_ucalls) {
-                    A("    lea     rdi, [rel pl_trail]\n");
-                    A("    call    trail_mark_fn\n");
-                    A("    mov     [rbp - %d], eax    ; trail mark for ucall %d\n",
-                      UCALL_MARK_OFFSET(ucall_seq + 1), ucall_seq + 1);
                 }
                 A("pl_%s_c%d_γ%d:\n", pred_safe, idx, bi);
                 /* zero next ucall's sub_cs slot so restore-before-call emits 0 on fresh entry */
