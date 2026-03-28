@@ -1514,12 +1514,12 @@ static void ij_emit_suspend(IcnNode *n, IjPorts ports, char *oα, char *oβ) {
         char ba[64], bb[64];
         IjPorts bp;
         strncpy(bp.γ, body_done, 63);
-        strncpy(bp.ω, ports.γ, 63);  /* body fail: empty stack → jump direct, no pop */
+        strncpy(bp.ω, ports.ω, 63);  /* body fail: empty stack → bypass drain, go to no-value loop-back */
         ij_emit_expr(body_node, bp, ba, bb);
-        JL(body_done); JI("pop2", ""); JGoto(ports.γ);
+        JL(body_done); JI("pop2", ""); JGoto(ports.ω);
         JL(resume_here); JGoto(ba);
     } else {
-        JL(resume_here); JGoto(ports.γ);
+        JL(resume_here); JGoto(ports.ω);
     }
 }
 
