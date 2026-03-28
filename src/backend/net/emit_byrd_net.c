@@ -902,26 +902,27 @@ static void net_emit_expr(EXPR_t *e) {
         net_emit_expr(expr_arg(e, 0));
         N("    call       string [snobol4lib]Snobol4Lib::sno_neg(string)\n");
         break;
-    case E_ARY: {
-        /* varname<subscript> — indexed array/table read */
-        net_need_array_helpers = 1;
-        char fn_ary[256];
-        net_field_name(fn_ary, sizeof fn_ary, e->sval ? e->sval : "");
-        N("    ldsfld     string %s::%s\n", net_classname, fn_ary);
-        EXPR_t *sub_ary = (e->nchildren > 0 && e->children) ? e->children[0] : NULL;
-        if (sub_ary) net_emit_expr(sub_ary); else net_ldstr("1");
-        N("    call       string %s::net_array_get(string, string)\n", net_classname);
-        break;
-    }
     case E_IDX: {
-        /* expr[subscript] — subscript on expression value (TABLE or DATA) */
+        /* E_IDX = canonical (absorbs E_ARY via compat alias — M-G1-IR-HEADER-WIRE).
+         * Named-array path (sval set): load field, then subscript.
+         * Postfix-subscript path (sval NULL): emit expr, then subscript. */
         net_need_array_helpers = 1;
-        if (e->nchildren >= 1 && e->children && e->children[0])
-            net_emit_expr(e->children[0]);
-        else net_ldstr("");
-        if (e->nchildren >= 2 && e->children && e->children[1])
-            net_emit_expr(e->children[1]);
-        else net_ldstr("0");
+        if (e->sval) {
+            /* Named array: varname<sub> — ldsfld array, push key, net_array_get */
+            char fn_ary[256];
+            net_field_name(fn_ary, sizeof fn_ary, e->sval);
+            N("    ldsfld     string %s::%s\n", net_classname, fn_ary);
+            EXPR_t *sub_ary = (e->nchildren > 0 && e->children) ? e->children[0] : NULL;
+            if (sub_ary) net_emit_expr(sub_ary); else net_ldstr("1");
+        } else {
+            /* Postfix subscript: expr[sub] — children[0]=array, children[1]=key */
+            if (e->nchildren >= 1 && e->children && e->children[0])
+                net_emit_expr(e->children[0]);
+            else net_ldstr("");
+            if (e->nchildren >= 2 && e->children && e->children[1])
+                net_emit_expr(e->children[1]);
+            else net_ldstr("0");
+        }
         N("    call       string %s::net_array_get(string, string)\n", net_classname);
         break;
     }

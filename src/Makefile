@@ -1,5 +1,6 @@
 CC     = gcc
 CFLAGS = -Wall -Wno-unused-function -g -O0 \
+         -I . \
          -I frontend/snobol4 \
          -I frontend/snocone \
          -I frontend/prolog \

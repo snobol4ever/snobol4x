@@ -159,6 +159,14 @@ typedef enum EKind {
  *   fval — E_FLIT
  * ========================================================================= */
 
+/* EXPR_t — the unified IR node struct.
+ *
+ * M-G1-IR-HEADER-WIRE: sno2c.h provides its own EXPR_t for now (legacy
+ * field names: dval, no nalloc/id).  When sno2c.h includes ir.h first it
+ * defines EXPR_T_DEFINED to suppress this copy and avoid a redefinition
+ * error.  Struct field unification is a later reorg milestone.
+ */
+#ifndef EXPR_T_DEFINED
 typedef struct EXPR_t EXPR_t;
 
 struct EXPR_t {
@@ -171,6 +179,7 @@ struct EXPR_t {
     int      nalloc;        /* allocated capacity of children[]             */
     int      id;            /* unique node id — assigned at emit time       */
 };
+#endif /* EXPR_T_DEFINED */
 
 /* =========================================================================
  * EKind name table — for ir_print.c and debugging

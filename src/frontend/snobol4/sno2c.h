@@ -18,39 +18,19 @@
 #include <string.h>
 #include <stdarg.h>
 
-/* ---- expression node kinds ---- */
-typedef enum {
-    /* literals */
-    E_QLIT, E_ILIT, E_FLIT, E_NULV,
-    /* references */
-    E_VART,          /* plain variable */
-    E_KW,            /* &IDENT */
-    E_INDR,          /* $expr  — indirect / immediate-assign-target */
-    E_STAR,          /* *expr  — deferred/indirect pattern reference */
-    /* arithmetic */
-    E_MNS,
-    E_ADD, E_SUB, E_MPY, E_DIV, E_EXPOP,
-    /* string / pattern composition */
-    E_CONC,          /* juxtaposition: value/pattern CONCAT_fn  (n-ary) */
-    E_OPSYN,         /* & operator: reduce(left, right) */
-    E_OR,            /* | : pattern alternation  (n-ary) */
-    /* captures (pattern context only) */
-    E_NAM,           /* expr . var  — conditional assignment */
-    E_DOL,           /* expr $ var  — immediate assignment */
-    /* calls */
-    E_FNC,           /* f(args)  — children[0..nchildren-1] are args */
-    E_ARY,           /* a[subs]  — named array subscript */
-    E_IDX,           /* expr[subs] — postfix: children[0]=expr, children[1..]=indices */
-    E_ATP,           /* @var — cursor position capture */
-    E_ASGN,          /* var = expr inside expression context */
-    /* ---- Prolog frontend (prolog_lower.c) ---- */
-    E_UNIFY,         /* =/2 — unify two terms; needs trail; ω on failure  */
-    E_CLAUSE,        /* one Horn clause — head term + body goals + EnvLayout */
-    E_CHOICE,        /* all clauses for one functor/arity — α/β chain     */
-    E_CUT,           /* ! — seals β of enclosing choice point (= FENCE)   */
-    E_TRAIL_MARK,    /* save trail.top into env slot                       */
-    E_TRAIL_UNWIND,  /* restore trail to saved mark                        */
-} EKind;
+/* ---- expression node kinds — from shared IR ---- */
+/*
+ * M-G1-IR-HEADER-WIRE: EKind is now defined in ir/ir.h (the single source
+ * of truth for all 59 canonical node kinds).  IR_COMPAT_ALIASES enables the
+ * bridge #defines so all existing code (E_NULV, E_VART, E_MNS, E_CONC, …)
+ * continues to compile unchanged.
+ *
+ * EXPR_T_DEFINED tells ir.h to skip its own EXPR_t definition; sno2c.h
+ * owns the struct for now.  Field unification is a later reorg milestone.
+ */
+#define IR_COMPAT_ALIASES
+#define EXPR_T_DEFINED
+#include "ir/ir.h"
 
 /*
  * EXPR_t — unified n-ary expression node.

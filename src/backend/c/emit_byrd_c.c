@@ -3066,21 +3066,22 @@ static void emit_expr(EXPR_t *e) {
         }
         break;
 
-    case E_ARY:
-        C("aref(%s,(DESCR_t[]){", cs(e->sval));
-        for (int i=0; i<e->nchildren; i++) {
-            if (i) { C(","); } emit_expr(e->children[i]);
-        }
-        C("},%d)", e->nchildren);
-        break;
-
     case E_IDX:
-        /* postfix subscript: expr<i,j,...> — children[0]=array expr, children[1..n-1]=subscripts */
-        C("INDEX_fn("); emit_expr(e->children[0]); C(",(DESCR_t[]){");
-        for (int i=1; i<e->nchildren; i++) {
-            if (i>1) { C(","); } emit_expr(e->children[i]);
+        /* E_IDX = canonical (was E_ARY via compat alias — dead C backend).
+         * Named-array path: sval set. Postfix-subscript path: sval NULL. */
+        if (e->sval) {
+            C("aref(%s,(DESCR_t[]){", cs(e->sval));
+            for (int i=0; i<e->nchildren; i++) {
+                if (i) { C(","); } emit_expr(e->children[i]);
+            }
+            C("},%d)", e->nchildren);
+        } else {
+            C("INDEX_fn("); emit_expr(e->children[0]); C(",(DESCR_t[]){");
+            for (int i=1; i<e->nchildren; i++) {
+                if (i>1) { C(","); } emit_expr(e->children[i]);
+            }
+            C("},%d)", e->nchildren - 1);
         }
-        C("},%d)", e->nchildren - 1);
         break;
 
     case E_ATP:
@@ -3091,6 +3092,11 @@ static void emit_expr(EXPR_t *e) {
     case E_ASGN:
         /* var = expr inside expression context */
         C("assign_expr(%s,", cs(e->children[0]->sval)); emit_expr(e->children[1]); C(")");
+        break;
+
+    default:
+        /* IR kinds not implemented in dead C backend — excluded from reorg */
+        C("UNIMPL_KIND_%d", (int)e->kind);
         break;
     }
 }

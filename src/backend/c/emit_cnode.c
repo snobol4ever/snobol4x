@@ -251,34 +251,29 @@ CNODE_t *build_expr(CArena *a, EXPR_t *e) {
         return cn_seq(a, arr_open, cn_seq(a, inner, cn_raw(a, close)));
     }
 
-    case E_ARY: {
-        CNODE_t *head = cn_rawf(a, "aref(%s,(DESCR_t[]){", cs_cn(e->sval));
-        CNODE_t *inner = build_expr(a, e->children[0]);
-        for (int i = 1; i < e->nchildren; i++)
-            inner = cn_seq(a, inner, cn_seq(a, cn_raw(a,","), build_expr(a, e->children[i])));
-        char close[32]; snprintf(close, sizeof close, "},%d)", e->nchildren);
-        return cn_seq(a, head, cn_seq(a, inner, cn_raw(a, close)));
-    }
-
-    case E_NAM:
-    case E_DOL:
-        /* In value context, evaluate child */
-        return build_expr(a, e->children[0]);
-
     case E_IDX: {
-        /* children[0]=array expr, children[1..n-1]=subscripts */
-        CNODE_t *head = cn_raw(a, "INDEX_fn(");
-        CNODE_t *obj  = build_expr(a, e->children[0]);
-        /* build subscript list from children[1..] only */
-        CNODE_t *idx  = (e->nchildren > 1) ? build_expr(a, e->children[1]) : cn_raw(a, "");
-        for (int i = 2; i < e->nchildren; i++)
-            idx = cn_seq(a, idx, cn_seq(a, cn_raw(a,","), build_expr(a, e->children[i])));
-        char close[32]; snprintf(close, sizeof close, "},%d)", e->nchildren - 1);
-        return cn_seq(a, head,
-               cn_seq(a, obj,
-               cn_seq(a, cn_raw(a, ",(DESCR_t[]){"),
-               cn_seq(a, idx,
-                      cn_raw(a, close)))));
+        /* E_IDX = canonical (was E_ARY via compat alias — dead C backend).
+         * Named-array path: sval set. Postfix-subscript path: sval NULL. */
+        if (e->sval) {
+            CNODE_t *head = cn_rawf(a, "aref(%s,(DESCR_t[]){", cs_cn(e->sval));
+            CNODE_t *inner = build_expr(a, e->children[0]);
+            for (int i = 1; i < e->nchildren; i++)
+                inner = cn_seq(a, inner, cn_seq(a, cn_raw(a,","), build_expr(a, e->children[i])));
+            char close[32]; snprintf(close, sizeof close, "},%d)", e->nchildren);
+            return cn_seq(a, head, cn_seq(a, inner, cn_raw(a, close)));
+        } else {
+            CNODE_t *head = cn_raw(a, "INDEX_fn(");
+            CNODE_t *obj  = build_expr(a, e->children[0]);
+            CNODE_t *idx  = (e->nchildren > 1) ? build_expr(a, e->children[1]) : cn_raw(a, "");
+            for (int i = 2; i < e->nchildren; i++)
+                idx = cn_seq(a, idx, cn_seq(a, cn_raw(a,","), build_expr(a, e->children[i])));
+            char close[32]; snprintf(close, sizeof close, "},%d)", e->nchildren - 1);
+            return cn_seq(a, head,
+                   cn_seq(a, obj,
+                   cn_seq(a, cn_raw(a, ",(DESCR_t[]){"),
+                   cn_seq(a, idx,
+                          cn_raw(a, close)))));
+        }
     }
 
     case E_ATP:

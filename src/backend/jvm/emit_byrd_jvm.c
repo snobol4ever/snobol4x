@@ -1304,60 +1304,55 @@ static void jvm_emit_expr(EXPR_t *e) {
         JI("ldc", "\"\"");
         break;
     }
-    case E_ARY: {
-        /* a[subscript] — array/table subscript read */
-        jvm_need_array_helpers = 1;
-        char nameesc_ary[256]; jvm_escape_string(e->sval ? e->sval : "", nameesc_ary, sizeof nameesc_ary);
-        JI("ldc", nameesc_ary);
-        char igdesc_ary[512]; snprintf(igdesc_ary, sizeof igdesc_ary,
-            "%s/sno_indr_get(Ljava/lang/String;)Ljava/lang/String;", jvm_classname);
-        JI("invokestatic", igdesc_ary);
-        /* Build key: "row" for 1D, "row,col" for 2D */
-        if (e->children && e->children[0] && e->children[1]) {
-            /* 2D: concatenate row + "," + col */
-            JI("new", "java/lang/StringBuilder");
-            JI("dup", "");
-            JI("invokespecial", "java/lang/StringBuilder/<init>()V");
-            jvm_emit_expr(e->children[0]);
-            JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
-            JI("ldc", "\",\"");
-            JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
-            jvm_emit_expr(e->children[1]);
-            JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
-            JI("invokevirtual", "java/lang/StringBuilder/toString()Ljava/lang/String;");
-        } else if (e->children && e->children[0]) {
-            jvm_emit_expr(e->children[0]);
-        } else {
-            JI("ldc", "\"1\"");
-        }
-        char agdesc_ary[512]; snprintf(agdesc_ary, sizeof agdesc_ary,
-            "%s/sno_array_get(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;", jvm_classname);
-        JI("invokestatic", agdesc_ary);
-        break;
-    }
     case E_IDX: {
-        /* expr[subscript] — subscript on expression (TABLE or DATA).
-         * For 2D: expr<row,col> → children[0]=expr, children[1]=row, children[2]=col */
+        /* E_IDX = canonical (absorbs E_ARY via compat alias — M-G1-IR-HEADER-WIRE).
+         * Named-array path (sval set): load array by name, then subscript key.
+         * Postfix-subscript path (sval NULL): emit expr, then subscript key. */
         jvm_need_array_helpers = 1;
-        jvm_emit_expr(e->children[0]);
-        if (e->nchildren >= 3 && e->children[1] && e->children[2]) {
-            /* 2D: build "row,col" key */
-            JI("new", "java/lang/StringBuilder");
-            JI("dup", "");
-            JI("invokespecial", "java/lang/StringBuilder/<init>()V");
-            jvm_emit_expr(e->children[1]);
-            JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
-            JI("ldc", "\",\"");
-            JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
-            jvm_emit_expr(e->children[2]);
-            JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
-            JI("invokevirtual", "java/lang/StringBuilder/toString()Ljava/lang/String;");
-        } else if (e->nchildren >= 2 && e->children[1]) {
-            jvm_emit_expr(e->children[1]);
-        } else if (e->children && e->children[0]) {
-            jvm_emit_expr(e->children[0]);
+        if (e->sval) {
+            /* Named array: a[sub] — sno_indr_get(name) → sno_array_get(arr, key) */
+            char nameesc_ary[256]; jvm_escape_string(e->sval, nameesc_ary, sizeof nameesc_ary);
+            JI("ldc", nameesc_ary);
+            char igdesc_ary[512]; snprintf(igdesc_ary, sizeof igdesc_ary,
+                "%s/sno_indr_get(Ljava/lang/String;)Ljava/lang/String;", jvm_classname);
+            JI("invokestatic", igdesc_ary);
+            if (e->children && e->children[0] && e->nchildren >= 2 && e->children[1]) {
+                JI("new", "java/lang/StringBuilder");
+                JI("dup", "");
+                JI("invokespecial", "java/lang/StringBuilder/<init>()V");
+                jvm_emit_expr(e->children[0]);
+                JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
+                JI("ldc", "\",\"");
+                JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
+                jvm_emit_expr(e->children[1]);
+                JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
+                JI("invokevirtual", "java/lang/StringBuilder/toString()Ljava/lang/String;");
+            } else if (e->children && e->children[0]) {
+                jvm_emit_expr(e->children[0]);
+            } else {
+                JI("ldc", "\"1\"");
+            }
         } else {
-            JI("ldc", "\"0\"");
+            /* Postfix subscript: expr[sub] — children[0]=array expr, [1..]=subscripts */
+            jvm_emit_expr(e->children[0]);
+            if (e->nchildren >= 3 && e->children[1] && e->children[2]) {
+                JI("new", "java/lang/StringBuilder");
+                JI("dup", "");
+                JI("invokespecial", "java/lang/StringBuilder/<init>()V");
+                jvm_emit_expr(e->children[1]);
+                JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
+                JI("ldc", "\",\"");
+                JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
+                jvm_emit_expr(e->children[2]);
+                JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
+                JI("invokevirtual", "java/lang/StringBuilder/toString()Ljava/lang/String;");
+            } else if (e->nchildren >= 2 && e->children[1]) {
+                jvm_emit_expr(e->children[1]);
+            } else if (e->children && e->children[0]) {
+                jvm_emit_expr(e->children[0]);
+            } else {
+                JI("ldc", "\"0\"");
+            }
         }
         char agdesc_idx[512]; snprintf(agdesc_idx, sizeof agdesc_idx,
             "%s/sno_array_get(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;", jvm_classname);
