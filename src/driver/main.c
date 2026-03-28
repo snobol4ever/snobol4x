@@ -30,7 +30,7 @@ void pl_emit(Program *prog, FILE *f);   /* defined in prolog_emit.c */
 void prolog_emit_jvm(Program *prog, FILE *f, const char *filename); /* prolog_emit_jvm.c */
 void prolog_emit_net(Program *prog, FILE *f, const char *filename); /* prolog_emit_net.c */
 void pj_linker_prescan(PlProgram *pl_prog);                         /* prolog_emit_jvm.c */
-ImportEntry *icn_prescan_imports(const char *src);                  /* icon_driver.c */
+ImportEntry *icn_prescan_imports(const char *src);                  /* icn_main.c */
 void ij_emit_file(IcnNode **nodes, int count, FILE *out,            /* icon_emit_jvm.c */
                   const char *filename, const char *outpath, ImportEntry *imports);
 

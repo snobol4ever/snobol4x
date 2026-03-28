@@ -1471,6 +1471,54 @@ static void emit_while(IcnEmitter *em, IcnNode *n, IcnPorts ports,
 }
 
 /* =========================================================================
+ * ICN_UNTIL — until cond do body
+ * α → cond.α
+ * cond.γ → discard value → ports.ω  (cond succeeded → done)
+ * cond.ω → body.α                   (cond failed → run body)
+ * body.γ → cond.α  (loop back)
+ * body.ω → cond.α  (loop back)
+ * ======================================================================= */
+static void emit_until(IcnEmitter *em, IcnNode *n, IcnPorts ports,
+                       char *oa, char *ob) {
+    int id=icn_new_id(em); char a[64],b[64];
+    icn_label_α(id,a,sizeof a); icn_label_β(id,b,sizeof b);
+    strncpy(oa,a,63); strncpy(ob,b,63);
+    E(em,"    ; UNTIL  id=%d\n",id);
+
+    IcnNode *cond = n->children[0];
+    IcnNode *body = (n->nchildren>1) ? n->children[1] : NULL;
+
+    char cond_ok[64];   snprintf(cond_ok,  sizeof cond_ok,  "icon_%d_condok", id);
+    char cond_fail[64]; snprintf(cond_fail,sizeof cond_fail,"icon_%d_cfail",  id);
+    char loop_top[64];  snprintf(loop_top, sizeof loop_top, "icon_%d_top",    id);
+
+    char ca[64],cb[64];
+    IcnPorts cp; strncpy(cp.γ,cond_ok,63); strncpy(cp.ω,cond_fail,63);
+    emit_expr(em,cond,cp,ca,cb);
+
+    /* cond succeeded → discard value, exit */
+    Ldef(em,cond_ok);
+    E(em,"    add     rsp, 8\n");   /* discard condition result */
+    Jmp(em,ports.ω);
+
+    /* cond failed → run body */
+    Ldef(em,cond_fail);
+    if(body){
+        char ba[64],bb[64];
+        IcnPorts bp; strncpy(bp.γ,loop_top,63); strncpy(bp.ω,loop_top,63);
+        emit_expr(em,body,bp,ba,bb);
+        Jmp(em,ba);
+
+        Ldef(em,loop_top); Jmp(em,ca);
+    } else {
+        Jmp(em,ca);
+    }
+
+    Ldef(em,a); Jmp(em,ca);
+    Ldef(em,b); Jmp(em,ports.ω);
+}
+
+/* =========================================================================
  * ICN_EVERY
  * ======================================================================= */
 static void emit_every(IcnEmitter *em, IcnNode *n, IcnPorts ports,
@@ -1533,6 +1581,7 @@ static void emit_expr(IcnEmitter *em, IcnNode *n, IcnPorts ports,
         case ICN_TO_BY:  emit_to_by    (em,n,ports,oa,ob); break;
         case ICN_EVERY:  emit_every    (em,n,ports,oa,ob); break;
         case ICN_WHILE:  emit_while    (em,n,ports,oa,ob); break;
+        case ICN_UNTIL:  emit_until    (em,n,ports,oa,ob); break;
         case ICN_CALL:   emit_call     (em,n,ports,oa,ob); break;
         case ICN_AND: {
             /* n-ary conjunction: E1 & E2 & ... & En

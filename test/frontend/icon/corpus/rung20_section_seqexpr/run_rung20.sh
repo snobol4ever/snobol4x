@@ -2,7 +2,7 @@
 # run_rung20.sh — rung20_section_seqexpr corpus runner
 # Tests: ICN_SECTION s[i:j] + ICN_SEQ_EXPR (E1;E2;...En)
 set -e
-DRIVER=${1:-/tmp/icon_driver}
+DRIVER=${1:-/tmp/sno2c}
 JASMIN=$(dirname "$0")/../../../../src/backend/jvm/jasmin.jar
 CORPUS=$(dirname "$0")
 PASS=0; FAIL=0

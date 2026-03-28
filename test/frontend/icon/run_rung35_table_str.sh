@@ -1,7 +1,7 @@
 #!/bin/bash
 # run_rung35_table_str.sh — rung35_table_str corpus runner
 cd "$(dirname "$0")/../../.."
-DRIVER=${1:-/tmp/icon_driver}
+DRIVER=${1:-/tmp/sno2c}
 PASS=0; FAIL=0; XFAIL=0
 for icn in test/frontend/icon/corpus/rung35_table_str/t*.icn; do
   [ -f "$icn" ] || continue

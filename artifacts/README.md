@@ -114,7 +114,7 @@ Sprint: J1 complete → M-JVM-LIT ✅. Active bug: none. Next: J2 (assign/ + ari
 ```bash
 for icn in artifacts/icon/samples/*.icn; do
     base="${icn%.icn}"
-    /tmp/icon_driver -jvm "$icn" -o "${base}.j" 2>/dev/null
+    /tmp/sno2c -jvm "$icn" -o "${base}.j" 2>/dev/null
 done
 ```
 
@@ -165,10 +165,10 @@ printf "        OUTPUT = 'HELLO WORLD'\nEND\n" | ./sno2c -jvm -I$INC /dev/stdin 
 ./sno2c -net -I$INC demo/wordcount.sno > artifacts/net/samples/wordcount.il
 
 # --- Icon × JVM (touch icon_emit_jvm.c) ---
-# Build icon_driver first: gcc ... -o /tmp/icon_driver (see SESSION-scrip-jvm.md §BUILD)
+# Build sno2c first: gcc ... -o /tmp/sno2c (see SESSION-scrip-jvm.md §BUILD)
 for icn in artifacts/icon/samples/*.icn; do
     base="${icn%.icn}"
-    /tmp/icon_driver -jvm "$icn" -o "${base}.j" 2>/dev/null
+    /tmp/sno2c -jvm "$icn" -o "${base}.j" 2>/dev/null
     java -jar $JASMIN "${base}.j" -d /tmp/art_out/ 2>&1 | grep -i error | grep -v Picked && echo "FAIL ${base}.j" || echo "OK   ${base}.j"
 done
 

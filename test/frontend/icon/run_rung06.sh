@@ -1,10 +1,10 @@
 #!/bin/bash
 # run_rung06.sh — rung06_cset JVM corpus runner
-# Usage: ./run_rung06.sh [icon_driver_path]
+# Usage: ./run_rung06.sh [sno2c_path]
 
 set -euo pipefail
 
-DRIVER="${1:-/tmp/icon_driver}"
+DRIVER="${1:-/tmp/sno2c}"
 JASMIN="$(dirname "$0")/../../../src/backend/jvm/jasmin.jar"
 CORPUS="$(dirname "$0")/corpus/rung06_cset"
 TMPDIR_OUT="$(mktemp -d)"

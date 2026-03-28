@@ -1,6 +1,6 @@
 #!/bin/bash
 # run_rung32.sh — rung32_strretval JVM corpus runner
-DRIVER="${1:-/tmp/icon_driver}"
+DRIVER="${1:-/tmp/sno2c}"
 JASMIN="$(dirname "$0")/../../../src/backend/jvm/jasmin.jar"
 CORPUS="$(dirname "$0")/corpus/rung32_strretval"
 PASS=0; FAIL=0; XFAIL=0

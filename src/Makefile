@@ -46,7 +46,7 @@ BACKEND_NET = \
     backend/net/emit_byrd_net.c
 
 FRONTEND_ICON = \
-    frontend/icon/icon_driver.c \
+    frontend/icon/icn_main.c \
     frontend/icon/icon_lex.c \
     frontend/icon/icon_parse.c \
     frontend/icon/icon_ast.c \
@@ -77,9 +77,9 @@ $(BIN): $(OBJS)
 clean:
 	rm -f $(BIN) $(OBJS)
 
-# icon_driver — Icon JVM frontend (standalone binary)
+# icn_main — Icon JVM frontend (standalone binary)
 ICON_SRCS = \
-    frontend/icon/icon_driver.c \
+    frontend/icon/icn_main.c \
     frontend/icon/icon_lex.c \
     frontend/icon/icon_parse.c \
     frontend/icon/icon_ast.c \
@@ -87,11 +87,11 @@ ICON_SRCS = \
     frontend/icon/icon_emit_jvm.c \
     frontend/icon/icon_runtime.c
 
-ICON_BIN = ../icon_driver
+ICON_BIN = ../sno2c_icon
 
-icon_driver: $(ICON_BIN)
+icn_main: $(ICON_BIN)
 
 $(ICON_BIN): $(ICON_SRCS)
 	$(CC) $(CFLAGS) -I frontend/icon -o $@ $^
 
-.PHONY: all clean icon_driver
+.PHONY: all clean icn_main

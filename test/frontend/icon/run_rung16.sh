@@ -1,7 +1,7 @@
 #!/bin/bash
 # run_rung16.sh — rung16_subscript JVM corpus runner
 set -euo pipefail
-DRIVER="${1:-/tmp/icon_driver}"
+DRIVER="${1:-/tmp/sno2c}"
 JASMIN="$(dirname "$0")/../../../src/backend/jvm/jasmin.jar"
 CORPUS="$(dirname "$0")/corpus/rung16_subscript"
 TMPDIR_OUT="$(mktemp -d)"

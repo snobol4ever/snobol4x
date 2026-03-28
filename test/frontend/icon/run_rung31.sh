@@ -5,7 +5,7 @@ PASS=0; FAIL=0; XFAIL=0
 for icn in test/frontend/icon/corpus/rung31_sort/t*.icn; do
   base="${icn%.icn}"; exp="$base.expected"; [ -f "$exp" ] || continue
   [ -f "$base.xfail" ] && { XFAIL=$((XFAIL+1)); echo "XFAIL: $(basename $icn)"; continue; }
-  /tmp/icon_driver -jvm "$icn" -o /tmp/t31.j 2>/dev/null
+  /tmp/sno2c -jvm "$icn" -o /tmp/t31.j 2>/dev/null
   # compile main class
   java -jar src/backend/jvm/jasmin.jar /tmp/t31.j -d /tmp/ 2>/dev/null
   # compile any record inner classes

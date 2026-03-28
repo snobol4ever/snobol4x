@@ -1,7 +1,7 @@
 #!/bin/bash
 # run_rung02_proc.sh — rung02_proc corpus runner
 cd "$(dirname "$0")/../../.."
-DRIVER=${1:-/tmp/icon_driver}
+DRIVER=${1:-/tmp/sno2c}
 PASS=0; FAIL=0; XFAIL=0
 for icn in test/frontend/icon/corpus/rung02_proc/t*.icn; do
   [ -f "$icn" ] || continue

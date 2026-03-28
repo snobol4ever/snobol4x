@@ -1,7 +1,7 @@
 #!/bin/bash
 # run_rung18_real_relop.sh — rung18_real_relop corpus runner
 cd "$(dirname "$0")/../../.."
-DRIVER=${1:-/tmp/icon_driver}
+DRIVER=${1:-/tmp/sno2c}
 PASS=0; FAIL=0; XFAIL=0
 for icn in test/frontend/icon/corpus/rung18_real_relop/t*.icn; do
   [ -f "$icn" ] || continue

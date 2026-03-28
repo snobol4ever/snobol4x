@@ -1,13 +1,13 @@
 #!/bin/bash
 # run_bench_rung36.sh — Icon JVM benchmark/oracle harness for rung36_jcon
-# Usage: bash run_bench_rung36.sh [/path/to/icon_driver]
+
 #
 # Runs all 75 rung36_jcon tests. .xfail tests are run but shown as XFAIL/XPASS.
 # [B] marks benchmark-class tests (non-trivial programs from IPL/JCON):
 #   t01 primes, t27 queens, t28 genqueen, t39 concord,
 #   t54 sieve, t66 cxprimes, t70 sorting
 
-DRIVER="${1:-/tmp/icon_driver}"
+DRIVER="${1:-/tmp/sno2c}"
 JASMIN="$(dirname $0)/../../../src/backend/jvm/jasmin.jar"
 CORPUS="$(dirname $0)/corpus/rung36_jcon"
 TMPJ=/tmp/icon_bench_$$.j

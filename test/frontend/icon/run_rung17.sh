@@ -1,7 +1,7 @@
 #!/bin/bash
 # run_rung17.sh — rung17_real_arith JVM corpus runner
 set -euo pipefail
-DRIVER="${1:-/tmp/icon_driver}"
+DRIVER="${1:-/tmp/sno2c}"
 JASMIN="$(dirname "$0")/../../../src/backend/jvm/jasmin.jar"
 CORPUS="$(dirname "$0")/corpus/rung17_real_arith"
 TMPDIR_OUT="$(mktemp -d)"

@@ -1,7 +1,7 @@
 #!/bin/bash
 # run_rung21_global_initial.sh — rung21_global_initial corpus runner
 cd "$(dirname "$0")/../../.."
-DRIVER=${1:-/tmp/icon_driver}
+DRIVER=${1:-/tmp/sno2c}
 PASS=0; FAIL=0; XFAIL=0
 for icn in test/frontend/icon/corpus/rung21_global_initial/t*.icn; do
   [ -f "$icn" ] || continue

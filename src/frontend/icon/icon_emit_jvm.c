@@ -5,7 +5,7 @@
  * Emits Jasmin assembler (.j) text assembled by jasmin.jar into .class files.
  *
  * Pipeline:
- *   icon_driver -jvm foo.icn -o foo.j
+ *   sno2c -jvm foo.icn -o foo.j
  *   java -jar jasmin.jar foo.j -d outdir/
  *   java -cp outdir/ FooClass
  *

@@ -5,7 +5,7 @@ PASS=0; FAIL=0
 for icn in test/frontend/icon/corpus/rung23_table/t*.icn; do
   [ -f "$icn" ] || continue
   base="${icn%.icn}"; exp="$base.expected"; [ -f "$exp" ] || continue
-  /tmp/icon_driver -jvm "$icn" -o /tmp/t23.j 2>/dev/null
+  /tmp/sno2c -jvm "$icn" -o /tmp/t23.j 2>/dev/null
   java -jar src/backend/jvm/jasmin.jar /tmp/t23.j -d /tmp/ >/dev/null 2>&1
   cls=$(grep -m1 '\.class' /tmp/t23.j | awk '{print $NF}')
   got=$(java -cp /tmp/ "$cls" 2>/dev/null); want=$(cat "$exp")

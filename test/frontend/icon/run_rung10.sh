@@ -1,10 +1,10 @@
 #!/bin/bash
 # run_rung10.sh — rung10_augop JVM corpus runner
-# Usage: ./run_rung10.sh [icon_driver_path]
+# Usage: ./run_rung10.sh [sno2c_path]
 
 set -euo pipefail
 
-DRIVER="${1:-/tmp/icon_driver}"
+DRIVER="${1:-/tmp/sno2c}"
 JASMIN="$(dirname "$0")/../../../src/backend/jvm/jasmin.jar"
 CORPUS="$(dirname "$0")/corpus/rung10_augop"
 TMPDIR_OUT="$(mktemp -d)"

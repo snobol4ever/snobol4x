@@ -1,13 +1,13 @@
 /*
- * icon_driver.c — Tiny-ICON compiler driver
+ * icn_main.c — Tiny-ICON compiler driver
  *
  * Originally a standalone binary.  Now integrated into sno2c:
- *   - icon_driver_main() is the old main(), kept for reference / standalone use.
+ *   - icn_main() is the old main(), kept for reference / standalone use.
  *   - icn_prescan_imports() pre-scans raw source for $import/-IMPORT control lines
  *     and returns an ImportEntry* list (same type as SNOBOL4 lex uses).
  *     Called by sno2c main.c before icn_lex_init(), mirrors pj_linker_prescan().
  *
- * Usage (standalone):  icon_driver [-jvm] [-o out] file.icn
+ * Usage (standalone):  sno2c [-jvm] [-o out] file.icn
  * Usage (via sno2c):   sno2c -icn [-jvm] [-o out] file.icn
  */
 
@@ -98,8 +98,8 @@ static char *read_file(const char *path) {
     return buf;
 }
 
-/* icon_driver_main — kept for standalone icon_driver binary; not called by sno2c */
-int icon_driver_main(int argc, char **argv) {
+/* icn_main — standalone entry point; not called by sno2c; not called by sno2c */
+int icn_main(int argc, char **argv) {
     const char *input  = NULL;
     const char *output = NULL;
     int do_run = 0;
@@ -111,7 +111,7 @@ int icon_driver_main(int argc, char **argv) {
         else if (strcmp(argv[i], "-jvm") == 0) do_jvm = 1;
         else input = argv[i];
     }
-    if (!input) { fprintf(stderr, "usage: icon_driver [-jvm] [-o out.j/.asm] [-run] file.icn\n"); return 1; }
+    if (!input) { fprintf(stderr, "usage: sno2c [-jvm] [-o out.j/.asm] [-run] file.icn\n"); return 1; }
 
     char *src = read_file(input);
     if (!src) return 1;

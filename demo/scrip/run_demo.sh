@@ -18,7 +18,7 @@
 #
 # Environment overrides (snobol4ever JVM frontends):
 #   SNO2C         path to sno2c binary       (default: auto-detect)
-#   ICON_DRIVER   path to icon_driver binary  (default: auto-detect)
+#   SNO2C   path to sno2c binary  (default: auto-detect)
 #   JASMIN        path to jasmin.jar          (default: auto-detect)
 #
 set -euo pipefail
@@ -80,10 +80,10 @@ if [ -z "$SNO2C" ]; then
     elif command -v sno2c &>/dev/null; then SNO2C="sno2c"; fi
 fi
 
-ICON_DRIVER="${ICON_DRIVER:-}"
-if [ -z "$ICON_DRIVER" ]; then
-    if [ -x "/tmp/icon_driver_jvm" ]; then ICON_DRIVER="/tmp/icon_driver_jvm"
-    elif command -v icon_driver &>/dev/null; then ICON_DRIVER="icon_driver"; fi
+SNO2C="${SNO2C:-}"
+if [ -z "$SNO2C" ]; then
+    if [ -x "/tmp/sno2c" ]; then SNO2C="/tmp/sno2c"
+    elif command -v sno2c &>/dev/null; then SNO2C="sno2c"; fi
 fi
 
 JASMIN="${JASMIN:-}"
