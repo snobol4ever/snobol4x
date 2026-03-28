@@ -151,13 +151,44 @@ procedure p_primary(toks)
 end
 
 procedure p_exprlist(toks)
-  local r, more
+  # Right-recursive: parse first expr, then consume comma-separated tail
+  # iteratively to avoid stack overflow on long argument lists.
+  local r, elts, rest
   every r := p_expr(toks, 0) do {
-    if *r[2] > 0 & r[2][1].kind == "op" & r[2][1].val == "," then
-      every more := p_exprlist(r[2][2:0]) do
-        suspend [[r[1]] ||| more[1], more[2]]
-    suspend [[r[1]], r[2]]
+    elts := [r[1]]; rest := r[2]
+    while *rest > 0 & rest[1].kind == "op" & rest[1].val == "," do {
+      rest := rest[2:0]
+      every r := p_expr(rest, 0) do { put(elts, r[1]); rest := r[2]; break }
+    }
+    suspend [elts, rest]
   }
+end
+
+# Operators that produce flat trees when chained (same op merges children)
+procedure is_flat_op(op)
+  case op of {
+    "|" | "||" | "++" | "--" | "**" : return 1
+    "+" | "-" | "*" | "/" | "%" | "//" : return 1
+  }
+  fail
+end
+
+# Build a node, flattening if op is associative and children share the tag
+procedure make_node(op, lhs, rhs)
+  local node
+  if is_flat_op(op) then {
+    node := [op]
+    # flatten lhs
+    if type(lhs) == "list" & *lhs > 0 & lhs[1] == op then
+      every put(node, lhs[2 to *lhs])
+    else put(node, lhs)
+    # flatten rhs
+    if type(rhs) == "list" & *rhs > 0 & rhs[1] == op then
+      every put(node, rhs[2 to *rhs])
+    else put(node, rhs)
+    return node
+  }
+  return [op, lhs, rhs]
 end
 
 procedure p_expr(toks, min_prec)
@@ -173,7 +204,7 @@ procedure p_expr(toks, min_prec)
       rhs_prec := if info[2] == "right" then prec - 1 else prec
       found := &null
       every rhs := p_expr(rest[2:0], rhs_prec) do {
-        lhs := [op, lhs, rhs[1]]; rest := rhs[2]; found := 1; break
+        lhs := make_node(op, lhs, rhs[1]); rest := rhs[2]; found := 1; break
       }
       if /found then break
     }
