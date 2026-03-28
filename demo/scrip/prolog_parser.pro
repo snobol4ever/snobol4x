@@ -288,7 +288,7 @@ sx_flat(empty, '(empty)') :- !.
 sx_tag(lst(H,T),    list,      [H,T])     :- !.
 sx_tag(op2(Op,L,R), Op,        [L,R])     :- !.
 sx_tag(op1(Op,A),   Op,        [A])       :- !.
-sx_tag(call(F,As),  call(F),   As)        :- !.
+sx_tag(call(F,As),  call,      [atom(F)|As]) :- !.
 sx_tag(braces(T),   braces,    [T])       :- !.
 sx_tag(fact(T),     fact,      [T])       :- !.
 sx_tag(clause(H,B), clause,    [H,B])     :- !.
