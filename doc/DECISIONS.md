@@ -104,7 +104,7 @@ This breaks into a spectrum:
 Implement the complete SNOBOL4 language: statements, goto-driven control
 flow, all primitives, DATA(), DEFINE(), CODE/EVAL, arithmetic, I/O.
 
-- **Pro:** The test corpus (snobol4corpus, Gimpel library) applies
+- **Pro:** The test corpus (corpus, Gimpel library) applies
   immediately. Every sprint result is directly comparable to SPITBOL.
 - **Con:** The full language is large. Too many things to get right before
   the compiler produces a single working program.

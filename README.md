@@ -114,7 +114,7 @@ ilasm prog.il && mono prog.exe
 ## Corpus Ladder
 
 All backends climb the same 12-rung ladder against
-[`snobol4corpus`](https://github.com/snobol4ever/snobol4corpus)/`crosscheck/`:
+[`corpus`](https://github.com/snobol4ever/corpus)/`crosscheck/`:
 
 ```
 Rung  1: hello / output    Rung  5: control       Rung  9: keywords
@@ -149,7 +149,7 @@ bash test/crosscheck/run_crosscheck_jvm.sh
 
 # JVM backend — manual per-rung (e.g. patterns rung)
 JASMIN=src/backend/jvm/jasmin.jar
-PDIR=../snobol4corpus/crosscheck/patterns
+PDIR=../corpus/crosscheck/patterns
 for sno in $PDIR/*.sno; do
   base=$(basename $sno .sno); TMPD=$(mktemp -d)
   ./sno2c -jvm "$sno" > $TMPD/p.j 2>/dev/null

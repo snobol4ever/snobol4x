@@ -270,13 +270,13 @@ gcc ... -o /tmp/fn_test_bin
 /tmp/fn_test_bin   # expect: hello world
 
 # Step 3: beauty.sno
-./snoc /home/claude/snobol4corpus/programs/beauty/beauty.sno \
-    -I /home/claude/snobol4corpus/programs/inc \
+./snoc /home/claude/corpus/programs/beauty/beauty.sno \
+    -I /home/claude/corpus/programs/inc \
     > /tmp/beauty_snoc.c
 gcc -O0 -g /tmp/beauty_snoc.c [runtime files] -lgc -lm -w -o /tmp/beauty_bin
-/tmp/beauty_bin < /home/claude/snobol4corpus/programs/beauty/beauty.sno \
+/tmp/beauty_bin < /home/claude/corpus/programs/beauty/beauty.sno \
     > /tmp/beauty_out.sno
-diff /home/claude/snobol4corpus/programs/beauty/beauty.sno /tmp/beauty_out.sno
+diff /home/claude/corpus/programs/beauty/beauty.sno /tmp/beauty_out.sno
 # expect: empty diff  ← THE COMMIT
 ```
 
@@ -319,8 +319,8 @@ src/runtime/snobol4/snobol4.c                runtime impl
 src/runtime/snobol4/mock_includes.c            built-in functions
 src/runtime/snobol4/snobol4_pattern.c        pattern engine
 src/runtime/engine.c                         engine_match_ex (required)
-../snobol4corpus/programs/beauty/beauty.sno target program
-../snobol4corpus/programs/inc/              include files
+../corpus/programs/beauty/beauty.sno target program
+../corpus/programs/inc/              include files
 ../byrdbox/ByrdBox/test_sno_1.c              gold standard: Byrd box in C
 ../byrdbox/ByrdBox/test_icon-1.py            gold standard: ports as match cases
 ../byrdbox/ByrdBox/test_icon-2.py            gold standard: one fn per port
@@ -1018,7 +1018,7 @@ This prevents broken static boxes for `upr('h') | lwr('H')`. But without the `st
 
 ### Work completed this session
 
-**INC path fix:** `INC=demo/inc` (not `/home/claude/snobol4corpus/programs/inc`).
+**INC path fix:** `INC=demo/inc` (not `/home/claude/corpus/programs/inc`).
 CSNOBOL4 oracle: 9/9 PASS confirmed.
 
 **Bug fixed — S_ duplicate label (NASM error):**

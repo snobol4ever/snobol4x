@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # test/crosscheck/run_crosscheck_net.sh — NET backend full corpus runner
 #
-# Runs snobol4corpus crosscheck rungs against the sno2c -net backend via
-# the snobol4harness adapter (adapters/tiny_net/run.sh).
+# Runs corpus crosscheck rungs against the sno2c -net backend via
+# the harness adapter (adapters/tiny_net/run.sh).
 #
 # Usage:
 #   bash test/crosscheck/run_crosscheck_net.sh [rung ...]
@@ -11,8 +11,8 @@
 #   bash test/crosscheck/run_crosscheck_net.sh hello output assign
 #
 # Environment overrides:
-#   CORPUS       — crosscheck corpus dir (default: /home/claude/snobol4corpus/crosscheck)
-#   HARNESS_REPO — path to snobol4harness  (default: /home/claude/snobol4harness)
+#   CORPUS       — crosscheck corpus dir (default: /home/claude/corpus/crosscheck)
+#   HARNESS_REPO — path to harness  (default: /home/claude/harness)
 #   STOP_ON_FAIL — 1 = stop at first failure (default: 0)
 #   NET_CACHE    — ilasm cache dir (default: /tmp/snobol4x_net_cache)
 #
@@ -25,8 +25,8 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TINY="$(cd "$SCRIPT_DIR/../.." && pwd)"
-CORPUS="${CORPUS:-$(cd "$TINY/../snobol4corpus/crosscheck" && pwd)}"
-HARNESS_REPO="${HARNESS_REPO:-$TINY/../snobol4harness}"
+CORPUS="${CORPUS:-$(cd "$TINY/../corpus/crosscheck" && pwd)}"
+HARNESS_REPO="${HARNESS_REPO:-$TINY/../harness}"
 STOP_ON_FAIL="${STOP_ON_FAIL:-0}"
 export NET_CACHE="${NET_CACHE:-/tmp/snobol4x_net_cache}"
 export TINY_REPO="$TINY"
@@ -34,7 +34,7 @@ export TINY_REPO="$TINY"
 ADAPTER="$HARNESS_REPO/adapters/tiny_net/run.sh"
 if [[ ! -x "$ADAPTER" ]]; then
     echo "ERROR: tiny_net adapter not found at $ADAPTER"
-    echo "Clone snobol4harness to $HARNESS_REPO"
+    echo "Clone harness to $HARNESS_REPO"
     exit 2
 fi
 

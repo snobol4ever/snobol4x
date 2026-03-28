@@ -21,7 +21,7 @@ if [[ -f "$_SUB_CONF" ]]; then
 else
     CONF="${2:-$REPO/test/monitor/tracepoints.conf}"
 fi
-INC="${INC:-/home/claude/snobol4corpus/programs/inc}"
+INC="${INC:-/home/claude/corpus/programs/inc}"
 X64_DIR="${X64_DIR:-/home/claude/x64}"
 MONITOR_TIMEOUT="${MONITOR_TIMEOUT:-30}"
 

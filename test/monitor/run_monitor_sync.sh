@@ -19,7 +19,7 @@ MDIR=$(cd "$(dirname "$0")" && pwd)
 DIR=$(cd "$MDIR/../.." && pwd)
 X64_DIR="${X64_DIR:-/home/claude/x64}"
 RT=$DIR/src/runtime
-INC="${INC:-/home/claude/snobol4corpus/programs/inc}"
+INC="${INC:-/home/claude/corpus/programs/inc}"
 # Fallback INC to demo/inc if corpus not present
 [[ -d "$INC" ]] || INC="$DIR/demo/inc"
 SO="$MDIR/monitor_ipc_sync.so"

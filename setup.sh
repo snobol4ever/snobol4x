@@ -9,7 +9,7 @@ set -euo pipefail
 
 SNOBOL4X="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$SNOBOL4X/.." && pwd)"
-CORPUS="$ROOT/snobol4corpus"
+CORPUS="$ROOT/corpus"
 X64="$ROOT/x64"
 CSNOBOL4_SRC="$ROOT/csnobol4-src"
 TARBALL="/mnt/user-data/uploads/snobol4-2_3_3_tar.gz"

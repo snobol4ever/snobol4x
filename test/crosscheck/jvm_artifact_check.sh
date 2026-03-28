@@ -7,8 +7,8 @@ cd "$(dirname "$0")/../.."
 
 JASMIN=src/backend/jvm/jasmin.jar
 NULL_SNO=test/frontend/snobol4/null.sno
-ROMAN=/home/claude/snobol4corpus/benchmarks/roman.sno
-WORDCOUNT=/home/claude/snobol4corpus/crosscheck/strings/wordcount.sno
+ROMAN=/home/claude/corpus/benchmarks/roman.sno
+WORDCOUNT=/home/claude/corpus/crosscheck/strings/wordcount.sno
 
 TMPD=$(mktemp -d)
 trap "rm -rf $TMPD" EXIT

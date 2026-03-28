@@ -13,7 +13,7 @@
 #
 # Environment overrides:
 #   SNO2C       path to sno2c binary        (default: <root>/sno2c)
-#   CORPUS      path to snobol4corpus root  (default: <root>/../snobol4corpus)
+#   CORPUS      path to corpus root  (default: <root>/../corpus)
 #   JASMIN      path to jasmin.jar          (default: <root>/src/backend/jvm/jasmin.jar)
 #   TIMEOUT_X86 per-test timeout x86 (s)   (default: 5)
 #   TIMEOUT_JVM per-test timeout JVM (s)   (default: 15)
@@ -28,7 +28,7 @@ set -uo pipefail
 # ── Config ────────────────────────────────────────────────────────────────────
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SNO2C="${SNO2C:-$ROOT/sno2c}"
-CORPUS="${CORPUS:-$(cd "$ROOT/../snobol4corpus" 2>/dev/null && pwd || echo "")}"
+CORPUS="${CORPUS:-$(cd "$ROOT/../corpus" 2>/dev/null && pwd || echo "")}"
 JASMIN="${JASMIN:-$ROOT/src/backend/jvm/jasmin.jar}"
 RT="$ROOT/src/runtime"
 SNO2C_INC="$ROOT/src/frontend/snobol4"

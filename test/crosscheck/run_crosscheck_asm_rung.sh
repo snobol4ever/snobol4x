@@ -8,10 +8,10 @@
 #   bash test/crosscheck/run_crosscheck_asm_rung.sh <dir> [dir2 ...]
 #
 # Examples:
-#   bash test/crosscheck/run_crosscheck_asm_rung.sh /home/claude/snobol4corpus/crosscheck/hello
+#   bash test/crosscheck/run_crosscheck_asm_rung.sh /home/claude/corpus/crosscheck/hello
 #   bash test/crosscheck/run_crosscheck_asm_rung.sh \
-#       /home/claude/snobol4corpus/crosscheck/hello \
-#       /home/claude/snobol4corpus/crosscheck/output
+#       /home/claude/corpus/crosscheck/hello \
+#       /home/claude/corpus/crosscheck/output
 #
 # Environment overrides:
 #   SNO2C   — path to sno2c binary     (default: ./sno2c)

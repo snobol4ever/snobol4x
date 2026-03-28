@@ -2,7 +2,7 @@
 # test/run_matrix_smoke.sh — snobol4x matrix smoke test
 #
 # Exercises every locally testable frontend × backend combination.
-# Does NOT require snobol4corpus (uses tests bundled in this repo).
+# Does NOT require corpus (uses tests bundled in this repo).
 # Always run from the snobol4x root:
 #
 #   bash test/run_matrix_smoke.sh

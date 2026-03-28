@@ -14,7 +14,7 @@
 # Environment:
 #   SNO2C     path to sno2c (default: sno2c)
 #   HARNESS_O path to harness object (default: src/runtime/asm/snobol4_asm_harness.o)
-#   CORPUS    path to crosscheck dir (default: /home/snobol4corpus/crosscheck)
+#   CORPUS    path to crosscheck dir (default: /home/corpus/crosscheck)
 
 set -euo pipefail
 
@@ -23,7 +23,7 @@ TINY="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 SNO2C="${SNO2C:-$TINY/sno2c}"
 HARNESS_O="${HARNESS_O:-src/runtime/asm/snobol4_asm_harness.o}"
-CORPUS="${CORPUS:-$(cd "$TINY/../snobol4corpus/crosscheck" && pwd)}"
+CORPUS="${CORPUS:-$(cd "$TINY/../corpus/crosscheck" && pwd)}"
 
 STOP_ON_FAIL=0
 for arg in "$@"; do

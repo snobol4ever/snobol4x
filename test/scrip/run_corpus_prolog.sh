@@ -14,7 +14,7 @@ DIRS=("$@")
 if [ ${#DIRS[@]} -eq 0 ]; then
   DIRS=(
     "$REPO_ROOT/test/frontend/prolog"
-    /home/claude/snobol4corpus/programs/prolog
+    /home/claude/corpus/programs/prolog
   )
 fi
 

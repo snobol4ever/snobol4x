@@ -41,8 +41,8 @@ Every session that changes the ASM backend must regenerate and commit this file.
 
 **Update:**
 ```bash
-INC=/home/claude/snobol4corpus/programs/inc
-BEAUTY=/home/claude/snobol4corpus/programs/beauty/beauty.sno
+INC=/home/claude/corpus/programs/inc
+BEAUTY=/home/claude/corpus/programs/beauty/beauty.sno
 src/sno2c/sno2c -asm -I$INC $BEAUTY > artifacts/asm/beauty_prog.s
 nasm -f elf64 -I src/runtime/asm/ artifacts/asm/beauty_prog.s -o /dev/null  # must be clean
 git add artifacts/asm/beauty_prog.s && git commit

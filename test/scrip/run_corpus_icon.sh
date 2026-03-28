@@ -18,7 +18,7 @@ DIRS=("$@")
 if [ ${#DIRS[@]} -eq 0 ]; then
   DIRS=(
     "$REPO_ROOT/test/frontend/icon"
-    /home/claude/snobol4corpus/programs/icon
+    /home/claude/corpus/programs/icon
   )
 fi
 

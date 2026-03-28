@@ -26,7 +26,7 @@
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-CORPUS="$(cd "$REPO/../snobol4corpus" && pwd)"
+CORPUS="$(cd "$REPO/../corpus" && pwd)"
 BIN="${1:-/tmp/beauty_full_bin}"
 
 if [[ ! -x "$BIN" ]]; then

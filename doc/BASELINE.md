@@ -44,7 +44,7 @@ No test suite yet. Gate: `builds clean`. Suites added as M-G6 milestones deliver
 ## Notes
 
 - `snobol4dotnet` (C#) and `snobol4jvm` (Clojure) are separate repos; not tracked here.
-- `snobol4harness` and `snobol4corpus` are infrastructure repos; their baselines are
+- `harness` and `corpus` are infrastructure repos; their baselines are
   their own HEADs at freeze time (`eced661` and `ccd79fa` respectively).
 - The C backend (`sno2c -c`, `sno2c.c`) is dead/unmaintained and excluded from all invariants.
 - Scrip frontend: corpus runners exist (`test/scrip/run_corpus_icon.sh`,
