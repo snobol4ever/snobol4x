@@ -5819,8 +5819,7 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
         A("    ; re-entry decode: inner = start - %d\n", base);
         A("    mov     eax, [rbp - 32]        ; start\n");
         A("    sub     eax, %d                ; inner = start - base\n", base);
-        A("    test    eax, eax\n");
-        A("    jz      pl_%s_c%d_body_fresh\n", pred_safe, idx);
+        A("    jle     pl_%s_c%d_body_fresh\n", pred_safe, idx);  /* inner<=0: fresh (incl head-fail fall-through) */
         /* inner > 0: decode stride-packed sub_cs into slots */
         A("    dec     eax                    ; inner - 1 = packed sub_cs\n");
         A("    mov     ecx, eax               ; work register\n");
@@ -6797,21 +6796,7 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                  * UCALL_MARK_OFFSET(max_ucalls) == VAR_SLOT_OFFSET(0) collision. */
                 A("    mov     [rbp - %d], eax        ; ucall slot %d sub_cs\n",
                   UCALL_SLOT_OFFSET(ucall_seq), ucall_seq);
-                /* Accumulate stride-encoded sub_cs: acc += eax * STRIDE^ucall_seq.
-                 * This lets callers decode which ucall to resume and with what sub_cs.
-                 * ucall 0 contributes bits [0..11], ucall 1 bits [12..23], etc. */
-                if (ucall_seq == 0) {
-                    A("    mov     [rbp - 16], eax        ; sub_cs_acc = ucall0 sub_cs\n");
-                } else {
-                    A("    push    rax                    ; save ucall %d sub_cs\n", ucall_seq);
-                    A("    mov     eax, [rsp]             ; reload\n");
-                    for (int _si = 0; _si < ucall_seq; _si++)
-                        A("    imul    eax, %d            ; * STRIDE (level %d)\n",
-                          PL_RESUME_BIG, _si);
-                    A("    add     [rbp - 16], eax        ; acc += ucall %d contribution\n",
-                      ucall_seq);
-                    A("    pop     rax                    ; restore (for trail mark call below)\n");
-                }
+                /* sub_cs_acc is recomputed at γN from all slots — no per-ucall accumulation needed */
                 if (ucall_seq + 1 < max_ucalls) {
                     A("    lea     rdi, [rel pl_trail]\n");
                     A("    call    trail_mark_fn\n");
@@ -6836,7 +6821,27 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                     A("    jmp     %s\n", next_clause);
                 }
                 A("pl_%s_c%d_γ%d:\n", pred_safe, idx, bi);
-                /* zero next ucall's sub_cs slot so restore-before-call emits 0 on fresh entry */
+                /* Recompute sub_cs_acc from slots 0..ucall_seq so retry paths
+                 * that arrive here with stale acc get a clean partial sum. */
+                A("    mov     eax, [rbp - %d]    ; sub_cs_acc = slot 0\n",
+                  UCALL_SLOT_OFFSET(0));
+                for (int _ri = 1; _ri <= ucall_seq; _ri++) {
+                    A("    push    rax\n");
+                    A("    mov     eax, [rbp - %d]    ; slot %d\n",
+                      UCALL_SLOT_OFFSET(_ri), _ri);
+                    for (int _si = 0; _si < _ri; _si++)
+                        A("    imul    eax, %d            ; * STRIDE^%d\n",
+                          PL_RESUME_BIG, _si + 1);
+                    A("    pop     rcx\n");
+                    A("    add     eax, ecx\n");
+                }
+                A("    mov     [rbp - 16], eax    ; store recomputed sub_cs_acc\n");
+                /* Zero slot ucall_seq+1 so ucall N+1 starts fresh when ucall N
+                 * gives a new answer.  Known limitation: this also wipes pre-loaded
+                 * values from the re-entry decode when ucall N re-succeeds at the
+                 * same answer — the 3+ucall re-entry case needs a different approach
+                 * (e.g. separate fresh/resume entry labels per clause).  For now
+                 * correct for ≤2 ucalls and the common queens/crypt pattern. */
                 if (ucall_seq + 1 < max_ucalls)
                     A("    mov     dword [rbp - %d], 0  ; init sub_cs slot ucall %d\n",
                       UCALL_SLOT_OFFSET(ucall_seq + 1), ucall_seq + 1);
