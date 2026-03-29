@@ -2,7 +2,9 @@
 # run_rung25.sh — rung25_global corpus runner (M-IJ-GLOBAL)
 cd "$(dirname "$0")/../../.."
 PASS=0; FAIL=0; XFAIL=0
-for icn in test/frontend/icon/corpus/rung25_global/t*.icn; do
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+RUNG_DIR="${CORPUS_REPO:-$(cd "$SCRIPT_DIR/../../.." && pwd)/corpus}/programs/icon/rung25_global"
+for icn in "$RUNG_DIR"/t*.icn; do
   base="${icn%.icn}"; exp="$base.expected"; [ -f "$exp" ] || continue
   [ -f "$base.xfail" ] && { XFAIL=$((XFAIL+1)); echo "XFAIL: $(basename $icn)"; continue; }
   /tmp/scrip-cc -jvm "$icn" -o /tmp/t25.j 2>/dev/null

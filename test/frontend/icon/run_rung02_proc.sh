@@ -3,7 +3,9 @@
 cd "$(dirname "$0")/../../.."
 DRIVER=${1:-/tmp/scrip-cc}
 PASS=0; FAIL=0; XFAIL=0
-for icn in test/frontend/icon/corpus/rung02_proc/t*.icn; do
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+RUNG_DIR="${CORPUS_REPO:-$(cd "$SCRIPT_DIR/../../.." && pwd)/corpus}/programs/icon/rung02_proc"
+for icn in "$RUNG_DIR"/t*.icn; do
   [ -f "$icn" ] || continue
   base="${icn%.icn}"; exp="$base.expected"; [ -f "$exp" ] || continue
   xfail_file="$base.xfail"

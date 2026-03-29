@@ -2,7 +2,9 @@
 # run_rung26.sh — rung26_pow corpus runner (M-IJ-POW)
 cd "$(dirname "$0")/../../.."
 PASS=0; FAIL=0; XFAIL=0
-for icn in test/frontend/icon/corpus/rung26_pow/t*.icn; do
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+RUNG_DIR="${CORPUS_REPO:-$(cd "$SCRIPT_DIR/../../.." && pwd)/corpus}/programs/icon/rung26_pow"
+for icn in "$RUNG_DIR"/t*.icn; do
   base="${icn%.icn}"; exp="$base.expected"; [ -f "$exp" ] || continue
   [ -f "$base.xfail" ] && { XFAIL=$((XFAIL+1)); echo "XFAIL: $(basename $icn)"; continue; }
   /tmp/scrip-cc -jvm "$icn" -o /tmp/t26.j 2>/dev/null

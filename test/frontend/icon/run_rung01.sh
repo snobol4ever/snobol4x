@@ -9,8 +9,8 @@
 # which runs all .icn files through icont+iconx.
 
 set -e
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-CORPUS="$SCRIPT_DIR/corpus/rung01_paper"
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+CORPUS="${CORPUS_REPO:-$(cd "$SCRIPT_DIR/../../.." && pwd)/corpus}/programs/icon/rung01_paper"
 ICONT="${ICONT:-/home/claude/icon-master/bin/icont}"
 ICONX="${ICONX:-/home/claude/icon-master/bin/iconx}"
 

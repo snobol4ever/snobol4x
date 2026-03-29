@@ -6,7 +6,8 @@ set -euo pipefail
 
 DRIVER="${1:-/tmp/scrip-cc}"
 JASMIN="$(dirname "$0")/../../../src/backend/jvm/jasmin.jar"
-CORPUS="$(dirname "$0")/corpus/rung07_control"
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+CORPUS="${CORPUS_REPO:-$(cd "$SCRIPT_DIR/../../.." && pwd)/corpus}/programs/icon/rung07_control"
 TMPDIR_OUT="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR_OUT"' EXIT
 

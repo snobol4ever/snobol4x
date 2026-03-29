@@ -2,7 +2,9 @@
 # run_rung31.sh — rung31_sort corpus runner (M-IJ-SORT)
 cd "$(dirname "$0")/../../.."
 PASS=0; FAIL=0; XFAIL=0
-for icn in test/frontend/icon/corpus/rung31_sort/t*.icn; do
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+RUNG_DIR="${CORPUS_REPO:-$(cd "$SCRIPT_DIR/../../.." && pwd)/corpus}/programs/icon/rung31_sort"
+for icn in "$RUNG_DIR"/t*.icn; do
   base="${icn%.icn}"; exp="$base.expected"; [ -f "$exp" ] || continue
   [ -f "$base.xfail" ] && { XFAIL=$((XFAIL+1)); echo "XFAIL: $(basename $icn)"; continue; }
   /tmp/scrip-cc -jvm "$icn" -o /tmp/t31.j 2>/dev/null

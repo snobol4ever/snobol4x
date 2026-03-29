@@ -10,7 +10,8 @@
 
 set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-CORPUS="$SCRIPT_DIR/corpus/rung03_suspend"
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+CORPUS="${CORPUS_REPO:-$(cd "$SCRIPT_DIR/../../.." && pwd)/corpus}/programs/icon/rung03_suspend"
 ICONT="${ICONT:-/home/claude/icon-master/bin/icont}"
 ICONX="${ICONX:-/home/claude/icon-master/bin/iconx}"
 

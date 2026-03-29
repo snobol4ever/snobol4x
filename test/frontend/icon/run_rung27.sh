@@ -2,7 +2,9 @@
 # run_rung27.sh — rung27_read corpus runner (M-IJ-READ)
 cd "$(dirname "$0")/../../.."
 PASS=0; FAIL=0; XFAIL=0
-for icn in test/frontend/icon/corpus/rung27_read/t*.icn; do
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+RUNG_DIR="${CORPUS_REPO:-$(cd "$SCRIPT_DIR/../../.." && pwd)/corpus}/programs/icon/rung27_read"
+for icn in "$RUNG_DIR"/t*.icn; do
   base="${icn%.icn}"; exp="$base.expected"; [ -f "$exp" ] || continue
   [ -f "$base.xfail" ] && { XFAIL=$((XFAIL+1)); echo "XFAIL: $(basename $icn)"; continue; }
   /tmp/scrip-cc -jvm "$icn" -o /tmp/t27.j 2>/dev/null
