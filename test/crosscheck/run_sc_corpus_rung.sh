@@ -8,11 +8,10 @@
 #   bash test/crosscheck/run_sc_corpus_rung.sh <dir> [dir2 ...]
 #
 # Examples:
-#   bash test/crosscheck/run_sc_corpus_rung.sh test/crosscheck/sc_corpus/hello
+#   bash test/crosscheck/run_sc_corpus_rung.sh $CORPUS/crosscheck/snocone
 #   bash test/crosscheck/run_sc_corpus_rung.sh \
-#       test/crosscheck/sc_corpus/hello \
-#       test/crosscheck/sc_corpus/output \
-#       test/crosscheck/sc_corpus/assign
+#       $CORPUS/crosscheck/snocone \
+#       $CORPUS/programs/snocone/corpus
 #
 # Environment overrides:
 #   SCRIP_CC        — path to scrip-cc binary     (default: ./scrip-cc)
