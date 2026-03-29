@@ -327,19 +327,37 @@ run_snobol4_net() {
   echo "$fail"  > "$RESULTS/${cell}_fail"
 }
 
+# ── Rung summary parser ───────────────────────────────────────────────────────
+# Handles two formats emitted by icon rung scripts:
+#   New: "--- rungNN: 5 pass, 2 fail, 0 xfail ---"  (25 scripts)
+#   Old: "0 PASS  6 FAIL"                            (13 scripts)
+# Sets caller's $p and $m variables.
+_parse_rung_summary() {
+  local result="$1"
+  # New format: "X pass, Y fail"
+  if echo "$result" | grep -q '[0-9]* pass,'; then
+    p=$(echo "$result" | grep -o '[0-9]* pass'  | grep -o '[0-9]*' | head -1 || echo 0)
+    m=$(echo "$result" | grep -o '[0-9]* fail'  | grep -o '[0-9]*' | head -1 || echo 0)
+  else
+    # Old format: "X PASS  Y FAIL"
+    p=$(echo "$result" | grep -o '[0-9]* PASS'  | grep -o '[0-9]*' | head -1 || echo 0)
+    m=$(echo "$result" | grep -o '[0-9]* FAIL'  | grep -o '[0-9]*' | head -1 || echo 0)
+  fi
+  p="${p:-0}"; m="${m:-0}"
+}
+
 # ── Suite: Icon x86 ───────────────────────────────────────────────────────────
 run_icon_x86() {
   local cell="icon_x86"
   local pass=0 fail=0
-  local ICON_ASM="$ROOT/icon-asm"
-  if [[ ! -x "$ICON_ASM" ]]; then
+  # Icon x86 uses scrip-cc directly (ICON_ASM binary removed in reorg)
+  if [[ ! -x "$SCRIP_CC" ]]; then
     echo "SKIP" > "$RESULTS/${cell}_status"; return
   fi
   for rung_sh in "$ROOT"/test/frontend/icon/run_rung*.sh; do
-    local result; result=$(bash "$rung_sh" "$ICON_ASM" 2>/dev/null | tail -1) || true
-    local p m
-    p=$(echo "$result" | grep -o '[0-9]* PASS' | grep -o '[0-9]*' || echo 0)
-    m=$(echo "$result" | grep -o '[0-9]* FAIL' | grep -o '[0-9]*' || echo 0)
+    local result p m
+    result=$(bash "$rung_sh" "$SCRIP_CC" 2>/dev/null | tail -1) || true
+    _parse_rung_summary "$result"
     pass=$((pass + p)); fail=$((fail + m))
     [[ $m -gt 0 ]] && echo "  FAIL $cell $(basename "$rung_sh"): $m fail"
   done
@@ -355,10 +373,9 @@ run_icon_jvm() {
     echo "SKIP" > "$RESULTS/${cell}_status"; return
   fi
   for rung_sh in "$ROOT"/test/frontend/icon/run_rung*.sh; do
-    local result; result=$(bash "$rung_sh" "$SCRIP_CC" 2>/dev/null | tail -1) || true
-    local p m
-    p=$(echo "$result" | grep -o '[0-9]* PASS\|[0-9]* passed' | grep -o '[0-9]*' | head -1 || echo 0)
-    m=$(echo "$result" | grep -o '[0-9]* FAIL\|[0-9]* failed' | grep -o '[0-9]*' | head -1 || echo 0)
+    local result p m
+    result=$(bash "$rung_sh" "$SCRIP_CC" 2>/dev/null | tail -1) || true
+    _parse_rung_summary "$result"
     pass=$((pass + p)); fail=$((fail + m))
     [[ $m -gt 0 ]] && echo "  FAIL $cell $(basename "$rung_sh"): $m fail"
   done
