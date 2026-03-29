@@ -4,7 +4,7 @@ JASMIN="$(dirname "$0")/../../../src/backend/jvm/jasmin.jar"
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 CORPUS="${CORPUS_REPO:-$(cd "$SCRIPT_DIR/../../.." && pwd)/corpus}/programs/icon"
 PASS=0; FAIL=0; XFAIL=0
-for icn in "$CORPUS"/icon_rung35_block_body__t*.icn; do
+for icn in "$CORPUS"/icon_rung35_block_body_t*.icn; do
   base="${icn%.icn}"; exp="$base.expected"; [ -f "$exp" ] || continue
   [ -f "$base.xfail" ] && { XFAIL=$((XFAIL+1)); echo "XFAIL: $(basename $icn)"; continue; }
   "$DRIVER" -jvm "$icn" -o /tmp/t35.j 2>/dev/null

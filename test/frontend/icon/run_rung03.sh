@@ -20,7 +20,7 @@ BINARY="${1:-}"
 PASS=0
 FAIL=0
 
-for icn in "$CORPUS"/icon_rung03_suspend__t*.icn; do
+for icn in "$CORPUS"/icon_rung03_suspend_t*.icn; do
     base=$(basename "$icn" .icn)
     expected="$CORPUS/${base}.expected"
 
