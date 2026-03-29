@@ -99,7 +99,7 @@ ICON_SRCS = \
     backend/jvm/emit_jvm_icon.c \
     frontend/icon/icon_runtime.c
 
-ICON_BIN = ../scrip-cc-icon
+ICON_BIN = ../scrip-cc
 
 icn_main: $(ICON_BIN)
 
