@@ -1,0 +1,108 @@
+* coverage_sno_nodes.sno — exercises every SNOBOL4 IR node kind
+* One touch per node: E_QLIT E_ILIT E_FLIT E_VART E_KW E_NULV
+*   E_ADD E_SUB E_MPY E_DIV E_ASGN E_EXPOP
+*   E_CONCAT E_SEQ E_OR E_NAM E_DOL E_ATP E_ARB E_ARBNO E_STAR E_INDR
+*   E_FNC E_IDX E_NULV E_OPSYN E_MNS E_PLUS
+
+* E_QLIT — string literal
+        OUTPUT = 'hello'
+
+* E_ILIT — integer literal
+        OUTPUT = 42
+
+* E_FLIT — float literal
+        X = 1.5
+        OUTPUT = X
+
+* E_VART — variable reference
+        A = 'world'
+        OUTPUT = A
+
+* E_KW — keyword reference
+        OUTPUT = &ALPHABET
+
+* E_ADD E_SUB E_MPY E_DIV — arithmetic
+        OUTPUT = 3 + 4
+        OUTPUT = 10 - 3
+        OUTPUT = 3 * 4
+        OUTPUT = 10 / 2
+
+* E_MNS — unary minus
+        N = -5
+        OUTPUT = N
+
+* E_EXPOP — exponentiation
+        OUTPUT = 2 ** 8
+
+* E_CONCAT — value-context string concat
+        OUTPUT = 'foo' 'bar'
+
+* E_ASGN — pattern = assignment capture
+        S = 'hello world'
+        S ('hello' = CAPT)
+        OUTPUT = CAPT
+
+* E_SEQ — pattern sequence (CAT)
+        S2 = 'abcd'
+        S2 'ab' 'cd'
+        OUTPUT = 'seq ok'
+
+* E_OR — pattern alternation
+        S3 = 'cat'
+        S3 ('dog' | 'cat')
+        OUTPUT = 'alt ok'
+
+* E_NAM — named capture (.)
+        S4 = 'hello'
+        S4 LEN(3) . PART
+        OUTPUT = PART
+
+* E_DOL — replacement capture ($)
+        S5 = 'hello world'
+        S5 'world' $ TRAIL
+        OUTPUT = TRAIL
+
+* E_ATP — cursor capture (@)
+        S6 = 'abcdef'
+        S6 'abc' @ POS1
+        OUTPUT = POS1
+
+* E_ARB — ARB builtin
+        S7 = 'xaby'
+        S7 ARB 'b'
+        OUTPUT = 'arb ok'
+
+* E_ARBNO — ARBNO()
+        S8 = 'aaab'
+        S8 ARBNO('a') 'b'
+        OUTPUT = 'arbno ok'
+
+* E_STAR — deferred pattern (*VAR)
+        PAT = LEN(2)
+        S9 = 'abcd'
+        S9 *PAT
+        OUTPUT = 'star ok'
+
+* E_INDR — indirect reference ($VAR as pattern)
+        VNAME = 'A'
+        OUTPUT = $VNAME
+
+* E_FNC — function call
+        OUTPUT = SIZE('hello')
+
+* E_IDX — array indexing
+        T = TABLE()
+        T<'key'> = 'val'
+        OUTPUT = T<'key'>
+
+* E_NULV — null value (uninitialized)
+        OUTPUT = IDENT(UNDEF,)  :S(NULLOK)
+        OUTPUT = 'not null'     :(DONE)
+NULLOK  OUTPUT = 'null ok'
+DONE
+
+* E_OPSYN — operator synonym
+        OPSYN('MYSIZE','SIZE',1)
+        OUTPUT = MYSIZE('hi')
+
+END
