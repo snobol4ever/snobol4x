@@ -89,21 +89,3 @@ clean:
 debug: CFLAGS += -DDEBUG
 debug: $(BIN)
 
-# icn_main — Icon JVM frontend (standalone binary)
-ICON_SRCS = \
-    frontend/icon/icn_main.c \
-    frontend/icon/icon_lex.c \
-    frontend/icon/icon_parse.c \
-    frontend/icon/icon_ast.c \
-    backend/x64/emit_x64_icon.c \
-    backend/jvm/emit_jvm_icon.c \
-    frontend/icon/icon_runtime.c
-
-ICON_BIN = ../scrip-cc
-
-icn_main: $(ICON_BIN)
-
-$(ICON_BIN): $(ICON_SRCS)
-	$(CC) $(CFLAGS) -I frontend/icon -o $@ $^
-
-.PHONY: all clean icn_main
