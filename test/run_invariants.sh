@@ -386,7 +386,6 @@ run_icon_jvm() {
 # ── Suite: Prolog x86 ─────────────────────────────────────────────────────────
 run_prolog_x86() {
   local cell="prolog_x86"
-  local rung_pass=0 rung_fail=0
   if ! command -v nasm &>/dev/null; then
     echo "SKIP" > "$RESULTS/${cell}_status"; return
   fi
@@ -395,32 +394,30 @@ run_prolog_x86() {
   local SNO_LIB="$RT_CACHE/libsno4rt_asm.a"
   local PL_LIB="$RT_CACHE/libsno4rt_pl.a"
   local W="$WORK/$cell"; mkdir -p "$W"
-  for rung_dir in "$ROOT"/test/frontend/prolog/corpus/rung*/; do
-    local rpass=0 rfail=0
-    for pro in "$rung_dir"*.pro; do
-      [[ -f "$pro" ]] || continue
-      local base; base=$(basename "$pro" .pro)
-      local expected="${pro%.pro}.expected"; [[ -f "$expected" ]] || continue
-      local xfail="${pro%.pro}.xfail"
-      [[ -f "$xfail" ]] && { rpass=$((rpass+1)); continue; }
-      local asm="$W/${base}.s" obj="$W/${base}.o" bin="$W/${base}"
-      if "$SCRIP_CC" -pl -asm "$pro" > "$asm" 2>/dev/null &&
-         nasm -f elf64 "$asm" -o "$obj" 2>/dev/null &&
-         gcc -O0 -no-pie "$obj" "$PL_LIB" -lm -o "$bin" 2>/dev/null; then
-        local got; got=$(timeout "$TIMEOUT_X86" "$bin" 2>/dev/null) || got="__FAIL__"
-        if [[ "$got" == "$(cat "$expected")" ]]; then
-          rpass=$((rpass+1)); [[ $VERBOSE -eq 1 ]] && echo "  PASS $cell $base"
-        else
-          rfail=$((rfail+1)); echo "  FAIL $cell $base"
-        fi
+  local PL_CORPUS="${CORPUS:-$ROOT/../corpus}/programs/prolog"
+  local rpass=0 rfail=0
+  for pl in "$PL_CORPUS"/*.pl; do
+    [[ -f "$pl" ]] || continue
+    local base; base=$(basename "$pl" .pl)
+    local expected="${pl%.pl}.expected"; [[ -f "$expected" ]] || continue
+    local xfail="${pl%.pl}.xfail"
+    [[ -f "$xfail" ]] && { rpass=$((rpass+1)); continue; }
+    local asm="$W/${base}.s" obj="$W/${base}.o" bin="$W/${base}"
+    if "$SCRIP_CC" -pl -asm "$pl" > "$asm" 2>/dev/null &&
+       nasm -f elf64 "$asm" -o "$obj" 2>/dev/null &&
+       gcc -O0 -no-pie "$obj" "$PL_LIB" -lm -o "$bin" 2>/dev/null; then
+      local got; got=$(timeout "$TIMEOUT_X86" "$bin" 2>/dev/null) || got="__FAIL__"
+      if [[ "$got" == "$(cat "$expected")" ]]; then
+        rpass=$((rpass+1)); [[ $VERBOSE -eq 1 ]] && echo "  PASS $cell $base"
       else
-        rfail=$((rfail+1)); echo "  FAIL $cell $base [compile]"
+        rfail=$((rfail+1)); echo "  FAIL $cell $base"
       fi
-    done
-    [[ $rfail -gt 0 ]] && rung_fail=$((rung_fail+1)) || rung_pass=$((rung_pass+1))
+    else
+      rfail=$((rfail+1)); echo "  FAIL $cell $base [compile]"
+    fi
   done
-  echo "$rung_pass" > "$RESULTS/${cell}_pass"
-  echo "$rung_fail"  > "$RESULTS/${cell}_fail"
+  echo "$rpass" > "$RESULTS/${cell}_pass"
+  echo "$rfail"  > "$RESULTS/${cell}_fail"
 }
 
 # ── Suite: Prolog JVM ─────────────────────────────────────────────────────────
@@ -434,23 +431,22 @@ run_prolog_jvm() {
   local W="$WORK/$cell"; mkdir -p "$W"
   ensure_sno_harness "$W" || { echo "SKIP" > "$RESULTS/${cell}_status"; return; }
 
-  # Compile ALL prolog rungs at once, batch jasmin, one SnoHarness run
+  # Compile ALL prolog tests at once, batch jasmin, one SnoHarness run
+  local PL_CORPUS="${CORPUS:-$ROOT/../corpus}/programs/prolog"
   local jfiles=() compile_fail=0
-  for rung_dir in "$ROOT"/test/frontend/prolog/corpus/rung*/; do
-    for pro in "$rung_dir"*.pro; do
-      [[ -f "$pro" ]] || continue
-      local base; base=$(basename "$pro" .pro)
-      local expected="${pro%.pro}.expected"; [[ -f "$expected" ]] || continue
-      local xfail="${pro%.pro}.xfail"; [[ -f "$xfail" ]] && continue
-      local jfile="$W/${base}.j"
-      cp "$expected" "$W/${base}.ref"
-      if "$SCRIP_CC" -pl -jvm "$pro" > "$jfile" 2>/dev/null; then
-        jfiles+=("$jfile")
-      else
-        compile_fail=$((compile_fail+1))
-        echo "  FAIL $cell $base [compile]"
-      fi
-    done
+  for pl in "$PL_CORPUS"/*.pl; do
+    [[ -f "$pl" ]] || continue
+    local base; base=$(basename "$pl" .pl)
+    local expected="${pl%.pl}.expected"; [[ -f "$expected" ]] || continue
+    local xfail="${pl%.pl}.xfail"; [[ -f "$xfail" ]] && continue
+    local jfile="$W/${base}.j"
+    cp "$expected" "$W/${base}.ref"
+    if "$SCRIP_CC" -pl -jvm "$pl" > "$jfile" 2>/dev/null; then
+      jfiles+=("$jfile")
+    else
+      compile_fail=$((compile_fail+1))
+      echo "  FAIL $cell $base [compile]"
+    fi
   done
 
   # Batch jasmin — 60s hard ceiling
