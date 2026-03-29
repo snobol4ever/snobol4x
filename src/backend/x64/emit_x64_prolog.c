@@ -1038,6 +1038,37 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
 
                 if (user_call_idx >= 0) {
                     EXPR_t *ucall = lgoals[user_call_idx];
+
+                    /* If the "user call" is itself a conjunction compound (','/N),
+                     * flatten it into lgoals in-place so we don't generate
+                     * 'call pl__cm__sl_N_r' — a label that is never defined.
+                     * prolog_lower.c emits n-ary E_FNC(",") nodes (nchildren >= 2),
+                     * so we splice children[0..N-1] directly — no recursive flatten. */
+                    if (ucall->sval && strcmp(ucall->sval, ",") == 0 && ucall->nchildren >= 2) {
+                        EXPR_t *newgoals[128]; int nng = 0;
+                        for (int li = 0; li < user_call_idx; li++) newgoals[nng++] = lgoals[li];
+                        for (int ci = 0; ci < ucall->nchildren && nng < 127; ci++)
+                            newgoals[nng++] = ucall->children[ci];
+                        for (int li = user_call_idx+1; li < nlg && nng < 127; li++)
+                            newgoals[nng++] = lgoals[li];
+                        for (int li = 0; li < nng && li < 64; li++) lgoals[li] = newgoals[li];
+                        nlg = nng < 64 ? nng : 64;
+                        /* Re-find user_call_idx in the expanded list */
+                        user_call_idx = -1;
+                        for (int li = 0; li < nlg; li++) {
+                            EXPR_t *lg = lgoals[li];
+                            if (!lg || lg->kind != E_FNC || !lg->sval) continue;
+                            const char *lfn2 = lg->sval;
+                            if (strcmp(lfn2,"nl")==0||strcmp(lfn2,"write")==0||
+                                strcmp(lfn2,"writeln")==0||strcmp(lfn2,"true")==0||
+                                strcmp(lfn2,"fail")==0||strcmp(lfn2,"halt")==0||
+                                strcmp(lfn2,",")==0) continue;
+                            user_call_idx = li; break;
+                        }
+                        if (user_call_idx < 0) goto disj_no_ucall;
+                        ucall = lgoals[user_call_idx];
+                    }
+
                     int uca = ucall->nchildren;
                     char ucfa[300]; snprintf(ucfa, sizeof ucfa, "%s/%d", ucall->sval, uca);
                     char ucsafe[256]; strncpy(ucsafe, pl_safe(ucfa), 255);
@@ -1117,6 +1148,7 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
                     A("    jmp     %s\n", retry_lbl);
                     A("    jmp     %s\n", done_lbl);
                 } else {
+                    disj_no_ucall:;
                     /* No user call in left — just emit deterministic goals */
                     for (int li = 0; li < nlg; li++) {
                         EXPR_t *lg = lgoals[li]; if (!lg||!lg->sval) continue;
@@ -1340,6 +1372,63 @@ static void emit_prolog_clause_block(EXPR_t *clause, int idx, int total,
             EMIT_TYPETEST("nonvar",   "pl_nonvar")
             EMIT_TYPETEST("compound", "pl_compound")
             #undef EMIT_TYPETEST
+            /* --- conjunction compound in goal position: flatten and re-emit each sub-goal ---
+             * Guards against pl__cm__sl_N_r being generated when a ,/N compound reaches
+             * the generic user-call path (e.g. inside a disjunction retry loop). */
+            if (strcmp(fn, ",") == 0 && garity >= 2) {
+                EXPR_t *flat2[64]; int nf2 = 0;
+                EXPR_t *cur3 = goal;
+                while (cur3 && cur3->kind == E_FNC && cur3->sval &&
+                       strcmp(cur3->sval, ",") == 0 && cur3->nchildren == 2 && nf2 < 63) {
+                    flat2[nf2++] = cur3->children[0];
+                    cur3 = cur3->children[1];
+                }
+                if (cur3) flat2[nf2++] = cur3;
+                for (int fi2 = 0; fi2 < nf2; fi2++) {
+                    EXPR_t *sub2 = flat2[fi2];
+                    if (!sub2 || sub2->kind != E_FNC || !sub2->sval) continue;
+                    const char *sfn2 = sub2->sval; int sa2 = sub2->nchildren;
+                    if (strcmp(sfn2,"nl")==0 && sa2==0) {
+                        A("    mov     edi, 10\n"); A("    call    putchar\n");
+                    } else if (strcmp(sfn2,"write")==0 && sa2==1) {
+                        emit_pl_term_load(sub2->children[0], n_vars);
+                        A("    mov     rdi, rax\n"); A("    call    pl_write\n");
+                    } else if (strcmp(sfn2,"fail")==0 && sa2==0) {
+                        A("    lea     rdi, [rel pl_trail]\n");
+                        A("    mov     esi, [rbp - 8]\n");
+                        A("    call    trail_unwind\n");
+                        A("    jmp     %s\n", next_clause);
+                    } else if (strcmp(sfn2,"true")==0 && sa2==0) {
+                        /* no-op */
+                    } else {
+                        char cfa3[300]; snprintf(cfa3, sizeof cfa3, "%s/%d", sfn2, sa2);
+                        char csafe3[256]; strncpy(csafe3, pl_safe(cfa3), 255);
+                        char cfail3[128];
+                        snprintf(cfail3, sizeof cfail3, "pl_%s_c%d_cfail3_%d_%d", pred_safe, idx, bi, fi2);
+                        if (sa2 > 0) {
+                            A("    sub     rsp, %d\n", ALIGN16(sa2*8));
+                            for (int ai2 = 0; ai2 < sa2; ai2++) {
+                                emit_pl_term_load(sub2->children[ai2], n_vars);
+                                A("    mov     [rsp + %d], rax\n", ai2*8);
+                            }
+                            A("    mov     rdi, rsp\n");
+                        } else { A("    xor     rdi, rdi\n"); }
+                        A("    lea     rsi, [rel pl_trail]\n");
+                        A("    xor     edx, edx\n");
+                        A("    call    pl_%s_r\n", csafe3);
+                        if (sa2 > 0) A("    add     rsp, %d\n", ALIGN16(sa2*8));
+                        A("    test    eax, eax\n");
+                        A("    jns     pl_%s_c%d_cok3_%d_%d\n", pred_safe, idx, bi, fi2);
+                        A("%s:\n", cfail3);
+                        A("    lea     rdi, [rel pl_trail]\n");
+                        A("    mov     esi, [rbp - 8]\n");
+                        A("    call    trail_unwind\n");
+                        A("    jmp     %s\n", next_clause);
+                        A("pl_%s_c%d_cok3_%d_%d:\n", pred_safe, idx, bi, fi2);
+                    }
+                }
+                continue;
+            }
             /* --- user-defined predicate call --- */
             {
                 /* Build args array on stack, call pl_NAME_ARITY_r

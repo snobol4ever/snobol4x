@@ -37,6 +37,7 @@ BACKEND_X64 = \
     backend/x64/emit_x64.c \
     backend/x64/emit_x64_icon.c
 
+
 DRIVER = \
     driver/main.c
 
@@ -74,6 +75,9 @@ all: $(BIN)
 
 $(BIN): $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $^ -lm
+
+# emit_x64_prolog.c is included by emit_x64.c — explicit dep so make rebuilds on change
+backend/x64/emit_x64.o: backend/x64/emit_x64_prolog.c
 
 # Pattern rule — each .c depends on the shared headers
 %.o: %.c \
