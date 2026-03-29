@@ -37,7 +37,7 @@ fi
 
 mapfile -t SNO_FILES < <(find "$TEST_SNO" -name "*.sno" | sort)
 mapfile -t ICN_FILES < <(find "$TEST_ICN" -name "*.icn" 2>/dev/null | sort)
-mapfile -t PRO_FILES < <(find "$TEST_PRO" -name "*.pro"  2>/dev/null | sort)
+mapfile -t PRO_FILES < <(find "$TEST_PRO" -name "*.pl"  2>/dev/null | sort)
 
 if [[ $UPDATE -eq 1 ]]; then
   echo "Regenerating: ${#SNO_FILES[@]} SNOBOL4×3 + ${#ICN_FILES[@]} Icon×2 + ${#PRO_FILES[@]} Prolog×2..."
@@ -45,8 +45,7 @@ if [[ $UPDATE -eq 1 ]]; then
     local src="$1" backend="$2" ext="$3"
     local dir name; dir="$(dirname "$src")"; name="$(basename "${src%.*}")"
     local tmp; tmp=$(mktemp)
-    local pl_flag=""; [[ "$src" == *.pro ]] && pl_flag="-pl"
-    "$SCRIP_CC" $pl_flag "$backend" -o /dev/stdout "$src" > "$tmp" 2>/dev/null
+    "$SCRIP_CC" "$backend" -o /dev/stdout "$src" > "$tmp" 2>/dev/null
     [[ -s "$tmp" ]] && mv "$tmp" "$dir/$name.$ext" || rm -f "$tmp"
   }
   export -f regen_one; export SCRIP_CC
@@ -77,8 +76,7 @@ check_one() {
   label="$(basename "$dir")/$name"
   expected="$dir/$name.$ext"
   local tmp; tmp=$(mktemp)
-  local pl_flag=""; [[ "$src" == *.pro ]] && pl_flag="-pl"
-  "$SCRIP_CC" $pl_flag "$backend" -o /dev/stdout "$src" > "$tmp" 2>/dev/null
+  "$SCRIP_CC" "$backend" -o /dev/stdout "$src" > "$tmp" 2>/dev/null
   if [[ ! -f "$expected" ]]; then
     rm -f "$tmp"; echo "MISSING $backend $label.$ext" >> "$FAIL_LOG"; return
   fi

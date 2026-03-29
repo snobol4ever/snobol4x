@@ -93,7 +93,7 @@ static int compile_one(const char *infile, const char *outpath, FILE *out) {
     snoc_reset();   /* clear per-file parser state: nerrors, include dirs */
 
     int file_sc  = sc_mode  || ends_with(infile, ".sc");
-    int file_pl  = pl_mode  || ends_with(infile, ".pl");
+    int file_pl  = pl_mode  || ends_with(infile, ".pl") || ends_with(infile, ".pro");
     int file_icn = icn_mode || ends_with(infile, ".icn");
 
     FILE *in = stdin;
