@@ -20,7 +20,7 @@ PARSER  = os.path.join(ROOT, 'src', 'parser')
 IR_DIR  = os.path.join(ROOT, 'src', 'ir')
 RT_DIR  = os.path.join(ROOT, 'src', 'runtime', 'snobol4')
 RT_BASE = os.path.join(ROOT, 'src', 'runtime')
-CORPUS  = os.path.abspath(os.path.join(ROOT, '..', 'snobol4corpus'))
+CORPUS  = os.path.abspath(os.path.join(ROOT, '..', 'corpus'))
 BEAUTY  = os.path.join(CORPUS, 'programs', 'beauty', 'beauty.sno')
 BEAUTY_DIR = os.path.join(CORPUS, 'programs', 'beauty')
 

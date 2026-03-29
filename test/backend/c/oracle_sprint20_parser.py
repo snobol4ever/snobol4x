@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.join(ROOT, 'src', 'ir'))
 from sno_parser import parse_source, parse_file
 from ir import Expr, PatExpr, Goto, Stmt, Program
 
-BEAUTY_RUN = os.path.abspath(os.path.join(ROOT, '..', 'snobol4corpus',
+BEAUTY_RUN = os.path.abspath(os.path.join(ROOT, '..', 'corpus',
                               'programs', 'beauty', 'beauty.sno'))
 
 passed = 0
@@ -165,7 +165,7 @@ check('comments skipped, 2 stmts', len(prog.stmts) == 2)
 # ---------------------------------------------------------------------------
 print('\n[13. Integration: beauty.sno (full -INCLUDE expansion)]')
 if os.path.exists(BEAUTY_RUN):
-    INC_DIR = os.path.abspath(os.path.join(ROOT, '..', 'snobol4corpus', 'programs', 'inc'))
+    INC_DIR = os.path.abspath(os.path.join(ROOT, '..', 'corpus', 'programs', 'inc'))
     prog    = parse_file(BEAUTY_RUN, include_dirs=[INC_DIR])
     labels  = [s.label for s in prog.stmts if s.label]
     empties = [s for s in prog.stmts
