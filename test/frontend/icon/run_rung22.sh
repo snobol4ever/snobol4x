@@ -4,8 +4,8 @@ set -e
 cd "$(dirname "$0")/../../.."
 PASS=0; FAIL=0
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-RUNG_DIR="${CORPUS_REPO:-$(cd "$SCRIPT_DIR/../../.." && pwd)/corpus}/programs/icon/rung22_lists"
-for icn in "$RUNG_DIR"/t*.icn; do
+RUNG_DIR="${CORPUS_REPO:-$(cd "$SCRIPT_DIR/../../.." && pwd)/corpus}/programs/icon"
+for icn in "$RUNG_DIR"/icon_rung22_lists__t*.icn; do
   base="${icn%.icn}"; exp="$base.expected"; [ -f "$exp" ] || continue
   /tmp/scrip-cc -jvm "$icn" -o /tmp/t22.j 2>/dev/null
   timeout 30 java -jar src/backend/jvm/jasmin.jar /tmp/t22.j -d /tmp/ 2>/dev/null

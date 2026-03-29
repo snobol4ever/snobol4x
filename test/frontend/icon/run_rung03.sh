@@ -11,7 +11,7 @@
 set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-CORPUS="${CORPUS_REPO:-$(cd "$SCRIPT_DIR/../../.." && pwd)/corpus}/programs/icon/rung03_suspend"
+CORPUS="${CORPUS_REPO:-$(cd "$SCRIPT_DIR/../../.." && pwd)/corpus}/programs/icon"
 ICONT="${ICONT:-/home/claude/icon-master/bin/icont}"
 ICONX="${ICONX:-/home/claude/icon-master/bin/iconx}"
 
@@ -20,7 +20,7 @@ BINARY="${1:-}"
 PASS=0
 FAIL=0
 
-for icn in "$CORPUS"/*.icn; do
+for icn in "$CORPUS"/icon_rung03_suspend__t*.icn; do
     base=$(basename "$icn" .icn)
     expected="$CORPUS/${base}.expected"
 

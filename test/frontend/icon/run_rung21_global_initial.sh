@@ -4,8 +4,8 @@ cd "$(dirname "$0")/../../.."
 DRIVER=${1:-/tmp/scrip-cc}
 PASS=0; FAIL=0; XFAIL=0
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-RUNG_DIR="${CORPUS_REPO:-$(cd "$SCRIPT_DIR/../../.." && pwd)/corpus}/programs/icon/rung21_global_initial"
-for icn in "$RUNG_DIR"/t*.icn; do
+RUNG_DIR="${CORPUS_REPO:-$(cd "$SCRIPT_DIR/../../.." && pwd)/corpus}/programs/icon"
+for icn in "$RUNG_DIR"/icon_rung21_global_initial__t*.icn; do
   [ -f "$icn" ] || continue
   base="${icn%.icn}"; exp="$base.expected"; [ -f "$exp" ] || continue
   [ -f "$base.xfail" ] && { XFAIL=$((XFAIL+1)); echo "XFAIL: $(basename $icn)"; continue; }

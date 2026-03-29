@@ -8,7 +8,7 @@
 DRIVER="${1:-/tmp/scrip-cc}"
 JASMIN="$(dirname "$0")/../../../src/backend/jvm/jasmin.jar"
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-CORPUS="${CORPUS_REPO:-$(cd "$SCRIPT_DIR/../../.." && pwd)/corpus}/programs/icon/rung36_jcon"
+CORPUS="${CORPUS_REPO:-$(cd "$SCRIPT_DIR/../../.." && pwd)/corpus}/programs/icon"
 PASS=0; FAIL=0; XFAIL=0
 
 for icn in "$CORPUS"/t*.icn; do
