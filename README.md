@@ -2,7 +2,7 @@
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 
-A SNOBOL4/SPITBOL compiler with five frontends and four backends — x86-64 native ASM,
+A multi-language compiler collection — SNOBOL4, Icon, Prolog, Snocone, Rebus — targeting x86-64 native ASM,
 JVM bytecode, .NET MSIL, and portable C — all from a single IR.
 Part of the [snobol4ever](https://github.com/snobol4ever) organization.
 
@@ -283,14 +283,11 @@ the compiler writing itself — one session at a time.
 
 Sprint state lives in [snobol4ever/.github](https://github.com/snobol4ever/.github):
 
-- **PLAN.md** — milestone dashboard, 4D feature matrix
 - **PLAN.md** — milestone dashboard, sprint state, session handoffs
-- **JVM.md** — JVM backend sprint state
-- **MONITOR.md** — five-way monitor design and sprint detail
+- **ARCH-monitor.md** — five-way monitor design and sprint detail
 - **SESSIONS_ARCHIVE.md** — full session history, append-only
 
-**Current sprint:** `monitor-ipc` — completing M-MONITOR-IPC-5WAY, then the
-19-subsystem `beauty.sno` bootstrap sequence.
+**Current sprint:** Grand Master Reorganization (G-8) — rename/rebrand, emit invariant check, shared IR fold.
 
 ---
 
