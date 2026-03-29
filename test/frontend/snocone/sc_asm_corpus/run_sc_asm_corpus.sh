@@ -7,7 +7,7 @@ PASS=0; FAIL=0; SKIP=0
 STOP_ON_FAIL=${STOP_ON_FAIL:-0}
 DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$DIR/../../../.." && pwd)"
-SNO2C="$ROOT/scrip-cc"
+SCRIP_CC="$ROOT/scrip-cc"
 RT="$ROOT/src/runtime"
 
 compile_link() {
@@ -16,7 +16,7 @@ compile_link() {
     local s=/tmp/sc_corpus_${base}.s
     local o=/tmp/sc_corpus_${base}.o
     local bin=/tmp/sc_corpus_${base}_bin
-    "$SNO2C" -sc -asm "$sc" > "$s" 2>/dev/null || return 1
+    "$SCRIP_CC" -sc -asm "$sc" > "$s" 2>/dev/null || return 1
     nasm -f elf64 -I"$RT/asm/" "$s" -o "$o" 2>/dev/null || return 1
     gcc -no-pie "$o" \
         "$RT/asm/snobol4_stmt_rt.c" \

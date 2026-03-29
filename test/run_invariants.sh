@@ -12,7 +12,7 @@
 #   --verbose   print per-test PASS lines (default: FAIL lines only)
 #
 # Environment overrides:
-#   SNO2C       path to scrip-cc binary        (default: <root>/scrip-cc)
+#   SCRIP_CC       path to scrip-cc binary        (default: <root>/scrip-cc)
 #   CORPUS      path to corpus root  (default: <root>/../corpus)
 #   JASMIN      path to jasmin.jar          (default: <root>/src/backend/jvm/jasmin.jar)
 #   TIMEOUT_X86 per-test timeout x86 (s)   (default: 5)
@@ -27,11 +27,11 @@ set -uo pipefail
 
 # ── Config ────────────────────────────────────────────────────────────────────
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SNO2C="${SNO2C:-$ROOT/scrip-cc}"
+SCRIP_CC="${SCRIP_CC:-$ROOT/scrip-cc}"
 CORPUS="${CORPUS:-$(cd "$ROOT/../corpus" 2>/dev/null && pwd || echo "")}"
 JASMIN="${JASMIN:-$ROOT/src/backend/jvm/jasmin.jar}"
 RT="$ROOT/src/runtime"
-SNO2C_INC="$ROOT/src/frontend/snobol4"
+SCRIP_CC_INC="$ROOT/src/frontend/snobol4"
 TIMEOUT_X86="${TIMEOUT_X86:-5}"
 TIMEOUT_JVM="${TIMEOUT_JVM:-15}"
 JOBS="${JOBS:-$(nproc 2>/dev/null || echo 2)}"
@@ -59,11 +59,11 @@ build_sno4_archive() {
   [[ -f "$out" ]] && return 0
   local tmp="$WORK/rt_asm"
   mkdir -p "$tmp"
-  gcc -O2 -c "$RT/asm/snobol4_stmt_rt.c"    -I"$RT/snobol4" -I"$RT" -I"$SNO2C_INC" -w -o "$tmp/stmt_rt.o"    || return 1
-  gcc -O2 -c "$RT/snobol4/snobol4.c"         -I"$RT/snobol4" -I"$RT" -I"$SNO2C_INC" -w -o "$tmp/snobol4.o"    || return 1
-  gcc -O2 -c "$RT/mock/mock_includes.c"       -I"$RT/snobol4" -I"$RT" -I"$SNO2C_INC" -w -o "$tmp/mock_inc.o"   || return 1
-  gcc -O2 -c "$RT/snobol4/snobol4_pattern.c" -I"$RT/snobol4" -I"$RT" -I"$SNO2C_INC" -w -o "$tmp/pat.o"        || return 1
-  gcc -O2 -c "$RT/mock/mock_engine.c"         -I"$RT/snobol4" -I"$RT" -I"$SNO2C_INC" -w -o "$tmp/mock_eng.o"   || return 1
+  gcc -O2 -c "$RT/asm/snobol4_stmt_rt.c"    -I"$RT/snobol4" -I"$RT" -I"$SCRIP_CC_INC" -w -o "$tmp/stmt_rt.o"    || return 1
+  gcc -O2 -c "$RT/snobol4/snobol4.c"         -I"$RT/snobol4" -I"$RT" -I"$SCRIP_CC_INC" -w -o "$tmp/snobol4.o"    || return 1
+  gcc -O2 -c "$RT/mock/mock_includes.c"       -I"$RT/snobol4" -I"$RT" -I"$SCRIP_CC_INC" -w -o "$tmp/mock_inc.o"   || return 1
+  gcc -O2 -c "$RT/snobol4/snobol4_pattern.c" -I"$RT/snobol4" -I"$RT" -I"$SCRIP_CC_INC" -w -o "$tmp/pat.o"        || return 1
+  gcc -O2 -c "$RT/mock/mock_engine.c"         -I"$RT/snobol4" -I"$RT" -I"$SCRIP_CC_INC" -w -o "$tmp/mock_eng.o"   || return 1
   gcc -O2 -c "$RT/asm/blk_alloc.c"            -I"$RT/asm"                              -w -o "$tmp/blk_alloc.o" || return 1
   gcc -O2 -c "$RT/asm/blk_reloc.c"            -I"$RT/asm"                              -w -o "$tmp/blk_reloc.o" || return 1
   ar rcs "$out" "$tmp"/*.o
@@ -101,7 +101,7 @@ run_snobol4_x86() {
       local ref="${sno%.sno}.ref"; [[ -f "$ref" ]] || continue
       local input="${sno%.sno}.input"
       local asm="$W/${base}.s" obj="$W/${base}.o" bin="$W/${base}"
-      if "$SNO2C" -asm "$sno" > "$asm" 2>/dev/null &&
+      if "$SCRIP_CC" -asm "$sno" > "$asm" 2>/dev/null &&
          nasm -f elf64 -I"$RT/asm/" "$asm" -o "$obj" 2>/dev/null &&
          gcc -O0 -no-pie "$obj" "$LIB" -lgc -lm -o "$bin" 2>/dev/null; then
         local stdin_src="/dev/null"; [[ -f "$input" ]] && stdin_src="$input"
@@ -156,7 +156,7 @@ run_snobol4_jvm() {
       # Copy ref and input flat into W for SnoHarness lookup
       cp "$ref" "$W/${base}.ref"
       [[ -f "$input" ]] && cp "$input" "$W/${base}.input"
-      if "$SNO2C" -jvm "$sno" > "$jfile" 2>/dev/null; then
+      if "$SCRIP_CC" -jvm "$sno" > "$jfile" 2>/dev/null; then
         java -jar "$JASMIN" "$jfile" -d "$W/" 2>/dev/null || compile_fail=$((compile_fail+1))
       else
         compile_fail=$((compile_fail+1))
@@ -223,7 +223,7 @@ run_icon_jvm() {
     echo "SKIP" > "$RESULTS/${cell}_status"; return
   fi
   for rung_sh in "$ROOT"/test/frontend/icon/run_rung*.sh; do
-    local result; result=$(bash "$rung_sh" "$SNO2C" 2>/dev/null | tail -1) || true
+    local result; result=$(bash "$rung_sh" "$SCRIP_CC" 2>/dev/null | tail -1) || true
     local p m
     p=$(echo "$result" | grep -o '[0-9]* PASS\|[0-9]* passed' | grep -o '[0-9]*' | head -1 || echo 0)
     m=$(echo "$result" | grep -o '[0-9]* FAIL\|[0-9]* failed' | grep -o '[0-9]*' | head -1 || echo 0)
@@ -254,7 +254,7 @@ run_prolog_x86() {
       local xfail="${pro%.pro}.xfail"
       [[ -f "$xfail" ]] && { rpass=$((rpass+1)); continue; }  # count xfail as skip/pass
       local asm="$W/${base}.s" obj="$W/${base}.o" bin="$W/${base}"
-      if "$SNO2C" -pl -asm "$pro" > "$asm" 2>/dev/null &&
+      if "$SCRIP_CC" -pl -asm "$pro" > "$asm" 2>/dev/null &&
          nasm -f elf64 "$asm" -o "$obj" 2>/dev/null &&
          gcc -O0 -no-pie "$obj" "$PL_LIB" -lm -o "$bin" 2>/dev/null; then
         local got; got=$(timeout "$TIMEOUT_X86" "$bin" 2>/dev/null) || got="__FAIL__"

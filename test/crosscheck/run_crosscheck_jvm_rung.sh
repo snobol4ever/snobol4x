@@ -8,7 +8,7 @@
 #   bash test/crosscheck/run_crosscheck_jvm_rung.sh <dir> [dir2 ...]
 #
 # Environment overrides:
-#   SNO2C        — path to scrip-cc binary     (default: ./scrip-cc)
+#   SCRIP_CC        — path to scrip-cc binary     (default: ./scrip-cc)
 #   INC          — SNOBOL4 include dir      (default: demo/inc)
 #   JASMIN       — path to jasmin.jar       (default: src/backend/jvm/jasmin.jar)
 #   STOP_ON_FAIL — stop at first failure    (default: 0)
@@ -17,7 +17,7 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TINY="$(cd "$SCRIPT_DIR/../.." && pwd)"
-SNO2C="${SNO2C:-$TINY/scrip-cc}"
+SCRIP_CC="${SCRIP_CC:-$TINY/scrip-cc}"
 INC="${INC:-$TINY/demo/inc}"
 JASMIN="${JASMIN:-$TINY/src/backend/jvm/jasmin.jar}"
 STOP_ON_FAIL="${STOP_ON_FAIL:-0}"
@@ -31,8 +31,8 @@ if [[ $# -eq 0 ]]; then
     exit 1
 fi
 
-if [[ ! -x "$SNO2C" ]]; then
-    echo "ERROR: scrip-cc not found at $SNO2C"; exit 1
+if [[ ! -x "$SCRIP_CC" ]]; then
+    echo "ERROR: scrip-cc not found at $SCRIP_CC"; exit 1
 fi
 
 if [[ ! -f "$JASMIN" ]]; then
@@ -61,7 +61,7 @@ run_test() {
     local jfile="$classdir/${base}.j"
 
     # Compile .sno → .j
-    if ! "$SNO2C" -jvm -I"$INC" "$sno" > "$jfile" 2>"$WORK/${base}.scrip-cc_err"; then
+    if ! "$SCRIP_CC" -jvm -I"$INC" "$sno" > "$jfile" 2>"$WORK/${base}.scrip-cc_err"; then
         echo -e "${RED}FAIL${RESET} $base  [scrip-cc error]"
         head -3 "$WORK/${base}.scrip-cc_err"
         FAIL=$((FAIL+1)); [[ "$STOP_ON_FAIL" == "1" ]] && exit 1; return 0

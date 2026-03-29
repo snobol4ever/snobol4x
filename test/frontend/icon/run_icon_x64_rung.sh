@@ -2,12 +2,12 @@
 # run_icon_x64_rung.sh — Icon x64 corpus ladder driver
 #
 # Usage:  bash run_icon_x64_rung.sh <corpus-dir> [dir2 ...]
-# Env:    SNO2C (default: ./scrip-cc)  STOP_ON_FAIL=1
+# Env:    SCRIP_CC (default: ./scrip-cc)  STOP_ON_FAIL=1
 
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-SNO2C="${SNO2C:-$ROOT/scrip-cc}"
+SCRIP_CC="${SCRIP_CC:-$ROOT/scrip-cc}"
 RT="$ROOT/src/frontend/icon/icon_runtime.c"
 STOP_ON_FAIL="${STOP_ON_FAIL:-0}"
 
@@ -26,7 +26,7 @@ run_test() {
 
     local asm="$WORK/$base.asm" obj="$WORK/$base.o" bin="$WORK/$base"
 
-    if ! "$SNO2C" -icn "$icn" -o "$asm" 2>"$WORK/$base.emit_err"; then
+    if ! "$SCRIP_CC" -icn "$icn" -o "$asm" 2>"$WORK/$base.emit_err"; then
         echo -e "${RED}FAIL${RESET} $base  [emit error]"
         head -3 "$WORK/$base.emit_err"
         FAIL=$((FAIL+1)); [[ "$STOP_ON_FAIL" == "1" ]] && exit 1; return 0

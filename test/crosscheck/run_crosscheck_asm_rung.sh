@@ -14,7 +14,7 @@
 #       /home/claude/corpus/crosscheck/output
 #
 # Environment overrides:
-#   SNO2C   — path to scrip-cc binary     (default: ./scrip-cc)
+#   SCRIP_CC   — path to scrip-cc binary     (default: ./scrip-cc)
 #   INC     — SNOBOL4 include dir      (default: demo/inc)
 #   STOP_ON_FAIL=1  — stop at first failure (default: 0 = keep going)
 
@@ -22,7 +22,7 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TINY="$(cd "$SCRIPT_DIR/../.." && pwd)"
-SNO2C="${SNO2C:-$TINY/scrip-cc}"
+SCRIP_CC="${SCRIP_CC:-$TINY/scrip-cc}"
 RT="$TINY/src/runtime"
 INC="${INC:-$TINY/demo/inc}"
 STOP_ON_FAIL="${STOP_ON_FAIL:-0}"
@@ -35,8 +35,8 @@ if [[ $# -eq 0 ]]; then
     exit 1
 fi
 
-if [[ ! -x "$SNO2C" ]]; then
-    echo "ERROR: scrip-cc not found at $SNO2C"
+if [[ ! -x "$SCRIP_CC" ]]; then
+    echo "ERROR: scrip-cc not found at $SCRIP_CC"
     exit 1
 fi
 
@@ -73,7 +73,7 @@ run_test() {
     local bin="$WORK/${base}_bin"
 
     # scrip-cc -asm
-    if ! "$SNO2C" -asm -I"$INC" "$sno" > "$s_file" 2>"$WORK/${base}.scrip-cc_err"; then
+    if ! "$SCRIP_CC" -asm -I"$INC" "$sno" > "$s_file" 2>"$WORK/${base}.scrip-cc_err"; then
         echo -e "${RED}FAIL${RESET} $base  [scrip-cc error]"
         cat "$WORK/${base}.scrip-cc_err" | head -3
         FAIL=$((FAIL+1))

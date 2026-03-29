@@ -17,8 +17,8 @@
 #   ICONT     path to icont binary     (default: icont)
 #
 # Environment overrides (snobol4ever JVM frontends):
-#   SNO2C         path to scrip-cc binary       (default: auto-detect)
-#   SNO2C   path to scrip-cc binary  (default: auto-detect)
+#   SCRIP_CC         path to scrip-cc binary       (default: auto-detect)
+#   SCRIP_CC   path to scrip-cc binary  (default: auto-detect)
 #   JASMIN        path to jasmin.jar          (default: auto-detect)
 #
 set -euo pipefail
@@ -74,16 +74,16 @@ cat "$TMP/manifest.txt" | while read lang cls file; do
 done
 
 # ── Auto-detect snobol4ever tools ─────────────────────────────────────────────
-SNO2C="${SNO2C:-}"
-if [ -z "$SNO2C" ]; then
-    if [ -x "$SNOBOL4X/scrip-cc" ]; then SNO2C="$SNOBOL4X/scrip-cc"
-    elif command -v scrip-cc &>/dev/null; then SNO2C="scrip-cc"; fi
+SCRIP_CC="${SCRIP_CC:-}"
+if [ -z "$SCRIP_CC" ]; then
+    if [ -x "$SNOBOL4X/scrip-cc" ]; then SCRIP_CC="$SNOBOL4X/scrip-cc"
+    elif command -v scrip-cc &>/dev/null; then SCRIP_CC="scrip-cc"; fi
 fi
 
-SNO2C="${SNO2C:-}"
-if [ -z "$SNO2C" ]; then
-    if [ -x "/tmp/scrip-cc" ]; then SNO2C="/tmp/scrip-cc"
-    elif command -v scrip-cc &>/dev/null; then SNO2C="scrip-cc"; fi
+SCRIP_CC="${SCRIP_CC:-}"
+if [ -z "$SCRIP_CC" ]; then
+    if [ -x "/tmp/scrip-cc" ]; then SCRIP_CC="/tmp/scrip-cc"
+    elif command -v scrip-cc &>/dev/null; then SCRIP_CC="scrip-cc"; fi
 fi
 
 JASMIN="${JASMIN:-}"
@@ -146,7 +146,7 @@ run_backend() {
 
 # ── snobol4ever JVM runner ─────────────────────────────────────────────────────
 run_jvm_backend() {
-    local label="$1"    # display name, e.g. "SNO2C-JVM"
+    local label="$1"    # display name, e.g. "SCRIP_CC-JVM"
     local src="$2"      # source file to compile
 
     local actual="$TMP/${label}.out"
@@ -167,29 +167,29 @@ run_jvm_backend() {
 
     # Compile to Jasmin .j
     case "$label" in
-        SNO2C-JVM)
-            if [ -z "$SNO2C" ]; then
+        SCRIP_CC-JVM)
+            if [ -z "$SCRIP_CC" ]; then
                 skip "$label  (scrip-cc not found)"
                 SKIP_COUNT=$((SKIP_COUNT+1))
                 return
             fi
-            "$SNO2C" -jvm "$src" -o "$jfile" 2>/dev/null || true
+            "$SCRIP_CC" -jvm "$src" -o "$jfile" 2>/dev/null || true
             ;;
         ICON-JVM)
-            if [ -z "$SNO2C" ]; then
+            if [ -z "$SCRIP_CC" ]; then
                 skip "$label  (scrip-cc not found)"
                 SKIP_COUNT=$((SKIP_COUNT+1))
                 return
             fi
-            "$SNO2C" -icn -jvm "$src" -o "$jfile" 2>/dev/null || true
+            "$SCRIP_CC" -icn -jvm "$src" -o "$jfile" 2>/dev/null || true
             ;;
         PROLOG-JVM)
-            if [ -z "$SNO2C" ]; then
+            if [ -z "$SCRIP_CC" ]; then
                 skip "$label  (scrip-cc not found)"
                 SKIP_COUNT=$((SKIP_COUNT+1))
                 return
             fi
-            "$SNO2C" -pl -jvm "$src" -o "$jfile" 2>/dev/null || true
+            "$SCRIP_CC" -pl -jvm "$src" -o "$jfile" 2>/dev/null || true
             ;;
     esac
 
@@ -239,7 +239,7 @@ run_backend ICONT   "$TMP/icon.icn"
 
 echo ""
 echo "snobol4ever JVM frontends:"
-run_jvm_backend SNO2C-JVM   "$TMP/snobol4.sno"
+run_jvm_backend SCRIP_CC-JVM   "$TMP/snobol4.sno"
 run_jvm_backend ICON-JVM    "$TMP/icon.icn"
 run_jvm_backend PROLOG-JVM  "$TMP/prolog.pro"
 

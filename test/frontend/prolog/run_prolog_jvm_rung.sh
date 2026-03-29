@@ -8,7 +8,7 @@
 #   bash test/frontend/prolog/run_prolog_jvm_rung.sh <dir> [dir2 ...]
 #
 # Environment overrides:
-#   SNO2C        — path to scrip-cc binary       (default: ./scrip-cc)
+#   SCRIP_CC        — path to scrip-cc binary       (default: ./scrip-cc)
 #   JASMIN       — path to jasmin.jar          (default: src/backend/jvm/jasmin.jar)
 #   STOP_ON_FAIL — stop at first failure       (default: 0)
 #   TIMEOUT      — per-test timeout in seconds (default: 10)
@@ -17,7 +17,7 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-SNO2C="${SNO2C:-$ROOT/scrip-cc}"
+SCRIP_CC="${SCRIP_CC:-$ROOT/scrip-cc}"
 JASMIN="${JASMIN:-$ROOT/src/backend/jvm/jasmin.jar}"
 STOP_ON_FAIL="${STOP_ON_FAIL:-0}"
 TIMEOUT="${TIMEOUT:-10}"
@@ -29,7 +29,7 @@ if [[ $# -eq 0 ]]; then
     echo "Usage: $0 <corpus-dir> [dir2 ...]"
     exit 1
 fi
-if [[ ! -x "$SNO2C" ]]; then echo "ERROR: scrip-cc not found at $SNO2C"; exit 1; fi
+if [[ ! -x "$SCRIP_CC" ]]; then echo "ERROR: scrip-cc not found at $SCRIP_CC"; exit 1; fi
 if [[ ! -f "$JASMIN" ]]; then echo "ERROR: jasmin.jar not found at $JASMIN"; exit 1; fi
 
 WORK=$(mktemp -d); trap "rm -rf $WORK" EXIT
@@ -53,7 +53,7 @@ run_test() {
     local jfile="$classdir/${base}.j"
 
     # Compile .pro -> .j
-    if ! "$SNO2C" -pl -jvm "$pro" > "$jfile" 2>"$WORK/${base}.scrip-cc_err"; then
+    if ! "$SCRIP_CC" -pl -jvm "$pro" > "$jfile" 2>"$WORK/${base}.scrip-cc_err"; then
         echo -e "${RED}FAIL${RESET} $base  [scrip-cc error]"
         head -3 "$WORK/${base}.scrip-cc_err"
         FAIL=$((FAIL+1)); [[ "$STOP_ON_FAIL" == "1" ]] && exit 1; return 0

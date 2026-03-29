@@ -3,7 +3,7 @@
 # Expected output: Hello, World
 set -e
 
-SNO2C=../../../src/driver/scrip-cc
+SCRIP_CC=../../../src/driver/scrip-cc
 RUNTIME=../../../src/runtime/net
 OUT=./out
 mkdir -p "$OUT"
@@ -12,10 +12,10 @@ cp "$RUNTIME"/snobol4lib.dll "$OUT"/
 cp "$RUNTIME"/snobol4run.dll "$OUT"/
 
 echo "--- compiling greet_lib.sno ---"
-"$SNO2C" -net greet_lib.sno > "$OUT"/greet_lib.il
+"$SCRIP_CC" -net greet_lib.sno > "$OUT"/greet_lib.il
 
 echo "--- compiling greet_main.sno ---"
-"$SNO2C" -net greet_main.sno > "$OUT"/greet_main.il
+"$SCRIP_CC" -net greet_main.sno > "$OUT"/greet_main.il
 
 echo "--- assembling greet_lib.dll ---"
 ilasm "$OUT"/greet_lib.il /dll /output:"$OUT"/greet_lib.dll

@@ -12,7 +12,7 @@
 # Usage: bash test/crosscheck/run_crosscheck_asm.sh [--stop-on-fail]
 #
 # Environment:
-#   SNO2C     path to scrip-cc (default: scrip-cc)
+#   SCRIP_CC     path to scrip-cc (default: scrip-cc)
 #   HARNESS_O path to harness object (default: src/runtime/asm/snobol4_asm_harness.o)
 #   CORPUS    path to crosscheck dir (default: /home/corpus/crosscheck)
 
@@ -21,7 +21,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TINY="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-SNO2C="${SNO2C:-$TINY/scrip-cc}"
+SCRIP_CC="${SCRIP_CC:-$TINY/scrip-cc}"
 HARNESS_O="${HARNESS_O:-src/runtime/asm/snobol4_asm_harness.o}"
 CORPUS="${CORPUS:-$(cd "$TINY/../corpus/crosscheck" && pwd)}"
 
@@ -136,7 +136,7 @@ run_one() {
 
     # scrip-cc -asm-body
     local body_s="$WORK/${tag}_body.s"
-    if ! "$SNO2C" -asm-body "$bare" > "$body_s" 2>"$WORK/${tag}_scrip-cc.err"; then
+    if ! "$SCRIP_CC" -asm-body "$bare" > "$body_s" 2>"$WORK/${tag}_scrip-cc.err"; then
         fail "$tag (scrip-cc error: $(cat $WORK/${tag}_scrip-cc.err))"
         ((failed++)) || true
         [[ $STOP_ON_FAIL -eq 1 ]] && exit 1
@@ -202,7 +202,7 @@ run_one() {
 
 # ── main ─────────────────────────────────────────────────────────────────────
 echo "ASM crosscheck — Sprint A9"
-echo "SNO2C:    $SNO2C"
+echo "SCRIP_CC:    $SCRIP_CC"
 echo "HARNESS:  $HARNESS_O"
 echo "CORPUS:   $CORPUS"
 echo ""

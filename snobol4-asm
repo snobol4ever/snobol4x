@@ -8,7 +8,7 @@ SNO="${1:?Usage: snobol4-asm <file.sno>}"
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RT="$DIR/src/runtime"
 INC="${INC:-/home/claude/snobol4corpus/programs/inc}"
-SNO2C="${SNO2C:-$DIR/scrip-cc}"
+SCRIP_CC="${SCRIP_CC:-$DIR/scrip-cc}"
 WORK=$(mktemp -d /tmp/snobol4_asm_XXXXXX)
 trap 'rm -rf "$WORK"' EXIT
 
@@ -21,7 +21,7 @@ gcc -O0 -g -c "$RT/engine/engine.c"            -I"$RT/snobol4" -I"$RT" -I"$DIR/s
 gcc -O0 -g -c "$RT/asm/blk_alloc.c"            -I"$RT/asm"                                            -w -o "$WORK/blk_alloc.o"
 gcc -O0 -g -c "$RT/asm/blk_reloc.c"            -I"$RT/asm"                                            -w -o "$WORK/blk_reloc.o"
 
-"$SNO2C" -asm -I"$INC" "$SNO" > "$WORK/prog.s" 2>/dev/null
+"$SCRIP_CC" -asm -I"$INC" "$SNO" > "$WORK/prog.s" 2>/dev/null
 nasm -f elf64 -I"$RT/asm/" "$WORK/prog.s" -o "$WORK/prog.o" 2>/dev/null
 gcc -no-pie "$WORK/prog.o" "$WORK/stmt_rt.o" "$WORK/snobol4.o" \
     "$WORK/mock_includes.o" "$WORK/pat.o" "$WORK/eng.o" \

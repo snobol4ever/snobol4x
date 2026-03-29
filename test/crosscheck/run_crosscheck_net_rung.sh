@@ -19,7 +19,7 @@
 #       /path/to/corpus/output
 #
 # Environment overrides:
-#   SNO2C        — path to scrip-cc binary  (default: ./scrip-cc)
+#   SCRIP_CC        — path to scrip-cc binary  (default: ./scrip-cc)
 #   STOP_ON_FAIL — 1 = stop at first failure (default: 0)
 #   CACHE_DIR    — where to cache .il/.exe (default: /tmp/one4all_net_cache)
 
@@ -27,7 +27,7 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TINY="$(cd "$SCRIPT_DIR/../.." && pwd)"
-SNO2C="${SNO2C:-$TINY/scrip-cc}"
+SCRIP_CC="${SCRIP_CC:-$TINY/scrip-cc}"
 STOP_ON_FAIL="${STOP_ON_FAIL:-0}"
 CACHE_DIR="${CACHE_DIR:-/tmp/one4all_net_cache}"
 mkdir -p "$CACHE_DIR"
@@ -73,7 +73,7 @@ for dir in "$@"; do
         stamp="$CACHE_DIR/${rung}_${base}.stamp"
 
         # Always re-emit .il (scrip-cc is fast — ~1ms)
-        "$SNO2C" -net "$sno" > "$il" 2>/dev/null
+        "$SCRIP_CC" -net "$sno" > "$il" 2>/dev/null
 
         # Only re-assemble if .il changed (ilasm is slow — ~400ms)
         il_md5="$(md5sum "$il" | cut -d' ' -f1)"

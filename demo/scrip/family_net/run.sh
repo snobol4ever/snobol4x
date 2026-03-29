@@ -7,20 +7,20 @@
 set -e
 
 REPO="$(cd "$(dirname "$0")/../../.." && pwd)"
-SNO2C="${SNO2C:-$REPO/scrip-cc}"
+SCRIP_CC="${SCRIP_CC:-$REPO/scrip-cc}"
 JASMIN="${JASMIN:-$REPO/src/backend/jvm/jasmin.jar}"
 BYRD="${BYRD:-$REPO/src/runtime/jvm/ByrdBoxLinkage.j}"
 OUT=./out ; mkdir -p "$OUT"
 
 # ── Compile ──────────────────────────────────────────────────────────────────
 echo "Compiling family_snobol4.sno..."
-"$SNO2C" -jvm family_snobol4.sno  > "$OUT/family_snobol4.j"
+"$SCRIP_CC" -jvm family_snobol4.sno  > "$OUT/family_snobol4.j"
 
 echo "Compiling family_prolog.pro..."
-"$SNO2C" -pl -jvm family_prolog.pro > "$OUT/family_prolog.j"
+"$SCRIP_CC" -pl -jvm family_prolog.pro > "$OUT/family_prolog.j"
 
 echo "Compiling family_icon.icn..."
-"$SNO2C" -jvm family_icon.icn     > "$OUT/family_icon.j"
+"$SCRIP_CC" -jvm family_icon.icn     > "$OUT/family_icon.j"
 
 # ── Assemble ─────────────────────────────────────────────────────────────────
 echo "Assembling..."

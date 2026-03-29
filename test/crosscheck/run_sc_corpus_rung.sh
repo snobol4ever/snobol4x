@@ -15,14 +15,14 @@
 #       test/crosscheck/sc_corpus/assign
 #
 # Environment overrides:
-#   SNO2C        — path to scrip-cc binary     (default: ./scrip-cc)
+#   SCRIP_CC        — path to scrip-cc binary     (default: ./scrip-cc)
 #   STOP_ON_FAIL — 1 to stop at first fail  (default: 0)
 
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TINY="$(cd "$SCRIPT_DIR/../.." && pwd)"
-SNO2C="${SNO2C:-$TINY/scrip-cc}"
+SCRIP_CC="${SCRIP_CC:-$TINY/scrip-cc}"
 RT="$TINY/src/runtime"
 STOP_ON_FAIL="${STOP_ON_FAIL:-0}"
 
@@ -34,8 +34,8 @@ if [[ $# -eq 0 ]]; then
     exit 1
 fi
 
-if [[ ! -x "$SNO2C" ]]; then
-    echo "ERROR: scrip-cc not found at $SNO2C"
+if [[ ! -x "$SCRIP_CC" ]]; then
+    echo "ERROR: scrip-cc not found at $SCRIP_CC"
     exit 1
 fi
 
@@ -72,7 +72,7 @@ run_test() {
     local bin="$WORK/${base}_bin"
 
     # scrip-cc -sc -asm
-    if ! "$SNO2C" -sc -asm "$sc" > "$s_file" 2>"$WORK/${base}.scrip-cc_err"; then
+    if ! "$SCRIP_CC" -sc -asm "$sc" > "$s_file" 2>"$WORK/${base}.scrip-cc_err"; then
         echo -e "${RED}FAIL${RESET} $base  [scrip-cc error]"
         cat "$WORK/${base}.scrip-cc_err" | head -3
         FAIL=$((FAIL+1))

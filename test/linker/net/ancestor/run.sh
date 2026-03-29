@@ -5,7 +5,7 @@
 # Expected output: ann
 set -e
 
-SNO2C=../../../../src/driver/scrip-cc
+SCRIP_CC=../../../../src/driver/scrip-cc
 RUNTIME=../../../../src/runtime/net
 OUT=./out
 mkdir -p "$OUT"
@@ -14,13 +14,13 @@ cp "$RUNTIME"/snobol4lib.dll "$OUT"/
 cp "$RUNTIME"/snobol4run.dll "$OUT"/
 
 echo "--- generating ancestor.il from ancestor.pl ---"
-"$SNO2C" -pl -net ancestor.pl > "$OUT"/ancestor.il
+"$SCRIP_CC" -pl -net ancestor.pl > "$OUT"/ancestor.il
 
 echo "--- assembling ancestor.dll ---"
 ilasm "$OUT"/ancestor.il /dll /output:"$OUT"/ancestor.dll
 
 echo "--- compiling ancestor_main.sno ---"
-"$SNO2C" -net ancestor_main.sno > "$OUT"/ancestor_main.il
+"$SCRIP_CC" -net ancestor_main.sno > "$OUT"/ancestor_main.il
 
 echo "--- assembling ancestor_main.exe ---"
 ilasm "$OUT"/ancestor_main.il /exe /output:"$OUT"/ancestor_main.exe

@@ -6,7 +6,7 @@ set -euo pipefail
 
 SNO="${1:?Usage: snobol4-net <file.sno>}"
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SNO2C="${SNO2C_NET:-/home/claude/scrip-cc_net}"
+SCRIP_CC="${SCRIP_CC_NET:-/home/claude/scrip-cc_net}"
 NET_CACHE="${NET_CACHE:-/tmp/scrip_cc_net_cache}"
 RUNTIME_NET="$DIR/src/runtime/net"
 
@@ -28,7 +28,7 @@ il="$NET_CACHE/${key}.il"
 exe="$NET_CACHE/${key}.exe"
 stamp="$NET_CACHE/${key}.stamp"
 
-"$SNO2C" -net "$SNO" > "$il" 2>/dev/null
+"$SCRIP_CC" -net "$SNO" > "$il" 2>/dev/null
 
 il_md5="$(md5sum "$il" | cut -d' ' -f1)"
 cached_md5="$(cat "$stamp" 2>/dev/null || echo '')"

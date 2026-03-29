@@ -15,9 +15,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TINY="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CORPUS="${CORPUS:-$(cd "$TINY/../corpus/crosscheck" && pwd)}"
-SNO2C="$TINY/scrip-cc"
+SCRIP_CC="$TINY/scrip-cc"
 RT="$TINY/src/runtime"
-SNO2C_INC="$TINY/src/frontend/snobol4"
+SCRIP_CC_INC="$TINY/src/frontend/snobol4"
 STOP_ON_FAIL="${STOP_ON_FAIL:-0}"
 FILTER="${FILTER:-}"
 TIMEOUT=5
@@ -29,11 +29,11 @@ WORK=$(mktemp -d); trap "rm -rf $WORK" EXIT
 PASS=0; FAIL=0; SKIP=0; NASM_FAIL=0; TIMEOUT_COUNT=0
 
 # ── Precompile runtime once ───────────────────────────────────────────────────
-gcc -O0 -g -c "$RT/asm/snobol4_stmt_rt.c"    -I"$RT/snobol4" -I"$RT" -I"$SNO2C_INC" -w -o "$WORK/stmt_rt.o"
-gcc -O0 -g -c "$RT/snobol4/snobol4.c"         -I"$RT/snobol4" -I"$RT" -I"$SNO2C_INC" -w -o "$WORK/snobol4.o"
-gcc -O0 -g -c "$RT/mock/mock_includes.c"       -I"$RT/snobol4" -I"$RT" -I"$SNO2C_INC" -w -o "$WORK/mock_includes.o"
-gcc -O0 -g -c "$RT/snobol4/snobol4_pattern.c" -I"$RT/snobol4" -I"$RT" -I"$SNO2C_INC" -w -o "$WORK/snobol4_pattern.o"
-gcc -O0 -g -c "$RT/mock/mock_engine.c"         -I"$RT/snobol4" -I"$RT" -I"$SNO2C_INC" -w -o "$WORK/mock_engine.o"
+gcc -O0 -g -c "$RT/asm/snobol4_stmt_rt.c"    -I"$RT/snobol4" -I"$RT" -I"$SCRIP_CC_INC" -w -o "$WORK/stmt_rt.o"
+gcc -O0 -g -c "$RT/snobol4/snobol4.c"         -I"$RT/snobol4" -I"$RT" -I"$SCRIP_CC_INC" -w -o "$WORK/snobol4.o"
+gcc -O0 -g -c "$RT/mock/mock_includes.c"       -I"$RT/snobol4" -I"$RT" -I"$SCRIP_CC_INC" -w -o "$WORK/mock_includes.o"
+gcc -O0 -g -c "$RT/snobol4/snobol4_pattern.c" -I"$RT/snobol4" -I"$RT" -I"$SCRIP_CC_INC" -w -o "$WORK/snobol4_pattern.o"
+gcc -O0 -g -c "$RT/mock/mock_engine.c"         -I"$RT/snobol4" -I"$RT" -I"$SCRIP_CC_INC" -w -o "$WORK/mock_engine.o"
 gcc -O0 -g -c "$RT/asm/blk_alloc.c"            -I"$RT/asm"                              -w -o "$WORK/blk_alloc.o"
 gcc -O0 -g -c "$RT/asm/blk_reloc.c"            -I"$RT/asm"                              -w -o "$WORK/blk_reloc.o"
 
@@ -54,7 +54,7 @@ run_test() {
     local bin="$WORK/${name}"
 
     # Compile SNOBOL4 → ASM
-    if ! "$SNO2C" -asm "$sno" > "$s_file" 2>/dev/null; then
+    if ! "$SCRIP_CC" -asm "$sno" > "$s_file" 2>/dev/null; then
         echo -e "${RED}FAIL${RESET} $name  [scrip-cc error]"
         FAIL=$((FAIL+1))
         [[ "$STOP_ON_FAIL" == "1" ]] && exit 1

@@ -43,7 +43,7 @@ gcc -no-pie "$TMP/prog.o" \
     -lgc -lm -o "$TMP/prog_asm" 2>/dev/null
 
 # ── Step 3: compile NET ──────────────────────────────────────────────────
-SNO2C_NET="${SNO2C_NET:-$DIR/scrip-cc}"
+SCRIP_CC_NET="${SCRIP_CC_NET:-$DIR/scrip-cc}"
 NET_CACHE="${NET_CACHE:-/tmp/one4all_net_cache}"
 mkdir -p "$NET_CACHE"
 for dll in snobol4lib.dll snobol4run.dll; do
@@ -51,19 +51,19 @@ for dll in snobol4lib.dll snobol4run.dll; do
 done
 il="$NET_CACHE/${base}_${dh}.il"; exe="$NET_CACHE/${base}_${dh}.exe"
 stamp="$NET_CACHE/${base}_${dh}.stamp"
-"$SNO2C_NET" -net "$SNO" > "$il" 2>/dev/null
+"$SCRIP_CC_NET" -net "$SNO" > "$il" 2>/dev/null
 il_md5="$(md5sum "$il"|cut -d' ' -f1)"
 if [[ "$(cat "$stamp" 2>/dev/null)" != "$il_md5" ]] || [[ ! -f "$exe" ]]; then
     ilasm "$il" /output:"$exe" >/dev/null 2>&1 && echo "$il_md5" > "$stamp"
 fi
 
 # ── Step 4: compile JVM ──────────────────────────────────────────────────
-SNO2C_JVM="${SNO2C_JVM:-$DIR/scrip-cc}"
+SCRIP_CC_JVM="${SCRIP_CC_JVM:-$DIR/scrip-cc}"
 JASMIN="${JASMIN:-$DIR/src/backend/jvm/jasmin.jar}"
 JVM_CACHE="${JVM_CACHE:-/tmp/one4all_jvm_cache}"
 mkdir -p "$JVM_CACHE"
 jfile="$JVM_CACHE/${base}_${dh}.j"; jstamp="$JVM_CACHE/${base}_${dh}.jstamp"
-"$SNO2C_JVM" -jvm "$SNO" > "$jfile" 2>/dev/null
+"$SCRIP_CC_JVM" -jvm "$SNO" > "$jfile" 2>/dev/null
 classname=$(grep '\.class' "$jfile" | head -1 | awk '{print $NF}')
 j_md5="$(md5sum "$jfile"|cut -d' ' -f1)"
 if [[ "$(cat "$jstamp" 2>/dev/null)" != "$j_md5" ]] || \

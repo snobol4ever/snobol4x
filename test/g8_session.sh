@@ -29,7 +29,7 @@
 
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SNO2C="$ROOT/scrip-cc"
+SCRIP_CC="$ROOT/scrip-cc"
 CORPUS="${CORPUS:-$(cd "$ROOT/../corpus" 2>/dev/null && pwd || echo "")}"
 BASELINE="$ROOT/test/emit_baseline"
 
@@ -55,11 +55,11 @@ echo ""
 if [[ $SKIP_VERIFY -eq 0 ]]; then
   echo -e "${BOLD}VERIFY — build + corpus path${RESET}"
 
-  if [[ ! -x "$SNO2C" ]]; then
+  if [[ ! -x "$SCRIP_CC" ]]; then
     info "scrip-cc not built — building now..."
     (cd "$ROOT/src" && make -j4 -s) && ok "scrip-cc built" || { fail "build failed"; exit 1; }
   else
-    ok "scrip-cc exists: $SNO2C"
+    ok "scrip-cc exists: $SCRIP_CC"
   fi
 
   if [[ -z "$CORPUS" || ! -d "$CORPUS/crosscheck" ]]; then
@@ -84,7 +84,7 @@ if [[ $SKIP_FIX -eq 0 && $ONLY_BASELINE -eq 0 ]]; then
   F013="$CORPUS/crosscheck/assign/013_assign_overwrite.sno"
   F014="$CORPUS/crosscheck/assign/014_assign_indirect_dollar.sno"
   if [[ -f "$F013" && -f "$F014" ]]; then
-    "$SNO2C" -asm "$F013" "$F014" > /dev/null 2>&1 && \
+    "$SCRIP_CC" -asm "$F013" "$F014" > /dev/null 2>&1 && \
       ok "Pair 013+014: PASS (already fixed!)" || \
       fail "Pair 013+014: SIGSEGV (still broken — fix needed)"
     rm -f "${F013%.sno}.s" "${F014%.sno}.s" 2>/dev/null || true
@@ -142,7 +142,7 @@ info "Testing multi-file mode ($NSNO files × 3 backends)..."
 PASS_COUNT=0
 for backend in -asm -jvm -net; do
   ext=$(echo $backend | sed 's/-asm/.s/;s/-jvm/.j/;s/-net/.il/')
-  OUT=$(find "$CORPUS/crosscheck" -name "*.sno" | tr '\n' '\0' | xargs -0 "$SNO2C" $backend 2>&1); RC=$?
+  OUT=$(find "$CORPUS/crosscheck" -name "*.sno" | tr '\n' '\0' | xargs -0 "$SCRIP_CC" $backend 2>&1); RC=$?
   WRITTEN=$(find "$CORPUS/crosscheck" -name "*$ext" 2>/dev/null | wc -l)
   find "$CORPUS/crosscheck" -name "*$ext" | xargs rm -f 2>/dev/null || true
   if [[ $WRITTEN -eq $NSNO ]]; then
@@ -208,12 +208,12 @@ echo -e "${BOLD}═════════════════════�
 echo -e "${BOLD}BONUS — verify Icon/Prolog multi-file (should work already)${RESET}"
 ICN_FILES=$(find "$ROOT/test/frontend/icon/corpus" -name "*.icn" 2>/dev/null | head -10 | tr '\n' ' ')
 if [[ -n "$ICN_FILES" ]]; then
-  eval "$SNO2C -asm $ICN_FILES" > /dev/null 2>&1 && ok "Icon x86 multi-file: OK" || fail "Icon x86 multi-file: CRASH"
+  eval "$SCRIP_CC -asm $ICN_FILES" > /dev/null 2>&1 && ok "Icon x86 multi-file: OK" || fail "Icon x86 multi-file: CRASH"
   find "$ROOT/test/frontend/icon/corpus" -name "*.s" | xargs rm -f 2>/dev/null || true
 fi
 PRO_FILES=$(find "$ROOT/test/frontend/prolog/corpus" -name "*.pro" -o -name "*.pl" 2>/dev/null | head -10 | tr '\n' ' ')
 if [[ -n "$PRO_FILES" ]]; then
-  eval "$SNO2C -asm $PRO_FILES" > /dev/null 2>&1 && ok "Prolog x86 multi-file: OK" || fail "Prolog x86 multi-file: CRASH"
+  eval "$SCRIP_CC -asm $PRO_FILES" > /dev/null 2>&1 && ok "Prolog x86 multi-file: OK" || fail "Prolog x86 multi-file: CRASH"
   find "$ROOT/test/frontend/prolog/corpus" -name "*.s" | xargs rm -f 2>/dev/null || true
 fi
 echo ""

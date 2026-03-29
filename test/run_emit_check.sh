@@ -11,13 +11,13 @@
 #   bash test/run_emit_check.sh --update   # regenerate generated files
 #   bash test/run_emit_check.sh --verbose  # print PASS lines too
 #
-# Environment: SNO2C (default: <root>/scrip-cc), JOBS (default: nproc)
+# Environment: SCRIP_CC (default: <root>/scrip-cc), JOBS (default: nproc)
 
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SNO2C="${SNO2C:-$ROOT/scrip-cc}"
-export SNO2C
+SCRIP_CC="${SCRIP_CC:-$ROOT/scrip-cc}"
+export SCRIP_CC
 JOBS="${JOBS:-$(nproc 2>/dev/null || echo 4)}"
 TEST_SNO="$ROOT/test/snobol4"
 TEST_ICN="$ROOT/test/icon"
@@ -31,8 +31,8 @@ done
 
 GREEN='\033[0;32m'; RED='\033[0;31m'; BOLD='\033[1m'; RESET='\033[0m'
 
-if [[ ! -x "$SNO2C" ]]; then
-  echo "ERROR: scrip-cc not found at $SNO2C — build first (cd src && make)" >&2; exit 1
+if [[ ! -x "$SCRIP_CC" ]]; then
+  echo "ERROR: scrip-cc not found at $SCRIP_CC — build first (cd src && make)" >&2; exit 1
 fi
 
 mapfile -t SNO_FILES < <(find "$TEST_SNO" -name "*.sno" | sort)
@@ -45,10 +45,10 @@ if [[ $UPDATE -eq 1 ]]; then
     local src="$1" backend="$2" ext="$3"
     local dir name; dir="$(dirname "$src")"; name="$(basename "${src%.*}")"
     local tmp; tmp=$(mktemp)
-    "$SNO2C" "$backend" "$src" > "$tmp" 2>/dev/null
+    "$SCRIP_CC" "$backend" "$src" > "$tmp" 2>/dev/null
     [[ -s "$tmp" ]] && mv "$tmp" "$dir/$name.$ext" || rm -f "$tmp"
   }
-  export -f regen_one; export SNO2C
+  export -f regen_one; export SCRIP_CC
   printf '%s\n' "${SNO_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'regen_one "$1" -asm s'  _ {}
   printf '%s\n' "${SNO_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'regen_one "$1" -jvm j'  _ {}
   printf '%s\n' "${SNO_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'regen_one "$1" -net il' _ {}
@@ -76,7 +76,7 @@ check_one() {
   label="$(basename "$dir")/$name"
   expected="$dir/$name.$ext"
   local tmp; tmp=$(mktemp)
-  "$SNO2C" "$backend" "$src" > "$tmp" 2>/dev/null
+  "$SCRIP_CC" "$backend" "$src" > "$tmp" 2>/dev/null
   if [[ ! -f "$expected" ]]; then
     rm -f "$tmp"; echo "MISSING $backend $label.$ext" >> "$FAIL_LOG"; return
   fi
@@ -89,7 +89,7 @@ check_one() {
   fi
   rm -f "$tmp"
 }
-export -f check_one; export SNO2C FAIL_LOG
+export -f check_one; export SCRIP_CC FAIL_LOG
 
 printf '%s\n' "${SNO_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -asm s'  _ {}
 printf '%s\n' "${SNO_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -jvm j'  _ {}

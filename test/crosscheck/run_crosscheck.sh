@@ -5,9 +5,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TINY="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CORPUS="${CORPUS:-$(cd "$TINY/../../corpus/crosscheck" 2>/dev/null && pwd || echo /home/claude/corpus/crosscheck)}"
-SNO2C="$TINY/scrip-cc"
+SCRIP_CC="$TINY/scrip-cc"
 RT="$TINY/src/runtime"
-SNO2C_INC="$TINY/src/frontend/snobol4"
+SCRIP_CC_INC="$TINY/src/frontend/snobol4"
 FILTER="${FILTER:-}"
 STOP_ON_FAIL="${STOP_ON_FAIL:-1}"
 TIMEOUT=5
@@ -27,7 +27,7 @@ for _src in \
     "$BACKEND_C/trampoline_hello.c" \
     "$BACKEND_C/trampoline_pattern.c"; do
     _o="$TMPDIR_RUN/$(basename "${_src%.c}").o"
-    gcc -O0 -g -c "$_src" -I"$RT/snobol4" -I"$RT" -I"$RT/engine" -I"$RT/mock" -I"$SNO2C_INC" -I"$BACKEND_C" -w -o "$_o"
+    gcc -O0 -g -c "$_src" -I"$RT/snobol4" -I"$RT" -I"$RT/engine" -I"$RT/mock" -I"$SCRIP_CC_INC" -I"$BACKEND_C" -w -o "$_o"
     _rt_objs+=("$_o")
 done
 ar rcs "$RTLIB" "${_rt_objs[@]}"
@@ -40,12 +40,12 @@ run_test() {
     [[ -n "$FILTER" && "$name" != *"$FILTER"* ]] && { SKIP=$((SKIP+1)); return 0; }
     [[ ! -f "$ref" ]] && { echo -e "${YELLOW}SKIP${RESET} $name"; SKIP=$((SKIP+1)); return 0; }
     local c="$TMPDIR_RUN/$name.c" bin="$TMPDIR_RUN/$name"
-    if ! "$SNO2C" -trampoline "$sno" > "$c" 2>/dev/null; then
+    if ! "$SCRIP_CC" -trampoline "$sno" > "$c" 2>/dev/null; then
         echo -e "${RED}FAIL${RESET} $name  [scrip-cc]"; FAIL=$((FAIL+1))
         [[ "$STOP_ON_FAIL" == "1" ]] && summary && exit 1; return 1
     fi
     if ! gcc -O0 -g "$c" "$RTLIB" \
-        -I"$RT/snobol4" -I"$RT" -I"$RT/engine" -I"$RT/mock" -I"$SNO2C_INC" -I"$BACKEND_C" \
+        -I"$RT/snobol4" -I"$RT" -I"$RT/engine" -I"$RT/mock" -I"$SCRIP_CC_INC" -I"$BACKEND_C" \
         -lgc -lm -w -o "$bin" 2>/dev/null; then
         echo -e "${RED}FAIL${RESET} $name  [gcc]"; FAIL=$((FAIL+1))
         [[ "$STOP_ON_FAIL" == "1" ]] && summary && exit 1; return 1
@@ -73,7 +73,7 @@ summary() {
 }
 
 echo "=== one4all crosscheck ==="
-echo "scrip-cc: $SNO2C"; echo ""
+echo "scrip-cc: $SCRIP_CC"; echo ""
 
 for dir in output assign concat arith_new control_new patterns capture strings keywords functions data; do
     full="$CORPUS/$dir"; [[ -d "$full" ]] || continue
