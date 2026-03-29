@@ -22,7 +22,7 @@ for icn in "$CORPUS"/t*.icn; do
   fi
 
   "$DRIVER" -jvm "$icn" -o /tmp/t36.j 2>/dev/null
-  java -jar "$JASMIN" /tmp/t36.j -d /tmp/ 2>/dev/null
+  timeout 30 java -jar "$JASMIN" /tmp/t36.j -d /tmp/ 2>/dev/null
   cls=$(grep -m1 '\.class' /tmp/t36.j 2>/dev/null | awk '{print $NF}')
 
   if [ -z "$cls" ]; then

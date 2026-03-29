@@ -6,9 +6,9 @@ for icn in test/frontend/icon/corpus/rung23_table/t*.icn; do
   [ -f "$icn" ] || continue
   base="${icn%.icn}"; exp="$base.expected"; [ -f "$exp" ] || continue
   /tmp/scrip-cc -jvm "$icn" -o /tmp/t23.j 2>/dev/null
-  java -jar src/backend/jvm/jasmin.jar /tmp/t23.j -d /tmp/ >/dev/null 2>&1
+  timeout 30 java -jar src/backend/jvm/jasmin.jar /tmp/t23.j -d /tmp/ >/dev/null 2>&1
   cls=$(grep -m1 '\.class' /tmp/t23.j | awk '{print $NF}')
-  got=$(java -cp /tmp/ "$cls" 2>/dev/null); want=$(cat "$exp")
+  got=$(timeout 5 java -cp /tmp/ "$cls" 2>/dev/null); want=$(cat "$exp")
   if [ "$got" = "$want" ]; then PASS=$((PASS+1)); echo "PASS: $(basename $icn)"
   else FAIL=$((FAIL+1)); echo "FAIL: $(basename $icn)"; echo "  want: $(echo "$want"|tr '\n' '|')"; echo "  got:  $(echo "$got"|tr '\n' '|')"; fi
 done

@@ -8,7 +8,7 @@ for icn in "$CORPUS"/t*.icn; do
   base="${icn%.icn}"; exp="$base.expected"; [ -f "$exp" ] || continue
   [ -f "$base.xfail" ] && { XFAIL=$((XFAIL+1)); echo "XFAIL: $(basename $icn)"; continue; }
   "$DRIVER" -jvm "$icn" -o /tmp/t32.j 2>/dev/null
-  java -jar "$JASMIN" /tmp/t32.j -d /tmp/ 2>/dev/null
+  timeout 30 java -jar "$JASMIN" /tmp/t32.j -d /tmp/ 2>/dev/null
   cls=$(grep -m1 '\.class' /tmp/t32.j | awk '{print $NF}')
   got=$(timeout 5 java -cp /tmp/ "$cls" 2>/dev/null)
   want=$(cat "$exp")

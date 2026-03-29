@@ -12,7 +12,7 @@ run_test() {
     local icn="$CORPUS/${t}.icn"; local exp="$CORPUS/${t}.expected"
     local jfile="$TMPDIR_OUT/${t}.j"
     "$DRIVER" -jvm "$icn" -o "$jfile" 2>/dev/null
-    java -jar "$JASMIN" "$jfile" -d "$TMPDIR_OUT/" 2>/dev/null
+    timeout 30 java -jar "$JASMIN" "$jfile" -d "$TMPDIR_OUT/" 2>/dev/null
     local cls; cls=$(grep '\.class' "$jfile" | awk '{print $NF}')
     local got; got=$(timeout 5 java -cp "$TMPDIR_OUT/" "$cls" 2>/dev/null)
     local expected; expected=$(cat "$exp")

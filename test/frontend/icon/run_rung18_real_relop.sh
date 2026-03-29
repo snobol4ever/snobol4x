@@ -8,9 +8,9 @@ for icn in test/frontend/icon/corpus/rung18_real_relop/t*.icn; do
   base="${icn%.icn}"; exp="$base.expected"; [ -f "$exp" ] || continue
   [ -f "$base.xfail" ] && { XFAIL=$((XFAIL+1)); echo "XFAIL: $(basename $icn)"; continue; }
   $DRIVER -jvm "$icn" -o /tmp/t18_x.j 2>/dev/null
-  java -jar src/backend/jvm/jasmin.jar /tmp/t18_x.j -d /tmp/ >/dev/null 2>&1
+  timeout 30 java -jar src/backend/jvm/jasmin.jar /tmp/t18_x.j -d /tmp/ >/dev/null 2>&1
   cls=$(grep -m1 '\.class' /tmp/t18_x.j | awk '{print $NF}')
-  got=$(java -cp /tmp/ "$cls" 2>/dev/null); want=$(cat "$exp")
+  got=$(timeout 5 java -cp /tmp/ "$cls" 2>/dev/null); want=$(cat "$exp")
   if [ "$got" = "$want" ]; then
     PASS=$((PASS+1)); echo "PASS: $(basename $icn)"
   else

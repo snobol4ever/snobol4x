@@ -68,6 +68,8 @@ PASS=0; FAIL=0
 FAIL_LOG="$WORK/failures.txt"
 touch "$FAIL_LOG"
 START=$(date +%s%N 2>/dev/null || date +%s)
+START_HUMAN=$(date '+%Y-%m-%d %H:%M:%S')
+echo -e "${BOLD}START  $START_HUMAN  run_emit_check.sh${RESET}"
 
 check_one() {
   local src="$1" backend="$2" ext="$3"
@@ -112,6 +114,10 @@ while IFS= read -r line; do
   fi
 done < "$FAIL_LOG"
 
+FINISH_HUMAN=$(date '+%Y-%m-%d %H:%M:%S')
 echo ""
+echo -e "${BOLD}START   $START_HUMAN${RESET}"
+echo -e "${BOLD}FINISH  $FINISH_HUMAN${RESET}"
+echo -e "${BOLD}ELAPSED ${WALL_MS}ms  ($(awk "BEGIN{printf \"%.1f\", $WALL_MS/1000}")s)${RESET}"
 echo -e "${BOLD}Emit-diff results: ${GREEN}$PASS pass${RESET} / ${RED}$FAIL fail${RESET} — ${WALL_MS}ms wall${RESET}"
 [[ $FAIL -eq 0 ]] && exit 0 || exit 1

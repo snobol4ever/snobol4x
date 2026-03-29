@@ -14,6 +14,7 @@ CORPUS="$SCRIPT_DIR/corpus/rung03_suspend"
 ICONT="${ICONT:-/home/claude/icon-master/bin/icont}"
 ICONX="${ICONX:-/home/claude/icon-master/bin/iconx}"
 
+TIMEOUT="${TIMEOUT:-5}"
 BINARY="${1:-}"
 PASS=0
 FAIL=0
@@ -25,9 +26,9 @@ for icn in "$CORPUS"/*.icn; do
     if [[ "$BINARY" == "oracle" ]]; then
         cp "$icn" /tmp/_icon_test_${base}.icn
         cd /tmp && "$ICONT" -s "_icon_test_${base}.icn" 2>/dev/null
-        actual=$("$ICONX" "/tmp/_icon_test_${base}" 2>/dev/null)
+        actual=$(timeout "$TIMEOUT" "$ICONX" "/tmp/_icon_test_${base}" 2>/dev/null)
     else
-        actual=$("$BINARY" "$icn" 2>/dev/null)
+        actual=$(timeout "$TIMEOUT" "$BINARY" "$icn" 2>/dev/null)
     fi
 
     if [[ "$actual" == "$(cat "$expected")" ]]; then
