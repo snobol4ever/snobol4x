@@ -34,6 +34,11 @@ section .text
     extern icn_move
     extern icn_subject
     extern icn_pos
+    extern icn_str_cmp
+    extern icn_strlen
+    extern icn_pow
+    extern icn_str_subscript
+    extern icn_str_section
 
 _start:
     call    icn_main
@@ -100,9 +105,84 @@ icon_5_taft:
     jmp     icon_4_condok
 icon_4_condok:
     add     rsp, 8
-    ; UNIMPL SEQ_EXPR id=8
-icon_8_α:
+    ; ADD  id=10
+    ; INT 1  id=11
+icon_11_α:
+    push    1
+    jmp     icon_10_compute
+icon_11_β:
+    jmp     icon_10_lb
+    ; VAR count  id=12
+icon_12_α:
+    mov     rax, [rel icn_gvar_count]
+    push    rax
+    jmp     icon_10_lstore
+icon_12_β:
     jmp     icon_4_top
+icon_10_lb:
+    jmp     icon_12_β
+icon_10_α:
+    mov     qword [rbp-16], 0
+    jmp     icon_12_α
+icon_10_β:
+    mov     qword [rbp-16], 1
+    jmp     icon_12_α
+icon_10_lstore:
+    pop     rax
+    mov     [rbp-8], rax
+    cmp     qword [rbp-16], 0
+    je      icon_11_α
+    jmp     icon_11_β
+icon_10_compute:
+    pop     rax
+    mov     rcx, [rbp-8]
+    add     rcx, rax
+    push    rcx
+    jmp     icon_9_aug_store
+icon_9_α:
+    jmp     icon_10_α
+icon_9_β:
+    jmp     icon_10_β
+icon_9_aug_store:
+    pop     rax
+    mov     [rel icn_gvar_count], rax
+    jmp     icon_4_top
+    ; CALL tab  id=13
+    ; CALL many  id=14
+    ; VAR &letters  id=15
+icon_15_α:
+    mov     rax, [rel icn_gvar_&letters]
+    push    rax
+    jmp     icon_14_sbuiltin
+icon_15_β:
+    jmp     icon_4_top
+icon_14_α:
+    jmp     icon_15_α
+icon_14_β:
+    jmp     icon_15_β
+icon_14_sbuiltin:
+    pop     rdi
+    call    icn_many
+    test    rax, rax
+    jz      icon_4_top
+    push    rax
+    jmp     icon_13_taft
+icon_13_α:
+    jmp     icon_14_α
+icon_13_β:
+    jmp     icon_4_top
+icon_13_taft:
+    pop     rdi
+    call    icn_tab
+    test    rax, rax
+    jz      icon_4_top
+    push    rax
+    jmp     icon_8_seq_0
+icon_8_seq_0:
+    add     rsp, 8
+    jmp     icon_9_α
+icon_8_α:
+    jmp     icon_13_α
 icon_8_β:
     jmp     icon_4_top
     jmp     icon_8_α
@@ -146,38 +226,40 @@ icon_2_scan_bret:
     mov     rax, [rel icn_scan_oldpos_2]
     mov     [rel icn_pos], rax
     jmp     icon_4_β
-    ; INT 0  id=10
-icon_10_α:
+    ; INT 0  id=17
+icon_17_α:
     push    0
-    jmp     icon_9_store
-icon_10_β:
+    jmp     icon_16_store
+icon_17_β:
     jmp     icon_2_α
-icon_9_α:
-    jmp     icon_10_α
-icon_9_β:
-    jmp     icon_10_β
-icon_9_store:
+icon_16_α:
+    jmp     icon_17_α
+icon_16_β:
+    jmp     icon_17_β
+icon_16_store:
     pop     rax
     mov     [rel icn_gvar_count], rax
     jmp     icon_2_α
-icon_12_α:
+icon_19_α:
     lea     rdi, [rel icn_str_0]
-    jmp     icon_11_store
-icon_12_β:
-    jmp     icon_9_α
-icon_11_α:
-    jmp     icon_12_α
-icon_11_β:
-    jmp     icon_12_β
-icon_11_store:
+    jmp     icon_18_store
+icon_19_β:
+    jmp     icon_16_α
+icon_18_α:
+    jmp     icon_19_α
+icon_18_β:
+    jmp     icon_19_β
+icon_18_store:
     ; str assign: rdi already has pointer
     mov     [rel icn_gvar_s], rdi
-    jmp     icon_9_α
+    jmp     icon_16_α
 icn_main:
     push    rbp
     mov     rbp, rsp
-    jmp     icon_11_α
+    sub     rsp, 32
+    jmp     icon_18_α
 icn_main_done:
     mov     byte [rel icn_failed], 1
+    add     rsp, 32
     pop     rbp
     ret

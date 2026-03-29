@@ -29,6 +29,11 @@ section .text
     extern icn_move
     extern icn_subject
     extern icn_pos
+    extern icn_str_cmp
+    extern icn_strlen
+    extern icn_pow
+    extern icn_str_subscript
+    extern icn_str_section
 
 _start:
     call    icn_main

@@ -173,3 +173,72 @@ const char *icn_move(long n) {
     icn_pos += n;
     return icn_tabmove_buf;
 }
+
+/* =========================================================================
+ * G-9 additions — string compare, strlen, pow, size helpers
+ * ========================================================================= */
+
+/* icn_str_cmp(a, b): strcmp-like — negative/0/positive */
+int icn_str_cmp(const char *a, const char *b) {
+    while (*a && *b) {
+        if ((unsigned char)*a < (unsigned char)*b) return -1;
+        if ((unsigned char)*a > (unsigned char)*b) return  1;
+        a++; b++;
+    }
+    if (*b) return -1;
+    if (*a) return  1;
+    return 0;
+}
+
+/* icn_strlen(s): length of s as a long */
+long icn_strlen(const char *s) { return my_strlen(s); }
+
+/* icn_pow(base, exp): integer exponentiation */
+long icn_pow(long base, long exp) {
+    if (exp < 0) return 0;
+    long result = 1;
+    while (exp-- > 0) result *= base;
+    return result;
+}
+
+/* icn_str_size(s): size of string or list (strings only for now) */
+long icn_str_size(const char *s) { return s ? my_strlen(s) : 0; }
+
+/* icn_str_subscript(s, i): return single-char string at 0-based index i. */
+static char icn_subscript_buf[2];
+const char *icn_str_subscript(const char *s, long i) {
+    if (!s) return "";
+    long len = my_strlen(s);
+    if (i < 0 || i >= len) return "";
+    icn_subscript_buf[0] = s[i];
+    icn_subscript_buf[1] = '\0';
+    return icn_subscript_buf;
+}
+
+/* icn_str_section(s, i, j, kind):
+ *   kind=0: s[i:j]   (standard — both 1-based)
+ *   kind=1: s[i+:n]  (i 1-based, n = length)
+ *   kind=2: s[i-:n]  (i 1-based, n = length, start = i-n)
+ * Returns substring in arena. */
+const char *icn_str_section(const char *s, long i, long j, long kind) {
+    if (!s) return "";
+    long len = my_strlen(s);
+    long lo, hi;
+    if (kind == 0) {
+        lo = i - 1; hi = j - 1;  /* convert to 0-based */
+    } else if (kind == 1) {
+        lo = i - 1; hi = lo + j;
+    } else {
+        hi = i - 1; lo = hi - j;
+    }
+    if (lo < 0) lo = 0;
+    if (hi > len) hi = len;
+    if (lo > hi) lo = hi;
+    long slen = hi - lo;
+    if (icn_str_arena_pos + slen + 1 > 65536) icn_str_arena_pos = 0;
+    char *out = icn_str_arena + icn_str_arena_pos;
+    for (long k = 0; k < slen; k++) out[k] = s[lo + k];
+    out[slen] = '\0';
+    icn_str_arena_pos += (int)(slen + 1);
+    return out;
+}

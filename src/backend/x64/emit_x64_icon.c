@@ -226,6 +226,10 @@ static void infer_local_types(IcnNode *proc, int body_start) {
 static void emit_expr(IcnEmitter *em, IcnNode *n, IcnPorts ports,
                       char *out_α, char *out_β);
 
+/* Loop control stack — forward declarations (defined near emit_repeat) */
+static void loop_push(const char *brk, const char *nxt);
+static void loop_pop(void);
+
 /* =========================================================================
  * ICN_INT
  * Stack protocol: α pushes value onto hardware stack then jumps succeed.
@@ -1457,7 +1461,9 @@ static void emit_while(IcnEmitter *em, IcnNode *n, IcnPorts ports,
     if(body){
         char ba[64],bb[64];
         IcnPorts bp; strncpy(bp.γ,loop_top,63); strncpy(bp.ω,loop_top,63);
+        loop_push(ports.ω, loop_top);
         emit_expr(em,body,bp,ba,bb);
+        loop_pop();
         Jmp(em,ba);
 
         /* loop_top: go back to condition */
@@ -1506,7 +1512,9 @@ static void emit_until(IcnEmitter *em, IcnNode *n, IcnPorts ports,
     if(body){
         char ba[64],bb[64];
         IcnPorts bp; strncpy(bp.γ,loop_top,63); strncpy(bp.ω,loop_top,63);
+        loop_push(ports.ω, loop_top);
         emit_expr(em,body,bp,ba,bb);
+        loop_pop();
         Jmp(em,ba);
 
         Ldef(em,loop_top); Jmp(em,ca);
@@ -1536,7 +1544,9 @@ static void emit_every(IcnEmitter *em, IcnNode *n, IcnPorts ports,
     if(body){
         char bstart[64]; snprintf(bstart,sizeof bstart,"icon_%d_body",id);
         IcnPorts bp; strncpy(bp.γ,gbfwd,63); strncpy(bp.ω,gbfwd,63);
+        loop_push(ports.ω, gbfwd);
         char ba[64],bb[64]; emit_expr(em,body,bp,ba,bb);
+        loop_pop();
         IcnPorts gp; strncpy(gp.γ,bstart,63); strncpy(gp.ω,ports.ω,63);
         emit_expr(em,gen,gp,ga,gb);
         Ldef(em,bstart); Jmp(em,ba);
@@ -1642,6 +1652,577 @@ static void emit_augop(IcnEmitter *em, IcnNode *n, IcnPorts ports,
 /* =========================================================================
  * Dispatch
  * ======================================================================= */
+/* =========================================================================
+ * G-9 gap-fill: Batch 1 — simple cases
+ * ========================================================================= */
+
+/* ICN_NONNULL — \E: succeed (keeping value) iff E succeeds (non-null check).
+ * In our unboxed representation every value is "non-null"; just forward. */
+static void emit_nonnull(IcnEmitter *em, IcnNode *n, IcnPorts ports,
+                         char *oa, char *ob) {
+    IcnNode *child = n->nchildren > 0 ? n->children[0] : NULL;
+    int id = icn_new_id(em); char a[64], b[64];
+    icn_label_α(id,a,sizeof a); icn_label_β(id,b,sizeof b);
+    strncpy(oa,a,63); strncpy(ob,b,63);
+    char ca[64], cb[64];
+    IcnPorts cp; strncpy(cp.γ,ports.γ,63); strncpy(cp.ω,ports.ω,63);
+    emit_expr(em, child, cp, ca, cb);
+    Ldef(em,a); Jmp(em,ca);
+    Ldef(em,b); Jmp(em,cb);
+}
+
+/* ICN_REAL — floating-point literal: push truncated integer value.
+ * For now: emit as integer (truncated). Full float support deferred. */
+static void emit_real(IcnEmitter *em, IcnNode *n, IcnPorts ports,
+                      char *oa, char *ob) {
+    int id = icn_new_id(em); char a[64], b[64];
+    icn_label_α(id,a,sizeof a); icn_label_β(id,b,sizeof b);
+    strncpy(oa,a,63); strncpy(ob,b,63);
+    long ival = (long)n->val.fval;
+    Ldef(em,a);
+    E(em,"    push    %ld\n", ival);
+    Jmp(em,ports.γ);
+    Ldef(em,b); Jmp(em,ports.ω);
+}
+
+/* ICN_SIZE — *E: size of string or list. Calls icn_strlen(ptr). */
+static void emit_size(IcnEmitter *em, IcnNode *n, IcnPorts ports,
+                      char *oa, char *ob) {
+    int id = icn_new_id(em); char a[64], b[64], relay[64];
+    icn_label_α(id,a,sizeof a); icn_label_β(id,b,sizeof b);
+    snprintf(relay,sizeof relay,"icon_%d_size_relay",id);
+    strncpy(oa,a,63); strncpy(ob,b,63);
+    IcnNode *child = n->nchildren > 0 ? n->children[0] : NULL;
+    char ca[64], cb[64];
+    IcnPorts cp; strncpy(cp.γ,relay,63); strncpy(cp.ω,ports.ω,63);
+    emit_expr(em, child, cp, ca, cb);
+    Ldef(em,a); Jmp(em,ca);
+    Ldef(em,b); Jmp(em,cb);
+    Ldef(em,relay);
+    /* value (str ptr or int) on stack — treat as pointer, call icn_strlen */
+    E(em,"    pop     rdi\n");
+    E(em,"    call    icn_strlen\n");
+    E(em,"    push    rax\n");
+    Jmp(em,ports.γ);
+}
+
+/* ICN_POW — E1 ^ E2: integer exponentiation via icn_pow(base, exp). */
+static void emit_pow(IcnEmitter *em, IcnNode *n, IcnPorts ports,
+                     char *oa, char *ob) {
+    int id = icn_new_id(em); char a[64], b[64], got_r[64], got_l[64];
+    icn_label_α(id,a,sizeof a); icn_label_β(id,b,sizeof b);
+    snprintf(got_r,sizeof got_r,"icon_%d_pow_gr",id);
+    snprintf(got_l,sizeof got_l,"icon_%d_pow_gl",id);
+    strncpy(oa,a,63); strncpy(ob,b,63);
+    int rc_slot = locals_alloc_tmp();
+    char ra[64],rb[64],la[64],lb[64];
+    IcnPorts rp; strncpy(rp.γ,got_r,63); strncpy(rp.ω,ports.ω,63);
+    emit_expr(em,n->children[1],rp,ra,rb);
+    IcnPorts lp; strncpy(lp.γ,got_l,63); strncpy(lp.ω,ports.ω,63);
+    emit_expr(em,n->children[0],lp,la,lb);
+    Ldef(em,a); Jmp(em,la);
+    Ldef(em,b); Jmp(em,rb);
+    Ldef(em,got_r);
+    E(em,"    pop     rax\n");
+    E(em,"    mov     [rbp%+d], rax\n", slot_offset(rc_slot));
+    Jmp(em,la);
+    Ldef(em,got_l);
+    E(em,"    pop     rdi\n");                             /* base */
+    E(em,"    mov     rsi, [rbp%+d]\n", slot_offset(rc_slot)); /* exp */
+    E(em,"    call    icn_pow\n");
+    E(em,"    push    rax\n");
+    Jmp(em,ports.γ);
+}
+
+/* ICN_SEQ_EXPR — (E1; E2; ...; En): evaluate all, result is last value.
+ * Each child's value is discarded except the last. */
+static void emit_seq_expr(IcnEmitter *em, IcnNode *n, IcnPorts ports,
+                          char *oa, char *ob) {
+    int id = icn_new_id(em); char a[64], b[64];
+    icn_label_α(id,a,sizeof a); icn_label_β(id,b,sizeof b);
+    strncpy(oa,a,63); strncpy(ob,b,63);
+    int nc = n->nchildren;
+    if (nc == 0) { Ldef(em,a); Jmp(em,ports.ω); Ldef(em,b); Jmp(em,ports.ω); return; }
+    /* Chain: child[i].γ → discard → child[i+1].α; child[i].ω → ports.ω */
+    char *next_α = NULL;
+    char **alphas = malloc(nc * sizeof(char*));
+    for (int i = 0; i < nc; i++) { alphas[i] = malloc(64); alphas[i][0] = '\0'; }
+    char chain_lbl[64];
+    strncpy(chain_lbl, ports.γ, 63);  /* last child → ports.γ */
+    /* Emit children in reverse so we know next alpha */
+    char prev_α[64]; strncpy(prev_α, ports.γ, 63);
+    for (int i = nc-1; i >= 0; i--) {
+        char relay[64]; snprintf(relay,64,"icon_%d_seq_%d",id,i);
+        IcnPorts cp;
+        if (i == nc-1) { strncpy(cp.γ, ports.γ, 63); }
+        else           { strncpy(cp.γ, relay, 63); }
+        strncpy(cp.ω, ports.ω, 63);
+        char ca[64], cb[64];
+        emit_expr(em, n->children[i], cp, ca, cb);
+        strncpy(alphas[i], ca, 63);
+        /* relay: discard value, jump to next child's α */
+        if (i < nc-1) {
+            Ldef(em,relay);
+            E(em,"    add     rsp, 8\n");  /* discard intermediate value */
+            Jmp(em,alphas[i+1]);
+        }
+        (void)next_α; (void)prev_α;
+    }
+    Ldef(em,a); Jmp(em,alphas[0]);
+    Ldef(em,b); Jmp(em,ports.ω);
+    for (int i = 0; i < nc; i++) free(alphas[i]);
+    free(alphas);
+    (void)chain_lbl;
+}
+
+/* ICN_IDENTICAL — E1 === E2: succeed iff same value (ptr equality for strings,
+ * integer equality for ints). Uses icn_str_eq for strings. */
+static void emit_identical(IcnEmitter *em, IcnNode *n, IcnPorts ports,
+                           char *oa, char *ob) {
+    if (n->nchildren < 2) {
+        int id=icn_new_id(em); char a[64],b[64];
+        icn_label_α(id,a,sizeof a); icn_label_β(id,b,sizeof b);
+        strncpy(oa,a,63); strncpy(ob,b,63);
+        Ldef(em,a); Jmp(em,ports.ω); Ldef(em,b); Jmp(em,ports.ω); return;
+    }
+    int id = icn_new_id(em); char a[64], b[64], got_r[64], got_l[64], chk[64];
+    icn_label_α(id,a,sizeof a); icn_label_β(id,b,sizeof b);
+    snprintf(got_r,sizeof got_r,"icon_%d_id_gr",id);
+    snprintf(got_l,sizeof got_l,"icon_%d_id_gl",id);
+    snprintf(chk,  sizeof chk,  "icon_%d_id_chk",id);
+    strncpy(oa,a,63); strncpy(ob,b,63);
+    int rc_slot = locals_alloc_tmp();
+    char ra[64],rb[64],la[64],lb[64];
+    IcnPorts rp; strncpy(rp.γ,got_r,63); strncpy(rp.ω,ports.ω,63);
+    emit_expr(em,n->children[1],rp,ra,rb);
+    IcnPorts lp; strncpy(lp.γ,got_l,63); strncpy(lp.ω,ports.ω,63);
+    emit_expr(em,n->children[0],lp,la,lb);
+    Ldef(em,a); Jmp(em,la);
+    Ldef(em,b); Jmp(em,rb);
+    Ldef(em,got_r);
+    E(em,"    pop     rax\n");
+    E(em,"    mov     [rbp%+d], rax\n", slot_offset(rc_slot));
+    Jmp(em,la);
+    Ldef(em,got_l);
+    /* Compare: both as integers (ptr or int — identical semantics) */
+    E(em,"    pop     rax\n");
+    E(em,"    cmp     rax, [rbp%+d]\n", slot_offset(rc_slot));
+    E(em,"    jne     %s\n", ports.ω);
+    E(em,"    push    rax\n");
+    Jmp(em,ports.γ);
+    (void)chk;
+}
+
+/* ICN_SWAP — a :=: b: swap two variables, result is new value of lhs. */
+static void emit_swap(IcnEmitter *em, IcnNode *n, IcnPorts ports,
+                      char *oa, char *ob) {
+    int id = icn_new_id(em); char a[64], b[64];
+    icn_label_α(id,a,sizeof a); icn_label_β(id,b,sizeof b);
+    strncpy(oa,a,63); strncpy(ob,b,63);
+    if (n->nchildren < 2 ||
+        !n->children[0] || n->children[0]->kind != ICN_VAR ||
+        !n->children[1] || n->children[1]->kind != ICN_VAR) {
+        Ldef(em,a); Jmp(em,ports.ω); Ldef(em,b); Jmp(em,ports.ω); return;
+    }
+    IcnNode *lv = n->children[0];
+    IcnNode *rv = n->children[1];
+    int lslot = locals_find(lv->val.sval);
+    int rslot = locals_find(rv->val.sval);
+    Ldef(em,a);
+    if (lslot >= 0 && rslot >= 0) {
+        /* both locals — swap via tmp register */
+        E(em,"    mov     rax, [rbp%+d]\n", slot_offset(lslot));
+        E(em,"    mov     rcx, [rbp%+d]\n", slot_offset(rslot));
+        E(em,"    mov     [rbp%+d], rcx\n", slot_offset(lslot));
+        E(em,"    mov     [rbp%+d], rax\n", slot_offset(rslot));
+        E(em,"    push    rcx\n");  /* new value of lhs (old rhs) */
+    } else {
+        /* global(s) — use BSS var_<name> pattern */
+        char lbss[80], rbss[80];
+        snprintf(lbss,sizeof lbss,"icn_var_%s",lv->val.sval);
+        snprintf(rbss,sizeof rbss,"icn_var_%s",rv->val.sval);
+        bss_declare(lbss); bss_declare(rbss);
+        E(em,"    mov     rax, [rel %s]\n", lbss);
+        E(em,"    mov     rcx, [rel %s]\n", rbss);
+        E(em,"    mov     [rel %s], rcx\n", lbss);
+        E(em,"    mov     [rel %s], rax\n", rbss);
+        E(em,"    push    rcx\n");
+    }
+    Jmp(em,ports.γ);
+    Ldef(em,b); Jmp(em,ports.ω);
+}
+
+/* ICN_SGT/SGE/SLT/SLE/SNE — string relational operators.
+ * Calls icn_str_cmp(a,b) then branches on result. */
+static void emit_strrelop(IcnEmitter *em, IcnNode *n, IcnPorts ports,
+                          char *oa, char *ob) {
+    int id = icn_new_id(em); char a[64], b[64], got_r[64], got_l[64], chk[64];
+    icn_label_α(id,a,sizeof a); icn_label_β(id,b,sizeof b);
+    snprintf(got_r,sizeof got_r,"icon_%d_sr_gr",id);
+    snprintf(got_l,sizeof got_l,"icon_%d_sr_gl",id);
+    snprintf(chk,  sizeof chk,  "icon_%d_sr_chk",id);
+    strncpy(oa,a,63); strncpy(ob,b,63);
+    int rc_slot = locals_alloc_tmp();
+    char ra[64],rb[64],la[64],lb[64];
+    IcnPorts rp; strncpy(rp.γ,got_r,63); strncpy(rp.ω,ports.ω,63);
+    emit_expr(em,n->children[1],rp,ra,rb);
+    IcnPorts lp; strncpy(lp.γ,got_l,63); strncpy(lp.ω,ports.ω,63);
+    emit_expr(em,n->children[0],lp,la,lb);
+    Ldef(em,a); Jmp(em,la);
+    Ldef(em,b); Jmp(em,rb);
+    Ldef(em,got_r);
+    E(em,"    pop     rax\n");
+    E(em,"    mov     [rbp%+d], rax\n", slot_offset(rc_slot));
+    Jmp(em,la);
+    Ldef(em,got_l);
+    E(em,"    pop     rdi\n");                              /* left (a) */
+    E(em,"    mov     rsi, [rbp%+d]\n", slot_offset(rc_slot)); /* right (b) */
+    E(em,"    call    icn_str_cmp\n");
+    /* rax = cmp result: <0, 0, >0 */
+    E(em,"    test    eax, eax\n");
+    const char *jfail;
+    switch(n->kind) {
+        case ICN_SGT: jfail="jle"; break;
+        case ICN_SGE: jfail="jl";  break;
+        case ICN_SLT: jfail="jge"; break;
+        case ICN_SLE: jfail="jg";  break;
+        case ICN_SNE: jfail="je";  break;
+        default:      jfail="jne"; break; /* ICN_SEQ (==) */
+    }
+    E(em,"    %s     %s\n", jfail, ports.ω);
+    /* push right value as result (string ptr still valid) */
+    E(em,"    push    qword [rbp%+d]\n", slot_offset(rc_slot));
+    Jmp(em,ports.γ);
+    (void)chk;
+}
+
+/* ICN_REPEAT — repeat { body }: infinite loop, only exits via break.
+ * Uses cur_break_label (set by the loop context push/pop below).
+ * α → body.α; body.γ → loop_top; body.ω → loop_top (retry).
+ * break inside body jumps to ports.γ (or ports.ω — we use ports.γ). */
+
+/* Loop control stack — parallel to loop nesting */
+#define ICN_LOOP_MAX 32
+static char icn_break_stack[ICN_LOOP_MAX][64];
+static char icn_next_stack[ICN_LOOP_MAX][64];
+static int  icn_loop_depth = 0;
+
+static void loop_push(const char *brk, const char *nxt) {
+    if (icn_loop_depth < ICN_LOOP_MAX) {
+        strncpy(icn_break_stack[icn_loop_depth], brk, 63);
+        strncpy(icn_next_stack[icn_loop_depth],  nxt, 63);
+        icn_loop_depth++;
+    }
+}
+static void loop_pop(void) { if (icn_loop_depth > 0) icn_loop_depth--; }
+static const char *loop_break_target(void) {
+    return icn_loop_depth > 0 ? icn_break_stack[icn_loop_depth-1] : "icn_loop_err";
+}
+static const char *loop_next_target(void) {
+    return icn_loop_depth > 0 ? icn_next_stack[icn_loop_depth-1] : "icn_loop_err";
+}
+
+static void emit_repeat(IcnEmitter *em, IcnNode *n, IcnPorts ports,
+                        char *oa, char *ob) {
+    int id = icn_new_id(em); char a[64], b[64], top[64], brk[64];
+    icn_label_α(id,a,sizeof a); icn_label_β(id,b,sizeof b);
+    snprintf(top,sizeof top,"icon_%d_rep_top",id);
+    snprintf(brk,sizeof brk,"icon_%d_rep_brk",id);
+    strncpy(oa,a,63); strncpy(ob,b,63);
+    IcnNode *body = n->nchildren > 0 ? n->children[0] : NULL;
+    loop_push(brk, top);
+    char ba[64], bb[64];
+    IcnPorts bp; strncpy(bp.γ,top,63); strncpy(bp.ω,top,63);
+    if (body) emit_expr(em, body, bp, ba, bb);
+    loop_pop();
+    Ldef(em,a);
+    Ldef(em,top);
+    if (body) Jmp(em,ba); else Jmp(em,top);
+    Ldef(em,b); Jmp(em,ports.ω);
+    Ldef(em,brk); Jmp(em,ports.γ);
+}
+
+/* ICN_BREAK — exit enclosing loop */
+static void emit_break_node(IcnEmitter *em, IcnNode *n, IcnPorts ports,
+                            char *oa, char *ob) {
+    (void)n; (void)ports;
+    int id = icn_new_id(em); char a[64], b[64];
+    icn_label_α(id,a,sizeof a); icn_label_β(id,b,sizeof b);
+    strncpy(oa,a,63); strncpy(ob,b,63);
+    const char *brk = loop_break_target();
+    Ldef(em,a); Jmp(em,brk);
+    Ldef(em,b); Jmp(em,brk);
+}
+
+/* ICN_NEXT — next iteration of enclosing loop */
+static void emit_next_node(IcnEmitter *em, IcnNode *n, IcnPorts ports,
+                           char *oa, char *ob) {
+    (void)n; (void)ports;
+    int id = icn_new_id(em); char a[64], b[64];
+    icn_label_α(id,a,sizeof a); icn_label_β(id,b,sizeof b);
+    strncpy(oa,a,63); strncpy(ob,b,63);
+    const char *nxt = loop_next_target();
+    Ldef(em,a); Jmp(em,nxt);
+    Ldef(em,b); Jmp(em,nxt);
+}
+
+/* ICN_INITIAL — initial { body }: runs body exactly once on first entry.
+ * Uses a BSS flag per INITIAL node. */
+static void emit_initial(IcnEmitter *em, IcnNode *n, IcnPorts ports,
+                         char *oa, char *ob) {
+    int id = icn_new_id(em); char a[64], b[64], skip[64], flag[64];
+    icn_label_α(id,a,sizeof a); icn_label_β(id,b,sizeof b);
+    snprintf(skip,sizeof skip,"icon_%d_init_skip",id);
+    snprintf(flag,sizeof flag,"icn_init_flag_%d",id);
+    strncpy(oa,a,63); strncpy(ob,b,63);
+    bss_declare(flag);
+    IcnNode *body = n->nchildren > 0 ? n->children[0] : NULL;
+    char ba[64], bb[64];
+    IcnPorts bp; strncpy(bp.γ,skip,63); strncpy(bp.ω,skip,63);
+    if (body) emit_expr(em, body, bp, ba, bb);
+    Ldef(em,a);
+    E(em,"    cmp     qword [rel %s], 0\n", flag);
+    E(em,"    jne     %s\n", skip);
+    E(em,"    mov     qword [rel %s], 1\n", flag);
+    if (body) Jmp(em,ba); else Jmp(em,skip);
+    Ldef(em,skip); Jmp(em,ports.γ);
+    Ldef(em,b); Jmp(em,ports.ω);
+}
+
+/* =========================================================================
+ * G-9 Batch 2 — moderate cases: LIMIT, SUBSCRIPT, SECTION, MAKELIST stub,
+ *               FIELD stub, RECORD stub, CASE, BANG (generator iteration)
+ * ========================================================================= */
+
+/* ICN_LIMIT — E \ n: limit generator E to at most n results.
+ * Uses a counter in a frame slot. */
+static void emit_limit(IcnEmitter *em, IcnNode *n, IcnPorts ports,
+                       char *oa, char *ob) {
+    int id = icn_new_id(em); char a[64], b[64], got_lim[64], got_val[64];
+    icn_label_α(id,a,sizeof a); icn_label_β(id,b,sizeof b);
+    snprintf(got_lim,sizeof got_lim,"icon_%d_lim_gl",id);
+    snprintf(got_val,sizeof got_val,"icon_%d_lim_gv",id);
+    strncpy(oa,a,63); strncpy(ob,b,63);
+    int lim_slot = locals_alloc_tmp();  /* stores limit count */
+    int cnt_slot = locals_alloc_tmp();  /* stores remaining count */
+    /* child[0]=generator, child[1]=limit */
+    IcnNode *gen = n->nchildren>0?n->children[0]:NULL;
+    IcnNode *lim = n->nchildren>1?n->children[1]:NULL;
+    char ga[64],gb[64],la[64],lb[64];
+    IcnPorts gp; strncpy(gp.γ,got_val,63); strncpy(gp.ω,ports.ω,63);
+    emit_expr(em,gen,gp,ga,gb);
+    IcnPorts lp; strncpy(lp.γ,got_lim,63); strncpy(lp.ω,ports.ω,63);
+    emit_expr(em,lim,lp,la,lb);
+    /* α: eval limit once, store, set counter, start gen */
+    Ldef(em,a);
+    Jmp(em,la);
+    Ldef(em,got_lim);
+    E(em,"    pop     rax\n");
+    E(em,"    mov     [rbp%+d], rax\n", slot_offset(lim_slot));
+    E(em,"    mov     [rbp%+d], rax\n", slot_offset(cnt_slot));
+    Jmp(em,ga);
+    /* got_val: gen produced a value; check counter */
+    Ldef(em,got_val);
+    E(em,"    dec     qword [rbp%+d]\n", slot_offset(cnt_slot));
+    E(em,"    jl      %s\n", ports.ω);  /* exhausted */
+    Jmp(em,ports.γ);
+    /* β: resume gen if counter not exhausted */
+    Ldef(em,b);
+    E(em,"    cmp     qword [rbp%+d], 0\n", slot_offset(cnt_slot));
+    E(em,"    jl      %s\n", ports.ω);
+    Jmp(em,gb);
+}
+
+/* ICN_SUBSCRIPT — lst[i] or str[i]: return element. Simple 1-based index. */
+static void emit_subscript(IcnEmitter *em, IcnNode *n, IcnPorts ports,
+                           char *oa, char *ob) {
+    int id = icn_new_id(em); char a[64], b[64], got_idx[64], got_obj[64];
+    icn_label_α(id,a,sizeof a); icn_label_β(id,b,sizeof b);
+    snprintf(got_idx,sizeof got_idx,"icon_%d_sub_gi",id);
+    snprintf(got_obj,sizeof got_obj,"icon_%d_sub_go",id);
+    strncpy(oa,a,63); strncpy(ob,b,63);
+    int idx_slot = locals_alloc_tmp();
+    IcnNode *obj = n->nchildren>0?n->children[0]:NULL;
+    IcnNode *idx = n->nchildren>1?n->children[1]:NULL;
+    char ia[64],ib[64],oa2[64],ob2[64];
+    IcnPorts ip; strncpy(ip.γ,got_idx,63); strncpy(ip.ω,ports.ω,63);
+    emit_expr(em,idx,ip,ia,ib);
+    IcnPorts op2; strncpy(op2.γ,got_obj,63); strncpy(op2.ω,ports.ω,63);
+    emit_expr(em,obj,op2,oa2,ob2);
+    Ldef(em,a); Jmp(em,oa2);
+    Ldef(em,b); Jmp(em,ib);
+    Ldef(em,got_idx);
+    E(em,"    pop     rax\n");
+    E(em,"    mov     [rbp%+d], rax\n", slot_offset(idx_slot));
+    Jmp(em,oa2);
+    Ldef(em,got_obj);
+    /* obj is a string ptr on stack; idx is 1-based integer */
+    E(em,"    pop     rdi\n");                                  /* string ptr */
+    E(em,"    mov     rsi, [rbp%+d]\n", slot_offset(idx_slot)); /* 1-based idx */
+    E(em,"    dec     rsi\n");                                   /* 0-based */
+    E(em,"    call    icn_str_subscript\n");
+    E(em,"    push    rax\n");
+    Jmp(em,ports.γ);
+    (void)oa2; (void)ob2;
+}
+
+/* ICN_SECTION — s[i:j]: substring (1-based Icon convention). */
+static void emit_section(IcnEmitter *em, IcnNode *n, IcnPorts ports,
+                         char *oa, char *ob) {
+    int id = icn_new_id(em); char a[64], b[64];
+    snprintf(a,sizeof a,"icon_%d_α",id); snprintf(b,sizeof b,"icon_%d_β",id);
+    strncpy(oa,a,63); strncpy(ob,b,63);
+    /* children: [obj, i, j] */
+    IcnNode *obj = n->nchildren>0?n->children[0]:NULL;
+    IcnNode *ifrom= n->nchildren>1?n->children[1]:NULL;
+    IcnNode *ito  = n->nchildren>2?n->children[2]:NULL;
+    int i_slot = locals_alloc_tmp();
+    int j_slot = locals_alloc_tmp();
+    char oa2[64],ob2[64],ia[64],ib[64],ja[64],jb[64];
+    char got_i[64],got_j[64],got_obj[64];
+    snprintf(got_i,  sizeof got_i,   "icon_%d_sec_gi",id);
+    snprintf(got_j,  sizeof got_j,   "icon_%d_sec_gj",id);
+    snprintf(got_obj,sizeof got_obj, "icon_%d_sec_go",id);
+    IcnPorts ip; strncpy(ip.γ,got_i,63); strncpy(ip.ω,ports.ω,63);
+    emit_expr(em,ifrom,ip,ia,ib);
+    IcnPorts jp; strncpy(jp.γ,got_j,63); strncpy(jp.ω,ports.ω,63);
+    emit_expr(em,ito,jp,ja,jb);
+    IcnPorts op2; strncpy(op2.γ,got_obj,63); strncpy(op2.ω,ports.ω,63);
+    emit_expr(em,obj,op2,oa2,ob2);
+    Ldef(em,a); Jmp(em,oa2);
+    Ldef(em,b); Jmp(em,ib);
+    Ldef(em,got_i);
+    E(em,"    pop     rax\n"); E(em,"    mov     [rbp%+d], rax\n", slot_offset(i_slot));
+    Jmp(em,ja);
+    Ldef(em,got_j);
+    E(em,"    pop     rax\n"); E(em,"    mov     [rbp%+d], rax\n", slot_offset(j_slot));
+    Jmp(em,oa2);
+    Ldef(em,got_obj);
+    /* call icn_str_section(ptr, i, j, kind) */
+    E(em,"    pop     rdi\n");  /* str ptr */
+    E(em,"    mov     rsi, [rbp%+d]\n", slot_offset(i_slot));
+    E(em,"    mov     rdx, [rbp%+d]\n", slot_offset(j_slot));
+    long kind = (n->kind==ICN_SECTION_PLUS)?1:(n->kind==ICN_SECTION_MINUS)?2:0;
+    E(em,"    mov     rcx, %ld\n", kind);
+    E(em,"    call    icn_str_section\n");
+    E(em,"    push    rax\n");
+    Jmp(em,ports.γ);
+    (void)oa2; (void)ob2;
+}
+
+/* ICN_MAKELIST — [e1,...,en]: stub — push 0 (list support deferred). */
+static void emit_makelist(IcnEmitter *em, IcnNode *n, IcnPorts ports,
+                          char *oa, char *ob) {
+    (void)n;
+    int id = icn_new_id(em); char a[64], b[64];
+    icn_label_α(id,a,sizeof a); icn_label_β(id,b,sizeof b);
+    strncpy(oa,a,63); strncpy(ob,b,63);
+    Ldef(em,a); E(em,"    push    0\n"); Jmp(em,ports.γ);
+    Ldef(em,b); Jmp(em,ports.ω);
+}
+
+/* ICN_RECORD — record(f1,...) construction: stub — push 0. */
+static void emit_record(IcnEmitter *em, IcnNode *n, IcnPorts ports,
+                        char *oa, char *ob) {
+    (void)n;
+    int id = icn_new_id(em); char a[64], b[64];
+    icn_label_α(id,a,sizeof a); icn_label_β(id,b,sizeof b);
+    strncpy(oa,a,63); strncpy(ob,b,63);
+    Ldef(em,a); E(em,"    push    0\n"); Jmp(em,ports.γ);
+    Ldef(em,b); Jmp(em,ports.ω);
+}
+
+/* ICN_FIELD — r.field: stub — push 0. */
+static void emit_field(IcnEmitter *em, IcnNode *n, IcnPorts ports,
+                       char *oa, char *ob) {
+    (void)n;
+    int id = icn_new_id(em); char a[64], b[64];
+    icn_label_α(id,a,sizeof a); icn_label_β(id,b,sizeof b);
+    strncpy(oa,a,63); strncpy(ob,b,63);
+    Ldef(em,a); E(em,"    push    0\n"); Jmp(em,ports.γ);
+    Ldef(em,b); Jmp(em,ports.ω);
+}
+
+/* ICN_CASE — case E of { k1: b1 ... default: bd }
+ * children[0]=selector, children[1..n-1]=arm pairs or default.
+ * Parser encodes: odd children = key exprs, even = body exprs, last = default.
+ * Simple approach: eval selector, eval each key, compare, branch. */
+static void emit_case(IcnEmitter *em, IcnNode *n, IcnPorts ports,
+                      char *oa, char *ob) {
+    int id = icn_new_id(em); char a[64], b[64];
+    icn_label_α(id,a,sizeof a); icn_label_β(id,b,sizeof b);
+    strncpy(oa,a,63); strncpy(ob,b,63);
+    if (n->nchildren < 1) { Ldef(em,a); Jmp(em,ports.ω); Ldef(em,b); Jmp(em,ports.ω); return; }
+    int sel_slot = locals_alloc_tmp();
+    char got_sel[64]; snprintf(got_sel,sizeof got_sel,"icon_%d_case_sel",id);
+    IcnNode *sel = n->children[0];
+    char sa[64], sb[64];
+    IcnPorts sp; strncpy(sp.γ,got_sel,63); strncpy(sp.ω,ports.ω,63);
+    emit_expr(em,sel,sp,sa,sb);
+    Ldef(em,a); Jmp(em,sa);
+    Ldef(em,b); Jmp(em,sb);
+    Ldef(em,got_sel);
+    E(em,"    pop     rax\n");
+    E(em,"    mov     [rbp%+d], rax\n", slot_offset(sel_slot));
+    /* Arms: children[1..] in pairs (key, body), optional trailing default */
+    int narms = (n->nchildren - 1);
+    int has_default = (narms % 2 == 1);
+    int npairs = narms / 2;
+    for (int i = 0; i < npairs; i++) {
+        IcnNode *key  = n->children[1 + i*2];
+        IcnNode *body = n->children[1 + i*2 + 1];
+        char next_arm[64]; snprintf(next_arm,sizeof next_arm,"icon_%d_arm_%d",id,i);
+        char got_key[64];  snprintf(got_key, sizeof got_key, "icon_%d_key_%d",id,i);
+        char ka[64],kb[64];
+        IcnPorts kp; strncpy(kp.γ,got_key,63); strncpy(kp.ω,next_arm,63);
+        emit_expr(em,key,kp,ka,kb);
+        Jmp(em,ka);
+        Ldef(em,got_key);
+        E(em,"    pop     rax\n");
+        E(em,"    cmp     rax, [rbp%+d]\n", slot_offset(sel_slot));
+        E(em,"    jne     %s\n", next_arm);
+        char ba2[64],bb2[64];
+        IcnPorts bp; strncpy(bp.γ,ports.γ,63); strncpy(bp.ω,ports.ω,63);
+        emit_expr(em,body,bp,ba2,bb2);
+        Jmp(em,ba2);
+        Ldef(em,next_arm);
+    }
+    if (has_default) {
+        IcnNode *def_body = n->children[n->nchildren-1];
+        char da[64],db[64];
+        IcnPorts dp; strncpy(dp.γ,ports.γ,63); strncpy(dp.ω,ports.ω,63);
+        emit_expr(em,def_body,dp,da,db);
+        Jmp(em,da);
+    } else {
+        Jmp(em,ports.ω);
+    }
+}
+
+/* ICN_BANG — !E: generate elements of a list or string characters.
+ * Stub: for strings, generate each character as a 1-char string.
+ * For lists (opaque ptr), stub as immediate fail. */
+static void emit_bang(IcnEmitter *em, IcnNode *n, IcnPorts ports,
+                      char *oa, char *ob) {
+    int id = icn_new_id(em); char a[64], b[64];
+    icn_label_α(id,a,sizeof a); icn_label_β(id,b,sizeof b);
+    strncpy(oa,a,63); strncpy(ob,b,63);
+    /* Stub: just fail — list/string iteration needs runtime support */
+    Ldef(em,a); Jmp(em,ports.ω);
+    Ldef(em,b); Jmp(em,ports.ω);
+    (void)n;
+}
+
+/* ICN_BANG_BINARY / ICN_MATCH — stubs */
+static void emit_stub_fail(IcnEmitter *em, IcnNode *n, IcnPorts ports,
+                           char *oa, char *ob) {
+    (void)n;
+    int id = icn_new_id(em); char a[64], b[64];
+    icn_label_α(id,a,sizeof a); icn_label_β(id,b,sizeof b);
+    strncpy(oa,a,63); strncpy(ob,b,63);
+    Ldef(em,a); Jmp(em,ports.ω);
+    Ldef(em,b); Jmp(em,ports.ω);
+}
+
 static void emit_expr(IcnEmitter *em, IcnNode *n, IcnPorts ports,
                       char *oa, char *ob) {
     if(!n){ emit_fail_node(em,n,ports,oa,ob); return; }
@@ -1674,6 +2255,32 @@ static void emit_expr(IcnEmitter *em, IcnNode *n, IcnPorts ports,
         case ICN_UNTIL:  emit_until    (em,n,ports,oa,ob); break;
         case ICN_CALL:   emit_call     (em,n,ports,oa,ob); break;
         case ICN_AUGOP:  emit_augop    (em,n,ports,oa,ob); break;
+        /* G-9 gap-fill cases */
+        case ICN_NONNULL:   emit_nonnull   (em,n,ports,oa,ob); break;
+        case ICN_REAL:      emit_real      (em,n,ports,oa,ob); break;
+        case ICN_SIZE:      emit_size      (em,n,ports,oa,ob); break;
+        case ICN_POW:       emit_pow       (em,n,ports,oa,ob); break;
+        case ICN_SEQ_EXPR:  emit_seq_expr  (em,n,ports,oa,ob); break;
+        case ICN_IDENTICAL: emit_identical (em,n,ports,oa,ob); break;
+        case ICN_SWAP:      emit_swap      (em,n,ports,oa,ob); break;
+        case ICN_SGT: case ICN_SGE: case ICN_SLT:
+        case ICN_SLE: case ICN_SNE:
+                            emit_strrelop  (em,n,ports,oa,ob); break;
+        case ICN_REPEAT:    emit_repeat    (em,n,ports,oa,ob); break;
+        case ICN_BREAK:     emit_break_node(em,n,ports,oa,ob); break;
+        case ICN_NEXT:      emit_next_node (em,n,ports,oa,ob); break;
+        case ICN_INITIAL:   emit_initial   (em,n,ports,oa,ob); break;
+        case ICN_LIMIT:     emit_limit     (em,n,ports,oa,ob); break;
+        case ICN_SUBSCRIPT: emit_subscript (em,n,ports,oa,ob); break;
+        case ICN_SECTION: case ICN_SECTION_PLUS: case ICN_SECTION_MINUS:
+                            emit_section   (em,n,ports,oa,ob); break;
+        case ICN_MAKELIST:  emit_makelist  (em,n,ports,oa,ob); break;
+        case ICN_RECORD:    emit_record    (em,n,ports,oa,ob); break;
+        case ICN_FIELD:     emit_field     (em,n,ports,oa,ob); break;
+        case ICN_CASE:      emit_case      (em,n,ports,oa,ob); break;
+        case ICN_BANG:      emit_bang      (em,n,ports,oa,ob); break;
+        case ICN_BANG_BINARY: emit_stub_fail(em,n,ports,oa,ob); break;
+        case ICN_MATCH:     emit_stub_fail (em,n,ports,oa,ob); break;
         case ICN_AND: {
             /* n-ary conjunction: E1 & E2 & ... & En
              * irgen.icn ir_conjunction wiring:
@@ -1915,7 +2522,9 @@ void icn_emit_file(IcnEmitter *em, IcnNode **nodes, int count) {
     E(em,"    extern icn_push\n    extern icn_pop\n    extern icn_str_concat\n    extern icn_str_eq\n");
     E(em,"    extern icn_any\n    extern icn_many\n    extern icn_upto\n");
     E(em,"    extern icn_str_find\n    extern icn_match\n    extern icn_tab\n    extern icn_move\n");
-    E(em,"    extern icn_subject\n    extern icn_pos\n\n");
+    E(em,"    extern icn_subject\n    extern icn_pos\n");
+    E(em,"    extern icn_str_cmp\n    extern icn_strlen\n    extern icn_pow\n");
+    E(em,"    extern icn_str_subscript\n    extern icn_str_section\n\n");
     E(em,"_start:\n    call    icn_main\n    mov     rax, 60\n    xor     rdi, rdi\n    syscall\n\n");
 
     fputs(body,em->out); free(body);
