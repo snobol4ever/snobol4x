@@ -259,7 +259,14 @@ static int lower_token(const ScPToken *tok, ExprStack *s,
 
     /* ---- Assignment ---- */
     case SNOCONE_ASSIGN: {
-        EXPR_t *rhs = es_pop(s), *lhs = es_pop(s);
+        /* X =;  has only LHS on stack (no RHS tokens before semicolon).
+         * Detect by checking stack depth: if 1 item, it IS the lhs, rhs = null. */
+        EXPR_t *rhs, *lhs;
+        if (s->top >= 2) {
+            rhs = es_pop(s); lhs = es_pop(s);
+        } else {
+            lhs = es_pop(s); rhs = expr_new(E_NUL);
+        }
         es_push(s, expr_binary(E_ASSIGN, lhs, rhs)); return 0;
     }
 
