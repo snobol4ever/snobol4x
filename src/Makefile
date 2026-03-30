@@ -7,7 +7,7 @@ CFLAGS = -Wall -Wno-unused-function -g -O0 \
          -I frontend/icon \
          -I frontend/rebus \
          -I backend/c \
-         -I backend/x64
+         -I backend
 
 FRONTEND_SNO = \
     frontend/snobol4/lex.c \
@@ -38,24 +38,24 @@ BACKEND_C = \
     backend/c/emit_byrd_c.c
 
 BACKEND_X64 = \
-    backend/x64/emit_x64.c \
-    backend/x64/emit_x64_icon.c \
-    backend/x64/emit_x64_snocone.c
+    backend/emit_x64.c \
+    backend/emit_x64_icon.c \
+    backend/emit_x64_snocone.c
 
 
 DRIVER = \
     driver/main.c
 
 BACKEND_JVM = \
-    backend/jvm/emit_jvm.c \
-    backend/jvm/emit_jvm_icon.c \
-    backend/jvm/emit_jvm_prolog.c
+    backend/emit_jvm.c \
+    backend/emit_jvm_icon.c \
+    backend/emit_jvm_prolog.c
 
 BACKEND_NET = \
-    backend/net/emit_net.c
+    backend/emit_net.c
 
 BACKEND_WASM = \
-    backend/wasm/emit_wasm.c
+    backend/emit_wasm.c
 
 IR = \
     ir/ir_print.c \
@@ -91,7 +91,7 @@ frontend/rebus/lex.rebus.c: frontend/rebus/rebus.l frontend/rebus/rebus.tab.h
 frontend/rebus/rebus.tab.o frontend/rebus/lex.rebus.o frontend/rebus/rebus_lower.o frontend/rebus/rebus_print.o: frontend/rebus/rebus.tab.h
 
 # emit_x64_prolog.c is included by emit_x64.c — explicit dep so make rebuilds on change
-backend/x64/emit_x64.o: backend/x64/emit_x64_prolog.c
+backend/emit_x64.o: backend/emit_x64_prolog.c
 
 # Pattern rule — each .c depends on the shared headers
 %.o: %.c \

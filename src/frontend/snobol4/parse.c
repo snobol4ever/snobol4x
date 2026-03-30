@@ -236,7 +236,6 @@ static EXPR_t *parse_expr14(Lex *lx) {
         case T_PLUS:   lex_next(lx); return parse_expr14(lx); /* unary + is identity */
         case T_MINUS:  uk=E_NEG;   break;
         case T_STAR:   uk=E_DEFER; break;   /* *X = deferred pattern ref */
-        case T_STAR:   uk=E_DEFER; break;  /* *X = deferred pattern ref */
         case T_DOLLAR: uk=E_INDR; break;  /* $X = indirect reference */
         case T_DOT:    uk=E_CAPT_COND;  break;  /* .X = name */
         case T_BANG:   uk=E_POW;   break;  /* !X = definable unary */
