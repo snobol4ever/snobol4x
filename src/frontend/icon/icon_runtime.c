@@ -273,3 +273,75 @@ long icn_match_pat(const char *pat) {
     icn_pos += plen;
     return icn_pos;
 }
+
+/* =========================================================================
+ * Cset operations — G3–G6 (M-G5-LOWER-ICON-FIX)
+ * Csets are represented as null-terminated char* (member characters).
+ * Results allocated in the shared string arena.
+ * ======================================================================= */
+
+/* icn_cset_complement(cs): return all 256 ASCII chars NOT in cs (printable
+ * subset: chars 1..127, skip NUL which would terminate the string). */
+const char *icn_cset_complement(const char *cs) {
+    if (!cs) cs = "";
+    if (icn_str_arena_pos + 128 > 65536) icn_str_arena_pos = 0;
+    char *out = icn_str_arena + icn_str_arena_pos;
+    int n = 0;
+    for (int c = 1; c < 128; c++) {
+        int found = 0;
+        for (int i = 0; cs[i]; i++) { if ((unsigned char)cs[i] == (unsigned)c) { found = 1; break; } }
+        if (!found) out[n++] = (char)c;
+    }
+    out[n] = '\0';
+    icn_str_arena_pos += n + 1;
+    return out;
+}
+
+/* icn_cset_union(a, b): chars in a OR b (deduplicated). */
+const char *icn_cset_union(const char *a, const char *b) {
+    if (!a) a = ""; if (!b) b = "";
+    if (icn_str_arena_pos + 256 > 65536) icn_str_arena_pos = 0;
+    char *out = icn_str_arena + icn_str_arena_pos;
+    int n = 0;
+    /* add all from a */
+    for (int i = 0; a[i]; i++) out[n++] = a[i];
+    /* add from b if not already in a */
+    for (int j = 0; b[j]; j++) {
+        int found = 0;
+        for (int i = 0; a[i]; i++) { if (a[i] == b[j]) { found = 1; break; } }
+        if (!found) out[n++] = b[j];
+    }
+    out[n] = '\0';
+    icn_str_arena_pos += n + 1;
+    return out;
+}
+
+/* icn_cset_diff(a, b): chars in a but NOT in b. */
+const char *icn_cset_diff(const char *a, const char *b) {
+    if (!a) a = ""; if (!b) b = "";
+    if (icn_str_arena_pos + 256 > 65536) icn_str_arena_pos = 0;
+    char *out = icn_str_arena + icn_str_arena_pos;
+    int n = 0;
+    for (int i = 0; a[i]; i++) {
+        int found = 0;
+        for (int j = 0; b[j]; j++) { if (a[i] == b[j]) { found = 1; break; } }
+        if (!found) out[n++] = a[i];
+    }
+    out[n] = '\0';
+    icn_str_arena_pos += n + 1;
+    return out;
+}
+
+/* icn_cset_inter(a, b): chars in BOTH a and b. */
+const char *icn_cset_inter(const char *a, const char *b) {
+    if (!a) a = ""; if (!b) b = "";
+    if (icn_str_arena_pos + 256 > 65536) icn_str_arena_pos = 0;
+    char *out = icn_str_arena + icn_str_arena_pos;
+    int n = 0;
+    for (int i = 0; a[i]; i++) {
+        for (int j = 0; b[j]; j++) { if (a[i] == b[j]) { out[n++] = a[i]; break; } }
+    }
+    out[n] = '\0';
+    icn_str_arena_pos += n + 1;
+    return out;
+}

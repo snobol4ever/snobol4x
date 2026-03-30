@@ -184,6 +184,7 @@ static const char *classname_buf_fld(const char *fld, const char *desc) {
  * Node ID counter and label generation
  * ======================================================================= */
 static int uid = 0;
+static int need_cset_builtins = 0;  /* set when ICN_COMPLEMENT/CSET_* emitted */
 
 static int next_uid(void) { return uid++; }
 
@@ -6499,6 +6500,71 @@ static void emit_jvm_icon_match(IcnNode *n, Ports ports, char *oα, char *oβ) {
 }
 
 /* =========================================================================
+ * G3: ICN_COMPLEMENT — ~E: cset complement via icn_builtin_cset_complement
+ * G4–G6: ICN_CSET_UNION/DIFF/INTER — binary cset ops
+ * (M-G5-LOWER-ICON-FIX)
+ * ======================================================================= */
+static void emit_jvm_icon_cset_complement(IcnNode *n, Ports ports, char *oα, char *oβ) {
+    need_cset_builtins = 1;
+    int id = next_uid(); char a[64], b[64], relay[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    snprintf(relay, sizeof relay, "icn_%d_csc_relay", id);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+    IcnNode *child = n->nchildren > 0 ? n->children[0] : NULL;
+    Ports cp; strncpy(cp.γ,relay,63); strncpy(cp.ω,ports.ω,63);
+    char ca[64], cb[64]; emit_jvm_icon_expr(child, cp, ca, cb);
+    JL(a); JGoto(ca);
+    JL(b); JGoto(cb);
+    JL(relay);
+    /* child left String on stack */
+    JI("invokestatic", classname_buf("icn_builtin_cset_complement(Ljava/lang/String;)Ljava/lang/String;"));
+    JGoto(ports.γ);
+}
+
+static void emit_jvm_icon_cset_binop(IcnNode *n, Ports ports, char *oα, char *oβ) {
+    need_cset_builtins = 1;
+    int id = next_uid(); char a[64], b[64], lstore[64], compute[64], lbfwd[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    snprintf(lstore,  sizeof lstore,  "icn_%d_cbo_ls",  id);
+    snprintf(compute, sizeof compute, "icn_%d_cbo_cmp", id);
+    snprintf(lbfwd,   sizeof lbfwd,   "icn_%d_cbo_lb",  id);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+    /* Use static fields to hold the two cset String refs between children */
+    char lf[80], rf[80];
+    snprintf(lf, sizeof lf, "icn_cbo%d_lcs", id);
+    snprintf(rf, sizeof rf, "icn_cbo%d_rcs", id);
+    declare_static_str(lf); declare_static_str(rf);
+    IcnNode *rch = n->nchildren > 1 ? n->children[1] : NULL;
+    IcnNode *lch = n->nchildren > 0 ? n->children[0] : NULL;
+    char ra[64], rb2[64];
+    Ports rp; strncpy(rp.γ,compute,63); strncpy(rp.ω,lbfwd,63);
+    emit_jvm_icon_expr(rch, rp, ra, rb2);
+    char la[64], lb2[64];
+    Ports lp; strncpy(lp.γ,lstore,63); strncpy(lp.ω,ports.ω,63);
+    emit_jvm_icon_expr(lch, lp, la, lb2);
+    JL(lbfwd); JGoto(lb2);
+    JL(a); JGoto(la);
+    JL(b); JGoto(rb2);
+    JL(lstore);
+    /* left String on stack — store to static field */
+    JI("putstatic", classname_buf_fld(lf, "Ljava/lang/String;"));
+    JGoto(ra);
+    JL(compute);
+    /* right String on stack — store, then load both and call */
+    JI("putstatic", classname_buf_fld(rf, "Ljava/lang/String;"));
+    JI("getstatic", classname_buf_fld(lf, "Ljava/lang/String;"));
+    JI("getstatic", classname_buf_fld(rf, "Ljava/lang/String;"));
+    const char *sig =
+        (n->kind == ICN_CSET_UNION) ?
+            "icn_builtin_cset_union(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;" :
+        (n->kind == ICN_CSET_DIFF)  ?
+            "icn_builtin_cset_diff(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"  :
+            "icn_builtin_cset_inter(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;";
+    JI("invokestatic", classname_buf(sig));
+    JGoto(ports.γ);
+}
+
+/* =========================================================================
  * Dispatch
  * ======================================================================= */
 static void emit_jvm_icon_expr(IcnNode *n, Ports ports, char *oα, char *oβ) {
@@ -6597,6 +6663,11 @@ static void emit_jvm_icon_expr(IcnNode *n, Ports ports, char *oα, char *oβ) {
             /* M+:N / M-:N — emit as plain section for now (stub) */
             emit_jvm_icon_section(n,ports,oα,oβ); break;
         case ICN_BANG_BINARY: emit_jvm_icon_call(n,ports,oα,oβ); break; /* stub */
+        /* G3–G6: cset operations (M-G5-LOWER-ICON-FIX) */
+        case ICN_COMPLEMENT: emit_jvm_icon_cset_complement(n,ports,oα,oβ); break;
+        case ICN_CSET_UNION: emit_jvm_icon_cset_binop(n,ports,oα,oβ); break;
+        case ICN_CSET_DIFF:  emit_jvm_icon_cset_binop(n,ports,oα,oβ); break;
+        case ICN_CSET_INTER: emit_jvm_icon_cset_binop(n,ports,oα,oβ); break;
         case ICN_SUBSCRIPT: emit_jvm_icon_subscript(n,ports,oα,oβ); break;
         case ICN_SECTION:   emit_jvm_icon_section  (n,ports,oα,oβ); break;
         case ICN_MAKELIST:  emit_jvm_icon_makelist (n,ports,oα,oβ); break;
@@ -7139,6 +7210,7 @@ void emit_jvm_icon_file(IcnNode **nodes, int count, FILE *fp, const char *filena
     nstrings = 0;
     ntdflt = 0;
     nrec = 0;
+    need_cset_builtins = 0;
 
     set_classname(filename ? filename : "IconProg");
 
@@ -8083,6 +8155,125 @@ void emit_jvm_icon_file(IcnNode **nodes, int count, FILE *fp, const char *filena
     J(".end method\n\n");
 
     /* === END M-IJ-BUILTINS-STR helpers === */
+
+    /* Cset operation builtins (G3–G6, M-G5-LOWER-ICON-FIX) */
+    if (need_cset_builtins) {
+        /* icn_builtin_cset_complement(String cs) → String */
+        J(".method public static icn_builtin_cset_complement(Ljava/lang/String;)Ljava/lang/String;\n");
+        J("    .limit stack 4\n    .limit locals 4\n");
+        J("    ; StringBuilder result\n");
+        J("    new java/lang/StringBuilder\n");
+        J("    dup\n");
+        J("    invokespecial java/lang/StringBuilder/<init>()V\n");
+        J("    astore_1\n");
+        J("    ; loop c = 1..127\n");
+        J("    iconst_1\n    istore_2\n");
+        J("icn_csc_loop:\n");
+        J("    iload_2\n    bipush 127\n    if_icmpgt icn_csc_done\n");
+        J("    ; cs.indexOf(c) < 0 → append\n");
+        J("    aload_0\n    iload_2\n");
+        J("    invokevirtual java/lang/String/indexOf(I)I\n");
+        J("    ifge icn_csc_skip\n");
+        J("    aload_1\n    iload_2\n");
+        J("    invokevirtual java/lang/StringBuilder/append(C)Ljava/lang/StringBuilder;\n");
+        J("    pop\n");
+        J("icn_csc_skip:\n");
+        J("    iinc 2 1\n    goto icn_csc_loop\n");
+        J("icn_csc_done:\n");
+        J("    aload_1\n");
+        J("    invokevirtual java/lang/StringBuilder/toString()Ljava/lang/String;\n");
+        J("    areturn\n");
+        J(".end method\n\n");
+
+        /* icn_builtin_cset_union(String a, String b) → String */
+        J(".method public static icn_builtin_cset_union(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;\n");
+        J("    .limit stack 4\n    .limit locals 4\n");
+        J("    ; start with copy of a\n");
+        J("    new java/lang/StringBuilder\n");
+        J("    dup\n    aload_0\n");
+        J("    invokespecial java/lang/StringBuilder/<init>(Ljava/lang/String;)V\n");
+        J("    astore_2\n");
+        J("    ; for each char in b: if a.indexOf(c)<0 append\n");
+        J("    iconst_0\n    istore_3\n");
+        J("icn_csu_loop:\n");
+        J("    iload_3\n    aload_1\n");
+        J("    invokevirtual java/lang/String/length()I\n");
+        J("    if_icmpge icn_csu_done\n");
+        J("    aload_1\n    iload_3\n");
+        J("    invokevirtual java/lang/String/charAt(I)C\n");
+        J("    istore 0\n");  /* reuse local 0 (shadow a) as char temp */
+        J("    aload_0\n    iload 0\n");
+        J("    invokevirtual java/lang/String/indexOf(I)I\n");
+        J("    ifge icn_csu_skip\n");
+        J("    aload_2\n    iload 0\n");
+        J("    invokevirtual java/lang/StringBuilder/append(C)Ljava/lang/StringBuilder;\n");
+        J("    pop\n");
+        J("icn_csu_skip:\n");
+        J("    iinc 3 1\n    goto icn_csu_loop\n");
+        J("icn_csu_done:\n");
+        J("    aload_2\n");
+        J("    invokevirtual java/lang/StringBuilder/toString()Ljava/lang/String;\n");
+        J("    areturn\n");
+        J(".end method\n\n");
+
+        /* icn_builtin_cset_diff(String a, String b) → String (chars in a not in b) */
+        J(".method public static icn_builtin_cset_diff(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;\n");
+        J("    .limit stack 4\n    .limit locals 4\n");
+        J("    new java/lang/StringBuilder\n");
+        J("    dup\n");
+        J("    invokespecial java/lang/StringBuilder/<init>()V\n");
+        J("    astore_2\n");
+        J("    iconst_0\n    istore_3\n");
+        J("icn_csd_loop:\n");
+        J("    iload_3\n    aload_0\n");
+        J("    invokevirtual java/lang/String/length()I\n");
+        J("    if_icmpge icn_csd_done\n");
+        J("    aload_0\n    iload_3\n");
+        J("    invokevirtual java/lang/String/charAt(I)C\n");
+        J("    istore 0\n");
+        J("    aload_1\n    iload 0\n");
+        J("    invokevirtual java/lang/String/indexOf(I)I\n");
+        J("    ifge icn_csd_skip\n");  /* if b contains c, skip */
+        J("    aload_2\n    iload 0\n");
+        J("    invokevirtual java/lang/StringBuilder/append(C)Ljava/lang/StringBuilder;\n");
+        J("    pop\n");
+        J("icn_csd_skip:\n");
+        J("    iinc 3 1\n    goto icn_csd_loop\n");
+        J("icn_csd_done:\n");
+        J("    aload_2\n");
+        J("    invokevirtual java/lang/StringBuilder/toString()Ljava/lang/String;\n");
+        J("    areturn\n");
+        J(".end method\n\n");
+
+        /* icn_builtin_cset_inter(String a, String b) → String (chars in both) */
+        J(".method public static icn_builtin_cset_inter(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;\n");
+        J("    .limit stack 4\n    .limit locals 4\n");
+        J("    new java/lang/StringBuilder\n");
+        J("    dup\n");
+        J("    invokespecial java/lang/StringBuilder/<init>()V\n");
+        J("    astore_2\n");
+        J("    iconst_0\n    istore_3\n");
+        J("icn_csi_loop:\n");
+        J("    iload_3\n    aload_0\n");
+        J("    invokevirtual java/lang/String/length()I\n");
+        J("    if_icmpge icn_csi_done\n");
+        J("    aload_0\n    iload_3\n");
+        J("    invokevirtual java/lang/String/charAt(I)C\n");
+        J("    istore 0\n");
+        J("    aload_1\n    iload 0\n");
+        J("    invokevirtual java/lang/String/indexOf(I)I\n");
+        J("    iflt icn_csi_skip\n");  /* if b does NOT contain c, skip */
+        J("    aload_2\n    iload 0\n");
+        J("    invokevirtual java/lang/StringBuilder/append(C)Ljava/lang/StringBuilder;\n");
+        J("    pop\n");
+        J("icn_csi_skip:\n");
+        J("    iinc 3 1\n    goto icn_csi_loop\n");
+        J("icn_csi_done:\n");
+        J("    aload_2\n");
+        J("    invokevirtual java/lang/StringBuilder/toString()Ljava/lang/String;\n");
+        J("    areturn\n");
+        J(".end method\n\n");
+    }
 
     /* Emit all procedure methods */
     fputs(procs_text, out);

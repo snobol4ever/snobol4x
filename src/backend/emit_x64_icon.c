@@ -2318,6 +2318,80 @@ static void emit_stub_fail(IcnEmitter *em, IcnNode *n, IcnPorts ports,
     Ldef(em,b); Jmp(em,ports.ω);
 }
 
+/* =========================================================================
+ * emit_cset_complement — ~E: cset complement via icn_cset_complement(ptr).
+ * Child is a cset expr: may leave ptr in rdi (if ICN_CSET/ICN_STR literal)
+ * or push a value.  Normalise via BSS slot then call runtime.
+ * Result is a char* pushed onto stack (treated as cset/string value).
+ * ======================================================================= */
+static void emit_cset_complement(IcnEmitter *em, IcnNode *n, IcnPorts ports,
+                                 char *oa, char *ob) {
+    int id = icn_next_uid(em); char a[64], b[64], relay[64];
+    icn_label_α(id, a, sizeof a); icn_label_β(id, b, sizeof b);
+    snprintf(relay, sizeof relay, "icon_%d_csc_relay", id);
+    strncpy(oa, a, 63); strncpy(ob, b, 63);
+    char cs_ptr[64]; snprintf(cs_ptr, sizeof cs_ptr, "icn_csc%d_ptr", id);
+    bss_declare(cs_ptr);
+    IcnNode *child = n->nchildren > 0 ? n->children[0] : NULL;
+    int child_is_cset = child && (child->kind == ICN_CSET || child->kind == ICN_STR);
+    char ca[64], cb[64];
+    IcnPorts cp; strncpy(cp.γ, relay, 63); strncpy(cp.ω, ports.ω, 63);
+    emit_expr(em, child, cp, ca, cb);
+    Ldef(em, a); Jmp(em, ca);
+    Ldef(em, b); Jmp(em, cb);
+    Ldef(em, relay);
+    if (child_is_cset) { E(em, "    mov     [rel %s], rdi\n", cs_ptr); }
+    else               { E(em, "    pop     rax\n"); E(em, "    mov     [rel %s], rax\n", cs_ptr); }
+    E(em, "    mov     rdi, [rel %s]\n", cs_ptr);
+    E(em, "    call    icn_cset_complement\n");
+    E(em, "    push    rax\n");
+    Jmp(em, ports.γ);
+}
+
+/* =========================================================================
+ * emit_cset_binop — E1 ++ E2 / E1 -- E2 / E1 ** E2
+ * Evaluate both children, normalise to BSS ptr slots, call runtime fn.
+ * ======================================================================= */
+static void emit_cset_binop(IcnEmitter *em, IcnNode *n, IcnPorts ports,
+                            char *oa, char *ob) {
+    int id = icn_next_uid(em); char a[64], b[64], lstore[64], compute[64], lbfwd[64];
+    icn_label_α(id, a, sizeof a); icn_label_β(id, b, sizeof b);
+    snprintf(lstore,  sizeof lstore,  "icon_%d_cbo_ls",  id);
+    snprintf(compute, sizeof compute, "icon_%d_cbo_cmp", id);
+    snprintf(lbfwd,   sizeof lbfwd,   "icon_%d_cbo_lb",  id);
+    strncpy(oa, a, 63); strncpy(ob, b, 63);
+    char lc_ptr[64]; snprintf(lc_ptr, sizeof lc_ptr, "icn_cbo%d_lptr", id);
+    char rc_ptr[64]; snprintf(rc_ptr, sizeof rc_ptr, "icn_cbo%d_rptr", id);
+    bss_declare(lc_ptr); bss_declare(rc_ptr);
+    IcnNode *lch = n->nchildren > 0 ? n->children[0] : NULL;
+    IcnNode *rch = n->nchildren > 1 ? n->children[1] : NULL;
+    int lcs = lch && (lch->kind == ICN_CSET || lch->kind == ICN_STR);
+    int rcs = rch && (rch->kind == ICN_CSET || rch->kind == ICN_STR);
+    char ra[64], rb[64];
+    IcnPorts rp; strncpy(rp.γ, compute, 63); strncpy(rp.ω, lbfwd, 63);
+    emit_expr(em, rch, rp, ra, rb);
+    char la[64], lb[64];
+    IcnPorts lp; strncpy(lp.γ, lstore, 63); strncpy(lp.ω, ports.ω, 63);
+    emit_expr(em, lch, lp, la, lb);
+    Ldef(em, lbfwd); Jmp(em, lb);
+    Ldef(em, a); Jmp(em, la);
+    Ldef(em, b); Jmp(em, rb);
+    Ldef(em, lstore);
+    if (lcs) { E(em, "    mov     [rel %s], rdi\n", lc_ptr); }
+    else      { E(em, "    pop     rax\n"); E(em, "    mov     [rel %s], rax\n", lc_ptr); }
+    Jmp(em, ra);
+    Ldef(em, compute);
+    if (rcs) { E(em, "    mov     [rel %s], rdi\n", rc_ptr); }
+    else      { E(em, "    pop     rax\n"); E(em, "    mov     [rel %s], rax\n", rc_ptr); }
+    E(em, "    mov     rdi, [rel %s]\n", lc_ptr);
+    E(em, "    mov     rsi, [rel %s]\n", rc_ptr);
+    const char *fn = (n->kind == ICN_CSET_UNION) ? "icn_cset_union" :
+                     (n->kind == ICN_CSET_DIFF)  ? "icn_cset_diff"  : "icn_cset_inter";
+    E(em, "    call    %s\n", fn);
+    E(em, "    push    rax\n");
+    Jmp(em, ports.γ);
+}
+
 static void emit_expr(IcnEmitter *em, IcnNode *n, IcnPorts ports,
                       char *oa, char *ob) {
     if(!n){ emit_fail_node(em,n,ports,oa,ob); return; }
@@ -2375,6 +2449,11 @@ static void emit_expr(IcnEmitter *em, IcnNode *n, IcnPorts ports,
         case ICN_CASE:      emit_case      (em,n,ports,oa,ob); break;
         case ICN_BANG:      emit_bang      (em,n,ports,oa,ob); break;
         case ICN_BANG_BINARY: emit_stub_fail(em,n,ports,oa,ob); break;
+        /* G3–G6: cset operations */
+        case ICN_COMPLEMENT:  emit_cset_complement(em,n,ports,oa,ob); break;
+        case ICN_CSET_UNION:  emit_cset_binop(em,n,ports,oa,ob); break;
+        case ICN_CSET_DIFF:   emit_cset_binop(em,n,ports,oa,ob); break;
+        case ICN_CSET_INTER:  emit_cset_binop(em,n,ports,oa,ob); break;
         case ICN_MATCH:     emit_match     (em,n,ports,oa,ob); break;
         case ICN_AND: {
             /* n-ary conjunction: E1 & E2 & ... & En
@@ -2619,7 +2698,7 @@ void icn_emit_file(IcnEmitter *em, IcnNode **nodes, int count) {
     E(em,"    extern icn_str_find\n    extern icn_match\n    extern icn_tab\n    extern icn_move\n");
     E(em,"    extern icn_subject\n    extern icn_pos\n");
     E(em,"    extern icn_str_cmp\n    extern icn_strlen\n    extern icn_pow\n");
-    E(em,"    extern icn_str_subscript\n    extern icn_str_section\n    extern icn_bang_char_at\n    extern icn_match_pat\n\n");
+    E(em,"    extern icn_str_subscript\n    extern icn_str_section\n    extern icn_bang_char_at\n    extern icn_match_pat\n    extern icn_cset_complement\n    extern icn_cset_union\n    extern icn_cset_diff\n    extern icn_cset_inter\n\n");
     E(em,"_start:\n    call    icn_main\n    mov     rax, 60\n    xor     rdi, rdi\n    syscall\n\n");
 
     fputs(body,em->out); free(body);
