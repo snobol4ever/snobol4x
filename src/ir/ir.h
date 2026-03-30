@@ -139,6 +139,74 @@ typedef enum EKind {
     E_TRAIL_MARK,   /* Save trail.top into env slot                         */
     E_TRAIL_UNWIND, /* Restore trail to saved mark                          */
 
+    /* --- Icon: Numeric Relational ----------------------------------------
+     * Goal-directed: succeed and yield rhs if condition holds, else fail.
+     * Six distinct Byrd-box wiring patterns (each distinct comparison jump).
+     * No SNOBOL4/Prolog equivalent — those use E_FNC("lt",...) dispatch.
+     * M-G9-ICON-IR-WIRE (2026-03-30). */
+
+    E_LT,           /* E1 < E2   (numeric less-than)                        */
+    E_LE,           /* E1 <= E2  (numeric less-or-equal)                    */
+    E_GT,           /* E1 > E2   (numeric greater-than)                     */
+    E_GE,           /* E1 >= E2  (numeric greater-or-equal)                 */
+    E_EQ,           /* E1 = E2   (numeric equality)                         */
+    E_NE,           /* E1 ~= E2  (numeric not-equal)                        */
+
+    /* --- Icon: String Relational -----------------------------------------
+     * Same goal-directed semantics; operate on string values.
+     * E_SSEQ chosen (not E_SEQ) because E_SEQ = goal-directed sequence. */
+
+    E_SLT,          /* E1 << E2  (string less-than)                         */
+    E_SLE,          /* E1 <<= E2 (string less-or-equal)                     */
+    E_SGT,          /* E1 >> E2  (string greater-than)                      */
+    E_SGE,          /* E1 >>= E2 (string greater-or-equal)                  */
+    E_SSEQ,         /* E1 == E2  (string equality;  ICN_SEQ)                */
+    E_SNE,          /* E1 ~== E2 (string not-equal)                         */
+
+    /* --- Icon: Cset Operators -------------------------------------------- */
+
+    E_CSET_COMPL,   /* ~E       cset complement                             */
+    E_CSET_UNION,   /* E1 ++ E2 cset union                                  */
+    E_CSET_DIFF,    /* E1 -- E2 cset difference                             */
+    E_CSET_INTER,   /* E1 ** E2 cset intersection                           */
+    E_LCONCAT,      /* E1 ||| E2  list concatenation (distinct from || str) */
+
+    /* --- Icon: Unary Operators ------------------------------------------- */
+
+    E_NONNULL,      /* \E   succeed if E non-null, yield E's value          */
+    E_NULL,         /* /E   succeed if E is null, yield &null               */
+    E_NOT,          /* not E  succeed iff E fails                           */
+    E_SIZE,         /* *E   size of string/list/table                       */
+    E_RANDOM,       /* ?E   random element or integer in [1,E]              */
+    E_IDENTICAL,    /* E1 === E2  object identity (same pointer)            */
+    E_AUGOP,        /* E1 op:= E2  augmented assignment; op subtype in ival */
+
+    /* --- Icon: Expression Sequence / Control Flow ------------------------ */
+
+    E_SEQ_EXPR,     /* (E1; E2; ...; En) — evaluate all, result = last     */
+    E_EVERY,        /* every E [do body]  — drive generator to exhaustion  */
+    E_WHILE,        /* while E [do body]                                    */
+    E_UNTIL,        /* until E [do body]                                    */
+    E_REPEAT,       /* repeat body        — unconditional loop              */
+    E_IF,           /* if E then E2 [else E3]                               */
+    E_CASE,         /* case E of { clauses }                                */
+    E_RETURN,       /* return [E]         — return from procedure           */
+    E_LOOP_BREAK,   /* break [E]          — exit innermost loop
+                     * NOTE: distinct from E_BREAK = SNOBOL4 BREAK(S)      */
+    E_LOOP_NEXT,    /* next               — restart innermost loop          */
+    E_SCAN_AUGOP,   /* E ?:= body         — augmented scan                 */
+    E_BANG_BINARY,  /* E1 ! E2            — invoke E1 with list E2         */
+
+    /* --- Icon: Structure / Declarations ---------------------------------- */
+
+    E_SECTION,      /* E[i:j]   string section                              */
+    E_SECTION_PLUS, /* E[i+:n]  section by length (forward)                */
+    E_SECTION_MINUS,/* E[i-:n]  section by length (backward)               */
+    E_RECORD,       /* record declaration                                   */
+    E_FIELD,        /* E.name   field access                                */
+    E_GLOBAL,       /* global varname  declaration                          */
+    E_INITIAL,      /* initial { body }  once-on-first-call block          */
+
     /* --- Sentinel -------------------------------------------------------- */
 
     E_KIND_COUNT    /* Total number of kinds — used for array sizing / asserts.
@@ -172,13 +240,14 @@ typedef enum EKind {
  * error.  Struct field unification is a later reorg milestone.
  */
 #ifndef EXPR_T_DEFINED
+#define EXPR_T_DEFINED
 typedef struct EXPR_t EXPR_t;
 
 struct EXPR_t {
     EKind    kind;          /* node kind from EKind enum above              */
     char    *sval;          /* string payload (see comment above)           */
     long long ival;         /* integer payload                              */
-    double   fval;          /* float payload                                */
+    double   dval;          /* float payload (named dval throughout codebase) */
     EXPR_t **children;      /* child nodes — realloc-grown array            */
     int      nchildren;     /* number of valid entries in children[]        */
     int      nalloc;        /* allocated capacity of children[]             */
@@ -253,6 +322,55 @@ static const char * const ekind_name[E_KIND_COUNT] = {
     [E_CUT]          = "E_CUT",
     [E_TRAIL_MARK]   = "E_TRAIL_MARK",
     [E_TRAIL_UNWIND] = "E_TRAIL_UNWIND",
+    /* Icon numeric relational */
+    [E_LT]           = "E_LT",
+    [E_LE]           = "E_LE",
+    [E_GT]           = "E_GT",
+    [E_GE]           = "E_GE",
+    [E_EQ]           = "E_EQ",
+    [E_NE]           = "E_NE",
+    /* Icon string relational */
+    [E_SLT]          = "E_SLT",
+    [E_SLE]          = "E_SLE",
+    [E_SGT]          = "E_SGT",
+    [E_SGE]          = "E_SGE",
+    [E_SSEQ]         = "E_SSEQ",
+    [E_SNE]          = "E_SNE",
+    /* Icon cset ops */
+    [E_CSET_COMPL]   = "E_CSET_COMPL",
+    [E_CSET_UNION]   = "E_CSET_UNION",
+    [E_CSET_DIFF]    = "E_CSET_DIFF",
+    [E_CSET_INTER]   = "E_CSET_INTER",
+    [E_LCONCAT]      = "E_LCONCAT",
+    /* Icon unary */
+    [E_NONNULL]      = "E_NONNULL",
+    [E_NULL]         = "E_NULL",
+    [E_NOT]          = "E_NOT",
+    [E_SIZE]         = "E_SIZE",
+    [E_RANDOM]       = "E_RANDOM",
+    [E_IDENTICAL]    = "E_IDENTICAL",
+    [E_AUGOP]        = "E_AUGOP",
+    /* Icon control flow */
+    [E_SEQ_EXPR]     = "E_SEQ_EXPR",
+    [E_EVERY]        = "E_EVERY",
+    [E_WHILE]        = "E_WHILE",
+    [E_UNTIL]        = "E_UNTIL",
+    [E_REPEAT]       = "E_REPEAT",
+    [E_IF]           = "E_IF",
+    [E_CASE]         = "E_CASE",
+    [E_RETURN]       = "E_RETURN",
+    [E_LOOP_BREAK]   = "E_LOOP_BREAK",
+    [E_LOOP_NEXT]    = "E_LOOP_NEXT",
+    [E_SCAN_AUGOP]   = "E_SCAN_AUGOP",
+    [E_BANG_BINARY]  = "E_BANG_BINARY",
+    /* Icon structure */
+    [E_SECTION]      = "E_SECTION",
+    [E_SECTION_PLUS] = "E_SECTION_PLUS",
+    [E_SECTION_MINUS]= "E_SECTION_MINUS",
+    [E_RECORD]       = "E_RECORD",
+    [E_FIELD]        = "E_FIELD",
+    [E_GLOBAL]       = "E_GLOBAL",
+    [E_INITIAL]      = "E_INITIAL",
 };
 
 #endif /* IR_DEFINE_NAMES */
