@@ -1439,7 +1439,7 @@ static void emit_pat_node(EXPR_t *pat,
                  * always fails against a pattern object.
                  * Fix: use CALL_PAT_α (stmt_match_descr) which dispatches DT_P
                  * through the full engine OR does string match for DT_S.
-                 * This is the same path used for E_STAR/*VAR runtime dispatch. */
+                 * This is the same path used for E_DEFER/*VAR runtime dispatch. */
                 int vuid = next_uid();
                 char dt_slot[64], dp_slot[64], saved_slot[64];
                 snprintf(dt_slot,    sizeof dt_slot,    "rpat%d_t", vuid);
@@ -1536,7 +1536,7 @@ static void emit_pat_node(EXPR_t *pat,
                     flat_bss_register(dp_slot);
                     flat_bss_register(saved_slot);
                     const char *varlab = str_intern(varname);
-                    A("\n; E_STAR/E_INDR *%s → runtime DT_P dispatch\n", varname);
+                    A("\n; E_DEFER/E_INDR *%s → runtime DT_P dispatch\n", varname);
                     asmL(α);
                     A("    lea     rdi, [rel %s]\n", varlab);
                     A("    call    stmt_get\n");
@@ -1544,7 +1544,7 @@ static void emit_pat_node(EXPR_t *pat,
                     A("    mov     [%s], rdx\n", dp_slot);
                     A("    CALL_PAT_α %s, %s, %s, %s, %s, %s\n",
                       dt_slot, dp_slot, saved_slot, cursor, γ, ω);
-                    ALFC(β, "E_STAR β", "CALL_PAT_β %s, %s, %s\n",
+                    ALFC(β, "E_DEFER β", "CALL_PAT_β %s, %s, %s\n",
                          saved_slot, cursor, ω);
                 }
             }
@@ -2409,7 +2409,7 @@ static int expr_has_pattern_fn(EXPR_t *e) {
      * B-276: M-BEAUTY-OMEGA fix — without this, TZ = LE(xTrace,0) pat @txOfs
      * was not recognised as a pattern expression and fell into OPSYN dispatch. */
     if (e->kind == E_CAPT_CUR) return 1;
-    /* E_STAR (*VAR deferred pattern ref) is always a pattern-valued expression */
+    /* E_DEFER (*VAR deferred pattern ref) is always a pattern-valued expression */
     if (e->kind == E_DEFER) return 1;
     for (int i = 0; i < e->nchildren; i++)
         if (expr_has_pattern_fn(e->children[i])) return 1;
@@ -3997,8 +3997,8 @@ static int emit_expr(EXPR_t *e, int rbp_off) {
             A("    push    rdx\n");
             A("    push    rax\n");
             /* Emit right operand (the capture var) as DT_N into [rbp-32] */
-            emit_expr(right, -32);   /* for E_STAR/E_VAR this gives a name or value */
-            /* Force right to DT_N if it's E_VAR or E_STAR pointing to a varname */
+            emit_expr(right, -32);   /* for E_DEFER/E_VAR this gives a name or value */
+            /* Force right to DT_N if it's E_VAR or E_DEFER pointing to a varname */
             const char *rname = NULL;
             if (right->kind == E_VAR && right->sval) rname = right->sval;
             else if (right->kind == E_DEFER && right->nchildren > 0
