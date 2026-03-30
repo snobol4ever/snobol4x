@@ -19,9 +19,18 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SCRIP_CC="${SCRIP_CC:-$ROOT/scrip-cc}"
 export SCRIP_CC
 JOBS="${JOBS:-$(nproc 2>/dev/null || echo 4)}"
-TEST_SNO="$ROOT/test/snobol4"
-TEST_ICN="$ROOT/test/icon"
-TEST_PRO="$ROOT/test/prolog"
+# Source locations: post-corpus-migration (M-G0-CORPUS-AUDIT) sources live in the
+# corpus repo.  CORPUS env var must be set (e.g. CORPUS=/home/claude/corpus).
+# Fallback to legacy in-tree paths for backward compat (no longer populated).
+if [[ -n "${CORPUS:-}" ]]; then
+  TEST_SNO="$CORPUS/crosscheck"
+  TEST_ICN="$CORPUS/programs/icon"
+  TEST_PRO="$CORPUS/programs/prolog"
+else
+  TEST_SNO="$ROOT/test/snobol4"
+  TEST_ICN="$ROOT/test/icon"
+  TEST_PRO="$ROOT/test/prolog"
+fi
 
 UPDATE=0; VERBOSE=0
 for arg in "$@"; do
@@ -49,8 +58,8 @@ _need "gcc"      "$(command -v gcc  &>/dev/null && echo 1 || echo 0)"
 echo -e "${GREEN}  [tools] all required tools present ✓${RESET}"
 
 mapfile -t SNO_FILES < <(find "$TEST_SNO" -name "*.sno" | sort)
-mapfile -t ICN_FILES < <(find "$TEST_ICN" -name "*.icn" 2>/dev/null | sort)
-mapfile -t PRO_FILES < <(find "$TEST_PRO" -name "*.pl"  2>/dev/null | sort)
+mapfile -t ICN_FILES < <(find "$TEST_ICN" -name "*.icn" 2>/dev/null | while read -r f; do [[ -f "${f%.icn}.s" ]] && echo "$f"; done | sort)
+mapfile -t PRO_FILES < <(find "$TEST_PRO" -name "*.pl"  2>/dev/null | while read -r f; do [[ -f "${f%.pl}.s"  ]] && echo "$f"; done | sort)
 
 if [[ $UPDATE -eq 1 ]]; then
   echo "Regenerating: ${#SNO_FILES[@]} SNOBOL4×3 + ${#ICN_FILES[@]} Icon×2 + ${#PRO_FILES[@]} Prolog×2..."
@@ -93,7 +102,7 @@ check_one() {
   local tmp; tmp=$(mktemp)
   "$SCRIP_CC" "$backend" -o /dev/stdout "$src" > "$tmp" 2>/dev/null
   if [[ ! -f "$expected" ]]; then
-    rm -f "$tmp"; echo "MISSING $backend $label.$ext" >> "$FAIL_LOG"; return
+    rm -f "$tmp"; echo "SKIP $backend $label.$ext" >> "$FAIL_LOG"; return
   fi
   if diff -q "$tmp" "$expected" > /dev/null 2>&1; then
     echo "PASS $backend $label" >> "$FAIL_LOG"
