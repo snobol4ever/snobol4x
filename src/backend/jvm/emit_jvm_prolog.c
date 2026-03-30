@@ -2787,7 +2787,7 @@ static void pj_emit_assertz_helpers(void) {
     JI("astore", "4");  /* type_name */
 
     /* α */
-    JI("aload", "4"); JI("ldc", "\"α\"");
+    JI("aload", "4"); JI("ldc", "\"alpha\"");
     JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
     JI("ifeq", "pjct_try_alnum");
     JI("iload_3", "");
