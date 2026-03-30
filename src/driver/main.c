@@ -41,7 +41,7 @@ void prolog_emit_jvm(Program *prog, FILE *f, const char *filename);
 void prolog_emit_net(Program *prog, FILE *f, const char *filename);
 void pl_linker_prescan(PlProgram *pl_prog);
 ImportEntry *icn_prescan_imports(const char *src);
-void ij_emit_file(IcnNode **nodes, int count, FILE *out,
+void emit_jvm_icon_file(IcnNode **nodes, int count, FILE *out,
                   const char *filename, const char *outpath, ImportEntry *imports);
 
 static int asm_mode  = 0;
@@ -129,7 +129,7 @@ static int compile_one(const char *infile, const char *outpath, FILE *out) {
             fprintf(stderr, "scrip-cc: Icon parse error: %s\n", parser.errmsg);
             rc = 1; goto done;
         }
-        if (jvm_mode) ij_emit_file(procs, count, out, infile, outpath, imports);
+        if (jvm_mode) emit_jvm_icon_file(procs, count, out, infile, outpath, imports);
         else { IcnEmitter em; icn_emit_init(&em, out); icn_emit_file(&em, procs, count); }
         for (int i = 0; i < count; i++) icn_node_free(procs[i]);
         free(procs);

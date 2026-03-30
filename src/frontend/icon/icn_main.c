@@ -22,7 +22,7 @@
 #include <ctype.h>
 
 /* Forward declaration for JVM emitter */
-void ij_emit_file(IcnNode **nodes, int count, FILE *out, const char *filename,
+void emit_jvm_icon_file(IcnNode **nodes, int count, FILE *out, const char *filename,
                   const char *outpath, ImportEntry *imports);
 
 /* =========================================================================
@@ -135,7 +135,7 @@ int icn_main(int argc, char **argv) {
     if (output) { out_file = fopen(output, "w"); if (!out_file) { perror(output); return 1; } }
 
     if (do_jvm) {
-        ij_emit_file(procs, count, out_file, input, output, NULL);
+        emit_jvm_icon_file(procs, count, out_file, input, output, NULL);
     } else {
         IcnEmitter em;
         icn_emit_init(&em, out_file);
