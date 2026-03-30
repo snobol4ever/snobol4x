@@ -638,6 +638,40 @@ run_prolog_jvm() {
   echo "$fail"  > "$RESULTS/${cell}_fail"
 }
 
+# ── Suite: Snocone x86 ───────────────────────────────────────────────────────
+run_snocone_x86() {
+  local cell="snocone_x86"
+  local pass=0 fail=0
+  if [[ -z "$CORPUS" || ! -d "$CORPUS/crosscheck/snocone" ]]; then
+    echo "SKIP" > "$RESULTS/${cell}_status"; return
+  fi
+  local SC_RUNNER="$ROOT/test/crosscheck/run_sc_corpus_rung.sh"
+  if [[ ! -f "$SC_RUNNER" ]]; then
+    echo "SKIP" > "$RESULTS/${cell}_status"; return
+  fi
+  local DIRS="rungA01 rungA02 rungA03 rungA04 rungA05 rungA06 rungA07 rungA08 rungA09 rungA10 rungA11 rungA12 rungA13 rungA14"
+  local dir_args=()
+  for d in $DIRS; do
+    local full="$CORPUS/crosscheck/snocone/$d"
+    [[ -d "$full" ]] && dir_args+=("$full")
+  done
+  if [[ ${#dir_args[@]} -eq 0 ]]; then
+    echo "SKIP" > "$RESULTS/${cell}_status"; return
+  fi
+  local raw
+  raw=$(SCRIP_CC="$SCRIP_CC" bash "$SC_RUNNER" "${dir_args[@]}" 2>/dev/null) || true
+  pass=$(echo "$raw" | grep -c '^'$'\033''\[0;32mPASS' || true)
+  # count PASSes robustly (strip ANSI)
+  pass=$(echo "$raw" | sed 's/\x1b\[[0-9;]*m//g' | grep -c '^PASS' || echo 0)
+  fail=$(echo "$raw" | sed 's/\x1b\[[0-9;]*m//g' | grep -c '^FAIL' || echo 0)
+  # propagate individual FAIL lines for visibility
+  echo "$raw" | sed 's/\x1b\[[0-9;]*m//g' | grep '^FAIL' | while IFS= read -r ln; do
+    echo "  FAIL $cell ${ln#FAIL }"
+  done
+  echo "$pass" > "$RESULTS/${cell}_pass"
+  echo "$fail"  > "$RESULTS/${cell}_fail"
+}
+
 # ── Serial dispatch — all 7 cells run sequentially, no background forks ───────
 # Parallel dispatch caused suite-level timeouts in Claude session environment:
 # all 7 cells started simultaneously, saturating the container before any
@@ -653,6 +687,7 @@ run_icon_jvm
 run_icon_wasm
 run_prolog_x86
 run_prolog_jvm
+run_snocone_x86
 
 # ── Results matrix ────────────────────────────────────────────────────────────
 END_TIME=$(date +%s%N 2>/dev/null || date +%s)
@@ -674,16 +709,18 @@ echo ""
 echo -e "${BOLD}Invariants — 3×4 matrix${RESET}"
 echo -e "${BOLD}                x86              JVM             .NET            WASM${RESET}"
 
-for row_label in "SNOBOL4" "Icon   " "Prolog "; do
+for row_label in "SNOBOL4" "Icon   " "Prolog " "Snocone"; do
   case $row_label in
     "SNOBOL4") cells="snobol4_x86 snobol4_jvm snobol4_net snobol4_wasm" ;;
     "Icon   ") cells="icon_x86    icon_jvm    icon_net    icon_wasm"    ;;
     "Prolog ") cells="prolog_x86  prolog_jvm  prolog_net  prolog_wasm"  ;;
+    "Snocone") cells="snocone_x86 snocone_jvm snocone_net snocone_wasm" ;;
   esac
   printf "  %s  " "$row_label"
   for cell in $cells; do
     if [[ "$cell" == "icon_net" || "$cell" == "prolog_net" || \
-          "$cell" == "prolog_wasm" ]]; then
+          "$cell" == "icon_wasm" || "$cell" == "prolog_wasm" || \
+          "$cell" == "snocone_jvm" || "$cell" == "snocone_net" || "$cell" == "snocone_wasm" ]]; then
       printf "  ${YELLOW}%-14s${RESET}" "SKIP"
     elif [[ -f "$RESULTS/${cell}_status" ]]; then
       printf "  %-14s" "$(cat "$RESULTS/${cell}_status")"
@@ -701,7 +738,7 @@ done
 echo -e "${BOLD}──────────────────────────────────────────────────${RESET}"
 
 OVERALL_FAIL=0
-for cell in snobol4_x86 snobol4_jvm snobol4_net snobol4_wasm icon_x86 icon_jvm icon_wasm prolog_x86 prolog_jvm; do
+for cell in snobol4_x86 snobol4_jvm snobol4_net snobol4_wasm icon_x86 icon_jvm icon_wasm prolog_x86 prolog_jvm snocone_x86; do
   any_fail "$cell" && OVERALL_FAIL=1
 done
 
@@ -711,7 +748,7 @@ echo -e "${BOLD}ELAPSED ${ELAPSED_MS}ms  (${ELAPSED_S}s)${RESET}"
 echo ""
 
 # Finalise CSV — summary rows per cell + latest symlink
-for cell in snobol4_x86 snobol4_jvm snobol4_net snobol4_wasm icon_x86 icon_jvm icon_wasm prolog_x86 prolog_jvm; do
+for cell in snobol4_x86 snobol4_jvm snobol4_net snobol4_wasm icon_x86 icon_jvm icon_wasm prolog_x86 prolog_jvm snocone_x86; do
   p=0; f=0
   [[ -f "$RESULTS/${cell}_pass" ]] && p=$(cat "$RESULTS/${cell}_pass")
   [[ -f "$RESULTS/${cell}_fail" ]] && f=$(cat "$RESULTS/${cell}_fail")
