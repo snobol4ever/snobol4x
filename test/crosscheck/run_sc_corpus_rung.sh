@@ -46,8 +46,10 @@ gcc -O0 -g -c "$RT/snobol4/snobol4.c"            -I"$RT/snobol4" -I"$RT" -I"$TIN
 gcc -O0 -g -c "$RT/mock/mock_includes.c"          -I"$RT/snobol4" -I"$RT" -I"$TINY/src/frontend/snobol4" -w -o "$WORK/mock_includes.o"
 gcc -O0 -g -c "$RT/snobol4/snobol4_pattern.c"    -I"$RT/snobol4" -I"$RT" -I"$TINY/src/frontend/snobol4" -w -o "$WORK/snobol4_pattern.o"
 gcc -O0 -g -c "$RT/mock/mock_engine.c"            -I"$RT/snobol4" -I"$RT" -I"$TINY/src/frontend/snobol4" -w -o "$WORK/mock_engine.o"
+gcc -O0 -g -c "$RT/asm/blk_alloc.c"              -I"$RT/asm"                                             -w -o "$WORK/blk_alloc.o"
+gcc -O0 -g -c "$RT/asm/blk_reloc.c"              -I"$RT/asm"                                             -w -o "$WORK/blk_reloc.o"
 
-LINK_OBJS="$WORK/stmt_rt.o $WORK/snobol4.o $WORK/mock_includes.o $WORK/snobol4_pattern.o $WORK/mock_engine.o"
+LINK_OBJS="$WORK/stmt_rt.o $WORK/snobol4.o $WORK/mock_includes.o $WORK/snobol4_pattern.o $WORK/mock_engine.o $WORK/blk_alloc.o $WORK/blk_reloc.o"
 
 run_test() {
     local sc="$1"

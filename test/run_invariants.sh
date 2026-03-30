@@ -227,7 +227,7 @@ run_snobol4_wasm() {
     echo "SKIP" > "$RESULTS/${cell}_status"; return
   fi
 
-  local DIRS="hello rung4"
+  local DIRS="hello rung4 rung3"
   for dir in $DIRS; do
     local full="$CORPUS/crosscheck/$dir"
     [[ -d "$full" ]] || continue
@@ -649,7 +649,7 @@ run_snocone_x86() {
   if [[ ! -f "$SC_RUNNER" ]]; then
     echo "SKIP" > "$RESULTS/${cell}_status"; return
   fi
-  local DIRS="rungA01 rungA02 rungA03 rungA04 rungA05 rungA06 rungA07 rungA08 rungA09 rungA10 rungA11 rungA12 rungA13 rungA14"
+  local DIRS="rungA01 rungA02 rungA03 rungA04 rungA05 rungA06 rungA07 rungA08 rungA09 rungA10 rungA11 rungA12 rungA13 rungA14 rungA15"
   local dir_args=()
   for d in $DIRS; do
     local full="$CORPUS/crosscheck/snocone/$d"
@@ -658,14 +658,13 @@ run_snocone_x86() {
   if [[ ${#dir_args[@]} -eq 0 ]]; then
     echo "SKIP" > "$RESULTS/${cell}_status"; return
   fi
-  local raw
+  local raw stripped
   raw=$(SCRIP_CC="$SCRIP_CC" bash "$SC_RUNNER" "${dir_args[@]}" 2>/dev/null) || true
-  pass=$(echo "$raw" | grep -c '^'$'\033''\[0;32mPASS' || true)
-  # count PASSes robustly (strip ANSI)
-  pass=$(echo "$raw" | sed 's/\x1b\[[0-9;]*m//g' | grep -c '^PASS' || echo 0)
-  fail=$(echo "$raw" | sed 's/\x1b\[[0-9;]*m//g' | grep -c '^FAIL' || echo 0)
+  stripped=$(echo "$raw" | sed 's/\x1b\[[0-9;]*m//g')
+  pass=$(echo "$stripped" | grep -c '^PASS' 2>/dev/null | tr -d '[:space:]'); pass=${pass:-0}
+  fail=$(echo "$stripped" | grep -c '^FAIL' 2>/dev/null | tr -d '[:space:]'); fail=${fail:-0}
   # propagate individual FAIL lines for visibility
-  echo "$raw" | sed 's/\x1b\[[0-9;]*m//g' | grep '^FAIL' | while IFS= read -r ln; do
+  echo "$stripped" | grep '^FAIL' | while IFS= read -r ln; do
     echo "  FAIL $cell ${ln#FAIL }"
   done
   echo "$pass" > "$RESULTS/${cell}_pass"
