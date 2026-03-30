@@ -268,8 +268,9 @@ static void jvm_emit_expr(EXPR_t *e);
 
 /* jvm_emit_to_double — safe numeric coercion helper.
  * Pops String, pushes double. Empty string/null → 0.0 (SNOBOL4 semantics). */
-static int jvm_need_sno_parse_helper = 0;
-static int jvm_need_input_helper     = 0;
+static int jvm_need_sno_parse_helper  = 0;
+static int jvm_need_sno_fmt_double    = 0;
+static int jvm_need_input_helper      = 0;
 static int jvm_need_replace_helper   = 0;
 static int jvm_need_lpad_helper      = 0;
 static int jvm_need_rpad_helper      = 0;
@@ -419,10 +420,46 @@ static void jvm_emit_parse_helper(void) {
     jvm_need_sno_parse_helper = 0;
 }
 
-/* jvm_d2sno — convert double on stack to SNOBOL4 string */
+/* jvm_d2sno — convert double on stack to SNOBOL4 string.
+ * Whole doubles emit as "N." (CSNOBOL4 format) to match E_FLIT literals. */
 static void jvm_d2sno(void) {
-    /* Stack: ..., double → ..., String */
-    JI("invokestatic", "java/lang/Double/toString(D)Ljava/lang/String;");
+    jvm_need_sno_fmt_double = 1;
+    char desc[512];
+    snprintf(desc, sizeof desc, "%s/sno_fmt_double(D)Ljava/lang/String;", jvm_classname);
+    JI("invokestatic", desc);
+}
+
+static void jvm_emit_fmt_double_helper(void) {
+    if (!jvm_need_sno_fmt_double) return;
+    /* sno_fmt_double(D)String — CSNOBOL4 convention:
+     *   whole doubles → "N."   (e.g. 5.0 → "5.")
+     *   fractional    → Double.toString(d)  (e.g. 1.5 → "1.5") */
+    J(".method static sno_fmt_double(D)Ljava/lang/String;\n");
+    J("    .limit stack 6\n");
+    J("    .limit locals 4\n");
+    J("    dload_0\n");
+    J("    dstore_0\n");
+    /* check if d == (double)(long)d */
+    J("    dload_0\n");
+    J("    d2l\n");
+    J("    lstore_2\n");
+    J("    lload_2\n");
+    J("    l2d\n");
+    J("    dload_0\n");
+    J("    dcmpl\n");
+    J("    ifne Lsfd_frac\n");
+    /* whole: format as long then append "." */
+    J("    lload_2\n");
+    J("    invokestatic java/lang/Long/toString(J)Ljava/lang/String;\n");
+    J("    ldc \".\"\n");
+    J("    invokevirtual java/lang/String/concat(Ljava/lang/String;)Ljava/lang/String;\n");
+    J("    areturn\n");
+    J("Lsfd_frac:\n");
+    J("    dload_0\n");
+    J("    invokestatic java/lang/Double/toString(D)Ljava/lang/String;\n");
+    J("    areturn\n");
+    J(".end method\n\n");
+    jvm_need_sno_fmt_double = 0;
 }
 
 /* Push the SNOBOL4 numeric string for an integer on stack as long */
@@ -532,6 +569,19 @@ static void jvm_emit_expr(EXPR_t *e) {
         JI("invokestatic", ivdesc);
         break;
     }
+    case E_NAM: {
+        /* .var in value context — name reference: push the variable name as a string.
+         * Used in $.var (E_INDR wrapping E_NAM): the name is the lookup key,
+         * not the variable's value. e->sval holds the name. */
+        if (e->sval) {
+            char nameesc[256];
+            jvm_escape_string(e->sval, nameesc, sizeof nameesc);
+            JI("ldc", nameesc);
+        } else {
+            JI("ldc", "\"\"");
+        }
+        break;
+    }
     case E_DIV: {
         /* SNOBOL4 division: integer/integer -> integer (truncate toward zero).
          * Emit both operands as strings into scratch locals, check sno_is_integer
@@ -588,8 +638,8 @@ static void jvm_emit_expr(EXPR_t *e) {
         char div_frac[32];
         snprintf(div_frac, sizeof div_frac, "Ldivfr_%d", div_id);
         JI("ifne", div_frac);
-        J("    lload %d\n", loc_l);
-        jvm_l2sno();
+        J("    dload %d\n", loc_d);
+        jvm_d2sno();
         JI("goto", div_done);
         J("%s:\n", div_frac);
         J("    dload %d\n", loc_d);
@@ -639,9 +689,9 @@ static void jvm_emit_expr(EXPR_t *e) {
         J("    dload %d\n",  loc_d);              /* original double */
         JI("dcmpl", "");                          /* compare: 0 if equal (whole) */
         JI("ifne", arfrac);                       /* != 0 → fractional */
-        /* Whole: emit as long */
-        J("    lload %d\n", loc_l);
-        jvm_l2sno();
+        /* Whole: reload double and format via sno_fmt_double → "N." */
+        J("    dload %d\n", loc_d);
+        jvm_d2sno();
         JI("goto", ardone);
         J("%s:\n", arfrac);
         /* Fractional: emit as double string */
@@ -697,7 +747,7 @@ static void jvm_emit_expr(EXPR_t *e) {
         J("    lload %d\n", loc_l); JI("l2d", "");
         J("    dload %d\n", loc_d); JI("dcmpl", "");
         JI("ifne", mfrac);
-        J("    lload %d\n", loc_l); jvm_l2sno(); JI("goto", mdone);
+        J("    dload %d\n", loc_d); jvm_d2sno(); JI("goto", mdone);
         J("%s:\n", mfrac); J("    dload %d\n", loc_d); jvm_d2sno();
         J("%s:\n", mdone);
         break;
@@ -738,7 +788,7 @@ static void jvm_emit_expr(EXPR_t *e) {
             J("    lload %d\n", loc_l); JI("l2d", "");
             J("    dload %d\n", loc_d); JI("dcmpl", "");
             JI("ifne", ffrac);
-            J("    lload %d\n", loc_l); jvm_l2sno(); JI("goto", ffdone);
+            J("    dload %d\n", loc_d); jvm_d2sno(); JI("goto", ffdone);
             J("%s:\n", ffrac); J("    dload %d\n", loc_d); jvm_d2sno();
             J("%s:\n", ffdone);
             break;
@@ -764,8 +814,8 @@ static void jvm_emit_expr(EXPR_t *e) {
             J("    dload %d\n",  loc_d);
             JI("dcmpl", "");
             JI("ifne", nfrac);
-            J("    lload %d\n", loc_l);
-            jvm_l2sno();
+            J("    dload %d\n", loc_d);
+            jvm_d2sno();
             JI("goto", ndone);
             J("%s:\n", nfrac);
             J("    dload %d\n", loc_d);
@@ -792,8 +842,8 @@ static void jvm_emit_expr(EXPR_t *e) {
             J("    dload %d\n",  loc_d);
             JI("dcmpl", "");
             JI("ifne", afrac);
-            J("    lload %d\n", loc_l);
-            jvm_l2sno();
+            J("    dload %d\n", loc_d);
+            jvm_d2sno();
             JI("goto", adone);
             J("%s:\n", afrac);
             J("    dload %d\n", loc_d);
@@ -1153,13 +1203,47 @@ static void jvm_emit_expr(EXPR_t *e) {
             jvm_need_sort_helper = 1;
             break;
         }
-        /* CONVERT(val, type) — only 'ARRAY' type on a table is implemented;
-         * returns a 2-D array id: rows[i,1]=key, rows[i,2]=value, sorted by key */
+        /* CONVERT(val, type) — type coercions */
         if (strcasecmp(fname, "CONVERT") == 0) {
+            EXPR_t *a0 = (e->children && e->children[0]) ? e->children[0] : NULL;
+            EXPR_t *a1 = (e->children && e->children[1]) ? e->children[1] : NULL;
+            /* If type arg is a string literal we can dispatch statically */
+            if (a1 && a1->kind == E_QLIT && a1->sval) {
+                if (strcasecmp(a1->sval, "integer") == 0) {
+                    /* CONVERT(x,'integer'): parse to double, truncate to long, back to string */
+                    if (a0) jvm_emit_expr(a0); else JI("ldc", "\"\"");
+                    jvm_emit_to_double();
+                    JI("d2l", "");
+                    jvm_l2sno();
+                    break;
+                }
+                if (strcasecmp(a1->sval, "real") == 0) {
+                    /* CONVERT(x,'real'): parse to double, format as sno real */
+                    if (a0) jvm_emit_expr(a0); else JI("ldc", "\"\"");
+                    jvm_emit_to_double();
+                    jvm_d2sno();
+                    break;
+                }
+                if (strcasecmp(a1->sval, "string") == 0) {
+                    /* CONVERT(x,'string'): already a string in SNOBOL4 JVM model */
+                    if (a0) jvm_emit_expr(a0); else JI("ldc", "\"\"");
+                    break;
+                }
+                /* 'ARRAY' type on a table — original implementation */
+                if (strcasecmp(a1->sval, "array") == 0) {
+                    jvm_need_array_helpers  = 1;
+                    jvm_need_convert_helper = 1;
+                    if (a0) jvm_emit_expr(a0); else JI("ldc", "\"\"");
+                    char cvdesc[512];
+                    snprintf(cvdesc, sizeof cvdesc,
+                        "%s/sno_convert_table(Ljava/lang/String;)Ljava/lang/String;", jvm_classname);
+                    JI("invokestatic", cvdesc);
+                    break;
+                }
+            }
+            /* Dynamic/unknown type: fall back to table convert (pre-existing behaviour) */
             jvm_need_array_helpers  = 1;
             jvm_need_convert_helper = 1;
-            EXPR_t *a0 = (e->children && e->children[0]) ? e->children[0] : NULL;
-            /* push table id (arg0); arg1 (type string) is ignored at runtime */
             if (a0) jvm_emit_expr(a0); else JI("ldc", "\"\"");
             char cvdesc[512];
             snprintf(cvdesc, sizeof cvdesc,
@@ -4860,6 +4944,7 @@ void jvm_emit(Program *prog, FILE *out, const char *filename) {
     }
 
     jvm_emit_parse_helper();
+    jvm_emit_fmt_double_helper();
     jvm_emit_runtime_helpers();
 
     /* Free collected var names */

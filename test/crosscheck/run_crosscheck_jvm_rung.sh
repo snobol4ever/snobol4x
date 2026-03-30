@@ -61,7 +61,7 @@ run_test() {
     local jfile="$classdir/${base}.j"
 
     # Compile .sno → .j
-    if ! "$SCRIP_CC" -jvm -I"$INC" "$sno" > "$jfile" 2>"$WORK/${base}.scrip-cc_err"; then
+    if ! "$SCRIP_CC" -jvm -I"$INC" -o "$jfile" "$sno" 2>"$WORK/${base}.scrip-cc_err"; then
         echo -e "${RED}FAIL${RESET} $base  [scrip-cc error]"
         head -3 "$WORK/${base}.scrip-cc_err"
         FAIL=$((FAIL+1)); [[ "$STOP_ON_FAIL" == "1" ]] && exit 1; return 0
