@@ -185,6 +185,7 @@ static const char *classname_buf_fld(const char *fld, const char *desc) {
  * ======================================================================= */
 static int uid = 0;
 static int need_cset_builtins = 0;  /* set when ICN_COMPLEMENT/CSET_* emitted */
+static int need_random_builtin = 0; /* set when ICN_RANDOM emitted */
 
 static int next_uid(void) { return uid++; }
 
@@ -5004,6 +5005,24 @@ static void emit_jvm_icon_null(IcnNode *n, Ports ports, char *oα, char *oβ) {
 }
 
 /* =========================================================================
+ * ICN_RANDOM — ?E: random integer in 1..E via IcnRuntime.random(long)
+ * ======================================================================= */
+static void emit_jvm_icon_random(IcnNode *n, Ports ports, char *oα, char *oβ) {
+    int id = next_uid(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+    IcnNode *child = (n->nchildren >= 1) ? n->children[0] : NULL;
+    char after[64]; snprintf(after, sizeof after, "icn_%d_rand", id);
+    Ports cp; strncpy(cp.γ, after, 63); strncpy(cp.ω, ports.ω, 63);
+    char ca[64], cb[64]; emit_jvm_icon_expr(child, cp, ca, cb);
+    need_random_builtin = 1;
+    JL(a); JGoto(ca); JL(b); JGoto(cb);
+    JL(after);
+    JI("invokestatic", classname_buf("icn_builtin_random(J)J"));
+    JGoto(ports.γ);
+}
+
+/* =========================================================================
  * ICN_NEG — unary minus: -E
  * ======================================================================= */
 static void emit_jvm_icon_neg(IcnNode *n, Ports ports, char *oα, char *oβ) {
@@ -6706,6 +6725,19 @@ static void emit_jvm_icon_expr(IcnNode *n, Ports ports, char *oα, char *oβ) {
             break;
         }
         case ICN_NEG:     emit_jvm_icon_neg      (n,ports,oα,oβ); break;
+        /* G1: ICN_POS — identity, emit child unchanged */
+        case ICN_POS:     emit_jvm_icon_expr(n->children[0],ports,oα,oβ); break;
+        /* G2: ICN_RANDOM — ?E: random integer 1..E via IcnRuntime.random() */
+        case ICN_RANDOM:  emit_jvm_icon_random   (n,ports,oα,oβ); break;
+        /* G7: ICN_SCAN_AUGOP — stub-fail, unimplemented */
+        case ICN_SCAN_AUGOP: {
+            int id = next_uid(); char a2[64], b2[64];
+            lbl_α(id,a2,sizeof a2); lbl_β(id,b2,sizeof b2);
+            strncpy(oα,a2,63); strncpy(oβ,b2,63);
+            JL(a2); JGoto(ports.ω);
+            JL(b2); JGoto(ports.ω);
+            break;
+        }
         case ICN_BREAK:   emit_jvm_icon_break    (n,ports,oα,oβ); break;
         case ICN_NEXT:    emit_jvm_icon_next     (n,ports,oα,oβ); break;
         case ICN_AUGOP:   emit_jvm_icon_augop    (n,ports,oα,oβ); break;
@@ -7211,6 +7243,7 @@ void emit_jvm_icon_file(IcnNode **nodes, int count, FILE *fp, const char *filena
     ntdflt = 0;
     nrec = 0;
     need_cset_builtins = 0;
+    need_random_builtin = 0;
 
     set_classname(filename ? filename : "IconProg");
 
@@ -8155,6 +8188,27 @@ void emit_jvm_icon_file(IcnNode **nodes, int count, FILE *fp, const char *filena
     J(".end method\n\n");
 
     /* === END M-IJ-BUILTINS-STR helpers === */
+
+    /* G2: icn_builtin_random(long n) → long: random integer 1..n, pure Java */
+    if (need_random_builtin) {
+        J(".method public static icn_builtin_random(J)J\n");
+        J("    .limit stack 4\n    .limit locals 4\n");
+        J("    ; if n <= 0 return 0\n");
+        J("    lload_0\n");
+        J("    lconst_0\n");
+        J("    lcmp\n");
+        J("    ifgt icn_rand_pos\n");
+        J("    lconst_0\n");
+        J("    lreturn\n");
+        J("icn_rand_pos:\n");
+        J("    invokestatic java/lang/System/nanoTime()J\n");
+        J("    lload_0\n");
+        J("    lrem\n");
+        J("    lconst_1\n");
+        J("    ladd\n");
+        J("    lreturn\n");
+        J(".end method\n\n");
+    }
 
     /* Cset operation builtins (G3–G6, M-G5-LOWER-ICON-FIX) */
     if (need_cset_builtins) {

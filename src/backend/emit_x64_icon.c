@@ -855,6 +855,29 @@ static void emit_cset(IcnEmitter *em, IcnNode *n, IcnPorts ports,
 }
 
 /* =========================================================================
+ * ICN_RANDOM — ?E: random integer in 1..E
+ * Evaluate E, call icn_random(n), push result. Fails if E fails.
+ * ======================================================================= */
+static void emit_random(IcnEmitter *em, IcnNode *n, IcnPorts ports,
+                        char *oa, char *ob) {
+    int id = icn_next_uid(em); char a[64], b[64];
+    icn_label_α(id, a, sizeof a); icn_label_β(id, b, sizeof b);
+    strncpy(oa, a, 63); strncpy(ob, b, 63);
+    char after[64]; snprintf(after, sizeof after, "icon_%d_rand", id);
+    IcnPorts cp; strncpy(cp.γ, after, 63); strncpy(cp.ω, ports.ω, 63);
+    char ca[64], cb[64];
+    emit_expr(em, n->children[0], cp, ca, cb);
+    Ldef(em, a); Jmp(em, ca);
+    Ldef(em, b); Jmp(em, cb);
+    Ldef(em, after);
+    E(em, "    pop     rdi\n");
+    E(em, "    extern  icn_random\n");
+    E(em, "    call    icn_random\n");
+    E(em, "    push    rax\n");
+    Jmp(em, ports.γ);
+}
+
+/* =========================================================================
  * ICN_NEG — unary minus: -E
  * Evaluate E, negate result, push, succeed. One-shot (no β retry).
  * ======================================================================= */
@@ -2449,6 +2472,19 @@ static void emit_expr(IcnEmitter *em, IcnNode *n, IcnPorts ports,
         case ICN_CASE:      emit_case      (em,n,ports,oa,ob); break;
         case ICN_BANG:      emit_bang      (em,n,ports,oa,ob); break;
         case ICN_BANG_BINARY: emit_stub_fail(em,n,ports,oa,ob); break;
+        /* G1: ICN_POS — unary plus, identity: emit child unchanged */
+        case ICN_POS:    emit_expr(em,n->children[0],ports,oa,ob); break;
+        /* G2: ICN_RANDOM — ?E: random integer 1..E via icn_random() */
+        case ICN_RANDOM: emit_random(em,n,ports,oa,ob); break;
+        /* G7: ICN_SCAN_AUGOP — E ?:= body: unimplemented, stub-fail to ω */
+        case ICN_SCAN_AUGOP: {
+            int id=icn_next_uid(em); char a2[64],b2[64];
+            icn_label_α(id,a2,sizeof a2); icn_label_β(id,b2,sizeof b2);
+            strncpy(oa,a2,63); strncpy(ob,b2,63);
+            Ldef(em,a2); Jmp(em,ports.ω);
+            Ldef(em,b2); Jmp(em,ports.ω);
+            break;
+        }
         /* G3–G6: cset operations */
         case ICN_COMPLEMENT:  emit_cset_complement(em,n,ports,oa,ob); break;
         case ICN_CSET_UNION:  emit_cset_binop(em,n,ports,oa,ob); break;

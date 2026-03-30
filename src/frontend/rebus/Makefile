@@ -1,8 +1,11 @@
 CC     = gcc
 CFLAGS = -Wall -Wno-unused-function -Wno-unused-variable \
          -Wno-incompatible-pointer-types -g -O0 -I.
-BISON  = bison
-FLEX   = flex
+
+# rebus.tab.c, rebus.tab.h, lex.rebus.c are committed generated files.
+# Do NOT invoke bison/flex here — they are never installed in the session env.
+# To regenerate: modify rebus.y/rebus.l on your own machine, run bison/flex
+# there, and commit the resulting C files. See RULES.md.
 
 SRCS   = rebus.tab.c lex.rebus.c rebus_print.c rebus_emit.c rebus_main.c
 OBJS   = $(SRCS:.c=.o)
@@ -12,13 +15,16 @@ OBJS   = $(SRCS:.c=.o)
 all: rebus
 
 rebus: $(OBJS)
-	$(CC) $(CFLAGS) -o $@ $^ -lfl
+	$(CC) $(CFLAGS) -o $@ $^
 
+# Explicit no-op rules: prevent make from trying to regenerate these files
 rebus.tab.c rebus.tab.h: rebus.y
-	$(BISON) -d -o rebus.tab.c rebus.y
+	@echo "⛔ bison not installed — rebus.tab.c/h are committed. Regenerate on your own machine."
+	@false
 
 lex.rebus.c: rebus.l rebus.tab.h
-	$(FLEX) -o lex.rebus.c rebus.l
+	@echo "⛔ flex not installed — lex.rebus.c is committed. Regenerate on your own machine."
+	@false
 
 %.o: %.c rebus.tab.h rebus.h
 	$(CC) $(CFLAGS) -c -o $@ $<
