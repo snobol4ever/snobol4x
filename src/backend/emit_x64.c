@@ -1373,6 +1373,7 @@ static void emit_pat_node(EXPR_t *pat,
                      cursor, subj, subj_len);
         break;
 
+    case E_CONCAT:  /* Snocone: && in pattern context is goal-directed sequence */
     case E_SEQ: {  /* M-G4-SPLIT-SEQ-CONCAT: pattern context — Byrd-box SEQ */
         int _nc = pat->nchildren;
         if (_nc == 0) break;

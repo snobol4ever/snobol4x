@@ -198,8 +198,9 @@ static int lower_token(const ScPToken *tok, ExprStack *s,
         if (tok->is_unary) {
             es_push(s, make_fnc1("DIFFER", es_pop(s)));
         } else {
+            /* binary: subject ? pattern  →  E_MATCH (scan/pattern-match IR node) */
             EXPR_t *r = es_pop(s), *l = es_pop(s);
-            es_push(s, make_fnc2("DIFFER", l, r));
+            es_push(s, expr_binary(E_MATCH, l, r));
         }
         return 0;
 
@@ -341,9 +342,27 @@ static STMT_t *assemble_stmt(ExprStack *s, int lineno) {
     st->lineno = lineno;
     if (top->kind == E_ASSIGN) {
         es_pop(s);
-        st->subject     = expr_left(top);
-        st->replacement = expr_right(top);
-        st->has_eq      = 1;
+        EXPR_t *lhs = expr_left(top);
+        EXPR_t *rhs = expr_right(top);
+        free(top);
+        /* X ? pat = repl  lowers to ASSIGN(MATCH(X, pat), repl).
+         * Unwrap so subject/pattern/replacement are set correctly. */
+        if (lhs && lhs->kind == E_MATCH) {
+            st->subject     = expr_left(lhs);
+            st->pattern     = expr_right(lhs);
+            st->replacement = rhs;
+            st->has_eq      = 1;
+            free(lhs);
+        } else {
+            st->subject     = lhs;
+            st->replacement = rhs;
+            st->has_eq      = 1;
+        }
+    } else if (top->kind == E_MATCH) {
+        /* X ? pat  (no replacement) — unwrap into subject + pattern */
+        es_pop(s);
+        st->subject = expr_left(top);
+        st->pattern = expr_right(top);
         free(top);
     } else {
         es_pop(s);
