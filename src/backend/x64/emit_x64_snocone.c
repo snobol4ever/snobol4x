@@ -43,7 +43,7 @@
  *   Corpus tests must match this.
  *
  * Extensions over original Koenig Snocone (SC-1):
- *   goto  — C-style one-word form (go to two-word retained for compat)
+ *   goto  — C-style one-word form only (go to two-word removed SC-1)
  *   break — exit innermost loop (while/do-while/for)
  *   continue — next iteration of innermost loop
  *   Loop label stack: brk/cont pushed on entry, popped on exit.
@@ -901,20 +901,6 @@ static void sc_do_stmt(CfState *st) {
     /* ---- goto label  (C-style — only form supported) ---- */
     if (k == SNOCONE_KW_GOTO) {
         sc_advance(st);
-        sc_skip_nl(st);
-        if (sc_cur(st)->kind == SNOCONE_IDENT) {
-            char *target = strdup(sc_cur(st)->text);
-            sc_advance(st);
-            sc_emit_goto(st, target);
-            free(target);
-        } else { st->nerrors++; }
-        return;
-    }
-
-    /* ---- go to label  (two-word — backward compat) ---- */
-    if (k == SNOCONE_KW_GO) {
-        sc_advance(st);
-        sc_consume_kw(st, SNOCONE_KW_TO);
         sc_skip_nl(st);
         if (sc_cur(st)->kind == SNOCONE_IDENT) {
             char *target = strdup(sc_cur(st)->text);

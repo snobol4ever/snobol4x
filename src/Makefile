@@ -25,8 +25,7 @@ FRONTEND_PROLOG = \
 
 FRONTEND_SNOCONE = \
     frontend/snocone/snocone_lex.c \
-    frontend/snocone/snocone_parse.c \
-    frontend/snocone/snocone_driver.c
+    frontend/snocone/snocone_parse.c
 
 FRONTEND_REBUS = \
     frontend/rebus/rebus_lower.c \

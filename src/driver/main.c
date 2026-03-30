@@ -15,7 +15,6 @@
  * Milestone: M-G-INV-EMIT — multi-file support for emit-diff invariant check
  */
 #include "scrip_cc.h"
-#include "snocone_driver.h"
 #include "emit_x64_snocone.h"
 #include "prolog_atom.h"
 #include "prolog_parse.h"

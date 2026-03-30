@@ -147,7 +147,7 @@ static void tb_push(TokBuf *b, SnoconeKind kind, const char *text, int tlen, int
 
 /* ---------------------------------------------------------------------------
  * strip_comment -- return length of line before any unquoted '#' or '//'
- * Handles ' and " strings.  Does NOT handle /* *\/ block comments here
+ * Handles ' and " strings.  Does NOT handle block comments here
  * (those are stripped in a pre-pass in snocone_lex).
  * ------------------------------------------------------------------------- */
 static int strip_comment(const char *line, int len)
@@ -323,9 +323,9 @@ static void tokenize_logical_line(const char *joined, int jlen,
  * ------------------------------------------------------------------------- */
 ScTokenArray snocone_lex(const char *source)
 {
-    /* Pre-pass: strip /* ... */ block comments, preserving newlines for
-     * line number tracking.  Result is a copy with comment text replaced
-     * by spaces (newlines inside comments kept as-is). */
+    /* Pre-pass: strip block comments (slash-star ... star-slash), preserving
+     * newlines for line number tracking.  Result is a copy with comment text
+     * replaced by spaces (newlines inside comments kept as-is). */
     int src_len = (int)strlen(source);
     char *stripped = malloc(src_len + 1);
     {

@@ -235,7 +235,7 @@ static EXPR_t *parse_expr14(Lex *lx) {
         case T_AMP:    uk=E_OPSYN;break;
         case T_PLUS:   lex_next(lx); return parse_expr14(lx); /* unary + is identity */
         case T_MINUS:  uk=E_NEG;   break;
-        case T_STAR:   uk=E_STAR; break;   /* *X = deferred pattern ref */
+        case T_STAR:   uk=E_DEFER; break;   /* *X = deferred pattern ref */
         case T_DOLLAR: uk=E_INDR; break;  /* $X = indirect reference */
         case T_DOT:    uk=E_CAPT_COND;  break;  /* .X = name */
         case T_BANG:   uk=E_POW;   break;  /* !X = definable unary */
@@ -809,7 +809,7 @@ static STMT_t *parse_body_field(const char *body, int lineno) {
  *                  to E_CONCAT (pure string concat, cannot fail).
  *
  * repl_is_pat_tree: lightweight check — true if tree contains any node that is
- *   unambiguously pattern-only: E_ARB, E_ARBNO, E_CAPT_COND, E_CAPT_IMM, E_CAPT_CUR, E_STAR.
+ *   unambiguously pattern-only: E_ARB, E_ARBNO, E_CAPT_COND, E_CAPT_IMM, E_CAPT_CUR, E_DEFER.
  *   (E_FNC pattern-function detection is left to the emitter's expr_is_pattern_expr.)
  *   If true, do NOT apply fixup_val_tree to s->replacement — leave as E_SEQ.
  */
@@ -823,7 +823,7 @@ static int repl_is_pat_tree(EXPR_t *e) {
     if (!e) return 0;
     switch (e->kind) {
         case E_ARB: case E_ARBNO:
-        case E_CAPT_COND: case E_CAPT_IMM: case E_CAPT_CUR: case E_STAR:
+        case E_CAPT_COND: case E_CAPT_IMM: case E_CAPT_CUR: case E_DEFER:
             return 1;
         default: break;
     }

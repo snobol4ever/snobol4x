@@ -1500,7 +1500,7 @@ static void emit_pat_node(EXPR_t *pat,
         break;
     }
 
-    case E_STAR:    /* *VAR — deferred pattern ref (value context split in B-280) */
+    case E_DEFER:    /* *VAR — deferred pattern ref (value context split in B-280) */
     case E_INDR: {
         /* *VAR — indirect pattern reference.
          * pat->children[0] is E_VAR holding the variable name.
@@ -2410,7 +2410,7 @@ static int expr_has_pattern_fn(EXPR_t *e) {
      * was not recognised as a pattern expression and fell into OPSYN dispatch. */
     if (e->kind == E_CAPT_CUR) return 1;
     /* E_STAR (*VAR deferred pattern ref) is always a pattern-valued expression */
-    if (e->kind == E_STAR) return 1;
+    if (e->kind == E_DEFER) return 1;
     for (int i = 0; i < e->nchildren; i++)
         if (expr_has_pattern_fn(e->children[i])) return 1;
     return 0;
@@ -4001,7 +4001,7 @@ static int emit_expr(EXPR_t *e, int rbp_off) {
             /* Force right to DT_N if it's E_VAR or E_STAR pointing to a varname */
             const char *rname = NULL;
             if (right->kind == E_VAR && right->sval) rname = right->sval;
-            else if (right->kind == E_STAR && right->nchildren > 0
+            else if (right->kind == E_DEFER && right->nchildren > 0
                      && right->children[0] && right->children[0]->sval)
                 rname = right->children[0]->sval;
             else if (right->kind == E_INDR && right->nchildren > 0
@@ -4043,7 +4043,7 @@ static int emit_expr(EXPR_t *e, int rbp_off) {
         return 1;
     }
 
-    case E_STAR: {
+    case E_DEFER: {
         /* *VAR — deferred/indirect pattern reference in value context.
          * B-287: M-BUG-BOOTSTRAP-PARSE — *VAR in value context (e.g. ARBNO(*Command))
          * must emit pat_ref(name) to create an XDSAR deferred-lookup node, NOT
