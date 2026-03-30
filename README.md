@@ -3,7 +3,7 @@
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 
 A multi-language compiler collection — SNOBOL4, Icon, Prolog, Snocone, Rebus — targeting x86-64 native ASM,
-JVM bytecode, .NET MSIL, and portable C — all from a single IR.
+JVM bytecode, .NET MSIL, WebAssembly, and portable C — all from a single IR.
 Part of the [snobol4ever](https://github.com/snobol4ever) organization.
 
 ---
@@ -11,7 +11,7 @@ Part of the [snobol4ever](https://github.com/snobol4ever) organization.
 ## What This Is
 
 `one4all` (the **scrip-cc** compiler) is a from-scratch SNOBOL4 compiler: one frontend
-pipeline (`scrip-cc`) feeding four independent backend emitters. Write SNOBOL4 once.
+pipeline (`scrip-cc`) feeding five independent backend emitters. Write SNOBOL4 once.
 Run it anywhere.
 
 | Flag | Output | Status |
@@ -20,6 +20,7 @@ Run it anywhere.
 | `-asm` | x86-64 NASM assembly | ✅ 97/106 corpus · 9 known failures |
 | `-jvm` | JVM Jasmin bytecode (`.j`) | ✅ 106/106 corpus · `beauty.sno` ✅ |
 | `-net` | .NET CIL assembly (`.il`) | ✅ 110/110 corpus · roman + wordcount ✅ |
+| `-wasm` | WebAssembly text format (`.wat`) | 🚧 active — SW-2, hello/literals/arith |
 
 The 9 ASM failures (tests 022, 055, 064, cross, word1–4, wordcount) are under active
 investigation via the five-way differential monitor.
@@ -56,9 +57,9 @@ table, no virtual dispatch on the hot path.
 This model, first described by Lawrence Byrd in 1980 for Prolog debugging and
 generalized by Todd Proebsting in 1996 as a syntax-directed code generation strategy
 for goal-directed languages, turns out to describe SNOBOL4 pattern matching exactly.
-All four backends implement the same four-port wiring. The semantics are identical
+All five backends implement the same four-port wiring. The semantics are identical
 whether the output is C labeled gotos, x86-64 JMP instructions, JVM `goto` bytecodes,
-or CIL `br` instructions.
+CIL `br` instructions, or WebAssembly `return_call` tail calls.
 
 **Hot path:** pure labeled gotos. Zero overhead. No `setjmp` on the hot path.
 **Cold path:** `longjmp` for `ABORT`, bare `FENCE`, and genuine runtime errors only.
@@ -107,6 +108,11 @@ java -cp . Prog
 # NET backend
 ./scrip-cc -net program.sno > prog.il
 ilasm prog.il && mono prog.exe
+
+# WASM backend
+./scrip-cc -wasm -o prog.wat program.sno
+wat2wasm --enable-tail-call prog.wat -o prog.wasm
+node test/wasm/run_wasm.js prog.wasm
 ```
 
 ---
