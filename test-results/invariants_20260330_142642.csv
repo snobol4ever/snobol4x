@@ -1,0 +1,914 @@
+status,cell,test,detail,timestamp
+PASS,snobol4_x86,001_output_string_literal,,
+PASS,snobol4_x86,002_output_integer_literal,,
+PASS,snobol4_x86,004_output_empty_string,,
+PASS,snobol4_x86,003_output_real_literal,,
+PASS,snobol4_x86,005_output_multiline,,
+PASS,snobol4_x86,006_output_keyword_alphabet,,
+PASS,snobol4_x86,007_output_null_var,,
+PASS,snobol4_x86,008_output_double_quoted,,
+PASS,snobol4_x86,009_assign_string,,
+PASS,snobol4_x86,010_assign_integer,,
+PASS,snobol4_x86,011_assign_chain,,
+PASS,snobol4_x86,012_assign_null,,
+PASS,snobol4_x86,013_assign_overwrite,,
+PASS,snobol4_x86,014_assign_indirect_dollar,,
+PASS,snobol4_x86,016_assign_to_output,,
+PASS,snobol4_x86,015_assign_indirect_var,,
+PASS,snobol4_x86,017_concat_two_strings,,
+PASS,snobol4_x86,018_concat_three_strings,,
+PASS,snobol4_x86,019_concat_var_string,,
+PASS,snobol4_x86,020_concat_integer_string,,
+PASS,snobol4_x86,022_concat_multipart,,
+PASS,snobol4_x86,021_concat_in_assignment,,
+PASS,snobol4_x86,023_arith_add,,
+PASS,snobol4_x86,024_arith_subtract,,
+PASS,snobol4_x86,025_arith_multiply,,
+PASS,snobol4_x86,026_arith_divide,,
+PASS,snobol4_x86,027_arith_exponent,,
+PASS,snobol4_x86,028_arith_unary_minus,,
+PASS,snobol4_x86,030_arith_remdr,,
+PASS,snobol4_x86,029_arith_precedence,,
+PASS,snobol4_x86,032_goto_loop_count,,
+PASS,snobol4_x86,031_goto_unconditional,,
+PASS,snobol4_x86,033_goto_success,,
+PASS,snobol4_x86,034_goto_failure,,
+PASS,snobol4_x86,035_goto_both_branches,,
+PASS,snobol4_x86,036_goto_skip_to_end,,
+PASS,snobol4_x86,037_goto_nested_labels,,
+PASS,snobol4_x86,038_pat_literal,,
+PASS,snobol4_x86,039_pat_any,,
+PASS,snobol4_x86,040_pat_notany,,
+PASS,snobol4_x86,042_pat_break,,
+PASS,snobol4_x86,041_pat_span,,
+PASS,snobol4_x86,043_pat_len,,
+PASS,snobol4_x86,044_pat_pos,,
+PASS,snobol4_x86,046_pat_tab,,
+PASS,snobol4_x86,045_pat_rpos,,
+PASS,snobol4_x86,048_pat_rem,,
+PASS,snobol4_x86,047_pat_rtab,,
+PASS,snobol4_x86,049_pat_arb,,
+PASS,snobol4_x86,050_pat_alt_two,,
+PASS,snobol4_x86,051_pat_alt_three,,
+PASS,snobol4_x86,052_pat_arbno,,
+PASS,snobol4_x86,053_pat_alt_commit,,
+PASS,snobol4_x86,054_pat_arbno_alt,,
+PASS,snobol4_x86,056_pat_star_deref,,
+PASS,snobol4_x86,055_pat_concat_seq,,
+PASS,snobol4_x86,057_pat_fail_builtin,,
+PASS,snobol4_x86,058_capture_dot_immediate,,
+PASS,snobol4_x86,059_capture_dollar_deferred,,
+PASS,snobol4_x86,060_capture_multiple,,
+PASS,snobol4_x86,061_capture_in_arbno,,
+PASS,snobol4_x86,062_capture_replacement,,
+PASS,snobol4_x86,064_capture_conditional,,
+PASS,snobol4_x86,063_capture_null_replace,,
+PASS,snobol4_x86,066_builtin_substr,,
+PASS,snobol4_x86,065_builtin_size,,
+PASS,snobol4_x86,068_builtin_trim,,
+PASS,snobol4_x86,067_builtin_replace,,
+PASS,snobol4_x86,069_builtin_dupl,,
+PASS,snobol4_x86,070_builtin_reverse,,
+PASS,snobol4_x86,071_builtin_ucase,,
+PASS,snobol4_x86,072_builtin_lcase,,
+PASS,snobol4_x86,073_builtin_lpad,,
+PASS,snobol4_x86,074_builtin_rpad,,
+PASS,snobol4_x86,075_builtin_integer_test,,
+PASS,snobol4_x86,cross,,
+PASS,snobol4_x86,word1,,
+PASS,snobol4_x86,word2,,
+PASS,snobol4_x86,word3,,
+PASS,snobol4_x86,word4,,
+PASS,snobol4_x86,wordcount,,
+PASS,snobol4_x86,083_define_simple_return,,
+PASS,snobol4_x86,084_define_loop_call,,
+PASS,snobol4_x86,085_define_two_args,,
+PASS,snobol4_x86,086_define_locals,,
+PASS,snobol4_x86,087_define_freturn,,
+PASS,snobol4_x86,088_define_recursive_fib,,
+PASS,snobol4_x86,089_define_in_pattern,,
+PASS,snobol4_x86,090_define_entry_label,,
+PASS,snobol4_x86,091_array_create_access,,
+PASS,snobol4_x86,092_array_loop_fill,,
+PASS,snobol4_x86,093_table_create_access,,
+PASS,snobol4_x86,094_data_define_access,,
+PASS,snobol4_x86,095_data_field_set,,
+PASS,snobol4_x86,096_data_datatype_check,,
+PASS,snobol4_x86,076_builtin_ident,,
+PASS,snobol4_x86,077_builtin_differ,,
+PASS,snobol4_x86,078_builtin_gt,,
+PASS,snobol4_x86,079_builtin_lt_le_ge,,
+PASS,snobol4_x86,080_builtin_eq_ne,,
+PASS,snobol4_x86,081_builtin_datatype,,
+PASS,snobol4_x86,082_keyword_stcount,,
+PASS,snobol4_x86,097_keyword_alphabet,,
+PASS,snobol4_x86,098_keyword_anchor,,
+PASS,snobol4_x86,099_lexical_compare,,
+PASS,snobol4_x86,100_roman_numeral,,
+TIMEOUT,snobol4_jvm,_00_roman_numeral,,2026-03-30 14:27:42
+FAIL,snobol4_jvm,_010_func_recursion,,2026-03-30 14:27:42
+FAIL,snobol4_jvm,_011_func_redefine,,2026-03-30 14:27:42
+FAIL,snobol4_jvm,_013_func_nreturn,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_014_func_freturn,,2026-03-30 14:27:42
+FAIL,snobol4_jvm,_015_opsyn,,2026-03-30 14:27:42
+FAIL,snobol4_jvm,_016_eval,,2026-03-30 14:27:42
+FAIL,snobol4_jvm,_018_apply,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_01_output_string_literal,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_02_output_integer_literal,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_03_output_real_literal,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_04_output_empty_string,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_05_output_multiline,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_06_output_keyword_alphabet,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_07_output_null_var,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_08_output_double_quoted,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_09_assign_string,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_10_assign_integer,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_10_concat_strings,,2026-03-30 14:27:42
+FAIL,snobol4_jvm,_10_indirect_ref,,2026-03-30 14:27:42
+FAIL,snobol4_jvm,_110_array_1d,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_111_array_default,,2026-03-30 14:27:42
+FAIL,snobol4_jvm,_112_array_multi,,2026-03-30 14:27:42
+FAIL,snobol4_jvm,_113_table,,2026-03-30 14:27:42
+FAIL,snobol4_jvm,_114_item,,2026-03-30 14:27:42
+FAIL,snobol4_jvm,_115_data_basic,,2026-03-30 14:27:42
+FAIL,snobol4_jvm,_116_data_overlap,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_11_assign_chain,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_11_concat_numeric,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_11_indirect_assign,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_12_assign_null,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_12_concat_null,,2026-03-30 14:27:42
+FAIL,snobol4_jvm,_12_indirect_array,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_13_assign_overwrite,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_14_assign_indirect_dollar,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_15_assign_indirect_var,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_16_assign_to_output,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_17_concat_two_strings,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_18_concat_three_strings,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_19_concat_var_string,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_20_concat_integer_string,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_21_concat_in_assignment,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_22_concat_multipart,,2026-03-30 14:27:42
+FAIL,snobol4_jvm,_23_arith_add,,2026-03-30 14:27:42
+FAIL,snobol4_jvm,_24_arith_subtract,,2026-03-30 14:27:42
+FAIL,snobol4_jvm,_25_arith_multiply,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_26_arith_divide,,2026-03-30 14:27:42
+FAIL,snobol4_jvm,_27_arith_exponent,,2026-03-30 14:27:42
+FAIL,snobol4_jvm,_28_arith_unary_minus,,2026-03-30 14:27:42
+FAIL,snobol4_jvm,_29_arith_precedence,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_30_arith_remdr,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_31_goto_unconditional,,2026-03-30 14:27:42
+FAIL,snobol4_jvm,_32_goto_loop_count,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_33_goto_success,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_34_goto_failure,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_35_goto_both_branches,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_36_goto_skip_to_end,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_37_goto_nested_labels,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_38_pat_literal,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_39_pat_any,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_40_pat_notany,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_41_pat_span,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_42_pat_break,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_43_pat_len,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_44_pat_pos,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_45_pat_rpos,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_46_pat_tab,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_47_pat_rtab,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_48_pat_rem,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_49_pat_arb,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_50_pat_alt_two,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_51_pat_alt_three,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_52_pat_arbno,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_53_pat_alt_commit,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_54_pat_arbno_alt,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_55_pat_concat_seq,,2026-03-30 14:27:42
+FAIL,snobol4_jvm,_56_pat_star_deref,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_57_pat_fail_builtin,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_58_capture_dot_immediate,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_59_capture_dollar_deferred,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_60_capture_multiple,,2026-03-30 14:27:42
+FAIL,snobol4_jvm,_61_capture_in_arbno,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_62_capture_replacement,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_63_capture_null_replace,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_64_capture_conditional,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_65_builtin_size,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_66_builtin_substr,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_67_builtin_replace,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_68_builtin_trim,,2026-03-30 14:27:42
+PASS,snobol4_jvm,_69_builtin_dupl,,2026-03-30 14:27:43
+PASS,snobol4_jvm,_70_builtin_reverse,,2026-03-30 14:27:43
+PASS,snobol4_jvm,_71_builtin_ucase,,2026-03-30 14:27:43
+PASS,snobol4_jvm,_72_builtin_lcase,,2026-03-30 14:27:43
+PASS,snobol4_jvm,_73_builtin_lpad,,2026-03-30 14:27:43
+PASS,snobol4_jvm,_74_builtin_rpad,,2026-03-30 14:27:43
+PASS,snobol4_jvm,_75_builtin_integer_test,,2026-03-30 14:27:43
+PASS,snobol4_jvm,_76_builtin_ident,,2026-03-30 14:27:43
+PASS,snobol4_jvm,_77_builtin_differ,,2026-03-30 14:27:43
+PASS,snobol4_jvm,_78_builtin_gt,,2026-03-30 14:27:43
+PASS,snobol4_jvm,_79_builtin_lt_le_ge,,2026-03-30 14:27:43
+PASS,snobol4_jvm,_80_builtin_eq_ne,,2026-03-30 14:27:43
+PASS,snobol4_jvm,_81_builtin_datatype,,2026-03-30 14:27:43
+PASS,snobol4_jvm,_82_keyword_stcount,,2026-03-30 14:27:43
+FAIL,snobol4_jvm,_83_define_simple_return,,2026-03-30 14:27:43
+FAIL,snobol4_jvm,_84_define_loop_call,,2026-03-30 14:27:43
+FAIL,snobol4_jvm,_85_define_two_args,,2026-03-30 14:27:43
+PASS,snobol4_jvm,_86_define_locals,,2026-03-30 14:27:43
+PASS,snobol4_jvm,_87_define_freturn,,2026-03-30 14:27:43
+FAIL,snobol4_jvm,_88_define_recursive_fib,,2026-03-30 14:27:43
+PASS,snobol4_jvm,_89_define_in_pattern,,2026-03-30 14:27:43
+FAIL,snobol4_jvm,_90_define_entry_label,,2026-03-30 14:27:43
+PASS,snobol4_jvm,_91_array_create_access,,2026-03-30 14:27:43
+FAIL,snobol4_jvm,_92_array_loop_fill,,2026-03-30 14:27:43
+PASS,snobol4_jvm,_93_table_create_access,,2026-03-30 14:27:43
+FAIL,snobol4_jvm,_94_data_define_access,,2026-03-30 14:27:43
+PASS,snobol4_jvm,_95_data_field_set,,2026-03-30 14:27:43
+PASS,snobol4_jvm,_96_data_datatype_check,,2026-03-30 14:27:43
+PASS,snobol4_jvm,_97_keyword_alphabet,,2026-03-30 14:27:43
+PASS,snobol4_jvm,_98_keyword_anchor,,2026-03-30 14:27:43
+PASS,snobol4_jvm,_99_lexical_compare,,2026-03-30 14:27:43
+PASS,snobol4_jvm,cross,,2026-03-30 14:27:43
+PASS,snobol4_jvm,word1,,2026-03-30 14:27:43
+PASS,snobol4_jvm,word2,,2026-03-30 14:27:43
+PASS,snobol4_jvm,word3,,2026-03-30 14:27:43
+PASS,snobol4_jvm,word4,,2026-03-30 14:27:43
+TIMEOUT,snobol4_jvm,wordcount,,2026-03-30 14:27:43
+PASS,icon_x86,rung01_paper_compound,,2026-03-30 14:27:43
+PASS,icon_x86,rung01_paper_lt,,2026-03-30 14:27:43
+PASS,icon_x86,rung01_paper_mult,,2026-03-30 14:27:44
+PASS,icon_x86,rung01_paper_nested_to,,2026-03-30 14:27:44
+PASS,icon_x86,rung01_paper_paper_expr,,2026-03-30 14:27:44
+PASS,icon_x86,rung01_paper_to5,,2026-03-30 14:27:44
+PASS,icon_x86,rung02_arith_gen_nested_add,,2026-03-30 14:27:45
+PASS,icon_x86,rung02_arith_gen_nested_filter,,2026-03-30 14:27:45
+PASS,icon_x86,rung02_arith_gen_paper_mul,,2026-03-30 14:27:45
+PASS,icon_x86,rung02_arith_gen_range,,2026-03-30 14:27:45
+PASS,icon_x86,rung02_arith_gen_relfilter,,2026-03-30 14:27:45
+PASS,icon_x86,rung02_proc_add_proc,,2026-03-30 14:27:46
+PASS,icon_x86,rung02_proc_fact,,2026-03-30 14:27:46
+PASS,icon_x86,rung02_proc_locals,,2026-03-30 14:27:46
+PASS,icon_x86,rung03_suspend_fail,,2026-03-30 14:27:46
+COMPILE_FAIL,icon_x86,rung03_suspend_gen,compile,2026-03-30 14:27:47
+COMPILE_FAIL,icon_x86,rung03_suspend_gen_compose,compile,2026-03-30 14:27:47
+PASS,icon_x86,rung03_suspend_gen_filter,,2026-03-30 14:27:47
+PASS,icon_x86,rung03_suspend_return,,2026-03-30 14:27:47
+PASS,icon_x86,rung04_string_concat,,2026-03-30 14:27:47
+PASS,icon_x86,rung04_string_concat_chain,,2026-03-30 14:27:48
+PASS,icon_x86,rung04_string_multi_str,,2026-03-30 14:27:48
+PASS,icon_x86,rung04_string_str_lit,,2026-03-30 14:27:48
+PASS,icon_x86,rung04_string_str_var,,2026-03-30 14:27:48
+PASS,icon_x86,rung05_scan_scan_concat_subject,,2026-03-30 14:27:48
+FAIL,icon_x86,rung05_scan_scan_nested,,2026-03-30 14:27:49
+PASS,icon_x86,rung05_scan_scan_restores,,2026-03-30 14:27:49
+PASS,icon_x86,rung05_scan_scan_subject,,2026-03-30 14:27:49
+PASS,icon_x86,rung05_scan_scan_var,,2026-03-30 14:27:49
+PASS,icon_x86,rung06_cset_any_basic,,2026-03-30 14:27:50
+PASS,icon_x86,rung06_cset_any_fail,,2026-03-30 14:27:50
+PASS,icon_x86,rung06_cset_cset_var,,2026-03-30 14:27:50
+PASS,icon_x86,rung06_cset_many_basic,,2026-03-30 14:27:50
+PASS,icon_x86,rung06_cset_upto_basic,,2026-03-30 14:27:50
+PASS,icon_x86,rung07_control_neg,,2026-03-30 14:27:51
+PASS,icon_x86,rung07_control_not,,2026-03-30 14:27:51
+PASS,icon_x86,rung07_control_repeat_break,,2026-03-30 14:27:51
+PASS,icon_x86,rung07_control_seq,,2026-03-30 14:27:51
+PASS,icon_x86,rung07_control_to_by,,2026-03-30 14:27:52
+PASS,icon_x86,rung08_strbuiltins_find,,2026-03-30 14:27:52
+PASS,icon_x86,rung08_strbuiltins_find_gen,,2026-03-30 14:27:52
+PASS,icon_x86,rung08_strbuiltins_match,,2026-03-30 14:27:52
+PASS,icon_x86,rung08_strbuiltins_move,,2026-03-30 14:27:52
+PASS,icon_x86,rung08_strbuiltins_tab,,2026-03-30 14:27:53
+FAIL,icon_x86,rung09_loops_repeat_break,,2026-03-30 14:27:58
+FAIL,icon_x86,rung09_loops_repeat_counter,,2026-03-30 14:28:03
+FAIL,icon_x86,rung09_loops_until,,2026-03-30 14:28:03
+FAIL,icon_x86,rung09_loops_until_gen,,2026-03-30 14:28:09
+FAIL,icon_x86,rung09_loops_until_while,,2026-03-30 14:28:14
+PASS,icon_x86,rung10_augop_augplus,,2026-03-30 14:28:14
+PASS,icon_x86,rung10_augop_augstar,,2026-03-30 14:28:14
+PASS,icon_x86,rung10_augop_augsub_mod,,2026-03-30 14:28:14
+PASS,icon_x86,rung10_augop_break_repeat,,2026-03-30 14:28:15
+PASS,icon_x86,rung10_augop_break_while,,2026-03-30 14:28:15
+FAIL,icon_x86,rung11_bang_augconcat_augconcat,,2026-03-30 14:28:15
+FAIL,icon_x86,rung11_bang_augconcat_augconcat_chain,,2026-03-30 14:28:15
+FAIL,icon_x86,rung11_bang_augconcat_augconcat_loop,,2026-03-30 14:28:15
+COMPILE_FAIL,icon_x86,rung11_bang_augconcat_bang_concat,compile,2026-03-30 14:28:15
+FAIL,icon_x86,rung11_bang_augconcat_bang_str,,2026-03-30 14:28:16
+PASS,icon_x86,rung12_strrelop_size_seq,,2026-03-30 14:28:16
+FAIL,icon_x86,rung12_strrelop_size_sge,,2026-03-30 14:28:16
+PASS,icon_x86,rung12_strrelop_size_size,,2026-03-30 14:28:16
+FAIL,icon_x86,rung12_strrelop_size_slt,,2026-03-30 14:28:17
+FAIL,icon_x86,rung12_strrelop_size_sne,,2026-03-30 14:28:17
+COMPILE_FAIL,icon_x86,rung13_alt_alt_augconcat,compile,2026-03-30 14:28:17
+FAIL,icon_x86,rung13_alt_alt_every_write,,2026-03-30 14:28:17
+FAIL,icon_x86,rung13_alt_alt_filter,,2026-03-30 14:28:17
+FAIL,icon_x86,rung13_alt_alt_int,,2026-03-30 14:28:22
+FAIL,icon_x86,rung13_alt_alt_nested,,2026-03-30 14:28:23
+FAIL,icon_x86,rung14_limit_limit_alt,,2026-03-30 14:28:23
+PASS,icon_x86,rung14_limit_limit_large,,2026-03-30 14:28:23
+FAIL,icon_x86,rung14_limit_limit_str,,2026-03-30 14:28:23
+FAIL,icon_x86,rung14_limit_limit_to,,2026-03-30 14:28:24
+FAIL,icon_x86,rung14_limit_limit_zero,,2026-03-30 14:28:24
+FAIL,icon_x86,rung15_real_swap_lconcat,,2026-03-30 14:28:24
+FAIL,icon_x86,rung15_real_swap_real_literal,,2026-03-30 14:28:24
+FAIL,icon_x86,rung15_real_swap_real_var,,2026-03-30 14:28:24
+FAIL,icon_x86,rung15_real_swap_swap_basic,,2026-03-30 14:28:25
+FAIL,icon_x86,rung15_real_swap_swap_str,,2026-03-30 14:28:25
+FAIL,icon_x86,rung16_subscript_sub_basic,,2026-03-30 14:28:25
+FAIL,icon_x86,rung16_subscript_sub_every,,2026-03-30 14:28:25
+FAIL,icon_x86,rung16_subscript_sub_fail,,2026-03-30 14:28:25
+FAIL,icon_x86,rung16_subscript_sub_literal,,2026-03-30 14:28:26
+FAIL,icon_x86,rung16_subscript_sub_neg,,2026-03-30 14:28:26
+FAIL,icon_x86,rung17_real_arith_integer,,2026-03-30 14:28:26
+FAIL,icon_x86,rung17_real_arith_real_add,,2026-03-30 14:28:26
+FAIL,icon_x86,rung17_real_arith_real_conv,,2026-03-30 14:28:27
+FAIL,icon_x86,rung17_real_arith_real_mul,,2026-03-30 14:28:27
+FAIL,icon_x86,rung17_real_arith_string_conv,,2026-03-30 14:28:27
+FAIL,icon_x86,rung18_real_relop_mixed_relop,,2026-03-30 14:28:27
+PASS,icon_x86,rung18_real_relop_real_eq,,2026-03-30 14:28:27
+PASS,icon_x86,rung18_real_relop_real_gt,,2026-03-30 14:28:28
+PASS,icon_x86,rung18_real_relop_real_lt,,2026-03-30 14:28:28
+FAIL,icon_x86,rung18_real_relop_real_relop_goal,,2026-03-30 14:28:33
+FAIL,icon_x86,rung19_pow_toby_pow_int,,2026-03-30 14:28:33
+FAIL,icon_x86,rung19_pow_toby_pow_real,,2026-03-30 14:28:33
+FAIL,icon_x86,rung19_pow_toby_pow_var,,2026-03-30 14:28:34
+FAIL,icon_x86,rung19_pow_toby_real_toby_neg,,2026-03-30 14:28:34
+FAIL,icon_x86,rung19_pow_toby_real_toby_pos,,2026-03-30 14:28:39
+FAIL,icon_x86,rung20_section_seqexpr_section_basic,,2026-03-30 14:28:39
+FAIL,icon_x86,rung20_section_seqexpr_section_full,,2026-03-30 14:28:39
+FAIL,icon_x86,rung20_section_seqexpr_section_var,,2026-03-30 14:28:40
+PASS,icon_x86,rung20_section_seqexpr_seqexpr_basic,,2026-03-30 14:28:40
+FAIL,icon_x86,rung20_section_seqexpr_seqexpr_side,,2026-03-30 14:28:40
+PASS,icon_x86,rung21_global_initial_global_basic,,2026-03-30 14:28:40
+PASS,icon_x86,rung21_global_initial_global_initial,,2026-03-30 14:28:41
+FAIL,icon_x86,rung21_global_initial_global_str,,2026-03-30 14:28:41
+PASS,icon_x86,rung21_global_initial_initial_once,,2026-03-30 14:28:41
+PASS,icon_x86,rung21_global_initial_multi_global,,2026-03-30 14:28:41
+FAIL,icon_x86,rung22_lists_bang_list,,2026-03-30 14:28:41
+FAIL,icon_x86,rung22_lists_get,,2026-03-30 14:28:42
+FAIL,icon_x86,rung22_lists_pull,,2026-03-30 14:28:42
+FAIL,icon_x86,rung22_lists_push_put_size,,2026-03-30 14:28:42
+FAIL,icon_x86,rung22_lists_put_bang,,2026-03-30 14:28:42
+FAIL,icon_x86,rung23_table_table_basic,,2026-03-30 14:28:42
+FAIL,icon_x86,rung23_table_table_default,,2026-03-30 14:28:43
+FAIL,icon_x86,rung23_table_table_insert_delete,,2026-03-30 14:28:43
+FAIL,icon_x86,rung23_table_table_key,,2026-03-30 14:28:43
+FAIL,icon_x86,rung23_table_table_member,,2026-03-30 14:28:43
+FAIL,icon_x86,rung24_records_basic,,2026-03-30 14:28:43
+FAIL,icon_x86,rung24_records_field_assign,,2026-03-30 14:28:44
+FAIL,icon_x86,rung24_records_proc_arg,,2026-03-30 14:28:44
+FAIL,icon_x86,rung24_records_record_loop,,2026-03-30 14:28:44
+FAIL,icon_x86,rung24_records_two_types,,2026-03-30 14:28:44
+PASS,icon_x86,rung25_global_global_basic,,2026-03-30 14:28:45
+PASS,icon_x86,rung25_global_global_initial,,2026-03-30 14:28:45
+FAIL,icon_x86,rung25_global_global_str,,2026-03-30 14:28:45
+PASS,icon_x86,rung25_global_global_three_procs,,2026-03-30 14:28:45
+PASS,icon_x86,rung25_global_initial_once,,2026-03-30 14:28:45
+PASS,icon_x86,rung25_global_initial_zero,,2026-03-30 14:28:46
+PASS,icon_x86,rung25_global_multi_global,,2026-03-30 14:28:46
+FAIL,icon_x86,rung26_pow_int_pow,,2026-03-30 14:28:46
+FAIL,icon_x86,rung26_pow_pow_assoc,,2026-03-30 14:28:46
+FAIL,icon_x86,rung26_pow_pow_expr,,2026-03-30 14:28:47
+FAIL,icon_x86,rung26_pow_pow_zero,,2026-03-30 14:28:47
+FAIL,icon_x86,rung26_pow_real_pow,,2026-03-30 14:28:47
+FAIL,icon_x86,rung27_read_read_count,,2026-03-30 14:28:47
+PASS,icon_x86,rung27_read_read_eof_fail,,2026-03-30 14:28:47
+FAIL,icon_x86,rung27_read_read_line,,2026-03-30 14:28:48
+FAIL,icon_x86,rung27_read_read_loop,,2026-03-30 14:28:48
+FAIL,icon_x86,rung27_read_reads_bytes,,2026-03-30 14:28:48
+FAIL,icon_x86,rung28_builtins_str_char_ord,,2026-03-30 14:28:48
+FAIL,icon_x86,rung28_builtins_str_pad,,2026-03-30 14:28:48
+FAIL,icon_x86,rung28_builtins_str_repl,,2026-03-30 14:28:49
+FAIL,icon_x86,rung28_builtins_str_reverse,,2026-03-30 14:28:49
+FAIL,icon_x86,rung28_builtins_str_trim_map,,2026-03-30 14:28:49
+FAIL,icon_x86,rung29_builtins_type_copy,,2026-03-30 14:28:49
+FAIL,icon_x86,rung29_builtins_type_image,,2026-03-30 14:28:50
+FAIL,icon_x86,rung29_builtins_type_mixed,,2026-03-30 14:28:50
+FAIL,icon_x86,rung29_builtins_type_numeric,,2026-03-30 14:28:50
+FAIL,icon_x86,rung29_builtins_type_type,,2026-03-30 14:28:50
+FAIL,icon_x86,rung30_builtins_misc_abs,,2026-03-30 14:28:50
+FAIL,icon_x86,rung30_builtins_misc_maxmin,,2026-03-30 14:28:51
+FAIL,icon_x86,rung30_builtins_misc_mixed,,2026-03-30 14:28:51
+FAIL,icon_x86,rung30_builtins_misc_seq,,2026-03-30 14:28:51
+FAIL,icon_x86,rung30_builtins_misc_sqrt,,2026-03-30 14:28:51
+FAIL,icon_x86,rung31_sort_sort_already_sorted,,2026-03-30 14:28:52
+FAIL,icon_x86,rung31_sort_sort_basic,,2026-03-30 14:28:52
+FAIL,icon_x86,rung31_sort_sort_every,,2026-03-30 14:28:52
+FAIL,icon_x86,rung31_sort_sortf_field1,,2026-03-30 14:28:52
+FAIL,icon_x86,rung31_sort_sortf_field2,,2026-03-30 14:28:52
+FAIL,icon_x86,rung32_strretval_basic_strret,,2026-03-30 14:28:53
+FAIL,icon_x86,rung32_strretval_chain,,2026-03-30 14:28:53
+FAIL,icon_x86,rung32_strretval_strret_assign,,2026-03-30 14:28:53
+FAIL,icon_x86,rung32_strretval_strret_every,,2026-03-30 14:28:53
+FAIL,icon_x86,rung32_strretval_two_str_params,,2026-03-30 14:28:53
+FAIL,icon_x86,rung33_case_case_arith,,2026-03-30 14:28:54
+FAIL,icon_x86,rung33_case_case_in_proc,,2026-03-30 14:28:54
+FAIL,icon_x86,rung33_case_case_int,,2026-03-30 14:28:54
+PASS,icon_x86,rung33_case_case_no_default,,2026-03-30 14:28:54
+FAIL,icon_x86,rung33_case_case_str,,2026-03-30 14:28:55
+PASS,icon_x86,rung34_null_test_nonnull_fails,,2026-03-30 14:28:55
+PASS,icon_x86,rung34_null_test_nonnull_in_every,,2026-03-30 14:28:55
+PASS,icon_x86,rung34_null_test_nonnull_succeeds,,2026-03-30 14:28:55
+PASS,icon_x86,rung34_null_test_null_fails,,2026-03-30 14:28:55
+PASS,icon_x86,rung34_null_test_null_succeeds,,2026-03-30 14:28:56
+FAIL,icon_x86,rung35_block_body_every_do_block,,2026-03-30 14:28:56
+FAIL,icon_x86,rung35_block_body_if_block,,2026-03-30 14:28:56
+FAIL,icon_x86,rung35_block_body_if_else_block,,2026-03-30 14:28:56
+PASS,icon_x86,rung35_block_body_nested_block,,2026-03-30 14:28:57
+FAIL,icon_x86,rung35_block_body_while_do_block,,2026-03-30 14:29:02
+FAIL,icon_x86,rung35_table_str_str_default_int_key,,2026-03-30 14:29:02
+FAIL,icon_x86,rung35_table_str_str_table_read,,2026-03-30 14:29:02
+FAIL,icon_x86,rung36_jcon_args,,2026-03-30 14:29:02
+FAIL,icon_x86,rung36_jcon_augment,,2026-03-30 14:29:03
+FAIL,icon_x86,rung36_jcon_btrees,,2026-03-30 14:29:03
+FAIL,icon_x86,rung36_jcon_center,,2026-03-30 14:29:03
+FAIL,icon_x86,rung36_jcon_ck,,2026-03-30 14:29:03
+FAIL,icon_x86,rung36_jcon_coerce,,2026-03-30 14:29:04
+COMPILE_FAIL,icon_x86,rung36_jcon_concord,compile,2026-03-30 14:29:04
+COMPILE_FAIL,icon_x86,rung36_jcon_diffwrds,compile,2026-03-30 14:29:04
+COMPILE_FAIL,icon_x86,rung36_jcon_endetab,compile,2026-03-30 14:29:04
+FAIL,icon_x86,rung36_jcon_every,,2026-03-30 14:29:04
+COMPILE_FAIL,icon_x86,rung36_jcon_fncs1,compile,2026-03-30 14:29:04
+COMPILE_FAIL,icon_x86,rung36_jcon_genqueen,compile,2026-03-30 14:29:04
+COMPILE_FAIL,icon_x86,rung36_jcon_htprep,compile,2026-03-30 14:29:04
+COMPILE_FAIL,icon_x86,rung36_jcon_io,compile,2026-03-30 14:29:04
+FAIL,icon_x86,rung36_jcon_kross,,2026-03-30 14:29:04
+COMPILE_FAIL,icon_x86,rung36_jcon_kwds,compile,2026-03-30 14:29:04
+FAIL,icon_x86,rung36_jcon_left,,2026-03-30 14:29:05
+COMPILE_FAIL,icon_x86,rung36_jcon_level,compile,2026-03-30 14:29:05
+COMPILE_FAIL,icon_x86,rung36_jcon_lexcmp,compile,2026-03-30 14:29:05
+FAIL,icon_x86,rung36_jcon_lists,,2026-03-30 14:29:05
+FAIL,icon_x86,rung36_jcon_map,,2026-03-30 14:29:05
+COMPILE_FAIL,icon_x86,rung36_jcon_mathfunc,compile,2026-03-30 14:29:05
+FAIL,icon_x86,rung36_jcon_meander,,2026-03-30 14:29:05
+COMPILE_FAIL,icon_x86,rung36_jcon_mffsol,compile,2026-03-30 14:29:05
+COMPILE_FAIL,icon_x86,rung36_jcon_mindfa,compile,2026-03-30 14:29:05
+FAIL,icon_x86,rung36_jcon_numeric,,2026-03-30 14:29:06
+FAIL,icon_x86,rung36_jcon_parse,,2026-03-30 14:29:06
+FAIL,icon_x86,rung36_jcon_prefix,,2026-03-30 14:29:06
+COMPILE_FAIL,icon_x86,rung36_jcon_prepro,compile,2026-03-30 14:29:06
+FAIL,icon_x86,rung36_jcon_primes,,2026-03-30 14:29:06
+COMPILE_FAIL,icon_x86,rung36_jcon_profsum,compile,2026-03-30 14:29:06
+COMPILE_FAIL,icon_x86,rung36_jcon_proto,compile,2026-03-30 14:29:07
+FAIL,icon_x86,rung36_jcon_queens,,2026-03-30 14:29:07
+FAIL,icon_x86,rung36_jcon_radix,,2026-03-30 14:29:07
+COMPILE_FAIL,icon_x86,rung36_jcon_random,compile,2026-03-30 14:29:07
+FAIL,icon_x86,rung36_jcon_recogn,,2026-03-30 14:29:07
+FAIL,icon_x86,rung36_jcon_record,,2026-03-30 14:29:07
+FAIL,icon_x86,rung36_jcon_right,,2026-03-30 14:29:08
+COMPILE_FAIL,icon_x86,rung36_jcon_roman,compile,2026-03-30 14:29:08
+FAIL,icon_x86,rung36_jcon_scan,,2026-03-30 14:29:08
+COMPILE_FAIL,icon_x86,rung36_jcon_scan1,compile,2026-03-30 14:29:08
+COMPILE_FAIL,icon_x86,rung36_jcon_scan2,compile,2026-03-30 14:29:08
+FAIL,icon_x86,rung36_jcon_statics,,2026-03-30 14:29:08
+FAIL,icon_x86,rung36_jcon_string,,2026-03-30 14:29:08
+FAIL,icon_x86,rung36_jcon_string1,,2026-03-30 14:29:09
+COMPILE_FAIL,icon_x86,rung36_jcon_subjpos,compile,2026-03-30 14:29:09
+FAIL,icon_x86,rung36_jcon_substring,,2026-03-30 14:29:09
+COMPILE_FAIL,icon_x86,rung36_jcon_table,compile,2026-03-30 14:29:09
+FAIL,icon_x86,rung36_jcon_toby,,2026-03-30 14:29:09
+FAIL,icon_x86,rung36_jcon_trim,,2026-03-30 14:29:09
+COMPILE_FAIL,icon_x86,rung36_jcon_var,compile,2026-03-30 14:29:09
+FAIL,icon_x86,rung36_jcon_wordcnt,,2026-03-30 14:29:10
+PASS,icon_jvm,rung01_paper_compound,,2026-03-30 14:29:43
+PASS,icon_jvm,rung01_paper_lt,,2026-03-30 14:29:43
+PASS,icon_jvm,rung01_paper_mult,,2026-03-30 14:29:43
+PASS,icon_jvm,rung01_paper_nested_to,,2026-03-30 14:29:43
+PASS,icon_jvm,rung01_paper_paper_expr,,2026-03-30 14:29:43
+PASS,icon_jvm,rung01_paper_to5,,2026-03-30 14:29:43
+PASS,icon_jvm,rung02_arith_gen_nested_add,,2026-03-30 14:29:43
+PASS,icon_jvm,rung02_arith_gen_nested_filter,,2026-03-30 14:29:43
+PASS,icon_jvm,rung02_arith_gen_paper_mul,,2026-03-30 14:29:43
+PASS,icon_jvm,rung02_arith_gen_range,,2026-03-30 14:29:43
+PASS,icon_jvm,rung02_arith_gen_relfilter,,2026-03-30 14:29:43
+PASS,icon_jvm,rung02_proc_add_proc,,2026-03-30 14:29:43
+PASS,icon_jvm,rung02_proc_fact,,2026-03-30 14:29:43
+PASS,icon_jvm,rung02_proc_locals,,2026-03-30 14:29:43
+PASS,icon_jvm,rung03_suspend_fail,,2026-03-30 14:29:43
+PASS,icon_jvm,rung03_suspend_gen,,2026-03-30 14:29:43
+PASS,icon_jvm,rung03_suspend_gen_compose,,2026-03-30 14:29:43
+PASS,icon_jvm,rung03_suspend_gen_filter,,2026-03-30 14:29:43
+PASS,icon_jvm,rung03_suspend_return,,2026-03-30 14:29:43
+PASS,icon_jvm,rung04_string_concat,,2026-03-30 14:29:43
+PASS,icon_jvm,rung04_string_concat_chain,,2026-03-30 14:29:43
+PASS,icon_jvm,rung04_string_multi_str,,2026-03-30 14:29:43
+PASS,icon_jvm,rung04_string_str_lit,,2026-03-30 14:29:43
+PASS,icon_jvm,rung04_string_str_var,,2026-03-30 14:29:43
+PASS,icon_jvm,rung05_scan_scan_concat_subject,,2026-03-30 14:29:43
+PASS,icon_jvm,rung05_scan_scan_nested,,2026-03-30 14:29:43
+PASS,icon_jvm,rung05_scan_scan_restores,,2026-03-30 14:29:43
+PASS,icon_jvm,rung05_scan_scan_subject,,2026-03-30 14:29:43
+PASS,icon_jvm,rung05_scan_scan_var,,2026-03-30 14:29:43
+PASS,icon_jvm,rung06_cset_any_basic,,2026-03-30 14:29:43
+PASS,icon_jvm,rung06_cset_any_fail,,2026-03-30 14:29:43
+PASS,icon_jvm,rung06_cset_cset_var,,2026-03-30 14:29:43
+PASS,icon_jvm,rung06_cset_many_basic,,2026-03-30 14:29:43
+PASS,icon_jvm,rung06_cset_upto_basic,,2026-03-30 14:29:43
+PASS,icon_jvm,rung07_control_neg,,2026-03-30 14:29:43
+PASS,icon_jvm,rung07_control_not,,2026-03-30 14:29:43
+PASS,icon_jvm,rung07_control_repeat_break,,2026-03-30 14:29:43
+PASS,icon_jvm,rung07_control_seq,,2026-03-30 14:29:43
+PASS,icon_jvm,rung07_control_to_by,,2026-03-30 14:29:43
+PASS,icon_jvm,rung08_strbuiltins_find,,2026-03-30 14:29:43
+PASS,icon_jvm,rung08_strbuiltins_find_gen,,2026-03-30 14:29:43
+PASS,icon_jvm,rung08_strbuiltins_match,,2026-03-30 14:29:43
+PASS,icon_jvm,rung08_strbuiltins_move,,2026-03-30 14:29:43
+PASS,icon_jvm,rung08_strbuiltins_tab,,2026-03-30 14:29:43
+PASS,icon_jvm,rung09_loops_repeat_break,,2026-03-30 14:29:43
+PASS,icon_jvm,rung09_loops_repeat_counter,,2026-03-30 14:29:43
+PASS,icon_jvm,rung09_loops_until,,2026-03-30 14:29:43
+PASS,icon_jvm,rung09_loops_until_gen,,2026-03-30 14:29:43
+PASS,icon_jvm,rung09_loops_until_while,,2026-03-30 14:29:43
+PASS,icon_jvm,rung10_augop_augplus,,2026-03-30 14:29:43
+PASS,icon_jvm,rung10_augop_augstar,,2026-03-30 14:29:43
+PASS,icon_jvm,rung10_augop_augsub_mod,,2026-03-30 14:29:43
+PASS,icon_jvm,rung10_augop_break_repeat,,2026-03-30 14:29:43
+PASS,icon_jvm,rung10_augop_break_while,,2026-03-30 14:29:43
+PASS,icon_jvm,rung11_bang_augconcat_augconcat,,2026-03-30 14:29:43
+PASS,icon_jvm,rung11_bang_augconcat_augconcat_chain,,2026-03-30 14:29:43
+PASS,icon_jvm,rung11_bang_augconcat_augconcat_loop,,2026-03-30 14:29:43
+PASS,icon_jvm,rung11_bang_augconcat_bang_concat,,2026-03-30 14:29:43
+PASS,icon_jvm,rung11_bang_augconcat_bang_str,,2026-03-30 14:29:43
+PASS,icon_jvm,rung12_strrelop_size_seq,,2026-03-30 14:29:43
+PASS,icon_jvm,rung12_strrelop_size_sge,,2026-03-30 14:29:44
+PASS,icon_jvm,rung12_strrelop_size_size,,2026-03-30 14:29:44
+PASS,icon_jvm,rung12_strrelop_size_slt,,2026-03-30 14:29:44
+PASS,icon_jvm,rung12_strrelop_size_sne,,2026-03-30 14:29:44
+PASS,icon_jvm,rung13_alt_alt_augconcat,,2026-03-30 14:29:44
+PASS,icon_jvm,rung13_alt_alt_every_write,,2026-03-30 14:29:44
+PASS,icon_jvm,rung13_alt_alt_filter,,2026-03-30 14:29:44
+PASS,icon_jvm,rung13_alt_alt_int,,2026-03-30 14:29:44
+PASS,icon_jvm,rung13_alt_alt_nested,,2026-03-30 14:29:44
+PASS,icon_jvm,rung14_limit_limit_alt,,2026-03-30 14:29:44
+PASS,icon_jvm,rung14_limit_limit_large,,2026-03-30 14:29:44
+PASS,icon_jvm,rung14_limit_limit_str,,2026-03-30 14:29:44
+PASS,icon_jvm,rung14_limit_limit_to,,2026-03-30 14:29:44
+PASS,icon_jvm,rung14_limit_limit_zero,,2026-03-30 14:29:44
+PASS,icon_jvm,rung15_real_swap_lconcat,,2026-03-30 14:29:44
+PASS,icon_jvm,rung15_real_swap_real_literal,,2026-03-30 14:29:44
+PASS,icon_jvm,rung15_real_swap_real_var,,2026-03-30 14:29:44
+PASS,icon_jvm,rung15_real_swap_swap_basic,,2026-03-30 14:29:44
+PASS,icon_jvm,rung15_real_swap_swap_str,,2026-03-30 14:29:44
+PASS,icon_jvm,rung16_subscript_sub_basic,,2026-03-30 14:29:44
+PASS,icon_jvm,rung16_subscript_sub_every,,2026-03-30 14:29:44
+PASS,icon_jvm,rung16_subscript_sub_fail,,2026-03-30 14:29:44
+PASS,icon_jvm,rung16_subscript_sub_literal,,2026-03-30 14:29:44
+PASS,icon_jvm,rung16_subscript_sub_neg,,2026-03-30 14:29:44
+PASS,icon_jvm,rung17_real_arith_integer,,2026-03-30 14:29:44
+PASS,icon_jvm,rung17_real_arith_real_add,,2026-03-30 14:29:44
+PASS,icon_jvm,rung17_real_arith_real_conv,,2026-03-30 14:29:44
+PASS,icon_jvm,rung17_real_arith_real_mul,,2026-03-30 14:29:44
+PASS,icon_jvm,rung17_real_arith_string_conv,,2026-03-30 14:29:44
+PASS,icon_jvm,rung18_real_relop_mixed_relop,,2026-03-30 14:29:44
+PASS,icon_jvm,rung18_real_relop_real_eq,,2026-03-30 14:29:44
+PASS,icon_jvm,rung18_real_relop_real_gt,,2026-03-30 14:29:44
+PASS,icon_jvm,rung18_real_relop_real_lt,,2026-03-30 14:29:44
+PASS,icon_jvm,rung18_real_relop_real_relop_goal,,2026-03-30 14:29:44
+PASS,icon_jvm,rung19_pow_toby_pow_int,,2026-03-30 14:29:44
+PASS,icon_jvm,rung19_pow_toby_pow_real,,2026-03-30 14:29:44
+PASS,icon_jvm,rung19_pow_toby_pow_var,,2026-03-30 14:29:44
+PASS,icon_jvm,rung19_pow_toby_real_toby_neg,,2026-03-30 14:29:44
+PASS,icon_jvm,rung19_pow_toby_real_toby_pos,,2026-03-30 14:29:44
+PASS,icon_jvm,rung20_section_seqexpr_section_basic,,2026-03-30 14:29:44
+PASS,icon_jvm,rung20_section_seqexpr_section_full,,2026-03-30 14:29:44
+PASS,icon_jvm,rung20_section_seqexpr_section_var,,2026-03-30 14:29:44
+PASS,icon_jvm,rung20_section_seqexpr_seqexpr_basic,,2026-03-30 14:29:44
+PASS,icon_jvm,rung20_section_seqexpr_seqexpr_side,,2026-03-30 14:29:44
+PASS,icon_jvm,rung21_global_initial_global_basic,,2026-03-30 14:29:44
+PASS,icon_jvm,rung21_global_initial_global_initial,,2026-03-30 14:29:44
+PASS,icon_jvm,rung21_global_initial_global_str,,2026-03-30 14:29:44
+PASS,icon_jvm,rung21_global_initial_initial_once,,2026-03-30 14:29:44
+PASS,icon_jvm,rung21_global_initial_multi_global,,2026-03-30 14:29:44
+PASS,icon_jvm,rung22_lists_bang_list,,2026-03-30 14:29:44
+PASS,icon_jvm,rung22_lists_get,,2026-03-30 14:29:44
+PASS,icon_jvm,rung22_lists_pull,,2026-03-30 14:29:44
+PASS,icon_jvm,rung22_lists_push_put_size,,2026-03-30 14:29:44
+PASS,icon_jvm,rung22_lists_put_bang,,2026-03-30 14:29:44
+PASS,icon_jvm,rung23_table_table_basic,,2026-03-30 14:29:44
+PASS,icon_jvm,rung23_table_table_default,,2026-03-30 14:29:44
+PASS,icon_jvm,rung23_table_table_insert_delete,,2026-03-30 14:29:44
+PASS,icon_jvm,rung23_table_table_key,,2026-03-30 14:29:44
+PASS,icon_jvm,rung23_table_table_member,,2026-03-30 14:29:44
+FAIL,icon_jvm,rung24_records_basic,,2026-03-30 14:29:44
+FAIL,icon_jvm,rung24_records_field_assign,,2026-03-30 14:29:44
+FAIL,icon_jvm,rung24_records_proc_arg,,2026-03-30 14:29:44
+FAIL,icon_jvm,rung24_records_record_loop,,2026-03-30 14:29:44
+FAIL,icon_jvm,rung24_records_two_types,,2026-03-30 14:29:44
+PASS,icon_jvm,rung25_global_global_basic,,2026-03-30 14:29:44
+PASS,icon_jvm,rung25_global_global_initial,,2026-03-30 14:29:44
+PASS,icon_jvm,rung25_global_global_str,,2026-03-30 14:29:44
+PASS,icon_jvm,rung25_global_global_three_procs,,2026-03-30 14:29:44
+PASS,icon_jvm,rung25_global_initial_once,,2026-03-30 14:29:44
+PASS,icon_jvm,rung25_global_initial_zero,,2026-03-30 14:29:44
+PASS,icon_jvm,rung25_global_multi_global,,2026-03-30 14:29:44
+PASS,icon_jvm,rung26_pow_int_pow,,2026-03-30 14:29:44
+PASS,icon_jvm,rung26_pow_pow_assoc,,2026-03-30 14:29:44
+PASS,icon_jvm,rung26_pow_pow_expr,,2026-03-30 14:29:44
+PASS,icon_jvm,rung26_pow_pow_zero,,2026-03-30 14:29:44
+PASS,icon_jvm,rung26_pow_real_pow,,2026-03-30 14:29:44
+FAIL,icon_jvm,rung27_read_read_count,,2026-03-30 14:29:44
+PASS,icon_jvm,rung27_read_read_eof_fail,,2026-03-30 14:29:44
+FAIL,icon_jvm,rung27_read_read_line,,2026-03-30 14:29:44
+FAIL,icon_jvm,rung27_read_read_loop,,2026-03-30 14:29:44
+FAIL,icon_jvm,rung27_read_reads_bytes,,2026-03-30 14:29:44
+PASS,icon_jvm,rung28_builtins_str_char_ord,,2026-03-30 14:29:44
+PASS,icon_jvm,rung28_builtins_str_pad,,2026-03-30 14:29:44
+PASS,icon_jvm,rung28_builtins_str_repl,,2026-03-30 14:29:44
+PASS,icon_jvm,rung28_builtins_str_reverse,,2026-03-30 14:29:44
+PASS,icon_jvm,rung28_builtins_str_trim_map,,2026-03-30 14:29:44
+PASS,icon_jvm,rung29_builtins_type_copy,,2026-03-30 14:29:44
+PASS,icon_jvm,rung29_builtins_type_image,,2026-03-30 14:29:44
+PASS,icon_jvm,rung29_builtins_type_mixed,,2026-03-30 14:29:45
+PASS,icon_jvm,rung29_builtins_type_numeric,,2026-03-30 14:29:45
+PASS,icon_jvm,rung29_builtins_type_type,,2026-03-30 14:29:45
+PASS,icon_jvm,rung30_builtins_misc_abs,,2026-03-30 14:29:45
+PASS,icon_jvm,rung30_builtins_misc_maxmin,,2026-03-30 14:29:45
+PASS,icon_jvm,rung30_builtins_misc_mixed,,2026-03-30 14:29:45
+PASS,icon_jvm,rung30_builtins_misc_seq,,2026-03-30 14:29:45
+PASS,icon_jvm,rung30_builtins_misc_sqrt,,2026-03-30 14:29:45
+PASS,icon_jvm,rung31_sort_sort_already_sorted,,2026-03-30 14:29:45
+PASS,icon_jvm,rung31_sort_sort_basic,,2026-03-30 14:29:45
+PASS,icon_jvm,rung31_sort_sort_every,,2026-03-30 14:29:45
+FAIL,icon_jvm,rung31_sort_sortf_field1,,2026-03-30 14:29:45
+FAIL,icon_jvm,rung31_sort_sortf_field2,,2026-03-30 14:29:45
+PASS,icon_jvm,rung32_strretval_basic_strret,,2026-03-30 14:29:45
+PASS,icon_jvm,rung32_strretval_chain,,2026-03-30 14:29:45
+PASS,icon_jvm,rung32_strretval_strret_assign,,2026-03-30 14:29:45
+PASS,icon_jvm,rung32_strretval_strret_every,,2026-03-30 14:29:45
+PASS,icon_jvm,rung32_strretval_two_str_params,,2026-03-30 14:29:45
+PASS,icon_jvm,rung33_case_case_arith,,2026-03-30 14:29:45
+PASS,icon_jvm,rung33_case_case_in_proc,,2026-03-30 14:29:45
+PASS,icon_jvm,rung33_case_case_int,,2026-03-30 14:29:45
+PASS,icon_jvm,rung33_case_case_no_default,,2026-03-30 14:29:45
+PASS,icon_jvm,rung33_case_case_str,,2026-03-30 14:29:45
+PASS,icon_jvm,rung34_null_test_nonnull_fails,,2026-03-30 14:29:45
+PASS,icon_jvm,rung34_null_test_nonnull_in_every,,2026-03-30 14:29:45
+PASS,icon_jvm,rung34_null_test_nonnull_succeeds,,2026-03-30 14:29:45
+PASS,icon_jvm,rung34_null_test_null_fails,,2026-03-30 14:29:45
+PASS,icon_jvm,rung34_null_test_null_succeeds,,2026-03-30 14:29:45
+PASS,icon_jvm,rung35_block_body_every_do_block,,2026-03-30 14:29:45
+PASS,icon_jvm,rung35_block_body_if_block,,2026-03-30 14:29:45
+PASS,icon_jvm,rung35_block_body_if_else_block,,2026-03-30 14:29:45
+PASS,icon_jvm,rung35_block_body_nested_block,,2026-03-30 14:29:45
+PASS,icon_jvm,rung35_block_body_while_do_block,,2026-03-30 14:29:45
+PASS,icon_jvm,rung35_table_str_str_default_int_key,,2026-03-30 14:29:45
+PASS,icon_jvm,rung35_table_str_str_table_read,,2026-03-30 14:29:45
+FAIL,icon_jvm,rung36_jcon_args,,2026-03-30 14:29:45
+FAIL,icon_jvm,rung36_jcon_augment,,2026-03-30 14:29:45
+FAIL,icon_jvm,rung36_jcon_btrees,,2026-03-30 14:29:45
+FAIL,icon_jvm,rung36_jcon_center,,2026-03-30 14:29:45
+FAIL,icon_jvm,rung36_jcon_coerce,,2026-03-30 14:29:45
+FAIL,icon_jvm,rung36_jcon_concord,,2026-03-30 14:29:45
+FAIL,icon_jvm,rung36_jcon_diffwrds,,2026-03-30 14:29:45
+FAIL,icon_jvm,rung36_jcon_every,,2026-03-30 14:29:45
+FAIL,icon_jvm,rung36_jcon_fncs1,,2026-03-30 14:29:45
+FAIL,icon_jvm,rung36_jcon_io,,2026-03-30 14:29:45
+FAIL,icon_jvm,rung36_jcon_kross,,2026-03-30 14:29:45
+FAIL,icon_jvm,rung36_jcon_kwds,,2026-03-30 14:29:45
+FAIL,icon_jvm,rung36_jcon_left,,2026-03-30 14:29:45
+FAIL,icon_jvm,rung36_jcon_level,,2026-03-30 14:29:45
+FAIL,icon_jvm,rung36_jcon_lexcmp,,2026-03-30 14:29:45
+FAIL,icon_jvm,rung36_jcon_lists,,2026-03-30 14:29:45
+FAIL,icon_jvm,rung36_jcon_map,,2026-03-30 14:29:45
+FAIL,icon_jvm,rung36_jcon_mathfunc,,2026-03-30 14:29:45
+FAIL,icon_jvm,rung36_jcon_meander,,2026-03-30 14:29:45
+FAIL,icon_jvm,rung36_jcon_mindfa,,2026-03-30 14:29:45
+FAIL,icon_jvm,rung36_jcon_numeric,,2026-03-30 14:29:45
+FAIL,icon_jvm,rung36_jcon_parse,,2026-03-30 14:29:45
+FAIL,icon_jvm,rung36_jcon_prefix,,2026-03-30 14:29:45
+FAIL,icon_jvm,rung36_jcon_prepro,,2026-03-30 14:29:45
+PASS,icon_jvm,rung36_jcon_primes,,2026-03-30 14:29:45
+FAIL,icon_jvm,rung36_jcon_profsum,,2026-03-30 14:29:45
+FAIL,icon_jvm,rung36_jcon_queens,,2026-03-30 14:29:45
+FAIL,icon_jvm,rung36_jcon_radix,,2026-03-30 14:29:45
+FAIL,icon_jvm,rung36_jcon_random,,2026-03-30 14:29:45
+FAIL,icon_jvm,rung36_jcon_recogn,,2026-03-30 14:29:45
+FAIL,icon_jvm,rung36_jcon_record,,2026-03-30 14:29:45
+FAIL,icon_jvm,rung36_jcon_right,,2026-03-30 14:29:45
+FAIL,icon_jvm,rung36_jcon_roman,,2026-03-30 14:29:45
+FAIL,icon_jvm,rung36_jcon_scan,,2026-03-30 14:29:45
+FAIL,icon_jvm,rung36_jcon_statics,,2026-03-30 14:29:45
+FAIL,icon_jvm,rung36_jcon_string,,2026-03-30 14:29:45
+FAIL,icon_jvm,rung36_jcon_string1,,2026-03-30 14:29:45
+FAIL,icon_jvm,rung36_jcon_substring,,2026-03-30 14:29:45
+FAIL,icon_jvm,rung36_jcon_table,,2026-03-30 14:29:45
+FAIL,icon_jvm,rung36_jcon_toby,,2026-03-30 14:29:45
+FAIL,icon_jvm,rung36_jcon_trim,,2026-03-30 14:29:45
+FAIL,icon_jvm,rung36_jcon_wordcnt,,2026-03-30 14:29:45
+PASS,prolog_x86,rung01_hello_hello,,2026-03-30 14:29:46
+PASS,prolog_x86,rung02_facts_facts,,2026-03-30 14:29:46
+PASS,prolog_x86,rung03_unify_unify,,2026-03-30 14:29:46
+PASS,prolog_x86,rung04_arith_arith,,2026-03-30 14:29:46
+PASS,prolog_x86,rung05_backtrack_backtrack,,2026-03-30 14:29:46
+PASS,prolog_x86,rung06_lists_lists,,2026-03-30 14:29:47
+PASS,prolog_x86,rung07_cut_cut,,2026-03-30 14:29:47
+PASS,prolog_x86,rung08_recursion_recursion,,2026-03-30 14:29:47
+PASS,prolog_x86,rung09_builtins_builtins,,2026-03-30 14:29:47
+COMPILE_FAIL,prolog_x86,rung11_findall_findall_arith,compile,2026-03-30 14:29:48
+COMPILE_FAIL,prolog_x86,rung11_findall_findall_basic,compile,2026-03-30 14:29:48
+COMPILE_FAIL,prolog_x86,rung11_findall_findall_empty,compile,2026-03-30 14:29:48
+COMPILE_FAIL,prolog_x86,rung11_findall_findall_filter,compile,2026-03-30 14:29:48
+COMPILE_FAIL,prolog_x86,rung11_findall_findall_template,compile,2026-03-30 14:29:48
+COMPILE_FAIL,prolog_x86,rung12_atom_builtins_atom_case,compile,2026-03-30 14:29:48
+COMPILE_FAIL,prolog_x86,rung12_atom_builtins_atom_chars,compile,2026-03-30 14:29:48
+COMPILE_FAIL,prolog_x86,rung12_atom_builtins_atom_codes,compile,2026-03-30 14:29:48
+COMPILE_FAIL,prolog_x86,rung12_atom_builtins_atom_concat,compile,2026-03-30 14:29:48
+COMPILE_FAIL,prolog_x86,rung12_atom_builtins_atom_length,compile,2026-03-30 14:29:48
+COMPILE_FAIL,prolog_x86,rung13_assertz_asserta_order,compile,2026-03-30 14:29:48
+COMPILE_FAIL,prolog_x86,rung13_assertz_assertz_atom,compile,2026-03-30 14:29:48
+COMPILE_FAIL,prolog_x86,rung13_assertz_assertz_compound,compile,2026-03-30 14:29:48
+COMPILE_FAIL,prolog_x86,rung13_assertz_assertz_unify,compile,2026-03-30 14:29:48
+COMPILE_FAIL,prolog_x86,rung13_assertz_static_dynamic_mix,compile,2026-03-30 14:29:48
+COMPILE_FAIL,prolog_x86,rung14_retract_retract_all,compile,2026-03-30 14:29:48
+COMPILE_FAIL,prolog_x86,rung14_retract_retract_basic,compile,2026-03-30 14:29:48
+COMPILE_FAIL,prolog_x86,rung14_retract_retract_mixed,compile,2026-03-30 14:29:48
+COMPILE_FAIL,prolog_x86,rung14_retract_retract_nonexistent,compile,2026-03-30 14:29:48
+COMPILE_FAIL,prolog_x86,rung14_retract_retract_unify,compile,2026-03-30 14:29:49
+COMPILE_FAIL,prolog_x86,rung15_abolish_abolish_existing,compile,2026-03-30 14:29:49
+COMPILE_FAIL,prolog_x86,rung15_abolish_abolish_nonexistent,compile,2026-03-30 14:29:49
+COMPILE_FAIL,prolog_x86,rung15_abolish_abolish_one_of_two,compile,2026-03-30 14:29:49
+COMPILE_FAIL,prolog_x86,rung15_abolish_abolish_then_query_fail,compile,2026-03-30 14:29:49
+COMPILE_FAIL,prolog_x86,rung15_abolish_abolish_then_reassert,compile,2026-03-30 14:29:49
+COMPILE_FAIL,prolog_x86,rung16_atop_at_ge,compile,2026-03-30 14:29:49
+COMPILE_FAIL,prolog_x86,rung16_atop_at_gt,compile,2026-03-30 14:29:49
+COMPILE_FAIL,prolog_x86,rung16_atop_at_le,compile,2026-03-30 14:29:49
+COMPILE_FAIL,prolog_x86,rung16_atop_at_lt,compile,2026-03-30 14:29:49
+COMPILE_FAIL,prolog_x86,rung16_atop_at_sort,compile,2026-03-30 14:29:49
+COMPILE_FAIL,prolog_x86,rung17_sort_msort_basic,compile,2026-03-30 14:29:49
+COMPILE_FAIL,prolog_x86,rung17_sort_msort_dupes,compile,2026-03-30 14:29:49
+COMPILE_FAIL,prolog_x86,rung17_sort_sort_already_sorted,compile,2026-03-30 14:29:49
+COMPILE_FAIL,prolog_x86,rung17_sort_sort_basic,compile,2026-03-30 14:29:49
+COMPILE_FAIL,prolog_x86,rung17_sort_sort_empty,compile,2026-03-30 14:29:49
+COMPILE_FAIL,prolog_x86,rung18_succ_plus_plus_xy_bound,compile,2026-03-30 14:29:49
+COMPILE_FAIL,prolog_x86,rung18_succ_plus_plus_xz_bound,compile,2026-03-30 14:29:49
+COMPILE_FAIL,prolog_x86,rung18_succ_plus_plus_yz_bound,compile,2026-03-30 14:29:49
+COMPILE_FAIL,prolog_x86,rung18_succ_plus_succ_backward,compile,2026-03-30 14:29:49
+COMPILE_FAIL,prolog_x86,rung18_succ_plus_succ_forward,compile,2026-03-30 14:29:50
+COMPILE_FAIL,prolog_x86,rung19_format_format1_nl,compile,2026-03-30 14:29:50
+COMPILE_FAIL,prolog_x86,rung19_format_format2_a,compile,2026-03-30 14:29:50
+COMPILE_FAIL,prolog_x86,rung19_format_format2_d,compile,2026-03-30 14:29:50
+COMPILE_FAIL,prolog_x86,rung19_format_format2_i,compile,2026-03-30 14:29:50
+COMPILE_FAIL,prolog_x86,rung19_format_format2_w,compile,2026-03-30 14:29:50
+COMPILE_FAIL,prolog_x86,rung20_numbervars_atom_unchanged,compile,2026-03-30 14:29:50
+COMPILE_FAIL,prolog_x86,rung20_numbervars_basic,compile,2026-03-30 14:29:50
+COMPILE_FAIL,prolog_x86,rung20_numbervars_list,compile,2026-03-30 14:29:50
+COMPILE_FAIL,prolog_x86,rung20_numbervars_rollover,compile,2026-03-30 14:29:50
+COMPILE_FAIL,prolog_x86,rung20_numbervars_start_offset,compile,2026-03-30 14:29:50
+COMPILE_FAIL,prolog_x86,rung21_char_type_alpha,compile,2026-03-30 14:29:50
+COMPILE_FAIL,prolog_x86,rung21_char_type_digit_val,compile,2026-03-30 14:29:50
+COMPILE_FAIL,prolog_x86,rung21_char_type_space_alnum,compile,2026-03-30 14:29:50
+COMPILE_FAIL,prolog_x86,rung21_char_type_to_upper_lower,compile,2026-03-30 14:29:50
+COMPILE_FAIL,prolog_x86,rung21_char_type_upper_lower,compile,2026-03-30 14:29:50
+COMPILE_FAIL,prolog_x86,rung22_write_canonical_print,compile,2026-03-30 14:29:50
+COMPILE_FAIL,prolog_x86,rung22_write_canonical_write_canonical_list,compile,2026-03-30 14:29:50
+COMPILE_FAIL,prolog_x86,rung22_write_canonical_write_canonical_ops,compile,2026-03-30 14:29:50
+COMPILE_FAIL,prolog_x86,rung22_write_canonical_writeq_atom,compile,2026-03-30 14:29:50
+COMPILE_FAIL,prolog_x86,rung22_write_canonical_writeq_compound,compile,2026-03-30 14:29:50
+PASS,prolog_x86,rung23_arith_ext_bitwise,,2026-03-30 14:29:51
+PASS,prolog_x86,rung23_arith_ext_max_min,,2026-03-30 14:29:51
+FAIL,prolog_x86,rung23_arith_ext_power,,2026-03-30 14:29:51
+FAIL,prolog_x86,rung23_arith_ext_sign,,2026-03-30 14:29:51
+FAIL,prolog_x86,rung23_arith_ext_truncate,,2026-03-30 14:29:51
+COMPILE_FAIL,prolog_x86,rung24_string_io_atom_string,compile,2026-03-30 14:29:52
+COMPILE_FAIL,prolog_x86,rung24_string_io_number_string,compile,2026-03-30 14:29:52
+COMPILE_FAIL,prolog_x86,rung24_string_io_string_case,compile,2026-03-30 14:29:52
+COMPILE_FAIL,prolog_x86,rung24_string_io_string_concat,compile,2026-03-30 14:29:52
+COMPILE_FAIL,prolog_x86,rung24_string_io_string_length,compile,2026-03-30 14:29:52
+COMPILE_FAIL,prolog_x86,rung25_term_string_term_string,compile,2026-03-30 14:29:52
+COMPILE_FAIL,prolog_x86,rung25_term_string_term_to_atom,compile,2026-03-30 14:29:52
+COMPILE_FAIL,prolog_x86,rung25_term_string_term_to_atom_arith,compile,2026-03-30 14:29:52
+COMPILE_FAIL,prolog_x86,rung26_copy_concat_alc2,compile,2026-03-30 14:29:52
+COMPILE_FAIL,prolog_x86,rung26_copy_concat_alc3,compile,2026-03-30 14:29:52
+COMPILE_FAIL,prolog_x86,rung26_copy_concat_concat_atom,compile,2026-03-30 14:29:52
+COMPILE_FAIL,prolog_x86,rung26_copy_concat_copy_term,compile,2026-03-30 14:29:52
+COMPILE_FAIL,prolog_x86,rung26_copy_concat_string_to_atom,compile,2026-03-30 14:29:52
+COMPILE_FAIL,prolog_x86,rung27_aggregate_agg_count,compile,2026-03-30 14:29:52
+COMPILE_FAIL,prolog_x86,rung27_aggregate_agg_max_min,compile,2026-03-30 14:29:52
+COMPILE_FAIL,prolog_x86,rung27_aggregate_agg_sum,compile,2026-03-30 14:29:52
+COMPILE_FAIL,prolog_x86,rung27_aggregate_nb_setval_getval,compile,2026-03-30 14:29:52
+COMPILE_FAIL,prolog_x86,rung27_aggregate_succ_or_zero,compile,2026-03-30 14:29:52
+COMPILE_FAIL,prolog_x86,rung28_exceptions_catch_atom_match,compile,2026-03-30 14:29:52
+COMPILE_FAIL,prolog_x86,rung28_exceptions_no_throw,compile,2026-03-30 14:29:52
+COMPILE_FAIL,prolog_x86,rung28_exceptions_rethrow,compile,2026-03-30 14:29:53
+COMPILE_FAIL,prolog_x86,rung28_exceptions_throw_catch_atom,compile,2026-03-30 14:29:53
+COMPILE_FAIL,prolog_x86,rung28_exceptions_throw_catch_compound,compile,2026-03-30 14:29:53
+FAIL,prolog_x86,rung29_number_ops_float_constants,,2026-03-30 14:29:53
+PASS,prolog_x86,rung29_number_ops_float_conversion,,2026-03-30 14:29:53
+PASS,prolog_x86,rung29_number_ops_float_math,,2026-03-30 14:29:53
+FAIL,prolog_x86,rung29_number_ops_float_parts,,2026-03-30 14:29:53
+FAIL,prolog_x86,rung29_number_ops_gcd,,2026-03-30 14:29:54
+COMPILE_FAIL,prolog_x86,rung30_dcg_basic_terminals,compile,2026-03-30 14:29:54
+COMPILE_FAIL,prolog_x86,rung30_dcg_generate,compile,2026-03-30 14:29:54
+COMPILE_FAIL,prolog_x86,rung30_dcg_nonterminals,compile,2026-03-30 14:29:54
+COMPILE_FAIL,prolog_x86,rung30_dcg_phrase3,compile,2026-03-30 14:29:54
+COMPILE_FAIL,prolog_x86,rung30_dcg_pushback_rest,compile,2026-03-30 14:29:54
+PASS,prolog_jvm,rung01_hello_hello,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung02_facts_facts,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung03_unify_unify,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung04_arith_arith,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung05_backtrack_backtrack,,2026-03-30 14:30:25
+FAIL,prolog_jvm,rung06_lists_lists,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung07_cut_cut,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung08_recursion_recursion,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung09_builtins_builtins,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung11_findall_findall_arith,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung11_findall_findall_basic,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung11_findall_findall_empty,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung11_findall_findall_filter,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung11_findall_findall_template,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung12_atom_builtins_atom_case,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung12_atom_builtins_atom_chars,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung12_atom_builtins_atom_codes,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung12_atom_builtins_atom_concat,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung12_atom_builtins_atom_length,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung13_assertz_asserta_order,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung13_assertz_assertz_atom,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung13_assertz_assertz_compound,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung13_assertz_assertz_unify,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung13_assertz_static_dynamic_mix,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung14_retract_retract_all,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung14_retract_retract_basic,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung14_retract_retract_mixed,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung14_retract_retract_nonexistent,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung14_retract_retract_unify,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung15_abolish_abolish_existing,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung15_abolish_abolish_nonexistent,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung15_abolish_abolish_one_of_two,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung15_abolish_abolish_then_query_fail,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung15_abolish_abolish_then_reassert,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung16_atop_at_ge,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung16_atop_at_gt,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung16_atop_at_le,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung16_atop_at_lt,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung16_atop_at_sort,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung17_sort_msort_basic,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung17_sort_msort_dupes,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung17_sort_sort_already_sorted,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung17_sort_sort_basic,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung17_sort_sort_empty,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung18_succ_plus_plus_xy_bound,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung18_succ_plus_plus_xz_bound,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung18_succ_plus_plus_yz_bound,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung18_succ_plus_succ_backward,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung18_succ_plus_succ_forward,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung19_format_format1_nl,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung19_format_format2_a,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung19_format_format2_d,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung19_format_format2_i,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung19_format_format2_w,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung20_numbervars_atom_unchanged,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung20_numbervars_basic,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung20_numbervars_list,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung20_numbervars_rollover,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung20_numbervars_start_offset,,2026-03-30 14:30:25
+FAIL,prolog_jvm,rung21_char_type_alpha,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung21_char_type_digit_val,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung21_char_type_space_alnum,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung21_char_type_to_upper_lower,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung21_char_type_upper_lower,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung22_write_canonical_print,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung22_write_canonical_write_canonical_list,,2026-03-30 14:30:25
+PASS,prolog_jvm,rung22_write_canonical_write_canonical_ops,,2026-03-30 14:30:26
+PASS,prolog_jvm,rung22_write_canonical_writeq_atom,,2026-03-30 14:30:26
+PASS,prolog_jvm,rung22_write_canonical_writeq_compound,,2026-03-30 14:30:26
+PASS,prolog_jvm,rung23_arith_ext_bitwise,,2026-03-30 14:30:26
+PASS,prolog_jvm,rung23_arith_ext_max_min,,2026-03-30 14:30:26
+PASS,prolog_jvm,rung23_arith_ext_power,,2026-03-30 14:30:26
+PASS,prolog_jvm,rung23_arith_ext_sign,,2026-03-30 14:30:26
+PASS,prolog_jvm,rung23_arith_ext_truncate,,2026-03-30 14:30:26
+PASS,prolog_jvm,rung24_string_io_atom_string,,2026-03-30 14:30:26
+PASS,prolog_jvm,rung24_string_io_number_string,,2026-03-30 14:30:26
+PASS,prolog_jvm,rung24_string_io_string_case,,2026-03-30 14:30:26
+PASS,prolog_jvm,rung24_string_io_string_concat,,2026-03-30 14:30:26
+PASS,prolog_jvm,rung24_string_io_string_length,,2026-03-30 14:30:26
+PASS,prolog_jvm,rung25_term_string_term_string,,2026-03-30 14:30:26
+PASS,prolog_jvm,rung25_term_string_term_to_atom,,2026-03-30 14:30:26
+PASS,prolog_jvm,rung25_term_string_term_to_atom_arith,,2026-03-30 14:30:26
+PASS,prolog_jvm,rung26_copy_concat_alc2,,2026-03-30 14:30:26
+PASS,prolog_jvm,rung26_copy_concat_alc3,,2026-03-30 14:30:26
+PASS,prolog_jvm,rung26_copy_concat_concat_atom,,2026-03-30 14:30:26
+PASS,prolog_jvm,rung26_copy_concat_copy_term,,2026-03-30 14:30:26
+PASS,prolog_jvm,rung26_copy_concat_string_to_atom,,2026-03-30 14:30:26
+PASS,prolog_jvm,rung27_aggregate_agg_count,,2026-03-30 14:30:26
+PASS,prolog_jvm,rung27_aggregate_agg_max_min,,2026-03-30 14:30:26
+PASS,prolog_jvm,rung27_aggregate_agg_sum,,2026-03-30 14:30:26
+PASS,prolog_jvm,rung27_aggregate_nb_setval_getval,,2026-03-30 14:30:26
+PASS,prolog_jvm,rung27_aggregate_succ_or_zero,,2026-03-30 14:30:26
+PASS,prolog_jvm,rung28_exceptions_catch_atom_match,,2026-03-30 14:30:26
+PASS,prolog_jvm,rung28_exceptions_no_throw,,2026-03-30 14:30:26
+PASS,prolog_jvm,rung28_exceptions_rethrow,,2026-03-30 14:30:26
+PASS,prolog_jvm,rung28_exceptions_throw_catch_atom,,2026-03-30 14:30:26
+PASS,prolog_jvm,rung28_exceptions_throw_catch_compound,,2026-03-30 14:30:26
+PASS,prolog_jvm,rung29_number_ops_float_constants,,2026-03-30 14:30:26
+PASS,prolog_jvm,rung29_number_ops_float_conversion,,2026-03-30 14:30:26
+PASS,prolog_jvm,rung29_number_ops_float_math,,2026-03-30 14:30:26
+PASS,prolog_jvm,rung29_number_ops_float_parts,,2026-03-30 14:30:26
+PASS,prolog_jvm,rung29_number_ops_gcd,,2026-03-30 14:30:26
+PASS,prolog_jvm,rung30_dcg_basic_terminals,,2026-03-30 14:30:26
+PASS,prolog_jvm,rung30_dcg_generate,,2026-03-30 14:30:26
+PASS,prolog_jvm,rung30_dcg_nonterminals,,2026-03-30 14:30:26
+PASS,prolog_jvm,rung30_dcg_phrase3,,2026-03-30 14:30:26
+PASS,prolog_jvm,rung30_dcg_pushback_rest,,2026-03-30 14:30:26
+SUMMARY,snobol4_x86,_summary,pass=106 fail=0,2026-03-30 14:30:26
+SUMMARY,snobol4_jvm,_summary,pass=94 fail=32,2026-03-30 14:30:26
+SUMMARY,snobol4_net,_summary,pass=0 fail=0,2026-03-30 14:30:26
+SUMMARY,icon_x86,_summary,pass=94 fail=164,2026-03-30 14:30:26
+SUMMARY,icon_jvm,_summary,pass=173 fail=61,2026-03-30 14:30:26
+SUMMARY,prolog_x86,_summary,pass=13 fail=94,2026-03-30 14:30:26
+SUMMARY,prolog_jvm,_summary,pass=105 fail=2,2026-03-30 14:30:27

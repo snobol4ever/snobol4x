@@ -71,6 +71,14 @@ WORK=$(mktemp -d /tmp/inv_XXXXXX)
 RESULTS="$WORK/results"
 mkdir -p "$RESULTS"
 
+# ── Persistent CSV report ─────────────────────────────────────────────────────
+CSV_DIR="$ROOT/test-results"
+mkdir -p "$CSV_DIR"
+TS=$(date '+%Y%m%d_%H%M%S')
+CSV="$CSV_DIR/invariants_${TS}.csv"
+printf 'status,cell,test,detail,timestamp\n' > "$CSV"
+export CSV
+
 START_TIME=$(date +%s%N 2>/dev/null || date +%s)
 START_HUMAN=$(date '+%Y-%m-%d %H:%M:%S')
 echo -e "${BOLD}START   $START_HUMAN  run_invariants.sh${RESET}"
@@ -129,6 +137,14 @@ ensure_sno_harness() {
   cp "$HARNESS_DIR"/'SnoRuntime$SnoExitException.class' "$W/" 2>/dev/null || true
 }
 
+# ── CSV helper — append one row (safe for parallel use via >>)  ───────────────
+csv_row() {
+  local status="$1" cell="$2" test="$3" detail="${4:-}"
+  local ts; ts=$(date '+%Y-%m-%d %H:%M:%S')
+  printf '%s,%s,%s,%s,%s\n' "$status" "$cell" "$test" "$detail" "$ts" >> "$CSV"
+}
+export -f csv_row
+
 # ── x86 compile worker — written as per-test mini-script (M-G-INV-FAST-X86-FIX)
 # Root cause: exported bash functions are NOT visible inside `bash -c` subshells
 # spawned by xargs (xargs exec's bash fresh; BASH_FUNC_* env vars only work when
@@ -158,13 +174,17 @@ scrip_cc=$(printf '%q' "$SCRIP_CC")
 rt_asm_inc=$(printf '%q' "${RT}/asm/")
 tmo=$(printf '%q' "$tmo")
 verb=$(printf '%q' "$verb")
-"\$scrip_cc" -asm -o "\$asm" "\$sno" 2>/dev/null || { echo "COMPILE_FAIL \$base"; exit 0; }
-nasm -f elf64 -I"\$rt_asm_inc" "\$asm" -o "\$obj" 2>/dev/null || { echo "ASM_FAIL \$base"; exit 0; }
-gcc -O0 -no-pie "\$obj" "\$lib" -lgc -lm -o "\$bin" 2>/dev/null || { echo "LINK_FAIL \$base"; exit 0; }
+"\$scrip_cc" -asm -o "\$asm" "\$sno" 2>/dev/null || { echo "COMPILE_FAIL \$base"; printf 'COMPILE_FAIL,snobol4_x86,%s,,\n' "\$base" >> "$CSV"; exit 0; }
+nasm -f elf64 -I"\$rt_asm_inc" "\$asm" -o "\$obj" 2>/dev/null || { echo "ASM_FAIL \$base"; printf 'ASM_FAIL,snobol4_x86,%s,,\n' "\$base" >> "$CSV"; exit 0; }
+gcc -O0 -no-pie "\$obj" "\$lib" -lgc -lm -o "\$bin" 2>/dev/null || { echo "LINK_FAIL \$base"; printf 'LINK_FAIL,snobol4_x86,%s,,\n' "\$base" >> "$CSV"; exit 0; }
 stdin_src=/dev/null; [[ -f "\$input" ]] && stdin_src="\$input"
 got=\$(timeout "\$tmo" "\$bin" < "\$stdin_src" 2>/dev/null) || got="__TIMEOUT__"
 exp=\$(cat "\$ref")
-if [[ "\$got" == "\$exp" ]]; then echo "PASS \$base"; else echo "FAIL \$base"; fi
+if [[ "\$got" == "\$exp" ]]; then
+  echo "PASS \$base"; printf 'PASS,snobol4_x86,%s,,\n' "\$base" >> "$CSV"
+else
+  echo "FAIL \$base"; printf 'FAIL,snobol4_x86,%s,,\n' "\$base" >> "$CSV"
+fi
 EOJOB
   chmod +x "$script"
 }
@@ -268,9 +288,9 @@ run_snobol4_jvm() {
   harness_out=$(timeout 120 java -cp "$W" SnoHarness "$W" "$W" "$W" 2>/dev/null) || true
   while IFS= read -r line; do
     case "$line" in
-      PASS*) pass=$((pass+1)); [[ $VERBOSE -eq 1 ]] && echo "  $cell $line" ;;
-      FAIL*) fail=$((fail+1)); echo "  FAIL $cell ${line#FAIL }" ;;
-      TIMEOUT*) fail=$((fail+1)); echo "  TIMEOUT $cell ${line#TIMEOUT }" ;;
+      PASS*)    pass=$((pass+1)); csv_row PASS "$cell" "${line#PASS }"; [[ $VERBOSE -eq 1 ]] && echo "  $cell $line" ;;
+      FAIL*)    fail=$((fail+1)); csv_row FAIL "$cell" "${line#FAIL }"; echo "  FAIL $cell ${line#FAIL }" ;;
+      TIMEOUT*) fail=$((fail+1)); csv_row TIMEOUT "$cell" "${line#TIMEOUT }"; echo "  TIMEOUT $cell ${line#TIMEOUT }" ;;
     esac
   done <<< "$harness_out"
   fail=$((fail+compile_fail))
@@ -339,12 +359,12 @@ run_icon_x86() {
            -o "$bin" -lm 2>/dev/null; then
       local got; got=$(timeout "$TIMEOUT_X86" "$bin" 2>/dev/null) || got="__TIMEOUT__"
       if [[ "$got" == "$(cat "$exp")" ]]; then
-        pass=$((pass+1))
+        pass=$((pass+1)); csv_row PASS "$cell" "$base"
       else
-        fail=$((fail+1)); echo "  FAIL $cell $base"
+        fail=$((fail+1)); csv_row FAIL "$cell" "$base"; echo "  FAIL $cell $base"
       fi
     else
-      fail=$((fail+1)); echo "  FAIL $cell $base [compile]"
+      fail=$((fail+1)); csv_row COMPILE_FAIL "$cell" "$base" "compile"; echo "  FAIL $cell $base [compile]"
     fi
   done
   echo "$pass" > "$RESULTS/${cell}_pass"
@@ -392,9 +412,9 @@ run_icon_jvm() {
   harness_out=$(timeout 120 java -cp "$W" SnoHarness "$W" "$W" "$W" 2>/dev/null) || true
   while IFS= read -r line; do
     case "$line" in
-      PASS*) pass=$((pass+1)) ;;
-      FAIL*) fail=$((fail+1)); echo "  FAIL $cell ${line#FAIL }" ;;
-      TIMEOUT*) fail=$((fail+1)); echo "  TIMEOUT $cell ${line#TIMEOUT }" ;;
+      PASS*)    pass=$((pass+1)); csv_row PASS "$cell" "${line#PASS }" ;;
+      FAIL*)    fail=$((fail+1)); csv_row FAIL "$cell" "${line#FAIL }"; echo "  FAIL $cell ${line#FAIL }" ;;
+      TIMEOUT*) fail=$((fail+1)); csv_row TIMEOUT "$cell" "${line#TIMEOUT }"; echo "  TIMEOUT $cell ${line#TIMEOUT }" ;;
     esac
   done <<< "$harness_out"
   fail=$((fail+compile_fail))
@@ -427,12 +447,12 @@ run_prolog_x86() {
        gcc -O0 -no-pie "$obj" "$PL_LIB" -lm -o "$bin" 2>/dev/null; then
       local got; got=$(timeout "$TIMEOUT_X86" "$bin" 2>/dev/null) || got="__FAIL__"
       if [[ "$got" == "$(cat "$expected")" ]]; then
-        rpass=$((rpass+1)); [[ $VERBOSE -eq 1 ]] && echo "  PASS $cell $base"
+        rpass=$((rpass+1)); csv_row PASS "$cell" "$base"; [[ $VERBOSE -eq 1 ]] && echo "  PASS $cell $base"
       else
-        rfail=$((rfail+1)); echo "  FAIL $cell $base"
+        rfail=$((rfail+1)); csv_row FAIL "$cell" "$base"; echo "  FAIL $cell $base"
       fi
     else
-      rfail=$((rfail+1)); echo "  FAIL $cell $base [compile]"
+      rfail=$((rfail+1)); csv_row COMPILE_FAIL "$cell" "$base" "compile"; echo "  FAIL $cell $base [compile]"
     fi
   done
   echo "$rpass" > "$RESULTS/${cell}_pass"
@@ -480,9 +500,9 @@ run_prolog_jvm() {
   harness_out=$(timeout 120 java -cp "$W" SnoHarness "$W" "$W" "$W" 2>/dev/null) || true
   while IFS= read -r line; do
     case "$line" in
-      PASS*) pass=$((pass+1)); [[ $VERBOSE -eq 1 ]] && echo "  $cell $line" ;;
-      FAIL*) fail=$((fail+1)); echo "  FAIL $cell ${line#FAIL }" ;;
-      TIMEOUT*) fail=$((fail+1)); echo "  TIMEOUT $cell ${line#TIMEOUT }" ;;
+      PASS*) pass=$((pass+1)); csv_row PASS "$cell" "${line#PASS }"; [[ $VERBOSE -eq 1 ]] && echo "  $cell $line" ;;
+      FAIL*) fail=$((fail+1)); csv_row FAIL "$cell" "${line#FAIL }"; echo "  FAIL $cell ${line#FAIL }" ;;
+      TIMEOUT*) fail=$((fail+1)); csv_row TIMEOUT "$cell" "${line#TIMEOUT }"; echo "  TIMEOUT $cell ${line#TIMEOUT }" ;;
     esac
   done <<< "$harness_out"
   fail=$((fail+compile_fail))
@@ -559,6 +579,19 @@ echo -e "${BOLD}START   $START_HUMAN${RESET}"
 echo -e "${BOLD}FINISH  $FINISH_HUMAN${RESET}"
 echo -e "${BOLD}ELAPSED ${ELAPSED_MS}ms  (${ELAPSED_S}s)${RESET}"
 echo ""
+
+# Finalise CSV — summary rows per cell + latest symlink
+for cell in snobol4_x86 snobol4_jvm snobol4_net icon_x86 icon_jvm prolog_x86 prolog_jvm; do
+  p=0; f=0
+  [[ -f "$RESULTS/${cell}_pass" ]] && p=$(cat "$RESULTS/${cell}_pass")
+  [[ -f "$RESULTS/${cell}_fail" ]] && f=$(cat "$RESULTS/${cell}_fail")
+  status=$(cat "$RESULTS/${cell}_status" 2>/dev/null || echo "")
+  [[ -n "$status" ]] && printf 'SKIP,%s,_summary,,%s\n' "$cell" "$(date '+%Y-%m-%d %H:%M:%S')" >> "$CSV" \
+                     || printf 'SUMMARY,%s,_summary,pass=%d fail=%d,%s\n' "$cell" "$p" "$f" "$(date '+%Y-%m-%d %H:%M:%S')" >> "$CSV"
+done
+ln -sf "$(basename "$CSV")" "$CSV_DIR/invariants_latest.csv"
+echo -e "${BOLD}Report: $CSV${RESET}"
+
 if [[ $OVERALL_FAIL -eq 0 ]]; then
   echo -e "${GREEN}${BOLD}  ALL PASS${RESET}"
   exit 0

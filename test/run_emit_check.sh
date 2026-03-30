@@ -97,6 +97,14 @@ FAIL_LOG="$WORK/failures.txt"
 touch "$FAIL_LOG"
 START=$(date +%s%N 2>/dev/null || date +%s)
 START_HUMAN=$(date '+%Y-%m-%d %H:%M:%S')
+
+# ── Persistent CSV report ─────────────────────────────────────────────────────
+CSV_DIR="$ROOT/test-results"
+mkdir -p "$CSV_DIR"
+TS=$(date '+%Y%m%d_%H%M%S')
+CSV="$CSV_DIR/emit_${TS}.csv"
+printf 'status,backend,label,timestamp\n' > "$CSV"
+
 echo -e "${BOLD}START  $START_HUMAN  run_emit_check.sh${RESET}"
 
 check_one() {
@@ -110,16 +118,19 @@ check_one() {
   if [[ ! -f "$expected" ]]; then
     rm -f "$tmp"; echo "SKIP $backend $label.$ext" >> "$FAIL_LOG"; return
   fi
+  local ts; ts=$(date '+%Y-%m-%d %H:%M:%S')
   if diff -q "$tmp" "$expected" > /dev/null 2>&1; then
     echo "PASS $backend $label" >> "$FAIL_LOG"
+    printf 'PASS,%s,%s,%s\n' "$backend" "$label" "$ts" >> "$CSV"
   else
     echo "FAIL $backend $label" >> "$FAIL_LOG"
     diff "$tmp" "$expected" | head -20 >> "$FAIL_LOG"
     echo "---" >> "$FAIL_LOG"
+    printf 'FAIL,%s,%s,%s\n' "$backend" "$label" "$ts" >> "$CSV"
   fi
   rm -f "$tmp"
 }
-export -f check_one; export SCRIP_CC FAIL_LOG
+export -f check_one; export SCRIP_CC FAIL_LOG CSV
 export TEST_REB
 
 printf '%s\n' "${SNO_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -asm s'  _ {}
@@ -152,4 +163,10 @@ echo -e "${BOLD}START   $START_HUMAN${RESET}"
 echo -e "${BOLD}FINISH  $FINISH_HUMAN${RESET}"
 echo -e "${BOLD}ELAPSED ${WALL_MS}ms  ($(awk "BEGIN{printf \"%.1f\", $WALL_MS/1000}")s)${RESET}"
 echo -e "${BOLD}Emit-diff results: ${GREEN}$PASS pass${RESET} / ${RED}$FAIL fail${RESET} — ${WALL_MS}ms wall${RESET}"
+
+# Finalise CSV — append summary row and update latest symlink
+printf 'SUMMARY,total_pass=%d,total_fail=%d,elapsed_ms=%d\n' "$PASS" "$FAIL" "$WALL_MS" >> "$CSV"
+ln -sf "$(basename "$CSV")" "$CSV_DIR/emit_latest.csv"
+echo -e "${BOLD}Report: $CSV${RESET}"
+
 [[ $FAIL -eq 0 ]] && exit 0 || exit 1
