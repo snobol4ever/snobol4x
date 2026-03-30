@@ -81,12 +81,19 @@ all: $(BIN)
 $(BIN): $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $^ -lm
 
-# Rebus parser — generate from .y/.l if not present
-frontend/rebus/rebus.tab.c frontend/rebus/rebus.tab.h: frontend/rebus/rebus.y
-	bison -d -o frontend/rebus/rebus.tab.c frontend/rebus/rebus.y
+# Rebus parser — generated files are committed; only regenerate if absent.
+# Order-only prerequisites (after |) are checked for existence, not timestamp.
+# This prevents bison/flex from being invoked on a fresh clone where .y/.l
+# appear newer than the generated files due to git not preserving mtimes.
+frontend/rebus/rebus.tab.c frontend/rebus/rebus.tab.h: | frontend/rebus/rebus.y
+	@if [ ! -f frontend/rebus/rebus.tab.c ] || [ ! -f frontend/rebus/rebus.tab.h ]; then \
+	    bison -d -o frontend/rebus/rebus.tab.c frontend/rebus/rebus.y; \
+	fi
 
-frontend/rebus/lex.rebus.c: frontend/rebus/rebus.l frontend/rebus/rebus.tab.h
-	flex -o frontend/rebus/lex.rebus.c frontend/rebus/rebus.l
+frontend/rebus/lex.rebus.c: | frontend/rebus/rebus.l frontend/rebus/rebus.tab.h
+	@if [ ! -f frontend/rebus/lex.rebus.c ]; then \
+	    flex -o frontend/rebus/lex.rebus.c frontend/rebus/rebus.l; \
+	fi
 
 frontend/rebus/rebus.tab.o frontend/rebus/lex.rebus.o frontend/rebus/rebus_lower.o frontend/rebus/rebus_print.o: frontend/rebus/rebus.tab.h
 

@@ -240,7 +240,7 @@ run_snobol4_wasm() {
       local wasm="$W/${base}.wasm"
       local got="$W/${base}.got"
 
-      if ! "$SCRIP_CC" -wasm "$sno" > "$wat" 2>/dev/null; then
+      if ! "$SCRIP_CC" -wasm -o "$wat" "$sno" 2>/dev/null; then
         fail=$((fail+1)); echo "  FAIL $cell $base [compile]"; continue
       fi
       if ! wat2wasm --enable-tail-call "$wat" -o "$wasm" 2>/dev/null; then
@@ -616,18 +616,19 @@ any_fail() {
 }
 
 echo ""
-echo -e "${BOLD}Invariants — 3×3 matrix${RESET}"
-echo -e "${BOLD}                x86              JVM             .NET${RESET}"
+echo -e "${BOLD}Invariants — 3×4 matrix${RESET}"
+echo -e "${BOLD}                x86              JVM             .NET            WASM${RESET}"
 
 for row_label in "SNOBOL4" "Icon   " "Prolog "; do
   case $row_label in
-    "SNOBOL4") cells="snobol4_x86 snobol4_jvm snobol4_net" ;;
-    "Icon   ") cells="icon_x86    icon_jvm    icon_net"    ;;
-    "Prolog ") cells="prolog_x86  prolog_jvm  prolog_net"  ;;
+    "SNOBOL4") cells="snobol4_x86 snobol4_jvm snobol4_net snobol4_wasm" ;;
+    "Icon   ") cells="icon_x86    icon_jvm    icon_net    icon_wasm"    ;;
+    "Prolog ") cells="prolog_x86  prolog_jvm  prolog_net  prolog_wasm"  ;;
   esac
   printf "  %s  " "$row_label"
   for cell in $cells; do
-    if [[ "$cell" == "icon_net" || "$cell" == "prolog_net" ]]; then
+    if [[ "$cell" == "icon_net" || "$cell" == "prolog_net" || \
+          "$cell" == "icon_wasm" || "$cell" == "prolog_wasm" ]]; then
       printf "  ${YELLOW}%-14s${RESET}" "SKIP"
     elif [[ -f "$RESULTS/${cell}_status" ]]; then
       printf "  %-14s" "$(cat "$RESULTS/${cell}_status")"
@@ -645,7 +646,7 @@ done
 echo -e "${BOLD}──────────────────────────────────────────────────${RESET}"
 
 OVERALL_FAIL=0
-for cell in snobol4_x86 snobol4_jvm snobol4_net icon_x86 icon_jvm prolog_x86 prolog_jvm; do
+for cell in snobol4_x86 snobol4_jvm snobol4_net snobol4_wasm icon_x86 icon_jvm prolog_x86 prolog_jvm; do
   any_fail "$cell" && OVERALL_FAIL=1
 done
 
@@ -655,7 +656,7 @@ echo -e "${BOLD}ELAPSED ${ELAPSED_MS}ms  (${ELAPSED_S}s)${RESET}"
 echo ""
 
 # Finalise CSV — summary rows per cell + latest symlink
-for cell in snobol4_x86 snobol4_jvm snobol4_net icon_x86 icon_jvm prolog_x86 prolog_jvm; do
+for cell in snobol4_x86 snobol4_jvm snobol4_net snobol4_wasm icon_x86 icon_jvm prolog_x86 prolog_jvm; do
   p=0; f=0
   [[ -f "$RESULTS/${cell}_pass" ]] && p=$(cat "$RESULTS/${cell}_pass")
   [[ -f "$RESULTS/${cell}_fail" ]] && f=$(cat "$RESULTS/${cell}_fail")
