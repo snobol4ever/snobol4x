@@ -34,7 +34,13 @@ static const OpEntry OP_TABLE[] = {
     { ":!:",  SNOCONE_STR_DIFFER },
     { ":<:",  SNOCONE_STR_LT    },
     { ":>:",  SNOCONE_STR_GT    },
-    /* 2-char */
+    /* 2-char — compound assignments before plain operators */
+    { "+=",   SNOCONE_PLUS_ASSIGN    },
+    { "-=",   SNOCONE_MINUS_ASSIGN   },
+    { "*=",   SNOCONE_STAR_ASSIGN    },
+    { "/=",   SNOCONE_SLASH_ASSIGN   },
+    { "%=",   SNOCONE_PERCENT_ASSIGN },
+    { "^=",   SNOCONE_CARET_ASSIGN   },
     { "::",   SNOCONE_STR_IDENT },
     { "||",   SNOCONE_OR        },
     { "&&",   SNOCONE_CONCAT    },
@@ -80,6 +86,9 @@ typedef struct { const char *word; SnoconeKind kind; } KwEntry;
 static const KwEntry KW_TABLE[] = {
     { "if",        SNOCONE_KW_IF        },
     { "then",      SNOCONE_KW_THEN      },
+    { "goto",      SNOCONE_KW_GOTO      },
+    { "break",     SNOCONE_KW_BREAK     },
+    { "continue",  SNOCONE_KW_CONTINUE  },
     { "else",      SNOCONE_KW_ELSE      },
     { "while",     SNOCONE_KW_WHILE     },
     { "do",        SNOCONE_KW_DO        },
@@ -87,8 +96,7 @@ static const KwEntry KW_TABLE[] = {
     { "return",    SNOCONE_KW_RETURN    },
     { "freturn",   SNOCONE_KW_FRETURN   },
     { "nreturn",   SNOCONE_KW_NRETURN   },
-    { "go",        SNOCONE_KW_GO        },
-    { "to",        SNOCONE_KW_TO        },
+    /* "go" and "to" removed — use goto (SC-1). Enum slots kept to avoid shifts. */
     { "procedure", SNOCONE_KW_PROCEDURE },
     { "struct",    SNOCONE_KW_STRUCT    },
     { NULL,        SNOCONE_UNKNOWN      }
@@ -138,8 +146,9 @@ static void tb_push(TokBuf *b, SnoconeKind kind, const char *text, int tlen, int
 }
 
 /* ---------------------------------------------------------------------------
- * strip_comment -- return length of line before any unquoted '#'
- * Mirrors Clojure strip-comment (respects ' and " strings).
+ * strip_comment -- return length of line before any unquoted '#' or '//'
+ * Handles ' and " strings.  Does NOT handle /* *\/ block comments here
+ * (those are stripped in a pre-pass in snocone_lex).
  * ------------------------------------------------------------------------- */
 static int strip_comment(const char *line, int len)
 {
@@ -148,7 +157,10 @@ static int strip_comment(const char *line, int len)
         char c = line[i];
         if (c == '\'' && !in_double) { in_single = !in_single; continue; }
         if (c == '"'  && !in_single) { in_double = !in_double; continue; }
-        if (c == '#'  && !in_single && !in_double) return i;
+        if (!in_single && !in_double) {
+            if (c == '#') return i;
+            if (c == '/' && i + 1 < len && line[i+1] == '/') return i;
+        }
     }
     return len;
 }
@@ -311,6 +323,31 @@ static void tokenize_logical_line(const char *joined, int jlen,
  * ------------------------------------------------------------------------- */
 ScTokenArray snocone_lex(const char *source)
 {
+    /* Pre-pass: strip /* ... */ block comments, preserving newlines for
+     * line number tracking.  Result is a copy with comment text replaced
+     * by spaces (newlines inside comments kept as-is). */
+    int src_len = (int)strlen(source);
+    char *stripped = malloc(src_len + 1);
+    {
+        int i = 0, o = 0;
+        while (i < src_len) {
+            if (i + 1 < src_len && source[i] == '/' && source[i+1] == '*') {
+                i += 2;
+                while (i < src_len) {
+                    if (i + 1 < src_len && source[i] == '*' && source[i+1] == '/') {
+                        i += 2; break;
+                    }
+                    stripped[o++] = (source[i] == '\n') ? '\n' : ' ';
+                    i++;
+                }
+            } else {
+                stripped[o++] = source[i++];
+            }
+        }
+        stripped[o] = '\0';
+        src_len = o;
+        source = stripped;
+    }
     /* Split source into physical lines (handle CRLF) */
     /* Count lines first */
     int nlines = 1;
@@ -386,6 +423,7 @@ ScTokenArray snocone_lex(const char *source)
     free(logical_buf);
     free(line_ptr);
     free(line_len);
+    free(stripped);
 
     /* append EOF */
     tb_push(&acc, SNOCONE_EOF, "", 0, n);

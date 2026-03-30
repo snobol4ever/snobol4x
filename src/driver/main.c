@@ -16,7 +16,7 @@
  */
 #include "scrip_cc.h"
 #include "snocone_driver.h"
-#include "snocone_cf.h"
+#include "emit_x64_snocone.h"
 #include "prolog_atom.h"
 #include "prolog_parse.h"
 #include "prolog_lower.h"
@@ -175,9 +175,9 @@ static int compile_one(const char *infile, const char *outpath, FILE *out) {
     if (file_sc) {
         char *src = read_all(in);
         if (!src) { fprintf(stderr, "scrip-cc: read error\n"); rc = 1; goto done; }
-        /* snocone_cf_compile is a frontend lowering pass, not ASM-specific.
+        /* emit_x64_snocone_compile is the Snocone lowering pass (SC-1).
            Always use it regardless of backend (M-G5-LOWER-SNOCONE-FIX). */
-        prog = snocone_cf_compile(src, infile ? infile : "<stdin>");
+        prog = emit_x64_snocone_compile(src, infile ? infile : "<stdin>");
         free(src);
         if (!prog) { rc = 1; goto done; }
     } else {

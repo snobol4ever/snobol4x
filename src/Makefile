@@ -26,9 +26,7 @@ FRONTEND_PROLOG = \
 FRONTEND_SNOCONE = \
     frontend/snocone/snocone_lex.c \
     frontend/snocone/snocone_parse.c \
-    frontend/snocone/snocone_lower.c \
-    frontend/snocone/snocone_driver.c \
-    frontend/snocone/snocone_cf.c
+    frontend/snocone/snocone_driver.c
 
 FRONTEND_REBUS = \
     frontend/rebus/rebus_lower.c \
@@ -42,7 +40,8 @@ BACKEND_C = \
 
 BACKEND_X64 = \
     backend/x64/emit_x64.c \
-    backend/x64/emit_x64_icon.c
+    backend/x64/emit_x64_icon.c \
+    backend/x64/emit_x64_snocone.c
 
 
 DRIVER = \

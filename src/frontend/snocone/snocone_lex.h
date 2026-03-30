@@ -89,11 +89,25 @@ typedef enum {
     SNOCONE_AMPERSAND,    /* &                                     */
     SNOCONE_TILDE,        /* ~ logical negation                    */
 
+    /* Compound assignment operators (SC-1 C-style extensions) */
+    SNOCONE_PLUS_ASSIGN,  /* +=  -> x = x + rhs                   */
+    SNOCONE_MINUS_ASSIGN, /* -=  -> x = x - rhs                   */
+    SNOCONE_STAR_ASSIGN,  /* *=  -> x = x * rhs                   */
+    SNOCONE_SLASH_ASSIGN, /* /=  -> x = x / rhs                   */
+    SNOCONE_PERCENT_ASSIGN,/* %= -> x = x % rhs                   */
+    SNOCONE_CARET_ASSIGN, /* ^=  -> x = x ^ rhs                   */
+
+    /* Keywords added after original spec (SC-1) — before UNKNOWN to avoid
+     * collision with SNOCONE_CALL/ARRAY_REF synthetic tokens in snocone_parse.h */
+    SNOCONE_KW_THEN,      /* "then"     — optional after if(cond)  */
+    SNOCONE_KW_GOTO,      /* "goto"     — C-style one-word form    */
+    SNOCONE_KW_BREAK,     /* "break"    — exit innermost loop      */
+    SNOCONE_KW_CONTINUE,  /* "continue" — next iteration           */
+
     /* Synthetic */
     SNOCONE_NEWLINE,      /* logical end-of-statement              */
     SNOCONE_EOF,
-    SNOCONE_UNKNOWN,
-    SNOCONE_KW_THEN       /* appended last — never shifts existing values */
+    SNOCONE_UNKNOWN
 } SnoconeKind;
 
 /* ---------------------------------------------------------------------------
