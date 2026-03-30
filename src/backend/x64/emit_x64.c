@@ -342,13 +342,13 @@ static void A(const char *fmt, ...) {
  * UID counter — never resets so labels never collide across patterns
  * ----------------------------------------------------------------------- */
 
-static int uid_ctr = 0;
-static int next_uid(void) { return uid_ctr++; }
+static int uid = 0;
+static int next_uid(void) { return uid++; }
 
 /* Separate counter for user-function call sites — independent of main uid stream.
  * This allows pre-scanning all ucall slots before .bss is emitted. */
-static int call_uid_ctr = 0;
-static int call_uid(void) { return call_uid_ctr++; }
+static int call_uid_counter = 0;
+static int call_uid(void) { return call_uid_counter++; }
 
 /* -----------------------------------------------------------------------
  * M-ASM-READABLE: special-char expansion table.
@@ -1883,15 +1883,15 @@ static void prescan_ucall_expr(EXPR_t *e) {
 }
 
 static void prescan_ucall(Program *prog) {
-    call_uid_ctr = 0;
+    call_uid_counter = 0;
     call_slot_count = 0;
-    if (!prog) { call_uid_ctr = 0; return; }
+    if (!prog) { call_uid_counter = 0; return; }
     for (STMT_t *s = prog->head; s; s = s->next) {
         prescan_ucall_expr(s->subject);
         prescan_ucall_expr(s->pattern);
         prescan_ucall_expr(s->replacement);
     }
-    call_uid_ctr = 0;  /* reset for real emission pass */
+    call_uid_counter = 0;  /* reset for real emission pass */
 }
 
 /* -----------------------------------------------------------------------
@@ -2866,7 +2866,7 @@ static void emit_stmt(STMT_t *s) {
     FILE *real_out = out;
     out = devnull;
 
-    int uid_before_dry = uid_ctr;   /* save uid counter state */
+    int uid_before_dry = uid;   /* save uid counter state */
 
     emit_pat_node(s->pattern,
                   "root_α", "root_β",
@@ -2877,7 +2877,7 @@ static void emit_stmt(STMT_t *s) {
 
     fclose(devnull);
     out = real_out;
-    uid_ctr = uid_before_dry;       /* reset so real pass generates same labels */
+    uid = uid_before_dry;       /* reset so real pass generates same labels */
 
     /* Body mode: box DATA vars must also appear in .bss — the harness has no
      * per-box DATA template.  Flush all box DATA registrations into global .bss. */
@@ -4446,7 +4446,7 @@ static void emit_program(Program *prog) {
         FILE *devnull = fopen("/dev/null", "w");
         FILE *real_out_p3 = out;
         out = devnull;
-        int uid_save = uid_ctr;
+        int uid_save = uid;
         /* Walk statements using the same uid sequence as the real pass */
         int dry_stmt_uid = 0;
         const NamedPat *dry_cur_fn = NULL; /* mirrors cur_fn in the real pass */
@@ -4501,7 +4501,7 @@ static void emit_program(Program *prog) {
         }
         fclose(devnull);
         out = real_out_p3;
-        uid_ctr = uid_save; /* reset so real pass generates same labels */
+        uid = uid_save; /* reset so real pass generates same labels */
     }
 
     /* ---- emit header ---- */
@@ -5370,7 +5370,7 @@ void asm_emit(Program *prog, FILE *f) {
     memset(call_slots, 0, CALL_SLOTS_MAX * LBUF);
     memset(_bref_pool, 0, sizeof _bref_pool);
     /* counts */
-    uid_ctr = 0;        call_uid_ctr = 0;
+    uid = 0;        call_uid_counter = 0;
     named_pat_reset();  /* named_pat_count=0, nreturn_fn_count=0 */
     lit_reset();        str_reset();
     var_reset();        /* nvar=0, box_data_count=0, box_ctx_idx=-1 */
