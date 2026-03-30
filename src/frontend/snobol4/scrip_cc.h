@@ -28,10 +28,10 @@
  * E_CAPT_IMM, E_CAPT_CUR, E_NUL, E_ASSIGN, E_MATCH, E_ITER, E_GENALT,
  * E_IDX) throughout.
  *
- * EXPR_T_DEFINED tells ir.h to skip its own EXPR_t definition; scrip_cc.h
- * owns the struct for now.  Field unification is a later reorg milestone.
+ * ir.h defines EXPR_t (with fval, nalloc, id) when included first.
+ * scrip_cc.h defines a compatible subset when included standalone.
+ * Both are guarded by EXPR_T_DEFINED to prevent double-definition.
  */
-#define EXPR_T_DEFINED
 #include "ir/ir.h"
 
 /*
@@ -56,6 +56,8 @@
  *   expr_arg(e, i)  — children[i]
  *   expr_nargs(e)   — nchildren
  */
+#ifndef EXPR_T_DEFINED
+#define EXPR_T_DEFINED
 typedef struct EXPR_t EXPR_t;
 struct EXPR_t {
     EKind    kind;
@@ -65,6 +67,11 @@ struct EXPR_t {
     EXPR_t **children;    /* realloc-grown child array */
     int      nchildren;
 };
+#else
+/* ir.h was included first; its EXPR_t uses fval (not dval).
+ * Code that references e->dval on ir.h's EXPR_t must use e->fval directly.
+ * The #define below is intentionally omitted to avoid polluting other structs. */
+#endif /* EXPR_T_DEFINED */
 
 /* NULL-safe named accessors */
 #define expr_left(e)     ((e) && (e)->nchildren >= 1 ? (e)->children[0] : NULL)
@@ -81,6 +88,12 @@ typedef struct {
     char *computed_failure_expr;
     char *computed_uncond_expr;
 } SnoGoto;
+
+/* Forward declaration so STMT_t can reference EXPR_t* before the full
+ * struct definition (which appears below, guarded by EXPR_T_DEFINED). */
+#ifndef EXPR_T_DEFINED
+typedef struct EXPR_t EXPR_t;
+#endif
 
 /* ---- statement ---- */
 typedef struct STMT_t STMT_t;

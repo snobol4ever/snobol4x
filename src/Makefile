@@ -67,6 +67,7 @@ FRONTEND_ICON = \
     frontend/icon/icon_lex.c \
     frontend/icon/icon_parse.c \
     frontend/icon/icon_ast.c \
+    frontend/icon/icon_lower.c \
     frontend/icon/icon_runtime.c
 
 SRCS = $(FRONTEND_SNO) $(FRONTEND_PROLOG) $(FRONTEND_SNOCONE) $(FRONTEND_REBUS) $(FRONTEND_ICON) $(BACKEND_C) $(BACKEND_X64) $(BACKEND_JVM) $(BACKEND_NET) $(BACKEND_WASM) $(IR) $(DRIVER)
