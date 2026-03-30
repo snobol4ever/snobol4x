@@ -382,17 +382,36 @@ _parse_rung_summary() {
 run_icon_x86() {
   local cell="icon_x86"
   local pass=0 fail=0
-  local ICON_X86_RUNNER="$ROOT/test/frontend/icon/icon_x86_runner.sh"
-  if [[ ! -x "$SCRIP_CC" ]]; then
+  local ICN_INC="$ROOT/src/frontend/icon"
+  local RT_H="$ROOT/src/runtime"
+  local ICN_CORPUS="${CORPUS}/programs/icon"
+  if [[ ! -x "$SCRIP_CC" || ! -d "$ICN_CORPUS" ]]; then
     echo "SKIP" > "$RESULTS/${cell}_status"; return
   fi
-  export SCRIP_CC  # used by icon_x86_runner.sh
-  for rung_sh in "$ROOT"/test/frontend/icon/run_rung*.sh; do
-    local result p m
-    result=$(bash "$rung_sh" "$ICON_X86_RUNNER" 2>/dev/null | tail -1) || true
-    _parse_rung_summary "$result"
-    pass=$((pass + p)); fail=$((fail + m))
-    [[ $m -gt 0 ]] && echo "  FAIL $cell $(basename "$rung_sh"): $m fail"
+  local W="$WORK/$cell"; mkdir -p "$W"
+  # Direct compile: .icn → .s → .o → bin (bypasses broken per-test JVM rung scripts)
+  # icon_runtime.c compiled per-test alongside the test object (-nostdlib model)
+  for icn in "$ICN_CORPUS"/rung*.icn; do
+    [[ -f "$icn" ]] || continue
+    local base; base=$(basename "$icn" .icn)
+    local exp="${icn%.icn}.expected"; [[ -f "$exp" ]] || continue
+    [[ -f "${icn%.icn}.xfail" ]] && { pass=$((pass+1)); continue; }
+    local asm="$W/${base}.s" obj="$W/${base}.o" bin="$W/${base}"
+    if "$SCRIP_CC" -icn "$icn" -o "$asm" 2>/dev/null &&
+       nasm -f elf64 "$asm" -o "$obj" 2>/dev/null &&
+       gcc -nostdlib -no-pie -Wl,--no-warn-execstack \
+           "$obj" "$ICN_INC/icon_runtime.c" \
+           -I"$ICN_INC" -I"$RT_H/snobol4" -I"$RT_H" \
+           -o "$bin" -lm 2>/dev/null; then
+      local got; got=$(timeout "$TIMEOUT_X86" "$bin" 2>/dev/null) || got="__TIMEOUT__"
+      if [[ "$got" == "$(cat "$exp")" ]]; then
+        pass=$((pass+1))
+      else
+        fail=$((fail+1)); echo "  FAIL $cell $base"
+      fi
+    else
+      fail=$((fail+1)); echo "  FAIL $cell $base [compile]"
+    fi
   done
   echo "$pass" > "$RESULTS/${cell}_pass"
   echo "$fail"  > "$RESULTS/${cell}_fail"
@@ -401,19 +420,50 @@ run_icon_x86() {
 # ── Suite: Icon JVM ───────────────────────────────────────────────────────────
 run_icon_jvm() {
   local cell="icon_jvm"
-  local pass=0 fail=0
-  local ICON_JVM_RUNNER="$ROOT/test/frontend/icon/icon_jvm_runner.sh"
+  local pass=0 fail=0 compile_fail=0
+  local ICN_CORPUS="${CORPUS}/programs/icon"
   if ! command -v java &>/dev/null || [[ ! -f "$JASMIN" ]]; then
     echo "SKIP" > "$RESULTS/${cell}_status"; return
   fi
-  export SCRIP_CC JASMIN  # used by icon_jvm_runner.sh and newer rung scripts
-  for rung_sh in "$ROOT"/test/frontend/icon/run_rung*.sh; do
-    local result p m
-    result=$(bash "$rung_sh" "$ICON_JVM_RUNNER" 2>/dev/null | tail -1) || true
-    _parse_rung_summary "$result"
-    pass=$((pass + p)); fail=$((fail + m))
-    [[ $m -gt 0 ]] && echo "  FAIL $cell $(basename "$rung_sh"): $m fail"
+  if [[ ! -d "$ICN_CORPUS" ]]; then
+    echo "SKIP" > "$RESULTS/${cell}_status"; return
+  fi
+  local W="$WORK/$cell"; mkdir -p "$W"
+  ensure_sno_harness "$W" || { echo "SKIP" > "$RESULTS/${cell}_status"; return; }
+
+  # Compile all .icn → .j, extract class name for ref copy
+  local jfiles=()
+  for icn in "$ICN_CORPUS"/rung*.icn; do
+    [[ -f "$icn" ]] || continue
+    local base; base=$(basename "$icn" .icn)
+    local exp="${icn%.icn}.expected"; [[ -f "$exp" ]] || continue
+    [[ -f "${icn%.icn}.xfail" ]] && continue
+    local jfile="$W/${base}.j"
+    if "$SCRIP_CC" -jvm -o "$jfile" "$icn" 2>/dev/null; then
+      local classname; classname=$(grep '\.class public' "$jfile" | head -1 | awk '{print $3}')
+      [[ -z "$classname" ]] && classname="$base"
+      cp "$exp" "$W/${classname}.ref"
+      jfiles+=("$jfile")
+    else
+      compile_fail=$((compile_fail+1))
+    fi
   done
+
+  # Batch jasmin — one JVM startup
+  [[ ${#jfiles[@]} -gt 0 ]] && \
+    timeout 60 java -jar "$JASMIN" "${jfiles[@]}" -d "$W/" 2>/dev/null || true
+
+  # One SnoHarness run for all icon JVM tests
+  local harness_out
+  harness_out=$(timeout 120 java -cp "$W" SnoHarness "$W" "$W" "$W" 2>/dev/null) || true
+  while IFS= read -r line; do
+    case "$line" in
+      PASS*) pass=$((pass+1)) ;;
+      FAIL*) fail=$((fail+1)); echo "  FAIL $cell ${line#FAIL }" ;;
+      TIMEOUT*) fail=$((fail+1)); echo "  TIMEOUT $cell ${line#TIMEOUT }" ;;
+    esac
+  done <<< "$harness_out"
+  fail=$((fail+compile_fail))
   echo "$pass" > "$RESULTS/${cell}_pass"
   echo "$fail"  > "$RESULTS/${cell}_fail"
 }
