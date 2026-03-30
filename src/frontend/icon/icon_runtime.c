@@ -332,6 +332,17 @@ const char *icn_cset_diff(const char *a, const char *b) {
     return out;
 }
 
+/* icn_random(n): random integer in range 1..n (Icon ?E semantics).
+ * Returns 0 if n <= 0. Uses rand() seeded once on first call. */
+long icn_random(long n) {
+    static int seeded = 0;
+    if (!seeded) { extern void srand(unsigned); extern int time(void*);
+                   srand((unsigned)time(0)); seeded = 1; }
+    if (n <= 0) return 0;
+    extern int rand(void);
+    return (long)(rand() % n) + 1;
+}
+
 /* icn_cset_inter(a, b): chars in BOTH a and b. */
 const char *icn_cset_inter(const char *a, const char *b) {
     if (!a) a = ""; if (!b) b = "";
