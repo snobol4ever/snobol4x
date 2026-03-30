@@ -40,6 +40,7 @@ void emit_wasm(Program *prog, FILE *f, const char *filename);
 void pl_emit(Program *prog, FILE *f);
 void prolog_emit_jvm(Program *prog, FILE *f, const char *filename);
 void prolog_emit_net(Program *prog, FILE *f, const char *filename);
+void prolog_emit_wasm(Program *prog, FILE *f, const char *filename);
 void pl_linker_prescan(PlProgram *pl_prog);
 ImportEntry *icn_prescan_imports(const char *src);
 void emit_jvm_icon_file(IcnNode **nodes, int count, FILE *out,
@@ -156,6 +157,7 @@ static int compile_one(const char *infile, const char *outpath, FILE *out) {
         if      (asm_mode) asm_emit_prolog(prog, out);
         else if (jvm_mode) prolog_emit_jvm(prog, out, infile);
         else if (net_mode) prolog_emit_net(prog, out, infile);
+        else if (wasm_mode) prolog_emit_wasm(prog, out, infile);
         else               pl_emit(prog, out);
         goto done;
     }

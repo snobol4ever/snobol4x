@@ -55,7 +55,8 @@ BACKEND_NET = \
     backend/emit_net.c
 
 BACKEND_WASM = \
-    backend/emit_wasm.c
+    backend/emit_wasm.c \
+    backend/emit_wasm_prolog.c
 
 IR = \
     ir/ir_print.c \
