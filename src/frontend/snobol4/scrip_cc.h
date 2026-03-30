@@ -21,14 +21,16 @@
 /* ---- expression node kinds — from shared IR ---- */
 /*
  * M-G1-IR-HEADER-WIRE: EKind is now defined in ir/ir.h (the single source
- * of truth for all 59 canonical node kinds).  IR_COMPAT_ALIASES enables the
- * bridge #defines so all existing code (E_NULV, E_VART, E_MNS, …)
- * continues to compile unchanged.
+ * of truth for all 59 canonical node kinds).
+ *
+ * M-G3-ALIAS-CLEANUP: IR_COMPAT_ALIASES removed — all consumers now use
+ * canonical EKind names (E_VAR, E_ALT, E_NEG, E_POW, E_CAPT_COND,
+ * E_CAPT_IMM, E_CAPT_CUR, E_NUL, E_ASSIGN, E_MATCH, E_ITER, E_GENALT,
+ * E_IDX) throughout.
  *
  * EXPR_T_DEFINED tells ir.h to skip its own EXPR_t definition; scrip_cc.h
  * owns the struct for now.  Field unification is a later reorg milestone.
  */
-#define IR_COMPAT_ALIASES
 #define EXPR_T_DEFINED
 #include "ir/ir.h"
 
@@ -40,11 +42,11 @@
  * directly in backends; the macros give NULL-safe bounds-checked access.
  *
  * Layout by kind:
- *   leaves  (E_QLIT/E_ILIT/E_FLIT/E_NULV/E_VART/E_KW)   nchildren=0
- *   unary   (E_MNS/E_ATP/E_INDR/...)                     nchildren=1
- *   binary  (E_ADD/E_SUB/E_MPY/E_DIV/E_EXPOP/E_OPSYN/
- *            E_ASGN/E_NAM/E_DOL/E_ARY)                   nchildren=2
- *   n-ary   (E_SEQ / E_CONCAT / E_OR)                     nchildren>=0
+ *   leaves  (E_QLIT/E_ILIT/E_FLIT/E_NUL/E_VAR/E_KW)     nchildren=0
+ *   unary   (E_NEG/E_CAPT_CUR/E_INDR/...)                nchildren=1
+ *   binary  (E_ADD/E_SUB/E_MPY/E_DIV/E_POW/E_OPSYN/
+ *            E_ASSIGN/E_CAPT_COND/E_CAPT_IMM/E_IDX)      nchildren=2
+ *   n-ary   (E_SEQ / E_CONCAT / E_ALT)                   nchildren>=0
  *   call    (E_FNC)                                       nchildren=nargs
  *   subscript (E_IDX)                                     children[0]=base, children[1..]=indices
  *
@@ -57,7 +59,7 @@
 typedef struct EXPR_t EXPR_t;
 struct EXPR_t {
     EKind    kind;
-    char    *sval;        /* E_QLIT text, E_VART/E_KW/E_FNC/E_ARY name */
+    char    *sval;        /* E_QLIT text, E_VAR/E_KW/E_FNC/E_IDX name */
     long     ival;        /* E_ILIT */
     double   dval;        /* E_FLIT */
     EXPR_t **children;    /* realloc-grown child array */

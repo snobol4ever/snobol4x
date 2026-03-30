@@ -11,7 +11,7 @@
  *
  * Assignment detection:
  *   SNOCONE_ASSIGN in postfix: pop rhs, pop lhs.
- *   If lhs is a simple E_VART or E_KW the STMT_t is:
+ *   If lhs is a simple E_VAR or E_KW the STMT_t is:
  *       subject=lhs  replacement=rhs  (no pattern field)
  *   This matches OUTPUT = 'hello', x = expr, etc.
  *
@@ -41,7 +41,7 @@ static void  es_push(ExprStack *s, EXPR_t *e) {
     s->v[s->top++] = e;
 }
 static EXPR_t *es_pop(ExprStack *s) {
-    if (s->top <= 0) { fprintf(stderr, "snocone_lower: stack underflow\n"); return expr_new(E_NULV); }
+    if (s->top <= 0) { fprintf(stderr, "snocone_lower: stack underflow\n"); return expr_new(E_NUL); }
     return s->v[--s->top];
 }
 static EXPR_t *es_peek(ExprStack *s) {
@@ -104,7 +104,7 @@ static int lower_token(const ScPToken *tok, ExprStack *s,
         return 0;
     }
     case SNOCONE_IDENT: {
-        EXPR_t *e = expr_new(E_VART);
+        EXPR_t *e = expr_new(E_VAR);
         e->sval   = strdup(tok->text);
         es_push(s, e);
         return 0;
@@ -119,7 +119,7 @@ static int lower_token(const ScPToken *tok, ExprStack *s,
     case SNOCONE_MINUS:
         if (tok->is_unary) {
             EXPR_t *operand = es_pop(s);
-            EXPR_t *e = expr_unary(E_MNS, operand);
+            EXPR_t *e = expr_unary(E_NEG, operand);
             es_push(s, e); return 0;
         } else {
             EXPR_t *r = es_pop(s), *l = es_pop(s);
@@ -144,7 +144,7 @@ static int lower_token(const ScPToken *tok, ExprStack *s,
     }
     case SNOCONE_CARET: {
         EXPR_t *r = es_pop(s), *l = es_pop(s);
-        EXPR_t *e = expr_binary(E_EXPOP, l, r);
+        EXPR_t *e = expr_binary(E_POW, l, r);
         es_push(s, e); return 0;
     }
 
@@ -168,10 +168,10 @@ static int lower_token(const ScPToken *tok, ExprStack *s,
         es_push(s, e); return 0;
     }
     case SNOCONE_PERIOD: {
-        /* . conditional capture: expr . var → E_NAM(left=expr, right=var) */
+        /* . conditional capture: expr . var → E_CAPT_COND(left=expr, right=var) */
         EXPR_t *var  = es_pop(s);
         EXPR_t *expr = es_pop(s);
-        EXPR_t *e    = expr_binary(E_NAM, expr, var);
+        EXPR_t *e    = expr_binary(E_CAPT_COND, expr, var);
         es_push(s, e); return 0;
     }
     case SNOCONE_DOLLAR:
@@ -181,25 +181,25 @@ static int lower_token(const ScPToken *tok, ExprStack *s,
             EXPR_t *e = expr_unary(E_INDR, operand);
             es_push(s, e); return 0;
         } else {
-            /* binary $ = immediate capture: expr $ var → E_DOL */
+            /* binary $ = immediate capture: expr $ var → E_CAPT_IMM */
             EXPR_t *var  = es_pop(s);
             EXPR_t *expr = es_pop(s);
-            EXPR_t *e    = expr_binary(E_DOL, expr, var);
+            EXPR_t *e    = expr_binary(E_CAPT_IMM, expr, var);
             es_push(s, e); return 0;
         }
     case SNOCONE_AT: {
         /* @var — cursor position capture */
         EXPR_t *var = es_pop(s);
-        EXPR_t *e   = expr_unary(E_ATP, var);
+        EXPR_t *e   = expr_unary(E_CAPT_CUR, var);
         es_push(s, e); return 0;
     }
     case SNOCONE_AMPERSAND: {
         /* unary & — keyword reference: &IDENT → E_KW */
         EXPR_t *operand = es_pop(s);
         EXPR_t *e = expr_new(E_KW);
-        /* operand is E_VART with the keyword name */
+        /* operand is E_VAR with the keyword name */
         e->sval = operand ? strdup(operand->sval ? operand->sval : "") : strdup("");
-        /* free the wrapper E_VART node we just consumed */
+        /* free the wrapper E_VAR node we just consumed */
         free(operand);
         es_push(s, e); return 0;
     }
@@ -283,11 +283,11 @@ static int lower_token(const ScPToken *tok, ExprStack *s,
         es_push(s, make_fnc2("REMDR", l, r)); return 0;
     }
 
-    /* ---- Assignment: pop rhs, pop lhs, push E_ASGN ---- */
+    /* ---- Assignment: pop rhs, pop lhs, push E_ASSIGN ---- */
     case SNOCONE_ASSIGN: {
         EXPR_t *rhs = es_pop(s);
         EXPR_t *lhs = es_pop(s);
-        EXPR_t *e   = expr_binary(E_ASGN, lhs, rhs);
+        EXPR_t *e   = expr_binary(E_ASSIGN, lhs, rhs);
         es_push(s, e);
         return 0;
     }
@@ -369,13 +369,13 @@ static STMT_t *assemble_stmt(ExprStack *s, int lineno) {
     STMT_t *st = stmt_new();
     st->lineno = lineno;
 
-    if (top->kind == E_ASGN) {
+    if (top->kind == E_ASSIGN) {
         /* Assignment: subject = lhs, replacement = rhs */
         es_pop(s);
         st->subject     = expr_left(top);
         st->replacement = expr_right(top);
         st->has_eq      = 1;
-        free(top);   /* free E_ASGN shell only */
+        free(top);   /* free E_ASSIGN shell only */
     } else {
         /* Expression-only statement (output, pattern match, etc.) */
         es_pop(s);

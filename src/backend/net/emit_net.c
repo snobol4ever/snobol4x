@@ -212,7 +212,7 @@ static void var_register(const char *name) {
 
 /* -----------------------------------------------------------------------
  * Named pattern registry — VAR = <pattern-expr> assignments.
- * When E_VART appears in pattern context, inline-expand stored pattern tree.
+ * When E_VAR appears in pattern context, inline-expand stored pattern tree.
  * ----------------------------------------------------------------------- */
 #define NAMED_PAT_MAX 64
 typedef struct { char varname[128]; EXPR_t *pat; } NamedPat;
@@ -243,7 +243,7 @@ static const NamedPat *named_pat_lookup(const char *varname) {
 
 static int expr_has_pat_fn(EXPR_t *e) {
     if (!e) return 0;
-    if (e->kind == E_FNC || e->kind == E_NAM || e->kind == E_DOL) return 1;
+    if (e->kind == E_FNC || e->kind == E_CAPT_COND || e->kind == E_CAPT_IMM) return 1;
     for (int i = 0; i < expr_nargs(e); i++)
         if (expr_has_pat_fn(expr_arg(e, i))) return 1;
     return 0;
@@ -251,7 +251,7 @@ static int expr_has_pat_fn(EXPR_t *e) {
 
 static int expr_is_pattern_expr(EXPR_t *e) {
     if (!e) return 0;
-    if (e->kind == E_OR)   return 1;
+    if (e->kind == E_ALT)   return 1;
     if (e->kind == E_SEQ) return 1;
     if (e->kind == E_CONCAT) return 0;
     return expr_has_pat_fn(e);
@@ -261,7 +261,7 @@ static void scan_named_patterns(Program *prog) {
     named_pat_reset();
     if (!prog) return;
     for (STMT_t *s = prog->head; s; s = s->next) {
-        if (s->subject && s->subject->kind == E_VART && s->subject->sval &&
+        if (s->subject && s->subject->kind == E_VAR && s->subject->sval &&
             s->has_eq && s->replacement && !s->pattern) {
             if (expr_is_pattern_expr(s->replacement))
                 named_pat_register(s->subject->sval, s->replacement);
@@ -298,15 +298,15 @@ static int  input_uid = 0;
 
 static void scan_expr_vars(EXPR_t *e) {
     if (!e) return;
-    if (e->kind == E_VART && e->sval && !is_output(e->sval)
+    if (e->kind == E_VAR && e->sval && !is_output(e->sval)
             && !is_input(e->sval))
         var_register(e->sval);
-    /* E_NAM (. capture) and E_DOL ($ capture): sval = target variable name */
-    if ((e->kind == E_NAM || e->kind == E_DOL) && e->sval
+    /* E_CAPT_COND (. capture) and E_CAPT_IMM ($ capture): sval = target variable name */
+    if ((e->kind == E_CAPT_COND || e->kind == E_CAPT_IMM) && e->sval
             && !is_output(e->sval) && !is_input(e->sval))
         var_register(e->sval);
-    /* E_ATP (@VAR): varname in children[0]->sval */
-    if (e->kind == E_ATP && expr_left(e) && expr_left(e)->sval
+    /* E_CAPT_CUR (@VAR): varname in children[0]->sval */
+    if (e->kind == E_CAPT_CUR && expr_left(e) && expr_left(e)->sval
             && !is_output(expr_left(e)->sval) && !is_input(expr_left(e)->sval))
         var_register(expr_left(e)->sval);
     for (int i = 0; i < expr_nargs(e); i++)
@@ -317,7 +317,7 @@ static void scan_prog_vars(Program *prog) {
     if (!prog) return;
     for (STMT_t *s = prog->head; s; s = s->next) {
         /* subject variable (LHS of assignment) */
-        if (s->subject && s->subject->kind == E_VART && s->subject->sval
+        if (s->subject && s->subject->kind == E_VAR && s->subject->sval
                 && !is_output(s->subject->sval)
                 && !is_input(s->subject->sval))
             var_register(s->subject->sval);
@@ -416,10 +416,10 @@ static void emit_expr(EXPR_t *e) {
         N("    call       string %s::net_indr_get(string)\n", classname);
         break;
     }
-    case E_NULV:
+    case E_NUL:
         ldstr("");
         break;
-    case E_VART: {
+    case E_VAR: {
         if (!e->sval) { ldstr(""); break; }
         if (is_output(e->sval)) {
             /* reading OUTPUT not common but handle gracefully */
@@ -867,7 +867,7 @@ static void emit_expr(EXPR_t *e) {
         }
         break;
     }
-    case E_OR:
+    case E_ALT:
         /* Pattern alternation used as an expression value (e.g. P = 'a' | 'b').
          * The string value is a placeholder — pattern matching uses the structural
          * node tree, not this string.  Push non-empty sentinel so assignment succeeds. */
@@ -893,18 +893,18 @@ static void emit_expr(EXPR_t *e) {
         emit_expr(expr_arg(e, 1));
         N("    call       string [snobol4lib]Snobol4Lib::sno_div(string, string)\n");
         break;
-    case E_EXPOP:
+    case E_POW:
         emit_expr(expr_arg(e, 0));
         emit_expr(expr_arg(e, 1));
         N("    call       string [snobol4lib]Snobol4Lib::sno_pow(string, string)\n");
         break;
-    case E_MNS:
+    case E_NEG:
         /* unary minus */
         emit_expr(expr_arg(e, 0));
         N("    call       string [snobol4lib]Snobol4Lib::sno_neg(string)\n");
         break;
     case E_IDX: {
-        /* E_IDX = canonical (absorbs E_ARY via compat alias — M-G1-IR-HEADER-WIRE).
+        /* E_IDX = canonical (absorbs E_IDX via compat alias — M-G1-IR-HEADER-WIRE).
          * Named-array path (sval set): load field, then subscript.
          * Postfix-subscript path (sval NULL): emit expr, then subscript. */
         need_array_helpers = 1;
@@ -1088,10 +1088,10 @@ static void emit_pat_node(EXPR_t *pat,
         int has_dc = 0;
         for (int i = 0; i < nkids; i++) {
             EXPR_t *c = expr_arg(pat, i);
-            if (c && c->kind == E_NAM) {
+            if (c && c->kind == E_CAPT_COND) {
                 EXPR_t *lc = expr_left(c);
                 if (lc && ((lc->kind == E_FNC  && lc->sval && strcasecmp(lc->sval,"ARB")==0) ||
-                           (lc->kind == E_VART && lc->sval && strcasecmp(lc->sval,"ARB")==0)))
+                           (lc->kind == E_VAR && lc->sval && strcasecmp(lc->sval,"ARB")==0)))
                     has_dc = 1;
             }
         }
@@ -1120,10 +1120,10 @@ static void emit_pat_node(EXPR_t *pat,
 
             /* NAM(ARB,...) — deferred capture */
             int is_nam_arb = 0;
-            if (child && child->kind == E_NAM) {
+            if (child && child->kind == E_CAPT_COND) {
                 EXPR_t *lc = expr_left(child);
                 if (lc && ((lc->kind == E_FNC  && lc->sval && strcasecmp(lc->sval,"ARB")==0) ||
-                           (lc->kind == E_VART && lc->sval && strcasecmp(lc->sval,"ARB")==0)))
+                           (lc->kind == E_VAR && lc->sval && strcasecmp(lc->sval,"ARB")==0)))
                     is_nam_arb = 1;
             }
 
@@ -1184,7 +1184,7 @@ static void emit_pat_node(EXPR_t *pat,
         break;
     }
 
-    case E_OR: {
+    case E_ALT: {
         /* ALT: try each arm; restore cursor on failure, try next */
         int nkids = expr_nargs(pat);
         if (nkids == 0) { N("    br         %s\n", ω); break; }
@@ -1214,7 +1214,7 @@ static void emit_pat_node(EXPR_t *pat,
         break;
     }
 
-    case E_NAM: {
+    case E_CAPT_COND: {
         int loc_before = (*p_next_int)++;
         char lbl_ok[64]; snprintf(lbl_ok, sizeof lbl_ok, "Nn%d_nam_ok", uid);
         const char *varname = (expr_right(pat) && expr_right(pat)->sval) ? expr_right(pat)->sval : "";
@@ -1234,7 +1234,7 @@ static void emit_pat_node(EXPR_t *pat,
         break;
     }
 
-    case E_DOL: {
+    case E_CAPT_IMM: {
         int loc_before = (*p_next_int)++;
         char lbl_ok[64]; snprintf(lbl_ok, sizeof lbl_ok, "Nn%d_dol_ok", uid);
         ldloc_i(loc_cursor); stloc_i(loc_before);
@@ -1518,7 +1518,7 @@ static void emit_pat_node(EXPR_t *pat,
         break;
     }
 
-    case E_VART: {
+    case E_VAR: {
         const char *vname = pat->sval ? pat->sval : "";
         if (strcasecmp(vname, "REM")     == 0) { ldloc_i(loc_len); stloc_i(loc_cursor); N("    br %s\n", γ); break; }
         if (strcasecmp(vname, "ARB") == 0) {
@@ -1584,7 +1584,7 @@ static void emit_pat_node(EXPR_t *pat,
     case E_INDR: {
         /* *VAR — indirect pattern ref: get variable name, load its value,
          * match the value as a literal string (same logic as VART literal path).
-         * Inner child (children[1] or children[0]) holds the E_VART whose sval
+         * Inner child (children[1] or children[0]) holds the E_VAR whose sval
          * is the variable NAME (not value) to dereference.                      */
         EXPR_t *inner = (pat->nchildren > 1 && pat->children[1])
                         ? pat->children[1] : pat->children[0];
@@ -1609,11 +1609,11 @@ static void emit_pat_node(EXPR_t *pat,
         break;
     }
 
-    case E_ATP: {
+    case E_CAPT_CUR: {
         /* @VAR — capture current cursor position (0-based) into var.
          * Zero-width: does not advance cursor. Always succeeds.
          * Stores integer string of current cursor position.
-         * Parser builds @VAR as unop(E_ATP, E_VART("VAR")), varname in children[0]->sval. */
+         * Parser builds @VAR as unop(E_CAPT_CUR, E_VAR("VAR")), varname in children[0]->sval. */
         const char *varname = (expr_left(pat) && expr_left(pat)->sval) ? expr_left(pat)->sval
                             : (pat->sval ? pat->sval : "");
         /* Convert cursor (int32) to string via Int32.ToString() */
@@ -1662,7 +1662,7 @@ static void emit_one_stmt(STMT_t *s, const char *next_lbl) {
 
     /* Case 1: pure assignment — subject is a variable or OUTPUT, has_eq set, NO pattern */
     if (s->has_eq && s->subject && !s->pattern &&
-        (s->subject->kind == E_VART || s->subject->kind == E_KW)) {
+        (s->subject->kind == E_VAR || s->subject->kind == E_KW)) {
 
         int is_out = is_output(s->subject->sval);
         EXPR_t *rhs = s->replacement;
@@ -1740,7 +1740,7 @@ static void emit_one_stmt(STMT_t *s, const char *next_lbl) {
         /* push name string */
         emit_expr(indr_operand);
         /* push value string */
-        if (!rhs || rhs->kind == E_NULV) ldstr("");
+        if (!rhs || rhs->kind == E_NUL) ldstr("");
         else emit_expr(rhs);
         N("    call       void %s::net_indr_set(string, string)\n", classname);
         N("    ldc.i4.1\n");
@@ -1775,7 +1775,7 @@ static void emit_one_stmt(STMT_t *s, const char *next_lbl) {
             else ldstr("0");
         }
         /* push value */
-        if (!s->replacement || s->replacement->kind == E_NULV) ldstr("");
+        if (!s->replacement || s->replacement->kind == E_NUL) ldstr("");
         else emit_expr(s->replacement);
         N("    call       void %s::net_array_put(string, string, string)\n", classname);
         N("    ldc.i4.1\n");
@@ -1801,7 +1801,7 @@ static void emit_one_stmt(STMT_t *s, const char *next_lbl) {
             /* push field name */
             ldstr(sfname);
             /* push value */
-            if (!s->replacement || s->replacement->kind == E_NULV) ldstr("");
+            if (!s->replacement || s->replacement->kind == E_NUL) ldstr("");
             else emit_expr(s->replacement);
             N("    call       void %s::net_array_put(string, string, string)\n", classname);
             N("    ldc.i4.1\n");
@@ -1895,7 +1895,7 @@ static void emit_one_stmt(STMT_t *s, const char *next_lbl) {
         N("    ldloc.s    V_5\n");       /* mstart */
         N("    callvirt   instance string [mscorlib]System.String::Substring(int32, int32)\n");
         /* replacement string */
-        if (!s->replacement || s->replacement->kind == E_NULV)
+        if (!s->replacement || s->replacement->kind == E_NUL)
             ldstr("");
         else
             emit_expr(s->replacement);
@@ -1906,7 +1906,7 @@ static void emit_one_stmt(STMT_t *s, const char *next_lbl) {
         N("    callvirt   instance string [mscorlib]System.String::Substring(int32)\n");
         N("    call       string [mscorlib]System.String::Concat(string, string)\n");
         /* store back to subject variable */
-        if (s->subject->kind == E_VART) {
+        if (s->subject->kind == E_VAR) {
             char fn[256]; field_name(fn, sizeof fn, s->subject->sval);
             N("    stsfld     string %s::%s\n", classname, fn);
         } else {
@@ -2445,7 +2445,7 @@ static int parse_proto(const char *proto, FnDef *fn) {
 static const char *flatten_str(EXPR_t *e, char *buf, int sz) {
     if (!e) return NULL;
     if (e->kind == E_QLIT && e->sval) { snprintf(buf, sz, "%s", e->sval); return buf; }
-    if (e->kind == E_VART && e->sval) { snprintf(buf, sz, "%s", e->sval); return buf; }
+    if (e->kind == E_VAR && e->sval) { snprintf(buf, sz, "%s", e->sval); return buf; }
     return NULL;
 }
 

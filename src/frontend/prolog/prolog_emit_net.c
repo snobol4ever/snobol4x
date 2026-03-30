@@ -5,7 +5,7 @@
  * assembler text (.il files) assembled by ilasm.
  *
  * Subset handled (M-LINK-NET-5):
- *   E_CLAUSE head args:  E_QLIT (atom), E_VART (variable)
+ *   E_CLAUSE head args:  E_QLIT (atom), E_VAR (variable)
  *   E_CLAUSE body goals: E_FNC (predicate call), E_UNIFY (=/2)
  *   Multiple clauses per predicate — deterministic left-to-right, no β port.
  *   EXPORT directive → .method public static (Byrd-ABI wrapper).
@@ -120,7 +120,7 @@ static void pn_ldstr(const char *s) {
  *
  * For atom heads (E_QLIT): compare env[slot] string to literal.
  *   If mismatch → branch to omega_lbl.
- * For variable heads (E_VART): bind env[var_slot] = env[arg_slot].
+ * For variable heads (E_VAR): bind env[var_slot] = env[arg_slot].
  *   (Deterministic — no trail needed for M-LINK-NET-5.)
  * ----------------------------------------------------------------------- */
 
@@ -142,7 +142,7 @@ static void pn_emit_head_unify(EXPR_t *arg, int arg_slot,
         N("    call       bool [mscorlib]System.String::op_Equality"
           "(string, string)\n");
         N("    brfalse    %s\n", omega_lbl);
-    } else if (arg->kind == E_VART) {
+    } else if (arg->kind == E_VAR) {
         int vslot = (int)arg->ival;
         if (vslot < 0) return;  /* wildcard _ */
         /* bind: vars[vslot] = env[arg_slot] */
@@ -173,7 +173,7 @@ static void pn_emit_goal(EXPR_t *goal, const char *omega_lbl, int n_vars) {
         int uid = pn_uid++;
         int rhs_atom = rhs && (rhs->kind == E_QLIT || (rhs->kind == E_FNC && rhs->nchildren == 0));
         int lhs_atom = lhs && (lhs->kind == E_QLIT || (lhs->kind == E_FNC && lhs->nchildren == 0));
-        if (lhs && lhs->kind == E_VART && rhs_atom) {
+        if (lhs && lhs->kind == E_VAR && rhs_atom) {
             /* X = atom: vars[slot] = atom */
             int slot = (int)lhs->ival;
             if (slot >= 0) {
@@ -182,7 +182,7 @@ static void pn_emit_goal(EXPR_t *goal, const char *omega_lbl, int n_vars) {
                 pn_ldstr(rhs->sval ? rhs->sval : "");
                 N("    stelem.ref\n");
             }
-        } else if (lhs_atom && rhs && rhs->kind == E_VART) {
+        } else if (lhs_atom && rhs && rhs->kind == E_VAR) {
             int slot = (int)rhs->ival;
             if (slot >= 0) {
                 N("    ldloc.1\n");
@@ -190,7 +190,7 @@ static void pn_emit_goal(EXPR_t *goal, const char *omega_lbl, int n_vars) {
                 pn_ldstr(lhs->sval ? lhs->sval : "");
                 N("    stelem.ref\n");
             }
-        } else if (lhs && lhs->kind == E_VART && rhs && rhs->kind == E_VART) {
+        } else if (lhs && lhs->kind == E_VAR && rhs && rhs->kind == E_VAR) {
             /* X = Y: copy */
             int sl = (int)lhs->ival, sr = (int)rhs->ival;
             if (sl >= 0 && sr >= 0) {
@@ -230,7 +230,7 @@ static void pn_emit_goal(EXPR_t *goal, const char *omega_lbl, int n_vars) {
             if (a && (a->kind == E_QLIT ||
                      (a->kind == E_FNC && a->nchildren == 0))) {
                 pn_ldstr(a->sval ? a->sval : "");
-            } else if (a && a->kind == E_VART) {
+            } else if (a && a->kind == E_VAR) {
                 int slot = (int)a->ival;
                 if (slot >= 0) {
                     N("    ldloc.1\n");

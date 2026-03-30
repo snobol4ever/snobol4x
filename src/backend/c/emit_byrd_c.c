@@ -149,8 +149,8 @@ static void var_register(const char *name) {
 static void collect_expr_vars(EXPR_t *e) {
     if (!e) return;
     switch (e->kind) {
-    case E_VART: var_register(e->sval); break;
-    case E_ARY:  var_register(e->sval); break;
+    case E_VAR: var_register(e->sval); break;
+    case E_IDX:  var_register(e->sval); break;
     default: break;
     }
     for (int i = 0; i < e->nchildren; i++) collect_expr_vars(e->children[i]);
@@ -303,7 +303,7 @@ static int      named_pat_count = 0;
 void named_pat_reset(void) { named_pat_count = 0; }
 
 /* -----------------------------------------------------------------------
- * Pending conditional assignments (E_NAM / dot-capture)
+ * Pending conditional assignments (E_CAPT_COND / dot-capture)
  *
  * emit_cond() registers (varname, c_tmpvar) pairs here.
  * emit.c calls cond_emit_assigns() at _byrd_ok to flush them.
@@ -614,7 +614,7 @@ static void decl_emit_undefs(FILE *out_file) {
  * at runtime to a `const char *` charset string, given an EXPR_t* AST node.
  *
  * E_QLIT  → "literal"          (compile-time constant)
- * E_VART  → VARVAL_fn(NV_GET_fn("name"))
+ * E_VAR  → VARVAL_fn(NV_GET_fn("name"))
  * E_CONCAT → CONCAT_fn(lhs, rhs)   (both sides recursed)
  * fallback → ""
  * ----------------------------------------------------------------------- */
@@ -638,7 +638,7 @@ static void emit_charset_cexpr(EXPR_t *arg, char *buf, int bufsz) {
         buf[pos]   = '\0';
         return;
     }
-    case E_VART:
+    case E_VAR:
         snprintf(buf, bufsz, "VARVAL_fn(NV_GET_fn(\"%s\"))",
                  arg->sval ? arg->sval : "");
         return;
@@ -1375,7 +1375,7 @@ static void emit_sideeffect_call_inline(EXPR_t *e) {
 }
 
 /* -----------------------------------------------------------------------
- * E_DOL ($ capture) node
+ * E_CAPT_IMM ($ capture) node
  *
  * Pattern node:  <child> $ var
  * On child success: record span [start..cursor] into var, goto γ.
@@ -1395,7 +1395,7 @@ static void emit_sideeffect_call_inline(EXPR_t *e) {
  *       goto assign_c7_β;
  *
  * Special case — Gimpel SNOBOL4 side-effect pattern: nPush() $'('
- *   The grammar parses this as E_DOL(left=nPush(), right=E_QLIT("(")).
+ *   The grammar parses this as E_CAPT_IMM(left=nPush(), right=E_QLIT("(")).
  *   left is NOT a pattern child — it's a side-effect call with no cursor advance.
  *   right is NOT a variable name — it's a literal to match and capture to OUTPUT.
  *   Fix: emit the side-effect call inline, then match+capture the literal.
@@ -1411,7 +1411,7 @@ static void emit_imm(EXPR_t *child, const char *varname,
     /* -------------------------------------------------------------------
      * Special case: nPush() $'(' — side-effect call + literal capture.
      *
-     * Grammar parses `nPush() $'('` as E_DOL(left=nPush(), right=E_QLIT("(")).
+     * Grammar parses `nPush() $'('` as E_CAPT_IMM(left=nPush(), right=E_QLIT("(")).
      * child (left) = nPush() — no cursor advance, just a side-effect.
      * varname (from right) = "(" — not a valid variable; it IS the literal.
      *
@@ -1465,7 +1465,7 @@ static void emit_imm(EXPR_t *child, const char *varname,
     }
 
     /* -------------------------------------------------------------------
-     * Normal E_DOL path: child is a real pattern, varname is a variable.
+     * Normal E_CAPT_IMM path: child is a real pattern, varname is a variable.
      * ------------------------------------------------------------------- */
 
     /* Detect literal-token varname: $'(' where the RHS is a punctuation
@@ -1617,7 +1617,7 @@ static void emit_imm(EXPR_t *child, const char *varname,
 }
 
 /* -----------------------------------------------------------------------
- * E_NAM (. capture) node — conditional assignment
+ * E_CAPT_COND (. capture) node — conditional assignment
  *
  * Captures span into a C temp var on child success (overwriting on each
  * backtrack attempt).  Registers with cond_register() so emit.c can
@@ -1723,7 +1723,7 @@ static void emit_abort(const char *α, const char *β,
 /* -----------------------------------------------------------------------
  * emit_simple_val — emit a DESCR_t C expression for a simple EXPR_t node.
  * Used by E_OPSYN to pass left/right as runtime values.
- * Handles: E_QLIT, E_ILIT, E_VART, E_FNC(nTop), E_NULV/NULL.
+ * Handles: E_QLIT, E_ILIT, E_VAR, E_FNC(nTop), E_NUL/NULL.
  * Falls back to NULVCL for anything complex.
  * ----------------------------------------------------------------------- */
 
@@ -1760,7 +1760,7 @@ static void emit_simple_val(EXPR_t *e) {
     case E_ILIT:
         B("INTVAL(%ld)", e->ival);
         return;
-    case E_VART:
+    case E_VAR:
         B("NV_GET_fn(\"%s\")", e->sval ? e->sval : "");
         return;
     case E_FNC:
@@ -2022,7 +2022,7 @@ static void emit_pat_node(EXPR_t *pat,
                 PS(NULL, "{ DESCR_t _fcall_%d_args[%d];", uid, nargs);
                 for (int ai = 0; ai < nargs; ai++) {
                     EXPR_t *a = pat->children[ai];
-                    if (a && a->kind == E_VART && a->sval)
+                    if (a && a->kind == E_VAR && a->sval)
                         PS(NULL, "  _fcall_%d_args[%d] = NV_GET_fn(\"%s\");", uid, ai, a->sval);
                     else if (a && a->kind == E_QLIT && a->sval)
                         PS(NULL, "  _fcall_%d_args[%d] = STRVAL(\"%s\");", uid, ai, a->sval);
@@ -2070,8 +2070,8 @@ static void emit_pat_node(EXPR_t *pat,
         return;
     }
 
-    /* ---------------------------------------------------------------- E_OR */
-    case E_OR: {
+    /* ---------------------------------------------------------------- E_ALT */
+    case E_ALT: {
         int _nc = pat->nchildren;
         if (_nc == 0) { PLG(α, ω); return; }
         if (_nc == 1) { emit_pat_node(pat->children[0], α, β, γ, ω, subj, subj_len, cursor, depth); return; }
@@ -2086,7 +2086,7 @@ static void emit_pat_node(EXPR_t *pat,
         for (int _i = _nc - 2; _i >= 0; _i--) {
             int _n = _nc - 2 - _i;
             _nodes[_n] = calloc(1, sizeof(EXPR_t));
-            _nodes[_n]->kind = E_OR;
+            _nodes[_n]->kind = E_ALT;
             _kids[_n*2+0] = pat->children[_i];
             _kids[_n*2+1] = _right;
             _nodes[_n]->children  = &_kids[_n*2];
@@ -2099,11 +2099,11 @@ static void emit_pat_node(EXPR_t *pat,
         return;
     }
 
-    /* ---------------------------------------------------------------- E_DOL ($ assign) */
-    case E_DOL: {
+    /* ---------------------------------------------------------------- E_CAPT_IMM ($ assign) */
+    case E_CAPT_IMM: {
         /* Normal case: right is a plain variable or quoted literal → direct capture. */
         if (!pat->children[1] ||
-            pat->children[1]->kind == E_VART ||
+            pat->children[1]->kind == E_VAR ||
             pat->children[1]->kind == E_QLIT) {
             const char *varname = "OUTPUT";
             if (pat->children[1] && pat->children[1]->sval)
@@ -2116,8 +2116,8 @@ static void emit_pat_node(EXPR_t *pat,
 
         /* Computed-right case: right is not a plain var/lit.
          * With left-assoc $ parsing, "SPAN $ tx $ *match(...)" gives:
-         *   E_DOL(E_DOL(SPAN, tx), *match(...))
-         * The inner E_DOL(SPAN,tx) does the real capture.
+         *   E_CAPT_IMM(E_CAPT_IMM(SPAN, tx), *match(...))
+         * The inner E_CAPT_IMM(SPAN,tx) does the real capture.
          * The outer right (*match(...)) is a zero-width filter.
          *
          * Label discipline (learned from emit_seq):
@@ -2159,14 +2159,14 @@ static void emit_pat_node(EXPR_t *pat,
         return;
     }
 
-    /* --------------------------------------------------------------- E_NAM (. assign OR ~ shift) */
-    case E_NAM: {
+    /* --------------------------------------------------------------- E_CAPT_COND (. assign OR ~ shift) */
+    case E_CAPT_COND: {
         const char *varname = "OUTPUT";
-        if (pat->children[1] && (pat->children[1]->kind == E_VART || pat->children[1]->kind == E_QLIT))
+        if (pat->children[1] && (pat->children[1]->kind == E_VAR || pat->children[1]->kind == E_QLIT))
             varname = pat->children[1]->sval;
         /* Distinguish ~ (shift) from . (conditional name capture):
          * ~ right-hand side is always E_QLIT (a quoted tag like '=', 'Label', etc.)
-         * . right-hand side is always E_VART (a plain variable name)
+         * . right-hand side is always E_VAR (a plain variable name)
          * When tag is E_QLIT, route to emit_imm with do_shift=1 to call Shift(). */
         if (pat->children[1] && pat->children[1]->kind == E_QLIT) {
             emit_imm(pat->children[0], varname,
@@ -2180,8 +2180,8 @@ static void emit_pat_node(EXPR_t *pat,
         return;
     }
 
-    /* --------------------------------------------------------------- E_ATP (@ position) */
-    case E_ATP: {
+    /* --------------------------------------------------------------- E_CAPT_CUR (@ position) */
+    case E_CAPT_CUR: {
         /* @VAR — zero-width: capture current cursor position as integer into VAR.
          * Always succeeds, never consumes input.  No backtrack effect. */
         /* unary @VAR: parser puts operand in left (via unop()).
@@ -2208,11 +2208,11 @@ static void emit_pat_node(EXPR_t *pat,
         return;
     }
 
-    /* ---------------------------------------------------------------- E_VART (pattern var)
+    /* ---------------------------------------------------------------- E_VAR (pattern var)
      * A bare variable name in pattern context means implicit deref — same as *X.
      * Fall through to E_INDR with varname = pat->sval.
      * (Previously emitted epsilon — wrong: `nl` in Command would silently match nothing.) */
-    case E_VART: {
+    case E_VAR: {
         const char *varname = pat->sval ? pat->sval : "";
 
         /* Zero-arg builtin patterns used as bare names (no parens).
@@ -2330,13 +2330,13 @@ static void emit_pat_node(EXPR_t *pat,
     /* ---------------------------------------------------------------- E_INDR (deferred ref) */
     case E_INDR: {
         const char *varname = NULL;
-        /* Grammar: unary *X  → E_INDR(left=NULL, right=E_VART("X"))
-         * Also seen: left=E_VART in some paths — check both.
+        /* Grammar: unary *X  → E_INDR(left=NULL, right=E_VAR("X"))
+         * Also seen: left=E_VAR in some paths — check both.
          * Also: left=E_FNC("name") — *name() where name is a named pattern fn.
          * Also: left=NULL, right=E_QLIT("x") — unary $'x' output capture. */
-        if (pat->children[1] && pat->children[1]->kind == E_VART)
+        if (pat->children[1] && pat->children[1]->kind == E_VAR)
             varname = pat->children[1]->sval;
-        else if (pat->children[0] && pat->children[0]->kind == E_VART)
+        else if (pat->children[0] && pat->children[0]->kind == E_VAR)
             varname = pat->children[0]->sval;
         else if (pat->children[0] && pat->children[0]->kind == E_FNC && pat->children[0]->sval)
             varname = pat->children[0]->sval;
@@ -2412,7 +2412,7 @@ static void emit_pat_node(EXPR_t *pat,
             B("    DESCR_t _fcall_%d_args[%d];\n", uid, nargs);
             for (int ai = 0; ai < nargs; ai++) {
                 EXPR_t *a = fn->children[ai];
-                if (a && a->kind == E_VART && a->sval)
+                if (a && a->kind == E_VAR && a->sval)
                     B("    _fcall_%d_args[%d] = NV_GET_fn(\"%s\");\n", uid, ai, a->sval);
                 else if (a && a->kind == E_QLIT && a->sval)
                     B("    _fcall_%d_args[%d] = STRVAL(\"%s\");\n", uid, ai, a->sval);
@@ -2919,7 +2919,7 @@ int expr_contains_pattern(EXPR_t *e);
 /* -----------------------------------------------------------------------
  * emit_chain_pretty — multi-line indented binary chain emitter
  *
- * Walks a left-associative binary chain (E_SEQ/E_CONCAT/E_OR) collecting all
+ * Walks a left-associative binary chain (E_SEQ/E_CONCAT/E_ALT) collecting all
  * leaves, then emits as indented multi-line nested calls.
  *
  * fn_name:  "CONCAT_fn", "pat_cat", "pat_alt"
@@ -2992,25 +2992,25 @@ static void emit_chain_pretty(EXPR_t *e, int kind,
 static void emit_expr(EXPR_t *e) {
     if (!e) { C("NULVCL"); return; }
     switch (e->kind) {
-    case E_NULV:    C("NULVCL"); break;
+    case E_NUL:    C("NULVCL"); break;
     case E_QLIT:     C("STRVAL_fn("); escape_string(e->sval); C(")"); break;
     case E_ILIT:     C("INTVAL_fn(%ld)", e->ival); break;
     case E_FLIT:    C("real(%g)", e->dval); break;
-    case E_VART:
+    case E_VAR:
         if (is_io_name(e->sval)) C("NV_GET_fn(\"%s\")", e->sval);
         else C("get(%s)", cs(e->sval));
         break;
     case E_KW: C("kw(\"%s\")", e->sval); break;
 
     case E_INDR:
-        if (!e->children[0] || (!e->children[1] && !(e->children[0]->kind == E_VART || e->children[0]->kind == E_FNC))) {
+        if (!e->children[0] || (!e->children[1] && !(e->children[0]->kind == E_VAR || e->children[0]->kind == E_FNC))) {
             /* $expr — indirect lookup.
              * Old tree: left=NULL, right=operand.
              * New flat tree (M-FLAT-NARY): children[0]=operand (no right child).
              * Accept both: if children[0] is not VART/FNC it's a $-deref operand. */
             EXPR_t *operand = e->children[1] ? e->children[1] : e->children[0];
             C("deref("); emit_expr(operand); C(")");
-        } else if (e->children[0]->kind == E_VART) {
+        } else if (e->children[0]->kind == E_VAR) {
             /* *varname — deferred pattern reference (resolved at MATCH_fn time) */
             C("var_as_pattern(pat_ref(\"%s\"))", e->children[0]->sval);
         } else if (e->children[0]->kind == E_FNC && e->children[0]->nchildren >= 1
@@ -3029,7 +3029,7 @@ static void emit_expr(EXPR_t *e) {
         }
         break;
 
-    case E_MNS: C("neg("); emit_expr(e->children[0]); C(")"); break;
+    case E_NEG: C("neg("); emit_expr(e->children[0]); C(")"); break;
 
     case E_CONCAT:
         emit_chain_pretty(e, E_CONCAT, "CONCAT_fn", emit_expr, 2);
@@ -3040,8 +3040,8 @@ static void emit_expr(EXPR_t *e) {
     case E_SUB:    C("sub(");    emit_expr(e->children[0]); C(","); emit_expr(e->children[1]); C(")"); break;
     case E_MPY:    C("mul(");    emit_expr(e->children[0]); C(","); emit_expr(e->children[1]); C(")"); break;
     case E_DIV:    C("DIVIDE_fn(");    emit_expr(e->children[0]); C(","); emit_expr(e->children[1]); C(")"); break;
-    case E_EXPOP:    C("POWER_fn(");    emit_expr(e->children[0]); C(","); emit_expr(e->children[1]); C(")"); break;
-    case E_OR:
+    case E_POW:    C("POWER_fn(");    emit_expr(e->children[0]); C(","); emit_expr(e->children[1]); C(")"); break;
+    case E_ALT:
         /* Same: if either side is pattern-valued, use pat_alt */
         if (expr_contains_pattern(e->children[0]) || expr_contains_pattern(e->children[1])) {
             C("pat_alt("); emit_pat(e->children[0]); C(","); emit_pat(e->children[1]); C(")");
@@ -3051,8 +3051,8 @@ static void emit_expr(EXPR_t *e) {
         break;
 
     /* capture nodes — in value context, evaluate the child */
-    case E_NAM: emit_expr(e->children[0]); break;
-    case E_DOL:  emit_expr(e->children[0]); break;
+    case E_CAPT_COND: emit_expr(e->children[0]); break;
+    case E_CAPT_IMM:  emit_expr(e->children[0]); break;
 
     case E_FNC:
         if (e->nchildren == 0) {
@@ -3067,7 +3067,7 @@ static void emit_expr(EXPR_t *e) {
         break;
 
     case E_IDX:
-        /* E_IDX = canonical (was E_ARY via compat alias — dead C backend).
+        /* E_IDX = canonical (was E_IDX via compat alias — dead C backend).
          * Named-array path: sval set. Postfix-subscript path: sval NULL. */
         if (e->sval) {
             C("aref(%s,(DESCR_t[]){", cs(e->sval));
@@ -3084,12 +3084,12 @@ static void emit_expr(EXPR_t *e) {
         }
         break;
 
-    case E_ATP:
+    case E_CAPT_CUR:
         /* @var — cursor position capture: evaluates to cursor int */
         C("cursor_get(\"%s\")", e->sval);
         break;
 
-    case E_ASGN:
+    case E_ASSIGN:
         /* var = expr inside expression context */
         C("assign_expr(%s,", cs(e->children[0]->sval)); emit_expr(e->children[1]); C(")");
         break;
@@ -3107,12 +3107,12 @@ static void emit_expr(EXPR_t *e) {
  * Same EXPR_t nodes, different routing:
  *   E_FNC  → pat_builtin or pat_call
  *   E_SEQ  → pat_cat
- *   E_OR   → pat_alt
- *   E_NAM  → pat_cond(child_pat, varname)
- *   E_DOL   → pat_imm(child_pat, varname)
+ *   E_ALT   → pat_alt
+ *   E_CAPT_COND  → pat_cond(child_pat, varname)
+ *   E_CAPT_IMM   → pat_imm(child_pat, varname)
  *   E_INDR → pat_ref(varname)   (deferred pattern reference *X)
  *   E_QLIT   → pat_lit(STRVAL_fn)
- *   E_VART   → pat_var(varname)   (pattern variable)
+ *   E_VAR   → pat_var(varname)   (pattern variable)
  * ============================================================ */
 static void emit_pat(EXPR_t *e);
 
@@ -3122,12 +3122,12 @@ static void emit_pat(EXPR_t *e) {
     case E_QLIT:
         C("pat_lit("); escape_string(e->sval); C(")"); break;
 
-    case E_VART:
+    case E_VAR:
         C("pat_var(\"%s\")", e->sval); break;
 
     case E_INDR:
         /* *X — deferred pattern reference */
-        if (e->children[0] && e->children[0]->kind == E_VART)
+        if (e->children[0] && e->children[0]->kind == E_VAR)
             C("pat_ref(\"%s\")", e->children[0]->sval);
         else if (e->children[0] && e->children[0]->kind == E_FNC && e->children[0]->nchildren >= 1
                  && !is_defined_function(e->children[0]->sval)) {
@@ -3150,7 +3150,7 @@ static void emit_pat(EXPR_t *e) {
         /* pat * x — parsed as arithmetic multiply, but in pattern context
          * this is: left_pattern CONCAT_fn *right (deferred ref to right) */
         C("pat_cat("); emit_pat(e->children[0]); C(",");
-        if (e->children[1] && e->children[1]->kind == E_VART)
+        if (e->children[1] && e->children[1]->kind == E_VAR)
             C("pat_ref(\"%s\")", e->children[1]->sval);
         else { C("pat_deref("); emit_expr(e->children[1]); C(")"); }
         C(")"); break;
@@ -3163,19 +3163,19 @@ static void emit_pat(EXPR_t *e) {
          * this node during pattern matching. */
         C("pat_user_call(\"reduce\",(DESCR_t[]){"); emit_expr(e->children[0]); C(","); emit_expr(e->children[1]); C("},2)"); break;
 
-    case E_OR:
-        emit_chain_pretty(e, E_OR, "pat_alt", emit_pat, 2);
+    case E_ALT:
+        emit_chain_pretty(e, E_ALT, "pat_alt", emit_pat, 2);
         break;
 
-    case E_NAM: {
+    case E_CAPT_COND: {
         /* pat . var */
-        const char *varname = (e->children[1] && e->children[1]->kind==E_VART)
+        const char *varname = (e->children[1] && e->children[1]->kind==E_VAR)
                               ? e->children[1]->sval : "?";
         C("pat_cond("); emit_pat(e->children[0]); C(",\"%s\")", varname); break;
     }
-    case E_DOL: {
+    case E_CAPT_IMM: {
         /* pat $ var */
-        const char *varname = (e->children[1] && e->children[1]->kind==E_VART)
+        const char *varname = (e->children[1] && e->children[1]->kind==E_VAR)
                               ? e->children[1]->sval : "?";
         C("pat_imm("); emit_pat(e->children[0]); C(",\"%s\")", varname); break;
     }
@@ -3263,8 +3263,8 @@ static void emit_pat(EXPR_t *e) {
 
     /* value nodes that shouldn't appear in pattern context — treat as var */
     case E_IDX:
-    case E_ATP:
-    case E_ASGN:
+    case E_CAPT_CUR:
+    case E_ASSIGN:
     default:
         C("pat_val("); emit_expr(e); C(")"); break;
     }
@@ -3279,11 +3279,11 @@ static int is_fn_local(const char *varname);
 
 static void emit_assign_target(EXPR_t *lhs, const char *rhs_str) {
     if (!lhs) return;
-    if (lhs->kind == E_VART) {
+    if (lhs->kind == E_VAR) {
         C("set(%s, %s);\n", cs(lhs->sval), rhs_str);
         C("NV_SET_fn(\"%s\", %s);\n", lhs->sval, cs(lhs->sval));
     } else if (lhs->kind == E_IDX) {
-        /* E_IDX = canonical (absorbs E_ARY).
+        /* E_IDX = canonical (absorbs E_IDX).
          * Named array (sval set): aset(name, subs, val)
          * Postfix subscript (sval NULL): aset(expr, subs, val) */
         if (lhs->sval) {
@@ -3509,7 +3509,7 @@ static void emit_goto(SnoGoto *g, const char *fn, int result_ok) {
  * absorb the pattern into the subject.
  *
  * This function detects the case and repairs the STMT_t in place.
- * It looks for: s->pattern==NULL, s->replacement==E_NULV, and the subject
+ * It looks for: s->pattern==NULL, s->replacement==E_NUL, and the subject
  * tree contains a PAT_BUILTIN call in a position that looks like a pattern start.
  * ============================================================ */
 
@@ -3525,13 +3525,13 @@ static int is_pat_builtin_call(EXPR_t *e) {
     return 0;
 }
 
-/* Returns 1 if expr e is a pattern node (E_FNC to pat_builtin, E_NAM capture,
- * E_OR, or E_SEQ whose left child is a pattern). */
+/* Returns 1 if expr e is a pattern node (E_FNC to pat_builtin, E_CAPT_COND capture,
+ * E_ALT, or E_SEQ whose left child is a pattern). */
 static int is_pat_node(EXPR_t *e) {
     if (!e) return 0;
     if (is_pat_builtin_call(e)) return 1;
-    if (e->kind == E_NAM)   return 1;  /* .var capture */
-    if (e->kind == E_OR)    return 1;  /* | alternation */
+    if (e->kind == E_CAPT_COND)   return 1;  /* .var capture */
+    if (e->kind == E_ALT)    return 1;  /* | alternation */
     if (e->kind == E_OPSYN) return 1;  /* & reduce() call — always pattern context */
     /* E_MPY(pat_node, x) — parsed from "pat *x" where * is multiplication token
      * but semantically is pattern-CONCAT_fn with deferred ref *x */
@@ -3542,30 +3542,30 @@ static int is_pat_node(EXPR_t *e) {
 /* Recursively checks if any node in e's subtree indicates pattern context.
  * Used to decide whether a pure assignment RHS should use emit_pat.
  * Indicators: E_INDR (*var — always a pattern ref), E_OPSYN (& — reduce()),
- * E_NAM (. capture), E_OR (| alternation in pattern context), E_FNC to
+ * E_CAPT_COND (. capture), E_ALT (| alternation in pattern context), E_FNC to
  * any pattern builtin including ARBNO/FENCE/etc. */
 /* Returns 1 if the expression subtree rooted at e contains ANY pattern-valued
- * node.  Used by emit_expr to decide whether E_SEQ / E_OR should be routed
+ * node.  Used by emit_expr to decide whether E_SEQ / E_ALT should be routed
  * through emit_pat (pat_cat / pat_alt) instead of the string path
  * (CONCAT_fn / alt).
  *
  * Key cases that are pattern-valued but NOT caught by is_pat_node:
- *   - E_INDR whose left child is E_VART — "*varname" deferred pattern ref
- *   - E_SEQ or E_OR whose subtree contains any of the above
+ *   - E_INDR whose left child is E_VAR — "*varname" deferred pattern ref
+ *   - E_SEQ or E_ALT whose subtree contains any of the above
  */
 int expr_contains_pattern(EXPR_t *e) {
     if (!e) return 0;
     if (is_pat_node(e)) return 1;
-    /* *varname — deferred pattern ref (grammar: left=NULL, right=E_VART) */
-    if (e->kind == E_INDR && e->children[1] && e->children[1]->kind == E_VART) return 1;
-    if (e->kind == E_INDR && e->children[0]  && e->children[0]->kind  == E_VART) return 1;
+    /* *varname — deferred pattern ref (grammar: left=NULL, right=E_VAR) */
+    if (e->kind == E_INDR && e->children[1] && e->children[1]->kind == E_VAR) return 1;
+    if (e->kind == E_INDR && e->children[0]  && e->children[0]->kind  == E_VAR) return 1;
     /* *varname(arg) — parser misparse deref+CONCAT_fn */
     if (e->kind == E_INDR && e->children[0] && e->children[0]->kind == E_FNC) return 1;
     /* recurse into children */
-    if (e->kind == E_SEQ || e->kind == E_CONCAT || e->kind == E_OR || e->kind == E_MPY)
+    if (e->kind == E_SEQ || e->kind == E_CONCAT || e->kind == E_ALT || e->kind == E_MPY)
         return expr_contains_pattern(e->children[0]) || expr_contains_pattern(e->children[1]);
     /* $ and . operators — pattern may be on the left side */
-    if (e->kind == E_DOL || e->kind == E_NAM)
+    if (e->kind == E_CAPT_IMM || e->kind == E_CAPT_COND)
         return expr_contains_pattern(e->children[0]);
     if (e->kind == E_FNC) {
         /* ARBNO, FENCE, etc. already caught by is_pat_builtin_call above.
@@ -3585,7 +3585,7 @@ int expr_contains_pattern(EXPR_t *e) {
  * no split needed).
  *
  * The tree is LEFT-ASSOCIATIVE CONCAT_fn:
- *   (((STRVAL_fn, POS(0)), ANY('abc')), E_NAM(letter))
+ *   (((STRVAL_fn, POS(0)), ANY('abc')), E_CAPT_COND(letter))
  * We walk the left spine, looking for the first right child that is a pat node.
  * When found at depth D, the pattern is: right_at_D CONCAT_fn right_at_D-1 CONCAT_fn ... CONCAT_fn right_at_0
  * assembled left-to-right.
@@ -3650,15 +3650,15 @@ static EXPR_t *split_subject_pattern(EXPR_t *e, EXPR_t **subj_out) {
 }
 
 /* Repair a misparsed pattern-MATCH_fn stmt.
- * Called when s->pattern==NULL and s->replacement is E_NULV (bare '=').
+ * Called when s->pattern==NULL and s->replacement is E_NUL (bare '=').
  * Also repairs pattern-MATCH_fn stmts with no replacement (s->replacement==NULL)
  * where the subject absorbed the pattern (no '=' present).
  * Returns 1 if the stmt was repaired. */
 static int maybe_fix_pattern_stmt(STMT_t *s) {
     if (!s->subject) return 0;  /* no subject */
-    /* Heuristic: if replacement is non-null non-E_NULV, this is a plain assignment,
+    /* Heuristic: if replacement is non-null non-E_NUL, this is a plain assignment,
      * not a pattern MATCH_fn. Skip. */
-    if (s->replacement && s->replacement->kind != E_NULV) return 0;
+    if (s->replacement && s->replacement->kind != E_NUL) return 0;
 
     EXPR_t *new_subj = NULL;
     EXPR_t *new_pat  = split_subject_pattern(s->subject, &new_subj);
@@ -3862,7 +3862,7 @@ static void emit_stmt(STMT_t *s, const char *fn) {
             C("    _nb%d[_newlen%d] = '\\0';\n", u, u);
             C("    _s%d = STRVAL(_nb%d);\n", u, u);
             /* write back to subject variable */
-            if (s->subject && s->subject->kind == E_VART) {
+            if (s->subject && s->subject->kind == E_VAR) {
                 if (is_io_name(s->subject->sval))
                     C("    NV_SET_fn(\"%s\", _s%d);\n", s->subject->sval, u);
                 else {
@@ -3901,7 +3901,7 @@ static void emit_stmt(STMT_t *s, const char *fn) {
  * ============================================================ */
 
 static void emit_assign_target_io(EXPR_t *lhs, const char *rhs_str) {
-    if (lhs && lhs->kind == E_VART && is_io_name(lhs->sval)) {
+    if (lhs && lhs->kind == E_VAR && is_io_name(lhs->sval)) {
         C("NV_SET_fn(\"%s\", %s);\n", lhs->sval, rhs_str);
         return;
     }
@@ -4483,7 +4483,7 @@ static void emit_trampoline_program(Program *prog) {
         if (stmt_in_phantom_body(s)) continue;
         if (stmt_define_proto(s)) continue;
         if (!s->pattern && s->replacement &&
-            s->subject && s->subject->kind == E_VART &&
+            s->subject && s->subject->kind == E_VAR &&
             expr_contains_pattern(s->replacement)) {
             scan_named_patterns(s->subject->sval);
         }
@@ -4526,7 +4526,7 @@ static void emit_trampoline_program(Program *prog) {
         if (stmt_in_phantom_body(s)) continue;
         if (stmt_define_proto(s)) continue;
         if (!s->pattern && s->replacement &&
-            s->subject && s->subject->kind == E_VART &&
+            s->subject && s->subject->kind == E_VAR &&
             expr_contains_pattern(s->replacement)) {
             emit_named_pattern(s->subject->sval, s->replacement, out);
         }

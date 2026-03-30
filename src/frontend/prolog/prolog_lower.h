@@ -17,7 +17,7 @@
  *   E_QLIT  atom literals
  *   E_ILIT  integer literals
  *   E_FLIT  float literals
- *   E_VART  variables (sval=slot index as decimal string, ival=slot)
+ *   E_VAR  variables (sval=slot index as decimal string, ival=slot)
  *   E_FNC   goals / compound terms (sval=functor name, children=args)
  *   E_ADD/E_SUB/E_MPY/E_DIV  arithmetic within is/2
  *

@@ -155,7 +155,7 @@ static void emit_term_val(EXPR_t *e) {
         case E_FLIT:
             PL_C("term_new_float(%g)", e->dval);
             return;
-        case E_VART: {
+        case E_VAR: {
             /* variable slot: reference into env frame array _env[] */
             long slot = e->ival;
             if (slot < 0) {
@@ -225,7 +225,7 @@ static void emit_arith_expr(EXPR_t *e) {
     switch (e->kind) {
         case E_ILIT: PL_C("%ldL", e->ival); return;
         case E_FLIT: PL_C("%g",   e->dval); return;
-        case E_VART: PL_C("(term_deref(_env[%ld])->ival)", e->ival); return;
+        case E_VAR: PL_C("(term_deref(_env[%ld])->ival)", e->ival); return;
         case E_ADD:
             PL_C("("); emit_arith_expr(e->children[0]);
             PL_C(" + "); emit_arith_expr(e->children[1]); PL_C(")"); return;

@@ -107,7 +107,7 @@ DESCR_t stmt_get_indirect(DESCR_t name_val) {
 
 /* ---- NRETURN deref: if return val is a string (NAME), resolve it;
  *      if it's already a typed value (DT_I, DT_DATA, etc.), pass through.
- *      Needed because E_NAM+E_FNC resolves .field(obj) to the actual value
+ *      Needed because E_CAPT_COND+E_FNC resolves .field(obj) to the actual value
  *      at assignment time, while .varname still stores the name string. ---- */
 DESCR_t stmt_nreturn_deref(DESCR_t retval) {
     const char *s = NULL;

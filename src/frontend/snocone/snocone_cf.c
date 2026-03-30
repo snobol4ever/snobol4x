@@ -323,7 +323,7 @@ static void do_return_stmt(CfState *st, SnoconeKind ret_kind) {
             /* Assign return value: fname = expr */
             if (st->fname && val_s->subject) {
                 /* Wrap as assignment: fname = subject expr */
-                EXPR_t *lhs = expr_new(E_VART);
+                EXPR_t *lhs = expr_new(E_VAR);
                 lhs->sval = strdup(st->fname);
                 STMT_t *asgn = stmt_new();
                 asgn->subject     = lhs;

@@ -99,18 +99,18 @@ static void parse_arglist(Lex *lx, EXPR_t *node) {
         lex_peek(lx).kind != T_RANGLE &&
         lex_peek(lx).kind != T_EOF) {
         EXPR_t *e = parse_expr0(lx);
-        expr_add_child(node, e ? e : expr_new(E_NULV));
+        expr_add_child(node, e ? e : expr_new(E_NUL));
 
         while (lex_peek(lx).kind == T_COMMA) {
             lex_next(lx); /* consume , */
             skip_ws(lx);
             TokKind k = lex_peek(lx).kind;
             if (k==T_RPAREN||k==T_RBRACKET||k==T_RANGLE||k==T_EOF) {
-                expr_add_child(node, expr_new(E_NULV)); /* trailing comma */
+                expr_add_child(node, expr_new(E_NUL)); /* trailing comma */
                 break;
             }
             EXPR_t *a = parse_expr0(lx);
-            expr_add_child(node, a ? a : expr_new(E_NULV));
+            expr_add_child(node, a ? a : expr_new(E_NUL));
         }
     }
     skip_ws(lx);
@@ -125,17 +125,17 @@ static EXPR_t *parse_expr17(Lex *lx) {
         EXPR_t *inner = parse_expr0(lx);
         skip_ws(lx);
         if (lex_peek(lx).kind == T_COMMA) {
-            /* (expr, expr, ...) — alternation group: flat n-ary E_OR */
-            EXPR_t *alt = expr_new(E_OR);
+            /* (expr, expr, ...) — alternation group: flat n-ary E_ALT */
+            EXPR_t *alt = expr_new(E_ALT);
             expr_add_child(alt, inner);
             while (lex_peek(lx).kind == T_COMMA) {
                 lex_next(lx); skip_ws(lx);
                 EXPR_t *r = parse_expr0(lx);
-                expr_add_child(alt, r ? r : expr_new(E_NULV));
+                expr_add_child(alt, r ? r : expr_new(E_NUL));
                 skip_ws(lx);
             }
             if (lex_peek(lx).kind==T_RPAREN) lex_next(lx);
-            /* unwrap single-child E_OR (degenerate case) */
+            /* unwrap single-child E_ALT (degenerate case) */
             if (alt->nchildren == 1) { EXPR_t *tmp = alt->children[0]; free(alt->children); free(alt); return tmp; }
             return alt;
         }
@@ -179,7 +179,7 @@ static EXPR_t *parse_expr17(Lex *lx) {
             if (lex_peek(lx).kind==T_RPAREN) lex_next(lx);
             return e;
         }
-        EXPR_t *e = expr_new(E_VART); (e)->sval = (char *)(t.sval); return e;
+        EXPR_t *e = expr_new(E_VAR); (e)->sval = (char *)(t.sval); return e;
     }
 
     /* Nothing matched */
@@ -202,7 +202,7 @@ static EXPR_t *parse_expr15(Lex *lx) {
         else break;
 
         lex_next(lx); /* consume open bracket */
-        EXPR_t *tmp_node = expr_new(E_NULV); /* temp container for indices */
+        EXPR_t *tmp_node = expr_new(E_NUL); /* temp container for indices */
         parse_arglist(lx, tmp_node);
         if (lex_peek(lx).kind==close) lex_next(lx);
 
@@ -229,21 +229,21 @@ static EXPR_t *parse_expr14(Lex *lx) {
     Token t = lex_peek(lx);
     EKind uk;
     switch (t.kind) {
-        case T_AT:     uk=E_ATP;    break;
+        case T_AT:     uk=E_CAPT_CUR;    break;
         case T_TILDE:  uk=E_INDR; break;  /* ~ is NOT in scrip-cc.h so map to DEREF for now */
-        case T_QMARK:  uk=E_NAM;  break;  /* unary ? = interrogation */
+        case T_QMARK:  uk=E_CAPT_COND;  break;  /* unary ? = interrogation */
         case T_AMP:    uk=E_OPSYN;break;
         case T_PLUS:   lex_next(lx); return parse_expr14(lx); /* unary + is identity */
-        case T_MINUS:  uk=E_MNS;   break;
+        case T_MINUS:  uk=E_NEG;   break;
         case T_STAR:   uk=E_STAR; break;   /* *X = deferred pattern ref */
         case T_DOLLAR: uk=E_INDR; break;  /* $X = indirect reference */
-        case T_DOT:    uk=E_NAM;  break;  /* .X = name */
-        case T_BANG:   uk=E_EXPOP;   break;  /* !X = definable unary */
+        case T_DOT:    uk=E_CAPT_COND;  break;  /* .X = name */
+        case T_BANG:   uk=E_POW;   break;  /* !X = definable unary */
         case T_PCT:    uk=E_DIV;   break;  /* %X = definable unary */
         case T_SLASH:  uk=E_DIV;   break;  /* /X = definable unary */
         case T_HASH:   uk=E_MPY;   break;  /* #X = definable unary */
-        case T_EQ:     uk=E_ASGN;break;  /* =X = definable unary */
-        case T_PIPE:   uk=E_OR;   break;  /* |X = definable unary */
+        case T_EQ:     uk=E_ASSIGN;break;  /* =X = definable unary */
+        case T_PIPE:   uk=E_ALT;   break;  /* |X = definable unary */
         default:       return parse_expr15(lx);
     }
     TokKind op_tok = t.kind;
@@ -251,7 +251,7 @@ static EXPR_t *parse_expr14(Lex *lx) {
     EXPR_t *operand = parse_expr14(lx);
     if (!operand) {
         snoc_error(lx->lineno, "expected operand after unary operator");
-        return expr_new(E_NULV);
+        return expr_new(E_NUL);
     }
     /* emit.c contract for E_INDR:
      *   *X  (deferred ref):  e->left = operand, e->right = NULL
@@ -279,8 +279,8 @@ static EXPR_t *parse_expr13(Lex *lx) {
         lex_next(lx); /* consume ~ */
         skip_ws(lx);  /* consume trailing WS of binary ~ */
         EXPR_t *r = parse_expr13(lx);
-        /* ~ 'tag': emit E_NAM(child=l, tag=r) so emit_byrd generates Shift(tag, matched) */
-        l = binop(E_NAM, l, r);
+        /* ~ 'tag': emit E_CAPT_COND(child=l, tag=r) so emit_byrd generates Shift(tag, matched) */
+        l = binop(E_CAPT_COND, l, r);
     }
     return l;
 }
@@ -298,7 +298,7 @@ static EXPR_t *parse_expr12(Lex *lx) {
         if (op == T_DOLLAR || op == T_DOT) {
             lex_next(lx); skip_ws(lx);
             EXPR_t *r = parse_expr13(lx); /* left-associative: only one level */
-            EKind k = (op==T_DOLLAR) ? E_DOL : E_NAM;
+            EKind k = (op==T_DOLLAR) ? E_CAPT_IMM : E_CAPT_COND;
             l = binop(k, l, r);
         } else {
             lex_restore(lx, m12);
@@ -376,7 +376,7 @@ static EXPR_t *parse_rbin(Lex *lx, ParseFn next_fn,
 /* ── expr11 — ^ ! ** (right-assoc) ──────────────────────────────────────── */
 static EXPR_t *parse_expr11(Lex *lx) {
     static const TokKind ops[]   = { T_CARET, T_BANG, T_STARSTAR };
-    static const EKind   kinds[] = { E_EXPOP,   E_EXPOP,  E_EXPOP      };
+    static const EKind   kinds[] = { E_POW,   E_POW,  E_POW      };
     /* ** must be checked before * — handled in lexer (T_STARSTAR) */
     return parse_rbin(lx, parse_expr12, ops, kinds, 3);
 }
@@ -419,7 +419,7 @@ static EXPR_t *parse_expr6(Lex *lx) {
 /* ── expr5 — @ ───────────────────────────────────────────────────────────── */
 static EXPR_t *parse_expr5(Lex *lx) {
     static const TokKind ops[]   = { T_AT };
-    static const EKind   kinds[] = { E_ATP };
+    static const EKind   kinds[] = { E_CAPT_CUR };
     return parse_lbin(lx, parse_expr6, ops, kinds, 1);
 }
 
@@ -509,8 +509,8 @@ static EXPR_t *parse_expr3(Lex *lx) {
     }
     if (!has_pipe) return first;
 
-    /* Build flat n-ary E_OR */
-    EXPR_t *e = expr_new(E_OR);
+    /* Build flat n-ary E_ALT */
+    EXPR_t *e = expr_new(E_ALT);
     expr_add_child(e, first);
     for (;;) {
         LexMark m3 = lex_mark(lx);
@@ -522,7 +522,7 @@ static EXPR_t *parse_expr3(Lex *lx) {
         }
         lex_next(lx); skip_ws(lx);
         EXPR_t *r = parse_expr4(lx);
-        expr_add_child(e, r ? r : expr_new(E_NULV));
+        expr_add_child(e, r ? r : expr_new(E_NUL));
     }
     return e;
 }
@@ -553,12 +553,12 @@ static EXPR_t *parse_expr0(Lex *lx) {
     if (k == T_EQ) {
         lex_next(lx); skip_ws(lx);
         EXPR_t *r = parse_expr0(lx);
-        return binop(E_ASGN, l, r);
+        return binop(E_ASSIGN, l, r);
     }
     if (k == T_QMARK) {
         lex_next(lx); skip_ws(lx);
         EXPR_t *r = parse_expr0(lx);
-        return binop(E_NAM, l, r);
+        return binop(E_CAPT_COND, l, r);
     }
     lex_restore(lx, m0);
     return l;
@@ -809,7 +809,7 @@ static STMT_t *parse_body_field(const char *body, int lineno) {
  *                  to E_CONCAT (pure string concat, cannot fail).
  *
  * repl_is_pat_tree: lightweight check — true if tree contains any node that is
- *   unambiguously pattern-only: E_ARB, E_ARBNO, E_NAM, E_DOL, E_ATP, E_STAR.
+ *   unambiguously pattern-only: E_ARB, E_ARBNO, E_CAPT_COND, E_CAPT_IMM, E_CAPT_CUR, E_STAR.
  *   (E_FNC pattern-function detection is left to the emitter's expr_is_pattern_expr.)
  *   If true, do NOT apply fixup_val_tree to s->replacement — leave as E_SEQ.
  */
@@ -823,7 +823,7 @@ static int repl_is_pat_tree(EXPR_t *e) {
     if (!e) return 0;
     switch (e->kind) {
         case E_ARB: case E_ARBNO:
-        case E_NAM: case E_DOL: case E_ATP: case E_STAR:
+        case E_CAPT_COND: case E_CAPT_IMM: case E_CAPT_CUR: case E_STAR:
             return 1;
         default: break;
     }

@@ -15,7 +15,7 @@
  *   TT_ATOM     -> E_QLIT  (sval = atom name)
  *   TT_INT      -> E_ILIT  (ival = value)
  *   TT_FLOAT    -> E_FLIT  (dval = value)
- *   TT_VAR      -> E_VART  (sval = "_V<slot>", ival = slot)
+ *   TT_VAR      -> E_VAR  (sval = "_V<slot>", ival = slot)
  *   TT_COMPOUND -> E_FNC   (sval = functor name, children = lowered args)
  *                  special: =/2  -> E_UNIFY
  *                           is/2 -> E_FNC("is") with arithmetic rhs
@@ -104,7 +104,7 @@ static EXPR_t *lower_term(Term *t) {
             return e;
         }
         case TT_VAR: {
-            EXPR_t *e = expr_new(E_VART);
+            EXPR_t *e = expr_new(E_VAR);
             int slot = t->saved_slot;  /* -1 = anonymous wildcard */
             char buf[32];
             if (slot < 0) {
@@ -408,7 +408,7 @@ static void expr_dump(EXPR_t *e, int indent, FILE *out) {
         case E_QLIT:        kname = "E_QLIT";        break;
         case E_ILIT:        kname = "E_ILIT";        break;
         case E_FLIT:        kname = "E_FLIT";        break;
-        case E_VART:        kname = "E_VART";        break;
+        case E_VAR:        kname = "E_VAR";        break;
         case E_ADD:         kname = "E_ADD";         break;
         case E_SUB:         kname = "E_SUB";         break;
         case E_MPY:         kname = "E_MPY";         break;

@@ -15,16 +15,16 @@
  *
  *   SNOCONE_ASSIGN    ->  subject=lhs, replacement=rhs  (assignment stmt)
  *   SNOCONE_PLUS      ->  E_ADD
- *   SNOCONE_MINUS     ->  E_SUB (binary) / E_MNS (unary)
+ *   SNOCONE_MINUS     ->  E_SUB (binary) / E_NEG (unary)
  *   SNOCONE_STAR      ->  E_MPY
  *   SNOCONE_SLASH     ->  E_DIV
- *   SNOCONE_CARET     ->  E_EXPOP
+ *   SNOCONE_CARET     ->  E_POW
  *   SNOCONE_CONCAT    ->  E_CONC  (blank concat — juxtaposition)
- *   SNOCONE_OR        ->  E_OR    (pattern alternation || )
+ *   SNOCONE_OR        ->  E_ALT    (pattern alternation || )
  *   SNOCONE_PIPE      ->  E_SEQ / E_CONCAT  (single | — pattern→E_SEQ, value→E_CONCAT)
- *   SNOCONE_PERIOD    ->  E_NAM   (conditional capture  .)
- *   SNOCONE_DOLLAR    ->  E_DOL   (immediate capture    $)
- *   SNOCONE_AT        ->  E_ATP   (@var — cursor position)
+ *   SNOCONE_PERIOD    ->  E_CAPT_COND   (conditional capture  .)
+ *   SNOCONE_DOLLAR    ->  E_CAPT_IMM   (immediate capture    $)
+ *   SNOCONE_AT        ->  E_CAPT_CUR   (@var — cursor position)
  *   SNOCONE_AMPERSAND ->  E_KW    (unary & — keyword reference)
  *   SNOCONE_TILDE     ->  E_FNC("NOT",1)  (logical negation)
  *   SNOCONE_QUESTION  ->  E_FNC("DIFFER",2) or unary: E_FNC("DIFFER",1)
@@ -49,7 +49,7 @@
  *
  * Statement assembly at SNOCONE_NEWLINE:
  *   Stack top is the expression for this line.
- *   If the expression root is E_ASGN or the top SNOCONE_ASSIGN produced a
+ *   If the expression root is E_ASSIGN or the top SNOCONE_ASSIGN produced a
  *   two-operand form, split into subject + replacement fields of STMT_t.
  *   Otherwise the expression is the subject field (pattern match or
  *   expression-only statement).

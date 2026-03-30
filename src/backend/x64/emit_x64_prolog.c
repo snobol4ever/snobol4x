@@ -194,7 +194,7 @@ static void emit_pl_term_load(EXPR_t *e, int frame_base_words) {
             A("    mov     rdi, %ld\n", e->ival);
             A("    call    term_new_int\n");
             break;
-        case E_VART: {
+        case E_VAR: {
             /* var slot is in e->ival; fresh Term* in frame at [rbp - (5+max_ucalls+slot)*8] */
             int slot = (int)e->ival;
             if (slot < 0) {

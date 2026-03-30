@@ -210,7 +210,7 @@ static void var_register(const char *name) {
 
 static void collect_vars_expr(EXPR_t *e) {
     if (!e) return;
-    if (e->kind == E_VART && e->sval)
+    if (e->kind == E_VAR && e->sval)
         var_register(e->sval);
     for (int _i = 0; _i < e->nchildren; _i++) collect_vars_expr(e->children[_i]);
 }
@@ -219,7 +219,7 @@ static void collect_vars(Program *prog) {
     for (STMT_t *s = prog->head; s; s = s->next) {
         if (s->subject) {
             /* Only register plain variable names as fields */
-            if (s->subject->kind == E_VART && s->subject->sval)
+            if (s->subject->kind == E_VAR && s->subject->sval)
                 var_register(s->subject->sval);
         }
         collect_vars_expr(s->pattern);
@@ -309,7 +309,7 @@ static const FnDef *find_fn(const char *name);  /* fwd decl */
 
 /* Named pattern registry — compile-time table of VAR = <pattern-expr> assignments.
  * Mirrors ASM backend's AsmNamedPat/asm_named[] mechanism.
- * When E_VART("P") appears in a pattern context, we look up P here and
+ * When E_VAR("P") appears in a pattern context, we look up P here and
  * inline-expand its stored pattern tree via emit_jvm_pat_node. */
 #define NAMED_PAT_MAX  512
 #define JVM_NAMED_NAMELEN  128
@@ -350,18 +350,18 @@ static const NamedPat *named_pat_lookup(const char *varname) {
     return NULL;
 }
 
-/* expr_is_pattern_expr — mirrors ASM backend: E_OR is always a pattern;
- * E_SEQ/E_CONCAT or E_FNC is a pattern if any descendant is E_FNC/E_NAM/E_DOL. */
+/* expr_is_pattern_expr — mirrors ASM backend: E_ALT is always a pattern;
+ * E_SEQ/E_CONCAT or E_FNC is a pattern if any descendant is E_FNC/E_CAPT_COND/E_CAPT_IMM. */
 static int expr_has_pat_fn(EXPR_t *e) {
     if (!e) return 0;
-    if (e->kind == E_FNC || e->kind == E_NAM || e->kind == E_DOL) return 1;
+    if (e->kind == E_FNC || e->kind == E_CAPT_COND || e->kind == E_CAPT_IMM) return 1;
     for (int i = 0; i < e->nchildren; i++)
         if (expr_has_pat_fn(e->children[i])) return 1;
     return 0;
 }
 static int expr_is_pattern_expr(EXPR_t *e) {
     if (!e) return 0;
-    if (e->kind == E_OR)   return 1;   /* alternation is always a pattern */
+    if (e->kind == E_ALT)   return 1;   /* alternation is always a pattern */
     if (e->kind == E_SEQ) return 1;
     if (e->kind == E_CONCAT) return 0;
     return expr_has_pat_fn(e);
@@ -373,8 +373,8 @@ static void scan_named_patterns(Program *prog) {
     named_pat_reset();
     if (!prog) return;
     for (STMT_t *s = prog->head; s; s = s->next) {
-        /* VAR = <pattern-expr>  — subject is E_VART, has_eq set, no pattern field */
-        if (s->subject && s->subject->kind == E_VART && s->subject->sval &&
+        /* VAR = <pattern-expr>  — subject is E_VAR, has_eq set, no pattern field */
+        if (s->subject && s->subject->kind == E_VAR && s->subject->sval &&
             s->has_eq && s->replacement && !s->pattern) {
             if (expr_is_pattern_expr(s->replacement)) {
                 named_pat_register(s->subject->sval, s->replacement);
@@ -505,7 +505,7 @@ static void emit_jvm_expr(EXPR_t *e) {
         JI("ldc", esc);
         break;
     }
-    case E_NULV:
+    case E_NUL:
         /* Null/empty string */
         JI("ldc", "\"\"");
         break;
@@ -520,7 +520,7 @@ static void emit_jvm_expr(EXPR_t *e) {
         JI("invokestatic", kgdesc);
         break;
     }
-    case E_VART: {
+    case E_VAR: {
         /* Variable reference — load from sno_vars HashMap (supports indirect write) */
         if (!e->sval) { JI("ldc", "\"\""); break; }
         if (strcasecmp(e->sval, "INPUT") == 0) {
@@ -569,9 +569,9 @@ static void emit_jvm_expr(EXPR_t *e) {
         JI("invokestatic", ivdesc);
         break;
     }
-    case E_NAM: {
+    case E_CAPT_COND: {
         /* .var in value context — name reference: push the variable name as a string.
-         * Used in $.var (E_INDR wrapping E_NAM): the name is the lookup key,
+         * Used in $.var (E_INDR wrapping E_CAPT_COND): the name is the lookup key,
          * not the variable's value. e->sval holds the name. */
         if (e->sval) {
             char nameesc[256];
@@ -650,7 +650,7 @@ static void emit_jvm_expr(EXPR_t *e) {
     case E_ADD:
     case E_SUB:
     case E_MPY:
-    case E_EXPOP: {
+    case E_POW: {
         /* Arithmetic: parse both sides to double, operate, convert back */
         emit_jvm_expr(e->children[0]);
         emit_jvm_to_double();
@@ -660,7 +660,7 @@ static void emit_jvm_expr(EXPR_t *e) {
         case E_ADD:   JI("dadd", ""); break;
         case E_SUB:   JI("dsub", ""); break;
         case E_MPY:   JI("dmul", ""); break;
-        case E_EXPOP:
+        case E_POW:
             /* Math.pow(a, b) */
             JI("invokestatic", "java/lang/Math/pow(DD)D");
             break;
@@ -731,7 +731,7 @@ static void emit_jvm_expr(EXPR_t *e) {
         J("%s:\n", conc_done);
         break;
     }
-    case E_MNS: {
+    case E_NEG: {
         /* Unary minus: -expr */
         emit_jvm_expr(e->children[0]);
         emit_jvm_to_double();
@@ -1399,7 +1399,7 @@ static void emit_jvm_expr(EXPR_t *e) {
         break;
     }
     case E_IDX: {
-        /* E_IDX = canonical (absorbs E_ARY via compat alias — M-G1-IR-HEADER-WIRE).
+        /* E_IDX = canonical (absorbs E_IDX via compat alias — M-G1-IR-HEADER-WIRE).
          * Named-array path (sval set): load array by name, then subscript key.
          * Postfix-subscript path (sval NULL): emit expr, then subscript key. */
         need_array_helpers = 1;
@@ -1561,13 +1561,13 @@ static void emit_jvm_pat_node(EXPR_t *pat,
         {
             EXPR_t *cur = pat->children[0];
             while (cur && cur->kind == E_SEQ) cur = cur->children[1];
-            if (cur && cur->kind == E_NAM && cur->children[0] &&
+            if (cur && cur->kind == E_CAPT_COND && cur->children[0] &&
                 ((cur->children[0]->kind == E_FNC  && cur->children[0]->sval && strcasecmp(cur->children[0]->sval, "ARB") == 0) ||
-                 (cur->children[0]->kind == E_VART && cur->children[0]->sval && strcasecmp(cur->children[0]->sval, "ARB") == 0)))
+                 (cur->children[0]->kind == E_VAR && cur->children[0]->sval && strcasecmp(cur->children[0]->sval, "ARB") == 0)))
                 arb_nam = cur;
             else if (cur &&
                 ((cur->kind == E_FNC  && cur->sval && strcasecmp(cur->sval, "ARB") == 0) ||
-                 (cur->kind == E_VART && cur->sval && strcasecmp(cur->sval, "ARB") == 0)))
+                 (cur->kind == E_VAR && cur->sval && strcasecmp(cur->sval, "ARB") == 0)))
                 arb_nam = cur;
         }
 
@@ -1632,7 +1632,7 @@ static void emit_jvm_pat_node(EXPR_t *pat,
             /* Deferred capture: store ARB span in a temp local; only commit
              * (call sno_var_put) after right child SUCCEEDS.  This prevents
              * spurious output (e.g. OUTPUT =) on each backtrack attempt.    */
-            if (arb_nam->kind == E_NAM && arb_nam->children[1] && arb_nam->children[1]->sval) {
+            if (arb_nam->kind == E_CAPT_COND && arb_nam->children[1] && arb_nam->children[1]->sval) {
                 const char *capvar = arb_nam->children[1]->sval;
                 int loc_tmp_cap = (*p_cap_local)++;
 
@@ -1700,7 +1700,7 @@ static void emit_jvm_pat_node(EXPR_t *pat,
         break;
     }
 
-    case E_OR: {
+    case E_ALT: {
         /* ALT node: try left; on failure restore cursor and try right
          * Wiring:
          *   save cursor_save
@@ -1710,7 +1710,7 @@ static void emit_jvm_pat_node(EXPR_t *pat,
         if (pat->nchildren > 2) {
             int _nc = pat->nchildren;
             EXPR_t **_fn, **_fk;
-            EXPR_t *_r = ir_nary_right_fold(pat, E_OR, &_fn, &_fk);
+            EXPR_t *_r = ir_nary_right_fold(pat, E_ALT, &_fn, &_fk);
             emit_jvm_pat_node(_r, γ, ω, loc_subj, loc_cursor, loc_len, p_cap_local, out, classname);
             ir_nary_right_fold_free(_fn, _fk, _nc - 1);
             break;
@@ -1739,10 +1739,10 @@ static void emit_jvm_pat_node(EXPR_t *pat,
     }
 
     /* ------------------------------------------------------------------ */
-    case E_ATP: {
+    case E_CAPT_CUR: {
         /* @VAR — cursor-position capture.
          * Zero-width: store current cursor as decimal string into VAR, always succeed.
-         * Parser: unary node, children[0] = E_VART(varname). */
+         * Parser: unary node, children[0] = E_VAR(varname). */
         const char *varname = (pat->children[0] && pat->children[0]->sval)
                               ? pat->children[0]->sval : "";
         char nameesc[256];
@@ -1765,7 +1765,7 @@ static void emit_jvm_pat_node(EXPR_t *pat,
     }
 
     /* ------------------------------------------------------------------ */
-    case E_NAM: {
+    case E_CAPT_COND: {
         /* Conditional assign:  pat . var
          * Match pat; on success capture matched substring into var.
          * cursor_before saved, on γ: var = subject.substring(cursor_before, cursor) */
@@ -1810,8 +1810,8 @@ static void emit_jvm_pat_node(EXPR_t *pat,
     }
 
     /* ------------------------------------------------------------------ */
-    case E_DOL: {
-        /* Immediate assign:  pat $ var  — same as E_NAM for J4 */
+    case E_CAPT_IMM: {
+        /* Immediate assign:  pat $ var  — same as E_CAPT_COND for J4 */
         int loc_before = (*p_cap_local)++;
         char lbl_inner_ok[64];
         snprintf(lbl_inner_ok, sizeof lbl_inner_ok, "Jn%d_dol_ok", uid);
@@ -2248,10 +2248,10 @@ static void emit_jvm_pat_node(EXPR_t *pat,
     }
 
     /* ------------------------------------------------------------------ */
-    case E_VART: {
+    case E_VAR: {
         /* Variable reference in pattern context.
          * First check if it's a zero-arg builtin pattern name (REM, ARB, FAIL,
-         * SUCCEED, FENCE, ABORT) — the parser emits these as E_VART when
+         * SUCCEED, FENCE, ABORT) — the parser emits these as E_VAR when
          * they appear without parentheses. */
         const char *vname = pat->sval ? pat->sval : "";
         if (strcasecmp(vname, "REM") == 0) {
@@ -2279,12 +2279,12 @@ static void emit_jvm_pat_node(EXPR_t *pat,
         }
 
         /* Check named-pattern registry (compile-time pattern variable assignments).
-         * E.g.  P = ('a' | 'b' | 'c')  registers P → E_OR tree.
+         * E.g.  P = ('a' | 'b' | 'c')  registers P → E_ALT tree.
          * When we see P in pattern context, inline-expand its stored tree. */
         {
             const NamedPat *np = named_pat_lookup(vname);
             if (np && np->pat) {
-                fprintf(out, "    ; E_VART %s → named pattern inline expansion\n", vname);
+                fprintf(out, "    ; E_VAR %s → named pattern inline expansion\n", vname);
                 emit_jvm_pat_node(np->pat, γ, ω,
                                   loc_subj, loc_cursor, loc_len,
                                   p_cap_local, out, classname);
@@ -2334,7 +2334,7 @@ static void emit_jvm_pat_node(EXPR_t *pat,
     case E_INDR: {
         /* *VAR — indirect pattern reference: evaluate inner expr to get
          * the variable NAME, look up its value, match as literal.
-         * The inner expr for *PAT is E_VART("PAT") — we need its name
+         * The inner expr for *PAT is E_VAR("PAT") — we need its name
          * as a string, NOT its value.  So push the sval directly.        */
         int loc_lit  = (*p_cap_local)++;
         int loc_llen = (*p_cap_local)++;
@@ -2397,7 +2397,7 @@ static void emit_jvm_pat_node(EXPR_t *pat,
 /* Returns 1 if expr tree contains INPUT reference */
 static int expr_contains_input(EXPR_t *e) {
     if (!e) return 0;
-    if (e->kind == E_VART && e->sval && strcasecmp(e->sval, "INPUT") == 0) return 1;
+    if (e->kind == E_VAR && e->sval && strcasecmp(e->sval, "INPUT") == 0) return 1;
     for (int _i = 0; _i < e->nchildren; _i++)
         if (expr_contains_input(e->children[_i])) return 1;
     return 0;
@@ -2643,7 +2643,7 @@ static void emit_jvm_stmt(STMT_t *s, int stmt_idx) {
             char fnesc[256]; escape_string(sfname, fnesc, sizeof fnesc);
             JI("ldc", fnesc);
             /* push value */
-            if (!s->replacement || s->replacement->kind == E_NULV) JI("ldc", "\"\"");
+            if (!s->replacement || s->replacement->kind == E_NUL) JI("ldc", "\"\"");
             else emit_jvm_expr(s->replacement);
             char apdesc[512]; snprintf(apdesc, sizeof apdesc,
                 "%s/sno_array_put(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
@@ -2694,7 +2694,7 @@ static void emit_jvm_stmt(STMT_t *s, int stmt_idx) {
             }
         }
         /* value — evaluate first so we can null-check for :S/:F goto semantics */
-        if (!s->replacement || s->replacement->kind == E_NULV) JI("ldc", "\"\"");
+        if (!s->replacement || s->replacement->kind == E_NUL) JI("ldc", "\"\"");
         else emit_jvm_expr(s->replacement);
         char apdesc[512]; snprintf(apdesc, sizeof apdesc,
             "%s/sno_array_put(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V", classname);
@@ -2726,7 +2726,7 @@ static void emit_jvm_stmt(STMT_t *s, int stmt_idx) {
 
     /* Case 1: pure assignment — no pattern */
     if (s->has_eq && s->subject &&
-        (s->subject->kind == E_VART || s->subject->kind == E_KW) &&
+        (s->subject->kind == E_VAR || s->subject->kind == E_KW) &&
         !s->pattern) {
 
         const char *subj = s->subject->sval ? s->subject->sval : "";
@@ -2736,7 +2736,7 @@ static void emit_jvm_stmt(STMT_t *s, int stmt_idx) {
         /* Pre-hoist: if INPUT is nested inside the RHS expression (not direct),
          * read it into local slot 5 now with a null check, before any stack buildup. */
         int input_nested = (s->replacement &&
-                            s->replacement->kind != E_VART &&  /* not direct INPUT */
+                            s->replacement->kind != E_VAR &&  /* not direct INPUT */
                             expr_contains_input(s->replacement) &&
                             cur_stmt_fail[0]);
         if (input_nested) {
@@ -2761,7 +2761,7 @@ static void emit_jvm_stmt(STMT_t *s, int stmt_idx) {
              * If expr returns null (failure), skip output and go to :F */
             char desc[512];
             snprintf(desc, sizeof desc, "%s/sno_stdout Ljava/io/PrintStream;", classname);
-            if (!s->replacement || s->replacement->kind == E_NULV) {
+            if (!s->replacement || s->replacement->kind == E_NUL) {
                 JI("getstatic", desc);
                 JI("ldc", "\"\"");
                 JI("invokevirtual", "java/io/PrintStream/println(Ljava/lang/String;)V");
@@ -2806,7 +2806,7 @@ static void emit_jvm_stmt(STMT_t *s, int stmt_idx) {
             char kwesc[128];
             escape_string(subj, kwesc, sizeof kwesc);
             JI("ldc", kwesc);
-            if (!s->replacement || s->replacement->kind == E_NULV) {
+            if (!s->replacement || s->replacement->kind == E_NUL) {
                 JI("ldc", "\"\"");
             } else {
                 emit_jvm_expr(s->replacement);
@@ -2821,7 +2821,7 @@ static void emit_jvm_stmt(STMT_t *s, int stmt_idx) {
 
             /* Check if RHS is INPUT — may return null (EOF = failure) */
             int rhs_is_input = (s->replacement &&
-                                s->replacement->kind == E_VART &&
+                                s->replacement->kind == E_VAR &&
                                 s->replacement->sval &&
                                 strcasecmp(s->replacement->sval, "INPUT") == 0);
 
@@ -2854,7 +2854,7 @@ static void emit_jvm_stmt(STMT_t *s, int stmt_idx) {
                 JI("invokestatic", vpdesc2);
             } else {
                 /* General VAR = expr: evaluate RHS, check for null (= failure) */
-                if (!s->replacement || s->replacement->kind == E_NULV) {
+                if (!s->replacement || s->replacement->kind == E_NUL) {
                     /* null/empty assignment — always succeeds, store "" */
                     JI("ldc", nameesc);
                     JI("ldc", "\"\"");
@@ -2903,7 +2903,7 @@ static void emit_jvm_stmt(STMT_t *s, int stmt_idx) {
          * For output assigns or null/empty RHS (no vnfail block), emit :S/:uncond here. */
         if (!is_output) {
             /* Only emit if we did NOT enter the vnfail block (i.e. replacement was null/empty) */
-            int has_rhs = (s->replacement && s->replacement->kind != E_NULV);
+            int has_rhs = (s->replacement && s->replacement->kind != E_NUL);
             if (!has_rhs) {
                 if (s->go && s->go->uncond && s->go->uncond[0]) {
                     emit_jvm_goto(s->go->uncond);
@@ -2924,7 +2924,7 @@ static void emit_jvm_stmt(STMT_t *s, int stmt_idx) {
                                ? s->subject->children[1] : s->subject->children[0];
         emit_jvm_expr(indr_operand);   /* → String: the variable name */
         /* Evaluate RHS value */
-        if (!s->replacement || s->replacement->kind == E_NULV) {
+        if (!s->replacement || s->replacement->kind == E_NUL) {
             JI("ldc", "\"\"");
         } else {
             emit_jvm_expr(s->replacement);
@@ -3101,7 +3101,7 @@ static void emit_jvm_stmt(STMT_t *s, int stmt_idx) {
             JI("invokevirtual", "java/lang/StringBuilder/toString()Ljava/lang/String;");
             /* store back into subject variable */
             if (s->subject && s->subject->sval && s->subject->sval[0] &&
-                s->subject->kind == E_VART) {
+                s->subject->kind == E_VAR) {
                 const char *vname = s->subject->sval;
                 char nameesc[256];
                 {

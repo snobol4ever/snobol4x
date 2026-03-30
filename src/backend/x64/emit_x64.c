@@ -12,7 +12,7 @@
  * Implemented nodes (matching hand-written oracles):
  *   LIT (E_QLIT)     — inline repe cmpsb or single-byte cmp
  *   SEQ (E_SEQ)      — recursive left/right wiring
- *   ALT (E_OR)       — cursor-save, left-fail-try-right wiring
+ *   ALT (E_ALT)       — cursor-save, left-fail-try-right wiring
  *   POS              — cursor == n check
  *   RPOS             — cursor == subj_len - n check
  *   ARBNO            — flat .bss cursor stack, zero-advance guard
@@ -882,7 +882,7 @@ static void emit_seq(EXPR_t *left, EXPR_t *right,
 }
 
 /* -----------------------------------------------------------------------
- * emit_alt — ALT (E_OR)
+ * emit_alt — ALT (E_ALT)
  *
  * Wiring (oracle alt_first.s, Proebsting §4.5 ifstmt):
  *   α → save cursor_at_alt; → left_α
@@ -1082,7 +1082,7 @@ static void emit_break(const char *charset, int cslen,
 }
 
 /* -----------------------------------------------------------------------
- * Variable-charset emitters — SPAN/BREAK/ANY/NOTANY with E_VART arg
+ * Variable-charset emitters — SPAN/BREAK/ANY/NOTANY with E_VAR arg
  * ----------------------------------------------------------------------- */
 
 static void emit_span_var(const char *varlab,
@@ -1269,7 +1269,7 @@ static void emit_arb(const char *α, const char *β,
 }
 
 /* -----------------------------------------------------------------------
- * emit_imm — E_DOL (expr $ var) — immediate assignment
+ * emit_imm — E_CAPT_IMM (expr $ var) — immediate assignment
  *
  * Byrd Box (v311.sil ENMI, Proebsting §4.3):
  *   dol_α:    save cursor → entry_cursor; goto child_α
@@ -1386,22 +1386,22 @@ static void emit_pat_node(EXPR_t *pat,
         break;
     }
 
-    case E_OR: {
+    case E_ALT: {
         int _nc = pat->nchildren;
         if (_nc == 0) break;
         if (_nc == 1) { emit_pat_node(pat->children[0], α, β, γ, ω, cursor, subj, subj_len, depth); break; }
         if (_nc == 2) { emit_alt(pat->children[0], pat->children[1], α, β, γ, ω, cursor, subj, subj_len, depth); break; }
         /* >2: right-fold via shared helper */
         { EXPR_t **_fn, **_fk;
-          EXPR_t *_root = ir_nary_right_fold(pat, E_OR, &_fn, &_fk);
+          EXPR_t *_root = ir_nary_right_fold(pat, E_ALT, &_fn, &_fk);
           emit_pat_node(_root, α, β, γ, ω, cursor, subj, subj_len, depth);
           ir_nary_right_fold_free(_fn, _fk, _nc - 1); }
         break;
     }
 
-    case E_VART: {
+    case E_VAR: {
         /* Variable reference in pattern context — named pattern call site.
-         * BUT: zero-arg builtins (REM, ARB, FAIL) appear as E_VART with no
+         * BUT: zero-arg builtins (REM, ARB, FAIL) appear as E_VAR with no
          * parens. Intercept them before the named-pattern lookup. */
         const char *varname = pat->sval ? pat->sval : "";
         if (strcasecmp(varname, "REM") == 0) {
@@ -1426,7 +1426,7 @@ static void emit_pat_node(EXPR_t *pat,
             /* Fall back to plain-string variable registry (PAT = 'literal') */
             const StrVar *sv = str_var_lookup(varname);
             if (sv && sv->sval) {
-                A("\n; E_VART *%s → inline LIT '%s'\n", varname, sv->sval);
+                A("\n; E_VAR *%s → inline LIT '%s'\n", varname, sv->sval);
                 emit_lit(sv->sval, (int)strlen(sv->sval),
                              α, β, γ, ω,
                              cursor, subj, subj_len);
@@ -1452,7 +1452,7 @@ static void emit_pat_node(EXPR_t *pat,
                 var_register(dp_slot);
                 var_register(saved_slot);
                 const char *vlab = str_intern(varname);
-                A("\n; E_VART %s → CALL_PAT (runtime DT_P/DT_S dispatch)\n", varname);
+                A("\n; E_VAR %s → CALL_PAT (runtime DT_P/DT_S dispatch)\n", varname);
                 asmL(α);
                 A("    lea     rdi, [rel %s]\n", vlab);
                 A("    call    stmt_get\n");
@@ -1479,9 +1479,9 @@ static void emit_pat_node(EXPR_t *pat,
         break;
     }
 
-    case E_DOL: {
+    case E_CAPT_IMM: {
         /* expr $ var — immediate assignment.
-         * left = sub-pattern, right = capture variable (E_VART). */
+         * left = sub-pattern, right = capture variable (E_VAR). */
         const char *varname = (pat->children[1] && pat->children[1]->sval)
                               ? pat->children[1]->sval : "cap";
         emit_imm(pat->children[0], varname,
@@ -1490,7 +1490,7 @@ static void emit_pat_node(EXPR_t *pat,
         break;
     }
 
-    case E_NAM: {
+    case E_CAPT_COND: {
         /* expr . var — conditional assignment. */
         const char *varname = (pat->children[1] && pat->children[1]->sval)
                               ? pat->children[1]->sval : "cap";
@@ -1503,7 +1503,7 @@ static void emit_pat_node(EXPR_t *pat,
     case E_STAR:    /* *VAR — deferred pattern ref (value context split in B-280) */
     case E_INDR: {
         /* *VAR — indirect pattern reference.
-         * pat->children[0] is E_VART holding the variable name.
+         * pat->children[0] is E_VAR holding the variable name.
          * Look it up in the named-pattern registry and call it.
          * If not a named pattern, try str_vars for plain-string vars
          * (e.g. PAT = 'hello' → *PAT emitted as inline LIT). */
@@ -1558,7 +1558,7 @@ static void emit_pat_node(EXPR_t *pat,
     case E_FNC:
         if (pat->sval && strcasecmp(pat->sval, "POS") == 0 && pat->nchildren == 1) {
             EXPR_t *arg = pat->children[0];
-            if (arg->kind == E_VART && arg->sval) {
+            if (arg->kind == E_VAR && arg->sval) {
                 const char *varlab = str_intern(arg->sval);
                 emit_pos_var(varlab, α, β, γ, ω, cursor);
             } else {
@@ -1567,7 +1567,7 @@ static void emit_pat_node(EXPR_t *pat,
             }
         } else if (pat->sval && strcasecmp(pat->sval, "RPOS") == 0 && pat->nchildren == 1) {
             EXPR_t *arg = pat->children[0];
-            if (arg->kind == E_VART && arg->sval) {
+            if (arg->kind == E_VAR && arg->sval) {
                 const char *varlab = str_intern(arg->sval);
                 emit_rpos_var(varlab, α, β, γ, ω, cursor, subj_len);
             } else {
@@ -1580,7 +1580,7 @@ static void emit_pat_node(EXPR_t *pat,
                            cursor, subj, subj_len, depth);
         } else if (pat->sval && strcasecmp(pat->sval, "ANY") == 0 && pat->nchildren == 1) {
             EXPR_t *arg = pat->children[0];
-            if (arg->kind == E_VART && arg->sval) {
+            if (arg->kind == E_VAR && arg->sval) {
                 emit_any_var(str_intern(arg->sval), α, β, γ, ω, cursor, subj, subj_len);
             } else if (arg->kind == E_QLIT && arg->sval) {
                 const char *cs = arg->sval;
@@ -1626,7 +1626,7 @@ static void emit_pat_node(EXPR_t *pat,
             }
         } else if (pat->sval && strcasecmp(pat->sval, "NOTANY") == 0 && pat->nchildren == 1) {
             EXPR_t *arg = pat->children[0];
-            if (arg->kind == E_VART && arg->sval) {
+            if (arg->kind == E_VAR && arg->sval) {
                 emit_notany_var(str_intern(arg->sval), α, β, γ, ω, cursor, subj, subj_len);
             } else {
                 const char *cs = (arg->kind == E_QLIT && arg->sval) ? arg->sval : "";
@@ -1635,7 +1635,7 @@ static void emit_pat_node(EXPR_t *pat,
             }
         } else if (pat->sval && strcasecmp(pat->sval, "SPAN") == 0 && pat->nchildren == 1) {
             EXPR_t *arg = pat->children[0];
-            if (arg->kind == E_VART && arg->sval) {
+            if (arg->kind == E_VAR && arg->sval) {
                 emit_span_var(str_intern(arg->sval), α, β, γ, ω, cursor, subj, subj_len);
             } else if (arg->kind == E_QLIT && arg->sval) {
                 emit_span(arg->sval, (int)strlen(arg->sval), α, β, γ, ω, cursor, subj, subj_len);
@@ -1660,7 +1660,7 @@ static void emit_pat_node(EXPR_t *pat,
             }
         } else if (pat->sval && strcasecmp(pat->sval, "BREAK") == 0 && pat->nchildren == 1) {
             EXPR_t *arg = pat->children[0];
-            if (arg->kind == E_VART && arg->sval) {
+            if (arg->kind == E_VAR && arg->sval) {
                 emit_break_var(str_intern(arg->sval), α, β, γ, ω, cursor, subj, subj_len);
             } else if (arg->kind == E_QLIT && arg->sval) {
                 emit_break(arg->sval, (int)strlen(arg->sval), α, β, γ, ω, cursor, subj, subj_len);
@@ -1691,7 +1691,7 @@ static void emit_pat_node(EXPR_t *pat,
             }
         } else if (pat->sval && strcasecmp(pat->sval, "BREAKX") == 0 && pat->nchildren == 1) {
             EXPR_t *arg = pat->children[0];
-            if (arg->kind == E_VART && arg->sval) {
+            if (arg->kind == E_VAR && arg->sval) {
                 emit_breakx_var(str_intern(arg->sval), α, β, γ, ω, cursor, subj, subj_len);
             } else {
                 const char *cs = (arg->kind == E_QLIT && arg->sval) ? arg->sval : "";
@@ -1759,13 +1759,13 @@ static void emit_pat_node(EXPR_t *pat,
         }
         break;
 
-    case E_ATP: {
+    case E_CAPT_CUR: {
         /* @VAR — cursor-position capture: store cursor as integer into VAR.
          *
          * Two forms:
-         *   Unary:  @x     — nchildren==1, children[0] = E_VART("x")
+         *   Unary:  @x     — nchildren==1, children[0] = E_VAR("x")
          *                    Always succeeds. AT_α stores cursor into x.
-         *   Binary: pat @x — nchildren==2, children[0]=sub-pat, children[1]=E_VART("x")
+         *   Binary: pat @x — nchildren==2, children[0]=sub-pat, children[1]=E_VAR("x")
          *                    Wire child; on child γ store cursor into x, then outer γ.
          *                    On child ω propagate ω (no capture).
          */
@@ -2102,7 +2102,7 @@ static const NamedPat *named_pat_lookup_fn(const char *varname) {
 }
 
 /* -----------------------------------------------------------------------
- * emit_named_ref — call site for a named pattern reference (E_VART)
+ * emit_named_ref — call site for a named pattern reference (E_VAR)
  *
  * Emits:
  *   α:  store γ → pat_NAME_ret_γ; store ω → pat_NAME_ret_ω
@@ -2382,10 +2382,10 @@ static void emit_null_program(void) {
 
 /* -----------------------------------------------------------------------
  * expr_is_pattern_expr — return 1 if expression tree is a genuine
- * pattern-building expression (contains E_FNC, E_OR, or E_SEQ with
+ * pattern-building expression (contains E_FNC, E_ALT, or E_SEQ with
  * at least one non-literal/non-value child).
- * Pure value assignments (E_VART, E_QLIT, E_ILIT alone, or
- * E_CONCAT/E_OR where ALL leaves are literals or variable refs with no
+ * Pure value assignments (E_VAR, E_QLIT, E_ILIT alone, or
+ * E_CONCAT/E_ALT where ALL leaves are literals or variable refs with no
  * pattern-function calls) are NOT named patterns in program context. */
 static int expr_has_pattern_fn(EXPR_t *e) {
     if (!e) return 0;
@@ -2402,13 +2402,13 @@ static int expr_has_pattern_fn(EXPR_t *e) {
                 if (strcasecmp(e->sval, pat_fns[i]) == 0) return 1;
         return 0;
     }
-    /* E_NAM (. capture) and E_DOL ($ capture) wrap a pattern child */
-    if (e->kind == E_NAM || e->kind == E_DOL) return 1;
-    /* E_ATP (@ cursor capture) is always a pattern element:
+    /* E_CAPT_COND (. capture) and E_CAPT_IMM ($ capture) wrap a pattern child */
+    if (e->kind == E_CAPT_COND || e->kind == E_CAPT_IMM) return 1;
+    /* E_CAPT_CUR (@ cursor capture) is always a pattern element:
      * unary @x or binary pat @x — both produce pattern values.
      * B-276: M-BEAUTY-OMEGA fix — without this, TZ = LE(xTrace,0) pat @txOfs
      * was not recognised as a pattern expression and fell into OPSYN dispatch. */
-    if (e->kind == E_ATP) return 1;
+    if (e->kind == E_CAPT_CUR) return 1;
     /* E_STAR (*VAR deferred pattern ref) is always a pattern-valued expression */
     if (e->kind == E_STAR) return 1;
     for (int i = 0; i < e->nchildren; i++)
@@ -2417,20 +2417,20 @@ static int expr_has_pattern_fn(EXPR_t *e) {
 }
 static int expr_is_pattern_expr(EXPR_t *e) {
     if (!e) return 0;
-    /* E_OR (alternation) is a named-pattern expression only when at least one
+    /* E_ALT (alternation) is a named-pattern expression only when at least one
      * child contains a compile-time pattern function (ANY, LEN, etc.).
      * If both sides are pure value expressions (e.g. upr('h') | lwr('H')),
      * the result is a runtime pattern VALUE — treat as value assignment so
      * the match 'subj' p uses XDSAR (runtime deref), not a broken static box.
      * Fix: B-263 icase. */
-    if (e->kind == E_OR) return expr_has_pattern_fn(e);
+    if (e->kind == E_ALT) return expr_has_pattern_fn(e);
     /* E_SEQ = goal-directed sequence — always a pattern expression.
      * E_CONCAT = pure value concat — never a pattern expression. */
     if (e->kind == E_SEQ) return 1;
     if (e->kind == E_CONCAT) return 0;
-    /* E_ATP (@var cursor capture) is always a pattern expression:
+    /* E_CAPT_CUR (@var cursor capture) is always a pattern expression:
      * unary @x or binary pat @x — both yield a pattern value. */
-    if (e->kind == E_ATP) return 1;
+    if (e->kind == E_CAPT_CUR) return 1;
     /* Any function call is a pattern expression */
     return expr_has_pattern_fn(e);
 }
@@ -2595,11 +2595,11 @@ static void scan_named_patterns(Program *prog) {
                     /* Default body_label = fname; overridden by 2nd arg if present */
                     snprintf(e->body_label, sizeof e->body_label, "%s", fname);
                     /* Two-arg DEFINE('fname(args)', .entryLabel):
-                     * args[1] is the explicit entry label (E_VART with leading '.' or plain name) */
+                     * args[1] is the explicit entry label (E_VAR with leading '.' or plain name) */
                     if (s->subject->nchildren >= 2 && s->subject->children[1]) {
                         EXPR_t *a1 = s->subject->children[1];
                         const char *entry = NULL;
-                        if (a1->kind == E_VART && a1->sval) entry = a1->sval;
+                        if (a1->kind == E_VAR && a1->sval) entry = a1->sval;
                         else if (a1->kind == E_QLIT && a1->sval) entry = a1->sval;
                         if (entry) {
                             /* Strip leading '.' if present (SNOBOL4 label reference) */
@@ -2626,7 +2626,7 @@ static void scan_named_patterns(Program *prog) {
          * The runtime dispatch path (stmt_match_descr) cannot call back into
          * compiled ASM SNOBOL4 user functions (nPush/nPop/nInc etc.), so named-pattern
          * compilation is essential for patterns containing semantic action callbacks. */
-        if (s->subject && s->subject->kind == E_VART &&
+        if (s->subject && s->subject->kind == E_VAR &&
             s->has_eq && s->replacement && !s->pattern) {
             if (expr_is_pattern_expr(s->replacement)) {
                 named_pat_register(s->subject->sval, s->replacement);
@@ -2812,7 +2812,7 @@ static void emit_pattern(STMT_t *stmt) {
 
 static void scan_expr_for_caps(EXPR_t *e) {
     if (!e) return;
-    if (e->kind == E_DOL || e->kind == E_NAM) {
+    if (e->kind == E_CAPT_IMM || e->kind == E_CAPT_COND) {
         const char *vn = (e->children[1] && e->children[1]->sval) ? e->children[1]->sval : "cap";
         cap_var_register(vn);
     }
@@ -3057,7 +3057,7 @@ static void flt_emit(void) {
 /* ---- expression value into DESCR_t on stack ----
  * Emits code to evaluate expr and store DESCR_t at [rbp+off].
  * Returns 1 if value might fail (needs is_fail check), 0 if always succeeds.
- * Simple cases only: E_QLIT, E_ILIT, E_VART. Complex exprs use stmt_apply. */
+ * Simple cases only: E_QLIT, E_ILIT, E_VAR. Complex exprs use stmt_apply. */
 static int emit_expr(EXPR_t *e, int rbp_off) {
     if (!e) {
         /* null expr → NULVCL (DT_SNUL=1, ptr=0) */
@@ -3102,7 +3102,7 @@ static int emit_expr(EXPR_t *e, int rbp_off) {
         }
         return 0;
     }
-    case E_VART: {
+    case E_VAR: {
         const char *lab = str_intern(e->sval);
         if (rbp_off == -16) {
             A("    GET_VAR     %s\n", lab);
@@ -3273,7 +3273,7 @@ static int emit_expr(EXPR_t *e, int rbp_off) {
             A("    GET_VAR     %s\n", fnlab);
             /* NRETURN deref: if retval is a NAME string (e.g. Pop = .dummy),
              * resolve it to the variable's value. If retval is already a typed
-             * value (e.g. Top = .value($'@S') resolved by E_NAM+E_FNC fix),
+             * value (e.g. Top = .value($'@S') resolved by E_CAPT_COND+E_FNC fix),
              * stmt_nreturn_deref passes it through unchanged. */
             int emit_nret = ufn->uses_nreturn || nreturn_fns_has(fnlab);
             if (emit_nret) {
@@ -3351,7 +3351,7 @@ static int emit_expr(EXPR_t *e, int rbp_off) {
                 A("    CALL1_STR   %s, %s\n", fnlab, alab);
                 return 1;
             }
-            if (arg0->kind == E_VART) {
+            if (arg0->kind == E_VAR) {
                 const char *alab = str_intern(arg0->sval);
                 A("    CALL1_VAR   %s, %s\n", fnlab, alab);
                 return 1;
@@ -3365,12 +3365,12 @@ static int emit_expr(EXPR_t *e, int rbp_off) {
         if (is_concat_or_alt && na == 2 && e->children[0] &&
             (rbp_off == -32 || rbp_off == -16)) {
             EXPR_t *a0 = e->children[0];
-            EXPR_t *a1 = e->children[1];  /* may be NULL → treated as E_NULV */
+            EXPR_t *a1 = e->children[1];  /* may be NULL → treated as E_NUL */
             int a0s = (a0->kind == E_QLIT);
-            int a0v = (a0->kind == E_VART);
+            int a0v = (a0->kind == E_VAR);
             int a1s = (a1 && a1->kind == E_QLIT);
-            int a1v = (a1 && a1->kind == E_VART);
-            int a1n = (!a1 || a1->kind == E_NULV);
+            int a1v = (a1 && a1->kind == E_VAR);
+            int a1n = (!a1 || a1->kind == E_NUL);
             int a1i = (a1 && a1->kind == E_ILIT);
             int r16  = (rbp_off == -16);
             const char *m_ss = r16 ? "CONC2_16  " : "CONC2   ";
@@ -3402,7 +3402,7 @@ static int emit_expr(EXPR_t *e, int rbp_off) {
                 A("    %s %s, %s\n", m_vn, fnlab, str_intern(a0->sval));
                 return 1;
             }
-            int a0n = (a0->kind == E_NULV);
+            int a0n = (a0->kind == E_NUL);
             if (a0n && a1n && !r16) {
                 A("    CONC2_NN %s\n", fnlab);
                 return 1;
@@ -3414,7 +3414,7 @@ static int emit_expr(EXPR_t *e, int rbp_off) {
             }
             /* Integer-literal fast paths (rbp_off==-32 only) */
             int a0i = (a0->kind == E_ILIT);
-            int a0nv = (a0->kind == E_NULV);
+            int a0nv = (a0->kind == E_NUL);
             if (!r16) {
                 if (a0v && a1i) {
                     A("    CONC2_VI %s, %s, %ld\n", fnlab,
@@ -3485,7 +3485,7 @@ static int emit_expr(EXPR_t *e, int rbp_off) {
             A("    sub     rsp, %d\n", arr_bytes);
             for (int ai = 0; ai < na && e->children[ai]; ai++) {
                 /* B-286: always use -32 for arg staging. Using the outer rbp_off
-                 * (e.g. -16) causes E_VART to emit GET_VAR->rbp-16/8, but
+                 * (e.g. -16) causes E_VAR to emit GET_VAR->rbp-16/8, but
                  * STORE_ARG32 reads from rbp-32/24 -- stale data. The arg
                  * staging slot is always rbp-32/24 regardless of outer context. */
                 emit_expr(e->children[ai], -32);
@@ -3572,11 +3572,11 @@ static int emit_expr(EXPR_t *e, int rbp_off) {
         return 1;
     }
 
-    case E_OR:
+    case E_ALT:
     case E_CONCAT: {  /* M-G4-SPLIT-SEQ-CONCAT: value context — string concat */
         /* Unary | in value context — OPSYN dispatch: opsyn('|',.size,1) → APPLY_fn("|",arg,1).
-         * Parser creates E_OR with 1 child for prefix |expr. */
-        if (e->kind == E_OR && e->nchildren == 1 && e->children[0]) {
+         * Parser creates E_ALT with 1 child for prefix |expr. */
+        if (e->kind == E_ALT && e->nchildren == 1 && e->children[0]) {
             const char *fnlab = str_intern("|");
             A("    sub     rsp, 16\n");
             emit_expr(e->children[0], -32);
@@ -3594,7 +3594,7 @@ static int emit_expr(EXPR_t *e, int rbp_off) {
         /*
          * n-ary E_CONCAT (string concat): inline left-fold avoids slot aliasing.
          * Each step: push accumulator, eval next child, pop+call stmt_concat.
-         * n-ary E_OR (pattern ALT): right-fold into binary nodes (unchanged).
+         * n-ary E_ALT (pattern ALT): right-fold into binary nodes (unchanged).
          */
         if (e->nchildren > 2 && e->kind == E_CONCAT) {
             int _nc = e->nchildren;
@@ -3614,7 +3614,7 @@ static int emit_expr(EXPR_t *e, int rbp_off) {
             return 1;
         }
         if (e->nchildren > 2) {
-            /* E_OR right-fold via shared helper */
+            /* E_ALT right-fold via shared helper */
             int _nc = e->nchildren;
             EXPR_t **_fn, **_fk;
             EXPR_t *_r = ir_nary_right_fold(e, e->kind, &_fn, &_fk);
@@ -3623,19 +3623,19 @@ static int emit_expr(EXPR_t *e, int rbp_off) {
             return _ret;
         }
         /* E_CONCAT = string CAT (value context): call stmt_concat directly.
-         * E_OR     = pattern ALT (alternation):  call stmt_apply("ALT").
+         * E_ALT     = pattern ALT (alternation):  call stmt_apply("ALT").
          *
          * Naming: E_CONCAT for string concatenation, E_SEQ/E_ALT for patterns.
          * E_CONCAT in emit_expr is always value-context — pattern-context
          * sequences use E_SEQ and are handled by emit_pat_node, not here. */
 
         int left_is_str  = e->children[0]  && e->children[0]->kind  == E_QLIT;
-        int left_is_var  = e->children[0]  && e->children[0]->kind  == E_VART;
+        int left_is_var  = e->children[0]  && e->children[0]->kind  == E_VAR;
         int right_is_nul = !e->children[1] ||
-                            e->children[1]->kind == E_NULV ||
+                            e->children[1]->kind == E_NUL ||
                            (e->children[1]->kind == E_ILIT && e->children[1]->ival == 0);
         int right_is_str = e->children[1] && e->children[1]->kind == E_QLIT;
-        int right_is_var = e->children[1] && e->children[1]->kind == E_VART;
+        int right_is_var = e->children[1] && e->children[1]->kind == E_VAR;
 
         if (e->kind == E_CONCAT) {
             /* CAT fast paths — CAT2_* macros call stmt_concat(a,b) */
@@ -3689,7 +3689,7 @@ static int emit_expr(EXPR_t *e, int rbp_off) {
             return 1;
         }
 
-        /* E_OR — pattern ALT via stmt_apply("ALT") — unchanged */
+        /* E_ALT — pattern ALT via stmt_apply("ALT") — unchanged */
         const char *opname = "ALT";
         const char *mac_ss = "ALT2    ";
         const char *mac_sn = "ALT2_N  ";
@@ -3791,7 +3791,7 @@ static int emit_expr(EXPR_t *e, int rbp_off) {
     case E_SUB:
     case E_MPY:
     case E_DIV:
-    case E_EXPOP: {
+    case E_POW: {
         const char *fn = (e->kind == E_ADD)   ? "add"       :
                          (e->kind == E_SUB)   ? "sub"       :
                          (e->kind == E_MPY)   ? "mul"       :
@@ -3800,12 +3800,12 @@ static int emit_expr(EXPR_t *e, int rbp_off) {
         const char *fnlab = str_intern(fn);
         EXPR_t *l = e->children[0], *r = e->children[1];
         int ls = (l && l->kind == E_QLIT);
-        int lv = (l && l->kind == E_VART);
+        int lv = (l && l->kind == E_VAR);
         int li = (l && l->kind == E_ILIT);
         int rs = (r && r->kind == E_QLIT);
-        int rv = (r && r->kind == E_VART);
+        int rv = (r && r->kind == E_VAR);
         int ri = (r && r->kind == E_ILIT);
-        int rn = (!r || r->kind == E_NULV);
+        int rn = (!r || r->kind == E_NUL);
         /* Fast paths when both args are atoms (same macros used for CONC2/ALT2) */
         if (rbp_off == -32) {
             if (lv && rv) {
@@ -3860,7 +3860,7 @@ static int emit_expr(EXPR_t *e, int rbp_off) {
         return 1;
     }
     /* ---- unary minus ---- */
-    case E_MNS: {
+    case E_NEG: {
         const char *fnlab = str_intern("neg");
         EXPR_t *operand = e->children[0];   /* unop() puts operand in left */
         if (!operand) goto fallback;
@@ -3869,7 +3869,7 @@ static int emit_expr(EXPR_t *e, int rbp_off) {
                 A("    CALL1_INT   %s, %ld\n", fnlab, (long)operand->ival);
                 return 1;
             }
-            if (operand->kind == E_VART) {
+            if (operand->kind == E_VAR) {
                 A("    CALL1_VAR   %s, %s\n", fnlab,
                   str_intern(operand->sval));
                 return 1;
@@ -3895,8 +3895,8 @@ static int emit_expr(EXPR_t *e, int rbp_off) {
         return 1;
     }
 
-    /* ---- E_ATP: unary @VAR (cursor capture) or binary pat@VAR ---- */
-    case E_ATP: {
+    /* ---- E_CAPT_CUR: unary @VAR (cursor capture) or binary pat@VAR ---- */
+    case E_CAPT_CUR: {
         if (e->nchildren >= 2 && e->children[0] && e->children[1]) {
             /* Binary pat @VAR in value context — SNOBOL4 pattern concatenation.
              * Semantics: evaluate LHS (a pattern or value), capture cursor into VAR
@@ -3912,11 +3912,11 @@ static int emit_expr(EXPR_t *e, int rbp_off) {
              *     pattern when LHS is DT_P.
              *
              * Note: @VAR cursor-capture in SNOBOL4 pattern context is handled by the
-             * pattern emitter (emit_pat_node E_ATP).  Here in value-expression context
+             * pattern emitter (emit_pat_node E_CAPT_CUR).  Here in value-expression context
              * we produce the equivalent runtime effect via stmt_at_capture + result passthrough.
              */
             EXPR_t *lhs = e->children[0];
-            EXPR_t *rhs = e->children[1];  /* E_VART("varname") */
+            EXPR_t *rhs = e->children[1];  /* E_VAR("varname") */
             const char *varname = (rhs && rhs->sval) ? rhs->sval : "";
             const char *varlab  = str_intern(varname);
 
@@ -3967,15 +3967,15 @@ static int emit_expr(EXPR_t *e, int rbp_off) {
     }
 
     /* ---- Unary | — OPSYN dispatch via APPLY_fn("|", args, 1) ---- */
-    /* Handled inside E_OR above when nchildren == 1 */
+    /* Handled inside E_ALT above when nchildren == 1 */
 
-    /* ---- E_NAM in value context: .VAR yields the name as a string value ---- */
-    case E_NAM: {
+    /* ---- E_CAPT_COND in value context: .VAR yields the name as a string value ---- */
+    case E_CAPT_COND: {
         /* .dupl → STRVAL("dupl"). Used by OPSYN(.facto,'fact'), APPLY(.eq,…),
          * NRETURN (.a), and any other place a name-value is passed as an arg.
-         * In value (non-pattern) context E_NAM(child=E_VART("varname")) → name string.
+         * In value (non-pattern) context E_CAPT_COND(child=E_VAR("varname")) → name string.
          *
-         * BINARY E_NAM: expr . var → pattern with conditional capture.
+         * BINARY E_CAPT_COND: expr . var → pattern with conditional capture.
          * e.g. 'epsilon . *PushCounter()' in nPush_ body.
          * Emit as: stmt_concat(eval(children[0]), DT_N(children[1])).
          * stmt_concat detects DT_N right operand and builds pat_assign_cond.
@@ -3989,7 +3989,7 @@ static int emit_expr(EXPR_t *e, int rbp_off) {
             /* Evaluate the function call — result lands in rbp_off slot */
             return emit_expr(child, rbp_off);
         }
-        /* Binary E_NAM: expr . var — build a conditional-capture pattern at runtime */
+        /* Binary E_CAPT_COND: expr . var — build a conditional-capture pattern at runtime */
         if (e->nchildren >= 2 && e->children[1]) {
             EXPR_t *right = e->children[1];
             /* Emit left operand into [rbp-32], push it */
@@ -3997,10 +3997,10 @@ static int emit_expr(EXPR_t *e, int rbp_off) {
             A("    push    rdx\n");
             A("    push    rax\n");
             /* Emit right operand (the capture var) as DT_N into [rbp-32] */
-            emit_expr(right, -32);   /* for E_STAR/E_VART this gives a name or value */
-            /* Force right to DT_N if it's E_VART or E_STAR pointing to a varname */
+            emit_expr(right, -32);   /* for E_STAR/E_VAR this gives a name or value */
+            /* Force right to DT_N if it's E_VAR or E_STAR pointing to a varname */
             const char *rname = NULL;
-            if (right->kind == E_VART && right->sval) rname = right->sval;
+            if (right->kind == E_VAR && right->sval) rname = right->sval;
             else if (right->kind == E_STAR && right->nchildren > 0
                      && right->children[0] && right->children[0]->sval)
                 rname = right->children[0]->sval;
@@ -4255,7 +4255,7 @@ static void emit_program(Program *prog) {
 
     /* Pass 1: collect all labels + string literals (recursive expr walk) */
     /* Recursive helper: intern all string/var names reachable from an expr */
-    #define WALK_EXPR(root) do {         EXPR_t *_stk[256]; int _top = 0;         if (root) _stk[_top++] = (root);         while (_top > 0) {             EXPR_t *_e = _stk[--_top];             if (!_e) continue;             if (_e->kind == E_QLIT && _e->sval) str_intern(_e->sval);             if (_e->kind == E_VART && _e->sval) str_intern(_e->sval);             if (_e->kind == E_KW   && _e->sval) str_intern(_e->sval);             if (_e->kind == E_FNC  && _e->sval) str_intern(_e->sval);             for (int _i = 0; _i < _e->nchildren && _top < 254; _i++)                 if (_e->children[_i]) _stk[_top++] = _e->children[_i];         }     } while(0)
+    #define WALK_EXPR(root) do {         EXPR_t *_stk[256]; int _top = 0;         if (root) _stk[_top++] = (root);         while (_top > 0) {             EXPR_t *_e = _stk[--_top];             if (!_e) continue;             if (_e->kind == E_QLIT && _e->sval) str_intern(_e->sval);             if (_e->kind == E_VAR && _e->sval) str_intern(_e->sval);             if (_e->kind == E_KW   && _e->sval) str_intern(_e->sval);             if (_e->kind == E_FNC  && _e->sval) str_intern(_e->sval);             for (int _i = 0; _i < _e->nchildren && _top < 254; _i++)                 if (_e->children[_i]) _stk[_top++] = _e->children[_i];         }     } while(0)
 
     for (STMT_t *s = prog->head; s; s = s->next) {
         if (s->label) { label_register(s->label); str_intern(s->label); }
@@ -4289,7 +4289,7 @@ static void emit_program(Program *prog) {
 
     /* Pass 2: collect .bss slots for pattern stmts (named-pat ret_ pointers).
      * In program mode, skip entries whose replacement is a plain value
-     * (E_QLIT/E_ILIT/E_VART) — those are variable assignments, not patterns.
+     * (E_QLIT/E_ILIT/E_VAR) — those are variable assignments, not patterns.
      *
      * ret_γ/ret_ω for named patterns and fn tmp slots go into per-box DATA.
      * arg_slots and save_slots remain in .bss (call-site communication). */
@@ -4347,8 +4347,8 @@ static void emit_program(Program *prog) {
         }
         if (named_pats[i].pat) {
             EKind rk = named_pats[i].pat->kind;
-            if (rk == E_QLIT || rk == E_ILIT || rk == E_FLIT || rk == E_NULV ||
-                rk == E_VART || rk == E_KW)
+            if (rk == E_QLIT || rk == E_ILIT || rk == E_FLIT || rk == E_NUL ||
+                rk == E_VAR || rk == E_KW)
                 continue; /* plain value assignment — not a real named pattern */
         }
         /* Non-fn named pattern: ret_γ/ret_ω go into per-box DATA (M-T2-INVOKE).
@@ -4495,8 +4495,8 @@ static void emit_program(Program *prog) {
         }
         /* also dry-run named pattern bodies */
         for (int i = 0; i < named_pat_count; i++) {
-            EKind rk = named_pats[i].pat ? named_pats[i].pat->kind : E_NULV;
-            if (rk==E_QLIT||rk==E_ILIT||rk==E_FLIT||rk==E_NULV||rk==E_VART||rk==E_KW) continue;
+            EKind rk = named_pats[i].pat ? named_pats[i].pat->kind : E_NUL;
+            if (rk==E_QLIT||rk==E_ILIT||rk==E_FLIT||rk==E_NUL||rk==E_VAR||rk==E_KW) continue;
             emit_named_def(&named_pats[i], "cursor","subject_data","subject_len_val");
         }
         fclose(devnull);
@@ -4664,12 +4664,12 @@ static void emit_program(Program *prog) {
                 continue;
             }
             /* Evaluate subject (the LHS or expression).
-             * Skip for indirect-assignment ($X=val): has_eq + E_INDR/E_DOL subject.
+             * Skip for indirect-assignment ($X=val): has_eq + E_INDR/E_CAPT_IMM subject.
              * Also skip for plain assignment (has_eq + VART/KW): no need to load LHS.
              * The indirect handler below evaluates the inner name expression itself. */
             if (s->subject &&
-                !(s->has_eq && (s->subject->kind == E_INDR || s->subject->kind == E_DOL)) &&
-                !(s->has_eq && (s->subject->kind == E_VART || s->subject->kind == E_KW)) &&
+                !(s->has_eq && (s->subject->kind == E_INDR || s->subject->kind == E_CAPT_IMM)) &&
+                !(s->has_eq && (s->subject->kind == E_VAR || s->subject->kind == E_KW)) &&
                 !(s->has_eq && s->subject->kind == E_IDX) &&
                 !(s->has_eq && s->subject->kind == E_FNC && s->subject->nchildren == 1)) {
                 int may_fail = emit_expr(s->subject, -32);
@@ -4698,7 +4698,7 @@ static void emit_program(Program *prog) {
 
             /* If has_eq: assign replacement to subject variable */
             if (s->has_eq && s->subject &&
-                (s->subject->kind == E_VART || s->subject->kind == E_KW)) {
+                (s->subject->kind == E_VAR || s->subject->kind == E_KW)) {
                 int has_f_tgt = (id_f >= 0 || (tgt_f && is_special_goto(tgt_f)));
                 /* When stmt has unconditional goto and no :F target, failure on RHS
                  * (e.g. NRETURN) must still reach the unconditional target, not fall
@@ -4709,10 +4709,10 @@ static void emit_program(Program *prog) {
                 /* For keyword LHS (&VAR), NV_SET_fn expects bare name "ANCHOR" not "&ANCHOR" */
                 const char *subj_name = s->subject->sval ? s->subject->sval : "";
                 /* (E_KW: sval is already the bare keyword name e.g. "ANCHOR") */
-                /* Null RHS: X = (no replacement or E_NULV) → clear variable.
+                /* Null RHS: X = (no replacement or E_NUL) → clear variable.
                  * OUTPUT = (null RHS) → print a blank line (emit NULVCL → SET_OUTPUT). */
                 if (!s->replacement ||
-                    (s->replacement->kind == E_NULV)) {
+                    (s->replacement->kind == E_NUL)) {
                     if (is_output) {
                         A("    LOAD_NULVCL32\n");
                         A("    SET_OUTPUT\n");
@@ -4761,10 +4761,10 @@ static void emit_program(Program *prog) {
                     emit_jmp(tgt_u, next_lbl);
                 }
             } else if (s->has_eq && s->subject &&
-                       (s->subject->kind == E_DOL || s->subject->kind == E_INDR)) {
+                       (s->subject->kind == E_CAPT_IMM || s->subject->kind == E_INDR)) {
                 /* $expr = val  — indirect assignment.
                  * Parser uses E_INDR (right=operand) for $X in subject position.
-                 * E_DOL (left=operand) is the binary capture op; support both. */
+                 * E_CAPT_IMM (left=operand) is the binary capture op; support both. */
                 int has_f_tgt = (id_f >= 0 || (tgt_f && is_special_goto(tgt_f)));
                 int has_u_only = (!has_f_tgt && tgt_u);
                 const char *fail_target = has_f_tgt ? sfail_lbl : next_lbl;
@@ -4782,7 +4782,7 @@ static void emit_program(Program *prog) {
                     indir_name = c0 ? c0 : c1;
                 emit_expr(indir_name, -16);
                 /* Eval the RHS → [rbp-32/24] */
-                if (!s->replacement || s->replacement->kind == E_NULV) {
+                if (!s->replacement || s->replacement->kind == E_NUL) {
                     /* null RHS for indirect: load NULVCL into [rbp-32/24] */
                     A("    mov     qword [rbp-32], 1\n");
                     A("    mov     qword [rbp-24], 0\n");
@@ -4847,7 +4847,7 @@ static void emit_program(Program *prog) {
                     A("    push    qword [rbp-24]\n");  /* k2.p */
                     A("    push    qword [rbp-32]\n");  /* k2.v */
                     /* Eval RHS → [rbp-32/24] */
-                    if (!s->replacement || s->replacement->kind == E_NULV) {
+                    if (!s->replacement || s->replacement->kind == E_NUL) {
                         A("    mov     qword [rbp-32], 1\n");
                         A("    mov     qword [rbp-24], 0\n");
                     } else {
@@ -4888,7 +4888,7 @@ static void emit_program(Program *prog) {
                 A("    push    qword [rbp-24]\n");  /* key ptr  (high) */
                 A("    push    qword [rbp-32]\n");  /* key type (low) */
                 /* Evaluate RHS → [rbp-32/24] */
-                if (!s->replacement || s->replacement->kind == E_NULV) {
+                if (!s->replacement || s->replacement->kind == E_NUL) {
                     A("    mov     qword [rbp-32], 1\n");  /* DT_SNUL */
                     A("    mov     qword [rbp-24], 0\n");
                 } else {
@@ -4930,7 +4930,7 @@ static void emit_program(Program *prog) {
                 A("    push    qword [rbp-8]\n");   /* obj ptr  */
                 A("    push    qword [rbp-16]\n");  /* obj type */
                 /* Evaluate val → [rbp-32/24] */
-                if (!s->replacement || s->replacement->kind == E_NULV) {
+                if (!s->replacement || s->replacement->kind == E_NUL) {
                     A("    mov     qword [rbp-32], 1\n");
                     A("    mov     qword [rbp-24], 0\n");
                 } else {
@@ -4974,7 +4974,7 @@ static void emit_program(Program *prog) {
                 A("    push    qword [rbp-8]\\n");   /* key ptr  */
                 A("    push    qword [rbp-16]\\n");  /* key type */
                 /* Evaluate val → [rbp-32/24] */
-                if (!s->replacement || s->replacement->kind == E_NULV) {
+                if (!s->replacement || s->replacement->kind == E_NUL) {
                     A("    mov     qword [rbp-32], 1\\n");
                     A("    mov     qword [rbp-24], 0\\n");
                 } else {
@@ -5094,20 +5094,20 @@ static void emit_program(Program *prog) {
         {
             /* Track which named-pattern indices we've already walked (cycle guard) */
             int np_visited[128] = {0};
-            /* Iterative tree walk collecting E_DOL / E_NAM right-child varnames.
-             * When we see E_VART/E_INDR that refers to a named pattern, recurse
+            /* Iterative tree walk collecting E_CAPT_IMM / E_CAPT_COND right-child varnames.
+             * When we see E_VAR/E_INDR that refers to a named pattern, recurse
              * into that named pattern's body too. */
             EXPR_t *stk[512]; int top = 0;
             if (s->pattern) stk[top++] = s->pattern;
             while (top > 0) {
                 EXPR_t *e = stk[--top];
                 if (!e) continue;
-                if ((e->kind == E_DOL || e->kind == E_NAM) &&
+                if ((e->kind == E_CAPT_IMM || e->kind == E_CAPT_COND) &&
                     e->children[1] && e->children[1]->sval &&
                     stmt_cap_count < MAX_STMT_CAPS)
                     stmt_cap_names[stmt_cap_count++] = e->children[1]->sval;
                 /* Follow named pattern references */
-                if (e->kind == E_VART || e->kind == E_INDR) {
+                if (e->kind == E_VAR || e->kind == E_INDR) {
                     const char *vn = e->sval ? e->sval
                                    : (e->children[0] && e->children[0]->sval ? e->children[0]->sval : NULL);
                     if (vn) {
@@ -5156,10 +5156,10 @@ static void emit_program(Program *prog) {
               vnlab, cap_vars[ci].buf_sym, cap_vars[ci].len_sym);
         }
         #undef MAX_STMT_CAPS
-        if (s->has_eq && s->subject && s->subject->kind == E_VART) {
+        if (s->has_eq && s->subject && s->subject->kind == E_VAR) {
             /* apply replacement → subject variable (splice: prefix+repl+suffix) */
             const char *vlab = str_intern(s->subject->sval);
-            if (!s->replacement || s->replacement->kind == E_NULV) {
+            if (!s->replacement || s->replacement->kind == E_NUL) {
                 /* null replacement: delete matched span — emit NULVCL */
                 A("    mov     qword [rbp-32], 1\n"); /* DT_SNUL */
                 A("    mov     qword [rbp-24], 0\n");
@@ -5245,7 +5245,7 @@ static void emit_program(Program *prog) {
     for (int i = 0; i < named_pat_count; i++) {
         if (named_pats[i].pat) {
             EKind rk = named_pats[i].pat->kind;
-            if (rk==E_QLIT||rk==E_ILIT||rk==E_FLIT||rk==E_NULV||rk==E_VART||rk==E_KW) continue;
+            if (rk==E_QLIT||rk==E_ILIT||rk==E_FLIT||rk==E_NUL||rk==E_VAR||rk==E_KW) continue;
         }
         emit_named_def(&named_pats[i],
                            "cursor","subject_data","subject_len_val");
@@ -5290,7 +5290,7 @@ static void emit_blk_reloc_tables(void) {
         if (named_pats[i].is_fn) { box_count++; continue; }
         if (!named_pats[i].pat) continue;
         EKind rk = named_pats[i].pat->kind;
-        if (rk==E_QLIT||rk==E_ILIT||rk==E_FLIT||rk==E_NULV||rk==E_VART||rk==E_KW)
+        if (rk==E_QLIT||rk==E_ILIT||rk==E_FLIT||rk==E_NUL||rk==E_VAR||rk==E_KW)
             continue;
         box_count++;
     }
@@ -5309,7 +5309,7 @@ static void emit_blk_reloc_tables(void) {
         if (!is_real_box) {
             if (!named_pats[i].pat) continue;
             EKind rk = named_pats[i].pat->kind;
-            if (rk==E_QLIT||rk==E_ILIT||rk==E_FLIT||rk==E_NULV||rk==E_VART||rk==E_KW) continue;
+            if (rk==E_QLIT||rk==E_ILIT||rk==E_FLIT||rk==E_NUL||rk==E_VAR||rk==E_KW) continue;
             is_real_box = 1;
         }
         if (!is_real_box) continue;
@@ -5321,7 +5321,7 @@ static void emit_blk_reloc_tables(void) {
         if (!is_real_box) {
             if (!named_pats[i].pat) continue;
             EKind rk = named_pats[i].pat->kind;
-            if (rk==E_QLIT||rk==E_ILIT||rk==E_FLIT||rk==E_NULV||rk==E_VART||rk==E_KW) continue;
+            if (rk==E_QLIT||rk==E_ILIT||rk==E_FLIT||rk==E_NUL||rk==E_VAR||rk==E_KW) continue;
             is_real_box = 1;
         }
         if (!is_real_box) continue;
@@ -5340,7 +5340,7 @@ static void emit_blk_reloc_tables(void) {
         if (!is_real_box) {
             if (!named_pats[i].pat) continue;
             EKind rk = named_pats[i].pat->kind;
-            if (rk==E_QLIT||rk==E_ILIT||rk==E_FLIT||rk==E_NULV||rk==E_VART||rk==E_KW) continue;
+            if (rk==E_QLIT||rk==E_ILIT||rk==E_FLIT||rk==E_NUL||rk==E_VAR||rk==E_KW) continue;
             is_real_box = 1;
         }
         if (!is_real_box) continue;

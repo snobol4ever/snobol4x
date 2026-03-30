@@ -3228,7 +3228,7 @@ static int pl_arith_is_mixed_minmax(EXPR_t *e) {
  * When true, =:= etc. must use pl_num_cmp for correct type handling. */
 static int pl_arith_has_var(EXPR_t *e) {
     if (!e) return 0;
-    if (e->kind == E_VART) return 1;
+    if (e->kind == E_VAR) return 1;
     for (int i = 0; i < (int)e->nchildren; i++)
         if (pl_arith_has_var(e->children[i])) return 1;
     return 0;
@@ -3269,7 +3269,7 @@ static void pl_emit_term(EXPR_t *e, int *var_locals, int n_vars) {
         J("    invokestatic %s/pl_term_float(D)[Ljava/lang/Object;\n", classname);
         break;
     }
-    case E_VART: {
+    case E_VAR: {
         int slot = e->ival;
         if (slot >= 0 && slot < n_vars && var_locals) {
             J("    aload %d\n", var_locals[slot]);
@@ -3364,7 +3364,7 @@ static void pl_emit_arith(EXPR_t *e, int *var_locals, int n_vars) {
         pl_emit_dbl_const(e->dval);
         JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
         break;
-    case E_VART: {
+    case E_VAR: {
         int slot = e->ival;
         /* load var, deref; if float tag → parseDouble→bits, else parseLong */
         if (slot >= 0 && slot < n_vars && var_locals)
@@ -3925,7 +3925,7 @@ static void pl_emit_arith(EXPR_t *e, int *var_locals, int n_vars) {
  * For constants/exprs: compute via pl_emit_arith, then box. */
 static void pl_emit_arith_as_term(EXPR_t *e, int *var_locals, int n_vars) {
     if (!e) { JI("aconst_null", ""); return; }
-    if (e->kind == E_VART) {
+    if (e->kind == E_VAR) {
         /* variable: deref and return the term as-is */
         int slot = e->ival;
         if (slot >= 0 && slot < n_vars && var_locals)
@@ -3972,12 +3972,12 @@ static void pl_emit_arith_as_term(EXPR_t *e, int *var_locals, int n_vars) {
 }
 
 /* pl_emit_arith_as_double — emit arithmetic expr leaving a D (double) on JVM stack.
- * For E_VART: uses pl_num_as_double to handle int/float tags at runtime.
+ * For E_VAR: uses pl_num_as_double to handle int/float tags at runtime.
  * For float exprs: pl_emit_arith then longBitsToDouble.
  * For int exprs: pl_emit_arith then l2d. */
 static void pl_emit_arith_as_double(EXPR_t *e, int *var_locals, int n_vars) {
     if (!e) { JI("dconst_0", ""); return; }
-    if (e->kind == E_VART || pl_arith_has_var(e)) {
+    if (e->kind == E_VAR || pl_arith_has_var(e)) {
         /* runtime dispatch: emit as term, then pl_num_as_double */
         pl_emit_arith_as_term(e, var_locals, n_vars);
         J("    invokestatic %s/pl_num_as_double([Ljava/lang/Object;)D\n", classname);
@@ -5588,7 +5588,7 @@ static void pl_emit_goal(EXPR_t *goal, const char *lbl_γ, const char *lbl_ω,
 
             /* Variable NT: phrase(Var, List[, Rest]) — NT is unbound/runtime-determined.
              * Build a phrase/N term and dispatch via pl_call_goal at runtime. */
-            if (nt_expr->kind == E_VART) {
+            if (nt_expr->kind == E_VAR) {
                 int n_phrase = nargs; /* 2 or 3 */
                 /* build phrase(NT, List[, Rest]) as a compound term on stack */
                 J("    ldc %d\n", n_phrase + 2);
@@ -5640,7 +5640,7 @@ static void pl_emit_goal(EXPR_t *goal, const char *lbl_γ, const char *lbl_ω,
              * phrase([H|T], L0)       -> L0 = [H|L1], phrase(T, L1)
              * phrase([H|T], L0, L)    -> L0 = [H|L1], phrase(T, L1, L)
              * Allocate a fresh local for L1, extend var_locals so pl_emit_term
-             * can address it via an E_VART at index n_vars, then recurse. */
+             * can address it via an E_VAR at index n_vars, then recurse. */
             int nt_is_cons = (nt_expr->sval && strcmp(nt_expr->sval, ".") == 0 &&
                               nt_expr->nchildren == 2);
             if (nt_is_cons) {
@@ -5664,8 +5664,8 @@ static void pl_emit_goal(EXPR_t *goal, const char *lbl_γ, const char *lbl_ω,
                 int *vl2 = malloc((n_vars + 1) * sizeof(int));
                 for (int i = 0; i < n_vars; i++) vl2[i] = var_locals ? var_locals[i] : 0;
                 vl2[n_vars] = l1_local;
-                /* build E_VART for L1 at index n_vars */
-                EXPR_t *l1_vart = expr_new(E_VART); l1_vart->ival = n_vars;
+                /* build E_VAR for L1 at index n_vars */
+                EXPR_t *l1_vart = expr_new(E_VAR); l1_vart->ival = n_vars;
                 /* build phrase(tail_nt, L1 [, rest_arg]) goal */
                 EXPR_t *rec = expr_new(E_FNC);
                 rec->sval = strdup("phrase");
@@ -5724,9 +5724,9 @@ static void pl_emit_goal(EXPR_t *goal, const char *lbl_γ, const char *lbl_ω,
         }
     }
 
-    /* E_VART: variable used as goal — dispatch via pl_call_goal at runtime.
+    /* E_VAR: variable used as goal — dispatch via pl_call_goal at runtime.
      * This handles catch(Goal,...) and call(Var) where Goal/Var is a variable. */
-    if (goal->kind == E_VART) {
+    if (goal->kind == E_VAR) {
         int slot = goal->ival;
         if (slot >= 0 && slot < n_vars) {
             J("    aload %d\n", var_locals[slot]);
@@ -5807,7 +5807,7 @@ static void pl_emit_body(EXPR_t **goals, int ngoals, const char *lbl_γ,
             EXPR_t *rest_arg = (g->nchildren == 3) ? g->children[2] : NULL;
 
             /* Variable NT: dispatch at runtime via pl_call_goal */
-            if (nt_expr->kind == E_VART) {
+            if (nt_expr->kind == E_VAR) {
                 int np = g->nchildren;
                 J("    ldc %d\n", np + 2);
                 J("    anewarray java/lang/Object\n");
@@ -5885,7 +5885,7 @@ static void pl_emit_body(EXPR_t **goals, int ngoals, const char *lbl_γ,
                 int *vl2b = malloc((n_vars + 1) * sizeof(int));
                 for (int i = 0; i < n_vars; i++) vl2b[i] = var_locals ? var_locals[i] : 0;
                 vl2b[n_vars] = l1_loc;
-                EXPR_t *l1v2 = expr_new(E_VART); l1v2->ival = n_vars;
+                EXPR_t *l1v2 = expr_new(E_VAR); l1v2->ival = n_vars;
                 EXPR_t *rec2 = expr_new(E_FNC);
                 rec2->sval = strdup("phrase");
                 rec2->nchildren = rest_arg ? 3 : 2;
@@ -7819,7 +7819,7 @@ static void pl_emit_choice(EXPR_t *choice) {
         /* allocate variable cells.
          * Build jvm_arg_for_slot[]: for each var slot, which JVM arg local
          * provides its initial binding (-1 = none, allocate fresh var cell).
-         * A var slot is a "direct arg" when head position ai is E_VART with
+         * A var slot is a "direct arg" when head position ai is E_VAR with
          * ival==slot.  slot and ai can differ (e.g. append([H|T],L,[H|R]):
          * H=slot0, T=slot1, L=slot2, R=slot3; L is at head arg position 1
          * with slot 2 — old code failed because it tested slot==ai). */
@@ -7827,7 +7827,7 @@ static void pl_emit_choice(EXPR_t *choice) {
         for (int vi = 0; vi < n_vars; vi++) jvm_arg_for_slot[vi] = -1;
         for (int ai = 0; ai < n_args && ai < clause->nchildren; ai++) {
             EXPR_t *ht = clause->children[ai];
-            if (ht && ht->kind == E_VART && ht->ival >= 0 && ht->ival < n_vars)
+            if (ht && ht->kind == E_VAR && ht->ival >= 0 && ht->ival < n_vars)
                 if (jvm_arg_for_slot[ht->ival] < 0)   /* first occurrence wins */
                     jvm_arg_for_slot[ht->ival] = ai;
         }
@@ -7844,11 +7844,11 @@ static void pl_emit_choice(EXPR_t *choice) {
 
         /* head unification.
          * For compound/atom/int head terms: unify arg[ai] with the emitted term.
-         * For E_VART head terms: the var was initialized from the FIRST occurrence's
+         * For E_VAR head terms: the var was initialized from the FIRST occurrence's
          * JVM arg (via jvm_arg_for_slot above).  Subsequent occurrences of the same
          * slot need an explicit unify to enforce non-linear equality.
          * E.g. append([],L,L): L=slot0, first at ai=1 → slot loaded from arg1.
-         * At ai=2: also E_VART slot0, but var_locals[0] already holds arg1 value.
+         * At ai=2: also E_VAR slot0, but var_locals[0] already holds arg1 value.
          * We must unify arg2 with var_locals[0] to enforce arg1==arg2. */
         {
             /* seen_at_arg[slot] = first arg index that claimed this slot, or -1 */
@@ -7857,14 +7857,14 @@ static void pl_emit_choice(EXPR_t *choice) {
             /* first pass: record first-claim arg for each var slot */
             for (int ai = 0; ai < n_args && ai < clause->nchildren; ai++) {
                 EXPR_t *ht = clause->children[ai];
-                if (ht && ht->kind == E_VART && ht->ival >= 0 && ht->ival < n_vars) {
+                if (ht && ht->kind == E_VAR && ht->ival >= 0 && ht->ival < n_vars) {
                     if (seen_at[ht->ival] < 0) seen_at[ht->ival] = ai;
                 }
             }
             for (int ai = 0; ai < n_args && ai < clause->nchildren; ai++) {
                 EXPR_t *head_term = clause->children[ai];
                 if (!head_term) continue;
-                if (head_term->kind == E_VART) {
+                if (head_term->kind == E_VAR) {
                     int slot = head_term->ival;
                     if (slot < 0 || slot >= n_vars) continue;
                     if (seen_at[slot] == ai) continue;  /* first occurrence: no-op */
@@ -7901,7 +7901,7 @@ static void pl_emit_choice(EXPR_t *choice) {
             for (int vi = 0; vi < n_vars; vi++) jaf[vi] = -1;
             for (int ai = 0; ai < n_args && ai < clause->nchildren; ai++) {
                 EXPR_t *ht = clause->children[ai];
-                if (ht && ht->kind == E_VART && ht->ival >= 0 && ht->ival < n_vars)
+                if (ht && ht->kind == E_VAR && ht->ival >= 0 && ht->ival < n_vars)
                     jaf[ht->ival] = ai;
             }
             for (int vi = 0; vi < n_vars; vi++) {
@@ -7919,7 +7919,7 @@ static void pl_emit_choice(EXPR_t *choice) {
         for (int ai = 0; ai < n_args && ai < clause->nchildren; ai++) {
             EXPR_t *head_term = clause->children[ai];
             if (!head_term) continue;
-            if (head_term->kind == E_VART) continue;
+            if (head_term->kind == E_VAR) continue;
             J("    aload %d\n", ai);
             pl_emit_term(head_term, var_locals, n_vars);
             J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
@@ -8212,7 +8212,7 @@ static void pl_emit_choice(EXPR_t *choice) {
                 for (int vi = 0; vi < n_vars; vi++) jaf[vi] = -1;
                 for (int ai2 = 0; ai2 < n_args && ai2 < clause->nchildren; ai2++) {
                     EXPR_t *ht = clause->children[ai2];
-                    if (ht && ht->kind == E_VART && ht->ival >= 0 && ht->ival < n_vars)
+                    if (ht && ht->kind == E_VAR && ht->ival >= 0 && ht->ival < n_vars)
                         if (jaf[ht->ival] < 0) jaf[ht->ival] = ai2;
                 }
                 for (int vi = 0; vi < n_vars; vi++) {
@@ -8235,13 +8235,13 @@ static void pl_emit_choice(EXPR_t *choice) {
                 for (int vi = 0; vi < n_vars; vi++) seen_at[vi] = -1;
                 for (int ai2 = 0; ai2 < n_args && ai2 < clause->nchildren; ai2++) {
                     EXPR_t *ht = clause->children[ai2];
-                    if (ht && ht->kind == E_VART && ht->ival >= 0 && ht->ival < n_vars)
+                    if (ht && ht->kind == E_VAR && ht->ival >= 0 && ht->ival < n_vars)
                         if (seen_at[ht->ival] < 0) seen_at[ht->ival] = ai2;
                 }
                 for (int ai2 = 0; ai2 < n_args && ai2 < clause->nchildren; ai2++) {
                     EXPR_t *ht = clause->children[ai2];
                     if (!ht) continue;
-                    if (ht->kind == E_VART) {
+                    if (ht->kind == E_VAR) {
                         int slot = ht->ival;
                         if (slot < 0 || slot >= n_vars) continue;
                         if (seen_at[slot] == ai2) continue;
@@ -8275,7 +8275,7 @@ static void pl_emit_choice(EXPR_t *choice) {
                 for (int vi = 0; vi < n_vars; vi++) jaf[vi] = -1;
                 for (int ai2 = 0; ai2 < n_args && ai2 < clause->nchildren; ai2++) {
                     EXPR_t *ht = clause->children[ai2];
-                    if (ht && ht->kind == E_VART && ht->ival >= 0 && ht->ival < n_vars)
+                    if (ht && ht->kind == E_VAR && ht->ival >= 0 && ht->ival < n_vars)
                         jaf[ht->ival] = ai2;
                 }
                 for (int vi = 0; vi < n_vars; vi++) {
@@ -8286,7 +8286,7 @@ static void pl_emit_choice(EXPR_t *choice) {
             }
             for (int ai2 = 0; ai2 < n_args && ai2 < clause->nchildren; ai2++) {
                 EXPR_t *ht = clause->children[ai2];
-                if (!ht || ht->kind == E_VART) continue;
+                if (!ht || ht->kind == E_VAR) continue;
                 J("    aload %d\n", ai2);
                 pl_emit_term(ht, var_locals, n_vars);
                 J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
