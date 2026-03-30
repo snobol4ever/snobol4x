@@ -58,6 +58,30 @@ static int strlit_intern(const char *s) {
 }
 static int strlit_abs(int idx) { return STR_DATA_BASE + str_lits[idx].offset; }
 
+/* ── Variable table ───────────────────────────────────────────────────────── */
+/* Each SNOBOL4 variable X → two WASM globals:                               */
+/*   (global $var_X_off (mut i32) (i32.const 0))  offset in string heap      */
+/*   (global $var_X_len (mut i32) (i32.const 0))  length                     */
+/* Variables are always TY_STR (SNOBOL4 untyped; coerce on arithmetic).      */
+#define MAX_VARS 512
+static char *var_names[MAX_VARS];
+static int   nvar = 0;
+
+/* Returns index (0..nvar-1), or -1 if table full. */
+static int var_intern(const char *name) {
+    if (!name || !*name) return -1;
+    /* Case-insensitive: SNOBOL4 variables are case-insensitive */
+    for (int i = 0; i < nvar; i++)
+        if (strcasecmp(var_names[i], name) == 0) return i;
+    if (nvar >= MAX_VARS) return -1;
+    var_names[nvar] = strdup(name);
+    return nvar++;
+}
+static void var_table_reset(void) {
+    for (int i = 0; i < nvar; i++) { free(var_names[i]); var_names[i] = NULL; }
+    nvar = 0;
+}
+
 /* ── Expression type ──────────────────────────────────────────────────────── */
 typedef enum { TY_STR = 0, TY_INT = 1, TY_FLOAT = 2 } WasmTy;
 
@@ -85,15 +109,29 @@ static void emit_runtime_imports(void) {
     W("  ;; (global $str_ptr is internal to runtime; programs use sno_str_alloc)\n");
 }
 
-/* ── expr pre-scan (intern all string literals) ───────────────────────────── */
+/* reserved names that are not user variables */
+static int is_keyword_name(const char *n) {
+    if (!n) return 0;
+    return (strcasecmp(n,"OUTPUT")==0 || strcasecmp(n,"INPUT")==0 ||
+            strcasecmp(n,"PUNCH")==0  || strcasecmp(n,"TERMINAL")==0);
+}
+
+/* ── expr pre-scan (intern all string literals; collect E_VAR names) ─────── */
 static void prescan_expr(const EXPR_t *e) {
     if (!e) return;
     if (e->kind == E_QLIT) { strlit_intern(e->sval); return; }
+    if (e->kind == E_VAR && e->sval && !is_keyword_name(e->sval))
+        var_intern(e->sval);
     for (int i = 0; i < e->nchildren; i++) prescan_expr(e->children[i]);
 }
 static void prescan_prog(Program *prog) {
     strlit_intern("");  /* always intern empty string */
     for (STMT_t *s = prog->head; s; s = s->next) {
+        /* Collect lvalue variable name */
+        if (s->has_eq && s->subject &&
+            s->subject->kind == E_VAR && s->subject->sval &&
+            !is_keyword_name(s->subject->sval))
+            var_intern(s->subject->sval);
         prescan_expr(s->subject);
         prescan_expr(s->pattern);
         prescan_expr(s->replacement);
@@ -117,7 +155,17 @@ static void emit_data_segment(void) {
     W("\")\n");
 }
 
-/* ── Expression emitter ───────────────────────────────────────────────────── */
+/* ── Variable globals ─────────────────────────────────────────────────────── */
+static void emit_var_globals(void) {
+    if (nvar == 0) return;
+    W("\n  ;; SNOBOL4 variables: each → (offset, length) global pair\n");
+    for (int i = 0; i < nvar; i++) {
+        W("  (global $var_%s_off (mut i32) (i32.const 0))\n", var_names[i]);
+        W("  (global $var_%s_len (mut i32) (i32.const 0))\n", var_names[i]);
+    }
+}
+
+
 static WasmTy emit_expr(const EXPR_t *e) {
     if (!e || e->kind == E_NUL) {
         int idx = strlit_intern("");
@@ -207,6 +255,20 @@ static WasmTy emit_expr(const EXPR_t *e) {
         else if (e->kind == E_MPY) W("    (f64.mul)\n");
         else if (e->kind == E_DIV) W("    (f64.div)\n");
         return TY_FLOAT;
+    }
+    case E_VAR: {
+        const char *vn = e->sval ? e->sval : "";
+        int idx = var_intern(vn);   /* idempotent — already collected in prescan */
+        if (idx < 0) {
+            /* fallback: empty string */
+            int si = strlit_intern("");
+            W("    (i32.const %d) ;; E_VAR '%s' unknown\n", strlit_abs(si), vn);
+            W("    (i32.const 0)\n");
+        } else {
+            W("    (global.get $var_%s_off)\n", var_names[idx]);
+            W("    (global.get $var_%s_len)\n", var_names[idx]);
+        }
+        return TY_STR;
     }
     case E_CONCAT: {
         if (e->nchildren == 0) {
@@ -435,16 +497,32 @@ static void emit_main_body(Program *prog) {
 
         int has_subject = s->subject && s->subject->kind != E_NUL;
         int is_output = 0;
+        int is_varassign = 0;
         if (s->has_eq && s->subject) {
             const char *n = s->subject->sval ? s->subject->sval : "";
-            if (strcasecmp(n, "OUTPUT") == 0 &&
-                (s->subject->kind == E_VAR || s->subject->kind == E_KW))
-                is_output = 1;
+            if ((s->subject->kind == E_VAR || s->subject->kind == E_KW)) {
+                if (strcasecmp(n, "OUTPUT") == 0)
+                    is_output = 1;
+                else if (!is_keyword_name(n))
+                    is_varassign = 1;
+            }
         }
 
         if (is_output) {
             W("      ;; OUTPUT = ...\n");
             emit_output(s->replacement);
+            W("      (local.set $ok (i32.const 1))\n");
+        } else if (is_varassign) {
+            const char *vn = s->subject->sval;
+            int vi = var_intern(vn);
+            W("      ;; %s = ...\n", vn);
+            WasmTy ty = emit_expr(s->replacement);
+            /* Coerce to TY_STR — variables are always stored as strings */
+            if (ty == TY_INT)   W("      (call $sno_int_to_str)\n");
+            if (ty == TY_FLOAT) W("      (call $sno_float_to_str)\n");
+            /* Stack: (off len) — store len first (it's on top) */
+            W("      (global.set $var_%s_len)\n", var_names[vi]);
+            W("      (global.set $var_%s_off)\n", var_names[vi]);
             W("      (local.set $ok (i32.const 1))\n");
         } else if (has_subject) {
             W("      ;; subject eval\n");
@@ -509,15 +587,17 @@ void emit_wasm(Program *prog, FILE *out, const char *filename) {
 
     for (int i = 0; i < str_nlit; i++) free(str_lits[i].text);
     str_nlit = str_bytes = 0;
+    var_table_reset();
 
     collect_labels(prog);
     prescan_prog(prog);
 
-    W(";; Generated by scrip-cc -wasm (M-SW-A02)\n");
+    W(";; Generated by scrip-cc -wasm (M-SW-A03)\n");
     W("(module\n");
 
     emit_runtime_imports();
     emit_data_segment();
+    emit_var_globals();
 
     W("\n  (func (export \"main\") (result i32)\n");
     emit_main_body(prog);
