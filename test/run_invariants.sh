@@ -59,10 +59,31 @@ _need() {
   fi
 }
 _need "scrip-cc"    "$([[ -x "$SCRIP_CC" && -s "$SCRIP_CC" ]] && echo 1 || echo 0)"
-_need "nasm"        "$(command -v nasm &>/dev/null && echo 1 || echo 0)"
-_need "java"        "$(command -v java &>/dev/null && echo 1 || echo 0)"
-_need "javac"       "$(command -v javac &>/dev/null && echo 1 || echo 0)"
-_need "SnoHarness"  "$([[ -f "$ROOT/test/jvm/SnoHarness.class" ]] && echo 1 || echo 0)"
+
+# Determine which tool families are needed based on requested cells.
+# If no cells given, all cells run → all tools required.
+_cells_arg="$*"
+_needs_x86=0; _needs_jvm=0; _needs_wasm=0
+if [[ -z "$_cells_arg" ]]; then
+  _needs_x86=1; _needs_jvm=1
+else
+  echo "$_cells_arg" | grep -qE '(x86|x64|net)' && _needs_x86=1
+  echo "$_cells_arg" | grep -qE 'jvm'            && _needs_jvm=1
+  echo "$_cells_arg" | grep -qE 'wasm'           && _needs_wasm=1
+fi
+
+if [[ $_needs_x86 -eq 1 ]]; then
+  _need "nasm"  "$(command -v nasm &>/dev/null && echo 1 || echo 0)"
+fi
+if [[ $_needs_jvm -eq 1 ]]; then
+  _need "java"        "$(command -v java  &>/dev/null && echo 1 || echo 0)"
+  _need "javac"       "$(command -v javac &>/dev/null && echo 1 || echo 0)"
+  _need "SnoHarness"  "$([[ -f "$ROOT/test/jvm/SnoHarness.class" ]] && echo 1 || echo 0)"
+fi
+if [[ $_needs_wasm -eq 1 ]]; then
+  _need "wat2wasm"  "$(command -v wat2wasm &>/dev/null && echo 1 || echo 0)"
+  _need "node"      "$(command -v node    &>/dev/null && echo 1 || echo 0)"
+fi
 echo -e "${GREEN}  [tools] all required tools present ✓${RESET}"
 
 trap 'rm -rf "$WORK"' EXIT
@@ -190,6 +211,58 @@ EOJOB
 }
 
 # ── Suite: SNOBOL4 x86 ────────────────────────────────────────────────────────
+# ── Suite: SNOBOL4 WASM ───────────────────────────────────────────────────────
+run_snobol4_wasm() {
+  local cell="snobol4_wasm"
+  local pass=0 fail=0
+  if [[ -z "$CORPUS" || ! -d "$CORPUS/crosscheck" ]]; then
+    echo "SKIP" > "$RESULTS/${cell}_status"; return
+  fi
+  if ! command -v wat2wasm &>/dev/null || ! command -v node &>/dev/null; then
+    echo "SKIP" > "$RESULTS/${cell}_status"; return
+  fi
+  local W="$WORK/$cell"; mkdir -p "$W"
+  local WASM_RUNNER="$ROOT/test/wasm/run_wasm.js"
+  if [[ ! -f "$WASM_RUNNER" ]]; then
+    echo "SKIP" > "$RESULTS/${cell}_status"; return
+  fi
+
+  local DIRS="hello"
+  for dir in $DIRS; do
+    local full="$CORPUS/crosscheck/$dir"
+    [[ -d "$full" ]] || continue
+    for sno in "$full"/*.sno; do
+      [[ -f "$sno" ]] || continue
+      local base; base=$(basename "$sno" .sno)
+      local ref="${sno%.sno}.ref"; [[ -f "$ref" ]] || continue
+      local xfail="${sno%.sno}.xfail"; [[ -f "$xfail" ]] && continue
+      local wat="$W/${base}.wat"
+      local wasm="$W/${base}.wasm"
+      local got="$W/${base}.got"
+
+      if ! "$SCRIP_CC" -wasm "$sno" > "$wat" 2>/dev/null; then
+        fail=$((fail+1)); echo "  FAIL $cell $base [compile]"; continue
+      fi
+      if ! wat2wasm --enable-tail-call "$wat" -o "$wasm" 2>/dev/null; then
+        fail=$((fail+1)); echo "  FAIL $cell $base [wat2wasm]"; continue
+      fi
+      if ! timeout "$TIMEOUT_X86" node "$WASM_RUNNER" "$wasm" > "$got" 2>/dev/null; then
+        fail=$((fail+1)); echo "  FAIL $cell $base [run/timeout]"; continue
+      fi
+      if diff -q "$ref" "$got" > /dev/null 2>&1; then
+        pass=$((pass+1)); [[ $VERBOSE -eq 1 ]] && echo "  PASS $cell $base"
+        csv_row PASS "$cell" "$base"
+      else
+        fail=$((fail+1)); echo "  FAIL $cell $base [output]"
+        csv_row FAIL "$cell" "$base"
+      fi
+    done
+  done
+
+  echo "$pass" > "$RESULTS/${cell}_pass"
+  echo "$fail"  > "$RESULTS/${cell}_fail"
+}
+
 run_snobol4_x86() {
   local cell="snobol4_x86"
   local pass=0 fail=0
@@ -517,6 +590,7 @@ run_prolog_jvm() {
 # finished. Serial execution is slower but completes reliably. Per-test timeouts
 # (TIMEOUT_X86=5, TIMEOUT_JVM=10) and per-suite ceilings (jasmin=60s,
 # SnoHarness=120s) still protect against individual hangs.
+run_snobol4_wasm
 run_snobol4_x86
 run_snobol4_jvm
 run_snobol4_net

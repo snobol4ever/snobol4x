@@ -55,7 +55,6 @@ _need() {
   fi
 }
 _need "scrip-cc" "$([[ -x "$SCRIP_CC" && -s "$SCRIP_CC" ]] && echo 1 || echo 0)"
-_need "nasm"     "$(command -v nasm &>/dev/null && echo 1 || echo 0)"
 _need "gcc"      "$(command -v gcc  &>/dev/null && echo 1 || echo 0)"
 echo -e "${GREEN}  [tools] all required tools present ✓${RESET}"
 
