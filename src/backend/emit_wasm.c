@@ -666,6 +666,25 @@ static void emit_pattern_node(const EXPR_t *pat) {
         W("      ))\n");
         return;
     }
+    /* E_ARBNO may come as E_ARBNO or as E_FNC with sval=="ARBNO" in pattern context */
+    if (pat->kind == E_ARBNO ||
+        (pat->kind == E_FNC && pat->sval && strcasecmp(pat->sval, "ARBNO") == 0)) {
+        const EXPR_t *inner = (pat->nchildren >= 1) ? pat->children[0] : NULL;
+        W("      ;; E_ARBNO: zero-or-more with zero-advance guard\n");
+        W("      (block $arbno_done\n");
+        W("      (loop $arbno_loop\n");
+        W("        (local.set $pat_save_cursor (local.get $pat_cursor))\n");
+        if (inner) emit_pattern_node(inner);
+        W("        (br_if $arbno_done (i32.lt_s (local.get $pat_cursor) (i32.const 0)))\n");
+        W("        (br_if $arbno_done (i32.eq (local.get $pat_cursor) (local.get $pat_save_cursor)))\n");
+        W("        (br $arbno_loop)\n");
+        W("      ))\n");
+        /* restore last good cursor if inner failed */
+        W("      (if (i32.lt_s (local.get $pat_cursor) (i32.const 0)) (then\n");
+        W("        (local.set $pat_cursor (local.get $pat_save_cursor))\n");
+        W("      ))\n");
+        return;
+    }
     if (pat->kind == E_ALT) {
         /* alternation: try left; if cursor==-1 restore and try right */
         W("      ;; E_ALT: save cursor, try left, restore+try right on fail\n");
