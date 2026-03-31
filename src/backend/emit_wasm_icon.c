@@ -129,6 +129,31 @@ static int icn_has_suspend(const EXPR_t *n) {
     return 0;
 }
 
+/* Returns 1 if any E_FNC in the subtree calls a user procedure (non-builtin).
+ * User proc calls push a retcont frame and set $icn_retcont on suspend yield.
+ * E_EVERY must use return_call_indirect $icn_retcont to resume such generators.
+ * Builtins (write, etc.) never push retcont frames and never set $icn_retcont.
+ */
+/* Returns 1 if fname is a user-defined procedure in icn_proc_reg.
+ * Registry-based: correct when user procs shadow builtin names. */
+static int icn_is_usercall(const char *fname) {
+    if (!fname) return 0;
+    return icn_proc_reg_lookup(fname) >= 0;
+}
+
+static int icn_has_usercall(const EXPR_t *n) {
+    if (!n) return 0;
+    if (n->kind == E_FNC) {
+        const char *fname = (n->nchildren > 0 && n->children[0] && n->children[0]->sval)
+                            ? n->children[0]->sval
+                            : n->sval;
+        if (icn_is_usercall(fname)) return 1;
+    }
+    for (int i = 0; i < n->nchildren; i++)
+        if (icn_has_usercall(n->children[i])) return 1;
+    return 0;
+}
+
 /* ── §1c  Per-proc local variable table (M-IW-V01) ───────────────────────── */
 /* Local vars are emitted as per-proc globals: $icn_lv_PROC_VAR (mut i64).
  * This matches the param model (already globals) and is correct for
@@ -722,7 +747,8 @@ static void emit_icn_call_write(int id,
                                 const char *e_start, const char *e_resume,
                                 int e_val_id,
                                 int is_str,
-                                int arg_slit_idx) {
+                                int arg_slit_idx,
+                                int arg_has_usercall) {
     char sa[64], ra[64], ef[64], es[64];
     wfn(sa, sizeof sa, id, "start");
     wfn(ra, sizeof ra, id, "resume");
@@ -731,7 +757,14 @@ static void emit_icn_call_write(int id,
 
     WI("  ;; E_FNC write()  (node %d)\n", id);
     WI("  (func $%s (result i32)  return_call $%s)\n", sa, e_start);
-    WI("  (func $%s (result i32)  return_call $%s)\n", ra, e_resume);
+    if (arg_has_usercall) {
+        /* Arg is a user-proc call (generator): resume via $icn_retcont */
+        WI("  (func $%s (result i32)\n", ra);
+        WI("    global.get $icn_retcont\n");
+        WI("    return_call_indirect (type $cont_t))\n");
+    } else {
+        WI("  (func $%s (result i32)  return_call $%s)\n", ra, e_resume);
+    }
     emit_passthrough(ef, fail);
     WI("  (func $%s (result i32)\n", es);
     if (is_str) {
@@ -934,11 +967,14 @@ static void emit_expr_wasm(const EXPR_t *n,
          * $icn_retcont by E_SUSPEND.after_val; use return_call_indirect.
          * For simple generators (E_TO, E_TO_BY, etc.) use e_resume directly
          * — those never set $icn_retcont and have no funcref table entry. */
-        if (icn_has_suspend(n->children[0])) {
+        if (icn_has_usercall(n->children[0])) {
+            /* User proc calls set $icn_retcont on each suspend yield.
+             * E_EVERY must resume via return_call_indirect $icn_retcont. */
             WI("  (func $%s (result i32)\n", every_resume);
             WI("    global.get $icn_retcont\n");
             WI("    return_call_indirect (type $cont_t))\n");
         } else {
+            /* Inline generators (E_TO, E_TO_BY, etc.) never use $icn_retcont. */
             WI("  (func $%s (result i32)  return_call $%s)\n", every_resume, e_resume);
         }
         WI("  (func $%s (result i32)  return_call $%s)\n", every_fail, succ);
@@ -971,7 +1007,8 @@ static void emit_expr_wasm(const EXPR_t *n,
                 arg_slit = emit_wasm_strlit_intern(arg_node->sval);
             emit_expr_wasm(arg_node, esucc_name, fail, e_start, e_resume);
             emit_icn_call_write(id, succ, fail, e_start, e_resume,
-                                e_id, is_str, arg_slit);
+                                e_id, is_str, arg_slit,
+                                icn_has_usercall(arg_node));
             break;
         }
         if (strcmp(fname, "write") == 0 && nargs == 0) {
