@@ -309,11 +309,13 @@
   )
 
   ;; ── Term heap ──────────────────────────────────────────────────────────
-  ;; Term heap: 57344..131071 (from memory layout)
+  ;; Term heap: 98304..131071
+  ;; PW-14 fix: was 57344 (collided with CP stack [57344..65535] and string data at 65536).
+  ;; Now starts at 98304 = 65536 (string data base) + 32768 (32KB safety buffer).
   ;; Cons cell encoding: 0x80000000 | offset   (offset into term heap)
   ;; Atom encoding:      atom_id  (0..254, high bit clear)
   ;; Unbound:            0
-  (global $term_heap_top (mut i32) (i32.const 57344))
+  (global $term_heap_top (mut i32) (i32.const 98304))
 
   ;; Allocate a cons cell (head, tail) → tagged pointer
   (func (export "cons") (param $head i32) (param $tail i32) (result i32)

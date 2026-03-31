@@ -916,9 +916,10 @@ static void emit_goal(const EXPR_t *goal, int env_idx, int in_disj_left) {
             /* For unbound vars in clause env: pass slot address so callee can bind */
             if (arg->kind == E_VAR && (int)arg->ival >= 0) {
                 int addr = env_slot_addr(env_idx, (int)arg->ival);
-                /* Check if slot holds a forwarded caller address or a real value */
-                /* Pass the slot value — if it's ≥ ENV_BASE it's a slot addr, callee handles it */
-                W("    (i32.load (i32.const %d)) ;; var _V%d\n", addr, (int)arg->ival);
+                /* PW-14 fix: pass slot ADDRESS not loaded value.
+                 * Alpha checks: if (a >= ENV_BASE) store(a, atom_id) else compare.
+                 * Was i32.load(addr) -> passed value -> OOB on cons-cell pointer. */
+                W("    (i32.const %d) ;; slot addr _V%d\n", addr, (int)arg->ival);
             } else {
                 emit_term_value(arg, env_idx);
             }
