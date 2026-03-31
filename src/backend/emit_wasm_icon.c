@@ -104,6 +104,74 @@ void emit_wasm_icon_set_out(FILE *f) { icon_wasm_out = f; }
 
 static int icon_gen_slot_next = 0;   /* next free slot index */
 
+/* ── §1b  String literal intern table (M-IW-A02) ────────────────────────────
+ * Mirrors emit_wasm.c strlit_intern / emit_data_segment.
+ * String data is placed at ICN_STR_DATA_BASE (page 1, offset 65536).
+ * Each unique string gets globals $icn_str_off{id} and $icn_str_len{id}
+ * where id = ICN_STR node id assigned during emit (see ICN_STR case).
+ * Pre-scan pass interns all ICN_STR nodes; data segment emitted before funcs.
+ */
+#define ICN_STR_DATA_BASE  65536     /* page 1 — safe above runtime page 0 */
+#define ICN_MAX_STRLITS    1024
+
+typedef struct { char *text; int len; int offset; } IcnStrLit;
+static IcnStrLit icn_str_lits[ICN_MAX_STRLITS];
+static int       icn_str_nlit  = 0;
+static int       icn_str_bytes = 0;
+
+/* Returns index into icn_str_lits[] (deduplicated). */
+static int icn_strlit_intern(const char *s) {
+    int len = s ? (int)strlen(s) : 0;
+    const char *t = s ? s : "";
+    for (int i = 0; i < icn_str_nlit; i++)
+        if (icn_str_lits[i].len == len &&
+            (len == 0 || memcmp(icn_str_lits[i].text, t, (size_t)len) == 0))
+            return i;
+    if (icn_str_nlit >= ICN_MAX_STRLITS) return 0;
+    int idx = icn_str_nlit++;
+    icn_str_lits[idx].text   = strdup(t);
+    icn_str_lits[idx].len    = len;
+    icn_str_lits[idx].offset = icn_str_bytes;
+    icn_str_bytes += len;
+    return idx;
+}
+
+static int icn_strlit_abs(int idx) {
+    return ICN_STR_DATA_BASE + icn_str_lits[idx].offset;
+}
+
+/* Emit the (data ...) segment.  Called after globals, before functions. */
+static void icn_emit_data_segment(void) {
+    if (icn_str_bytes == 0) return;
+    WI("\n  ;; Icon string literals at offset %d (page 1)\n", ICN_STR_DATA_BASE);
+    WI("  (data (i32.const %d) \"", ICN_STR_DATA_BASE);
+    for (int i = 0; i < icn_str_nlit; i++) {
+        const unsigned char *t = (const unsigned char *)icn_str_lits[i].text;
+        for (int j = 0; j < icn_str_lits[i].len; j++) {
+            unsigned char c = t[j];
+            if (c == '"' || c == '\\') WI("\\%02x", c);
+            else if (c < 32 || c > 126) WI("\\%02x", c);
+            else WI("%c", (char)c);
+        }
+    }
+    WI("\")\n");
+}
+
+/* Pre-scan: walk ICN tree and intern every ICN_STR literal. */
+static void icn_prescan_node(const IcnNode *n) {
+    if (!n) return;
+    if (n->kind == ICN_STR && n->val.sval)
+        icn_strlit_intern(n->val.sval);
+    for (int i = 0; i < n->nchildren; i++)
+        icn_prescan_node(n->children[i]);
+}
+
+static void icn_strlit_reset(void) {
+    for (int i = 0; i < icn_str_nlit; i++) { free(icn_str_lits[i].text); icn_str_lits[i].text = NULL; }
+    icn_str_nlit  = 0;
+    icn_str_bytes = 0;
+}
+
 static int icon_alloc_gen_slot(void) {
     if (icon_gen_slot_next >= ICON_GEN_MAX_SLOTS) {
         fprintf(stderr, "emit_wasm_icon: too many generator slots\n");
@@ -641,15 +709,21 @@ static void emit_icn_alt(const IcnNode *n, int id,
  *   start  → E.start
  *   resume → E.resume
  *   E.fail  → call.fail
- *   E.succeed: write_int(E.value); goto call.succeed
+ *   E.succeed: output E.value; goto call.succeed
  *
- * Uses $sno_output_int (from sno_runtime.wasm, already imported by emit_wasm.c).
+ * arg_kind: the IcnKind of the argument node.
+ *   ICN_STR → call $sno_output_str($icn_strlit_off{slit_idx}, $icn_strlit_len{slit_idx})
+ *   otherwise → call $sno_output_int($icn_int{e_val_id})
+ *
+ * Uses $sno_output_int / $sno_output_str (from sno_runtime.wasm, already imported).
  * Full ICN_CALL (user procedures) deferred to M-IW-P01.
  */
 static void emit_icn_call_write(int id,
                                 const char *succ, const char *fail,
                                 const char *e_start, const char *e_resume,
-                                int e_val_id) {
+                                int e_val_id,
+                                int arg_kind,     /* IcnKind of arg node */
+                                int arg_slit_idx) /* strlit index if arg_kind==ICN_STR */ {
     char sa[64], ra[64], ef[64], es[64];
     wfn(sa, sizeof sa, id, "start");
     wfn(ra, sizeof ra, id, "resume");
@@ -661,8 +735,14 @@ static void emit_icn_call_write(int id,
     WI("  (func $%s (result i32)  return_call $%s)\n", ra, e_resume);
     emit_passthrough(ef, fail);
     WI("  (func $%s (result i32)\n", es);
-    WI("    global.get $icn_int%d\n", e_val_id);
-    WI("    call $sno_output_int\n");   /* output the integer */
+    if (arg_kind == ICN_STR) {
+        WI("    global.get $icn_strlit_off%d\n", arg_slit_idx);
+        WI("    global.get $icn_strlit_len%d\n", arg_slit_idx);
+        WI("    call $sno_output_str\n");
+    } else {
+        WI("    global.get $icn_int%d\n", e_val_id);
+        WI("    call $sno_output_int\n");
+    }
     WI("    return_call $%s)\n", succ);
 }
 
@@ -776,14 +856,28 @@ static void emit_expr_wasm(const IcnNode *n,
 
     /* ── String literal ─────────────────────────────────────────────────── */
     case ICN_STR: {
-        /* String: store interned offset+len into a pair of i64 globals.
-         * For Tier 0: write() only handles integers. Stub string path
-         * (passes through to fail — write() with string arg is M-IW-S01). */
-        WI("  ;; ICN_STR \"%s\" (node %d) — stub until M-IW-S01\n", n->val.sval ? n->val.sval : "", id);
-        WI("  (func $%s (result i32)  return_call $%s)\n", sa, succ);
+        /* M-IW-A02: string value carried as (offset, len) pair.
+         * Globals are keyed on the interned literal index (not node id), so
+         * they can be declared once in the globals section via prescan.
+         * Name pattern: $icn_strlit_off{slit_idx} / $icn_strlit_len{slit_idx}
+         * Byrd wiring:
+         *   start  → store literal offset+len, tail-call succ  (value emitted)
+         *   resume → literal cannot backtrack, tail-call fail
+         */
+        const char *sv = n->val.sval ? n->val.sval : "";
+        int slit_idx = icn_strlit_intern(sv);
+        int abs_off  = icn_strlit_abs(slit_idx);
+        int slen     = icn_str_lits[slit_idx].len;
+
+        WI("  ;; ICN_STR \"%s\" (node %d) slit=%d offset=%d len=%d\n",
+           sv, id, slit_idx, abs_off, slen);
+        WI("  (func $%s (result i32)\n", sa);
+        WI("    i32.const %d\n", abs_off);
+        WI("    global.set $icn_strlit_off%d\n", slit_idx);
+        WI("    i32.const %d\n", slen);
+        WI("    global.set $icn_strlit_len%d\n", slit_idx);
+        WI("    return_call $%s)\n", succ);
         WI("  (func $%s (result i32)  return_call $%s)\n", ra, fail);
-        /* Store string data as i64 pair (offset << 32 | len) in icn_int global.
-         * write(str) handled in M-IW-S01. For now, succeed with value 0. */
         break;
     }
 
@@ -944,13 +1038,21 @@ static void emit_expr_wasm(const IcnNode *n,
         /* write() builtin: Tier 0 */
         if (fname && strcmp(fname, "write") == 0 && nargs >= 1) {
             /* The arg's success port must be call's own esucc (which runs output).
-             * NOT the outer succ — that would bypass sno_output_int. */
+             * NOT the outer succ — that would bypass the output call. */
             char esucc_name[64];
             wfn(esucc_name, sizeof esucc_name, id, "esucc");
             char e_start[64], e_resume[64];
             int e_id = wasm_icon_ctr;
-            emit_expr_wasm(n->children[1], esucc_name, fail, e_start, e_resume);
-            emit_icn_call_write(id, succ, fail, e_start, e_resume, e_id);
+            IcnNode *arg_node = n->children[1];
+            int arg_kind = arg_node ? arg_node->kind : ICN_INT;
+            /* For ICN_STR: get slit_idx now (before emit_expr_wasm interns it
+             * again — intern is idempotent, same string → same index). */
+            int arg_slit = 0;
+            if (arg_kind == ICN_STR && arg_node->val.sval)
+                arg_slit = icn_strlit_intern(arg_node->val.sval);
+            emit_expr_wasm(arg_node, esucc_name, fail, e_start, e_resume);
+            emit_icn_call_write(id, succ, fail, e_start, e_resume,
+                                e_id, arg_kind, arg_slit);
             break;
         }
         /* write() with no args: write newline — just succeed */
@@ -1019,6 +1121,21 @@ void emit_wasm_icon_globals(FILE *out) {
         WI("  (global $icn_flt%d (mut f64) (f64.const 0))\n", i);
     WI("  ;; Icon generator state memory at 0x%x (%d slots × %d bytes)\n",
        ICON_GEN_STATE_BASE, ICON_GEN_MAX_SLOTS, ICON_GEN_SLOT_BYTES);
+}
+
+/* emit_wasm_icon_str_globals() — emit one (offset,len) global pair per interned string.
+ * Called after prescan (icn_prescan_node) has populated icn_str_lits[].
+ * Must be called after emit_wasm_icon_globals() and before any function emission.
+ * M-IW-A02.
+ */
+void emit_wasm_icon_str_globals(FILE *out) {
+    emit_wasm_icon_set_out(out);
+    if (icn_str_nlit == 0) return;
+    WI("  ;; Icon string literal (offset,len) globals — M-IW-A02\n");
+    for (int i = 0; i < icn_str_nlit; i++) {
+        WI("  (global $icn_strlit_off%d (mut i32) (i32.const 0))\n", i);
+        WI("  (global $icn_strlit_len%d (mut i32) (i32.const 0))\n", i);
+    }
 }
 
 /*
@@ -1136,12 +1253,17 @@ void emit_wasm_icon_file(IcnNode **procs, int count, FILE *out,
     (void)filename;
     emit_wasm_icon_set_out(out);
 
-    WI(";; Generated by scrip-cc -icn -wasm (M-IW-A01)\n");
+    /* Prescan: intern all ICN_STR literals so globals can be declared before funcs */
+    icn_strlit_reset();
+    for (int i = 0; i < count; i++)
+        icn_prescan_node(procs[i]);
+
+    WI(";; Generated by scrip-cc -icn -wasm (M-IW-A02)\n");
     WI("(module\n");
 
     /* 1. Runtime imports (shared "sno" namespace) */
     WI("  ;; Memory imported from runtime module\n");
-    WI("  (import \"sno\" \"memory\" (memory 1))\n");
+    WI("  (import \"sno\" \"memory\" (memory 2))  ;; page0=runtime page1=str literals\n");
     WI("  ;; Runtime function imports\n");
     WI("  (import \"sno\" \"sno_output_str\"   (func $sno_output_str   (param i32 i32)))\n");
     WI("  (import \"sno\" \"sno_output_int\"   (func $sno_output_int   (param i64)))\n");
@@ -1154,10 +1276,14 @@ void emit_wasm_icon_file(IcnNode **procs, int count, FILE *out,
     WI("  (import \"sno\" \"sno_float_to_str\" (func $sno_float_to_str (param f64) (result i32 i32)))\n");
     WI("  (import \"sno\" \"sno_pow\"          (func $sno_pow          (param f64 f64) (result f64)))\n");
 
-    /* 2. Per-node value globals */
+    /* 2. Per-node value globals + string literal (offset,len) globals */
     emit_wasm_icon_globals(out);
+    emit_wasm_icon_str_globals(out);
 
-    /* 3. Emit all procedures */
+    /* 3. String literal data segment (page 1 = offset 65536) */
+    icn_emit_data_segment();
+
+    /* 4. Emit all procedures */
     for (int i = 0; i < count; i++) {
         if (procs[i] && procs[i]->kind == ICN_PROC) {
             emit_wasm_icon_proc(procs[i]);

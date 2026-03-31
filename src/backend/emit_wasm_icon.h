@@ -15,6 +15,7 @@ void emit_wasm_icon_set_out(FILE *f);
 /* Emit WAT (global …) declarations for all per-node value globals.
  * Call once, before the (func …) section. */
 void emit_wasm_icon_globals(FILE *out);
+void emit_wasm_icon_str_globals(FILE *out);   /* M-IW-A02: string literal (off,len) globals */
 
 /* Dispatch: emit WAT for one ICN_* node and its sub-tree.
  * Returns 1 if handled, 0 if unknown kind. */
