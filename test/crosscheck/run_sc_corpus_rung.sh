@@ -122,9 +122,9 @@ run_test() {
         local o_file="$WORK/${base}.o"
         bin="$WORK/${base}_bin"
 
-        # scrip-cc -sc -asm
-        if ! "$SCRIP_CC" -sc -asm "$sc" -o "$s_file" 2>"$WORK/${base}.scrip-cc_err"; then
-            echo -e "${RED}FAIL${RESET} $base  [scrip-cc error]"
+        # scrip-cc -sc -asm (timeout guards against hangs on unimplemented constructs)
+        if ! timeout 15 "$SCRIP_CC" -sc -asm "$sc" -o "$s_file" 2>"$WORK/${base}.scrip-cc_err"; then
+            echo -e "${RED}FAIL${RESET} $base  [scrip-cc error/timeout]"
             cat "$WORK/${base}.scrip-cc_err" | head -3
             FAIL=$((FAIL+1))
             [[ "$STOP_ON_FAIL" == "1" ]] && exit 1
