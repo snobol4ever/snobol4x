@@ -241,6 +241,13 @@ static int cont_register(const char *name) {
 #define GT_SCRATCH_CELLS 32
 static int gt_scratch_used = 0;  /* bumped per ground arg slot allocated */
 
+/* GT clause-index cells: [7872..7999] (32 i32 cells, 4 bytes each).
+ * Each GT site gets one cell: GT_CI_BASE + site_id*4.
+ * Initialized to 0 before each GT call; incremented by γ before looping.
+ * γ reads the counter and dispatches to the correct clause (alpha/betaN). */
+#define GT_CI_BASE   7872
+#define GT_CI_CELLS  32
+
 #define MAX_GT_SITES   64
 #define MAX_GT_BODY    32
 typedef struct {
@@ -254,9 +261,9 @@ typedef struct {
     int  env_idx;             /* clause env_idx for body goal emit */
     int  gamma_idx;           /* funcref table index */
     int  omega_idx;
-    /* γ calls beta1 (not alpha) to get the next solution after first match */
-    /* For single-clause predicates gamma calls alpha (retry=alpha).         */
-    int  nclauses;            /* number of clauses — if >1, γ calls beta1 */
+    int  nclauses;            /* number of clauses */
+    int  ci_cell_addr;        /* memory address of clause-index counter (GT_CI_BASE + site_id*4) */
+    char beta_fns[32][320];   /* beta_fns[0]="$pl_foo_alpha", [1]="$pl_foo_beta1"... */
 } GTSiteData;
 static GTSiteData gt_site_data[MAX_GT_SITES];
 static int        gt_site_total = 0;
@@ -997,6 +1004,16 @@ static void emit_goals(const EXPR_t *g, int env_idx, int in_disj_left) {
                             }
                         }
                     }
+                    /* Build beta_fns array: [0]=alpha, [1]=beta1, [2]=beta2, ... */
+                    sd->ci_cell_addr = GT_CI_BASE + site_id * 4;
+                    {
+                        int nc = sd->nclauses > 32 ? 32 : sd->nclauses;
+                        /* clause 0 → alpha */
+                        snprintf(sd->beta_fns[0], 320, "$pl_%s_alpha", sd->mangled + 3);
+                        for (int bi = 1; bi < nc; bi++)
+                            snprintf(sd->beta_fns[bi], 320, "$pl_%s_beta%d",
+                                     sd->mangled + 3, bi);
+                    }
                 }
 
                 W("    ;; generate-and-test (Byrd-box): %s/%d ... fail\n",
@@ -1030,6 +1047,11 @@ static void emit_goals(const EXPR_t *g, int env_idx, int in_disj_left) {
                 /* Single call to α — no loop needed.
                  * On first solution α tail-calls γ; γ runs body goals then calls α again.
                  * On exhaustion α tail-calls ω; ω returns 0. */
+                /* Reset clause-index counter for this site */
+                GTSiteData *sd_pre = (gt_site_total > 0) ? &gt_site_data[gt_site_total-1] : NULL;
+                if (sd_pre)
+                    W("    (i32.store (i32.const %d) (i32.const 0)) ;; reset GT ci_%d\n",
+                      sd_pre->ci_cell_addr, sd_pre->site_id);
                 W("    (local.get $trail)\n");
                 for (int ai = 0; ai < n_call_args; ai++) {
                     EXPR_t *arg = pred_call->children[ai];
@@ -1236,25 +1258,56 @@ static void emit_cont_functions_and_table(void) {
                           sd->arg_slots[ai], ai);
                 }
 
-                /* Call α again for next solution: trail, slot-addrs/ground-cells, same γ/ω indices */
-                W("    (local.get $trail)\n");
-                for (int ai = 0; ai < sd->arity; ai++) {
-                    if (sd->arg_slots[ai] >= 0)
-                        W("    (i32.const %d) ;; slot addr V%d\n", sd->arg_slots[ai], ai);
-                    else if (sd->ground_cells[ai] >= 0)
-                        W("    (i32.load (i32.const %d)) ;; ground arg %d (scratch)\n",
-                          sd->ground_cells[ai], ai);
-                    else
-                        W("    (i32.const 0) ;; ground arg %d (no scratch — bug)\n", ai);
+                /* Call the next clause: increment ci counter, dispatch via if-chain.
+                 * ci=0 → alpha (first clause), ci=1 → beta1, ci=2 → beta2, ...
+                 * This correctly handles predicates with any number of clauses. */
+                W("    ;; advance clause index\n");
+                W("    (i32.store (i32.const %d)\n", sd->ci_cell_addr);
+                W("      (i32.add (i32.load (i32.const %d)) (i32.const 1)))\n",
+                  sd->ci_cell_addr);
+
+                /* Helper macro: push the call args (trail + arg slots + gamma/omega) */
+                /* We emit them inline per branch. */
+                int nc = sd->nclauses > 32 ? 32 : sd->nclauses;
+
+/* Emit arg-push sequence into W() for one branch */
+#define EMIT_GT_ARGS() do { \
+    W("      (local.get $trail)\n"); \
+    for (int _ai = 0; _ai < sd->arity; _ai++) { \
+        if (sd->arg_slots[_ai] >= 0) \
+            W("      (i32.const %d)\n", sd->arg_slots[_ai]); \
+        else if (sd->ground_cells[_ai] >= 0) \
+            W("      (i32.load (i32.const %d))\n", sd->ground_cells[_ai]); \
+        else \
+            W("      (i32.const 0)\n"); \
+    } \
+    W("      (i32.const %d) (i32.const %d)\n", sd->gamma_idx, sd->omega_idx); \
+} while(0)
+
+                if (nc <= 1) {
+                    /* Single-clause: always alpha */
+                    EMIT_GT_ARGS();
+                    W("    (return_call %s)\n", sd->beta_fns[0]);
+                } else {
+                    /* Multi-clause: if ci >= nclauses → omega (exhausted).
+                     * if ci==N → betaN, else alpha (ci==0). */
+                    W("    (if (i32.ge_u (i32.load (i32.const %d)) (i32.const %d))\n",
+                      sd->ci_cell_addr, nc);
+                    W("      (then\n");
+                    W("      (local.get $trail) (i32.const %d)\n", sd->omega_idx);
+                    W("      (return_call_indirect (type $pl_cont_t))))\n");
+                    for (int bi = nc - 1; bi >= 1; bi--) {
+                        W("    (if (i32.eq (i32.load (i32.const %d)) (i32.const %d))\n",
+                          sd->ci_cell_addr, bi);
+                        W("      (then\n");
+                        EMIT_GT_ARGS();
+                        W("      (return_call %s)))\n", sd->beta_fns[bi]);
+                    }
+                    /* Default: alpha (ci==0 or reset) */
+                    EMIT_GT_ARGS();
+                    W("    (return_call %s)\n", sd->beta_fns[0]);
                 }
-                W("    (i32.const %d) ;; gamma_idx (self)\n", sd->gamma_idx);
-                W("    (i32.const %d) ;; omega_idx\n",        sd->omega_idx);
-                /* return_call to β1 (skip clause 0 — already succeeded) for multi-clause preds,
-                 * or α for single-clause preds (e.g. deterministic facts). */
-                if (sd->nclauses > 1)
-                    W("    (return_call $pl_%s_beta1)\n", sd->mangled + 3);
-                else
-                    W("    (return_call $pl_%s_alpha)\n", sd->mangled + 3);
+#undef EMIT_GT_ARGS
             } else {
                 /* Fallback: should not happen */
                 W("    (i32.const 0) ;; γ stub (no site data)\n");
