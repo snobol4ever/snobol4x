@@ -780,11 +780,11 @@ static void emit_call(EXPR_t *n, const char *γ, const char *ω,
         if(is_gen){
             /* jmp-based trampoline — frame stays live across suspend/resume */
             char after_call[64]; snprintf(after_call,sizeof after_call,"icon_%d_after_call",id);
-            char caller_ret[80]; snprintf(caller_ret,sizeof caller_ret,"icn_%s_caller_ret",fname);
+            char caller_ret[80]; snprintf(caller_ret,sizeof caller_ret,"icn_u_%s_caller_ret",fname);
             E("    mov     byte [rel icn_suspended], 0\n");
             E("    lea     rax, [rel %s]\n", after_call);
             E("    mov     [rel %s], rax\n", caller_ret);
-            E("    jmp     icn_%s\n", fname);
+            E("    jmp     icn_u_%s\n", fname);
             Ldef(after_call);
             E("    movzx   rax, byte [rel icn_failed]\n");
             E("    test    rax, rax\n");
@@ -802,7 +802,7 @@ static void emit_call(EXPR_t *n, const char *γ, const char *ω,
             Jmp(γ);
         } else {
             /* Normal call/ret — safe for recursion */
-            E("    call    icn_%s\n",fname);
+            E("    call    icn_u_%s\n",fname);
             E("    movzx   rax, byte [rel icn_failed]\n");
             E("    test    rax, rax\n");
             E("    jnz     %s\n",ω);
@@ -2585,13 +2585,13 @@ void icn_emit_file(EXPR_t **nodes, int count, FILE *outf) {
 
         E("\n; === procedure %s ===\n",pname);
 
-        char proc_done[64]; snprintf(proc_done,sizeof proc_done,"icn_%s_done",pname);
-        char proc_ret[64];  snprintf(proc_ret, sizeof proc_ret, "icn_%s_ret", pname);
-        char proc_sret[64]; snprintf(proc_sret,sizeof proc_sret,"icn_%s_sret",pname);
+        char proc_done[64]; snprintf(proc_done,sizeof proc_done, is_main?"icn_%s_done":"icn_u_%s_done",pname);
+        char proc_ret[64];  snprintf(proc_ret, sizeof proc_ret,  is_main?"icn_%s_ret" :"icn_u_%s_ret", pname);
+        char proc_sret[64]; snprintf(proc_sret,sizeof proc_sret, is_main?"icn_%s_sret":"icn_u_%s_sret",pname);
 
         int is_gen = !is_main && icn_is_gen_proc(pname);
         char caller_ret_bss[80];
-        if(is_gen) snprintf(caller_ret_bss,sizeof caller_ret_bss,"icn_%s_caller_ret",pname);
+        if(is_gen) snprintf(caller_ret_bss,sizeof caller_ret_bss,"icn_u_%s_caller_ret",pname);
 
         /* Setup local env */
         locals_reset();
@@ -2642,7 +2642,7 @@ void icn_emit_file(EXPR_t **nodes, int count, FILE *outf) {
         if(frame_size%16!=0) frame_size=(frame_size+15)&~15;
 
         /* Emit proc entry */
-        E("icn_%s:\n",pname);
+        E(is_main?"icn_%s:\n":"icn_u_%s:\n",pname);
         E("    push    rbp\n    mov     rbp, rsp\n");
         if(frame_size>0) E("    sub     rsp, %d\n",frame_size);
         /* Pop params from icn_stack into frame slots.
@@ -2724,7 +2724,7 @@ void icn_emit_file(EXPR_t **nodes, int count, FILE *outf) {
     /* Per-generator-proc caller_ret slots */
     for(int i=0;i<user_proc_count;i++){
         if(user_proc_is_gen[i])
-            E("    icn_%s_caller_ret: resq 1\n", user_procs[i]);
+            E("    icn_u_%s_caller_ret: resq 1\n", user_procs[i]);
     }
     E("    icn_failed: resb 1\n");
     E("    icn_suspended: resb 1\n");
