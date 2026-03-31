@@ -109,6 +109,8 @@ static void emit_runtime_imports(void) {
     W("  ;; (global $str_ptr is internal to runtime; programs use sno_str_alloc)\n");
 }
 
+static int needs_indr = 0;  /* set during prescan if E_INDR found */
+
 /* reserved names that are not user variables */
 static int is_keyword_name(const char *n) {
     if (!n) return 0;
@@ -122,6 +124,16 @@ static void prescan_expr(const EXPR_t *e) {
     if (e->kind == E_QLIT) { strlit_intern(e->sval); return; }
     if (e->kind == E_VAR && e->sval && !is_keyword_name(e->sval))
         var_intern(e->sval);
+    if (e->kind == E_INDR) {
+        needs_indr = 1;
+        /* $.var: child is E_CAPT_COND; intern the variable name */
+        const EXPR_t *ch = e->nchildren > 0 ? e->children[0] : NULL;
+        if (ch && ch->kind == E_CAPT_COND && ch->sval)
+            var_intern(ch->sval);
+        else if (ch && ch->kind == E_CAPT_COND && ch->nchildren > 0
+                 && ch->children[0] && ch->children[0]->sval)
+            var_intern(ch->children[0]->sval);
+    }
     for (int i = 0; i < e->nchildren; i++) prescan_expr(e->children[i]);
 }
 static void prescan_prog(Program *prog) {
@@ -163,6 +175,48 @@ static void emit_var_globals(void) {
         W("  (global $var_%s_off (mut i32) (i32.const 0))\n", var_names[i]);
         W("  (global $var_%s_len (mut i32) (i32.const 0))\n", var_names[i]);
     }
+}
+
+/* ── Indirect variable access functions ───────────────────────────────────── */
+/* $sno_var_get(name_off, name_len) → (val_off, val_len)                      */
+/*   Looks up variable by name string; returns ("", 0) for unknown.          */
+/* $sno_var_set(name_off, name_len, val_off, val_len)                         */
+/*   Assigns to variable by name; no-op for unknown.                         */
+/* Emitted only when E_INDR nodes are present. Uses if-else chain over       */
+/* all interned var names, each compared with $sno_str_eq.                   */
+static void emit_var_indirect_funcs(void) {
+    if (!needs_indr || nvar == 0) return;
+    /* sno_var_get */
+    W("\n  ;; $sno_var_get — indirect variable lookup by name\n");
+    W("  (func $sno_var_get (param $no i32) (param $nl i32) (result i32 i32)\n");
+    for (int i = 0; i < nvar; i++) {
+        int si = strlit_intern(var_names[i]);
+        W("    (if (call $sno_str_eq (local.get $no) (local.get $nl)"
+          " (i32.const %d) (i32.const %d)) (then\n",
+          strlit_abs(si), str_lits[si].len);
+        W("      (return (global.get $var_%s_off) (global.get $var_%s_len))\n",
+          var_names[i], var_names[i]);
+        W("    ))\n");
+    }
+    /* unknown name → empty string */
+    W("    (i32.const %d) (i32.const 0)\n", strlit_abs(strlit_intern("")));
+    W("  )\n");
+
+    /* sno_var_set */
+    W("\n  ;; $sno_var_set — indirect variable assignment by name\n");
+    W("  (func $sno_var_set"
+      " (param $no i32) (param $nl i32) (param $vo i32) (param $vl i32)\n");
+    for (int i = 0; i < nvar; i++) {
+        int si = strlit_intern(var_names[i]);
+        W("    (if (call $sno_str_eq (local.get $no) (local.get $nl)"
+          " (i32.const %d) (i32.const %d)) (then\n",
+          strlit_abs(si), str_lits[si].len);
+        W("      (global.set $var_%s_off (local.get $vo))\n", var_names[i]);
+        W("      (global.set $var_%s_len (local.get $vl))\n", var_names[i]);
+        W("      (return)\n");
+        W("    ))\n");
+    }
+    W("  )\n");
 }
 
 
@@ -270,6 +324,46 @@ static WasmTy emit_expr(const EXPR_t *e) {
         }
         return TY_STR;
     }
+    case E_INDR: {
+        /* $expr — indirect: look up variable by name.
+         * SNOBOL4 semantics:
+         *   $'lit'  → sno_var_get("lit")     — name is the literal string
+         *   $.var   → sno_var_get("var")     — name is the IDENTIFIER, not its value
+         *   $expr   → sno_var_get(eval(expr)) — general: evaluate to get name string
+         * For E_VAR child, push the variable NAME as a string literal, not its value.
+         * For E_QLIT child, push the literal.
+         * For other children, evaluate and coerce. */
+        const EXPR_t *name_e = e->nchildren > 0 ? e->children[0] : NULL;
+        if (!name_e) {
+            int si = strlit_intern("");
+            W("    (i32.const %d)\n", strlit_abs(si));
+            W("    (i32.const 0)\n");
+        } else if (name_e->kind == E_VAR && name_e->sval) {
+            /* $var — name is the identifier string itself */
+            int si = strlit_intern(name_e->sval);
+            W("    (i32.const %d) ;; $var name=%s\n", strlit_abs(si), name_e->sval);
+            W("    (i32.const %d)\n", str_lits[si].len);
+        } else if (name_e->kind == E_CAPT_COND && name_e->sval) {
+            /* $.var — parser wraps as E_INDR(E_CAPT_COND(var)); use identifier name */
+            int si = strlit_intern(name_e->sval);
+            W("    (i32.const %d) ;; $.var name=%s\n", strlit_abs(si), name_e->sval);
+            W("    (i32.const %d)\n", str_lits[si].len);
+        } else if (name_e->kind == E_CAPT_COND && name_e->nchildren > 0
+                   && name_e->children[0] && name_e->children[0]->sval) {
+            /* $.var alternative: sval on child E_VAR */
+            const char *vn = name_e->children[0]->sval;
+            int si = strlit_intern(vn);
+            W("    (i32.const %d) ;; $.var(child) name=%s\n", strlit_abs(si), vn);
+            W("    (i32.const %d)\n", str_lits[si].len);
+        } else {
+            /* $'lit' or $expr — evaluate child to get name string */
+            WasmTy nt = emit_expr(name_e);
+            if (nt == TY_INT)   W("    (call $sno_int_to_str)\n");
+            if (nt == TY_FLOAT) W("    (call $sno_float_to_str)\n");
+        }
+        W("    (call $sno_var_get)\n");
+        return TY_STR;
+    }
     case E_CONCAT: {
         if (e->nchildren == 0) {
             int idx = strlit_intern("");
@@ -365,7 +459,29 @@ static void emit_goto_target(const char *target) {
 /* ── Emit DIFFER/IDENT as i32 success flag ───────────────────────────────── */
 static void emit_differ(const EXPR_t *e) {
     int is_differ = (strcasecmp(e->sval, "differ") == 0);
-    if (e->nchildren < 2) { W("      (i32.const %d)\n", is_differ ? 1 : 0); return; }
+    if (e->nchildren == 1) {
+        /* DIFFER(x): succeeds if x is non-null; IDENT(x): succeeds if x is null */
+        WasmTy t = emit_expr(e->children[0]);
+        if (t == TY_INT) {
+            W("      (i64.const 0)\n");
+            W("      (i64.ne)\n");
+            W("      (i32.wrap_i64)\n");
+        } else if (t == TY_FLOAT) {
+            W("      (f64.const 0)\n");
+            W("      (f64.ne)\n");
+        } else {
+            /* TY_STR: stack is (off, len) with len on top.
+             * Save len, drop off, restore len, then test len != 0. */
+            W("      (local.set $tmp_i32) ;; save len (top)\n");
+            W("      (drop)               ;; drop off\n");
+            W("      (local.get $tmp_i32) ;; restore len\n");
+            W("      (i32.const 0)\n");
+            W("      (i32.ne) ;; len != 0 → non-null\n");
+        }
+        if (!is_differ) W("      (i32.eqz) ;; IDENT: invert\n");
+        return;
+    }
+    if (e->nchildren < 1) { W("      (i32.const %d)\n", is_differ ? 1 : 0); return; }
     WasmTy t0 = emit_expr(e->children[0]);
     if (t0 == TY_INT)   W("      (call $sno_int_to_str)\n");
     if (t0 == TY_FLOAT) W("      (call $sno_float_to_str)\n");
@@ -433,6 +549,13 @@ static void emit_main_body(Program *prog) {
     W("    (local $pc i32)\n");
     W("    (local $ok i32)\n");
     W("    (local $tmp_f f64)\n");
+    W("    (local $tmp_i32 i32)\n");
+    if (needs_indr) {
+        W("    (local $indr_no i32)\n");
+        W("    (local $indr_nl i32)\n");
+        W("    (local $indr_vo i32)\n");
+        W("    (local $indr_vl i32)\n");
+    }
 
     int closed[MAX_LABELS] = {0};
     closed[0] = 1;
@@ -498,6 +621,7 @@ static void emit_main_body(Program *prog) {
         int has_subject = s->subject && s->subject->kind != E_NUL;
         int is_output = 0;
         int is_varassign = 0;
+        int is_indrassign = 0;
         if (s->has_eq && s->subject) {
             const char *n = s->subject->sval ? s->subject->sval : "";
             if ((s->subject->kind == E_VAR || s->subject->kind == E_KW)) {
@@ -505,6 +629,8 @@ static void emit_main_body(Program *prog) {
                     is_output = 1;
                 else if (!is_keyword_name(n))
                     is_varassign = 1;
+            } else if (s->subject->kind == E_INDR) {
+                is_indrassign = 1;
             }
         }
 
@@ -523,6 +649,50 @@ static void emit_main_body(Program *prog) {
             /* Stack: (off len) — store len first (it's on top) */
             W("      (global.set $var_%s_len)\n", var_names[vi]);
             W("      (global.set $var_%s_off)\n", var_names[vi]);
+            W("      (local.set $ok (i32.const 1))\n");
+        } else if (is_indrassign) {
+            /* $name_expr = replacement — indirect assignment */
+            W("      ;; $... = (indirect assign)\n");
+            /* Evaluate name expression — same semantics as E_INDR rvalue */
+            const EXPR_t *name_e = s->subject->nchildren > 0
+                                   ? s->subject->children[0] : NULL;
+            if (!name_e) {
+                int si = strlit_intern("");
+                W("      (i32.const %d)\n", strlit_abs(si));
+                W("      (i32.const 0)\n");
+            } else if (name_e->kind == E_VAR && name_e->sval) {
+                int si = strlit_intern(name_e->sval);
+                W("      (i32.const %d) ;; $var lval name=%s\n", strlit_abs(si), name_e->sval);
+                W("      (i32.const %d)\n", str_lits[si].len);
+            } else if (name_e->kind == E_CAPT_COND && name_e->sval) {
+                int si = strlit_intern(name_e->sval);
+                W("      (i32.const %d) ;; $.var lval name=%s\n", strlit_abs(si), name_e->sval);
+                W("      (i32.const %d)\n", str_lits[si].len);
+            } else if (name_e->kind == E_CAPT_COND && name_e->nchildren > 0
+                       && name_e->children[0] && name_e->children[0]->sval) {
+                const char *vn = name_e->children[0]->sval;
+                int si = strlit_intern(vn);
+                W("      (i32.const %d) ;; $.var(child) lval name=%s\n", strlit_abs(si), vn);
+                W("      (i32.const %d)\n", str_lits[si].len);
+            } else {
+                WasmTy nt = emit_expr(name_e);
+                if (nt == TY_INT)   W("      (call $sno_int_to_str)\n");
+                if (nt == TY_FLOAT) W("      (call $sno_float_to_str)\n");
+            }
+            /* Stack: (name_off name_len) — save in locals */
+            W("      (local.set $indr_nl)\n");
+            W("      (local.set $indr_no)\n");
+            /* Evaluate replacement value */
+            WasmTy vt = emit_expr(s->replacement);
+            if (vt == TY_INT)   W("      (call $sno_int_to_str)\n");
+            if (vt == TY_FLOAT) W("      (call $sno_float_to_str)\n");
+            /* Stack: (val_off val_len) */
+            W("      (local.set $indr_vl)\n");
+            W("      (local.set $indr_vo)\n");
+            /* Call sno_var_set(name_off, name_len, val_off, val_len) */
+            W("      (local.get $indr_no) (local.get $indr_nl)\n");
+            W("      (local.get $indr_vo) (local.get $indr_vl)\n");
+            W("      (call $sno_var_set)\n");
             W("      (local.set $ok (i32.const 1))\n");
         } else if (has_subject) {
             W("      ;; subject eval\n");
@@ -588,6 +758,7 @@ void emit_wasm(Program *prog, FILE *out, const char *filename) {
     for (int i = 0; i < str_nlit; i++) free(str_lits[i].text);
     str_nlit = str_bytes = 0;
     var_table_reset();
+    needs_indr = 0;
 
     collect_labels(prog);
     prescan_prog(prog);
@@ -598,6 +769,7 @@ void emit_wasm(Program *prog, FILE *out, const char *filename) {
     emit_runtime_imports();
     emit_data_segment();
     emit_var_globals();
+    emit_var_indirect_funcs();
 
     W("\n  (func (export \"main\") (result i32)\n");
     emit_main_body(prog);
