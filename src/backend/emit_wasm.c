@@ -105,6 +105,9 @@ static void emit_runtime_imports(void) {
     W("  (import \"sno\" \"sno_int_to_str\"   (func $sno_int_to_str   (param i64) (result i32 i32)))\n");
     W("  (import \"sno\" \"sno_float_to_str\" (func $sno_float_to_str (param f64) (result i32 i32)))\n");
     W("  (import \"sno\" \"sno_pow\"          (func $sno_pow          (param f64 f64) (result f64)))\n");
+    W("  (import \"sno\" \"sno_size\"         (func $sno_size         (param i32 i32) (result i64)))\n");
+    W("  (import \"sno\" \"sno_dupl\"         (func $sno_dupl         (param i32 i32 i64) (result i32 i32)))\n");
+    W("  (import \"sno\" \"sno_replace\"      (func $sno_replace      (param i32 i32 i32 i32 i32 i32) (result i32 i32)))\n");
     W("  ;; String heap pointer: programs use sno_str_alloc from runtime\n");
     W("  ;; (global $str_ptr is internal to runtime; programs use sno_str_alloc)\n");
 }
@@ -119,9 +122,31 @@ static int is_keyword_name(const char *n) {
 }
 
 /* ── expr pre-scan (intern all string literals; collect E_VAR names) ─────── */
+/* Pre-intern &ALPHABET (256-byte binary string) by name. */
+static void prescan_intern_alphabet(void) {
+    /* Check if already present (len == 256) */
+    for (int i = 0; i < str_nlit; i++)
+        if (str_lits[i].len == 256) return;
+    int idx = str_nlit++;
+    str_lits[idx].text   = (char *)malloc(256);
+    for (int i = 0; i < 256; i++) str_lits[idx].text[i] = (char)i;
+    str_lits[idx].len    = 256;
+    str_lits[idx].offset = str_bytes;
+    str_bytes += 256;
+}
+
 static void prescan_expr(const EXPR_t *e) {
     if (!e) return;
     if (e->kind == E_QLIT) { strlit_intern(e->sval); return; }
+    if (e->kind == E_KW && e->sval) {
+        const char *kw = e->sval;
+        if      (strcasecmp(kw, "alphabet") == 0) prescan_intern_alphabet();
+        else if (strcasecmp(kw, "ucase")    == 0) strlit_intern("ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+        else if (strcasecmp(kw, "lcase")    == 0) strlit_intern("abcdefghijklmnopqrstuvwxyz");
+        else if (strcasecmp(kw, "digits")   == 0) strlit_intern("0123456789");
+        /* &NULL, &ANCHOR, etc. → empty string (already interned in prescan_prog) */
+        return;
+    }
     if (e->kind == E_VAR && e->sval && !is_keyword_name(e->sval))
         var_intern(e->sval);
     if (e->kind == E_INDR) {
@@ -382,6 +407,46 @@ static WasmTy emit_expr(const EXPR_t *e) {
         }
         return TY_STR;
     }
+    case E_KW: {
+        /* &KEYWORD — emit as pre-interned string constant */
+        const char *kw = e->sval ? e->sval : "";
+        const char *val = "";
+        if      (strcasecmp(kw, "alphabet") == 0) {
+            /* &ALPHABET: all 256 chars 0..255 */
+            /* intern a 256-byte string with chars 0..255 */
+            char alpha[256];
+            for (int i = 0; i < 256; i++) alpha[i] = (char)i;
+            /* Use raw strlit_intern — but it uses strlen; need raw version */
+            /* Find or insert manually */
+            int found = -1;
+            for (int i = 0; i < str_nlit; i++)
+                if (str_lits[i].len == 256) { found = i; break; }
+            if (found < 0) {
+                found = str_nlit++;
+                str_lits[found].text   = (char *)malloc(256);
+                memcpy(str_lits[found].text, alpha, 256);
+                str_lits[found].len    = 256;
+                str_lits[found].offset = str_bytes;
+                str_bytes += 256;
+            }
+            W("    (i32.const %d) ;; &ALPHABET\n", strlit_abs(found));
+            W("    (i32.const 256)\n");
+            return TY_STR;
+        } else if (strcasecmp(kw, "ucase") == 0) {
+            val = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        } else if (strcasecmp(kw, "lcase") == 0) {
+            val = "abcdefghijklmnopqrstuvwxyz";
+        } else if (strcasecmp(kw, "digits") == 0) {
+            val = "0123456789";
+        } else if (strcasecmp(kw, "null") == 0) {
+            val = "";
+        }
+        /* anchor, etc. fall through to empty string */
+        int ki = strlit_intern(val);
+        W("    (i32.const %d) ;; &%s\n", strlit_abs(ki), kw);
+        W("    (i32.const %d)\n", str_lits[ki].len);
+        return TY_STR;
+    }
     case E_FNC: {
         const char *fn = e->sval ? e->sval : "";
         /* REMDR(a,b) → i64.rem_s */
@@ -394,6 +459,39 @@ static WasmTy emit_expr(const EXPR_t *e) {
             if (tb == TY_FLOAT) { W("    (i64.trunc_f64_s)\n"); }
             W("    (i64.rem_s)\n");
             return TY_INT;
+        }
+        /* SIZE(s) → i64 character count */
+        if (strcasecmp(fn, "size") == 0 && e->nchildren >= 1) {
+            WasmTy ta = emit_expr(e->children[0]);
+            if (ta == TY_INT)   W("    (call $sno_int_to_str)\n");
+            if (ta == TY_FLOAT) W("    (call $sno_float_to_str)\n");
+            W("    (call $sno_size)\n");
+            return TY_INT;
+        }
+        /* DUPL(s, n) → replicated string */
+        if (strcasecmp(fn, "dupl") == 0 && e->nchildren >= 2) {
+            WasmTy ta = emit_expr(e->children[0]);
+            if (ta == TY_INT)   W("    (call $sno_int_to_str)\n");
+            if (ta == TY_FLOAT) W("    (call $sno_float_to_str)\n");
+            WasmTy tb = emit_expr(e->children[1]);
+            if (tb == TY_STR) W("    (call $sno_str_to_int)\n");
+            if (tb == TY_FLOAT) W("    (i64.trunc_f64_s)\n");
+            W("    (call $sno_dupl)\n");
+            return TY_STR;
+        }
+        /* REPLACE(s, from, to) → translated string */
+        if (strcasecmp(fn, "replace") == 0 && e->nchildren >= 3) {
+            WasmTy ts = emit_expr(e->children[0]);
+            if (ts == TY_INT)   W("    (call $sno_int_to_str)\n");
+            if (ts == TY_FLOAT) W("    (call $sno_float_to_str)\n");
+            WasmTy tf = emit_expr(e->children[1]);
+            if (tf == TY_INT)   W("    (call $sno_int_to_str)\n");
+            if (tf == TY_FLOAT) W("    (call $sno_float_to_str)\n");
+            WasmTy tt = emit_expr(e->children[2]);
+            if (tt == TY_INT)   W("    (call $sno_int_to_str)\n");
+            if (tt == TY_FLOAT) W("    (call $sno_float_to_str)\n");
+            W("    (call $sno_replace)\n");
+            return TY_STR;
         }
         /* Default: evaluate args, drop results, return empty string */
         for (int i = 0; i < e->nchildren; i++) {

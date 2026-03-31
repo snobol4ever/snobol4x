@@ -227,7 +227,7 @@ run_snobol4_wasm() {
     echo "SKIP" > "$RESULTS/${cell}_status"; return
   fi
 
-  local DIRS="hello rung4 rung3 rung2"
+  local DIRS="hello rung4 rung3 rung2 rung8"
   for dir in $DIRS; do
     local full="$CORPUS/crosscheck/$dir"
     [[ -d "$full" ]] || continue

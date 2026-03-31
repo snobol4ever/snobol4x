@@ -150,6 +150,104 @@
     (i32.const 1)
   )
 
+  ;; ── sno_size (off i32, len i32) → i64 ───────────────────────────────────────
+  ;; Returns length of string as SNOBOL4 integer.
+  ;; For an integer arg the caller must first convert to string via sno_int_to_str.
+  (func $sno_size (export "sno_size")
+    (param $off i32) (param $len i32) (result i64)
+    (i64.extend_i32_u (local.get $len))
+  )
+
+  ;; ── sno_dupl (off i32, len i32, n i64) → (off i32, len i32) ─────────────────
+  ;; Replicates the string n times.  n <= 0 → returns empty string.
+  (func $sno_dupl (export "sno_dupl")
+    (param $off i32) (param $len i32) (param $n i64)
+    (result i32 i32)
+    (local $total i32) (local $dst i32) (local $i i64) (local $j i32)
+    ;; n <= 0 or len == 0 → empty string
+    (if (i64.le_s (local.get $n) (i64.const 0))
+      (then
+        (i32.const 32768)   ;; any valid offset — length 0 means unused
+        (i32.const 0)
+        (return)))
+    (if (i32.eqz (local.get $len))
+      (then
+        (i32.const 32768)
+        (i32.const 0)
+        (return)))
+    (local.set $total (i32.mul (local.get $len) (i32.wrap_i64 (local.get $n))))
+    (local.set $dst (call $sno_str_alloc (local.get $total)))
+    (local.set $i (i64.const 0))
+    (block $outer (loop $rep
+      (br_if $outer (i64.ge_u (local.get $i) (local.get $n)))
+      (local.set $j (i32.const 0))
+      (block $inner (loop $cp
+        (br_if $inner (i32.ge_u (local.get $j) (local.get $len)))
+        (i32.store8
+          (i32.add (local.get $dst)
+            (i32.add (i32.mul (i32.wrap_i64 (local.get $i)) (local.get $len))
+                     (local.get $j)))
+          (i32.load8_u (i32.add (local.get $off) (local.get $j))))
+        (local.set $j (i32.add (local.get $j) (i32.const 1)))
+        (br $cp)))
+      (local.set $i (i64.add (local.get $i) (i64.const 1)))
+      (br $rep)))
+    (local.get $dst)
+    (local.get $total)
+  )
+
+  ;; ── sno_replace (s_off i32, s_len i32, from_off i32, from_len i32,
+  ;;                to_off i32, to_len i32) → (off i32, len i32) ───────────────
+  ;; SNOBOL4 REPLACE: build a 256-byte translation table from from/to,
+  ;; then translate each byte of the subject through it.
+  ;; Characters in from map to corresponding characters in to.
+  ;; If from is longer than to, excess chars in from map to nothing (deleted).
+  ;; (CSNOBOL4 truncates to to the shorter length — we match that.)
+  (func $sno_replace (export "sno_replace")
+    (param $s_off   i32) (param $s_len   i32)
+    (param $fr_off  i32) (param $fr_len  i32)
+    (param $to_off  i32) (param $to_len  i32)
+    (result i32 i32)
+    (local $tbl i32) (local $dst i32) (local $i i32) (local $c i32) (local $pairs i32)
+    ;; allocate 256-byte translation table on heap
+    (local.set $tbl (call $sno_str_alloc (i32.const 256)))
+    ;; initialize: identity mapping
+    (local.set $i (i32.const 0))
+    (block $b0 (loop $l0
+      (br_if $b0 (i32.ge_u (local.get $i) (i32.const 256)))
+      (i32.store8 (i32.add (local.get $tbl) (local.get $i)) (local.get $i))
+      (local.set $i (i32.add (local.get $i) (i32.const 1)))
+      (br $l0)))
+    ;; apply from→to substitutions (only up to min(from_len, to_len) pairs)
+    (local.set $pairs
+      (if (result i32) (i32.lt_u (local.get $fr_len) (local.get $to_len))
+        (then (local.get $fr_len))
+        (else (local.get $to_len))))
+    (local.set $i (i32.const 0))
+    (block $b1 (loop $l1
+      (br_if $b1 (i32.ge_u (local.get $i) (local.get $pairs)))
+      (local.set $c (i32.load8_u (i32.add (local.get $fr_off) (local.get $i))))
+      (i32.store8
+        (i32.add (local.get $tbl) (local.get $c))
+        (i32.load8_u (i32.add (local.get $to_off) (local.get $i))))
+      (local.set $i (i32.add (local.get $i) (i32.const 1)))
+      (br $l1)))
+    ;; allocate result buffer (same length as subject — translation is 1:1)
+    (local.set $dst (call $sno_str_alloc (local.get $s_len)))
+    ;; translate each byte through the table
+    (local.set $i (i32.const 0))
+    (block $b2 (loop $l2
+      (br_if $b2 (i32.ge_u (local.get $i) (local.get $s_len)))
+      (local.set $c (i32.load8_u (i32.add (local.get $s_off) (local.get $i))))
+      (i32.store8
+        (i32.add (local.get $dst) (local.get $i))
+        (i32.load8_u (i32.add (local.get $tbl) (local.get $c))))
+      (local.set $i (i32.add (local.get $i) (i32.const 1)))
+      (br $l2)))
+    (local.get $dst)
+    (local.get $s_len)
+  )
+
   ;; ── sno_pow (base f64, exp f64) → f64 ─────────────────────────────────────
   (func $sno_pow (export "sno_pow") (param $base f64) (param $exp f64) (result f64)
     (local $result f64) (local $n i64) (local $neg_exp i32)
