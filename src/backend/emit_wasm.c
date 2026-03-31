@@ -86,7 +86,7 @@ static void var_table_reset(void) {
 typedef enum { TY_STR = 0, TY_INT = 1, TY_FLOAT = 2 } WasmTy;
 
 /* ── Forward decls ────────────────────────────────────────────────────────── */
-WasmTy emit_wasm_expr(const EXPR_t *e);
+static WasmTy emit_wasm_expr(const EXPR_t *e);
 
 /* ── Runtime imports ─────────────────────────────────────────────────────── */
 /* Programs import all runtime functions from the "sno" namespace.           */
@@ -178,6 +178,8 @@ static void prescan_expr(const EXPR_t *e) {
                  && ch->children[0] && ch->children[0]->sval)
             var_intern(ch->children[0]->sval);
     }
+    if (e->kind == E_FNC && e->sval && strcasecmp(e->sval, "value") == 0)
+        needs_indr = 1;  /* VALUE() needs sno_var_get */
     /* CAPT_COND/CAPT_IMM/CAPT_CUR: varname in children[1]->sval (binop shape) */
     if (e->kind == E_CAPT_COND || e->kind == E_CAPT_IMM || e->kind == E_CAPT_CUR) {
         /* Try sval first (legacy path), then children[1] (parser binop path) */
@@ -273,7 +275,7 @@ static void emit_var_indirect_funcs(void) {
 }
 
 
-WasmTy emit_wasm_expr(const EXPR_t *e) {
+static WasmTy emit_wasm_expr(const EXPR_t *e) {
     if (!e || e->kind == E_NUL) {
         int idx = strlit_intern("");
         W("    (i32.const %d)\n", strlit_abs(idx));
@@ -494,43 +496,63 @@ WasmTy emit_wasm_expr(const EXPR_t *e) {
         W("    (drop)  ;; drop magic_len, keep handle\n");
         W("    (local.set $arr_h)\n");
         if (e->nchildren >= 3 && e->children[2]) {
-            /* 2D: arr<row, col> */
+            /* 2D: arr<row, col> — sno_array_get2(handle, row, col) */
             WasmTy t1 = emit_wasm_expr(e->children[1]);
             if (t1 == TY_STR) W("    (call $sno_str_to_int)\n");
             if (t1 == TY_FLOAT) W("    (i64.trunc_f64_s)\n");
             W("    (i32.wrap_i64)\n");
+            W("    (local.set $tmp_i32)  ;; save row\n");
             WasmTy t2 = emit_wasm_expr(e->children[2]);
             if (t2 == TY_STR) W("    (call $sno_str_to_int)\n");
             if (t2 == TY_FLOAT) W("    (i64.trunc_f64_s)\n");
             W("    (i32.wrap_i64)\n");
-            W("    (call $sno_array_get2 (local.get $arr_h))\n");
+            W("    (local.set $arr_h2)  ;; save col\n");
+            W("    (local.get $arr_h)\n");
+            W("    (local.get $tmp_i32)  ;; row\n");
+            W("    (local.get $arr_h2)   ;; col\n");
+            W("    (call $sno_array_get2)\n");
         } else {
-            /* 1D or table: check type */
-            W("    ;; E_IDX 1D: check handle type to dispatch array vs table\n");
+            /* 1D or table: check type — use block for structured exit */
+            W("    (block $eidx_done (result i32 i32)\n");
             W("    (local.set $arr_ok (call $sno_handle_type (local.get $arr_h)))\n");
-            /* type==2 → table; type==1 → array */
+            /* type==0 → null handle → empty string */
+            { int ei = strlit_intern("");
+              W("    (if (i32.eqz (local.get $arr_ok)) (then\n");
+              W("      (i32.const %d) (i32.const 0) (br $eidx_done)))\n", strlit_abs(ei)); }
+            /* Evaluate key */
             WasmTy kt = emit_wasm_expr(e->children[1]);
-            /* key needs to be a string for table lookup */
             if (kt == TY_INT)   W("    (call $sno_int_to_str)\n");
             if (kt == TY_FLOAT) W("    (call $sno_float_to_str)\n");
-            /* Stack: (key_off key_len) */
-            W("    (if (i32.eq (local.get $arr_ok) (i32.const 2)) (then\n");
-            W("      ;; TABLE: use string key directly\n");
-            W("      (call $sno_table_get (local.get $arr_h))\n");
-            W("      (return)))\n");
-            /* ARRAY: convert key to integer index */
-            W("    (call $sno_str_to_int)  ;; string key → i64 index\n");
+            W("    (local.set $proto_len)  ;; key_len\n");
+            W("    (local.set $arr_ok)     ;; key_off\n");
+            /* type==2 → TABLE */
+            W("    (if (i32.eq (call $sno_handle_type (local.get $arr_h)) (i32.const 2)) (then\n");
+            W("      (local.get $arr_h)\n");
+            W("      (local.get $arr_ok) (local.get $proto_len)\n");
+            W("      (call $sno_table_get)\n");
+            W("      (br $eidx_done)))\n");
+            /* ARRAY: key string → i32 index */
+            W("    (local.get $arr_ok) (local.get $proto_len)\n");
+            W("    (call $sno_str_to_int)\n");
             W("    (i32.wrap_i64)\n");
-            W("    (call $sno_array_get (local.get $arr_h))\n");
+            W("    (local.set $tmp_i32)\n");
+            W("    (local.get $arr_h)\n");
+            W("    (local.get $tmp_i32)\n");
+            W("    (call $sno_array_get)\n");
+            W("    ) ;; end $eidx_done\n");
         }
-        /* Result (off, len) on stack — coerce null (0,0) to empty string */
+        /* Result (off, len) on stack — coerce null (0,0) to empty string.
+         * Save both to locals; WASM structured control flow requires empty
+         * stack at if-entry (only condition allowed). */
         W("    ;; coerce null slot (0,0) to empty string\n");
-        W("    (if (i32.eqz (local.tee $tmp_i32)) (then\n");
-        W("      (drop)\n");
-        { int ei = strlit_intern(""); W("      (i32.const %d)\n", strlit_abs(ei)); }
-        W("      (i32.const 0)\n");
-        W("      (return)))\n");
-        W("    (local.get $tmp_i32)  ;; restore len\n");
+        W("    (local.set $proto_len)  ;; len\n");
+        W("    (local.set $arr_ok)     ;; off\n");
+        { int ei = strlit_intern("");
+          /* if len==0 (null slot), replace off with empty-string offset */
+          W("    (if (i32.eqz (local.get $proto_len)) (then\n");
+          W("      (local.set $arr_ok (i32.const %d))))\n", strlit_abs(ei));
+        }
+        W("    (local.get $arr_ok) (local.get $proto_len)\n");
         return TY_STR;
         fallback_idx:;
         { int ei = strlit_intern(""); W("    (i32.const %d)\n    (i32.const 0)\n", strlit_abs(ei)); }
@@ -540,45 +562,67 @@ WasmTy emit_wasm_expr(const EXPR_t *e) {
         const char *fn = e->sval ? e->sval : "";
         /* ARRAY(n) or ARRAY(n, default) → create 1D array, return handle */
         if (strcasecmp(fn, "array") == 0) {
-            /* Parse dimension string: "n" → 1D size n; "r,c" → 2D; "-1:1,2" → custom bounds */
-            /* For simplicity: evaluate first arg as size (integer or string "n" or "r,c") */
-            /* We handle the string case at runtime via emit; for now emit inline WAT */
             int def_idx = strlit_intern("");
             int def_off = strlit_abs(def_idx), def_len = 0;
             if (e->nchildren >= 2) {
-                /* default value — evaluate and stringify */
-                /* Emit: create after evaluating default */
                 WasmTy dt = emit_wasm_expr(e->children[1]);
                 if (dt == TY_INT)   W("    (call $sno_int_to_str)\n");
                 if (dt == TY_FLOAT) W("    (call $sno_float_to_str)\n");
-                /* Stack: (def_off def_len) — store in locals temporarily */
                 W("    (local.set $proto_len)  ;; def_len\n");
-                W("    (local.set $arr_ok)     ;; def_off (reuse local)\n");
+                W("    (local.set $arr_ok)     ;; def_off\n");
             }
-            /* Evaluate size arg */
-            if (e->nchildren >= 1) {
-                WasmTy st = emit_wasm_expr(e->children[0]);
-                if (st == TY_INT) W("    (i32.wrap_i64)\n");
-                else if (st == TY_FLOAT) { W("    (i64.trunc_f64_s)\n"); W("    (i32.wrap_i64)\n"); }
-                else {
-                    /* string like "3" or "2,2" — just use str_to_int for 1D for now */
-                    W("    (call $sno_str_to_int)\n");
-                    W("    (i32.wrap_i64)\n");
+            /* Detect multi-dim string literal: E_QLIT with ',' → dispatch sno_array_create2 */
+            int is_multidim = 0;
+            if (e->nchildren >= 1 && e->children[0]->kind == E_QLIT && e->children[0]->sval) {
+                const char *ds = e->children[0]->sval;
+                const char *comma = strchr(ds, ',');
+                if (comma) {
+                    /* Parse "r,c" or "-lo:hi,c" — extract first dim and second dim */
+                    /* First dim: up to comma; second dim: after comma */
+                    /* For "r,c": lo1=1,hi1=r, lo2=1,hi2=c */
+                    /* For "-lo:hi,c": parse lo:hi for first dim */
+                    int lo1 = 1, hi1 = 1, lo2 = 1, hi2 = 1;
+                    char tmp[256]; strncpy(tmp, ds, 255); tmp[255]=0;
+                    char *p = strchr(tmp, ',');
+                    if (p) { *p = 0; p++; }
+                    /* Parse first dimension: "lo:hi" or "n" (lo=1, hi=n) */
+                    char *colon = strchr(tmp, ':');
+                    if (colon) { *colon = 0; lo1 = atoi(tmp); hi1 = atoi(colon+1); }
+                    else       { lo1 = 1; hi1 = atoi(tmp); }
+                    /* Parse second dimension */
+                    if (p) {
+                        char *colon2 = strchr(p, ':');
+                        if (colon2) { *colon2 = 0; lo2 = atoi(p); hi2 = atoi(colon2+1); }
+                        else        { lo2 = 1; hi2 = atoi(p); }
+                    }
+                    /* sno_array_create2(lo1,hi1,lo2,hi2) */
+                    W("    (i32.const %d) (i32.const %d)\n", lo1, hi1);
+                    W("    (i32.const %d) (i32.const %d)\n", lo2, hi2);
+                    W("    (call $sno_array_create2)\n");
+                    W("    (i32.const 32767)  ;; MAGIC_HANDLE\n");
+                    is_multidim = 1;
                 }
-            } else {
-                W("    (i32.const 0)\n");
             }
-            /* Stack: (size i32) */
-            if (e->nchildren >= 2) {
-                W("    (local.get $arr_ok)    ;; def_off\n");
-                W("    (local.get $proto_len) ;; def_len\n");
-            } else {
-                W("    (i32.const %d)  ;; def_off = empty\n", def_off);
-                W("    (i32.const 0)   ;; def_len = 0\n");
+            if (!is_multidim) {
+                /* 1D: evaluate size arg */
+                if (e->nchildren >= 1) {
+                    WasmTy st = emit_wasm_expr(e->children[0]);
+                    if (st == TY_INT)   W("    (i32.wrap_i64)\n");
+                    else if (st == TY_FLOAT) { W("    (i64.trunc_f64_s)\n"); W("    (i32.wrap_i64)\n"); }
+                    else { W("    (call $sno_str_to_int)\n"); W("    (i32.wrap_i64)\n"); }
+                } else {
+                    W("    (i32.const 0)\n");
+                }
+                if (e->nchildren >= 2) {
+                    W("    (local.get $arr_ok)    ;; def_off\n");
+                    W("    (local.get $proto_len) ;; def_len\n");
+                } else {
+                    W("    (i32.const %d)  ;; def_off = empty\n", def_off);
+                    W("    (i32.const 0)   ;; def_len = 0\n");
+                }
+                W("    (call $sno_array_create)\n");
+                W("    (i32.const 32767)  ;; MAGIC_HANDLE sentinel\n");
             }
-            W("    (call $sno_array_create)\n");
-            /* Result: handle i32 — store as (handle, MAGIC_HANDLE=32767) string repr */
-            W("    (i32.const 32767)  ;; MAGIC_HANDLE sentinel\n");
             return TY_STR;
         }
         /* TABLE(n) or TABLE() → create table, return handle */
@@ -605,11 +649,16 @@ WasmTy emit_wasm_expr(const EXPR_t *e) {
                 /* allocate permanent copy in string heap */
                 W("    (local.get $proto_len)  (call $sno_str_alloc)\n");
                 W("    (local.set $arr_ok)  ;; arr_ok = dest ptr\n");
-                /* copy from offset 0 to arr_ok */
-                W("    (local.get $arr_ok)\n");
-                W("    (i32.const 0)  ;; src\n");
-                W("    (local.get $proto_len)\n");
-                W("    (memory.copy)\n");
+                /* byte-copy loop: i=0; while i<proto_len: mem[arr_ok+i]=mem[i]; i++ */
+                W("    (local.set $tmp_i32 (i32.const 0))  ;; i=0\n");
+                W("    (block $cpy_done\n");
+                W("      (loop $cpy\n");
+                W("        (br_if $cpy_done (i32.ge_u (local.get $tmp_i32) (local.get $proto_len)))\n");
+                W("        (i32.store8\n");
+                W("          (i32.add (local.get $arr_ok) (local.get $tmp_i32))\n");
+                W("          (i32.load8_u (local.get $tmp_i32)))\n");
+                W("        (local.set $tmp_i32 (i32.add (local.get $tmp_i32) (i32.const 1)))\n");
+                W("        (br $cpy)))\n");
                 W("    (local.get $arr_ok)\n");
                 W("    (local.get $proto_len)\n");
             } else {
@@ -1249,8 +1298,10 @@ static void emit_subject_as_bool(const EXPR_t *e) {
     /* Any other expression: evaluate it; non-empty/non-zero = success */
     WasmTy t = emit_wasm_expr(e);
     if (t == TY_STR) {
-        /* success if len > 0 */
-        W("      (drop) ;; drop offset, keep len\n");
+        /* Stack: (off, len) — success if len > 0 */
+        W("      (local.set $tmp_i32)  ;; save len\n");
+        W("      (drop)               ;; drop off\n");
+        W("      (local.get $tmp_i32) ;; restore len\n");
         W("      (i32.const 0)\n");
         W("      (i32.ne)\n");
     } else if (t == TY_INT) {
@@ -1314,8 +1365,9 @@ static void emit_main_body(Program *prog) {
     W("    (local $pat_before i32)\n");
     /* Array/Table/DATA handle locals (M-SW-C02) */
     W("    (local $arr_h i32)\n");    /* array/table handle */
-    W("    (local $arr_ok i32)\n");   /* bounds-check result */
-    W("    (local $proto_len i32)\n"); /* prototype string length */
+    W("    (local $arr_ok i32)\n");   /* bounds-check result / key_off scratch */
+    W("    (local $proto_len i32)\n"); /* prototype string length / key_len scratch */
+    W("    (local $arr_h2 i32)\n");   /* 2D col scratch */
 
     int closed[MAX_LABELS] = {0};
     closed[0] = 1;
@@ -1457,6 +1509,90 @@ static void emit_main_body(Program *prog) {
             W("      (local.get $indr_vo) (local.get $indr_vl)\n");
             W("      (call $sno_var_set)\n");
             W("      (local.set $ok (i32.const 1))\n");
+        } else if (is_idxassign) {
+            /* arr<i> = val  or  tbl<key> = val  or  arr<r,c> = val */
+            const EXPR_t *arr_e  = s->subject->nchildren > 0 ? s->subject->children[0] : NULL;
+            const EXPR_t *idx_e  = s->subject->nchildren > 1 ? s->subject->children[1] : NULL;
+            const EXPR_t *idx2_e = s->subject->nchildren > 2 ? s->subject->children[2] : NULL;
+            W("      ;; arr/tbl<idx> = val (idxassign)\n");
+            /* Evaluate array/table handle — expect TY_STR (handle, 32767) */
+            if (arr_e) {
+                WasmTy at = emit_wasm_expr(arr_e);
+                (void)at;
+            } else {
+                W("      (i32.const 0) (i32.const 0)\n");
+            }
+            W("      (drop)  ;; drop magic sentinel\n");
+            W("      (local.set $arr_h)\n");
+            /* Evaluate replacement value — coerce to string */
+            {
+                WasmTy vt = emit_wasm_expr(s->replacement);
+                if (vt == TY_INT)   W("      (call $sno_int_to_str)\n");
+                if (vt == TY_FLOAT) W("      (call $sno_float_to_str)\n");
+            }
+            /* Stack: (val_off val_len) — save in locals */
+            W("      (local.set $proto_len)  ;; val_len\n");
+            W("      (local.set $arr_ok)     ;; val_off\n");
+            if (idx2_e) {
+                /* 2D array: arr<row,col> = val — sno_array_set2(handle,row,col,vo,vl) */
+                WasmTy t1 = idx_e ? emit_wasm_expr(idx_e) : TY_INT;
+                if (t1 == TY_STR)   W("      (call $sno_str_to_int)\n");
+                if (t1 == TY_FLOAT) W("      (i64.trunc_f64_s)\n");
+                W("      (i32.wrap_i64)\n");
+                W("      (local.set $tmp_i32)  ;; row\n");
+                WasmTy t2 = emit_wasm_expr(idx2_e);
+                if (t2 == TY_STR)   W("      (call $sno_str_to_int)\n");
+                if (t2 == TY_FLOAT) W("      (i64.trunc_f64_s)\n");
+                W("      (i32.wrap_i64)\n");
+                W("      (local.set $arr_h2)  ;; save col\n");
+                /* sno_array_set2(handle, row, col, val_off, val_len) */
+                W("      (local.get $arr_h)\n");
+                W("      (local.get $tmp_i32)  ;; row\n");
+                W("      (local.get $arr_h2)   ;; col\n");
+                W("      (local.get $arr_ok)   ;; val_off\n");
+                W("      (local.get $proto_len) ;; val_len\n");
+                W("      (call $sno_array_set2)\n");
+                W("      (local.set $ok)  ;; 1=ok, 0=OOB\n");
+            } else {
+                /* 1D array or table — check handle type */
+                W("      (local.set $tmp_i32 (call $sno_handle_type (local.get $arr_h)))\n");
+                W("      (block $idxa_done\n");
+                W("        (if (i32.eq (local.get $tmp_i32) (i32.const 2)) (then\n");
+                /* TABLE: key as string — save to locals, then push handle, key, val */
+                if (idx_e) {
+                    WasmTy kt = emit_wasm_expr(idx_e);
+                    if (kt == TY_INT)   W("          (call $sno_int_to_str)\n");
+                    if (kt == TY_FLOAT) W("          (call $sno_float_to_str)\n");
+                } else {
+                    int ei = strlit_intern("");
+                    W("          (i32.const %d) (i32.const 0)\n", strlit_abs(ei));
+                }
+                W("          (local.set $tmp_i32)  ;; key_len\n");
+                W("          (local.set $arr_h2)   ;; key_off\n");
+                /* sno_table_set(handle, key_off, key_len, val_off, val_len) -> void */
+                W("          (local.get $arr_h)\n");
+                W("          (local.get $arr_h2) (local.get $tmp_i32)\n");
+                W("          (local.get $arr_ok) (local.get $proto_len)\n");
+                W("          (call $sno_table_set)\n");
+                W("          (local.set $ok (i32.const 1))\n");
+                W("          (br $idxa_done)))\n");
+                /* ARRAY: key as i32 index — sno_array_set(handle, idx, val_off, val_len) */
+                if (idx_e) {
+                    WasmTy it = emit_wasm_expr(idx_e);
+                    if (it == TY_STR)   W("        (call $sno_str_to_int)\n");
+                    if (it == TY_FLOAT) W("        (i64.trunc_f64_s)\n");
+                    W("        (i32.wrap_i64)\n");
+                } else {
+                    W("        (i32.const 1)\n");
+                }
+                W("        (local.set $tmp_i32)  ;; save idx\n");
+                W("        (local.get $arr_h)\n");
+                W("        (local.get $tmp_i32)  ;; idx\n");
+                W("        (local.get $arr_ok) (local.get $proto_len)\n");
+                W("        (call $sno_array_set)\n");
+                W("        (local.set $ok)  ;; 1=ok, 0=OOB\n");
+                W("      ) ;; block $idxa_done\n");
+            }
         } else if (has_subject && s->pattern && s->pattern->kind != E_NUL) {
             /* Pattern-match statement: subject pat  :s/:f
                Use cursor-based emit_pattern_node() so SEQ can chain. */
