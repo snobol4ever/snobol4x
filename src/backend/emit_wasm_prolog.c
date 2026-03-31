@@ -147,6 +147,8 @@ static void emit_pl_runtime_imports(void) {
     W("  (import \"pl\" \"unify_atom\"      (func $pl_unify_atom   (param i32 i32) (result i32)))\n");
     W("  (import \"pl\" \"var_bind\"        (func $pl_var_bind     (param i32 i32)))\n");
     W("  (import \"pl\" \"var_deref\"       (func $pl_var_deref    (param i32) (result i32)))\n");
+    W("  (import \"pl\" \"int_to_atom\"     (func $pl_int_to_atom  (param i32) (result i32)))\n");
+    W("  (import \"pl\" \"atom_to_int\"     (func $pl_atom_to_int  (param i32) (result i32)))\n");
     W("\n");
 }
 
@@ -418,6 +420,73 @@ static void emit_unify_terms(const EXPR_t *lhs, const EXPR_t *rhs, int env_idx) 
       (int)lhs->kind, (int)rhs->kind);
 }
 
+/* ── emit_arith_i32: emit inline i32 arithmetic for is/2 RHS ──────────── */
+/* Pushes one i32 value onto the WASM stack. */
+static void emit_arith_i32(const EXPR_t *e, int env_idx) {
+    if (!e) { W("    (i32.const 0)\n"); return; }
+    switch (e->kind) {
+    case E_ILIT:
+        W("    (i32.const %ld)\n", e->ival);
+        return;
+    case E_VAR: {
+        int slot = (int)e->ival;
+        int addr = env_slot_addr(env_idx, slot < 0 ? 0 : slot);
+        /* var holds atom_id; convert to int */
+        W("    (call $pl_atom_to_int (i32.load (i32.const %d)))\n", addr);
+        return;
+    }
+    case E_FNC:
+        if (e->sval && e->nchildren == 0) {
+            /* atom that looks like an integer literal */
+            W("    (i32.const %s)\n", e->sval);
+            return;
+        }
+        break;
+    case E_ADD:
+        emit_arith_i32(e->children[0], env_idx);
+        emit_arith_i32(e->children[1], env_idx);
+        W("    (i32.add)\n");
+        return;
+    case E_SUB:
+        emit_arith_i32(e->children[0], env_idx);
+        emit_arith_i32(e->children[1], env_idx);
+        W("    (i32.sub)\n");
+        return;
+    case E_MPY:
+        emit_arith_i32(e->children[0], env_idx);
+        emit_arith_i32(e->children[1], env_idx);
+        W("    (i32.mul)\n");
+        return;
+    case E_DIV:
+        emit_arith_i32(e->children[0], env_idx);
+        emit_arith_i32(e->children[1], env_idx);
+        W("    (i32.div_s)\n");
+        return;
+    case E_MOD:
+        emit_arith_i32(e->children[0], env_idx);
+        emit_arith_i32(e->children[1], env_idx);
+        W("    (i32.rem_s)\n");
+        return;
+    case E_NEG:
+        emit_arith_i32(e->children[0], env_idx);
+        W("    (i32.const -1)\n    (i32.mul)\n");
+        return;
+    default:
+        break;
+    }
+    W("    (i32.const 0) ;; arith stub kind=%d\n", (int)e->kind);
+}
+
+/* ── emit_arith_lhs_addr: get i32 address of LHS var for is/2 ─────────── */
+static int emit_is_lhs_addr(const EXPR_t *lhs, int env_idx) {
+    if (!lhs) return ENV_BASE;
+    if (lhs->kind == E_VAR) {
+        int slot = (int)lhs->ival;
+        return env_slot_addr(env_idx, slot < 0 ? 0 : slot);
+    }
+    return ENV_BASE; /* fallback */
+}
+
 static void emit_goals(const EXPR_t *g, int env_idx, int in_disj_left);
 
 static void emit_goal(const EXPR_t *goal, int env_idx, int in_disj_left) {
@@ -455,19 +524,98 @@ static void emit_goal(const EXPR_t *goal, int env_idx, int in_disj_left) {
      * If Left definitively fails (reaches fail/0), br $disj_end → Right runs.
      */
     if (strcmp(fn, ";") == 0 && goal->nchildren >= 2) {
-        W("    ;; (;/2) disjunction\n");
-        W("    (block $disj_end\n");
-        W("      ;; Left branch\n");
-        emit_goals(goal->children[0], env_idx, /*in_disj_left=*/1);
-        W("      (br $disj_end)\n");
-        W("      ;; Right branch (unreachable if left succeeded and didn't fail)\n");
+        /* Check for (;/2 (->/2 Cond Then) Else) — if-then-else */
+        const EXPR_t *left = goal->children[0];
+        if (left && left->kind == E_FNC && left->sval &&
+            strcmp(left->sval, "->") == 0 && left->nchildren >= 2) {
+            /* (Cond -> Then ; Else):
+             * Two nested blocks:
+             *   (block $ite_end          ;; outer: br here = done
+             *     (block $cond_fail      ;; inner: br here = cond failed
+             *       Cond (br_if $cond_fail on failure)
+             *       Then
+             *       br $ite_end          ;; skip else
+             *     )  ;; $cond_fail falls through here
+             *     Else
+             *   )  ;; $ite_end
+             */
+            W("    ;; (Cond -> Then ; Else)\n");
+            W("    (block $ite_end\n");
+            W("      (block $cond_fail\n");
+            W("        ;; Condition\n");
+            emit_goals(left->children[0], env_idx, /*in_disj_left=*/1);
+            W("        ;; Then branch (condition succeeded)\n");
+            emit_goals(left->children[1], env_idx, 0);
+            W("        (br $ite_end)\n");
+            W("      ) ;; $cond_fail\n");
+            W("      ;; Else branch\n");
+            emit_goals(goal->children[1], env_idx, 0);
+            W("    ) ;; $ite_end\n");
+        } else {
+            W("    ;; (;/2) disjunction\n");
+            W("    (block $disj_end\n");
+            W("      ;; Left branch\n");
+            emit_goals(left, env_idx, /*in_disj_left=*/1);
+            W("      (br $disj_end)\n");
+            W("      ;; Right branch\n");
+            emit_goals(goal->children[1], env_idx, 0);
+            W("    ) ;; $disj_end\n");
+        }
+        return;
+    }
+
+    /* ->/2 outside of ;/2 (bare if-then, no else): Cond must succeed */
+    if (strcmp(fn, "->") == 0 && goal->nchildren >= 2) {
+        W("    ;; (Cond -> Then) bare if-then\n");
+        emit_goals(goal->children[0], env_idx, 0);
         emit_goals(goal->children[1], env_idx, 0);
-        W("    ) ;; $disj_end\n");
         return;
     }
 
     /* nl/0 */
     if (strcmp(fn, "nl") == 0) { W("    (call $pl_output_nl)\n"); return; }
+
+    /* is/2 — arithmetic evaluation: LHS is Var, RHS is arith expr */
+    if (strcmp(fn, "is") == 0 && goal->nchildren >= 2) {
+        const EXPR_t *lhs = goal->children[0];
+        const EXPR_t *rhs = goal->children[1];
+        int lhs_addr = emit_is_lhs_addr(lhs, env_idx);
+        W("    ;; is/2: eval RHS arith → int_to_atom → bind LHS var\n");
+        /* pl_var_bind(slot, val): push slot addr first, then val */
+        W("    (i32.const %d)\n", lhs_addr);  /* slot addr */
+        emit_arith_i32(rhs, env_idx);          /* val (i32) */
+        W("    (call $pl_int_to_atom)\n");     /* val → atom_id */
+        W("    (call $pl_var_bind)\n");
+        return;
+    }
+
+    /* Comparison ops: </2 >/2 =</2 >=/2 =:=/2 =\=/2
+     * In context (Cond -> Then ; Else): if condition fails, br to $disj_end.
+     * Outside disjunction: we emit as a conditional that falls through on success.
+     * We use in_disj_left to know if we should br on failure. */
+    if (goal->nchildren >= 2 &&
+        (strcmp(fn, "<") == 0 || strcmp(fn, ">") == 0 ||
+         strcmp(fn, "=<") == 0 || strcmp(fn, ">=") == 0 ||
+         strcmp(fn, "=:=") == 0 || strcmp(fn, "=\=") == 0)) {
+        const EXPR_t *a = goal->children[0];
+        const EXPR_t *b = goal->children[1];
+        W("    ;; comparison %s/2\n", fn);
+        emit_arith_i32(a, env_idx);
+        emit_arith_i32(b, env_idx);
+        /* Emit comparison; result i32: 1=true, 0=false */
+        if      (strcmp(fn, "<")   == 0) W("    (i32.lt_s)\n");
+        else if (strcmp(fn, ">")   == 0) W("    (i32.gt_s)\n");
+        else if (strcmp(fn, "=<")  == 0) W("    (i32.le_s)\n");
+        else if (strcmp(fn, ">=")  == 0) W("    (i32.ge_s)\n");
+        else if (strcmp(fn, "=:=") == 0) W("    (i32.eq)\n");
+        else if (strcmp(fn, "=\=") == 0) W("    (i32.ne)\n");
+        /* if result == 0 (false): branch to $disj_end (skip Then, run Else) */
+        if (in_disj_left)
+            W("    (i32.eqz) (br_if $cond_fail)\n");
+        else
+            W("    (drop) ;; comparison result (non-disj context)\n");
+        return;
+    }
 
     /* write/1 */
     if (strcmp(fn, "write") == 0 || strcmp(fn, "writeln") == 0) {
