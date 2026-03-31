@@ -325,10 +325,99 @@ static void emit_pl_predicate(const EXPR_t *choice) {
     W("  )\n");
 }
 
-/* ── emit_pl_goal_inline ─────────────────────────────────────────────────
- * Emit WAT for a goal in a body context.
- * in_disj_left: set when inside left branch of (;/2) — fail/0 emits (br $disj_end).
- * ─────────────────────────────────────────────────────────────────────── */
+/* ── emit_unify_terms ────────────────────────────────────────────────────
+ * Recursively unify two IR terms (children of E_UNIFY).
+ * Handles: var↔atom, atom↔var, atom↔atom, var↔var, compound↔compound.
+ * Compound: check functor/arity statically; recurse on args.
+ */
+static void emit_unify_terms(const EXPR_t *lhs, const EXPR_t *rhs, int env_idx) {
+    if (!lhs || !rhs) return;
+
+    int lhs_is_atom = (lhs->kind == E_FNC  && lhs->sval && lhs->nchildren == 0) ||
+                      (lhs->kind == E_QLIT && lhs->sval);
+    int rhs_is_atom = (rhs->kind == E_FNC  && rhs->sval && rhs->nchildren == 0) ||
+                      (rhs->kind == E_QLIT && rhs->sval);
+    int lhs_is_var  = (lhs->kind == E_VAR);
+    int rhs_is_var  = (rhs->kind == E_VAR);
+
+    /* var ↔ atom: bind slot to atom_id */
+    if (lhs_is_var && rhs_is_atom) {
+        int slot = (int)lhs->ival;
+        int addr = env_slot_addr(env_idx, slot < 0 ? 0 : slot);
+        int aid  = atom_intern(rhs->sval);
+        W("    ;; unify: _V%d = '%s' (id=%d)  [var←atom]\n", slot, rhs->sval, aid);
+        W("    (call $pl_var_bind (i32.const %d) (i32.const %d))\n", addr, aid);
+        return;
+    }
+
+    /* atom ↔ var: bind slot to atom_id */
+    if (lhs_is_atom && rhs_is_var) {
+        int slot = (int)rhs->ival;
+        int addr = env_slot_addr(env_idx, slot < 0 ? 0 : slot);
+        int aid  = atom_intern(lhs->sval);
+        W("    ;; unify: '%s' = _V%d (id=%d)  [atom→var]\n", lhs->sval, slot, aid);
+        W("    (call $pl_var_bind (i32.const %d) (i32.const %d))\n", addr, aid);
+        return;
+    }
+
+    /* atom ↔ atom: ids must match */
+    if (lhs_is_atom && rhs_is_atom) {
+        int la = atom_intern(lhs->sval);
+        int ra = atom_intern(rhs->sval);
+        W("    ;; unify: '%s'=%d vs '%s'=%d  [atom=atom]\n",
+          lhs->sval, la, rhs->sval, ra);
+        if (la != ra) {
+            W("    unreachable ;; static unification failure: '%s' != '%s'\n",
+              lhs->sval, rhs->sval);
+        }
+        return;
+    }
+
+    /* var ↔ var: bind lhs slot to rhs slot's current value */
+    if (lhs_is_var && rhs_is_var) {
+        int ls = (int)lhs->ival; int la = env_slot_addr(env_idx, ls < 0 ? 0 : ls);
+        int rs = (int)rhs->ival; int ra = env_slot_addr(env_idx, rs < 0 ? 0 : rs);
+        W("    ;; unify: _V%d = _V%d  [var=var]\n", ls, rs);
+        W("    (call $pl_var_bind (i32.const %d) (i32.load (i32.const %d)))\n", la, ra);
+        return;
+    }
+
+    /* int literal ↔ var */
+    if (lhs->kind == E_ILIT && rhs_is_var) {
+        int slot = (int)rhs->ival;
+        int addr = env_slot_addr(env_idx, slot < 0 ? 0 : slot);
+        W("    ;; unify: %ld = _V%d  [int→var]\n", lhs->ival, slot);
+        W("    (call $pl_var_bind (i32.const %d) (i32.const %ld))\n", addr, lhs->ival);
+        return;
+    }
+    if (rhs->kind == E_ILIT && lhs_is_var) {
+        int slot = (int)lhs->ival;
+        int addr = env_slot_addr(env_idx, slot < 0 ? 0 : slot);
+        W("    ;; unify: _V%d = %ld  [var←int]\n", slot, rhs->ival);
+        W("    (call $pl_var_bind (i32.const %d) (i32.const %ld))\n", addr, rhs->ival);
+        return;
+    }
+
+    /* compound ↔ compound: check functor/arity, recurse on args */
+    int lhs_is_cmp = (lhs->kind == E_FNC && lhs->sval && lhs->nchildren > 0);
+    int rhs_is_cmp = (rhs->kind == E_FNC && rhs->sval && rhs->nchildren > 0);
+    if (lhs_is_cmp && rhs_is_cmp) {
+        if (strcmp(lhs->sval, rhs->sval) != 0 ||
+            lhs->nchildren != rhs->nchildren) {
+            W("    unreachable ;; static unification failure: %s/%d vs %s/%d\n",
+              lhs->sval, lhs->nchildren, rhs->sval, rhs->nchildren);
+            return;
+        }
+        W("    ;; unify compound %s/%d arg by arg\n", lhs->sval, lhs->nchildren);
+        for (int i = 0; i < lhs->nchildren; i++)
+            emit_unify_terms(lhs->children[i], rhs->children[i], env_idx);
+        return;
+    }
+
+    W("    ;; STUB unify lhs_kind=%d rhs_kind=%d\n    unreachable\n",
+      (int)lhs->kind, (int)rhs->kind);
+}
+
 static void emit_goals(const EXPR_t *g, int env_idx, int in_disj_left);
 
 static void emit_goal(const EXPR_t *goal, int env_idx, int in_disj_left) {
@@ -337,6 +426,13 @@ static void emit_goal(const EXPR_t *goal, int env_idx, int in_disj_left) {
     if (goal->kind == E_SEQ) {
         for (int i = 0; i < goal->nchildren; i++)
             emit_goal(goal->children[i], env_idx, in_disj_left);
+        return;
+    }
+
+    /* E_UNIFY: =/2 — structural unification */
+    if (goal->kind == E_UNIFY) {
+        if (goal->nchildren >= 2)
+            emit_unify_terms(goal->children[0], goal->children[1], env_idx);
         return;
     }
 
