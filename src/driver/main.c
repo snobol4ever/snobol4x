@@ -49,6 +49,7 @@ void emit_wasm_icon_file(IcnNode **nodes, int count, FILE *out,
                   const char *filename);
 
 static int asm_mode  = 0;
+static int dump_ir   = 0;
 static int jvm_mode  = 0;
 static int net_mode  = 0;
 static int wasm_mode = 0;
@@ -157,11 +158,12 @@ static int compile_one(const char *infile, const char *outpath, FILE *out) {
         if (jvm_mode) pl_linker_prescan(pl_prog);
         prolog_program_free(pl_prog);
         if (!prog) { rc = 1; goto done; }
-        if      (asm_mode) asm_emit_prolog(prog, out);
-        else if (jvm_mode) prolog_emit_jvm(prog, out, infile);
-        else if (net_mode) prolog_emit_net(prog, out, infile);
+        if      (dump_ir)   prolog_lower_pretty(prog, out);
+        else if (asm_mode)  asm_emit_prolog(prog, out);
+        else if (jvm_mode)  prolog_emit_jvm(prog, out, infile);
+        else if (net_mode)  prolog_emit_net(prog, out, infile);
         else if (wasm_mode) prolog_emit_wasm(prog, out, infile);
-        else               pl_emit(prog, out);
+        else                pl_emit(prog, out);
         goto done;
     }
 
@@ -220,6 +222,7 @@ int main(int argc, char *argv[]) {
         } else if (!strcmp(argv[i], "-o") && i+1 < argc) {
             explicit_out = argv[++i];
         } else if (!strcmp(argv[i], "-trampoline")) { trampoline_mode = 1;
+        } else if (!strcmp(argv[i], "-dump-ir"))      { dump_ir = 1;
         } else if (!strcmp(argv[i], "-asm"))         { asm_mode = 1;
         } else if (!strcmp(argv[i], "-jvm"))         { jvm_mode = 1;
         } else if (!strcmp(argv[i], "-icn"))         { icn_mode = 1;

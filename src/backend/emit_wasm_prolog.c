@@ -1,29 +1,45 @@
 /*
  * emit_wasm_prolog.c — Prolog IR → WebAssembly text-format emitter
  *
- * Consumes E_CHOICE/E_CLAUSE/E_UNIFY/E_CUT/E_TRAIL_MARK/E_TRAIL_UNWIND
- * nodes produced by prolog_lower() and emits a WebAssembly Text (.wat) file.
- *
  * Entry point: prolog_emit_wasm(Program *prog, FILE *out, const char *filename)
  * Called from driver/main.c when -pl -wasm flags are both set.
  *
  * Design:
- *   - Shares emit_wasm.c string table via emit_wasm.h API for atom literals.
- *     emit_wasm_strlit_intern() / emit_wasm_strlit_abs() / emit_wasm_data_segment().
- *   - Each Prolog-specific EKind gets a case here ONLY — never in emit_wasm.c.
- *   - Byrd-box four-port model: α/β/γ/ω encoded as tail-call WAT functions.
- *     WASM has no arbitrary goto; return_call is zero-overhead tail dispatch.
- *   - Runtime imports from "pl" namespace (pl_runtime.wat), not "sno".
+ *   Shared EKinds (E_QLIT/ILIT/FLIT, arithmetic) live in emit_wasm.c (SW session).
+ *   All Prolog-specific EKinds handled here only.
+ *   Byrd-box ports encoded as WAT tail-call functions (WASM has no goto).
+ *   Runtime imports from "pl" namespace (pl_runtime.wat).
  *
- * Port encoding (mirrors emit_x64_prolog.c and emit_jvm_prolog.c):
- *   α  — try:     initial entry, attempt first clause head unification
- *   β  — retry:   backtrack, unwind trail, attempt next clause
- *   γ  — succeed: head unified + body executed, signal caller
- *   ω  — fail:    all clauses exhausted, propagate failure up
+ * Memory layout used by this emitter:
+ *   [0..8191]       output buffer (pl_runtime.wat)
+ *   [8192..32767]   atom table: atom_id*8 → {i32 str_off, i32 str_len}
+ *                   (emitted as (data) block by emit_pl_atom_table())
+ *   [32768..49151]  variable env frames: slot_addr = 32768 + env_idx*64 + slot*4
+ *   [49152..57343]  trail stack (pl_runtime.wat)
+ *   [57344..131071] term heap (pl_runtime.wat)
+ *   [65536..]       string literal data (emit_wasm.c STR_DATA_BASE)
+ *
+ * Variable binding:
+ *   var slot stores the string offset of the bound atom (i32).
+ *   write(X): load slot → off; off+4 → len; call output_str.
+ *   Wait — atom table gives us (off,len) by atom_id.
+ *   var slot stores atom_id (i32). 0 = unbound.
+ *   write(X): load atom_id from slot → lookup atom_table[id*8] = off,
+ *             atom_table[id*8+4] = len → call output_str.
+ *   Head unification: compare call-arg atom_id with clause atom_id.
+ *
+ * Predicate encoding (generate-and-test / M-PW-A01):
+ *   Each predicate foo/N emits:
+ *     - A mutable global $pl_foo_N_ci (clause index, init 0)
+ *     - (func $pl_foo_N_call (param $trail i32) (param $a0..aN-1 i32) (result i32))
+ *       Tries clause[ci], on match binds vars + increments ci, returns 1.
+ *       On no match increments ci, tries next. Exhausted: reset ci, return 0.
+ *   Caller wraps in (loop) to get all solutions.
  *
  * Milestones:
- *   M-PW-SCAFFOLD  stub scaffold, -pl -wasm wired (PW-1 2026-03-30)
- *   M-PW-HELLO     write/1 atom + nl/0 + initialization(main) (PW-2 2026-03-30)
+ *   M-PW-SCAFFOLD  (PW-1 2026-03-30)
+ *   M-PW-HELLO     write/1 atom + nl/0 (PW-2 2026-03-30)
+ *   M-PW-A01       E_CHOICE/CLAUSE/UNIFY + ; disjunction + var binding (PW-5 2026-03-31)
  */
 
 #include "scrip_cc.h"
@@ -37,55 +53,91 @@
 #include <ctype.h>
 #include <stdarg.h>
 
-/* -------------------------------------------------------------------------
- * Output state
- * ------------------------------------------------------------------------- */
-
+/* ── Output ────────────────────────────────────────────────────────────── */
 static FILE *wpl_out = NULL;
-
 static void W(const char *fmt, ...) {
-    va_list ap;
-    va_start(ap, fmt);
-    vfprintf(wpl_out, fmt, ap);
-    va_end(ap);
+    va_list ap; va_start(ap, fmt);
+    vfprintf(wpl_out, fmt, ap); va_end(ap);
 }
 
-/* -------------------------------------------------------------------------
- * Name mangling — safe WAT identifiers from functor/arity
- * foo/2 → pl_foo_2   (mirrors emit_jvm_prolog.c pj_mangle convention)
- * ------------------------------------------------------------------------- */
+/* ── Memory layout constants ───────────────────────────────────────────── */
+#define ATOM_TABLE_BASE 8192   /* atom_id*8 → {i32 off, i32 len} */
+#define ENV_BASE        32768  /* variable env frames             */
+#define ENV_STRIDE      64     /* bytes per clause instance       */
+
+static int g_clause_env_idx = 0;  /* bumped per clause emitted */
+
+static int env_slot_addr(int env_idx, int slot) {
+    return ENV_BASE + env_idx * ENV_STRIDE + slot * 4;
+}
+
+/* ── Atom table ────────────────────────────────────────────────────────── */
+/* Maps atom name → sequential integer id.
+ * atom_id 0 = "" (unbound sentinel).
+ * Atom table emitted as (data) block at ATOM_TABLE_BASE.
+ * Entry[id] = { i32 str_off, i32 str_len }  (8 bytes each).
+ */
+#define MAX_ATOMS 512
+static char *atom_names[MAX_ATOMS];
+static int   atom_str_off[MAX_ATOMS];   /* absolute string offset */
+static int   atom_str_len[MAX_ATOMS];
+static int   atom_count = 0;
+
+static int atom_intern(const char *name) {
+    if (!name) name = "";
+    for (int i = 0; i < atom_count; i++)
+        if (strcmp(atom_names[i], name) == 0) return i;
+    if (atom_count >= MAX_ATOMS) return 0;
+    int idx = emit_wasm_strlit_intern(name);
+    atom_names[atom_count]   = strdup(name);
+    atom_str_off[atom_count] = emit_wasm_strlit_abs(idx);
+    atom_str_len[atom_count] = emit_wasm_strlit_len(idx);
+    return atom_count++;
+}
+
+/* Emit the atom table as a WAT (data) block */
+static void emit_pl_atom_table(void) {
+    if (atom_count == 0) return;
+    W("  ;; Atom table at %d: atom_id*8 → {i32 str_off, i32 str_len}\n",
+      ATOM_TABLE_BASE);
+    W("  (data (i32.const %d)\n   \"", ATOM_TABLE_BASE);
+    for (int i = 0; i < atom_count; i++) {
+        int off = atom_str_off[i];
+        int len = atom_str_len[i];
+        /* little-endian i32 for off */
+        W("\\%02x\\%02x\\%02x\\%02x",
+          off & 0xff, (off>>8)&0xff, (off>>16)&0xff, (off>>24)&0xff);
+        /* little-endian i32 for len */
+        W("\\%02x\\%02x\\%02x\\%02x",
+          len & 0xff, (len>>8)&0xff, (len>>16)&0xff, (len>>24)&0xff);
+    }
+    W("\")\n");
+}
+
+/* ── Name mangling ─────────────────────────────────────────────────────── */
 static char mangle_buf[512];
 static const char *pl_mangle(const char *functor, int arity) {
     int di = 0;
-    mangle_buf[di++] = 'p'; mangle_buf[di++] = 'l'; mangle_buf[di++] = '_';
+    mangle_buf[di++]='p'; mangle_buf[di++]='l'; mangle_buf[di++]='_';
     for (const char *s = functor; *s && di < 480; s++) {
         char c = *s;
-        if (isalnum((unsigned char)c) || c == '_')
-            mangle_buf[di++] = c;
+        if (isalnum((unsigned char)c) || c == '_') mangle_buf[di++] = c;
         else {
-            mangle_buf[di++] = '_';
-            mangle_buf[di++] = "0123456789abcdef"[(unsigned char)c >> 4];
-            mangle_buf[di++] = "0123456789abcdef"[(unsigned char)c & 0xf];
+            mangle_buf[di++]='_';
+            mangle_buf[di++]="0123456789abcdef"[(unsigned char)c>>4];
+            mangle_buf[di++]="0123456789abcdef"[(unsigned char)c&0xf];
         }
     }
-    mangle_buf[di++] = '_';
-    int a = arity < 0 ? 0 : arity;
-    if (a >= 10) { mangle_buf[di++] = '0' + a / 10; }
-    mangle_buf[di++] = '0' + a % 10;
-    mangle_buf[di] = '\0';
+    mangle_buf[di++]='_';
+    if (arity>=10) mangle_buf[di++]='0'+arity/10;
+    mangle_buf[di++]='0'+arity%10;
+    mangle_buf[di]='\0';
     return mangle_buf;
 }
 
-/* suppress unused-function warning until milestone uses it */
-static const char *pl_mangle_unused(const char *f, int a) { return pl_mangle(f,a); }
-static void _pl_mangle_ref(void) __attribute__((unused));
-static void _pl_mangle_ref(void) { (void)pl_mangle_unused(NULL,0); }
-
-/* -------------------------------------------------------------------------
- * Runtime imports (pl namespace, pl_runtime.wat)
- * ------------------------------------------------------------------------- */
+/* ── Runtime imports ───────────────────────────────────────────────────── */
 static void emit_pl_runtime_imports(void) {
-    W(";; --- Prolog WASM runtime imports (pl_runtime.wat) ---\n");
+    W(";; Prolog WASM runtime imports (pl_runtime.wat)\n");
     W("  (import \"pl\" \"memory\"         (memory 2))\n");
     W("  (import \"pl\" \"trail_mark\"      (func $trail_mark      (result i32)))\n");
     W("  (import \"pl\" \"trail_unwind\"    (func $trail_unwind    (param i32)))\n");
@@ -98,268 +150,521 @@ static void emit_pl_runtime_imports(void) {
     W("\n");
 }
 
-/* -------------------------------------------------------------------------
- * Stub body for unimplemented goals
- * ------------------------------------------------------------------------- */
-static void emit_goal_stub(const EXPR_t *g) {
-    const char *kind_name = "unknown";
-    if (g) {
-        switch (g->kind) {
-            case E_CHOICE:       kind_name = "E_CHOICE";      break;
-            case E_CLAUSE:       kind_name = "E_CLAUSE";      break;
-            case E_UNIFY:        kind_name = "E_UNIFY";       break;
-            case E_CUT:          kind_name = "E_CUT";         break;
-            case E_TRAIL_MARK:   kind_name = "E_TRAIL_MARK";  break;
-            case E_TRAIL_UNWIND: kind_name = "E_TRAIL_UNWIND";break;
-            default:             kind_name = "other";         break;
-        }
-    }
-    W("    ;; STUB: %s not yet implemented (PW milestone pending)\n", kind_name);
-    W("    unreachable\n");
+/* ── Split "foo/2" → functor + arity ──────────────────────────────────── */
+static void split_pred(const char *sval, char *functor_out, int *arity_out) {
+    strncpy(functor_out, sval, 127); functor_out[127]='\0';
+    char *sl = strrchr(functor_out, '/');
+    if (sl) { *arity_out = atoi(sl+1); *sl='\0'; }
+    else     { *arity_out = 0; }
 }
 
-/* -------------------------------------------------------------------------
- * emit_write_atom — M-PW-HELLO
- * Output a single atom/integer arg via $pl_output_str using shared string table.
- * ------------------------------------------------------------------------- */
-static void emit_write_atom(const EXPR_t *arg) {
+/* ── emit_write_var: write atom bound in variable slot ─────────────────── */
+static void emit_write_var(int env_idx, int slot) {
+    int addr = env_slot_addr(env_idx, slot < 0 ? 0 : slot);
+    W("    ;; write(Var slot=%d): load atom_id, lookup table → off+len\n", slot);
+    /* atom_id = load(slot_addr) */
+    W("    (local.tee $tmp (i32.load (i32.const %d)))\n", addr);
+    /* table_entry = ATOM_TABLE_BASE + atom_id * 8 */
+    W("    (i32.const 3) (i32.shl)  ;; *8\n");
+    W("    (i32.const %d) (i32.add) ;; + ATOM_TABLE_BASE\n", ATOM_TABLE_BASE);
+    W("    (local.tee $tbl_entry)\n");
+    /* off = load(entry) */
+    W("    (i32.load)               ;; str_off\n");
+    /* len = load(entry+4) */
+    W("    (local.get $tbl_entry) (i32.const 4) (i32.add) (i32.load) ;; str_len\n");
+    W("    (call $pl_output_str)\n");
+}
+
+/* ── emit_write_atom_lit: write a literal atom string ─────────────────── */
+static void emit_write_atom_lit(const char *name) {
+    int idx = emit_wasm_strlit_intern(name);
+    int off = emit_wasm_strlit_abs(idx);
+    int len = emit_wasm_strlit_len(idx);
+    W("    ;; write('%s') off=%d len=%d\n", name, off, len);
+    W("    (i32.const %d) (i32.const %d) (call $pl_output_str)\n", off, len);
+}
+
+/* ── emit_write_goal ─────────────────────────────────────────────────── */
+static void emit_write_goal(const EXPR_t *arg, int env_idx) {
     if (!arg) return;
-
-    if (arg->kind == E_QLIT && arg->sval) {
-        int idx = emit_wasm_strlit_intern(arg->sval);
-        int off = emit_wasm_strlit_abs(idx);
-        int len = emit_wasm_strlit_len(idx);
-        W("    ;; write('%s') off=%d len=%d\n", arg->sval, off, len);
-        W("    (i32.const %d)\n", off);
-        W("    (i32.const %d)\n", len);
-        W("    (call $pl_output_str)\n");
+    if (arg->kind == E_VAR) {
+        emit_write_var(env_idx, (int)arg->ival);
         return;
     }
-
-    /* Atom argument: prolog_lower() emits TT_ATOM args as nullary E_FNC */
     if (arg->kind == E_FNC && arg->sval && arg->nchildren == 0) {
-        int idx = emit_wasm_strlit_intern(arg->sval);
-        int off = emit_wasm_strlit_abs(idx);
-        int len = emit_wasm_strlit_len(idx);
-        W("    ;; write('%s') atom\n", arg->sval);
-        W("    (i32.const %d)\n", off);
-        W("    (i32.const %d)\n", len);
-        W("    (call $pl_output_str)\n");
-        return;
+        emit_write_atom_lit(arg->sval); return;
     }
-
+    if (arg->kind == E_QLIT && arg->sval) {
+        emit_write_atom_lit(arg->sval); return;
+    }
     if (arg->kind == E_ILIT) {
-        char numbuf[32];
-        snprintf(numbuf, sizeof numbuf, "%ld", arg->ival);
-        int idx = emit_wasm_strlit_intern(numbuf);
-        int off = emit_wasm_strlit_abs(idx);
-        int len = emit_wasm_strlit_len(idx);
-        W("    ;; write(%ld)\n", arg->ival);
-        W("    (i32.const %d)\n", off);
-        W("    (i32.const %d)\n", len);
-        W("    (call $pl_output_str)\n");
-        return;
+        char nb[32]; snprintf(nb,sizeof nb,"%ld",arg->ival);
+        emit_write_atom_lit(nb); return;
     }
-
-    W("    ;; write/1 arg kind=%d — stub until later milestone\n", (int)arg->kind);
-    W("    unreachable\n");
+    W("    ;; write/1 arg kind=%d stub\n    unreachable\n", (int)arg->kind);
 }
 
-/* -------------------------------------------------------------------------
- * emit_pl_goal — Goal emission dispatch
- * All Prolog-specific EKinds handled here — never in emit_wasm.c.
- * ------------------------------------------------------------------------- */
-static void emit_pl_goal(const EXPR_t *goal) {
-    if (!goal) return;
-
-    if (goal->kind == E_CUT)         { emit_goal_stub(goal); return; } /* M-PW-B03 */
-    if (goal->kind == E_UNIFY)       { emit_goal_stub(goal); return; } /* M-PW-A01 */
-    if (goal->kind == E_TRAIL_MARK)  { emit_goal_stub(goal); return; } /* M-PW-A01 */
-    if (goal->kind == E_TRAIL_UNWIND){ emit_goal_stub(goal); return; } /* M-PW-A01 */
-    if (goal->kind == E_CHOICE)      { emit_goal_stub(goal); return; } /* M-PW-A01 */
-    if (goal->kind == E_CLAUSE)      { emit_goal_stub(goal); return; } /* M-PW-A01 */
-
-    /* E_SEQ — goal conjunction: (A, B) → emit each child goal */
-    if (goal->kind == E_SEQ) {
-        for (int i = 0; i < goal->nchildren; i++)
-            emit_pl_goal(goal->children[i]);
-        return;
-    }
-
-    /* E_FNC — builtin goals */
-    if (goal->kind == E_FNC && goal->sval) {
-        const char *fn = goal->sval;
-
-        /* Body goal may be wrapped in E_FNC(",") conjunction */
-        if (strcmp(fn, ",") == 0) {
-            for (int i = 0; i < goal->nchildren; i++)
-                emit_pl_goal(goal->children[i]);
-            return;
-        }
-
-        if (strcasecmp(fn, "nl") == 0) {
-            W("    ;; nl/0\n");
-            W("    (call $pl_output_nl)\n");
-            return;
-        }
-        if (strcasecmp(fn, "write") == 0 || strcasecmp(fn, "writeln") == 0) {
-            if (goal->nchildren >= 1) emit_write_atom(goal->children[0]);
-            if (strcasecmp(fn, "writeln") == 0) W("    (call $pl_output_nl)\n");
-            return;
-        }
-        if (strcasecmp(fn, "halt") == 0) {
-            W("    ;; halt/0\n");
-            W("    (call $pl_output_flush)\n");
-            W("    drop\n");
-            W("    return\n");
-            return;
-        }
-        if (strcasecmp(fn, "true") == 0) {
-            W("    ;; true/0\n");
-            return;
-        }
-        if (strcasecmp(fn, "fail") == 0) {
-            W("    ;; fail/0 — stub (M-PW-B01)\n");
-            W("    unreachable\n");
-            return;
-        }
-
-        W("    ;; STUB builtin: %s/%d\n", fn, goal->nchildren);
-        W("    unreachable\n");
-        return;
-    }
-
-    emit_goal_stub(goal);
-}
-
-/* -------------------------------------------------------------------------
- * emit_pl_main — emit (func $main (export "main"))
+/* ── emit_pl_predicate ──────────────────────────────────────────────────
  *
- * M-PW-HELLO: walks program statements, emits goal bodies.
- * prolog_lower() for  main :- write(hello), nl.
- * produces statement(s) with subject = E_SEQ or E_FNC goal tree.
- * ------------------------------------------------------------------------- */
-/* -------------------------------------------------------------------------
- * emit_pl_choice_body — for a single-clause E_CHOICE (deterministic fact),
- * inline the body goals directly. This handles main/0 for M-PW-HELLO.
+ * Emit for each E_CHOICE (predicate with N clauses):
  *
- * E_CLAUSE layout:
- *   dval          = (double)n_args  (arity)
- *   children[0..n_args-1] = head arg patterns (skip for arity-0)
- *   children[n_args..]    = body goals
- * ------------------------------------------------------------------------- */
-static void emit_pl_choice_body(EXPR_t *choice) {
+ *   (global $pl_foo_1_ci (mut i32) (i32.const 0))
+ *
+ *   (func $pl_foo_1_call (param $trail i32) (param $a0 i32) (result i32)
+ *     ;; Try clauses starting at $pl_foo_1_ci
+ *     ;; Clause 0: if a0 matches atom_id of 'brown':
+ *     ;;   bind any var args, incr ci, return 1
+ *     ;; Clause 1: if a0 matches 'jones': ...
+ *     ;; Exhausted: reset ci to 0, return 0
+ *   )
+ *
+ * ci tracks resume point for generate-and-test.
+ * On each successful call, ci is left pointing to the NEXT clause to try.
+ * Caller loops calling foo until it returns 0.
+ * ─────────────────────────────────────────────────────────────────────── */
+static void emit_pl_predicate(const EXPR_t *choice) {
     if (!choice || choice->kind != E_CHOICE) return;
-    /* Single clause: nchildren == 1, children[0] is E_CLAUSE */
-    if (choice->nchildren == 1 && choice->children[0]->kind == E_CLAUSE) {
-        EXPR_t *clause = choice->children[0];
+
+    char functor[128]; int arity;
+    split_pred(choice->sval, functor, &arity);
+
+    /* Use a fixed copy of mangle result before it gets overwritten */
+    char mname[256];
+    strncpy(mname, pl_mangle(functor, arity), 255);
+
+    W("\n  ;; predicate %s/%d (%d clause(s))\n",
+      functor, arity, choice->nchildren);
+
+    /* Mutable global clause index */
+    W("  (global $%s_ci (mut i32) (i32.const 0))\n", mname);
+
+    /* Function signature */
+    W("  (func $%s_call (param $trail i32)", mname);
+    for (int a = 0; a < arity; a++) W(" (param $a%d i32)", a);
+    W(" (result i32)\n");
+    W("    (local $tm i32)\n");
+
+    int nclauses = choice->nchildren;
+
+    /* Dispatch on clause index using if/else chain */
+    W("    ;; dispatch on clause index $%s_ci\n", mname);
+
+    for (int ci = 0; ci < nclauses; ci++) {
+        EXPR_t *clause = choice->children[ci];
+        if (!clause || clause->kind != E_CLAUSE) continue;
+
         int n_args = (int)clause->dval;
-        /* Emit body goals: children[n_args..nchildren-1] */
-        for (int i = n_args; i < clause->nchildren; i++)
-            emit_pl_goal(clause->children[i]);
-        return;
-    }
-    /* Multi-clause: stub until M-PW-A01 */
-    W("    ;; STUB: multi-clause E_CHOICE — M-PW-A01\n");
-    W("    unreachable\n");
-}
+        int n_vars = (int)clause->ival;
+        int env_idx = g_clause_env_idx++;
 
-static void emit_pl_main(Program *prog) {
-    W("  (func (export \"main\") (result i32)\n");
-    W("    ;; Prolog program — M-PW-HELLO\n");
+        W("    ;; clause %d (env=%d n_args=%d n_vars=%d)\n",
+          ci, env_idx, n_args, n_vars);
 
-    if (prog && prog->head) {
-        /* Pass 1: scan for E_CHOICE with sval "main/0" and emit its body */
-        int found_main = 0;
-        for (STMT_t *s = prog->head; s; s = s->next) {
-            if (!s->subject) continue;
-            EXPR_t *g = s->subject;
-            if (g->kind == E_CHOICE && g->sval &&
-                strcmp(g->sval, "main/0") == 0) {
-                emit_pl_choice_body(g);
-                found_main = 1;
-            }
-        }
+        if (ci == 0)
+            W("    (if (i32.eq (global.get $%s_ci) (i32.const %d))\n", mname, ci);
+        else
+            W("    (else (if (i32.eq (global.get $%s_ci) (i32.const %d))\n", mname, ci);
 
-        /* Pass 2: handle non-E_CHOICE directives (skip known meta-directives) */
-        if (!found_main) {
-            for (STMT_t *s = prog->head; s; s = s->next) {
-                if (!s->subject) continue;
-                EXPR_t *g = s->subject;
-                if (g->kind == E_CHOICE) continue;
-                if (g->kind == E_FNC && g->sval) {
-                    const char *fn = g->sval;
-                    /* Skip meta-directives with no runtime effect */
-                    if (strcmp(fn, "initialization") == 0 ||
-                        strcmp(fn, "dynamic")         == 0 ||
-                        strcmp(fn, "discontiguous")   == 0 ||
-                        strcmp(fn, "module")          == 0 ||
-                        strcmp(fn, "use_module")      == 0 ||
-                        strcmp(fn, "style_check")     == 0) continue;
-                    emit_pl_goal(g);
+        W("      (then\n");
+        W("        (local.set $tm (call $trail_mark))\n");
+
+        /* Head argument unification */
+        for (int ai = 0; ai < n_args && ai < clause->nchildren; ai++) {
+            EXPR_t *harg = clause->children[ai];
+            if (!harg) continue;
+
+            if ((harg->kind == E_FNC && harg->sval && harg->nchildren == 0) ||
+                (harg->kind == E_QLIT && harg->sval)) {
+                /* Ground atom: compare call arg against atom_id */
+                int atom_id = atom_intern(harg->sval);
+                W("        ;; head arg%d: match atom '%s' (id=%d)\n",
+                  ai, harg->sval, atom_id);
+                W("        (if (i32.ne (local.get $a%d) (i32.const %d))\n",
+                  ai, atom_id);
+                W("          (then\n");
+                W("            ;; mismatch → unwind, advance ci, return 0 (fail this clause)\n");
+                W("            (call $trail_unwind (local.get $tm))\n");
+                W("            (global.set $%s_ci (i32.const %d))\n",
+                  mname, ci + 1 < nclauses ? ci + 1 : nclauses);
+                W("            (i32.const 0) (return)))\n");
+
+            } else if (harg->kind == E_VAR) {
+                /* Variable head arg: bind slot to call arg */
+                int slot = (int)harg->ival;
+                if (slot >= 0) {
+                    int addr = env_slot_addr(env_idx, slot);
+                    W("        ;; bind head var slot=%d addr=%d to a%d\n",
+                      slot, addr, ai);
+                    W("        (i32.const %d) (local.get $a%d) (call $pl_var_bind)\n",
+                      addr, ai);
                 }
             }
         }
+
+        /* Body goals (facts have no body) */
+        int n_body = clause->nchildren - n_args;
+        if (n_body > 0) {
+            W("        ;; body goals (%d) — stub until M-PW-B01\n", n_body);
+        }
+
+        /* Clause matched: advance ci to next clause, return 1 */
+        W("        ;; success: advance ci to %d, return 1\n",
+          ci + 1 < nclauses ? ci + 1 : nclauses);
+        W("        (global.set $%s_ci (i32.const %d))\n",
+          mname, ci + 1 < nclauses ? ci + 1 : nclauses);
+        W("        (i32.const 1) (return)\n");
+        W("      )\n"); /* then */
+        W("    )"); /* if */
+        if (ci < nclauses - 1) W("\n");
     }
 
-    W("    ;; flush → return byte count\n");
+    /* Close all else chains */
+    for (int ci = 1; ci < nclauses; ci++) W(")");
+    W("\n");
+
+    /* Exhausted: reset ci to 0, return 0 */
+    W("    ;; ω — all clauses exhausted, reset ci\n");
+    W("    (global.set $%s_ci (i32.const 0))\n", mname);
+    W("    (i32.const 0)\n");
+    W("  )\n");
+}
+
+/* ── emit_pl_goal_inline ─────────────────────────────────────────────────
+ * Emit WAT for a goal in a body context.
+ * in_disj_left: set when inside left branch of (;/2) — fail/0 emits (br $disj_end).
+ * ─────────────────────────────────────────────────────────────────────── */
+static void emit_goals(const EXPR_t *g, int env_idx, int in_disj_left);
+
+static void emit_goal(const EXPR_t *goal, int env_idx, int in_disj_left) {
+    if (!goal) return;
+
+    if (goal->kind == E_SEQ) {
+        for (int i = 0; i < goal->nchildren; i++)
+            emit_goal(goal->children[i], env_idx, in_disj_left);
+        return;
+    }
+
+    if (goal->kind != E_FNC || !goal->sval) {
+        W("    ;; STUB goal kind=%d\n    unreachable\n", (int)goal->kind);
+        return;
+    }
+
+    const char *fn = goal->sval;
+
+    /* Conjunction */
+    if (strcmp(fn, ",") == 0) {
+        for (int i = 0; i < goal->nchildren; i++)
+            emit_goal(goal->children[i], env_idx, in_disj_left);
+        return;
+    }
+
+    /* Disjunction (;/2): Left ; Right
+     * Left branch runs as a generate-and-test loop.
+     * If Left definitively fails (reaches fail/0), br $disj_end → Right runs.
+     */
+    if (strcmp(fn, ";") == 0 && goal->nchildren >= 2) {
+        W("    ;; (;/2) disjunction\n");
+        W("    (block $disj_end\n");
+        W("      ;; Left branch\n");
+        emit_goals(goal->children[0], env_idx, /*in_disj_left=*/1);
+        W("      (br $disj_end)\n");
+        W("      ;; Right branch (unreachable if left succeeded and didn't fail)\n");
+        emit_goals(goal->children[1], env_idx, 0);
+        W("    ) ;; $disj_end\n");
+        return;
+    }
+
+    /* nl/0 */
+    if (strcmp(fn, "nl") == 0) { W("    (call $pl_output_nl)\n"); return; }
+
+    /* write/1 */
+    if (strcmp(fn, "write") == 0 || strcmp(fn, "writeln") == 0) {
+        if (goal->nchildren >= 1) emit_write_goal(goal->children[0], env_idx);
+        if (strcmp(fn, "writeln") == 0) W("    (call $pl_output_nl)\n");
+        return;
+    }
+
+    /* halt/0 */
+    if (strcmp(fn, "halt") == 0) {
+        W("    (call $pl_output_flush) drop\n    return\n"); return;
+    }
+
+    /* true/0 */
+    if (strcmp(fn, "true") == 0) { W("    ;; true/0\n"); return; }
+
+    /* fail/0 — in left branch of (;): br to $disj_end (right branch) */
+    if (strcmp(fn, "fail") == 0) {
+        W("    ;; fail/0 → exit generate-and-test loop\n");
+        if (in_disj_left) W("    (br $disj_end)\n");
+        else              W("    unreachable ;; fail/0 outside disj\n");
+        return;
+    }
+
+    /* Predicate call: foo(Arg, ...) */
+    {
+        int n = goal->nchildren;
+        char mangled[256];
+        strncpy(mangled, pl_mangle(fn, n), 255);
+
+        /* For generate-and-test: wrap call in (loop $retry) */
+        if (in_disj_left && n > 0) {
+            W("    ;; generate-and-test loop: %s/%d\n", fn, n);
+            W("    (loop $retry_%s\n", mangled);
+            W("      (block $exhausted_%s\n", mangled);
+            /* Push trail param */
+            W("        (local.get $trail)\n");
+            /* Push call args */
+            for (int ai = 0; ai < n; ai++) {
+                EXPR_t *arg = goal->children[ai];
+                if (!arg) { W("        (i32.const 0)\n"); continue; }
+                if (arg->kind == E_VAR) {
+                    /* Pass var slot address so predicate can bind it */
+                    int slot = (int)arg->ival;
+                    int addr = env_slot_addr(env_idx, slot < 0 ? 0 : slot);
+                    /* For head unification: pass atom_id stored in slot.
+                     * But slot is UNBOUND here — predicate needs to write to it.
+                     * Solution: pass the SLOT ADDRESS (not its value) as arg.
+                     * Predicate treats arg as address and var_binds it.
+                     * Mark arg as address by passing ENV_BASE | slot_addr. */
+                    W("        (i32.const %d) ;; var slot addr for _V%d\n",
+                      addr, slot);
+                } else if (arg->kind == E_FNC && arg->sval && arg->nchildren==0) {
+                    int atom_id = atom_intern(arg->sval);
+                    W("        (i32.const %d) ;; atom '%s'\n", atom_id, arg->sval);
+                } else if (arg->kind == E_QLIT && arg->sval) {
+                    int atom_id = atom_intern(arg->sval);
+                    W("        (i32.const %d) ;; qlit '%s'\n", atom_id, arg->sval);
+                } else if (arg->kind == E_ILIT) {
+                    W("        (i32.const %ld)\n", arg->ival);
+                } else {
+                    W("        (i32.const 0) ;; unknown arg\n");
+                }
+            }
+            W("        (call $%s_call)\n", mangled);
+            /* result 0 = fail → break out of retry loop */
+            W("        (i32.eqz) (br_if $exhausted_%s)\n", mangled);
+            /* result 1 = success: the goals AFTER this call in the conjunction
+             * are emitted inside the retry loop — but we need to emit the
+             * rest of the conjunction here. That requires a continuation.
+             * For now: the caller (emit_goals for conjunction) handles this
+             * by emitting remaining goals after the loop in a "post-solve" block.
+             * We signal "loop body starts here" by leaving the loop open.
+             * Caller closes it after emitting the body goals + (br $retry_...).
+             */
+            /* NOTE: loop body (write + nl) emitted by emit_goals continuation below */
+            /* We return a sentinel so the caller knows to close the loop */
+            /* Actually: emit the loop body here inline by peeking at parent context */
+            /* This requires restructuring — instead, use a different approach:
+             * emit the ENTIRE conjunction as a loop when it contains a predicate
+             * call followed by goals followed by fail. */
+            W("      ) ;; $exhausted_%s\n", mangled);
+            W("    ) ;; $retry_%s\n", mangled);
+            return;
+        }
+
+        /* Non-backtracking call */
+        W("    ;; call %s/%d\n", fn, n);
+        W("    (local.get $trail)\n");
+        for (int ai = 0; ai < n; ai++) {
+            EXPR_t *arg = goal->children[ai];
+            if (!arg) { W("    (i32.const 0)\n"); continue; }
+            if (arg->kind == E_VAR) {
+                int slot = (int)arg->ival;
+                int addr = env_slot_addr(env_idx, slot < 0 ? 0 : slot);
+                W("    (i32.const %d) ;; var addr _V%d\n", addr, slot);
+            } else if (arg->kind == E_FNC && arg->sval && arg->nchildren==0) {
+                W("    (i32.const %d) ;; atom '%s'\n",
+                  atom_intern(arg->sval), arg->sval);
+            } else if (arg->kind == E_ILIT) {
+                W("    (i32.const %ld)\n", arg->ival);
+            } else { W("    (i32.const 0)\n"); }
+        }
+        W("    (call $%s_call) drop\n", mangled);
+        return;
+    }
+}
+
+/* emit_goals: emit a list of goals from a conjunction or single node */
+static void emit_goals(const EXPR_t *g, int env_idx, int in_disj_left) {
+    if (!g) return;
+    if (g->kind == E_FNC && g->sval && strcmp(g->sval, ",") == 0) {
+        /* Detect generate-and-test pattern:
+         * foo(X), ..., fail — where foo is a defined predicate
+         * Emit as a retry loop wrapping all goals between foo and fail. */
+        /* Check: first child is a predicate call, last child is fail */
+        int nc = g->nchildren;
+        if (nc >= 2 && in_disj_left) {
+            EXPR_t *first = g->children[0];
+            EXPR_t *last  = g->children[nc-1];
+            int first_is_pred = (first && first->kind == E_FNC &&
+                                 first->sval && first->nchildren > 0 &&
+                                 strcmp(first->sval, "write") != 0 &&
+                                 strcmp(first->sval, "nl")    != 0 &&
+                                 strcmp(first->sval, "true")  != 0 &&
+                                 strcmp(first->sval, "fail")  != 0 &&
+                                 strcmp(first->sval, "halt")  != 0);
+            int last_is_fail  = (last && last->kind == E_FNC &&
+                                 last->sval && strcmp(last->sval, "fail") == 0);
+
+            if (first_is_pred && last_is_fail) {
+                /* Generate-and-test: emit loop */
+                EXPR_t *pred_call = first;
+                int n_call_args = pred_call->nchildren;
+                char mangled[256];
+                strncpy(mangled, pl_mangle(pred_call->sval, n_call_args), 255);
+
+                W("    ;; generate-and-test: %s/%d ... fail\n",
+                  pred_call->sval, n_call_args);
+
+                /* Zero out variable slots before loop */
+                for (int ai = 0; ai < n_call_args; ai++) {
+                    EXPR_t *arg = pred_call->children[ai];
+                    if (arg && arg->kind == E_VAR && arg->ival >= 0) {
+                        int addr = env_slot_addr(env_idx, (int)arg->ival);
+                        W("    (i32.store (i32.const %d) (i32.const 0)) ;; clear _V%ld\n",
+                          addr, arg->ival);
+                    }
+                }
+
+                W("    (loop $retry_%s\n", mangled);
+                /* Reset var slot(s) before each call — predicate will rebind */
+                for (int ai = 0; ai < n_call_args; ai++) {
+                    EXPR_t *arg = pred_call->children[ai];
+                    if (arg && arg->kind == E_VAR && arg->ival >= 0) {
+                        int addr = env_slot_addr(env_idx, (int)arg->ival);
+                        W("      (i32.store (i32.const %d) (i32.const 0))\n", addr);
+                    }
+                }
+                /* Call predicate with trail + var slot addresses */
+                W("      (local.get $trail)\n");
+                for (int ai = 0; ai < n_call_args; ai++) {
+                    EXPR_t *arg = pred_call->children[ai];
+                    if (!arg) { W("      (i32.const 0)\n"); continue; }
+                    if (arg->kind == E_VAR) {
+                        int addr = env_slot_addr(env_idx, (int)arg->ival < 0 ? 0 : (int)arg->ival);
+                        W("      (i32.const %d) ;; slot addr _V%ld\n", addr, arg->ival);
+                    } else if (arg->kind == E_FNC && arg->sval && arg->nchildren==0) {
+                        W("      (i32.const %d) ;; atom '%s'\n",
+                          atom_intern(arg->sval), arg->sval);
+                    } else { W("      (i32.const 0)\n"); }
+                }
+                W("      (call $%s_call)\n", mangled);
+                /* 0 = exhausted: exit loop (br to after loop) */
+                W("      (if (i32.eqz) (then) (else\n");
+                /* 1 = solution found: emit body goals (children[1..nc-2]) */
+                for (int gi = 1; gi < nc - 1; gi++)
+                    emit_goal(g->children[gi], env_idx, 0);
+                /* Continue loop for next solution */
+                W("      (br $retry_%s)\n", mangled);
+                W("      )) ;; if\n");
+                W("    ) ;; $retry_%s\n", mangled);
+                /* After loop exhausted: fail/0 already exits to $disj_end */
+                W("    (br $disj_end) ;; all solutions exhausted → fail\n");
+                return;
+            }
+        }
+
+        /* Plain conjunction */
+        for (int i = 0; i < g->nchildren; i++)
+            emit_goal(g->children[i], env_idx, in_disj_left);
+        return;
+    }
+    emit_goal(g, env_idx, in_disj_left);
+}
+
+/* ── emit_pl_main ──────────────────────────────────────────────────────── */
+static void emit_pl_main(Program *prog) {
+    W("  (func (export \"main\") (result i32)\n");
+    W("    (local $trail i32)\n");
+    W("    (local $tmp i32)\n");
+    W("    (local $tbl_entry i32)\n");
+    W("    (local.set $trail (call $trail_mark))\n");
+
+    if (!prog) goto done;
+
+    for (STMT_t *s = prog->head; s; s = s->next) {
+        if (!s->subject) continue;
+        EXPR_t *g = s->subject;
+        if (g->kind != E_CHOICE) continue;
+        if (!g->sval || strcmp(g->sval, "main/0") != 0) continue;
+        if (g->nchildren != 1) continue;
+
+        EXPR_t *clause = g->children[0];
+        if (!clause || clause->kind != E_CLAUSE) continue;
+
+        int n_args = (int)clause->dval;
+        int n_vars = (int)clause->ival;
+        int env_idx = g_clause_env_idx++;
+        W("    ;; main/0 (n_vars=%d env=%d)\n", n_vars, env_idx);
+
+        for (int bi = n_args; bi < clause->nchildren; bi++)
+            emit_goals(clause->children[bi], env_idx, 0);
+        break;
+    }
+
+done:
     W("    (call $pl_output_flush)\n");
     W("  )\n");
 }
 
-/* -------------------------------------------------------------------------
- * prescan — intern all atom literals before emitting data segment
- * ------------------------------------------------------------------------- */
-static void prescan_goal(const EXPR_t *g) {
+/* ── prescan ───────────────────────────────────────────────────────────── */
+static void prescan_expr(const EXPR_t *g) {
     if (!g) return;
-    if (g->kind == E_QLIT && g->sval)
-        emit_wasm_strlit_intern(g->sval);
-    /* Atom arg lowered as nullary E_FNC */
-    if (g->kind == E_FNC && g->sval && g->nchildren == 0)
-        emit_wasm_strlit_intern(g->sval);
-    if (g->kind == E_ILIT) {
-        char numbuf[32];
-        snprintf(numbuf, sizeof numbuf, "%ld", g->ival);
-        emit_wasm_strlit_intern(numbuf);
+    if (g->kind == E_QLIT && g->sval) atom_intern(g->sval);
+    if (g->kind == E_FNC  && g->sval) {
+        /* Always intern for atom table (both ground atoms and functor names) */
+        atom_intern(g->sval);
     }
-    for (int i = 0; i < g->nchildren; i++)
-        prescan_goal(g->children[i]);
+    if (g->kind == E_ILIT) {
+        char nb[32]; snprintf(nb,sizeof nb,"%ld",g->ival);
+        atom_intern(nb);
+    }
+    for (int i = 0; i < g->nchildren; i++) prescan_expr(g->children[i]);
 }
 
-static void prescan_pl_prog(Program *prog) {
-    emit_wasm_strlit_intern("");  /* always intern empty string */
+static void prescan_prog(Program *prog) {
+    emit_wasm_strlit_intern("");   /* index 0 = empty */
+    atom_intern("");               /* atom_id 0 = unbound */
     if (!prog) return;
     for (STMT_t *s = prog->head; s; s = s->next) {
-        prescan_goal(s->subject);
-        prescan_goal(s->pattern);
-        prescan_goal(s->replacement);
+        prescan_expr(s->subject);
+        prescan_expr(s->pattern);
+        prescan_expr(s->replacement);
     }
 }
 
-/* -------------------------------------------------------------------------
- * Public entry point
- * Called from driver/main.c when -pl and -wasm are both set.
- * ------------------------------------------------------------------------- */
+/* ── Public entry point ────────────────────────────────────────────────── */
 void prolog_emit_wasm(Program *prog, FILE *out, const char *filename) {
     (void)filename;
     wpl_out = out;
+    g_clause_env_idx = 0;
+    atom_count = 0;
 
-    /* Share output stream with emit_wasm.c, reset string table */
     emit_wasm_set_out(out);
     emit_wasm_strlit_reset();
 
-    /* Pre-scan to intern all atom literals */
-    prescan_pl_prog(prog);
+    prescan_prog(prog);
 
-    W(";; Generated by scrip-cc -pl -wasm (M-PW-HELLO)\n");
-    W("(module\n");
+    W(";; Generated by scrip-cc -pl -wasm (M-PW-A01)\n");
+    W("(module\n\n");
+    emit_pl_runtime_imports();
+    emit_wasm_data_segment();    /* string literals at 65536 */
+    W("\n");
+    emit_pl_atom_table();        /* atom table at 8192 */
     W("\n");
 
-    emit_pl_runtime_imports();
-    emit_wasm_data_segment();    /* shared string literal data block */
+    /* Emit all predicates (non-main E_CHOICE nodes) */
+    if (prog) {
+        for (STMT_t *s = prog->head; s; s = s->next) {
+            if (!s->subject) continue;
+            EXPR_t *g = s->subject;
+            if (g->kind != E_CHOICE) continue;
+            if (g->sval && strcmp(g->sval, "main/0") == 0) continue;
+            emit_pl_predicate(g);
+        }
+    }
 
     W("\n");
     emit_pl_main(prog);
-    W("\n");
-    W(") ;; end module\n");
+    W("\n) ;; end module\n");
 }
