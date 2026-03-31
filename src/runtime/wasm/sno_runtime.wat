@@ -2,22 +2,23 @@
 ;; Standalone module: exports memory + all runtime functions.
 ;; Programs import from this module rather than inlining it.
 ;;
-;; Memory layout (4 pages = 256KB):
+;; Memory layout (5 pages = 320KB):
 ;;   [0  .. 32767]  output buffer  — written by sno_output_*; main() returns fill length
 ;;   [32768 .. 65535]  string heap — sno_str_alloc() bumps $str_ptr upward
 ;;   [65536 .. 131071]  program data segment — static string literals (STR_DATA_BASE=65536)
 ;;   [131072 .. 196607]  Icon gen state — E_TO/E_TO_BY generator slots (ICN_GEN_STATE_BASE=0x20000)
 ;;   [196608 .. 262143]  Icon activation frame stack (ICON_FRAME_STACK_BASE=0x30004)
+;;   [262144 .. 327679]  Array/Table/DATA heap (ARR_HEAP_BASE=0x40000, 64KB)
 ;;
 ;; Compile once per session:
 ;;   wat2wasm --enable-tail-call sno_runtime.wat -o sno_runtime.wasm
 ;;
-;; Milestone: M-SW-1 (fragment); M-SW-A02 (standalone module)
+;; Milestone: M-SW-1 (fragment); M-SW-A02 (standalone module); M-SW-C02 (array/table/data)
 ;; Author: Claude Sonnet 4.6
 
 (module
   ;; ── Memory (exported so programs can read output buffer) ──────────────────
-  (memory (export "memory") 4)
+  (memory (export "memory") 5)
 
   (global $out_pos (mut i32) (i32.const 0))
   (global $str_ptr (mut i32) (i32.const 32768))
@@ -707,6 +708,551 @@
     (if (i32.lt_s (local.get $c) (i32.const 0)) (then (return (i32.const -1))))
     ;; advance past the delimiter
     (i32.add (local.get $c) (i32.const 1))
+  )
+
+  ;; ── Array / Table / DATA heap ─────────────────────────────────────────────
+  ;; ARR_HEAP_BASE = 0x40000 = 262144. Bump allocator grows upward.
+  ;;
+  ;; Array descriptor header (32 bytes at handle offset):
+  ;;   +0  i32 type      1=ARRAY 2=TABLE 3=DATA-instance
+  ;;   +4  i32 ndims     number of dimensions (1 or 2 for arrays)
+  ;;   +8  i32 lo1       lower bound dim1 (default 1)
+  ;;   +12 i32 hi1       upper bound dim1
+  ;;   +16 i32 lo2       lower bound dim2 (0 if 1D)
+  ;;   +20 i32 hi2       upper bound dim2 (0 if 1D)
+  ;;   +24 i32 def_off   default value string offset (0 = null)
+  ;;   +28 i32 def_len   default value string length
+  ;; Followed by nslots * 8 bytes of slot storage:
+  ;;   each slot: i32 val_off, i32 val_len  (string representation)
+  ;;   0,0 = null (unset)
+  ;;
+  ;; Table descriptor header (same 32 bytes, type=2):
+  ;;   ndims=0, lo1=capacity (# buckets), hi1=count (# entries used)
+  ;; Followed by capacity * 16 bytes of bucket storage:
+  ;;   each bucket: i32 key_off, i32 key_len, i32 val_off, i32 val_len
+  ;;   key_off=0 means empty bucket
+  ;;
+  ;; DATA-type descriptor (type=3) stored in DATA type registry:
+  ;;   handled separately via $sno_data_define / $sno_data_new etc.
+  ;;
+  ;; Handle sentinel: programs store array handle in var_X_off,
+  ;; var_X_len = 0x7FFF (32767) to distinguish from strings (strings have real lengths).
+  ;; MAGIC_HANDLE = 32767
+
+  (global $arr_heap_ptr (mut i32) (i32.const 262144))  ;; ARR_HEAP_BASE
+
+  ;; ── sno_arr_alloc: bump-allocate nbytes from array heap, return offset ────
+  (func $sno_arr_alloc (export "sno_arr_alloc")
+    (param $nb i32) (result i32)
+    (local $p i32)
+    (local.set $p (global.get $arr_heap_ptr))
+    ;; align to 4 bytes
+    (local.set $nb (i32.and (i32.add (local.get $nb) (i32.const 3)) (i32.const -4)))
+    (global.set $arr_heap_ptr (i32.add (local.get $p) (local.get $nb)))
+    (local.get $p)
+  )
+
+  ;; ── sno_array_create: create a 1D array with given size and default value ─
+  ;; (size i32, def_off i32, def_len i32) → handle i32
+  (func $sno_array_create (export "sno_array_create")
+    (param $size i32) (param $def_off i32) (param $def_len i32)
+    (result i32)
+    (local $h i32) (local $slots_bytes i32) (local $total i32) (local $i i32)
+    ;; header = 32 bytes; slots = size * 8 bytes
+    (local.set $slots_bytes (i32.mul (local.get $size) (i32.const 8)))
+    (local.set $total (i32.add (i32.const 32) (local.get $slots_bytes)))
+    (local.set $h (call $sno_arr_alloc (local.get $total)))
+    ;; write header
+    (i32.store (local.get $h)                          (i32.const 1))         ;; type=ARRAY
+    (i32.store (i32.add (local.get $h) (i32.const 4))  (i32.const 1))         ;; ndims=1
+    (i32.store (i32.add (local.get $h) (i32.const 8))  (i32.const 1))         ;; lo1=1
+    (i32.store (i32.add (local.get $h) (i32.const 12)) (local.get $size))     ;; hi1=size
+    (i32.store (i32.add (local.get $h) (i32.const 16)) (i32.const 0))         ;; lo2=0
+    (i32.store (i32.add (local.get $h) (i32.const 20)) (i32.const 0))         ;; hi2=0
+    (i32.store (i32.add (local.get $h) (i32.const 24)) (local.get $def_off))  ;; def_off
+    (i32.store (i32.add (local.get $h) (i32.const 28)) (local.get $def_len))  ;; def_len
+    ;; zero all slots (null init)
+    (local.set $i (i32.const 0))
+    (block $done
+      (loop $loop
+        (br_if $done (i32.ge_u (local.get $i) (local.get $slots_bytes)))
+        (i32.store8
+          (i32.add (i32.add (local.get $h) (i32.const 32)) (local.get $i))
+          (i32.const 0))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $loop)))
+    (local.get $h)
+  )
+
+  ;; ── sno_array_create2: create a 2D array ──────────────────────────────────
+  ;; (rows i32, cols i32, def_off i32, def_len i32) → handle i32
+  (func $sno_array_create2 (export "sno_array_create2")
+    (param $rows i32) (param $cols i32) (param $def_off i32) (param $def_len i32)
+    (result i32)
+    (local $h i32) (local $nslots i32) (local $slots_bytes i32) (local $total i32) (local $i i32)
+    (local.set $nslots (i32.mul (local.get $rows) (local.get $cols)))
+    (local.set $slots_bytes (i32.mul (local.get $nslots) (i32.const 8)))
+    (local.set $total (i32.add (i32.const 32) (local.get $slots_bytes)))
+    (local.set $h (call $sno_arr_alloc (local.get $total)))
+    (i32.store (local.get $h)                          (i32.const 1))
+    (i32.store (i32.add (local.get $h) (i32.const 4))  (i32.const 2))         ;; ndims=2
+    (i32.store (i32.add (local.get $h) (i32.const 8))  (i32.const 1))         ;; lo1=1
+    (i32.store (i32.add (local.get $h) (i32.const 12)) (local.get $rows))     ;; hi1=rows
+    (i32.store (i32.add (local.get $h) (i32.const 16)) (i32.const 1))         ;; lo2=1
+    (i32.store (i32.add (local.get $h) (i32.const 20)) (local.get $cols))     ;; hi2=cols
+    (i32.store (i32.add (local.get $h) (i32.const 24)) (local.get $def_off))
+    (i32.store (i32.add (local.get $h) (i32.const 28)) (local.get $def_len))
+    (local.set $i (i32.const 0))
+    (block $done
+      (loop $loop
+        (br_if $done (i32.ge_u (local.get $i) (local.get $slots_bytes)))
+        (i32.store8
+          (i32.add (i32.add (local.get $h) (i32.const 32)) (local.get $i))
+          (i32.const 0))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $loop)))
+    (local.get $h)
+  )
+
+  ;; ── sno_array_get: get element at 1-based index; returns (off, len) ───────
+  ;; (handle i32, idx i32) → (off i32, len i32)
+  ;; Returns (0, 0) for null/unset or OOB — caller coerces 0,0 to empty string.
+  (func $sno_array_get (export "sno_array_get")
+    (param $h i32) (param $idx i32) (result i32 i32)
+    (local $lo i32) (local $hi i32) (local $slot_addr i32)
+    (local $def_off i32) (local $def_len i32) (local $vo i32) (local $vl i32)
+    (local.set $lo  (i32.load (i32.add (local.get $h) (i32.const 8))))
+    (local.set $hi  (i32.load (i32.add (local.get $h) (i32.const 12))))
+    ;; bounds check
+    (if (i32.or
+          (i32.lt_s (local.get $idx) (local.get $lo))
+          (i32.gt_s (local.get $idx) (local.get $hi)))
+      (then (return (i32.const 0) (i32.const 0))))  ;; OOB → fail (null)
+    ;; slot address = handle + 32 + (idx - lo) * 8
+    (local.set $slot_addr
+      (i32.add
+        (i32.add (local.get $h) (i32.const 32))
+        (i32.mul (i32.sub (local.get $idx) (local.get $lo)) (i32.const 8))))
+    (local.set $def_off (i32.load (i32.add (local.get $h) (i32.const 24))))
+    (local.set $def_len (i32.load (i32.add (local.get $h) (i32.const 28))))
+    (local.set $vo (i32.load               (local.get $slot_addr)))
+    (local.set $vl (i32.load (i32.add (local.get $slot_addr) (i32.const 4))))
+    ;; if slot is null (0,0) and default set, return default
+    (if (i32.and (i32.eqz (local.get $vo)) (i32.eqz (local.get $vl)))
+      (then (return (local.get $def_off) (local.get $def_len))))
+    (local.get $vo) (local.get $vl)
+  )
+
+  ;; ── sno_array_get2: get element at 2D index ───────────────────────────────
+  ;; (handle i32, row i32, col i32) → (off i32, len i32)
+  (func $sno_array_get2 (export "sno_array_get2")
+    (param $h i32) (param $row i32) (param $col i32) (result i32 i32)
+    (local $lo1 i32) (local $hi1 i32) (local $lo2 i32) (local $hi2 i32)
+    (local $nrows i32) (local $ncols i32) (local $flat i32) (local $slot_addr i32)
+    (local $def_off i32) (local $def_len i32) (local $vo i32) (local $vl i32)
+    (local.set $lo1 (i32.load (i32.add (local.get $h) (i32.const 8))))
+    (local.set $hi1 (i32.load (i32.add (local.get $h) (i32.const 12))))
+    (local.set $lo2 (i32.load (i32.add (local.get $h) (i32.const 16))))
+    (local.set $hi2 (i32.load (i32.add (local.get $h) (i32.const 20))))
+    (if (i32.or
+          (i32.or (i32.lt_s (local.get $row) (local.get $lo1))
+                  (i32.gt_s (local.get $row) (local.get $hi1)))
+          (i32.or (i32.lt_s (local.get $col) (local.get $lo2))
+                  (i32.gt_s (local.get $col) (local.get $hi2))))
+      (then (return (i32.const 0) (i32.const 0))))
+    (local.set $ncols (i32.add (i32.sub (local.get $hi2) (local.get $lo2)) (i32.const 1)))
+    (local.set $flat
+      (i32.add
+        (i32.mul (i32.sub (local.get $row) (local.get $lo1)) (local.get $ncols))
+        (i32.sub (local.get $col) (local.get $lo2))))
+    (local.set $slot_addr
+      (i32.add (i32.add (local.get $h) (i32.const 32))
+               (i32.mul (local.get $flat) (i32.const 8))))
+    (local.set $def_off (i32.load (i32.add (local.get $h) (i32.const 24))))
+    (local.set $def_len (i32.load (i32.add (local.get $h) (i32.const 28))))
+    (local.set $vo (i32.load               (local.get $slot_addr)))
+    (local.set $vl (i32.load (i32.add (local.get $slot_addr) (i32.const 4))))
+    (if (i32.and (i32.eqz (local.get $vo)) (i32.eqz (local.get $vl)))
+      (then (return (local.get $def_off) (local.get $def_len))))
+    (local.get $vo) (local.get $vl)
+  )
+
+  ;; ── sno_array_set: set element at 1-based index ───────────────────────────
+  ;; (handle i32, idx i32, val_off i32, val_len i32) → i32 (1=ok, 0=OOB/fail)
+  (func $sno_array_set (export "sno_array_set")
+    (param $h i32) (param $idx i32) (param $vo i32) (param $vl i32) (result i32)
+    (local $lo i32) (local $hi i32) (local $slot_addr i32)
+    (local.set $lo (i32.load (i32.add (local.get $h) (i32.const 8))))
+    (local.set $hi (i32.load (i32.add (local.get $h) (i32.const 12))))
+    (if (i32.or
+          (i32.lt_s (local.get $idx) (local.get $lo))
+          (i32.gt_s (local.get $idx) (local.get $hi)))
+      (then (return (i32.const 0))))
+    (local.set $slot_addr
+      (i32.add
+        (i32.add (local.get $h) (i32.const 32))
+        (i32.mul (i32.sub (local.get $idx) (local.get $lo)) (i32.const 8))))
+    (i32.store               (local.get $slot_addr)              (local.get $vo))
+    (i32.store (i32.add (local.get $slot_addr) (i32.const 4))    (local.get $vl))
+    (i32.const 1)
+  )
+
+  ;; ── sno_array_set2: set element at 2D index ───────────────────────────────
+  (func $sno_array_set2 (export "sno_array_set2")
+    (param $h i32) (param $row i32) (param $col i32) (param $vo i32) (param $vl i32)
+    (result i32)
+    (local $lo1 i32) (local $hi1 i32) (local $lo2 i32) (local $hi2 i32)
+    (local $ncols i32) (local $flat i32) (local $slot_addr i32)
+    (local.set $lo1 (i32.load (i32.add (local.get $h) (i32.const 8))))
+    (local.set $hi1 (i32.load (i32.add (local.get $h) (i32.const 12))))
+    (local.set $lo2 (i32.load (i32.add (local.get $h) (i32.const 16))))
+    (local.set $hi2 (i32.load (i32.add (local.get $h) (i32.const 20))))
+    (if (i32.or
+          (i32.or (i32.lt_s (local.get $row) (local.get $lo1))
+                  (i32.gt_s (local.get $row) (local.get $hi1)))
+          (i32.or (i32.lt_s (local.get $col) (local.get $lo2))
+                  (i32.gt_s (local.get $col) (local.get $hi2))))
+      (then (return (i32.const 0))))
+    (local.set $ncols (i32.add (i32.sub (local.get $hi2) (local.get $lo2)) (i32.const 1)))
+    (local.set $flat
+      (i32.add
+        (i32.mul (i32.sub (local.get $row) (local.get $lo1)) (local.get $ncols))
+        (i32.sub (local.get $col) (local.get $lo2))))
+    (local.set $slot_addr
+      (i32.add (i32.add (local.get $h) (i32.const 32))
+               (i32.mul (local.get $flat) (i32.const 8))))
+    (i32.store               (local.get $slot_addr)            (local.get $vo))
+    (i32.store (i32.add (local.get $slot_addr) (i32.const 4))  (local.get $vl))
+    (i32.const 1)
+  )
+
+  ;; ── sno_array_prototype: return dimension string e.g. "3" or "2,2" ────────
+  ;; (handle i32, out_off i32) → len i32  (writes into out_off in memory)
+  ;; We write into the output buffer scratch area at out_off, return byte count.
+  (func $sno_array_prototype (export "sno_array_prototype")
+    (param $h i32) (param $out i32) (result i32)
+    (local $ndims i32) (local $hi1 i32) (local $lo1 i32)
+    (local $hi2 i32) (local $lo2 i32) (local $n1 i32) (local $n2 i32)
+    (local $pos i32) (local $val i32) (local $tmp i32)
+    (local $buf i32) (local $blen i32) (local $digit i32) (local $b i32)
+    (local.set $ndims (i32.load (i32.add (local.get $h) (i32.const 4))))
+    (local.set $lo1  (i32.load (i32.add (local.get $h) (i32.const 8))))
+    (local.set $hi1  (i32.load (i32.add (local.get $h) (i32.const 12))))
+    (local.set $lo2  (i32.load (i32.add (local.get $h) (i32.const 16))))
+    (local.set $hi2  (i32.load (i32.add (local.get $h) (i32.const 20))))
+    (local.set $n1 (i32.add (i32.sub (local.get $hi1) (local.get $lo1)) (i32.const 1)))
+    (local.set $n2 (i32.add (i32.sub (local.get $hi2) (local.get $lo2)) (i32.const 1)))
+    (local.set $pos (i32.const 0))
+    ;; write n1 as decimal
+    (local.set $val (local.get $n1))
+    ;; write digits backwards into scratch at $out+12
+    (local.set $b (i32.const 0))
+    (block $itoa_done
+      (loop $itoa_loop
+        (local.set $digit (i32.rem_u (local.get $val) (i32.const 10)))
+        (i32.store8
+          (i32.add (i32.add (local.get $out) (i32.const 23)) (i32.sub (i32.const 0) (local.get $b)))
+          (i32.add (local.get $digit) (i32.const 48)))
+        (local.set $val (i32.div_u (local.get $val) (i32.const 10)))
+        (local.set $b (i32.add (local.get $b) (i32.const 1)))
+        (br_if $itoa_done (i32.eqz (local.get $val)))
+        (br $itoa_loop)))
+    ;; copy digits forward to out+0
+    (local.set $tmp (i32.const 0))
+    (block $cp_done
+      (loop $cp_loop
+        (br_if $cp_done (i32.ge_u (local.get $tmp) (local.get $b)))
+        (i32.store8
+          (i32.add (local.get $out) (local.get $tmp))
+          (i32.load8_u
+            (i32.add
+              (i32.add (local.get $out) (i32.const 23))
+              (i32.sub (i32.sub (local.get $b) (i32.const 1)) (local.get $tmp)))))
+        (local.set $tmp (i32.add (local.get $tmp) (i32.const 1)))
+        (br $cp_loop)))
+    (local.set $pos (local.get $b))
+    ;; if 2D, append "," then n2
+    (if (i32.ge_s (local.get $ndims) (i32.const 2))
+      (then
+        (i32.store8 (i32.add (local.get $out) (local.get $pos)) (i32.const 44)) ;; ','
+        (local.set $pos (i32.add (local.get $pos) (i32.const 1)))
+        ;; itoa n2
+        (local.set $val (local.get $n2))
+        (local.set $b (i32.const 0))
+        (block $itoa2_done
+          (loop $itoa2_loop
+            (local.set $digit (i32.rem_u (local.get $val) (i32.const 10)))
+            (i32.store8
+              (i32.add (i32.add (local.get $out) (i32.const 23)) (i32.sub (i32.const 0) (local.get $b)))
+              (i32.add (local.get $digit) (i32.const 48)))
+            (local.set $val (i32.div_u (local.get $val) (i32.const 10)))
+            (local.set $b (i32.add (local.get $b) (i32.const 1)))
+            (br_if $itoa2_done (i32.eqz (local.get $val)))
+            (br $itoa2_loop)))
+        (local.set $tmp (i32.const 0))
+        (block $cp2_done
+          (loop $cp2_loop
+            (br_if $cp2_done (i32.ge_u (local.get $tmp) (local.get $b)))
+            (i32.store8
+              (i32.add (local.get $out) (i32.add (local.get $pos) (local.get $tmp)))
+              (i32.load8_u
+                (i32.add
+                  (i32.add (local.get $out) (i32.const 23))
+                  (i32.sub (i32.sub (local.get $b) (i32.const 1)) (local.get $tmp)))))
+            (local.set $tmp (i32.add (local.get $tmp) (i32.const 1)))
+            (br $cp2_loop)))
+        (local.set $pos (i32.add (local.get $pos) (local.get $b)))))
+    (local.get $pos)
+  )
+
+  ;; ── TABLE implementation ───────────────────────────────────────────────────
+  ;; Table header: type=2, ndims=0, lo1=capacity, hi1=count
+  ;; Buckets follow header (32 bytes): capacity * 16 bytes
+  ;;   bucket: key_off(4) key_len(4) val_off(4) val_len(4)
+  ;;   empty bucket: key_off=0, key_len=0
+
+  (func $sno_table_create (export "sno_table_create")
+    (param $cap i32) (result i32)
+    (local $h i32) (local $total i32) (local $i i32) (local $bsize i32)
+    ;; minimum 8 buckets, round cap up to power of 2 for simple modulo
+    (if (i32.lt_s (local.get $cap) (i32.const 8))
+      (then (local.set $cap (i32.const 8))))
+    (local.set $total (i32.add (i32.const 32)
+                               (i32.mul (local.get $cap) (i32.const 16))))
+    (local.set $h (call $sno_arr_alloc (local.get $total)))
+    (i32.store (local.get $h)                          (i32.const 2))        ;; type=TABLE
+    (i32.store (i32.add (local.get $h) (i32.const 4))  (i32.const 0))        ;; ndims=0
+    (i32.store (i32.add (local.get $h) (i32.const 8))  (local.get $cap))     ;; lo1=capacity
+    (i32.store (i32.add (local.get $h) (i32.const 12)) (i32.const 0))        ;; hi1=count
+    (i32.store (i32.add (local.get $h) (i32.const 16)) (i32.const 0))
+    (i32.store (i32.add (local.get $h) (i32.const 20)) (i32.const 0))
+    (i32.store (i32.add (local.get $h) (i32.const 24)) (i32.const 0))
+    (i32.store (i32.add (local.get $h) (i32.const 28)) (i32.const 0))
+    ;; zero all buckets
+    (local.set $i (i32.const 0))
+    (local.set $bsize (i32.mul (local.get $cap) (i32.const 16)))
+    (block $done
+      (loop $loop
+        (br_if $done (i32.ge_u (local.get $i) (local.get $bsize)))
+        (i32.store8 (i32.add (i32.add (local.get $h) (i32.const 32)) (local.get $i)) (i32.const 0))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $loop)))
+    (local.get $h)
+  )
+
+  ;; hash: simple FNV-1a over key string bytes
+  (func $sno_hash (param $ko i32) (param $kl i32) (result i32)
+    (local $h i32) (local $i i32)
+    (local.set $h (i32.const 0x811c9dc5))
+    (local.set $i (i32.const 0))
+    (block $done
+      (loop $loop
+        (br_if $done (i32.ge_u (local.get $i) (local.get $kl)))
+        (local.set $h
+          (i32.mul
+            (i32.xor (local.get $h)
+                     (i32.load8_u (i32.add (local.get $ko) (local.get $i))))
+            (i32.const 0x01000193)))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $loop)))
+    (local.get $h)
+  )
+
+  ;; sno_str_match_exact: 1 if mem[a..a+len] == mem[b..b+len], 0 otherwise
+  (func $sno_str_match_exact (param $a i32) (param $b i32) (param $len i32) (result i32)
+    (local $i i32)
+    (local.set $i (i32.const 0))
+    (block $mismatch
+      (loop $loop
+        (br_if $mismatch (i32.ge_u (local.get $i) (local.get $len)))
+        (if (i32.ne
+              (i32.load8_u (i32.add (local.get $a) (local.get $i)))
+              (i32.load8_u (i32.add (local.get $b) (local.get $i))))
+          (then (return (i32.const 0))))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $loop)))
+    (i32.const 1)
+  )
+
+  ;; sno_table_get: (handle i32, key_off i32, key_len i32) → (val_off i32, val_len i32)
+  (func $sno_table_get (export "sno_table_get")
+    (param $h i32) (param $ko i32) (param $kl i32) (result i32 i32)
+    (local $cap i32) (local $slot i32) (local $base i32)
+    (local $bko i32) (local $bkl i32) (local $probe i32)
+    (local.set $cap (i32.load (i32.add (local.get $h) (i32.const 8))))
+    (local.set $slot
+      (i32.rem_u (call $sno_hash (local.get $ko) (local.get $kl)) (local.get $cap)))
+    (local.set $probe (i32.const 0))
+    (block $found
+      (loop $search
+        (br_if $found (i32.ge_u (local.get $probe) (local.get $cap)))
+        (local.set $base
+          (i32.add (i32.add (local.get $h) (i32.const 32))
+                   (i32.mul
+                     (i32.rem_u (i32.add (local.get $slot) (local.get $probe)) (local.get $cap))
+                     (i32.const 16))))
+        (local.set $bko (i32.load               (local.get $base)))
+        (local.set $bkl (i32.load (i32.add (local.get $base) (i32.const 4))))
+        ;; empty bucket → key not found → return null
+        (if (i32.and (i32.eqz (local.get $bko)) (i32.eqz (local.get $bkl)))
+          (then (return (i32.const 0) (i32.const 0))))
+        ;; key match?
+        (if (i32.and
+              (i32.eq (local.get $bkl) (local.get $kl))
+              (call $sno_str_match_exact (local.get $bko) (local.get $ko) (local.get $kl)))
+          (then
+            (return
+              (i32.load (i32.add (local.get $base) (i32.const 8)))
+              (i32.load (i32.add (local.get $base) (i32.const 12))))))
+        (local.set $probe (i32.add (local.get $probe) (i32.const 1)))
+        (br $search)))
+    (i32.const 0) (i32.const 0)
+  )
+
+  ;; sno_table_set: (handle i32, key_off i32, key_len i32, val_off i32, val_len i32) → void
+  (func $sno_table_set (export "sno_table_set")
+    (param $h i32) (param $ko i32) (param $kl i32) (param $vo i32) (param $vl i32)
+    (local $cap i32) (local $slot i32) (local $base i32)
+    (local $bko i32) (local $bkl i32) (local $probe i32)
+    (local.set $cap (i32.load (i32.add (local.get $h) (i32.const 8))))
+    (local.set $slot
+      (i32.rem_u (call $sno_hash (local.get $ko) (local.get $kl)) (local.get $cap)))
+    (local.set $probe (i32.const 0))
+    (block $placed
+      (loop $search
+        (br_if $placed (i32.ge_u (local.get $probe) (local.get $cap)))
+        (local.set $base
+          (i32.add (i32.add (local.get $h) (i32.const 32))
+                   (i32.mul
+                     (i32.rem_u (i32.add (local.get $slot) (local.get $probe)) (local.get $cap))
+                     (i32.const 16))))
+        (local.set $bko (i32.load               (local.get $base)))
+        (local.set $bkl (i32.load (i32.add (local.get $base) (i32.const 4))))
+        ;; empty or matching bucket → place here
+        (if (i32.or
+              (i32.and (i32.eqz (local.get $bko)) (i32.eqz (local.get $bkl)))
+              (i32.and
+                (i32.eq (local.get $bkl) (local.get $kl))
+                (call $sno_str_match_exact (local.get $bko) (local.get $ko) (local.get $kl))))
+          (then
+            (i32.store               (local.get $base)              (local.get $ko))
+            (i32.store (i32.add (local.get $base) (i32.const 4))    (local.get $kl))
+            (i32.store (i32.add (local.get $base) (i32.const 8))    (local.get $vo))
+            (i32.store (i32.add (local.get $base) (i32.const 12))   (local.get $vl))
+            ;; increment count if new key (was empty)
+            (if (i32.and (i32.eqz (local.get $bko)) (i32.eqz (local.get $bkl)))
+              (then
+                (i32.store (i32.add (local.get $h) (i32.const 12))
+                  (i32.add (i32.load (i32.add (local.get $h) (i32.const 12))) (i32.const 1)))))
+            (br $placed)))
+        (local.set $probe (i32.add (local.get $probe) (i32.const 1)))
+        (br $search)))
+  )
+
+  ;; sno_table_count: number of entries in table
+  (func $sno_table_count (export "sno_table_count")
+    (param $h i32) (result i32)
+    (i32.load (i32.add (local.get $h) (i32.const 12)))
+  )
+
+  ;; sno_table_get_bucket: get key/val at bucket index (for table→array conversion)
+  ;; (handle i32, bi i32) → (key_off, key_len, val_off, val_len) i32×4
+  (func $sno_table_get_bucket (export "sno_table_get_bucket")
+    (param $h i32) (param $bi i32) (result i32 i32 i32 i32)
+    (local $base i32)
+    (local.set $base
+      (i32.add (i32.add (local.get $h) (i32.const 32))
+               (i32.mul (local.get $bi) (i32.const 16))))
+    (i32.load               (local.get $base))
+    (i32.load (i32.add (local.get $base) (i32.const 4)))
+    (i32.load (i32.add (local.get $base) (i32.const 8)))
+    (i32.load (i32.add (local.get $base) (i32.const 12)))
+  )
+
+  ;; sno_table_cap: capacity of table (for iteration)
+  (func $sno_table_cap (export "sno_table_cap")
+    (param $h i32) (result i32)
+    (i32.load (i32.add (local.get $h) (i32.const 8)))
+  )
+
+  ;; ── DATA type registry ────────────────────────────────────────────────────
+  ;; DATA registry: linear array of type descriptors stored in arr heap.
+  ;; Registry header at DATA_REG_BASE = ARR_HEAP_BASE + 0x8000 = 0x48000 = 294912
+  ;; Each type entry:
+  ;;   +0  i32 name_off    type name string offset
+  ;;   +4  i32 name_len
+  ;;   +8  i32 nfields     number of fields
+  ;;   +12 i32 fields_ptr  pointer to field name array (8 bytes each: off,len)
+  ;; Max 64 types.
+  ;; DATA instance handle: same arr heap bump alloc, type=3
+  ;;   header +0=3, +4=type_idx, +8..+28=unused
+  ;;   followed by nfields * 8 bytes (val_off, val_len)
+
+  (global $data_reg_ptr (mut i32) (i32.const 294912))  ;; DATA_REG_BASE
+
+  (func $sno_data_define (export "sno_data_define")
+    ;; Register a DATA type: name_off/len + array of field name offsets/lens
+    ;; (name_off i32, name_len i32, nfields i32, field_names_ptr i32) → type_idx i32
+    (param $no i32) (param $nl i32) (param $nf i32) (param $fp i32) (result i32)
+    (local $e i32) (local $idx i32)
+    (local.set $e (global.get $data_reg_ptr))
+    (i32.store               (local.get $e)              (local.get $no))
+    (i32.store (i32.add (local.get $e) (i32.const 4))    (local.get $nl))
+    (i32.store (i32.add (local.get $e) (i32.const 8))    (local.get $nf))
+    (i32.store (i32.add (local.get $e) (i32.const 12))   (local.get $fp))
+    (global.set $data_reg_ptr (i32.add (local.get $e) (i32.const 16)))
+    ;; return type index = (e - DATA_REG_BASE) / 16
+    (i32.div_u (i32.sub (local.get $e) (i32.const 294912)) (i32.const 16))
+  )
+
+  (func $sno_data_new (export "sno_data_new")
+    ;; Create new DATA instance: (type_idx i32, nfields i32) → handle i32
+    (param $ti i32) (param $nf i32) (result i32)
+    (local $h i32) (local $total i32) (local $i i32) (local $slots_bytes i32)
+    (local.set $slots_bytes (i32.mul (local.get $nf) (i32.const 8)))
+    (local.set $total (i32.add (i32.const 32) (local.get $slots_bytes)))
+    (local.set $h (call $sno_arr_alloc (local.get $total)))
+    (i32.store (local.get $h)                          (i32.const 3))         ;; type=DATA
+    (i32.store (i32.add (local.get $h) (i32.const 4))  (local.get $ti))       ;; type_idx
+    (i32.store (i32.add (local.get $h) (i32.const 8))  (local.get $nf))       ;; nfields
+    ;; zero all field slots
+    (local.set $i (i32.const 0))
+    (block $done
+      (loop $loop
+        (br_if $done (i32.ge_u (local.get $i) (local.get $slots_bytes)))
+        (i32.store8 (i32.add (i32.add (local.get $h) (i32.const 32)) (local.get $i)) (i32.const 0))
+        (local.set $i (i32.add (local.get $i) (i32.const 1)))
+        (br $loop)))
+    (local.get $h)
+  )
+
+  (func $sno_data_get_field (export "sno_data_get_field")
+    ;; (handle i32, field_idx i32) → (off i32, len i32)
+    (param $h i32) (param $fi i32) (result i32 i32)
+    (local $slot_addr i32)
+    (local.set $slot_addr
+      (i32.add (i32.add (local.get $h) (i32.const 32))
+               (i32.mul (local.get $fi) (i32.const 8))))
+    (i32.load               (local.get $slot_addr))
+    (i32.load (i32.add (local.get $slot_addr) (i32.const 4)))
+  )
+
+  (func $sno_data_set_field (export "sno_data_set_field")
+    ;; (handle i32, field_idx i32, val_off i32, val_len i32) → void
+    (param $h i32) (param $fi i32) (param $vo i32) (param $vl i32)
+    (local $slot_addr i32)
+    (local.set $slot_addr
+      (i32.add (i32.add (local.get $h) (i32.const 32))
+               (i32.mul (local.get $fi) (i32.const 8))))
+    (i32.store               (local.get $slot_addr)            (local.get $vo))
+    (i32.store (i32.add (local.get $slot_addr) (i32.const 4))  (local.get $vl))
+  )
+
+  ;; sno_handle_type: return type tag from a handle (1=array,2=table,3=data, 0=not a handle)
+  (func $sno_handle_type (export "sno_handle_type")
+    (param $h i32) (result i32)
+    (if (i32.lt_u (local.get $h) (i32.const 262144)) (then (return (i32.const 0))))
+    (i32.load (local.get $h))
   )
 
 )
