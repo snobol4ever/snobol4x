@@ -108,6 +108,8 @@ static void emit_runtime_imports(void) {
     W("  (import \"sno\" \"sno_size\"         (func $sno_size         (param i32 i32) (result i64)))\n");
     W("  (import \"sno\" \"sno_dupl\"         (func $sno_dupl         (param i32 i32 i64) (result i32 i32)))\n");
     W("  (import \"sno\" \"sno_replace\"      (func $sno_replace      (param i32 i32 i32 i32 i32 i32) (result i32 i32)))\n");
+    W("  (import \"sno\" \"sno_str_to_float\" (func $sno_str_to_float (param i32 i32) (result f64)))\n");
+    W("  (import \"sno\" \"sno_lgt\"          (func $sno_lgt          (param i32 i32 i32 i32) (result i32)))\n");
     W("  ;; String heap pointer: programs use sno_str_alloc from runtime\n");
     W("  ;; (global $str_ptr is internal to runtime; programs use sno_str_alloc)\n");
 }
@@ -493,6 +495,44 @@ static WasmTy emit_expr(const EXPR_t *e) {
             W("    (call $sno_replace)\n");
             return TY_STR;
         }
+        /* CONVERT(val, type_str) → coerced value */
+        if (strcasecmp(fn, "convert") == 0 && e->nchildren >= 2) {
+            /* Evaluate type arg as string to get the target type name */
+            /* We evaluate val first; type is a compile-time string literal in corpus */
+            /* Strategy: emit val, then dispatch on type literal value */
+            const EXPR_t *type_e = e->children[1];
+            const char *tname = (type_e && type_e->kind == E_QLIT && type_e->sval)
+                                 ? type_e->sval : "";
+            WasmTy tv = emit_expr(e->children[0]);
+            if (strcasecmp(tname, "integer") == 0) {
+                if (tv == TY_STR)   W("    (call $sno_str_to_int)\n");
+                if (tv == TY_FLOAT) W("    (i64.trunc_f64_s)\n");
+                return TY_INT;
+            } else if (strcasecmp(tname, "real") == 0) {
+                if (tv == TY_STR)   W("    (call $sno_str_to_float)\n");
+                if (tv == TY_INT)   W("    (f64.convert_i64_s)\n");
+                return TY_FLOAT;
+            } else {
+                /* "string" or anything else → stringify */
+                if (tv == TY_INT)   W("    (call $sno_int_to_str)\n");
+                if (tv == TY_FLOAT) W("    (call $sno_float_to_str)\n");
+                return TY_STR;
+            }
+        }
+        /* DATATYPE(val) → string type name: "string", "integer", "real" */
+        if (strcasecmp(fn, "datatype") == 0 && e->nchildren >= 1) {
+            WasmTy tv = emit_expr(e->children[0]);
+            /* Drop the value — we only need its compile-time type */
+            if (tv == TY_STR)   { W("    (drop)\n    (drop)\n"); }
+            else if (tv == TY_INT)   { W("    (drop)\n"); }
+            else                     { W("    (drop)\n"); }
+            const char *tname = (tv == TY_INT) ? "integer"
+                               : (tv == TY_FLOAT) ? "real" : "string";
+            int ti = strlit_intern(tname);
+            W("    (i32.const %d) ;; datatype=%s\n", strlit_abs(ti), tname);
+            W("    (i32.const %d)\n", str_lits[ti].len);
+            return TY_STR;
+        }
         /* Default: evaluate args, drop results, return empty string */
         for (int i = 0; i < e->nchildren; i++) {
             WasmTy t = emit_expr(e->children[i]);
@@ -599,6 +639,128 @@ static void emit_subject_as_bool(const EXPR_t *e) {
         if (strcasecmp(fn, "differ") == 0 || strcasecmp(fn, "ident") == 0) {
             emit_differ(e); return;
         }
+        /* Numeric comparison predicates: LT LE EQ NE GT GE */
+        /* Each takes two args, coerces to numbers, returns 0/1 */
+        int is_cmp = (strcasecmp(fn,"lt")==0 || strcasecmp(fn,"le")==0 ||
+                      strcasecmp(fn,"eq")==0 || strcasecmp(fn,"ne")==0 ||
+                      strcasecmp(fn,"gt")==0 || strcasecmp(fn,"ge")==0);
+        if (is_cmp && e->nchildren >= 2) {
+            /* Evaluate both args; coerce to numbers for comparison */
+            WasmTy ta = emit_expr(e->children[0]);
+            WasmTy tb = emit_expr(e->children[1]);
+            /* If either is float, promote both to float comparison */
+            int use_float = (ta == TY_FLOAT || tb == TY_FLOAT);
+            if (!use_float) {
+                /* Both int (or str coerced to int) */
+                if (ta == TY_STR) {
+                    /* Need to reorder: currently stack is (a_off a_len b...) */
+                    /* Simpler: always coerce strings via str_to_int before push */
+                    /* Actually stack is already: a_val b_val after emit */
+                    /* ta was STR so stack has (a_off a_len), then b was emitted */
+                    /* We need: coerce a first, then b. But they're already on stack. */
+                    /* Use locals to save/restore */
+                }
+                /* Use i64 comparison — both must be i64 on stack */
+                /* Re-evaluate cleanly using locals */
+                W("      ;; %s predicate\n", fn);
+                W("      (local.set $cmp_b_i\n");
+                if (tb == TY_STR)   W("        (call $sno_str_to_int)\n");
+                else if (tb == TY_FLOAT) W("        (i64.trunc_f64_s)\n");
+                W("      )\n");
+                W("      (local.set $cmp_a_i\n");
+                if (ta == TY_STR)   W("        (call $sno_str_to_int)\n");
+                else if (ta == TY_FLOAT) W("        (i64.trunc_f64_s)\n");
+                W("      )\n");
+                W("      (local.get $cmp_a_i)\n");
+                W("      (local.get $cmp_b_i)\n");
+                if      (strcasecmp(fn,"lt")==0) W("      (i64.lt_s)\n");
+                else if (strcasecmp(fn,"le")==0) W("      (i64.le_s)\n");
+                else if (strcasecmp(fn,"eq")==0) W("      (i64.eq)\n");
+                else if (strcasecmp(fn,"ne")==0) W("      (i64.ne)\n");
+                else if (strcasecmp(fn,"gt")==0) W("      (i64.gt_s)\n");
+                else                             W("      (i64.ge_s)\n");
+            } else {
+                /* Float path */
+                W("      (local.set $cmp_b_f\n");
+                if (tb == TY_STR)   W("        (call $sno_str_to_float)\n");
+                else if (tb == TY_INT)   W("        (f64.convert_i64_s)\n");
+                W("      )\n");
+                W("      (local.set $cmp_a_f\n");
+                if (ta == TY_STR)   W("        (call $sno_str_to_float)\n");
+                else if (ta == TY_INT)   W("        (f64.convert_i64_s)\n");
+                W("      )\n");
+                W("      (local.get $cmp_a_f)\n");
+                W("      (local.get $cmp_b_f)\n");
+                if      (strcasecmp(fn,"lt")==0) W("      (f64.lt)\n");
+                else if (strcasecmp(fn,"le")==0) W("      (f64.le)\n");
+                else if (strcasecmp(fn,"eq")==0) W("      (f64.eq)\n");
+                else if (strcasecmp(fn,"ne")==0) W("      (f64.ne)\n");
+                else if (strcasecmp(fn,"gt")==0) W("      (f64.gt)\n");
+                else                             W("      (f64.ge)\n");
+            }
+            return;
+        }
+        /* NE with mixed string/int: SNOBOL4 semantics — type mismatch always differs */
+        /* Already handled above via numeric coercion — "12" coerces to 12 for ne(12,12)=fail */
+
+        /* LGT: lexicographic greater-than */
+        if (strcasecmp(fn, "lgt") == 0 && e->nchildren >= 2) {
+            WasmTy ta = emit_expr(e->children[0]);
+            if (ta == TY_INT)   W("      (call $sno_int_to_str)\n");
+            if (ta == TY_FLOAT) W("      (call $sno_float_to_str)\n");
+            WasmTy tb = emit_expr(e->children[1]);
+            if (tb == TY_INT)   W("      (call $sno_int_to_str)\n");
+            if (tb == TY_FLOAT) W("      (call $sno_float_to_str)\n");
+            W("      (call $sno_lgt)\n");
+            return;
+        }
+        /* INTEGER predicate: succeed if value is/coerces-to integer */
+        if (strcasecmp(fn, "integer") == 0 && e->nchildren >= 1) {
+            WasmTy ta = emit_expr(e->children[0]);
+            if (ta == TY_INT) {
+                W("      (drop) ;; integer literal — always succeed\n");
+                W("      (i32.const 1)\n");
+            } else if (ta == TY_FLOAT) {
+                W("      (drop) ;; float — not integer\n");
+                W("      (i32.const 0)\n");
+            } else {
+                /* String: try parsing as integer — succeed if all chars are digits (with optional sign) */
+                /* Emit: str_to_int, convert back to str, compare with original — or simpler:
+                   check that str_to_int gives non-zero OR original == "0" */
+                /* Simplest correct approach: call sno_str_to_int, then sno_int_to_str,
+                   compare result string with original stripped string */
+                /* Even simpler: succeed if every char (after optional sign) is 0-9 */
+                /* Use a runtime helper — but we don't have one. Inline WAT scan: */
+                W("      ;; INTEGER predicate: scan string for all-digit\n");
+                W("      (local.set $int_pred_len)\n");
+                W("      (local.set $int_pred_off)\n");
+                W("      (local.set $int_pred_i (i32.const 0))\n");
+                W("      (local.set $int_pred_ok (i32.const 1))\n");
+                /* skip optional sign */
+                W("      (if (i32.gt_u (local.get $int_pred_len) (i32.const 0))\n");
+                W("        (then\n");
+                W("          (local.set $int_pred_c (i32.load8_u (local.get $int_pred_off)))\n");
+                W("          (if (i32.or (i32.eq (local.get $int_pred_c) (i32.const 43))\n");
+                W("                      (i32.eq (local.get $int_pred_c) (i32.const 45)))\n");
+                W("            (then (local.set $int_pred_i (i32.const 1))))))\n");
+                /* empty or sign-only → fail */
+                W("      (if (i32.ge_u (local.get $int_pred_i) (local.get $int_pred_len))\n");
+                W("        (then (local.set $int_pred_ok (i32.const 0))))\n");
+                /* scan remaining chars */
+                W("      (block $ipb (loop $ipl\n");
+                W("        (br_if $ipb (i32.ge_u (local.get $int_pred_i) (local.get $int_pred_len)))\n");
+                W("        (local.set $int_pred_c (i32.load8_u\n");
+                W("          (i32.add (local.get $int_pred_off) (local.get $int_pred_i))))\n");
+                W("        (if (i32.or\n");
+                W("              (i32.lt_u (local.get $int_pred_c) (i32.const 48))\n");
+                W("              (i32.gt_u (local.get $int_pred_c) (i32.const 57)))\n");
+                W("          (then (local.set $int_pred_ok (i32.const 0)) (br $ipb)))\n");
+                W("        (local.set $int_pred_i (i32.add (local.get $int_pred_i) (i32.const 1)))\n");
+                W("        (br $ipl)))\n");
+                W("      (local.get $int_pred_ok)\n");
+            }
+            return;
+        }
         /* Other builtins: evaluate args for side effects, succeed */
         for (int i = 0; i < e->nchildren; i++) {
             WasmTy t = emit_expr(e->children[i]);
@@ -648,6 +810,17 @@ static void emit_main_body(Program *prog) {
     W("    (local $ok i32)\n");
     W("    (local $tmp_f f64)\n");
     W("    (local $tmp_i32 i32)\n");
+    /* Comparison predicate locals */
+    W("    (local $cmp_a_i i64)\n");
+    W("    (local $cmp_b_i i64)\n");
+    W("    (local $cmp_a_f f64)\n");
+    W("    (local $cmp_b_f f64)\n");
+    /* INTEGER predicate scan locals */
+    W("    (local $int_pred_off i32)\n");
+    W("    (local $int_pred_len i32)\n");
+    W("    (local $int_pred_i i32)\n");
+    W("    (local $int_pred_ok i32)\n");
+    W("    (local $int_pred_c i32)\n");
     if (needs_indr) {
         W("    (local $indr_no i32)\n");
         W("    (local $indr_nl i32)\n");

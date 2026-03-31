@@ -431,4 +431,78 @@
     (local.get $start)
     (i32.sub (local.get $pos) (local.get $start))
   )
+
+  ;; ── sno_str_to_float (off i32, len i32) → f64 ────────────────────────────
+  (func $sno_str_to_float (export "sno_str_to_float")
+    (param $off i32) (param $len i32) (result f64)
+    (local $i i32) (local $neg i32) (local $c i32)
+    (local $ipart f64) (local $fpart f64) (local $fscale f64) (local $in_frac i32)
+    (local.set $i (i32.const 0))
+    (local.set $ipart (f64.const 0))
+    (local.set $fpart (f64.const 0))
+    (local.set $fscale (f64.const 1))
+    (local.set $neg (i32.const 0))
+    (local.set $in_frac (i32.const 0))
+    (block $sp_done (loop $sp
+      (br_if $sp_done (i32.ge_u (local.get $i) (local.get $len)))
+      (local.set $c (i32.load8_u (i32.add (local.get $off) (local.get $i))))
+      (br_if $sp_done (i32.ne (local.get $c) (i32.const 32)))
+      (local.set $i (i32.add (local.get $i) (i32.const 1)))
+      (br $sp)))
+    (if (i32.lt_u (local.get $i) (local.get $len))
+      (then
+        (local.set $c (i32.load8_u (i32.add (local.get $off) (local.get $i))))
+        (if (i32.eq (local.get $c) (i32.const 45))
+          (then (local.set $neg (i32.const 1))
+                (local.set $i (i32.add (local.get $i) (i32.const 1)))))
+        (if (i32.eq (local.get $c) (i32.const 43))
+          (then (local.set $i (i32.add (local.get $i) (i32.const 1)))))))
+    (block $dbreak (loop $dlp
+      (br_if $dbreak (i32.ge_u (local.get $i) (local.get $len)))
+      (local.set $c (i32.load8_u (i32.add (local.get $off) (local.get $i))))
+      (if (i32.eq (local.get $c) (i32.const 46))
+        (then
+          (local.set $in_frac (i32.const 1))
+          (local.set $i (i32.add (local.get $i) (i32.const 1)))
+          (br $dlp)))
+      (br_if $dbreak (i32.lt_u (local.get $c) (i32.const 48)))
+      (br_if $dbreak (i32.gt_u (local.get $c) (i32.const 57)))
+      (if (local.get $in_frac)
+        (then
+          (local.set $fscale (f64.mul (local.get $fscale) (f64.const 10)))
+          (local.set $fpart (f64.add (local.get $fpart)
+            (f64.div (f64.convert_i32_u (i32.sub (local.get $c) (i32.const 48)))
+                     (local.get $fscale)))))
+        (else
+          (local.set $ipart (f64.add (f64.mul (local.get $ipart) (f64.const 10))
+            (f64.convert_i32_u (i32.sub (local.get $c) (i32.const 48)))))))
+      (local.set $i (i32.add (local.get $i) (i32.const 1)))
+      (br $dlp)))
+    (local.set $ipart (f64.add (local.get $ipart) (local.get $fpart)))
+    (if (local.get $neg) (then (local.set $ipart (f64.neg (local.get $ipart)))))
+    (local.get $ipart)
+  )
+
+  ;; ── sno_lgt (a_off i32, a_len i32, b_off i32, b_len i32) → i32 ──────────
+  ;; Returns 1 if string a is lexicographically greater than b, else 0.
+  (func $sno_lgt (export "sno_lgt")
+    (param $a_off i32) (param $a_len i32)
+    (param $b_off i32) (param $b_len i32)
+    (result i32)
+    (local $i i32) (local $minlen i32) (local $ca i32) (local $cb i32)
+    (local.set $minlen
+      (if (result i32) (i32.lt_u (local.get $a_len) (local.get $b_len))
+        (then (local.get $a_len)) (else (local.get $b_len))))
+    (local.set $i (i32.const 0))
+    (block $done (loop $cmp
+      (br_if $done (i32.ge_u (local.get $i) (local.get $minlen)))
+      (local.set $ca (i32.load8_u (i32.add (local.get $a_off) (local.get $i))))
+      (local.set $cb (i32.load8_u (i32.add (local.get $b_off) (local.get $i))))
+      (if (i32.gt_u (local.get $ca) (local.get $cb)) (then (return (i32.const 1))))
+      (if (i32.lt_u (local.get $ca) (local.get $cb)) (then (return (i32.const 0))))
+      (local.set $i (i32.add (local.get $i) (i32.const 1)))
+      (br $cmp)))
+    (i32.gt_u (local.get $a_len) (local.get $b_len))
+  )
+
 )
