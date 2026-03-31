@@ -38,18 +38,59 @@ if [[ ! -x "$SCRIP_CC" ]]; then
     exit 1
 fi
 
-# Build shared runtime objects once
+# ── Persistent runtime archive cache ─────────────────────────────────────────
+# Build snocone_rt.a once per session (or when sources change) into
+# $TINY/out/rt_cache/.  A stamp file records the mtimes of the 7 source files;
+# if the stamp is current the archive is reused as-is — skipping ~4-5s of gcc
+# per rung invocation (7 compilations × 21 rungs ≈ 100s saved).
 WORK=$(mktemp -d); trap "rm -rf $WORK" EXIT
 
-gcc -O0 -g -c "$RT/asm/snobol4_stmt_rt.c"       -I"$RT/snobol4" -I"$RT" -I"$TINY/src/frontend/snobol4" -w -o "$WORK/stmt_rt.o"
-gcc -O0 -g -c "$RT/snobol4/snobol4.c"            -I"$RT/snobol4" -I"$RT" -I"$TINY/src/frontend/snobol4" -w -o "$WORK/snobol4.o"
-gcc -O0 -g -c "$RT/mock/mock_includes.c"          -I"$RT/snobol4" -I"$RT" -I"$TINY/src/frontend/snobol4" -w -o "$WORK/mock_includes.o"
-gcc -O0 -g -c "$RT/snobol4/snobol4_pattern.c"    -I"$RT/snobol4" -I"$RT" -I"$TINY/src/frontend/snobol4" -w -o "$WORK/snobol4_pattern.o"
-gcc -O0 -g -c "$RT/mock/mock_engine.c"            -I"$RT/snobol4" -I"$RT" -I"$TINY/src/frontend/snobol4" -w -o "$WORK/mock_engine.o"
-gcc -O0 -g -c "$RT/asm/blk_alloc.c"              -I"$RT/asm"                                             -w -o "$WORK/blk_alloc.o"
-gcc -O0 -g -c "$RT/asm/blk_reloc.c"              -I"$RT/asm"                                             -w -o "$WORK/blk_reloc.o"
+RT_CACHE_DIR="$TINY/out/rt_cache"
+mkdir -p "$RT_CACHE_DIR"
 
-LINK_OBJS="$WORK/stmt_rt.o $WORK/snobol4.o $WORK/mock_includes.o $WORK/snobol4_pattern.o $WORK/mock_engine.o $WORK/blk_alloc.o $WORK/blk_reloc.o"
+RT_SRCS=(
+  "$RT/asm/snobol4_stmt_rt.c"
+  "$RT/snobol4/snobol4.c"
+  "$RT/mock/mock_includes.c"
+  "$RT/snobol4/snobol4_pattern.c"
+  "$RT/mock/mock_engine.c"
+  "$RT/asm/blk_alloc.c"
+  "$RT/asm/blk_reloc.c"
+)
+RT_ARCHIVE="$RT_CACHE_DIR/snocone_rt.a"
+RT_STAMP="$RT_CACHE_DIR/snocone_rt.stamp"
+
+# Compute stamp: mtime of each source file
+_stamp=$(stat -c '%n:%Y' "${RT_SRCS[@]}" 2>/dev/null | md5sum | cut -c1-16)
+
+_need_rebuild=1
+if [[ -f "$RT_STAMP" && -f "$RT_ARCHIVE" ]]; then
+  _cached=$(cat "$RT_STAMP" 2>/dev/null)
+  [[ "$_cached" == "$_stamp" ]] && _need_rebuild=0
+fi
+
+if [[ $_need_rebuild -eq 1 ]]; then
+  _objs=()
+  _bld=$(mktemp -d); trap "rm -rf $_bld" EXIT
+  gcc -O0 -g -c "$RT/asm/snobol4_stmt_rt.c"    -I"$RT/snobol4" -I"$RT" -I"$TINY/src/frontend/snobol4" -w -o "$_bld/stmt_rt.o"
+  gcc -O0 -g -c "$RT/snobol4/snobol4.c"         -I"$RT/snobol4" -I"$RT" -I"$TINY/src/frontend/snobol4" -w -o "$_bld/snobol4.o"
+  gcc -O0 -g -c "$RT/mock/mock_includes.c"       -I"$RT/snobol4" -I"$RT" -I"$TINY/src/frontend/snobol4" -w -o "$_bld/mock_includes.o"
+  gcc -O0 -g -c "$RT/snobol4/snobol4_pattern.c" -I"$RT/snobol4" -I"$RT" -I"$TINY/src/frontend/snobol4" -w -o "$_bld/snobol4_pattern.o"
+  gcc -O0 -g -c "$RT/mock/mock_engine.c"         -I"$RT/snobol4" -I"$RT" -I"$TINY/src/frontend/snobol4" -w -o "$_bld/mock_engine.o"
+  gcc -O0 -g -c "$RT/asm/blk_alloc.c"           -I"$RT/asm"                                             -w -o "$_bld/blk_alloc.o"
+  gcc -O0 -g -c "$RT/asm/blk_reloc.c"           -I"$RT/asm"                                             -w -o "$_bld/blk_reloc.o"
+  ar rcs "$RT_ARCHIVE" "$_bld"/*.o
+  echo "$_stamp" > "$RT_STAMP"
+fi
+
+LINK_OBJS="$RT_ARCHIVE"
+
+# ── Per-test binary cache ──────────────────────────────────────────────────────
+# Key: md5 of (.sc content + runtime stamp).  On cache hit: skip scrip-cc,
+# nasm, and link entirely — just run the cached binary.  Cuts warm-run cost
+# from ~220ms/test to ~10ms/test (run only).
+BIN_CACHE_DIR="$RT_CACHE_DIR/bins"
+mkdir -p "$BIN_CACHE_DIR"
 
 run_test() {
     local sc="$1"
@@ -68,35 +109,48 @@ run_test() {
         SKIP=$((SKIP+1)); return 0
     fi
 
-    local s_file="$WORK/${base}.s"
-    local o_file="$WORK/${base}.o"
-    local bin="$WORK/${base}_bin"
+    # Binary cache: key = md5(sc_content + runtime_stamp)
+    local _sc_md5; _sc_md5=$(md5sum "$sc" 2>/dev/null | cut -c1-16)
+    local _cache_key="${_sc_md5}_${_stamp}"
+    local _cached_bin="$BIN_CACHE_DIR/${_cache_key}"
+    local bin
 
-    # scrip-cc -sc -asm
-    if ! "$SCRIP_CC" -sc -asm "$sc" -o "$s_file" 2>"$WORK/${base}.scrip-cc_err"; then
-        echo -e "${RED}FAIL${RESET} $base  [scrip-cc error]"
-        cat "$WORK/${base}.scrip-cc_err" | head -3
-        FAIL=$((FAIL+1))
-        [[ "$STOP_ON_FAIL" == "1" ]] && exit 1
-        return 0
-    fi
+    if [[ -x "$_cached_bin" ]]; then
+        bin="$_cached_bin"
+    else
+        local s_file="$WORK/${base}.s"
+        local o_file="$WORK/${base}.o"
+        bin="$WORK/${base}_bin"
 
-    # nasm
-    if ! nasm -f elf64 -I"$RT/asm/" "$s_file" -o "$o_file" 2>"$WORK/${base}.nasm_err"; then
-        echo -e "${RED}FAIL${RESET} $base  [nasm error]"
-        head -5 "$WORK/${base}.nasm_err"
-        FAIL=$((FAIL+1))
-        [[ "$STOP_ON_FAIL" == "1" ]] && exit 1
-        return 0
-    fi
+        # scrip-cc -sc -asm
+        if ! "$SCRIP_CC" -sc -asm "$sc" -o "$s_file" 2>"$WORK/${base}.scrip-cc_err"; then
+            echo -e "${RED}FAIL${RESET} $base  [scrip-cc error]"
+            cat "$WORK/${base}.scrip-cc_err" | head -3
+            FAIL=$((FAIL+1))
+            [[ "$STOP_ON_FAIL" == "1" ]] && exit 1
+            return 0
+        fi
 
-    # link
-    if ! gcc -no-pie "$o_file" $LINK_OBJS -lgc -lm -w -no-pie -o "$bin" 2>"$WORK/${base}.link_err"; then
-        echo -e "${RED}FAIL${RESET} $base  [link error]"
-        head -3 "$WORK/${base}.link_err"
-        FAIL=$((FAIL+1))
-        [[ "$STOP_ON_FAIL" == "1" ]] && exit 1
-        return 0
+        # nasm
+        if ! nasm -f elf64 -I"$RT/asm/" "$s_file" -o "$o_file" 2>"$WORK/${base}.nasm_err"; then
+            echo -e "${RED}FAIL${RESET} $base  [nasm error]"
+            head -5 "$WORK/${base}.nasm_err"
+            FAIL=$((FAIL+1))
+            [[ "$STOP_ON_FAIL" == "1" ]] && exit 1
+            return 0
+        fi
+
+        # link
+        if ! gcc -no-pie "$o_file" $LINK_OBJS -lgc -lm -w -no-pie -o "$bin" 2>"$WORK/${base}.link_err"; then
+            echo -e "${RED}FAIL${RESET} $base  [link error]"
+            head -3 "$WORK/${base}.link_err"
+            FAIL=$((FAIL+1))
+            [[ "$STOP_ON_FAIL" == "1" ]] && exit 1
+            return 0
+        fi
+
+        # Promote to cache (atomic via temp+move)
+        cp "$bin" "${_cached_bin}.tmp" && mv "${_cached_bin}.tmp" "$_cached_bin" || true
     fi
 
     # run
