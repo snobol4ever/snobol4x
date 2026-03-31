@@ -154,28 +154,55 @@ static int icon_gen_slot_addr(int slot) {
 
 /* Save/restore live icn_intN + icn_paramN globals around a recursive call (IW-10).
  * Uses gen-state memory page as a per-call-site stack frame (8 bytes per slot). */
+/* IW-13: Dynamic frame addressing using $icn_frame_depth (runtime global).
+ * Frame N lives at: ICON_GEN_STATE_BASE + N * ICON_FRAME_STRIDE
+ * where ICON_FRAME_STRIDE must hold max(nints+nparams)*8 bytes.
+ * $icn_frame_depth is incremented by icn_retcont_push, decremented by icn_retcont_pop,
+ * so each recursive activation gets its own frame slot. */
+#define ICON_FRAME_STRIDE  512   /* 64 i64 slots = 512 bytes; handles up to 63 ints+params */
+
+/* Emit WAT to compute base address of current frame into a local $frame_base.
+ * Caller must have declared: (local $frame_base i32) */
+static void emit_frame_base_load(void) {
+    /* frame_base = ICON_GEN_STATE_BASE + $icn_frame_depth * ICON_FRAME_STRIDE */
+    WI("    global.get $icn_frame_depth\n");
+    WI("    i32.const %d\n", ICON_FRAME_STRIDE);
+    WI("    i32.mul\n");
+    WI("    i32.const %d\n", ICON_GEN_STATE_BASE);
+    WI("    i32.add\n");
+    WI("    local.set $frame_base\n");
+}
+
 static void emit_frame_push(int nints, int nparams) {
     if (nints == 0 && nparams == 0) return;
-    int slot = icon_alloc_gen_slot();
-    int base = icon_gen_slot_addr(slot);
-    WI("    ;; frame_push: save %d ints + %d params at gen_slot %d\n", nints, nparams, slot);
-    for (int i = 0; i < nints && i < ICON_FRAME_MAX_INTS; i++)
-        WI("    i32.const %d  global.get $icn_int%d  i64.store\n", base + i * 8, i);
-    for (int i = 0; i < nparams; i++)
-        WI("    i32.const %d  global.get $icn_param%d  i64.store\n", base + (nints + i) * 8, i);
+    int total = (nints < ICON_FRAME_MAX_INTS ? nints : ICON_FRAME_MAX_INTS) + nparams;
+    WI("    ;; frame_push: save %d ints + %d params at depth=$icn_frame_depth\n", nints, nparams);
+    WI("    (local $frame_base i32)\n");
+    emit_frame_base_load();
+    for (int i = 0; i < nints && i < ICON_FRAME_MAX_INTS; i++) {
+        WI("    local.get $frame_base  i32.const %d  i32.add  global.get $icn_int%d  i64.store\n",
+           i * 8, i);
+    }
+    for (int i = 0; i < nparams; i++) {
+        WI("    local.get $frame_base  i32.const %d  i32.add  global.get $icn_param%d  i64.store\n",
+           (nints + i) * 8, i);
+    }
+    (void)total;
 }
 
 static void emit_frame_pop(int nints, int nparams) {
     if (nints == 0 && nparams == 0) return;
-    int slot = icon_gen_slot_next - 1;
-    if (slot < 0) return;
-    int base = icon_gen_slot_addr(slot);
-    WI("    ;; frame_pop: restore %d ints + %d params from gen_slot %d\n", nints, nparams, slot);
-    for (int i = 0; i < nints && i < ICON_FRAME_MAX_INTS; i++)
-        WI("    i32.const %d  i64.load  global.set $icn_int%d\n", base + i * 8, i);
-    for (int i = 0; i < nparams; i++)
-        WI("    i32.const %d  i64.load  global.set $icn_param%d\n", base + (nints + i) * 8, i);
-    icon_gen_slot_next--;
+    WI("    ;; frame_pop: restore %d ints + %d params at depth=$icn_frame_depth\n", nints, nparams);
+    WI("    (local $frame_base i32)\n");
+    emit_frame_base_load();
+    for (int i = 0; i < nints && i < ICON_FRAME_MAX_INTS; i++) {
+        WI("    local.get $frame_base  i32.const %d  i32.add  i64.load  global.set $icn_int%d\n",
+           i * 8, i);
+    }
+    for (int i = 0; i < nparams; i++) {
+        WI("    local.get $frame_base  i32.const %d  i32.add  i64.load  global.set $icn_param%d\n",
+           (nints + i) * 8, i);
+    }
 }
 
 /* ── §2  Label helpers ────────────────────────────────────────────────────── */
@@ -961,9 +988,9 @@ static void emit_expr_wasm(const EXPR_t *n,
                 for (int ai = 0; ai < actual_nargs; ai++) {
                     EXPR_t *arg = n->children[1 + ai];
                     snprintf(arg_esucc_names[ai], 64, "icon%d_arg%d_esucc", id, ai);
+                    arg_ids[ai] = wasm_icon_ctr;  /* capture BEFORE emit — this is the arg node's own id */
                     emit_expr_wasm(arg, arg_esucc_names[ai], fail,
                                    arg_starts[ai], dummy_resume);
-                    arg_ids[ai] = wasm_icon_ctr - 1;
                 }
 
                 /* sa -> first arg's start */
@@ -1145,7 +1172,12 @@ void emit_wasm_icon_globals(FILE *out) {
     WI("    local.get $sp\n");
     WI("    i32.const 4\n");
     WI("    i32.add\n");
-    WI("    i32.store)\n");
+    WI("    i32.store\n");
+    /* frame_depth++ */
+    WI("    global.get $icn_frame_depth\n");
+    WI("    i32.const 1\n");
+    WI("    i32.add\n");
+    WI("    global.set $icn_frame_depth)\n");
     WI("  (func $icn_retcont_pop (result i32)\n");
     WI("    (local $sp i32)\n");
     /* sp = current_sp - 4 */
@@ -1158,10 +1190,17 @@ void emit_wasm_icon_globals(FILE *out) {
     WI("    i32.const %d\n", ICON_RETCONT_SP_ADDR);
     WI("    local.get $sp\n");
     WI("    i32.store\n");
+    /* frame_depth-- */
+    WI("    global.get $icn_frame_depth\n");
+    WI("    i32.const 1\n");
+    WI("    i32.sub\n");
+    WI("    global.set $icn_frame_depth\n");
     /* return mem[sp] */
     WI("    local.get $sp\n");
     WI("    i32.load)\n");
     WI("  (global $icn_retcont (mut i32) (i32.const 0))\n");
+    WI("  ;; IW-13: frame depth tracks recursive call depth for dynamic frame addressing\n");
+    WI("  (global $icn_frame_depth (mut i32) (i32.const 0))\n");
     for (int i = 0; i < 8; i++)
         WI("  (global $icn_param%d (mut i64) (i64.const 0))\n", i);
 }
