@@ -6475,6 +6475,9 @@ static void emit_jvm_icon_identical(EXPR_t *n, Ports ports, char *oα, char *oβ
  * which returns new pos or -1 on failure.
  * ======================================================================= */
 static void emit_jvm_icon_match(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    /* E_MATCH with 2 children = E ? body scan — delegate to scan emitter */
+    if (n->nchildren >= 2) { emit_jvm_icon_scan(n, ports, oα, oβ); return; }
+
     int id = next_uid(); char a[64], b[64];
     lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
     strncpy(oα,a,63); strncpy(oβ,b,63);
@@ -6700,7 +6703,6 @@ static void emit_jvm_icon_expr(EXPR_t *n, Ports ports, char *oα, char *oβ) {
         case E_UNTIL:   emit_jvm_icon_until    (n,ports,oα,oβ); break;
         case E_REPEAT:  emit_jvm_icon_repeat   (n,ports,oα,oβ); break;
         case E_FNC:    emit_jvm_icon_call     (n,ports,oα,oβ); break;
-        /* E_MATCH covers both =E pattern match and E?body scan (E_SCAN alias) */
         case E_NOT:     emit_jvm_icon_not      (n,ports,oα,oβ); break;
         case E_NONNULL: emit_jvm_icon_nonnull  (n,ports,oα,oβ); break;
         case E_NULL:    emit_jvm_icon_null     (n,ports,oα,oβ); break;
