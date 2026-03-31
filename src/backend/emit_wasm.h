@@ -63,4 +63,15 @@ int  emit_wasm_strlit_count(void);
  * Caller appends any additional frontend-specific imports after this call. */
 void emit_wasm_runtime_imports_sno_base(FILE *out, int npages, const char *page_comment);
 
+
+#include "../ir/ir.h"  /* EXPR_t */
+
+/* WasmTy — value-type tag returned by emit_wasm_expr */
+typedef enum { TY_STR = 0, TY_INT = 1, TY_FLOAT = 2 } WasmTy;
+
+/* Emit a WASM expression for an IR node into the current output stream.
+ * Shared by SNOBOL4, Icon, and Prolog WASM emitters for arithmetic/literals.
+ * Returns the WasmTy of the emitted value. */
+WasmTy emit_wasm_expr(const EXPR_t *e);
+
 #endif /* EMIT_WASM_H */

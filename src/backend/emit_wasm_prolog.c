@@ -1111,6 +1111,7 @@ static void emit_goals(const EXPR_t *g, int env_idx, int in_disj_left) {
                 (void)cp_arity;
 
                 W("    (loop $gt_%d\n", site_id);
+                W("      (i32.store (i32.const %d) (i32.const 0)) ;; GT flag reset\n", PL_GT_FLAG);
 
                 /* Call _call wrapper with ci from CP top */
                 W("      (local.get $trail)\n");
@@ -1125,8 +1126,10 @@ static void emit_goals(const EXPR_t *g, int env_idx, int in_disj_left) {
                 W("      (call $pl_cp_get_ci)    ;; ci from CP top\n");
                 W("      (call $pl_%s_call) drop\n", mangled + 3);
 
-                /* Poll flag: if γ fired (=1) it already advanced CP ci; loop; else pop+exit */
+                /* Poll flag: if γ fired (=1) loop advances CP ci then retries */
                 W("      (if (i32.load (i32.const %d)) (then\n", PL_GT_FLAG);
+                W("        (call $pl_cp_set_ci\n");
+                W("          (i32.add (call $pl_cp_get_ci) (i32.const 1)))\n");
                 W("        (br $gt_%d)\n", site_id);
                 W("      ))\n");
                 W("    ) ;; $gt_%d\n", site_id);
@@ -1308,10 +1311,6 @@ static void emit_cont_functions_and_table(void) {
                 W("    ;; γ for GT site %d (%s/%d): advance CP ci, run body goals, return 0\n",
                   site_id, sd->mangled, sd->arity);
 
-                /* Advance CP ci FIRST (before body goals, so recursive sub-calls
-                 * that backtrack cannot see a stale ci in this frame) */
-                W("    (call $pl_cp_set_ci\n");
-                W("      (i32.add (call $pl_cp_get_ci) (i32.const 1)))\n");
 
                 /* Signal main's loop: a solution was found */
                 W("    (i32.store (i32.const %d) (i32.const 1)) ;; GT flag=1 (γ fired)\n",

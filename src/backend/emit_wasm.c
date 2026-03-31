@@ -86,7 +86,7 @@ static void var_table_reset(void) {
 typedef enum { TY_STR = 0, TY_INT = 1, TY_FLOAT = 2 } WasmTy;
 
 /* ── Forward decls ────────────────────────────────────────────────────────── */
-static WasmTy emit_expr(const EXPR_t *e);
+WasmTy emit_wasm_expr(const EXPR_t *e);
 
 /* ── Runtime imports ─────────────────────────────────────────────────────── */
 /* Programs import all runtime functions from the "sno" namespace.           */
@@ -273,7 +273,7 @@ static void emit_var_indirect_funcs(void) {
 }
 
 
-static WasmTy emit_expr(const EXPR_t *e) {
+WasmTy emit_wasm_expr(const EXPR_t *e) {
     if (!e || e->kind == E_NUL) {
         int idx = strlit_intern("");
         W("    (i32.const %d)\n", strlit_abs(idx));
@@ -295,7 +295,7 @@ static WasmTy emit_expr(const EXPR_t *e) {
         return TY_FLOAT;
     case E_NEG: {
         /* For literals: always wraps a numeric child */
-        WasmTy t = emit_expr(e->nchildren > 0 ? e->children[0] : NULL);
+        WasmTy t = emit_wasm_expr(e->nchildren > 0 ? e->children[0] : NULL);
         if (t == TY_INT) {
             W("    (i64.const -1)\n");
             W("    (i64.mul)\n");
@@ -305,11 +305,11 @@ static WasmTy emit_expr(const EXPR_t *e) {
         return t;
     }
     case E_PLS:
-        return emit_expr(e->nchildren > 0 ? e->children[0] : NULL);
+        return emit_wasm_expr(e->nchildren > 0 ? e->children[0] : NULL);
     case E_ADD: case E_SUB: case E_MPY: case E_DIV: case E_MOD: case E_POW: {
-        WasmTy lt = emit_expr(e->children[0]);
+        WasmTy lt = emit_wasm_expr(e->children[0]);
         if (lt == TY_STR) { W("    (call $sno_str_to_int)\n"); lt = TY_INT; }
-        WasmTy rt = emit_expr(e->children[1]);
+        WasmTy rt = emit_wasm_expr(e->children[1]);
         if (rt == TY_STR) { W("    (call $sno_str_to_int)\n"); rt = TY_INT; }
         /* Exponentiation: int**int → integer (loop); any float → float via $sno_pow */
         if (e->kind == E_POW) {
@@ -410,7 +410,7 @@ static WasmTy emit_expr(const EXPR_t *e) {
             W("    (i32.const %d)\n", str_lits[si].len);
         } else {
             /* $'lit' or $expr — evaluate child to get name string */
-            WasmTy nt = emit_expr(name_e);
+            WasmTy nt = emit_wasm_expr(name_e);
             if (nt == TY_INT)   W("    (call $sno_int_to_str)\n");
             if (nt == TY_FLOAT) W("    (call $sno_float_to_str)\n");
         }
@@ -424,11 +424,11 @@ static WasmTy emit_expr(const EXPR_t *e) {
             W("    (i32.const 0)\n");
             return TY_STR;
         }
-        WasmTy t0 = emit_expr(e->children[0]);
+        WasmTy t0 = emit_wasm_expr(e->children[0]);
         if (t0 == TY_INT)   W("    (call $sno_int_to_str)\n");
         if (t0 == TY_FLOAT) W("    (call $sno_float_to_str)\n");
         for (int i = 1; i < e->nchildren; i++) {
-            WasmTy ti = emit_expr(e->children[i]);
+            WasmTy ti = emit_wasm_expr(e->children[i]);
             if (ti == TY_INT)   W("    (call $sno_int_to_str)\n");
             if (ti == TY_FLOAT) W("    (call $sno_float_to_str)\n");
             W("    (call $sno_str_concat)\n");
@@ -483,7 +483,7 @@ static WasmTy emit_expr(const EXPR_t *e) {
          * Handle representation: var_X_off = heap ptr, var_X_len = 32767 (MAGIC_HANDLE) */
         if (e->nchildren < 2) goto fallback_idx;
         /* Evaluate array/table — leaves (off, len) on stack; off = handle if len==32767 */
-        WasmTy at = emit_expr(e->children[0]);
+        WasmTy at = emit_wasm_expr(e->children[0]);
         if (at != TY_STR) {
             /* shouldn't happen — array vars are always TY_STR with magic len */
             W("    ;; E_IDX: non-string array expression — stub\n");
@@ -495,11 +495,11 @@ static WasmTy emit_expr(const EXPR_t *e) {
         W("    (local.set $arr_h)\n");
         if (e->nchildren >= 3 && e->children[2]) {
             /* 2D: arr<row, col> */
-            WasmTy t1 = emit_expr(e->children[1]);
+            WasmTy t1 = emit_wasm_expr(e->children[1]);
             if (t1 == TY_STR) W("    (call $sno_str_to_int)\n");
             if (t1 == TY_FLOAT) W("    (i64.trunc_f64_s)\n");
             W("    (i32.wrap_i64)\n");
-            WasmTy t2 = emit_expr(e->children[2]);
+            WasmTy t2 = emit_wasm_expr(e->children[2]);
             if (t2 == TY_STR) W("    (call $sno_str_to_int)\n");
             if (t2 == TY_FLOAT) W("    (i64.trunc_f64_s)\n");
             W("    (i32.wrap_i64)\n");
@@ -509,7 +509,7 @@ static WasmTy emit_expr(const EXPR_t *e) {
             W("    ;; E_IDX 1D: check handle type to dispatch array vs table\n");
             W("    (local.set $arr_ok (call $sno_handle_type (local.get $arr_h)))\n");
             /* type==2 → table; type==1 → array */
-            WasmTy kt = emit_expr(e->children[1]);
+            WasmTy kt = emit_wasm_expr(e->children[1]);
             /* key needs to be a string for table lookup */
             if (kt == TY_INT)   W("    (call $sno_int_to_str)\n");
             if (kt == TY_FLOAT) W("    (call $sno_float_to_str)\n");
@@ -548,7 +548,7 @@ static WasmTy emit_expr(const EXPR_t *e) {
             if (e->nchildren >= 2) {
                 /* default value — evaluate and stringify */
                 /* Emit: create after evaluating default */
-                WasmTy dt = emit_expr(e->children[1]);
+                WasmTy dt = emit_wasm_expr(e->children[1]);
                 if (dt == TY_INT)   W("    (call $sno_int_to_str)\n");
                 if (dt == TY_FLOAT) W("    (call $sno_float_to_str)\n");
                 /* Stack: (def_off def_len) — store in locals temporarily */
@@ -557,7 +557,7 @@ static WasmTy emit_expr(const EXPR_t *e) {
             }
             /* Evaluate size arg */
             if (e->nchildren >= 1) {
-                WasmTy st = emit_expr(e->children[0]);
+                WasmTy st = emit_wasm_expr(e->children[0]);
                 if (st == TY_INT) W("    (i32.wrap_i64)\n");
                 else if (st == TY_FLOAT) { W("    (i64.trunc_f64_s)\n"); W("    (i32.wrap_i64)\n"); }
                 else {
@@ -593,7 +593,7 @@ static WasmTy emit_expr(const EXPR_t *e) {
         }
         /* PROTOTYPE(arr) → dimension string "n" or "r,c" */
         if (strcasecmp(fn, "prototype") == 0 && e->nchildren >= 1) {
-            WasmTy at2 = emit_expr(e->children[0]);
+            WasmTy at2 = emit_wasm_expr(e->children[0]);
             if (at2 == TY_STR) {
                 W("    (drop)  ;; drop magic_len\n");
                 W("    (local.set $arr_h)\n");
@@ -624,7 +624,7 @@ static WasmTy emit_expr(const EXPR_t *e) {
         if (strcasecmp(fn, "differ") == 0 && e->nchildren == 1) {
             /* In SNOBOL4: DIFFER(x) succeeds if x is null, fails if non-null.
              * We emit inline — caller uses :s/:f branching on $ok. */
-            WasmTy da = emit_expr(e->children[0]);
+            WasmTy da = emit_wasm_expr(e->children[0]);
             if (da == TY_INT) W("    (call $sno_int_to_str)\n");
             if (da == TY_FLOAT) W("    (call $sno_float_to_str)\n");
             /* stack: (off, len) — succeed if len==0 (null), fail otherwise */
@@ -638,10 +638,10 @@ static WasmTy emit_expr(const EXPR_t *e) {
         }
         /* DIFFER(a, b) — 2-arg: succeeds if a != b, fails if a == b */
         if (strcasecmp(fn, "differ") == 0 && e->nchildren >= 2) {
-            WasmTy da = emit_expr(e->children[0]);
+            WasmTy da = emit_wasm_expr(e->children[0]);
             if (da == TY_INT)   W("    (call $sno_int_to_str)\n");
             if (da == TY_FLOAT) W("    (call $sno_float_to_str)\n");
-            WasmTy db = emit_expr(e->children[1]);
+            WasmTy db = emit_wasm_expr(e->children[1]);
             if (db == TY_INT)   W("    (call $sno_int_to_str)\n");
             if (db == TY_FLOAT) W("    (call $sno_float_to_str)\n");
             /* stack: (b_off b_len a_off a_len) — compare */
@@ -658,7 +658,7 @@ static WasmTy emit_expr(const EXPR_t *e) {
         /* VALUE(name) → value of variable named by string */
         if (strcasecmp(fn, "value") == 0 && e->nchildren >= 1) {
             /* Emit as indirect variable lookup */
-            WasmTy vt = emit_expr(e->children[0]);
+            WasmTy vt = emit_wasm_expr(e->children[0]);
             if (vt == TY_INT)   W("    (call $sno_int_to_str)\n");
             if (vt == TY_FLOAT) W("    (call $sno_float_to_str)\n");
             W("    ;; VALUE(): indirect var lookup by name string\n");
@@ -670,10 +670,10 @@ static WasmTy emit_expr(const EXPR_t *e) {
         }
         /* REMDR(a,b) → i64.rem_s */
         if (strcasecmp(fn, "remdr") == 0 && e->nchildren >= 2) {
-            WasmTy ta = emit_expr(e->children[0]);
+            WasmTy ta = emit_wasm_expr(e->children[0]);
             if (ta == TY_STR) W("    (call $sno_str_to_int)\n");
             if (ta == TY_FLOAT) { W("    (i64.trunc_f64_s)\n"); }
-            WasmTy tb = emit_expr(e->children[1]);
+            WasmTy tb = emit_wasm_expr(e->children[1]);
             if (tb == TY_STR) W("    (call $sno_str_to_int)\n");
             if (tb == TY_FLOAT) { W("    (i64.trunc_f64_s)\n"); }
             W("    (i64.rem_s)\n");
@@ -681,7 +681,7 @@ static WasmTy emit_expr(const EXPR_t *e) {
         }
         /* SIZE(s) → i64 character count */
         if (strcasecmp(fn, "size") == 0 && e->nchildren >= 1) {
-            WasmTy ta = emit_expr(e->children[0]);
+            WasmTy ta = emit_wasm_expr(e->children[0]);
             if (ta == TY_INT)   W("    (call $sno_int_to_str)\n");
             if (ta == TY_FLOAT) W("    (call $sno_float_to_str)\n");
             W("    (call $sno_size)\n");
@@ -689,10 +689,10 @@ static WasmTy emit_expr(const EXPR_t *e) {
         }
         /* DUPL(s, n) → replicated string */
         if (strcasecmp(fn, "dupl") == 0 && e->nchildren >= 2) {
-            WasmTy ta = emit_expr(e->children[0]);
+            WasmTy ta = emit_wasm_expr(e->children[0]);
             if (ta == TY_INT)   W("    (call $sno_int_to_str)\n");
             if (ta == TY_FLOAT) W("    (call $sno_float_to_str)\n");
-            WasmTy tb = emit_expr(e->children[1]);
+            WasmTy tb = emit_wasm_expr(e->children[1]);
             if (tb == TY_STR) W("    (call $sno_str_to_int)\n");
             if (tb == TY_FLOAT) W("    (i64.trunc_f64_s)\n");
             W("    (call $sno_dupl)\n");
@@ -700,13 +700,13 @@ static WasmTy emit_expr(const EXPR_t *e) {
         }
         /* REPLACE(s, from, to) → translated string */
         if (strcasecmp(fn, "replace") == 0 && e->nchildren >= 3) {
-            WasmTy ts = emit_expr(e->children[0]);
+            WasmTy ts = emit_wasm_expr(e->children[0]);
             if (ts == TY_INT)   W("    (call $sno_int_to_str)\n");
             if (ts == TY_FLOAT) W("    (call $sno_float_to_str)\n");
-            WasmTy tf = emit_expr(e->children[1]);
+            WasmTy tf = emit_wasm_expr(e->children[1]);
             if (tf == TY_INT)   W("    (call $sno_int_to_str)\n");
             if (tf == TY_FLOAT) W("    (call $sno_float_to_str)\n");
-            WasmTy tt = emit_expr(e->children[2]);
+            WasmTy tt = emit_wasm_expr(e->children[2]);
             if (tt == TY_INT)   W("    (call $sno_int_to_str)\n");
             if (tt == TY_FLOAT) W("    (call $sno_float_to_str)\n");
             W("    (call $sno_replace)\n");
@@ -720,7 +720,7 @@ static WasmTy emit_expr(const EXPR_t *e) {
             const EXPR_t *type_e = e->children[1];
             const char *tname = (type_e && type_e->kind == E_QLIT && type_e->sval)
                                  ? type_e->sval : "";
-            WasmTy tv = emit_expr(e->children[0]);
+            WasmTy tv = emit_wasm_expr(e->children[0]);
             if (strcasecmp(tname, "integer") == 0) {
                 if (tv == TY_STR)   W("    (call $sno_str_to_int)\n");
                 if (tv == TY_FLOAT) W("    (i64.trunc_f64_s)\n");
@@ -738,7 +738,7 @@ static WasmTy emit_expr(const EXPR_t *e) {
         }
         /* DATATYPE(val) → string type name: "string", "integer", "real" */
         if (strcasecmp(fn, "datatype") == 0 && e->nchildren >= 1) {
-            WasmTy tv = emit_expr(e->children[0]);
+            WasmTy tv = emit_wasm_expr(e->children[0]);
             /* Drop the value — we only need its compile-time type */
             if (tv == TY_STR)   { W("    (drop)\n    (drop)\n"); }
             else if (tv == TY_INT)   { W("    (drop)\n"); }
@@ -752,7 +752,7 @@ static WasmTy emit_expr(const EXPR_t *e) {
         }
         /* Default: evaluate args, drop results, return empty string */
         for (int i = 0; i < e->nchildren; i++) {
-            WasmTy t = emit_expr(e->children[i]);
+            WasmTy t = emit_wasm_expr(e->children[i]);
             if (t == TY_STR) { W("    (drop)\n    (drop)\n"); }
             else              { W("    (drop)\n"); }
         }
@@ -816,7 +816,7 @@ static void emit_differ(const EXPR_t *e) {
     int is_differ = (strcasecmp(e->sval, "differ") == 0);
     if (e->nchildren == 1) {
         /* DIFFER(x): succeeds if x is non-null; IDENT(x): succeeds if x is null */
-        WasmTy t = emit_expr(e->children[0]);
+        WasmTy t = emit_wasm_expr(e->children[0]);
         if (t == TY_INT) {
             W("      (i64.const 0)\n");
             W("      (i64.ne)\n");
@@ -837,10 +837,10 @@ static void emit_differ(const EXPR_t *e) {
         return;
     }
     if (e->nchildren < 1) { W("      (i32.const %d)\n", is_differ ? 1 : 0); return; }
-    WasmTy t0 = emit_expr(e->children[0]);
+    WasmTy t0 = emit_wasm_expr(e->children[0]);
     if (t0 == TY_INT)   W("      (call $sno_int_to_str)\n");
     if (t0 == TY_FLOAT) W("      (call $sno_float_to_str)\n");
-    WasmTy t1 = emit_expr(e->children[1]);
+    WasmTy t1 = emit_wasm_expr(e->children[1]);
     if (t1 == TY_INT)   W("      (call $sno_int_to_str)\n");
     if (t1 == TY_FLOAT) W("      (call $sno_float_to_str)\n");
     W("      (call $sno_str_eq)\n");           /* 1 if equal */
@@ -1021,7 +1021,7 @@ static void emit_pattern_node(const EXPR_t *pat) {
              strcasecmp(fn,"RTAB")==0)) {
             /* Evaluate arg → i32 n (arg is typically E_ILIT → TY_INT i64) */
             W("      ;; %s: evaluate arg → $pat_n\n", fn);
-            WasmTy at = emit_expr(pat->children[0]);
+            WasmTy at = emit_wasm_expr(pat->children[0]);
             if (at == TY_INT)   W("      (i32.wrap_i64)\n");
             else if (at == TY_FLOAT) W("      (i32.trunc_f64_s)\n");
             else /* STR */      W("      (call $sno_str_to_int) (i32.wrap_i64)\n");
@@ -1093,7 +1093,7 @@ static void emit_pattern_node(const EXPR_t *pat) {
         }
     }
     /* fallback: evaluate as string expression, use sno_pat_search */
-    WasmTy tp = emit_expr(pat);
+    WasmTy tp = emit_wasm_expr(pat);
     if (tp == TY_INT)   W("      (call $sno_int_to_str)\n");
     if (tp == TY_FLOAT) W("      (call $sno_float_to_str)\n");
     /* stack: (ndl_off ndl_len) — save to locals, then call */
@@ -1122,8 +1122,8 @@ static void emit_subject_as_bool(const EXPR_t *e) {
                       strcasecmp(fn,"gt")==0 || strcasecmp(fn,"ge")==0);
         if (is_cmp && e->nchildren >= 2) {
             /* Evaluate both args; coerce to numbers for comparison */
-            WasmTy ta = emit_expr(e->children[0]);
-            WasmTy tb = emit_expr(e->children[1]);
+            WasmTy ta = emit_wasm_expr(e->children[0]);
+            WasmTy tb = emit_wasm_expr(e->children[1]);
             /* If either is float, promote both to float comparison */
             int use_float = (ta == TY_FLOAT || tb == TY_FLOAT);
             if (!use_float) {
@@ -1181,10 +1181,10 @@ static void emit_subject_as_bool(const EXPR_t *e) {
 
         /* LGT: lexicographic greater-than */
         if (strcasecmp(fn, "lgt") == 0 && e->nchildren >= 2) {
-            WasmTy ta = emit_expr(e->children[0]);
+            WasmTy ta = emit_wasm_expr(e->children[0]);
             if (ta == TY_INT)   W("      (call $sno_int_to_str)\n");
             if (ta == TY_FLOAT) W("      (call $sno_float_to_str)\n");
-            WasmTy tb = emit_expr(e->children[1]);
+            WasmTy tb = emit_wasm_expr(e->children[1]);
             if (tb == TY_INT)   W("      (call $sno_int_to_str)\n");
             if (tb == TY_FLOAT) W("      (call $sno_float_to_str)\n");
             W("      (call $sno_lgt)\n");
@@ -1192,7 +1192,7 @@ static void emit_subject_as_bool(const EXPR_t *e) {
         }
         /* INTEGER predicate: succeed if value is/coerces-to integer */
         if (strcasecmp(fn, "integer") == 0 && e->nchildren >= 1) {
-            WasmTy ta = emit_expr(e->children[0]);
+            WasmTy ta = emit_wasm_expr(e->children[0]);
             if (ta == TY_INT) {
                 W("      (drop) ;; integer literal — always succeed\n");
                 W("      (i32.const 1)\n");
@@ -1239,7 +1239,7 @@ static void emit_subject_as_bool(const EXPR_t *e) {
         }
         /* Other builtins: evaluate args for side effects, succeed */
         for (int i = 0; i < e->nchildren; i++) {
-            WasmTy t = emit_expr(e->children[i]);
+            WasmTy t = emit_wasm_expr(e->children[i]);
             if (t == TY_STR) { W("      (drop)\n      (drop)\n"); }
             else              { W("      (drop)\n"); }
         }
@@ -1247,7 +1247,7 @@ static void emit_subject_as_bool(const EXPR_t *e) {
         return;
     }
     /* Any other expression: evaluate it; non-empty/non-zero = success */
-    WasmTy t = emit_expr(e);
+    WasmTy t = emit_wasm_expr(e);
     if (t == TY_STR) {
         /* success if len > 0 */
         W("      (drop) ;; drop offset, keep len\n");
@@ -1266,7 +1266,7 @@ static void emit_subject_as_bool(const EXPR_t *e) {
 
 /* ── Emit OUTPUT = expr ───────────────────────────────────────────────────── */
 static void emit_output(const EXPR_t *val) {
-    WasmTy ty = emit_expr(val);
+    WasmTy ty = emit_wasm_expr(val);
     if (ty == TY_STR)        { W("      (call $sno_output_str)\n"); }
     else if (ty == TY_INT)   { W("      (call $sno_output_int)\n"); }
     else /* TY_FLOAT */      { W("      (call $sno_float_to_str)\n"); W("      (call $sno_output_str)\n"); }
@@ -1405,7 +1405,7 @@ static void emit_main_body(Program *prog) {
             const char *vn = s->subject->sval;
             int vi = var_intern(vn);
             W("      ;; %s = ...\n", vn);
-            WasmTy ty = emit_expr(s->replacement);
+            WasmTy ty = emit_wasm_expr(s->replacement);
             /* Coerce to TY_STR — variables are always stored as strings */
             if (ty == TY_INT)   W("      (call $sno_int_to_str)\n");
             if (ty == TY_FLOAT) W("      (call $sno_float_to_str)\n");
@@ -1438,7 +1438,7 @@ static void emit_main_body(Program *prog) {
                 W("      (i32.const %d) ;; $.var(child) lval name=%s\n", strlit_abs(si), vn);
                 W("      (i32.const %d)\n", str_lits[si].len);
             } else {
-                WasmTy nt = emit_expr(name_e);
+                WasmTy nt = emit_wasm_expr(name_e);
                 if (nt == TY_INT)   W("      (call $sno_int_to_str)\n");
                 if (nt == TY_FLOAT) W("      (call $sno_float_to_str)\n");
             }
@@ -1446,7 +1446,7 @@ static void emit_main_body(Program *prog) {
             W("      (local.set $indr_nl)\n");
             W("      (local.set $indr_no)\n");
             /* Evaluate replacement value */
-            WasmTy vt = emit_expr(s->replacement);
+            WasmTy vt = emit_wasm_expr(s->replacement);
             if (vt == TY_INT)   W("      (call $sno_int_to_str)\n");
             if (vt == TY_FLOAT) W("      (call $sno_float_to_str)\n");
             /* Stack: (val_off val_len) */
@@ -1462,7 +1462,7 @@ static void emit_main_body(Program *prog) {
                Use cursor-based emit_pattern_node() so SEQ can chain. */
             W("      ;; pattern match: subject ? pattern (cursor-based)\n");
             /* Evaluate subject — coerce to string, save in pat_subj locals */
-            WasmTy ts = emit_expr(s->subject);
+            WasmTy ts = emit_wasm_expr(s->subject);
             if (ts == TY_INT)   W("      (call $sno_int_to_str)\n");
             if (ts == TY_FLOAT) W("      (call $sno_float_to_str)\n");
             W("      (local.set $pat_subj_len)\n");
