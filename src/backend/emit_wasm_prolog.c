@@ -150,9 +150,11 @@ static void emit_pl_runtime_imports(void) {
     W("  (import \"pl\" \"int_to_atom\"     (func $pl_int_to_atom  (param i32) (result i32)))\n");
     W("  (import \"pl\" \"atom_to_int\"     (func $pl_atom_to_int  (param i32) (result i32)))\n");
     W("  (import \"pl\" \"cons\"            (func $pl_cons         (param i32 i32) (result i32)))\n");
-    W("  (import \"pl\" \"is_cons\"         (func $pl_is_cons      (param i32) (result i32)))\n");
+    W("  (import \"pl\" \"is_cons\"         (func $pl_is_cons      (param i32) (result i32)))  \n");
     W("  (import \"pl\" \"cons_head\"       (func $pl_cons_head    (param i32) (result i32)))\n");
     W("  (import \"pl\" \"cons_tail\"       (func $pl_cons_tail    (param i32) (result i32)))\n");
+    /* Continuation type: (trail i32) → i32 — used by return_call_indirect for γ/ω */
+    W("  (type $pl_cont_t (func (param i32) (result i32)))\n");
     W("\n");
 }
 
@@ -210,157 +212,222 @@ static void emit_write_goal(const EXPR_t *arg, int env_idx) {
     W("    ;; write/1 arg kind=%d stub\n    unreachable\n", (int)arg->kind);
 }
 
+/* ── Continuation funcref table ─────────────────────────────────────────
+ * Each predicate's α/β functions take (trail, a0..an-1, γ_idx, ω_idx).
+ * On success → return_call_indirect γ_idx; on failure → return_call_indirect ω_idx.
+ * γ and ω are indices into the module funcref table.
+ * All continuation functions share type: (param i32) (result i32)
+ *   param = trail (passed through so γ/ω can do trail_unwind on backtrack)
+ * ─────────────────────────────────────────────────────────────────────── */
+#define MAX_CONT_FUNCS 128
+static char cont_func_names[MAX_CONT_FUNCS][256];
+static int  cont_func_count = 0;
+static int  gt_site_counter = 0;
+
+static int cont_register(const char *name) {
+    for (int i = 0; i < cont_func_count; i++)
+        if (strcmp(cont_func_names[i], name) == 0) return i;
+    if (cont_func_count >= MAX_CONT_FUNCS) return 0;
+    strncpy(cont_func_names[cont_func_count], name, 255);
+    return cont_func_count++;
+}
+
 /* ── emit_pl_predicate ──────────────────────────────────────────────────
  *
- * Emit for each E_CHOICE (predicate with N clauses):
+ * Byrd-box α/β/γ/ω encoding via WASM tail calls.
  *
- *   (global $pl_foo_1_ci (mut i32) (i32.const 0))
+ * For predicate foo/N with K clauses, emit:
  *
- *   (func $pl_foo_1_call (param $trail i32) (param $a0 i32) (result i32)
- *     ;; Try clauses starting at $pl_foo_1_ci
- *     ;; Clause 0: if a0 matches atom_id of 'brown':
- *     ;;   bind any var args, incr ci, return 1
- *     ;; Clause 1: if a0 matches 'jones': ...
- *     ;; Exhausted: reset ci to 0, return 0
- *   )
+ *   $pl_foo_N_α(trail, a0..aN-1, γ_idx, ω_idx) → i32
+ *     Try clause 0. On head-match: run body, return_call_indirect γ_idx.
+ *     On head-fail: return_call $pl_foo_N_β1 (try clause 1).
  *
- * ci tracks resume point for generate-and-test.
- * On each successful call, ci is left pointing to the NEXT clause to try.
- * Caller loops calling foo until it returns 0.
+ *   $pl_foo_N_β1(trail, a0..aN-1, γ_idx, ω_idx) → i32
+ *     trail_unwind. Try clause 1. On match: body, γ. On fail: β2.
+ *     ...
+ *   $pl_foo_N_βK(trail, a0..aN-1, γ_idx, ω_idx) → i32
+ *     ω: return_call_indirect ω_idx.
+ *
+ * γ and ω are funcref table indices. All continuation functions have type:
+ *   (param $trail i32) (result i32)
+ *
  * ─────────────────────────────────────────────────────────────────────── */
 static void emit_goals(const EXPR_t *g, int env_idx, int in_disj_left);
+
 static void emit_pl_predicate(const EXPR_t *choice) {
     if (!choice || choice->kind != E_CHOICE) return;
 
     char functor[128]; int arity;
     split_pred(choice->sval, functor, &arity);
 
-    /* Use a fixed copy of mangle result before it gets overwritten */
     char mname[256];
     strncpy(mname, pl_mangle(functor, arity), 255);
 
-    W("\n  ;; predicate %s/%d (%d clause(s))\n",
-      functor, arity, choice->nchildren);
-
-    /* Mutable global clause index */
-    W("  (global $%s_ci (mut i32) (i32.const 0))\n", mname);
-
-    /* Function signature */
-    W("  (func $%s_call (param $trail i32)", mname);
-    for (int a = 0; a < arity; a++) W(" (param $a%d i32)", a);
-    W(" (result i32)\n");
-    W("    (local $tm i32)\n");
-    /* One matched-flag local per clause */
-    for (int i2 = 0; i2 < choice->nchildren; i2++)
-        W("    (local $tm_%d i32)\n", i2);
-
     int nclauses = choice->nchildren;
 
-    /* Dispatch on clause index using if/else chain */
-    W("    ;; dispatch on clause index $%s_ci\n", mname);
+    W("\n  ;; predicate %s/%d (%d clause(s)) — Byrd-box α/β encoding\n",
+      functor, arity, nclauses);
 
+    /* Emit one function per clause: α for clause 0, β{ci} for clause ci≥1.
+     * Each also handles "fall to next" via return_call to next β. */
     for (int ci = 0; ci < nclauses; ci++) {
         EXPR_t *clause = choice->children[ci];
         if (!clause || clause->kind != E_CLAUSE) continue;
 
         int n_args = (int)clause->dval;
-        int n_vars = (int)clause->ival;
         int env_idx = g_clause_env_idx++;
 
-        W("    ;; clause %d (env=%d n_args=%d n_vars=%d)\n",
-          ci, env_idx, n_args, n_vars);
+        /* Function name: α for first clause, β{ci} for rest */
+        char fn_this[320], fn_next[320];
+        if (ci == 0)
+            snprintf(fn_this, sizeof fn_this, "$pl_%s_alpha", mname + 3); /* skip "pl_" */
+        else
+            snprintf(fn_this, sizeof fn_this, "$pl_%s_beta%d", mname + 3, ci);
 
-        /* Each clause: (if (i32.eq $ci N) (then ...) (else ...next...)) */
-        /* We open (if here; the else+close is emitted after body */
-        W("    (if (i32.eq (global.get $%s_ci) (i32.const %d))\n", mname, ci);
-        W("      (then\n");
-        W("        (local.set $tm (call $trail_mark))\n");
+        if (ci + 1 < nclauses) {
+            if (ci + 1 == 1)
+                snprintf(fn_next, sizeof fn_next, "$pl_%s_beta1", mname + 3);
+            else
+                snprintf(fn_next, sizeof fn_next, "$pl_%s_beta%d", mname + 3, ci + 1);
+        } else {
+            /* Last clause: next = ω (call_indirect ω_idx) */
+            snprintf(fn_next, sizeof fn_next, "__omega__");
+        }
 
-        /* Head argument unification — (block $clause_N_end ...) pattern:
-         * Head checks br_if $clause_N_end on mismatch (skip body+success).
-         * Body runs on match. $local_matched set to 1. After block:
-         * if matched==0 → trail_unwind. if matched==1 → advance ci, return 1. */
-        W("        (local.set $tm_%d (i32.const 0))\n", ci); /* matched flag */
-        W("        (block $clause_%d_end\n", ci);
+        W("  ;; clause %d — %s\n", ci, fn_this);
+        W("  (func %s\n", fn_this);
+        W("    (param $trail i32)");
+        for (int a = 0; a < arity; a++) W(" (param $a%d i32)", a);
+        W(" (param $gamma_idx i32) (param $omega_idx i32)\n");
+        W("    (result i32)\n");
+        W("    (local $tm i32)\n");
+
+        /* Trail mark for this clause attempt */
+        W("    (local.set $tm (call $trail_mark))\n");
+
+        /* Head unification block — br $head_fail on mismatch */
+        W("    (block $head_fail\n");
+
+        int head_var_slot[32];
+        for (int ai = 0; ai < 32; ai++) head_var_slot[ai] = -1;
+
         for (int ai = 0; ai < n_args && ai < clause->nchildren; ai++) {
             EXPR_t *harg = clause->children[ai];
             if (!harg) continue;
 
             if ((harg->kind == E_FNC && harg->sval && harg->nchildren == 0) ||
-                harg->kind == E_QLIT) {
+                 harg->kind == E_QLIT) {
                 int atom_id = atom_intern(harg->sval);
-                W("          ;; head arg %d: atom '%s' (bind-or-match)\n", ai, harg->sval);
-                /* If a_i >= ENV_BASE it's an output slot address — bind it.
-                 * If a_i < ENV_BASE it's a bound value — check equality. */
-                W("          (if (i32.ge_u (local.get $a%d) (i32.const %d))\n", ai, ENV_BASE);
-                W("            (then (i32.store (local.get $a%d) (i32.const %d)))\n", ai, atom_id);
-                W("            (else\n");
-                W("              (i32.ne (local.get $a%d) (i32.const %d))\n", ai, atom_id);
-                W("              (br_if $clause_%d_end)\n", ci);
-                W("          ))\n");
+                W("      ;; head arg %d: atom '%s'\n", ai, harg->sval);
+                W("      (if (i32.ge_u (local.get $a%d) (i32.const %d))\n", ai, ENV_BASE);
+                W("        (then (i32.store (local.get $a%d) (i32.const %d)))\n", ai, atom_id);
+                W("        (else\n");
+                W("          (i32.ne (local.get $a%d) (i32.const %d))\n", ai, atom_id);
+                W("          (br_if $head_fail)\n");
+                W("      ))\n");
 
             } else if (harg->kind == E_VAR) {
                 int slot = (int)harg->ival;
                 if (slot >= 0) {
                     int addr = env_slot_addr(env_idx, slot);
-                    W("          (i32.const %d) (local.get $a%d) (call $pl_var_bind)\n", addr, ai);
+                    W("      ;; head arg %d: var _V%d → clause slot %d\n", ai, slot, addr);
+                    W("      (i32.const %d) (local.get $a%d) (call $pl_var_bind)\n", addr, ai);
+                    if (ai < 32) head_var_slot[ai] = addr;
                 }
 
             } else if (harg->kind == E_FNC && harg->sval &&
                        strcmp(harg->sval, ".") == 0 && harg->nchildren == 2) {
-                W("          ;; head arg %d: cons [H|T]\n", ai);
-                W("          (i32.eqz (call $pl_is_cons (local.get $a%d)))\n", ai);
-                W("          (br_if $clause_%d_end)\n", ci);
+                W("      ;; head arg %d: cons [H|T]\n", ai);
+                W("      (i32.eqz (call $pl_is_cons (local.get $a%d)))\n", ai);
+                W("      (br_if $head_fail)\n");
                 EXPR_t *hh = harg->children[0];
                 if (hh && hh->kind == E_VAR && (int)hh->ival >= 0) {
                     int addr = env_slot_addr(env_idx, (int)hh->ival);
-                    W("          (i32.const %d) (call $pl_cons_head (local.get $a%d)) (call $pl_var_bind)\n", addr, ai);
+                    W("      (i32.const %d) (call $pl_cons_head (local.get $a%d)) (call $pl_var_bind)\n", addr, ai);
                 }
                 EXPR_t *ht = harg->children[1];
                 if (ht && ht->kind == E_VAR && (int)ht->ival >= 0) {
                     int addr = env_slot_addr(env_idx, (int)ht->ival);
-                    W("          (i32.const %d) (call $pl_cons_tail (local.get $a%d)) (call $pl_var_bind)\n", addr, ai);
+                    W("      (i32.const %d) (call $pl_cons_tail (local.get $a%d)) (call $pl_var_bind)\n", addr, ai);
                 }
             }
         }
-        /* Body goals */
+
+        /* Head matched — run body goals then γ */
         {
-            int n_body = clause->nchildren - n_args;
-            if (n_body > 0) {
-                for (int bi = n_args; bi < clause->nchildren; bi++)
-                    emit_goals(clause->children[bi], env_idx, 0);
+            /* Build γ/ω function names for body goals */
+            /* Body goals in clause ci: pass gamma_idx through, omega_fn = next clause β */
+            char body_omega[320];
+            if (strcmp(fn_next, "__omega__") == 0) {
+                /* Last clause: ω_idx propagates to caller's ω */
+                snprintf(body_omega, sizeof body_omega, "__caller_omega__");
+            } else {
+                snprintf(body_omega, sizeof body_omega, "%s", fn_next);
             }
+
+            int n_body = clause->nchildren - n_args;
+
+            /* Output-var writeback for E_VAR head args before body */
+            /* Actually we need writeback AFTER body succeeds. For Byrd-box,
+             * writeback happens when γ is called — but γ is the continuation.
+             * Solution: emit writeback inline after body goals, before calling γ. */
+
+            /* Emit body goals inline (they do writes/calls but don't branch to γ/ω) */
+            /* For body goals that are non-backtracking (write, nl, is/2, recursive det calls):
+             * emit them inline. The final γ call at end of body. */
+
+            if (n_body > 0) {
+                for (int bi = n_args; bi < clause->nchildren; bi++) {
+                    emit_goals(clause->children[bi], env_idx, 0);
+                }
+            }
+
+            /* Output-var writeback before calling γ */
+            for (int ai = 0; ai < n_args && ai < 32; ai++) {
+                if (head_var_slot[ai] < 0) continue;
+                int clause_addr = head_var_slot[ai];
+                W("      ;; writeback _V%d → caller slot if needed\n", ai);
+                W("      (if (i32.ge_u (local.get $a%d) (i32.const %d))\n", ai, ENV_BASE);
+                W("        (then\n");
+                W("          (if (i32.ne (i32.load (i32.const %d)) (local.get $a%d))\n",
+                  clause_addr, ai);
+                W("            (then (i32.store (local.get $a%d) (i32.load (i32.const %d))))\n",
+                  ai, clause_addr);
+                W("          )\n");
+                W("        )\n");
+                W("      )\n");
+            }
+
+            /* γ: succeed to caller — return_call_indirect gamma_idx */
+            W("      ;; γ — head+body matched, call continuation γ\n");
+            W("      (local.get $trail)\n");
+            W("      (local.get $gamma_idx)\n");
+            W("      (return_call_indirect (type $pl_cont_t))\n");
         }
-        W("          (local.set $tm_%d (i32.const 1)) ;; matched\n", ci);
-        W("        ) ;; end clause_%d_end\n", ci);
-        /* If matched==0: trail unwind, fall to next clause */
-        W("        (if (i32.eqz (local.get $tm_%d)) (then\n", ci);
-        W("          (call $trail_unwind (local.get $tm))\n");
-        W("        ) (else\n");
 
+        W("    ) ;; $head_fail — br here on head mismatch\n");
 
-        /* Clause matched: advance ci, return 1 (inside (else of matched-if)) */
-        W("          (global.set $%s_ci (i32.const %d))\n",
-          mname, ci + 1 < nclauses ? ci + 1 : nclauses);
-        W("          (i32.const 1) (return)\n");
-        W("        )) ;; close matched-if else + matched-if\n");
-        W("      )\n"); /* close outer (then of clause-dispatch if */
-        /* else branch for clause-dispatch if — remaining clauses */
-        if (ci < nclauses - 1)
-            W("      (else\n");
+        /* Head failed — trail_unwind and try next clause (β) */
+        W("    (call $trail_unwind (local.get $tm))\n");
+
+        if (strcmp(fn_next, "__omega__") == 0) {
+            /* Last clause exhausted → call caller's ω */
+            W("    ;; ω — all clauses tried, propagate failure\n");
+            W("    (local.get $trail)\n");
+            W("    (local.get $omega_idx)\n");
+            W("    (return_call_indirect (type $pl_cont_t))\n");
+        } else {
+            /* Try next clause */
+            W("    ;; β — try next clause %s\n", fn_next);
+            W("    (local.get $trail)");
+            for (int a = 0; a < arity; a++) W(" (local.get $a%d)", a);
+            W(" (local.get $gamma_idx) (local.get $omega_idx)\n");
+            W("    (return_call %s)\n", fn_next);
+        }
+
+        W("  )\n");
+
     }
-
-    /* Close all else+if chains (one ')' per non-first clause) */
-    for (int ci = 1; ci < nclauses; ci++) W("      )\n"); /* close (else */
-    /* Close all (if parens */
-    for (int ci = 0; ci < nclauses; ci++) W("    )\n");
-    W("\n");
-
-    /* Exhausted: reset ci to 0, return 0 */
-    W("    ;; ω — all clauses exhausted, reset ci\n");
-    W("    (global.set $%s_ci (i32.const 0))\n", mname);
-    W("    (i32.const 0)\n");
-    W("  )\n");
 }
 
 /* ── emit_unify_terms ────────────────────────────────────────────────────
@@ -764,15 +831,27 @@ static void emit_goal(const EXPR_t *goal, int env_idx, int in_disj_left) {
             return;
         }
 
-        /* Non-backtracking call */
-        W("    ;; call %s/%d\n", fn, n);
+        /* Body predicate call: call α with same γ/ω as current clause.
+         * This propagates success/failure correctly through recursive calls.
+         * The α function will return_call_indirect to γ on success (continuing
+         * execution from the call site) or to ω on failure. */
+        W("    ;; call %s/%d (Byrd-box α, pass through γ/ω)\n", fn, n);
         W("    (local.get $trail)\n");
         for (int ai = 0; ai < n; ai++) {
             EXPR_t *arg = goal->children[ai];
             if (!arg) { W("    (i32.const 0)\n"); continue; }
-            emit_term_value(arg, env_idx); /* pass term value */
+            /* For unbound vars in clause env: pass slot address so callee can bind */
+            if (arg->kind == E_VAR && (int)arg->ival >= 0) {
+                int addr = env_slot_addr(env_idx, (int)arg->ival);
+                /* Check if slot holds a forwarded caller address or a real value */
+                /* Pass the slot value — if it's ≥ ENV_BASE it's a slot addr, callee handles it */
+                W("    (i32.load (i32.const %d)) ;; var _V%d\n", addr, (int)arg->ival);
+            } else {
+                emit_term_value(arg, env_idx);
+            }
         }
-        W("    (call $%s_call) drop\n", mangled);
+        W("    (local.get $gamma_idx) (local.get $omega_idx)\n");
+        W("    (return_call $pl_%s_alpha)\n", mangled + 3); /* mangled = "pl_foo_N", skip "pl_" → "foo_N", prefix "pl_" → "pl_foo_N_alpha" */
         return;
     }
 }
@@ -800,59 +879,90 @@ static void emit_goals(const EXPR_t *g, int env_idx, int in_disj_left) {
                                  last->sval && strcmp(last->sval, "fail") == 0);
 
             if (first_is_pred && last_is_fail) {
-                /* Generate-and-test: emit loop */
+                /* Generate-and-test via Byrd-box α call.
+                 * We emit two small continuation functions per call site:
+                 *   $gt_gamma_N: called on each solution — emit body goals, br $retry
+                 *   $gt_omega_N: called on exhaustion — br $disj_end
+                 * These are registered in the funcref table.
+                 * α is called once; it tail-calls γ on success or ω on failure.
+                 * γ does the body goals then calls α again (next solution).
+                 * But γ/ω can't access main's locals directly as separate functions.
+                 *
+                 * SIMPLER APPROACH: call α with sentinel table indices that
+                 * write a flag to a memory cell, then inspect the flag.
+                 * Even simpler: use a global flag written by γ/ω trampolines.
+                 *
+                 * SIMPLEST (correct): emit continuation funcs that write result
+                 * to a dedicated memory cell and return 0. Poll after α returns.
+                 * γ writes 1 to PL_CONT_RESULT (mem[4]), ω writes 0.
+                 * α always returns 0 (via return_call_indirect which may return).
+                 */
                 EXPR_t *pred_call = first;
                 int n_call_args = pred_call->nchildren;
                 char mangled[256];
                 strncpy(mangled, pl_mangle(pred_call->sval, n_call_args), 255);
 
-                W("    ;; generate-and-test: %s/%d ... fail\n",
+                /* Collect arg slot addresses for output vars */
+                int arg_slots[32]; /* slot addr or -1 */
+                for (int ai = 0; ai < 32; ai++) arg_slots[ai] = -1;
+                for (int ai = 0; ai < n_call_args; ai++) {
+                    EXPR_t *arg = pred_call->children[ai];
+                    if (arg && arg->kind == E_VAR && (int)arg->ival >= 0)
+                        arg_slots[ai] = env_slot_addr(env_idx, (int)arg->ival);
+                }
+
+                /* Register γ and ω continuation functions in the table.
+                 * They have type $pl_cont_t: (param $trail i32) (result i32).
+                 * γ: writes 1 to mem[PL_GT_FLAG=4], returns 0
+                 * ω: writes 0 to mem[PL_GT_FLAG=4], returns 0 */
+                int site_id = gt_site_counter++;
+                char gamma_name[64], omega_name[64];
+                snprintf(gamma_name, sizeof gamma_name, "pl_gt_gamma_%d", site_id);
+                snprintf(omega_name, sizeof omega_name, "pl_gt_omega_%d", site_id);
+                int gamma_idx = cont_register(gamma_name);
+                int omega_idx = cont_register(omega_name);
+
+                W("    ;; generate-and-test (Byrd-box): %s/%d ... fail\n",
                   pred_call->sval, n_call_args);
+                W("    ;; γ_idx=%d ω_idx=%d\n", gamma_idx, omega_idx);
 
-                /* Zero out variable slots before loop */
+                /* Zero + loop */
                 for (int ai = 0; ai < n_call_args; ai++) {
-                    EXPR_t *arg = pred_call->children[ai];
-                    if (arg && arg->kind == E_VAR && arg->ival >= 0) {
-                        int addr = env_slot_addr(env_idx, (int)arg->ival);
-                        W("    (i32.store (i32.const %d) (i32.const 0)) ;; clear _V%ld\n",
-                          addr, arg->ival);
-                    }
+                    if (arg_slots[ai] >= 0)
+                        W("    (i32.store (i32.const %d) (i32.const 0)) ;; clear V%d\n",
+                          arg_slots[ai], ai);
                 }
 
-                W("    (loop $retry_%s\n", mangled);
-                /* Reset var slot(s) before each call — predicate will rebind */
+                W("    (loop $retry_%s_%d\n", mangled, site_id);
+                /* Reset var slots */
                 for (int ai = 0; ai < n_call_args; ai++) {
-                    EXPR_t *arg = pred_call->children[ai];
-                    if (arg && arg->kind == E_VAR && arg->ival >= 0) {
-                        int addr = env_slot_addr(env_idx, (int)arg->ival);
-                        W("      (i32.store (i32.const %d) (i32.const 0))\n", addr);
-                    }
+                    if (arg_slots[ai] >= 0)
+                        W("      (i32.store (i32.const %d) (i32.const 0))\n", arg_slots[ai]);
                 }
-                /* Call predicate with trail + args (slot addr for unbound var, value otherwise) */
+                /* Call α: trail, args, gamma_idx, omega_idx */
                 W("      (local.get $trail)\n");
                 for (int ai = 0; ai < n_call_args; ai++) {
                     EXPR_t *arg = pred_call->children[ai];
                     if (!arg) { W("      (i32.const 0)\n"); continue; }
-                    if (arg->kind == E_VAR && (int)arg->ival >= 0) {
-                        int addr = env_slot_addr(env_idx, (int)arg->ival);
-                        /* Pass slot address — predicate will var_bind into it */
-                        W("      (i32.const %d) ;; slot addr _V%d\n", addr, (int)arg->ival);
-                    } else {
+                    if (arg_slots[ai] >= 0)
+                        W("      (i32.const %d) ;; slot addr V%d\n", arg_slots[ai], ai);
+                    else
                         emit_term_value(arg, env_idx);
-                    }
                 }
-                W("      (call $%s_call)\n", mangled);
-                /* 0 = exhausted: exit loop (br to after loop) */
+                W("      (i32.const %d) ;; gamma_idx\n", gamma_idx);
+                W("      (i32.const %d) ;; omega_idx\n", omega_idx);
+                W("      (call $pl_%s_alpha)\n", mangled + 3);
+                W("      drop\n");
+                /* Poll flag at mem[4]: 1 = γ fired (solution), 0 = ω fired (done) */
+                W("      (i32.load (i32.const 8188)) ;; PL_GT_FLAG\n");
                 W("      (if (i32.eqz) (then) (else\n");
-                /* 1 = solution found: emit body goals (children[1..nc-2]) */
+                /* Solution: emit body goals */
                 for (int gi = 1; gi < nc - 1; gi++)
                     emit_goal(g->children[gi], env_idx, 0);
-                /* Continue loop for next solution */
-                W("      (br $retry_%s)\n", mangled);
+                W("      (br $retry_%s_%d)\n", mangled, site_id);
                 W("      )) ;; if\n");
-                W("    ) ;; $retry_%s\n", mangled);
-                /* After loop exhausted: fail/0 already exits to $disj_end */
-                W("    (br $disj_end) ;; all solutions exhausted → fail\n");
+                W("    ) ;; $retry_%s_%d\n", mangled, site_id);
+                W("    (br $disj_end) ;; exhausted → fail\n");
                 return;
             }
         }
@@ -865,12 +975,69 @@ static void emit_goals(const EXPR_t *g, int env_idx, int in_disj_left) {
     emit_goal(g, env_idx, in_disj_left);
 }
 
+/* ── collect_gentest_preds: collect mangled names of predicates used in
+ * generate-and-test (conjunction starting with pred call ending in fail)
+ * so we can declare their ci locals at the top of the calling function. */
+#define MAX_GT_PREDS 32
+static char gt_pred_names[MAX_GT_PREDS][256];
+static int  gt_pred_count = 0;
+
+static void collect_gt_expr(const EXPR_t *g) {
+    if (!g) return;
+    /* Detect conjunction: (,/N first ... last) where first=pred, last=fail */
+    if (g->kind == E_FNC && g->sval && strcmp(g->sval, ",") == 0 && g->nchildren >= 2) {
+        EXPR_t *first = g->children[0];
+        EXPR_t *last  = g->children[g->nchildren - 1];
+        int first_is_pred = (first && first->kind == E_FNC && first->sval &&
+                             first->nchildren > 0 &&
+                             strcmp(first->sval, "write") != 0 &&
+                             strcmp(first->sval, "nl")    != 0 &&
+                             strcmp(first->sval, "true")  != 0 &&
+                             strcmp(first->sval, "fail")  != 0 &&
+                             strcmp(first->sval, "halt")  != 0);
+        int last_is_fail = (last && last->kind == E_FNC && last->sval &&
+                            strcmp(last->sval, "fail") == 0);
+        if (first_is_pred && last_is_fail && gt_pred_count < MAX_GT_PREDS) {
+            char mangled[256];
+            strncpy(mangled, pl_mangle(first->sval, first->nchildren), 255);
+            /* Deduplicate */
+            int found = 0;
+            for (int i = 0; i < gt_pred_count; i++)
+                if (strcmp(gt_pred_names[i], mangled) == 0) { found = 1; break; }
+            if (!found)
+                strncpy(gt_pred_names[gt_pred_count++], mangled, 255);
+        }
+    }
+    for (int i = 0; i < g->nchildren; i++) collect_gt_expr(g->children[i]);
+}
+
 /* ── emit_pl_main ──────────────────────────────────────────────────────── */
 static void emit_pl_main(Program *prog) {
+    /* Prescan main clause to collect generate-and-test predicate names */
+    gt_pred_count = 0;
+    if (prog) {
+        for (STMT_t *s = prog->head; s; s = s->next) {
+            if (!s->subject) continue;
+            EXPR_t *g = s->subject;
+            if (g->kind != E_CHOICE) continue;
+            if (!g->sval || strcmp(g->sval, "main/0") != 0) continue;
+            if (g->nchildren != 1) continue;
+            EXPR_t *clause = g->children[0];
+            if (!clause || clause->kind != E_CLAUSE) continue;
+            int n_args = (int)clause->dval;
+            for (int bi = n_args; bi < clause->nchildren; bi++)
+                collect_gt_expr(clause->children[bi]);
+            break;
+        }
+    }
+
     W("  (func (export \"main\") (result i32)\n");
     W("    (local $trail i32)\n");
     W("    (local $tmp i32)\n");
     W("    (local $tbl_entry i32)\n");
+    /* Declare ci locals for each generate-and-test predicate */
+    for (int i = 0; i < gt_pred_count; i++)
+        W("    (local $ci_%s i32)\n", gt_pred_names[i]);
     W("    (local.set $trail (call $trail_mark))\n");
 
     if (!prog) goto done;
@@ -926,19 +1093,47 @@ static void prescan_prog(Program *prog) {
     }
 }
 
+/* ── emit_cont_functions: emit γ/ω continuation stubs + funcref table ───
+ * γ stub: writes 1 to mem[4] (PL_GT_FLAG), returns 0
+ * ω stub: writes 0 to mem[4], returns 0
+ * Called after all predicates and main are emitted.
+ */
+static void emit_cont_functions_and_table(void) {
+    if (cont_func_count == 0) return;
+    W("  ;; Continuation stubs (γ/ω) for generate-and-test\n");
+    W("  ;; mem[4] = PL_GT_FLAG: 1=success(γ), 0=failure(ω)\n");
+    for (int i = 0; i < cont_func_count; i++) {
+        const char *name = cont_func_names[i];
+        int is_gamma = (strstr(name, "_gamma_") != NULL);
+        W("  (func $%s (param $trail i32) (result i32)\n", name);
+        W("    (i32.store (i32.const 8188) (i32.const %d)) ;; %s\n",
+          is_gamma ? 1 : 0, is_gamma ? "γ: success" : "ω: failure");
+        W("    (i32.const 0)\n");
+        W("  )\n");
+    }
+    /* Funcref table */
+    W("  (table %d funcref)\n", cont_func_count);
+    W("  (elem (i32.const 0)");
+    for (int i = 0; i < cont_func_count; i++)
+        W(" $%s", cont_func_names[i]);
+    W(")\n");
+}
+
 /* ── Public entry point ────────────────────────────────────────────────── */
 void prolog_emit_wasm(Program *prog, FILE *out, const char *filename) {
     (void)filename;
     wpl_out = out;
     g_clause_env_idx = 0;
     atom_count = 0;
+    cont_func_count = 0;
+    gt_site_counter = 0;
 
     emit_wasm_set_out(out);
     emit_wasm_strlit_reset();
 
     prescan_prog(prog);
 
-    W(";; Generated by scrip-cc -pl -wasm (M-PW-A01)\n");
+    W(";; Generated by scrip-cc -pl -wasm (M-PW-B01)\n");
     W("(module\n\n");
     emit_pl_runtime_imports();
     emit_wasm_data_segment();    /* string literals at 65536 */
@@ -959,5 +1154,7 @@ void prolog_emit_wasm(Program *prog, FILE *out, const char *filename) {
 
     W("\n");
     emit_pl_main(prog);
+    W("\n");
+    emit_cont_functions_and_table();
     W("\n) ;; end module\n");
 }
