@@ -491,10 +491,16 @@ static void sc_loop_pop(CfState *st) {
 
 static STMT_t *sc_compile_expr(CfState *st, SnoconeKind stop_kind) {
     int start = st->pos;
+    int depth = 0;
     while (st->pos < st->count) {
         SnoconeKind k = st->toks[st->pos].kind;
         if (k == SNOCONE_NEWLINE || k == SNOCONE_SEMICOLON || k == SNOCONE_EOF) break;
-        if (stop_kind != SNOCONE_EOF && k == stop_kind) break;
+        if (k == SNOCONE_LPAREN || k == SNOCONE_LBRACKET) depth++;
+        if (k == SNOCONE_RPAREN || k == SNOCONE_RBRACKET) {
+            if (depth == 0 && stop_kind == SNOCONE_RPAREN) break;
+            if (depth > 0) depth--;
+        }
+        if (stop_kind != SNOCONE_EOF && stop_kind != SNOCONE_RPAREN && k == stop_kind) break;
         st->pos++;
     }
     int seg_len = st->pos - start;
