@@ -248,6 +248,10 @@ static int gt_scratch_used = 0;  /* bumped per ground arg slot allocated */
 #define GT_CI_BASE   7872
 #define GT_CI_CELLS  32
 
+/* GT result flag: mem[PL_GT_FLAG] — γ writes 1 (solution found), ω writes 0 (exhausted).
+ * Main's (loop) polls this after each _call returns to decide whether to run body goals. */
+#define PL_GT_FLAG   8188
+
 #define MAX_GT_SITES   64
 #define MAX_GT_BODY    32
 typedef struct {
@@ -464,6 +468,33 @@ static void emit_pl_predicate(const EXPR_t *choice) {
         W("  )\n");
 
     }
+
+    /* $pl_foo_N_call(trail, a0..N, gamma_idx, omega_idx, ci) — GT dispatcher.
+     * GT loop in main calls this with ci from a WAT local (per-activation).
+     * ci=0→alpha, ci=1→beta1, ..., ci>=nclauses→omega (exhausted).
+     * Recursive calls inside clause bodies call alpha/beta DIRECTLY — they
+     * never use this wrapper, so main's ci local is not corrupted. */
+    W("\n  ;; $pl_%s_call — GT ci-dispatcher\n", mname + 3);
+    W("  (func $pl_%s_call\n", mname + 3);
+    W("    (param $trail i32)");
+    for (int a = 0; a < arity; a++) W(" (param $a%d i32)", a);
+    W(" (param $gamma_idx i32) (param $omega_idx i32) (param $ci i32)\n");
+    W("    (result i32)\n");
+    for (int ci2 = 0; ci2 < nclauses; ci2++) {
+        char cfn[320];
+        if (ci2 == 0) snprintf(cfn, sizeof cfn, "$pl_%s_alpha", mname + 3);
+        else          snprintf(cfn, sizeof cfn, "$pl_%s_beta%d", mname + 3, ci2);
+        W("    (if (i32.eq (local.get $ci) (i32.const %d)) (then\n", ci2);
+        W("      (local.get $trail)");
+        for (int a = 0; a < arity; a++) W(" (local.get $a%d)", a);
+        W(" (local.get $gamma_idx) (local.get $omega_idx)\n");
+        W("      (return_call %s)))\n", cfn);
+    }
+    W("    ;; ci >= nclauses: exhausted — call omega\n");
+    W("    (local.get $trail) (local.get $omega_idx)\n");
+    W("    (return_call_indirect (type $pl_cont_t))\n");
+    W("  )\n");
+
 }
 
 /* ── emit_unify_terms ────────────────────────────────────────────────────
@@ -887,7 +918,7 @@ static void emit_goal(const EXPR_t *goal, int env_idx, int in_disj_left) {
             }
         }
         W("    (local.get $gamma_idx) (local.get $omega_idx)\n");
-        W("    (return_call $pl_%s_alpha)\n", mangled + 3); /* mangled = "pl_foo_N", skip "pl_" → "foo_N", prefix "pl_" → "pl_foo_N_alpha" */
+        W("    (return_call $pl_%s_alpha)\n", mangled + 3);
         return;
     }
 }
@@ -1028,45 +1059,73 @@ static void emit_goals(const EXPR_t *g, int env_idx, int in_disj_left) {
                           arg_slots[ai], ai);
                 }
 
-                /* Store ground args into scratch cells so γ can pass them back */
+                /* GT loop model:
+                 *   (loop $gt_N)
+                 *     clear V slots; call $pl_foo_N_call(trail, args, γ, ω, ci_local)
+                 *     if mem[PL_GT_FLAG]==1: body goals run inside γ; advance ci; br $gt_N
+                 *     else: ω fired — fall through to (br $disj_end)
+                 *   Recursive calls inside clause bodies use their own alpha/beta frames
+                 *   and never touch main's ci local → no corruption. */
+                GTSiteData *sd_pre = (gt_site_total > 0) ? &gt_site_data[gt_site_total-1] : NULL;
+
+                /* Declare the per-site ci local name (already declared in main preamble) */
+                const char *ci_local = (sd_pre && sd_pre->mangled[0])
+                                       ? sd_pre->mangled : mangled;
+
+                /* Initialize ci local and GT flag */
+                W("    (local.set $ci_%s (i32.const 0)) ;; GT ci init\n", ci_local);
+                W("    (i32.store (i32.const %d) (i32.const 0)) ;; GT flag init\n",
+                  PL_GT_FLAG);
+
+                /* Clear var slots before loop */
+                for (int ai = 0; ai < n_call_args; ai++) {
+                    if (arg_slots[ai] >= 0)
+                        W("    (i32.store (i32.const %d) (i32.const 0)) ;; clear V%d\n",
+                          arg_slots[ai], ai);
+                }
+
+                /* Store ground args into scratch cells */
                 GTSiteData *sd_cur = (gt_site_total > 0) ? &gt_site_data[gt_site_total-1] : NULL;
                 if (sd_cur) {
                     for (int ai = 0; ai < n_call_args; ai++) {
                         if (sd_cur->ground_cells[ai] >= 0) {
-                            /* Compute the runtime value and store to scratch */
-                            EXPR_t *arg = pred_call->children[ai];
-                            W("    ;; store ground arg %d into scratch cell %d\n",
-                              ai, sd_cur->ground_cells[ai]);
-                            W("    (i32.const %d)\n", sd_cur->ground_cells[ai]); /* addr */
-                            emit_term_value(arg, env_idx);                        /* value */
+                            W("    (i32.const %d)\n", sd_cur->ground_cells[ai]);
+                            emit_term_value(pred_call->children[ai], env_idx);
                             W("    (i32.store)\n");
                         }
                     }
                 }
 
-                /* Single call to α — no loop needed.
-                 * On first solution α tail-calls γ; γ runs body goals then calls α again.
-                 * On exhaustion α tail-calls ω; ω returns 0. */
-                /* Reset clause-index counter for this site */
-                GTSiteData *sd_pre = (gt_site_total > 0) ? &gt_site_data[gt_site_total-1] : NULL;
-                if (sd_pre)
-                    W("    (i32.store (i32.const %d) (i32.const 0)) ;; reset GT ci_%d\n",
-                      sd_pre->ci_cell_addr, sd_pre->site_id);
-                W("    (local.get $trail)\n");
+                W("    (loop $gt_%d\n", site_id);
+
+                /* Call _call wrapper with ci local */
+                W("      (local.get $trail)\n");
                 for (int ai = 0; ai < n_call_args; ai++) {
                     EXPR_t *arg = pred_call->children[ai];
-                    if (!arg) { W("    (i32.const 0)\n"); continue; }
+                    if (!arg) { W("      (i32.const 0)\n"); continue; }
                     if (arg_slots[ai] >= 0)
-                        W("    (i32.const %d) ;; slot addr V%d\n", arg_slots[ai], ai);
+                        W("      (i32.const %d) ;; slot addr V%d\n", arg_slots[ai], ai);
+                    else if (sd_cur && sd_cur->ground_cells[ai] >= 0)
+                        W("      (i32.load (i32.const %d)) ;; ground arg %d\n",
+                          sd_cur->ground_cells[ai], ai);
                     else
                         emit_term_value(arg, env_idx);
                 }
-                W("    (i32.const %d) ;; gamma_idx\n", gamma_idx);
-                W("    (i32.const %d) ;; omega_idx\n", omega_idx);
-                W("    (call $pl_%s_alpha)\n", mangled + 3);
-                W("    drop\n");
-                W("    ;; α called once; γ loops internally via return_call\n");
-                W("    (br $disj_end) ;; after all solutions (ω fired) → fail side\n");
+                W("      (i32.const %d) ;; gamma_idx\n", gamma_idx);
+                W("      (i32.const %d) ;; omega_idx\n", omega_idx);
+                W("      (local.get $ci_%s) ;; ci\n", ci_local);
+                W("      (call $pl_%s_call) drop\n", mangled + 3);
+
+                /* Poll flag: if γ fired (=1), advance ci, loop; else exit */
+                W("      (if (i32.load (i32.const %d)) (then\n", PL_GT_FLAG);
+                W("        (local.set $ci_%s\n", ci_local);
+                W("          (i32.add (local.get $ci_%s) (i32.const 1)))\n", ci_local);
+                W("        (br $gt_%d)\n", site_id);
+                W("      ))\n");
+                W("    ) ;; $gt_%d\n", site_id);
+
+                W("    ;; ω fired — all solutions exhausted\n");
+                W("    (br $disj_end)\n");
                 return;
             }
         }
@@ -1241,80 +1300,37 @@ static void emit_cont_functions_and_table(void) {
             (void)site_str;
 
             if (sd) {
-                W("    ;; γ for GT site %d (%s/%d): body goals + loop back to α\n",
+                W("    ;; γ for GT site %d (%s/%d): set flag, run body goals, return 0\n",
                   site_id, sd->mangled, sd->arity);
+
+                /* Signal main's loop: a solution was found */
+                W("    (i32.store (i32.const %d) (i32.const 1)) ;; GT flag=1 (γ fired)\n",
+                  PL_GT_FLAG);
 
                 /* Emit body goals (write(X), nl, etc.) */
                 for (int gi = 0; gi < sd->n_body_goals; gi++)
                     emit_goal(sd->body_goals[gi], sd->env_idx, 0);
 
-                /* Unwind trail to parent mark — undo this clause's bindings */
+                /* Unwind trail — undo this clause's bindings for next retry */
                 W("    (call $trail_unwind (local.get $trail))\n");
 
-                /* Reset var slots so α/β can rebind on next solution */
+                /* Reset var slots so _call can rebind on next solution */
                 for (int ai = 0; ai < sd->arity; ai++) {
                     if (sd->arg_slots[ai] >= 0)
                         W("    (i32.store (i32.const %d) (i32.const 0)) ;; reset V%d\n",
                           sd->arg_slots[ai], ai);
                 }
 
-                /* Call the next clause: increment ci counter, dispatch via if-chain.
-                 * ci=0 → alpha (first clause), ci=1 → beta1, ci=2 → beta2, ...
-                 * This correctly handles predicates with any number of clauses. */
-                W("    ;; advance clause index\n");
-                W("    (i32.store (i32.const %d)\n", sd->ci_cell_addr);
-                W("      (i32.add (i32.load (i32.const %d)) (i32.const 1)))\n",
-                  sd->ci_cell_addr);
-
-                /* Helper macro: push the call args (trail + arg slots + gamma/omega) */
-                /* We emit them inline per branch. */
-                int nc = sd->nclauses > 32 ? 32 : sd->nclauses;
-
-/* Emit arg-push sequence into W() for one branch */
-#define EMIT_GT_ARGS() do { \
-    W("      (local.get $trail)\n"); \
-    for (int _ai = 0; _ai < sd->arity; _ai++) { \
-        if (sd->arg_slots[_ai] >= 0) \
-            W("      (i32.const %d)\n", sd->arg_slots[_ai]); \
-        else if (sd->ground_cells[_ai] >= 0) \
-            W("      (i32.load (i32.const %d))\n", sd->ground_cells[_ai]); \
-        else \
-            W("      (i32.const 0)\n"); \
-    } \
-    W("      (i32.const %d) (i32.const %d)\n", sd->gamma_idx, sd->omega_idx); \
-} while(0)
-
-                if (nc <= 1) {
-                    /* Single-clause: always alpha */
-                    EMIT_GT_ARGS();
-                    W("    (return_call %s)\n", sd->beta_fns[0]);
-                } else {
-                    /* Multi-clause: if ci >= nclauses → omega (exhausted).
-                     * if ci==N → betaN, else alpha (ci==0). */
-                    W("    (if (i32.ge_u (i32.load (i32.const %d)) (i32.const %d))\n",
-                      sd->ci_cell_addr, nc);
-                    W("      (then\n");
-                    W("      (local.get $trail) (i32.const %d)\n", sd->omega_idx);
-                    W("      (return_call_indirect (type $pl_cont_t))))\n");
-                    for (int bi = nc - 1; bi >= 1; bi--) {
-                        W("    (if (i32.eq (i32.load (i32.const %d)) (i32.const %d))\n",
-                          sd->ci_cell_addr, bi);
-                        W("      (then\n");
-                        EMIT_GT_ARGS();
-                        W("      (return_call %s)))\n", sd->beta_fns[bi]);
-                    }
-                    /* Default: alpha (ci==0 or reset) */
-                    EMIT_GT_ARGS();
-                    W("    (return_call %s)\n", sd->beta_fns[0]);
-                }
-#undef EMIT_GT_ARGS
+                /* Return 0 — main's (loop) polls flag and calls _call again */
+                W("    (i32.const 0)\n");
             } else {
                 /* Fallback: should not happen */
                 W("    (i32.const 0) ;; γ stub (no site data)\n");
             }
         } else {
-            /* ω: all solutions exhausted — just return 0 */
-            W("    ;; ω: done\n");
+            /* ω: all solutions exhausted — clear GT flag, return 0 */
+            W("    ;; ω: clear GT flag\n");
+            W("    (i32.store (i32.const %d) (i32.const 0))\n", PL_GT_FLAG);
             W("    (i32.const 0)\n");
         }
         W("  )\n");
