@@ -590,7 +590,7 @@ static void emit_call(EXPR_t *n, const char *γ, const char *ω,
     }
 
     /* --- scan builtins: any / many / upto --- */
-    if(strcmp(fname,"any")==0||strcmp(fname,"many")==0||strcmp(fname,"upto")==0){
+    if((strcmp(fname,"any")==0||strcmp(fname,"many")==0||strcmp(fname,"upto")==0) && !icn_is_user_proc(fname)){
         const char *rtfn = strcmp(fname,"any")==0  ? "icn_any"  :
                            strcmp(fname,"many")==0 ? "icn_many" : "icn_upto";
         char after[64]; snprintf(after,sizeof after,"icon_%d_sbuiltin",id);
