@@ -112,6 +112,11 @@ static void emit_runtime_imports(void) {
     W("  (import \"sno\" \"sno_lgt\"          (func $sno_lgt          (param i32 i32 i32 i32) (result i32)))\n");
     W("  (import \"sno\" \"sno_str_contains\" (func $sno_str_contains (param i32 i32 i32 i32) (result i32)))\n");
     W("  (import \"sno\" \"sno_pat_search\"   (func $sno_pat_search   (param i32 i32 i32 i32 i32) (result i32)))\n");
+    W("  (import \"sno\" \"sno_any\"          (func $sno_any          (param i32 i32 i32 i32 i32) (result i32)))\n");
+    W("  (import \"sno\" \"sno_notany\"       (func $sno_notany       (param i32 i32 i32 i32 i32) (result i32)))\n");
+    W("  (import \"sno\" \"sno_span\"         (func $sno_span         (param i32 i32 i32 i32 i32) (result i32)))\n");
+    W("  (import \"sno\" \"sno_break\"        (func $sno_break        (param i32 i32 i32 i32 i32) (result i32)))\n");
+    W("  (import \"sno\" \"sno_breakx\"       (func $sno_breakx       (param i32 i32 i32 i32 i32) (result i32)))\n");
     W("  ;; String heap pointer: programs use sno_str_alloc from runtime\n");
     W("  ;; (global $str_ptr is internal to runtime; programs use sno_str_alloc)\n");
 }
@@ -695,6 +700,29 @@ static void emit_pattern_node(const EXPR_t *pat) {
         if (pat->nchildren >= 2) emit_pattern_node(pat->children[1]);
         W("      ))\n");
         return;
+    }
+    /* E_FNC with sval ANY / NOTANY / SPAN / BREAK / BREAKX — character-class patterns */
+    if (pat->kind == E_FNC && pat->sval && pat->nchildren == 1) {
+        const char *fn = pat->sval;
+        const char *runtime_fn = NULL;
+        if      (strcasecmp(fn, "ANY")    == 0) runtime_fn = "sno_any";
+        else if (strcasecmp(fn, "NOTANY") == 0) runtime_fn = "sno_notany";
+        else if (strcasecmp(fn, "SPAN")   == 0) runtime_fn = "sno_span";
+        else if (strcasecmp(fn, "BREAK")  == 0) runtime_fn = "sno_break";
+        else if (strcasecmp(fn, "BREAKX") == 0) runtime_fn = "sno_breakx";
+        if (runtime_fn) {
+            const EXPR_t *arg = pat->children[0];
+            int idx = strlit_intern((arg->kind == E_QLIT && arg->sval) ? arg->sval : "");
+            int set_off = strlit_abs(idx);
+            int set_len = str_lits[idx].len;
+            W("      ;; %s: char-class match\\n", fn);
+            W("      (local.get $pat_subj_off) (local.get $pat_subj_len)\\n");
+            W("      (i32.const %d) (i32.const %d)\\n", set_off, set_len);
+            W("      (local.get $pat_cursor)\\n");
+            W("      (call $%s)\\n", runtime_fn);
+            W("      (local.set $pat_cursor)\\n");
+            return;
+        }
     }
     /* fallback: evaluate as string expression, use sno_pat_search */
     WasmTy tp = emit_expr(pat);

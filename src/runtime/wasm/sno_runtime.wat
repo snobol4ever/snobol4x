@@ -592,4 +592,119 @@
     (i32.const 0)
   )
 
+  ;; ── Character-class pattern helpers (M-SW-B05) ───────────────────────────
+  ;; All take (subj_off subj_len set_off set_len cursor) → new_cursor or -1.
+  ;; "set" is a string of characters that form the class (e.g. "aeiou").
+  ;; A character is "in set" if it equals any byte in set[0..set_len-1].
+
+  ;; sno_char_in_set — internal helper: is byte $ch in set[so..so+sl-1]?
+  ;; Returns i32: 1=yes 0=no.  NOT exported.
+  (func $sno_char_in_set (param $ch i32) (param $so i32) (param $sl i32) (result i32)
+    (local $k i32)
+    (local.set $k (i32.const 0))
+    (block $done
+      (loop $scan
+        (br_if $done (i32.ge_u (local.get $k) (local.get $sl)))
+        (if (i32.eq
+              (local.get $ch)
+              (i32.load8_u (i32.add (local.get $so) (local.get $k))))
+          (then (return (i32.const 1))))
+        (local.set $k (i32.add (local.get $k) (i32.const 1)))
+        (br $scan)))
+    (i32.const 0)
+  )
+
+  ;; sno_any — match exactly one char in set at cursor; return cursor+1 or -1.
+  (func $sno_any (export "sno_any")
+    (param $ho i32) (param $hl i32) (param $so i32) (param $sl i32) (param $cur i32)
+    (result i32)
+    ;; cursor past end → fail
+    (if (i32.ge_u (local.get $cur) (local.get $hl)) (then (return (i32.const -1))))
+    ;; empty set → fail
+    (if (i32.eqz (local.get $sl)) (then (return (i32.const -1))))
+    (if (call $sno_char_in_set
+              (i32.load8_u (i32.add (local.get $ho) (local.get $cur)))
+              (local.get $so) (local.get $sl))
+      (then (return (i32.add (local.get $cur) (i32.const 1)))))
+    (i32.const -1)
+  )
+
+  ;; sno_notany — match exactly one char NOT in set; return cursor+1 or -1.
+  (func $sno_notany (export "sno_notany")
+    (param $ho i32) (param $hl i32) (param $so i32) (param $sl i32) (param $cur i32)
+    (result i32)
+    (if (i32.ge_u (local.get $cur) (local.get $hl)) (then (return (i32.const -1))))
+    (if (i32.eqz
+          (call $sno_char_in_set
+                (i32.load8_u (i32.add (local.get $ho) (local.get $cur)))
+                (local.get $so) (local.get $sl)))
+      (then (return (i32.add (local.get $cur) (i32.const 1)))))
+    (i32.const -1)
+  )
+
+  ;; sno_span — match one-or-more consecutive chars in set; return new cursor or -1.
+  (func $sno_span (export "sno_span")
+    (param $ho i32) (param $hl i32) (param $so i32) (param $sl i32) (param $cur i32)
+    (result i32)
+    (local $c i32)
+    ;; must match at least one
+    (if (i32.ge_u (local.get $cur) (local.get $hl)) (then (return (i32.const -1))))
+    (if (i32.eqz (local.get $sl)) (then (return (i32.const -1))))
+    (if (i32.eqz
+          (call $sno_char_in_set
+                (i32.load8_u (i32.add (local.get $ho) (local.get $cur)))
+                (local.get $so) (local.get $sl)))
+      (then (return (i32.const -1))))
+    (local.set $c (i32.add (local.get $cur) (i32.const 1)))
+    (block $done
+      (loop $loop
+        (br_if $done (i32.ge_u (local.get $c) (local.get $hl)))
+        (br_if $done
+          (i32.eqz
+            (call $sno_char_in_set
+                  (i32.load8_u (i32.add (local.get $ho) (local.get $c)))
+                  (local.get $so) (local.get $sl))))
+        (local.set $c (i32.add (local.get $c) (i32.const 1)))
+        (br $loop)))
+    (local.get $c)
+  )
+
+  ;; sno_break — advance cursor up to (but not including) first char in set.
+  ;; Succeeds even if zero chars consumed (cursor at set-char already → match 0).
+  ;; Returns new cursor (may equal $cur) or -1 if end of string reached without
+  ;; finding a set member.
+  (func $sno_break (export "sno_break")
+    (param $ho i32) (param $hl i32) (param $so i32) (param $sl i32) (param $cur i32)
+    (result i32)
+    (local $c i32)
+    (local.set $c (local.get $cur))
+    (block $done
+      (loop $loop
+        (br_if $done (i32.ge_u (local.get $c) (local.get $hl)))
+        (br_if $done
+          (call $sno_char_in_set
+                (i32.load8_u (i32.add (local.get $ho) (local.get $c)))
+                (local.get $so) (local.get $sl)))
+        (local.set $c (i32.add (local.get $c) (i32.const 1)))
+        (br $loop)))
+    ;; if we reached end without finding delimiter → fail
+    (if (i32.ge_u (local.get $c) (local.get $hl)) (then (return (i32.const -1))))
+    (local.get $c)
+  )
+
+  ;; sno_breakx — like BREAK but also consumes the delimiter char.
+  ;; Returns cursor past the delimiter, or -1.
+  (func $sno_breakx (export "sno_breakx")
+    (param $ho i32) (param $hl i32) (param $so i32) (param $sl i32) (param $cur i32)
+    (result i32)
+    (local $c i32)
+    (local.set $c
+      (call $sno_break
+            (local.get $ho) (local.get $hl)
+            (local.get $so) (local.get $sl) (local.get $cur)))
+    (if (i32.lt_s (local.get $c) (i32.const 0)) (then (return (i32.const -1))))
+    ;; advance past the delimiter
+    (i32.add (local.get $c) (i32.const 1))
+  )
+
 )
