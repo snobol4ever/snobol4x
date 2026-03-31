@@ -279,7 +279,6 @@ ScTokenArray snocone_lex(const char *source)
             int lno  = logical_start_line;
             int pos  = 0;
             int depth = 0;
-            int tok_start = acc.len; /* tokens before this line */
 
             while (pos < blen) {
                 char c = buf[pos];
@@ -338,10 +337,8 @@ ScTokenArray snocone_lex(const char *source)
                 /* semicolon: statement separator at depth 0, token inside parens */
                 if (c == ';') {
                     if (depth == 0) {
-                        /* end of statement: emit NEWLINE if any tokens produced */
-                        if (acc.len > tok_start)
-                            tb_push(&acc, SNOCONE_NEWLINE, "\n", 1, lno);
-                        tok_start = acc.len;
+                        /* end of statement: semicolon is the statement terminator */
+                        tb_push(&acc, SNOCONE_SEMICOLON, ";", 1, lno);
                     } else {
                         tb_push(&acc, SNOCONE_SEMICOLON, buf + pos, 1, lno);
                     }
@@ -374,9 +371,7 @@ ScTokenArray snocone_lex(const char *source)
                 }
             } /* while pos < blen */
 
-            /* end of logical line: emit NEWLINE if any tokens remain */
-            if (acc.len > tok_start)
-                tb_push(&acc, SNOCONE_NEWLINE, "\n", 1, lno);
+            /* end of logical line: newline is whitespace, no token emitted */
         }
         logical_len = 0;
     }
@@ -393,7 +388,6 @@ ScTokenArray snocone_lex(const char *source)
             int lno  = logical_start_line;
             int pos  = 0;
             int depth = 0;
-            int tok_start = acc.len; /* tokens before this line */
 
             while (pos < blen) {
                 char c = buf[pos];
@@ -452,10 +446,8 @@ ScTokenArray snocone_lex(const char *source)
                 /* semicolon: statement separator at depth 0, token inside parens */
                 if (c == ';') {
                     if (depth == 0) {
-                        /* end of statement: emit NEWLINE if any tokens produced */
-                        if (acc.len > tok_start)
-                            tb_push(&acc, SNOCONE_NEWLINE, "\n", 1, lno);
-                        tok_start = acc.len;
+                        /* end of statement: semicolon is the statement terminator */
+                        tb_push(&acc, SNOCONE_SEMICOLON, ";", 1, lno);
                     } else {
                         tb_push(&acc, SNOCONE_SEMICOLON, buf + pos, 1, lno);
                     }
@@ -488,9 +480,7 @@ ScTokenArray snocone_lex(const char *source)
                 }
             } /* while pos < blen */
 
-            /* end of logical line: emit NEWLINE if any tokens remain */
-            if (acc.len > tok_start)
-                tb_push(&acc, SNOCONE_NEWLINE, "\n", 1, lno);
+            /* end of logical line: newline is whitespace, no token emitted */
         }
 
     free(logical_buf);

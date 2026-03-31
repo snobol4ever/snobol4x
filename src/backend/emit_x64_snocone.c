@@ -309,7 +309,6 @@ static int lower_token(const ScPToken *tok, ExprStack *s,
     }
 
     /* ---- Statement terminators / control-flow keywords (handled by CF pass) ---- */
-    case SNOCONE_NEWLINE:
     case SNOCONE_SEMICOLON:
     case SNOCONE_EOF:
     case SNOCONE_KW_IF:
@@ -445,8 +444,7 @@ static void sc_advance(CfState *st) {
 }
 static void sc_skip_nl(CfState *st) {
     while (st->pos < st->count &&
-           (st->toks[st->pos].kind == SNOCONE_NEWLINE ||
-            st->toks[st->pos].kind == SNOCONE_SEMICOLON))
+           (st->toks[st->pos].kind == SNOCONE_SEMICOLON))
         st->pos++;
 }
 static int sc_consume_kw(CfState *st, SnoconeKind k) {
@@ -513,7 +511,7 @@ static STMT_t *sc_compile_expr(CfState *st, SnoconeKind stop_kind) {
     int depth = 0;
     while (st->pos < st->count) {
         SnoconeKind k = st->toks[st->pos].kind;
-        if (k == SNOCONE_NEWLINE || k == SNOCONE_SEMICOLON || k == SNOCONE_EOF) break;
+        if (k == SNOCONE_SEMICOLON || k == SNOCONE_EOF) break;
         if (k == SNOCONE_LPAREN || k == SNOCONE_LBRACKET) depth++;
         if (k == SNOCONE_RPAREN || k == SNOCONE_RBRACKET) {
             if (depth == 0 && stop_kind == SNOCONE_RPAREN) break;
@@ -532,7 +530,7 @@ static STMT_t *sc_compile_expr(CfState *st, SnoconeKind stop_kind) {
     ScPToken *buf = malloc(cap * sizeof(ScPToken));
     memcpy(buf, pr.tokens, pr.count * sizeof(ScPToken));
     ScPToken nl; memset(&nl, 0, sizeof nl);
-    nl.kind = SNOCONE_NEWLINE; nl.text = (char *)"\n";
+    nl.kind = SNOCONE_SEMICOLON; nl.text = (char *)";";
     buf[pr.count] = nl;
 
     /* --- inline expression lowering (no separate call) --- */
@@ -543,7 +541,7 @@ static STMT_t *sc_compile_expr(CfState *st, SnoconeKind stop_kind) {
 
     for (int i = 0; i < cap; i++) {
         const ScPToken *tok = &buf[i];
-        if (tok->kind == SNOCONE_NEWLINE || tok->kind == SNOCONE_SEMICOLON) {
+        if (tok->kind == SNOCONE_SEMICOLON) {
             if (estack.top > 0) {
                 STMT_t *s = assemble_stmt(&estack, last_ln);
                 if (s) {
@@ -593,7 +591,7 @@ static STMT_t *sc_compile_paren_expr(CfState *st) {
     ScPToken *buf = malloc(cap * sizeof(ScPToken));
     memcpy(buf, pr.tokens, pr.count * sizeof(ScPToken));
     ScPToken nl; memset(&nl, 0, sizeof nl);
-    nl.kind = SNOCONE_NEWLINE; nl.text = (char *)"\n";
+    nl.kind = SNOCONE_SEMICOLON; nl.text = (char *)";";
     buf[pr.count] = nl;
 
     Program   *eprog  = calloc(1, sizeof(Program));
@@ -602,7 +600,7 @@ static STMT_t *sc_compile_paren_expr(CfState *st) {
 
     for (int i = 0; i < cap; i++) {
         const ScPToken *tok = &buf[i];
-        if (tok->kind == SNOCONE_NEWLINE || tok->kind == SNOCONE_SEMICOLON) {
+        if (tok->kind == SNOCONE_SEMICOLON) {
             if (estack.top > 0) {
                 STMT_t *s = assemble_stmt(&estack, 1);
                 if (s) {
@@ -677,7 +675,7 @@ static void sc_do_block(CfState *st) {
 static void sc_do_return(CfState *st, SnoconeKind ret_kind) {
     sc_skip_nl(st);
     SnoconeKind next = sc_cur(st)->kind;
-    int has_expr = (next != SNOCONE_NEWLINE && next != SNOCONE_SEMICOLON &&
+    int has_expr = (next != SNOCONE_SEMICOLON &&
                     next != SNOCONE_RBRACE  && next != SNOCONE_EOF);
     if (has_expr && ret_kind != SNOCONE_KW_FRETURN) {
         STMT_t *val_s = sc_compile_expr(st, SNOCONE_EOF);
@@ -1098,13 +1096,13 @@ static void sc_do_stmt(CfState *st) {
     if (k == SNOCONE_RBRACE) return;
 
     /* ---- expression / assignment statement ---- */
-    if (k != SNOCONE_EOF && k != SNOCONE_NEWLINE && k != SNOCONE_SEMICOLON) {
+    if (k != SNOCONE_EOF && k != SNOCONE_SEMICOLON) {
         STMT_t *s = sc_compile_expr(st, SNOCONE_EOF);
         if (s) sc_prog_append(st, s);
         sc_skip_nl(st);
         return;
     }
-    if (k == SNOCONE_NEWLINE || k == SNOCONE_SEMICOLON) sc_advance(st);
+    if (k == SNOCONE_SEMICOLON) sc_advance(st);
 }
 
 /* =========================================================================
