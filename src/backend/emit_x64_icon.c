@@ -126,6 +126,29 @@ static char     cur_suspend_ret_label[64]=""; /* bare ret — frame kept alive f
 
 static void locals_reset(void) { cur_nlocals=0; cur_nparams=0; }
 
+/* =========================================================================
+ * BSS global variable type table (cross-procedure, persists for file)
+ * ======================================================================= */
+#define MAX_GVARS 64
+typedef struct { char name[32]; char type; } GVar;
+static GVar gvar_types[MAX_GVARS];
+static int  gvar_count = 0;
+
+static void globals_set_type(const char *name, char type) {
+    for (int i = 0; i < gvar_count; i++)
+        if (!strcmp(gvar_types[i].name, name)) { gvar_types[i].type = type; return; }
+    if (gvar_count < MAX_GVARS) {
+        strncpy(gvar_types[gvar_count].name, name, 31);
+        gvar_types[gvar_count].type = type;
+        gvar_count++;
+    }
+}
+static char globals_type(const char *name) {
+    for (int i = 0; i < gvar_count; i++)
+        if (!strcmp(gvar_types[i].name, name)) return gvar_types[i].type;
+    return '?';
+}
+
 /* Allocate an anonymous frame slot for a temporary (e.g. binop/relop lcache).
  * Returns the slot index; use slot_offset(slot) for rbp-relative access. */
 static int locals_alloc_tmp(void) {
@@ -178,7 +201,8 @@ static char icn_expr_kind(EXPR_t *n) {
         case E_VAR:
             if (strcmp(n->sval, "&subject") == 0) return 'S';
             if (strcmp(n->sval, "&pos")     == 0) return 'I';
-            return locals_type(n->sval);
+            { char k = locals_type(n->sval); if (k != '?') return k; }
+            return globals_type(n->sval);
         case E_FNC:
             /* Known string-returning builtins */
             if (n->nchildren >= 1 && n->children[0] &&
@@ -211,7 +235,10 @@ static void infer_local_types(EXPR_t *proc, int body_start) {
             EXPR_t *lhs = s->children[0], *rhs = s->children[1];
             if (lhs && lhs->kind == E_VAR) {
                 char k = icn_expr_kind(rhs);
-                if (k != '?') locals_set_type(lhs->sval, k);
+                if (k != '?') {
+                    if (locals_find(lhs->sval) >= 0) locals_set_type(lhs->sval, k);
+                    else                              globals_set_type(lhs->sval, k);
+                }
             }
         }
         for (int ci = 0; ci < s->nchildren; ci++) {
@@ -221,7 +248,10 @@ static void infer_local_types(EXPR_t *proc, int body_start) {
                 EXPR_t *lhs = c->children[0], *rhs = c->children[1];
                 if (lhs && lhs->kind == E_VAR) {
                     char k = icn_expr_kind(rhs);
-                    if (k != '?') locals_set_type(lhs->sval, k);
+                    if (k != '?') {
+                        if (locals_find(lhs->sval) >= 0) locals_set_type(lhs->sval, k);
+                        else                              globals_set_type(lhs->sval, k);
+                    }
                 }
             }
         }

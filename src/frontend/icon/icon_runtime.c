@@ -20,7 +20,7 @@ static void write_long(long v) {
 static long my_strlen(const char *s) { long n=0; while(s[n]) n++; return n; }
 
 void icn_write_int(long v) { write_long(v); }
-void icn_write_str(const char *s) { long l=my_strlen(s); write_bytes(s,l); write_bytes("\n",1); }
+void icn_write_str(const char *s) { if(!s) { write_bytes("\n",1); return; } long l=my_strlen(s); write_bytes(s,l); write_bytes("\n",1); }
 
 /* String concatenation arena — simple bump allocator, no GC needed for tiny programs */
 static char icn_str_arena[65536];

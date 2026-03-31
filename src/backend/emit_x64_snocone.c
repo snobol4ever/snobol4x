@@ -165,10 +165,13 @@ static int lower_token(const ScPToken *tok, ExprStack *s,
 
     /* ---- String / pattern composition ---- */
     case SNOCONE_CONCAT:   /* && → blank concat */
-    case SNOCONE_PIPE:     /* |  → concat in value context */
-    case SNOCONE_OR: {     /* || → pattern alternation → same IR */
+    case SNOCONE_PIPE: {   /* |  → blank concat in value context */
         EXPR_t *r = es_pop(s), *l = es_pop(s);
         es_push(s, expr_binary(E_CONCAT, l, r)); return 0;
+    }
+    case SNOCONE_OR: {     /* || → pattern alternation → E_ALT */
+        EXPR_t *r = es_pop(s), *l = es_pop(s);
+        es_push(s, expr_binary(E_ALT, l, r)); return 0;
     }
     case SNOCONE_PERIOD: {
         EXPR_t *var = es_pop(s), *expr = es_pop(s);
