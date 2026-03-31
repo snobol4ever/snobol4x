@@ -2,10 +2,11 @@
 ;; Standalone module: exports memory + all runtime functions.
 ;; Programs import from this module rather than inlining it.
 ;;
-;; Memory layout (2 pages = 128KB):
+;; Memory layout (3 pages = 192KB):
 ;;   [0  .. 32767]  output buffer  — written by sno_output_*; main() returns fill length
 ;;   [32768 .. 65535]  string heap — sno_str_alloc() bumps $str_ptr upward
 ;;   [65536 .. 131071]  program data segment — static string literals (STR_DATA_BASE=65536)
+;;   [131072 .. 196607]  Icon gen state — E_TO/E_TO_BY generator slots (ICN_GEN_STATE_BASE=0x20000)
 ;;
 ;; Compile once per session:
 ;;   wat2wasm --enable-tail-call sno_runtime.wat -o sno_runtime.wasm
@@ -15,7 +16,7 @@
 
 (module
   ;; ── Memory (exported so programs can read output buffer) ──────────────────
-  (memory (export "memory") 2)
+  (memory (export "memory") 3)
 
   (global $out_pos (mut i32) (i32.const 0))
   (global $str_ptr (mut i32) (i32.const 32768))
