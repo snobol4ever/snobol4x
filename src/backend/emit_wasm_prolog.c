@@ -69,6 +69,13 @@ static Program *g_prog = NULL;  /* set at emit start; used by emit_goals for pre
 
 static int g_clause_env_idx = 0;  /* bumped per clause emitted */
 
+/* Main-context flag: set while emitting main/0 body goals.
+ * When set, predicate calls must use (call) not (return_call) so sequential
+ * goals in main execute in order.  γ/ω are concrete funcref indices, not params. */
+static int g_in_main        = 0;
+static int g_main_gamma_idx = -1;  /* funcref index of pl_main_nop_gamma */
+static int g_main_omega_idx = -1;  /* funcref index of pl_main_nop_omega  */
+
 /* Head-param → clause-slot mapping for current clause being emitted.
  * Lets emit_goal pass local.get $a{i} instead of clause slot addr for
  * vars that were bound from head params (fixes recursive body call writeback). */
@@ -978,8 +985,14 @@ static void emit_goal(const EXPR_t *goal, int env_idx, int in_disj_left) {
                     emit_term_value(arg, env_idx);
                 }
             }
-            W("    (local.get $gamma_idx) (local.get $omega_idx)\n");
-            W("    (return_call $pl_%s_alpha)\n", mangled + 3);
+            if (g_in_main) {
+                W("    (i32.const %d) ;; main gamma_idx\n", g_main_gamma_idx);
+                W("    (i32.const %d) ;; main omega_idx\n", g_main_omega_idx);
+                W("    (call $pl_%s_alpha) drop\n", mangled + 3);
+            } else {
+                W("    (local.get $gamma_idx) (local.get $omega_idx)\n");
+                W("    (return_call $pl_%s_alpha)\n", mangled + 3);
+            }
             return;
         }
 
@@ -1002,8 +1015,14 @@ static void emit_goal(const EXPR_t *goal, int env_idx, int in_disj_left) {
                 emit_term_value(arg, env_idx);
             }
         }
-        W("    (local.get $gamma_idx) (local.get $omega_idx)\n");
-        W("    (return_call $pl_%s_alpha)\n", mangled + 3);
+        if (g_in_main) {
+            W("    (i32.const %d) ;; main gamma_idx\n", g_main_gamma_idx);
+            W("    (i32.const %d) ;; main omega_idx\n", g_main_omega_idx);
+            W("    (call $pl_%s_alpha) drop\n", mangled + 3);
+        } else {
+            W("    (local.get $gamma_idx) (local.get $omega_idx)\n");
+            W("    (return_call $pl_%s_alpha)\n", mangled + 3);
+        }
         return;
     }
 }
@@ -1314,8 +1333,15 @@ static void emit_pl_main(Program *prog) {
         int env_idx = g_clause_env_idx++;
         W("    ;; main/0 (n_vars=%d env=%d)\n", n_vars, env_idx);
 
+        /* Register terminal continuations for top-level sequential calls.
+         * pl_main_nop_gamma: succeeds silently (main continues sequentially).
+         * pl_main_nop_omega: failure from top-level call — just return 0. */
+        g_main_gamma_idx = cont_register("pl_main_nop_gamma");
+        g_main_omega_idx = cont_register("pl_main_nop_omega");
+        g_in_main = 1;
         for (int bi = n_args; bi < clause->nchildren; bi++)
             emit_goals(clause->children[bi], env_idx, 0);
+        g_in_main = 0;
         break;
     }
 
@@ -1375,10 +1401,19 @@ static void emit_cont_functions_and_table(void) {
         int is_gamma     = (strstr(name, "_gamma_") != NULL);
         int is_body_gt   = (strstr(name, "_bgt_gamma_") != NULL ||
                             strstr(name, "_bgt_omega_") != NULL);
+        int is_main_nop  = (strstr(name, "_nop_gamma") != NULL ||
+                            strstr(name, "_nop_omega")  != NULL);
 
         W("  (func $%s (param $trail i32) (result i32)\n", name);
 
-        if (is_body_gt) {
+        if (is_main_nop) {
+            /* pl_main_nop_gamma / pl_main_nop_omega: trivial continuations for
+             * top-level sequential calls from main.  γ succeeds silently; ω fails
+             * silently.  main already uses (call) not (return_call) so it continues
+             * sequentially regardless. */
+            W("    ;; main nop continuation — return 0\n");
+            W("    (i32.const 0)\n");
+        } else if (is_body_gt) {
             /* Body-GT inner γ/ω: just set the per-site flag, return 0.
              * The inline loop in the clause body handles cp_pop and continuation. */
             /* Extract bsite index from suffix */
