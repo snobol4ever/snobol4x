@@ -5,7 +5,10 @@
 ;;   [8192..32767]  string/atom heap (growing upward)
 ;;   [32768..49151] variable env frames (growing upward)
 ;;   [49152..57343] trail stack (growing upward, 8KB)
-;;   [57344..131071] term heap (growing upward, 64KB)
+;;   [57344..65535] choice-point (CP) stack (growing upward, 8KB)
+;;                  Each frame = 32 bytes: {pred_id i32, ci i32, trail_mark i32,
+;;                  a0..a4 i32}  (5 arg slots — enough for rung05–rung09)
+;;   [65536..131071] term heap (growing upward, 64KB)
 ;;
 ;; Import namespace: "pl" — used by emit_wasm_prolog.c programs.
 ;;
@@ -13,9 +16,10 @@
 ;;   M-PW-SCAFFOLD  stub (PW-1 2026-03-30)
 ;;   M-PW-HELLO     pl_output_str/nl/flush confirmed working
 ;;   M-PW-A01       trail_mark/unwind + pl_unify_atom + pl_var_bind/deref
+;;   M-PW-B01       cp_push/cp_get_ci/cp_set_ci/cp_get_arg/cp_pop (PW-13 2026-03-31)
 
 (module
-  (memory (export "memory") 2)   ;; 128KB
+  (memory (export "memory") 3)   ;; 192KB (3 pages): output+atoms+env+trail+CP+termheap
 
   ;; ── Output buffer ──────────────────────────────────────────────────────
   (global $out_pos (mut i32) (i32.const 0))  ;; current write position
@@ -80,8 +84,66 @@
     (global.set $trail_top (local.get $mark))
   )
 
+  ;; ── Choice-point (CP) stack ─────────────────────────────────────────────
+  ;; CP stack: [57344..65535] (8KB = 256 frames × 32 bytes)
+  ;; Frame layout (8 words × 4 bytes = 32 bytes):
+  ;;   [+0]  pred_id    i32  (opaque tag — for debugging)
+  ;;   [+4]  ci         i32  (current clause index — mutable, updated by gamma)
+  ;;   [+8]  trail_mark i32  (trail top at call time — for unwind on retry)
+  ;;   [+12] a0..a4     i32  (5 arg slots — enough through rung09 builtins)
+  ;; $cp_top: byte address of NEXT free slot (stack grows upward)
+  (global $cp_top      (mut i32) (i32.const 57344))
+  (global $CP_BASE           i32 (i32.const 57344))
+  (global $CP_FRAME_SZ       i32 (i32.const 32))
+
+  ;; Push a new CP frame.  Supply 0 for unused arg slots.
+  (func (export "cp_push")
+    (param $pred_id i32) (param $ci i32) (param $tm i32)
+    (param $a0 i32) (param $a1 i32) (param $a2 i32) (param $a3 i32) (param $a4 i32)
+    (i32.store (global.get $cp_top)                            (local.get $pred_id))
+    (i32.store (i32.add (global.get $cp_top) (i32.const  4))   (local.get $ci))
+    (i32.store (i32.add (global.get $cp_top) (i32.const  8))   (local.get $tm))
+    (i32.store (i32.add (global.get $cp_top) (i32.const 12))   (local.get $a0))
+    (i32.store (i32.add (global.get $cp_top) (i32.const 16))   (local.get $a1))
+    (i32.store (i32.add (global.get $cp_top) (i32.const 20))   (local.get $a2))
+    (i32.store (i32.add (global.get $cp_top) (i32.const 24))   (local.get $a3))
+    (i32.store (i32.add (global.get $cp_top) (i32.const 28))   (local.get $a4))
+    (global.set $cp_top (i32.add (global.get $cp_top) (i32.const 32)))
+  )
+
+  ;; Read ci from top frame (does NOT pop)
+  (func (export "cp_get_ci") (result i32)
+    (i32.load
+      (i32.add (i32.sub (global.get $cp_top) (i32.const 32)) (i32.const 4)))
+  )
+
+  ;; Update ci in top frame (gamma calls this after each solution)
+  (func (export "cp_set_ci") (param $ci i32)
+    (i32.store
+      (i32.add (i32.sub (global.get $cp_top) (i32.const 32)) (i32.const 4))
+      (local.get $ci))
+  )
+
+  ;; Read argument n (0..4) from top frame
+  (func (export "cp_get_arg") (param $n i32) (result i32)
+    (i32.load
+      (i32.add
+        (i32.sub (global.get $cp_top) (i32.const 32))
+        (i32.add (i32.const 12) (i32.mul (local.get $n) (i32.const 4)))))
+  )
+
+  ;; Read trail_mark from top frame (used by retry to unwind bindings)
+  (func (export "cp_get_trail_mark") (result i32)
+    (i32.load
+      (i32.add (i32.sub (global.get $cp_top) (i32.const 32)) (i32.const 8)))
+  )
+
+  ;; Pop (discard) top frame
+  (func (export "cp_pop")
+    (global.set $cp_top (i32.sub (global.get $cp_top) (i32.const 32)))
+  )
+
   ;; ── Variable binding ────────────────────────────────────────────────────
-  ;; Stub: bind slot $slot to value $val, push slot to trail
   (func (export "var_bind") (param $slot i32) (param $val i32)
     ;; push slot address to trail
     (i32.store

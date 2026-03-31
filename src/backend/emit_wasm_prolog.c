@@ -140,7 +140,7 @@ static const char *pl_mangle(const char *functor, int arity) {
 /* ── Runtime imports ───────────────────────────────────────────────────── */
 static void emit_pl_runtime_imports(void) {
     W(";; Prolog WASM runtime imports (pl_runtime.wat)\n");
-    W("  (import \"pl\" \"memory\"         (memory 2))\n");
+    W("  (import \"pl\" \"memory\"         (memory 3))\n");
     W("  (import \"pl\" \"trail_mark\"      (func $trail_mark      (result i32)))\n");
     W("  (import \"pl\" \"trail_unwind\"    (func $trail_unwind    (param i32)))\n");
     W("  (import \"pl\" \"output_str\"      (func $pl_output_str   (param i32 i32)))\n");
@@ -155,6 +155,12 @@ static void emit_pl_runtime_imports(void) {
     W("  (import \"pl\" \"is_cons\"         (func $pl_is_cons      (param i32) (result i32)))  \n");
     W("  (import \"pl\" \"cons_head\"       (func $pl_cons_head    (param i32) (result i32)))\n");
     W("  (import \"pl\" \"cons_tail\"       (func $pl_cons_tail    (param i32) (result i32)))\n");
+    W("  (import \"pl\" \"cp_push\"         (func $pl_cp_push      (param i32 i32 i32 i32 i32 i32 i32 i32)))\n");
+    W("  (import \"pl\" \"cp_get_ci\"       (func $pl_cp_get_ci    (result i32)))\n");
+    W("  (import \"pl\" \"cp_set_ci\"       (func $pl_cp_set_ci    (param i32)))\n");
+    W("  (import \"pl\" \"cp_get_arg\"      (func $pl_cp_get_arg   (param i32) (result i32)))\n");
+    W("  (import \"pl\" \"cp_get_trail_mark\" (func $pl_cp_get_trail_mark (result i32)))\n");
+    W("  (import \"pl\" \"cp_pop\"          (func $pl_cp_pop))\n");
     /* Continuation type: (trail i32) → i32 — used by return_call_indirect for γ/ω */
     W("  (type $pl_cont_t (func (param i32) (result i32)))\n");
     W("\n");
@@ -1059,70 +1065,71 @@ static void emit_goals(const EXPR_t *g, int env_idx, int in_disj_left) {
                           arg_slots[ai], ai);
                 }
 
-                /* GT loop model:
+                /* GT loop model (CP-stack, M-PW-B01):
+                 *   cp_push(pred_id, ci=0, trail_mark, a0..a4)
                  *   (loop $gt_N)
-                 *     clear V slots; call $pl_foo_N_call(trail, args, γ, ω, ci_local)
-                 *     if mem[PL_GT_FLAG]==1: body goals run inside γ; advance ci; br $gt_N
-                 *     else: ω fired — fall through to (br $disj_end)
-                 *   Recursive calls inside clause bodies use their own alpha/beta frames
-                 *   and never touch main's ci local → no corruption. */
-                GTSiteData *sd_pre = (gt_site_total > 0) ? &gt_site_data[gt_site_total-1] : NULL;
+                 *     clear V slots; call $pl_foo_N_call(trail, args, γ, ω, cp_get_ci())
+                 *     if PL_GT_FLAG==1: γ already called cp_set_ci(ci+1); br $gt_N
+                 *     else: ω fired — cp_pop(); fall through
+                 *   Each recursive call inside a clause body pushes its OWN frame,
+                 *   so inner-frame ci never touches outer-frame ci. */
+                GTSiteData *sd_cur = (gt_site_total > 0) ? &gt_site_data[gt_site_total-1] : NULL;
+                (void)sd_cur;
 
-                /* Declare the per-site ci local name (already declared in main preamble) */
-                const char *ci_local = (sd_pre && sd_pre->mangled[0])
-                                       ? sd_pre->mangled : mangled;
+                /* Capture ground arg values to emit into cp_push */
+                /* We need up to 5 args (pad with 0) */
+                int cp_arity = (n_call_args > 5) ? 5 : n_call_args;
 
-                /* Initialize ci local and GT flag */
-                W("    (local.set $ci_%s (i32.const 0)) ;; GT ci init\n", ci_local);
+                /* Initialize GT flag and clear var slots before loop */
                 W("    (i32.store (i32.const %d) (i32.const 0)) ;; GT flag init\n",
                   PL_GT_FLAG);
-
-                /* Clear var slots before loop */
                 for (int ai = 0; ai < n_call_args; ai++) {
                     if (arg_slots[ai] >= 0)
                         W("    (i32.store (i32.const %d) (i32.const 0)) ;; clear V%d\n",
                           arg_slots[ai], ai);
                 }
 
-                /* Store ground args into scratch cells */
-                GTSiteData *sd_cur = (gt_site_total > 0) ? &gt_site_data[gt_site_total-1] : NULL;
-                if (sd_cur) {
-                    for (int ai = 0; ai < n_call_args; ai++) {
-                        if (sd_cur->ground_cells[ai] >= 0) {
-                            W("    (i32.const %d)\n", sd_cur->ground_cells[ai]);
-                            emit_term_value(pred_call->children[ai], env_idx);
-                            W("    (i32.store)\n");
-                        }
+                /* Push choice-point frame: cp_push(pred_id, 0, trail, a0..a4) */
+                W("    ;; CP push for GT site %d (%s/%d)\n", site_id, pred_call->sval, n_call_args);
+                W("    (i32.const %d)            ;; pred_id (site_id)\n", site_id);
+                W("    (i32.const 0)             ;; ci=0\n");
+                W("    (call $trail_mark)        ;; trail_mark snapshot\n");
+                for (int ai = 0; ai < 5; ai++) {
+                    if (ai < n_call_args) {
+                        EXPR_t *arg = pred_call->children[ai];
+                        if (!arg) { W("    (i32.const 0) ;; a%d=null\n", ai); }
+                        else if (arg_slots[ai] >= 0)
+                            W("    (i32.const %d) ;; a%d=slot addr V%d\n", arg_slots[ai], ai, ai);
+                        else
+                            emit_term_value(arg, env_idx); /* ground term */
+                    } else {
+                        W("    (i32.const 0) ;; a%d=unused\n", ai);
                     }
                 }
+                W("    (call $pl_cp_push)\n");
+                (void)cp_arity;
 
                 W("    (loop $gt_%d\n", site_id);
 
-                /* Call _call wrapper with ci local */
+                /* Call _call wrapper with ci from CP top */
                 W("      (local.get $trail)\n");
                 for (int ai = 0; ai < n_call_args; ai++) {
-                    EXPR_t *arg = pred_call->children[ai];
-                    if (!arg) { W("      (i32.const 0)\n"); continue; }
                     if (arg_slots[ai] >= 0)
                         W("      (i32.const %d) ;; slot addr V%d\n", arg_slots[ai], ai);
-                    else if (sd_cur && sd_cur->ground_cells[ai] >= 0)
-                        W("      (i32.load (i32.const %d)) ;; ground arg %d\n",
-                          sd_cur->ground_cells[ai], ai);
                     else
-                        emit_term_value(arg, env_idx);
+                        W("      (call $pl_cp_get_arg (i32.const %d)) ;; ground a%d\n", ai, ai);
                 }
                 W("      (i32.const %d) ;; gamma_idx\n", gamma_idx);
                 W("      (i32.const %d) ;; omega_idx\n", omega_idx);
-                W("      (local.get $ci_%s) ;; ci\n", ci_local);
+                W("      (call $pl_cp_get_ci)    ;; ci from CP top\n");
                 W("      (call $pl_%s_call) drop\n", mangled + 3);
 
-                /* Poll flag: if γ fired (=1), advance ci, loop; else exit */
+                /* Poll flag: if γ fired (=1) it already advanced CP ci; loop; else pop+exit */
                 W("      (if (i32.load (i32.const %d)) (then\n", PL_GT_FLAG);
-                W("        (local.set $ci_%s\n", ci_local);
-                W("          (i32.add (local.get $ci_%s) (i32.const 1)))\n", ci_local);
                 W("        (br $gt_%d)\n", site_id);
                 W("      ))\n");
                 W("    ) ;; $gt_%d\n", site_id);
+                W("    (call $pl_cp_pop) ;; discard CP frame\n");
 
                 W("    ;; ω fired — all solutions exhausted\n");
                 W("    (br $disj_end)\n");
@@ -1198,9 +1205,6 @@ static void emit_pl_main(Program *prog) {
     W("    (local $trail i32)\n");
     W("    (local $tmp i32)\n");
     W("    (local $tbl_entry i32)\n");
-    /* Declare ci locals for each generate-and-test predicate */
-    for (int i = 0; i < gt_pred_count; i++)
-        W("    (local $ci_%s i32)\n", gt_pred_names[i]);
     W("    (local.set $trail (call $trail_mark))\n");
 
     if (!prog) goto done;
@@ -1300,8 +1304,13 @@ static void emit_cont_functions_and_table(void) {
             (void)site_str;
 
             if (sd) {
-                W("    ;; γ for GT site %d (%s/%d): set flag, run body goals, return 0\n",
+                W("    ;; γ for GT site %d (%s/%d): advance CP ci, run body goals, return 0\n",
                   site_id, sd->mangled, sd->arity);
+
+                /* Advance CP ci FIRST (before body goals, so recursive sub-calls
+                 * that backtrack cannot see a stale ci in this frame) */
+                W("    (call $pl_cp_set_ci\n");
+                W("      (i32.add (call $pl_cp_get_ci) (i32.const 1)))\n");
 
                 /* Signal main's loop: a solution was found */
                 W("    (i32.store (i32.const %d) (i32.const 1)) ;; GT flag=1 (γ fired)\n",
@@ -1311,8 +1320,9 @@ static void emit_cont_functions_and_table(void) {
                 for (int gi = 0; gi < sd->n_body_goals; gi++)
                     emit_goal(sd->body_goals[gi], sd->env_idx, 0);
 
-                /* Unwind trail — undo this clause's bindings for next retry */
-                W("    (call $trail_unwind (local.get $trail))\n");
+                /* Unwind trail — undo this clause's bindings for next retry.
+                 * Use CP trail_mark (snapshot at cp_push time) for correctness. */
+                W("    (call $trail_unwind (call $pl_cp_get_trail_mark))\n");
 
                 /* Reset var slots so _call can rebind on next solution */
                 for (int ai = 0; ai < sd->arity; ai++) {
@@ -1328,8 +1338,9 @@ static void emit_cont_functions_and_table(void) {
                 W("    (i32.const 0) ;; γ stub (no site data)\n");
             }
         } else {
-            /* ω: all solutions exhausted — clear GT flag, return 0 */
-            W("    ;; ω: clear GT flag\n");
+            /* ω: all solutions exhausted — pop CP frame, clear GT flag, return 0 */
+            W("    ;; ω: pop CP frame + clear GT flag\n");
+            W("    (call $pl_cp_pop)\n");
             W("    (i32.store (i32.const %d) (i32.const 0))\n", PL_GT_FLAG);
             W("    (i32.const 0)\n");
         }
