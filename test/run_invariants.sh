@@ -671,22 +671,37 @@ run_snocone_x86() {
   echo "$fail"  > "$RESULTS/${cell}_fail"
 }
 
-# ── Serial dispatch — all 7 cells run sequentially, no background forks ───────
-# Parallel dispatch caused suite-level timeouts in Claude session environment:
-# all 7 cells started simultaneously, saturating the container before any
-# finished. Serial execution is slower but completes reliably. Per-test timeouts
-# (TIMEOUT_X86=5, TIMEOUT_JVM=10) and per-suite ceilings (jasmin=60s,
-# SnoHarness=120s) still protect against individual hangs.
-run_snobol4_wasm
-run_snobol4_x86
-run_snobol4_jvm
-run_snobol4_net
-run_icon_x86
-run_icon_jvm
-run_icon_wasm
-run_prolog_x86
-run_prolog_jvm
-run_snocone_x86
+# ── Serial dispatch — filtered by requested cells ─────────────────────────────
+# If one or more cell names are passed as args, only those suites run.
+# If no args given, all suites run (G-sessions / full baseline check).
+# Parallel dispatch caused suite-level timeouts; serial execution is reliable.
+_run_cell() {
+  local cell="$1"
+  # If cells were requested, skip unless this cell was listed
+  if [[ -n "$_cells_arg" ]] && ! echo "$_cells_arg" | grep -qw "$cell"; then
+    echo "SKIP" > "$RESULTS/${cell}_status"; return
+  fi
+  case "$cell" in
+    snobol4_wasm) run_snobol4_wasm ;;
+    snobol4_x86)  run_snobol4_x86  ;;
+    snobol4_jvm)  run_snobol4_jvm  ;;
+    snobol4_net)  run_snobol4_net  ;;
+    icon_x86)     run_icon_x86     ;;
+    icon_jvm)     run_icon_jvm     ;;
+    icon_wasm)    run_icon_wasm    ;;
+    prolog_x86)   run_prolog_x86   ;;
+    prolog_jvm)   run_prolog_jvm   ;;
+    prolog_wasm)  run_prolog_wasm  ;;
+    snocone_x86)  run_snocone_x86  ;;
+  esac
+}
+
+for _cell in snobol4_wasm snobol4_x86 snobol4_jvm snobol4_net \
+             icon_x86 icon_jvm icon_wasm \
+             prolog_x86 prolog_jvm prolog_wasm \
+             snocone_x86; do
+  _run_cell "$_cell"
+done
 
 # ── Results matrix ────────────────────────────────────────────────────────────
 END_TIME=$(date +%s%N 2>/dev/null || date +%s)
@@ -746,7 +761,6 @@ run_prolog_wasm() {
   echo "$pass" > "$RESULTS/${cell}_pass"
   echo "$fail"  > "$RESULTS/${cell}_fail"
 }
-run_prolog_wasm
 
 any_fail() {
   local cell="$1"
