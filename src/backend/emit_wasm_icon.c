@@ -1006,18 +1006,22 @@ static void emit_expr_wasm(const EXPR_t *n,
                     WI("    global.set $icn_param%d\n", ai);
                     WI("    return_call $%s)\n", next_buf);
                 }
-                /* Register esucc in retcont table; docall saves frame then calls proc */
+                /* Register esucc+efail in retcont table; docall pushes both */
                 int retcont_idx = icn_retcont_register(esucc);
+                int efail_idx   = icn_retcont_register(ra);
                 WI("  (func $icon%d_docall (result i32)\n", id);
                 emit_frame_push(nints_to_save, callee_nparams);  /* IW-10 */
                 WI("    i32.const %d\n", retcont_idx);
+                WI("    i32.const %d\n", efail_idx);
                 WI("    call $icn_retcont_push\n");
                 WI("    return_call $icn_proc_%s_start)\n", fname);
             } else {
                 int retcont_idx = icn_retcont_register(esucc);
+                int efail_idx   = icn_retcont_register(ra);
                 WI("  (func $%s (result i32)\n", sa);
                 emit_frame_push(nints_to_save, callee_nparams);  /* IW-10 */
                 WI("    i32.const %d\n", retcont_idx);
+                WI("    i32.const %d\n", efail_idx);
                 WI("    call $icn_retcont_push\n");
                 WI("    return_call $icn_proc_%s_start)\n", fname);
             }
@@ -1152,8 +1156,12 @@ void emit_wasm_icon_globals(FILE *out) {
     WI("  ;; IW-9: retcont stack (handles recursion)\n");
     WI("  ;; SP stored at mem[0x%x]; stack data at mem[0x%x]\n",
        ICON_RETCONT_SP_ADDR, ICON_RETCONT_STACK_BASE);
-    /* Inline SP init — runtime initialises to stack base on first call via data segment */
-    WI("  (func $icn_retcont_push (param $idx i32)\n");
+    /* IW-15: two-slot retcont — push [efail_idx, esucc_idx] (8 bytes per frame).
+     * efail_idx at lower address, esucc_idx at higher.
+     * retcont_push(esucc_idx, efail_idx): stores efail@sp, esucc@sp+4, SP+=8.
+     * retcont_pop(): SP-=4, returns mem[SP] (esucc_idx), frame_depth--.
+     * retcont_pop_fail(): SP-=8, returns mem[SP] (efail_idx), frame_depth--. */
+    WI("  (func $icn_retcont_push (param $esucc_idx i32) (param $efail_idx i32)\n");
     WI("    (local $sp i32)\n");
     /* load SP; if zero (uninitialised), set to stack base */
     WI("    i32.const %d\n", ICON_RETCONT_SP_ADDR);
@@ -1165,14 +1173,20 @@ void emit_wasm_icon_globals(FILE *out) {
     WI("      i32.store\n");
     WI("      i32.const %d\n", ICON_RETCONT_STACK_BASE);
     WI("      local.set $sp))\n");
-    /* mem[sp] = idx */
+    /* mem[sp] = efail_idx */
     WI("    local.get $sp\n");
-    WI("    local.get $idx\n");
+    WI("    local.get $efail_idx\n");
     WI("    i32.store\n");
-    /* SP += 4 */
-    WI("    i32.const %d\n", ICON_RETCONT_SP_ADDR);
+    /* mem[sp+4] = esucc_idx */
     WI("    local.get $sp\n");
     WI("    i32.const 4\n");
+    WI("    i32.add\n");
+    WI("    local.get $esucc_idx\n");
+    WI("    i32.store\n");
+    /* SP += 8 */
+    WI("    i32.const %d\n", ICON_RETCONT_SP_ADDR);
+    WI("    local.get $sp\n");
+    WI("    i32.const 8\n");
     WI("    i32.add\n");
     WI("    i32.store\n");
     /* frame_depth++ */
@@ -1180,15 +1194,39 @@ void emit_wasm_icon_globals(FILE *out) {
     WI("    i32.const 1\n");
     WI("    i32.add\n");
     WI("    global.set $icn_frame_depth)\n");
+    /* retcont_pop: pops esucc_idx (top slot), decrements frame_depth */
     WI("  (func $icn_retcont_pop (result i32)\n");
     WI("    (local $sp i32)\n");
-    /* sp = current_sp - 4 */
+    /* sp = current_sp - 4 (esucc slot) */
     WI("    i32.const %d\n", ICON_RETCONT_SP_ADDR);
     WI("    i32.load\n");
     WI("    i32.const 4\n");
     WI("    i32.sub\n");
     WI("    local.set $sp\n");
-    /* store new SP */
+    /* new SP = sp - 4 (discard whole 8-byte frame) */
+    WI("    i32.const %d\n", ICON_RETCONT_SP_ADDR);
+    WI("    local.get $sp\n");
+    WI("    i32.const 4\n");
+    WI("    i32.sub\n");
+    WI("    i32.store\n");
+    /* frame_depth-- */
+    WI("    global.get $icn_frame_depth\n");
+    WI("    i32.const 1\n");
+    WI("    i32.sub\n");
+    WI("    global.set $icn_frame_depth\n");
+    /* return mem[sp] = esucc_idx */
+    WI("    local.get $sp\n");
+    WI("    i32.load)\n");
+    /* retcont_pop_fail: pops efail_idx (low slot), decrements frame_depth */
+    WI("  (func $icn_retcont_pop_fail (result i32)\n");
+    WI("    (local $sp i32)\n");
+    /* sp = current_sp - 8 (efail slot) */
+    WI("    i32.const %d\n", ICON_RETCONT_SP_ADDR);
+    WI("    i32.load\n");
+    WI("    i32.const 8\n");
+    WI("    i32.sub\n");
+    WI("    local.set $sp\n");
+    /* new SP = sp (discard whole 8-byte frame) */
     WI("    i32.const %d\n", ICON_RETCONT_SP_ADDR);
     WI("    local.get $sp\n");
     WI("    i32.store\n");
@@ -1197,7 +1235,7 @@ void emit_wasm_icon_globals(FILE *out) {
     WI("    i32.const 1\n");
     WI("    i32.sub\n");
     WI("    global.set $icn_frame_depth\n");
-    /* return mem[sp] */
+    /* return mem[sp] = efail_idx */
     WI("    local.get $sp\n");
     WI("    i32.load)\n");
     WI("  (global $icn_retcont (mut i32) (i32.const 0))\n");
@@ -1301,8 +1339,11 @@ static void emit_wasm_icon_proc(const EXPR_t *proc) {
     const char *last_succ = is_main_proc ? "icn_prog_end"
                                          : (char[64]){};
     char retcont_func[64];
-    if (!is_main_proc)
+    char pfail_func_name[160];
+    if (!is_main_proc) {
         snprintf(retcont_func, sizeof retcont_func, "icn_proc_%s_retcont", pname);
+        snprintf(pfail_func_name, sizeof pfail_func_name, "icn_proc_%s_pfail", pname);
+    }
 
     for (int i = 0; i < nstmts; i++) {
         const char *next;
@@ -1310,7 +1351,8 @@ static void emit_wasm_icon_proc(const EXPR_t *proc) {
         if (i + 1 < nstmts) {
             next = stmt_start[i+1];
         } else {
-            next = is_main_proc ? "icn_prog_end" : retcont_func;
+            /* chain-end: main → prog_end; non-main → pfail (fell off without return) */
+            next = is_main_proc ? "icn_prog_end" : pfail_func_name;
         }
         (void)last_succ;
         WI("  (func $%s (result i32)  return_call $%s)  ;; chain %d->%d\n",
@@ -1318,10 +1360,15 @@ static void emit_wasm_icon_proc(const EXPR_t *proc) {
         (void)next_buf;
     }
 
-    /* Emit retcont trampoline for non-main procs */
+    /* Emit retcont trampolines for non-main procs (IW-15: two-slot) */
     if (!is_main_proc) {
+        /* success path: retcont_pop returns esucc_idx */
         WI("  (func $%s (result i32)\n", retcont_func);
-        WI("    call $icn_retcont_pop\n");  /* IW-9: pop stack for recursion */
+        WI("    call $icn_retcont_pop\n");
+        WI("    return_call_indirect (type $cont_t))\n");
+        /* fail path: proc fell off end without return */
+        WI("  (func $%s (result i32)\n", pfail_func_name);
+        WI("    call $icn_retcont_pop_fail\n");
         WI("    return_call_indirect (type $cont_t))\n");
     }
 
