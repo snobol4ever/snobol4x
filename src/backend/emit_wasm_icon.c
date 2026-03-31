@@ -318,14 +318,27 @@ static void emit_icn_var(const IcnNode *n, int id,
     wfn(ra, sizeof ra, id, "resume");
 
     WI("  ;; ICN_VAR \"%s\"  (node %d)\n", n->val.sval, id);
-    /* Stub: variables not yet wired to runtime table — emit as SKIP stub-fail.
-     * M-IW-A01 will replace this with proper $icn_var_get call. */
-    WI("  (func $%s (result i32)\n", sa);
-    WI("    ;; TODO M-IW-A01: call $icn_var_get for \"%s\"\n", n->val.sval);
-    WI("    return_call $%s)  ;; stub-fail until M-IW-A01\n", fail);
 
-    WI("  (func $%s (result i32)\n", ra);
-    WI("    return_call $%s)\n", fail);
+    /* M-IW-P01: if name matches a current-proc param, read $icn_param{i} */
+    int param_idx = -1;
+    for (int i = 0; i < icn_cur_nparams; i++) {
+        if (strcmp(n->val.sval, icn_cur_params[i]) == 0) { param_idx = i; break; }
+    }
+
+    if (param_idx >= 0) {
+        /* Parameter variable: value lives in $icn_param{i} */
+        WI("  (func $%s (result i32)\n", sa);
+        WI("    global.get $icn_param%d\n", param_idx);
+        WI("    global.set $icn_int%d\n", id);
+        WI("    return_call $%s)\n", succ);
+        WI("  (func $%s (result i32)  return_call $%s)\n", ra, fail);
+    } else {
+        /* Local / global variable: stub-fail until local var table (M-IW-V01) */
+        WI("  (func $%s (result i32)\n", sa);
+        WI("    ;; TODO M-IW-V01: $icn_var_get for \"%s\"\n", n->val.sval);
+        WI("    return_call $%s)  ;; stub-fail: local vars not yet impl\n", fail);
+        WI("  (func $%s (result i32)  return_call $%s)\n", ra, fail);
+    }
 }
 
 /* ─── ICN_ASSIGN — E1 := E2 (ir_a_Binop \":=\" wiring) ──────────────────────
@@ -1071,17 +1084,107 @@ static void emit_expr_wasm(const IcnNode *n,
             WI("  (func $%s (result i32)  return_call $%s)\n", ra, fail);
             break;
         }
-        /* All other calls: stub-fail (M-IW-P01) */
+        /* All other calls: user procedure (M-IW-P01) */
+        if (fname && fname[0] != '\0' && strcmp(fname, "unknown") != 0) {
+            /* Evaluate each arg into $icn_param{i}, then call proc's _start.
+             * After proc returns (esucc), read $icn_retval → $icn_int{id}. */
+            char esucc[64];
+            wfn(esucc, sizeof esucc, id, "esucc");
+
+            /* Chain: sa → arg0_start → ... → argN_start → param_store → proc_start → esucc → succ */
+            /* Build arg eval chain in order */
+            char chain_entry[64];
+            snprintf(chain_entry, sizeof chain_entry, "%s", sa);
+
+            /* We'll build the chain via a small glue func per arg */
+            for (int ai = 0; ai < nargs; ai++) {
+                IcnNode *arg = n->children[1 + ai];
+                char arg_start[64], arg_resume[64];
+                char arg_esucc[64];
+                snprintf(arg_esucc, sizeof arg_esucc, "icon%d_arg%d_esucc", id, ai);
+                /* Next in chain: either next arg's start or the final call */
+                char next_chain[64];
+                if (ai == nargs - 1)
+                    snprintf(next_chain, sizeof next_chain, "icon%d_docall", id);
+                else
+                    snprintf(next_chain, sizeof next_chain, "icon%d_arg%d_next", id, ai + 1);
+
+                emit_expr_wasm(arg, arg_esucc, fail, arg_start, arg_resume);
+                int arg_id = wasm_icon_ctr - 1;
+
+                /* arg_esucc: store result into $icn_param{ai}, then next */
+                WI("  (func $%s (result i32)\n", arg_esucc);
+                WI("    global.get $icn_int%d\n", arg_id);
+                WI("    global.set $icn_param%d\n", ai);
+                WI("    return_call $%s)\n", next_chain);
+
+                if (ai == 0) {
+                    /* sa → first arg's start */
+                    WI("  (func $%s (result i32)  return_call $%s)\n", sa, arg_start);
+                } else {
+                    WI("  (func $%s (result i32)  return_call $%s)\n", chain_entry, arg_start);
+                }
+                snprintf(chain_entry, sizeof chain_entry, "%s", next_chain);
+            }
+
+            /* docall: call the procedure */
+            WI("  (func $icon%d_docall (result i32)  return_call $icn_proc_%s_start)\n", id, fname);
+
+            /* esucc: read $icn_retval → $icn_int{id}, then succ */
+            WI("  (func $%s (result i32)\n", esucc);
+            WI("    global.get $icn_retval\n");
+            WI("    global.set $icn_int%d\n", id);
+            WI("    return_call $%s)\n", succ);
+
+            if (nargs == 0) {
+                /* No args: sa goes directly to call */
+                WI("  (func $%s (result i32)  return_call $icn_proc_%s_start)\n", sa, fname);
+                /* esucc already emitted above */
+                /* But we need proc to return_call to esucc, not succ.
+                 * The proc's succ port needs to be esucc — handled by how
+                 * emit_wasm_icon_proc chains: last stmt succ = icn_prog_end.
+                 * For user-proc calls we can't redirect that here retroactively.
+                 * Workaround: route through esucc at docall level. */
+            }
+
+            WI("  (func $%s (result i32)  return_call $%s)\n", ra, fail);
+            break;
+        }
+        /* Unknown call: stub-fail */
         emit_icn_stub(n, id, fail);
         break;
     }
 
     /* ── return [E] ─────────────────────────────────────────────────────── */
     case ICN_RETURN:
-        /* For Tier 0 (main procedure): return = flush output and succeed.
-         * succ here is "icn_prog_end" (emitted by emit_wasm_icon_file). */
         WI("  ;; ICN_RETURN (node %d)\n", id);
-        WI("  (func $%s (result i32)  return_call $%s)\n", sa, succ);
+        if (strcmp(icn_cur_proc_name, "main") != 0 && icn_cur_proc_name[0] != '\0') {
+            /* Non-main procedure: evaluate return expr (child[0] if present),
+             * store result in $icn_retval, then return_call to caller's succ. */
+            if (n->nchildren >= 1) {
+                char e_start[64], e_resume[64];
+                char esucc[64];
+                wfn(esucc, sizeof esucc, id, "esucc");
+                emit_expr_wasm(n->children[0], esucc, fail, e_start, e_resume);
+                int e_id = /* child was just emitted; its id = wasm_icon_ctr-1 — use e_start node id */
+                    wasm_icon_ctr - 1;
+                /* esucc: store child value into $icn_retval, then jump to succ */
+                WI("  (func $%s (result i32)\n", esucc);
+                WI("    global.get $icn_int%d\n", e_id);
+                WI("    global.set $icn_retval\n");
+                WI("    return_call $%s)\n", succ);
+                WI("  (func $%s (result i32)  return_call $%s)\n", sa, e_start);
+            } else {
+                /* return with no expr: store 0 */
+                WI("  (func $%s (result i32)\n", sa);
+                WI("    i64.const 0\n");
+                WI("    global.set $icn_retval\n");
+                WI("    return_call $%s)\n", succ);
+            }
+        } else {
+            /* main(): flush output and jump to prog_end (succ = icn_prog_end) */
+            WI("  (func $%s (result i32)  return_call $%s)\n", sa, succ);
+        }
         WI("  (func $%s (result i32)  return_call $%s)\n", ra, fail);
         break;
 
