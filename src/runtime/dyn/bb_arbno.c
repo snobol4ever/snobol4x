@@ -30,6 +30,7 @@
  * ARBNO succeeds immediately at current position (prevents infinite loop).
  */
 
+#pragma GCC diagnostic ignored "-Wmisleading-indentation"
 #include "bb_box.h"
 #include <stdlib.h>
 

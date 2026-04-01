@@ -23,6 +23,7 @@
  * State zeta: the accumulated seq value, child states.
  */
 
+#pragma GCC diagnostic ignored "-Wmisleading-indentation"
 #include "bb_box.h"
 #include <stdlib.h>
 

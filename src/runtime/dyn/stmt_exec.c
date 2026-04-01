@@ -38,6 +38,7 @@
  * SPRINT:  DYN-3
  */
 
+#pragma GCC diagnostic ignored "-Wmisleading-indentation"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

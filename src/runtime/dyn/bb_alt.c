@@ -23,6 +23,7 @@
  *     ALT_omega:              return spec_empty;
  */
 
+#pragma GCC diagnostic ignored "-Wmisleading-indentation"
 #include "bb_box.h"
 #include <stdlib.h>
 
