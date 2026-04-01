@@ -110,6 +110,8 @@ const _kw_store = {
     ERRLIMIT: 0,
     FNNAME: '',
     LASTNO: 0,
+    UCASE: (function() { let s=''; for(let i=65;i<=90;i++) s+=String.fromCharCode(i); return s; })(),
+    LCASE: (function() { let s=''; for(let i=97;i<=122;i++) s+=String.fromCharCode(i); return s; })(),
 };
 
 function _kw(name) {
@@ -154,6 +156,7 @@ const _builtins = {
     FAIL(args)    { return _FAIL; },
     SUCCEED(args) { return args[0] !== undefined ? args[0] : ''; },
     APPLY(args)   { return _apply(_str(args[0]), args.slice(1)); },
+    REMDR(args)   { const a=_num(args[0]),b=_num(args[1]); if(b===0) throw new Error('SNOBOL4: remdr by zero'); return Math.trunc(a)%Math.trunc(b); },
     DEFINE(args)  { /* stub — user-defined functions not yet wired */ return null; },
     ARRAY(args)   { /* stub */ return []; },
     TABLE(args)   { /* stub */ return {}; },

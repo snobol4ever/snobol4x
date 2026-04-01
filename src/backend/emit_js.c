@@ -29,6 +29,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include <ctype.h>
+#include <math.h>
 
 /* -----------------------------------------------------------------------
  * Output
@@ -111,9 +112,17 @@ static void js_emit_expr(EXPR_t *e) {
     case E_ILIT:
         J("%ld", e->ival);
         break;
-    case E_FLIT:
-        J("%g", e->dval);
+    case E_FLIT: {
+        /* SPITBOL real format: whole-number reals display as "1." not "1".
+         * JS loses type info on arithmetic; emit the canonical string form so
+         * String(v) in the runtime Proxy gives the right output. */
+        double dv = e->dval;
+        if (dv == (long)dv && !isinf(dv))
+            J("\"%ld.\"", (long)dv);
+        else
+            J("\"%g\"", dv);
         break;
+    }
     case E_VAR:
         J("_vars[\"%s\"]", e->sval);
         break;
@@ -707,23 +716,21 @@ static void js_emit_pat(EXPR_t *pat, int uid_γ, int uid_ω,
 
 static void js_emit_goto(SnoGoto *go, int ok_uid) {
     if (!go) return;
-    if (go->uncond) {
+    if (go->uncond && go->uncond[0]) {
         J("    return goto_%s;\n", jv(go->uncond));
         return;
     }
     if (ok_uid < 0) {
-        if (go->onsuccess)
+        if (go->onsuccess && go->onsuccess[0])
             J("    return goto_%s;\n", jv(go->onsuccess));
         return;
     }
-    if (go->onsuccess && go->onfailure) {
+    /* Separate guards — mirrors emit_byrd_c.c; never combine with &&
+     * (onfailure can be a bad/stale pointer even when structurally non-NULL) */
+    if (go->onsuccess && go->onsuccess[0])
         J("    if (_ok%d) return goto_%s;\n", ok_uid, jv(go->onsuccess));
-        J("    else       return goto_%s;\n", ok_uid, jv(go->onfailure));
-    } else if (go->onsuccess) {
-        J("    if (_ok%d) return goto_%s;\n", ok_uid, jv(go->onsuccess));
-    } else if (go->onfailure) {
+    if (go->onfailure && go->onfailure[0])
         J("    if (!_ok%d) return goto_%s;\n", ok_uid, jv(go->onfailure));
-    }
 }
 
 /* -----------------------------------------------------------------------
@@ -939,6 +946,9 @@ void js_emit(Program *prog, FILE *f) {
     label_count = 0;
 
     collect_labels(prog);
+    /* Ensure START and END are always in the forward-decl set */
+    label_register("START");
+    label_register("END");
 
     /* preamble */
     J("'use strict';\n");
@@ -955,9 +965,7 @@ void js_emit(Program *prog, FILE *f) {
      */
     for (int i = 0; i < label_count; i++)
         J("var goto_%s;\n", jv(label_list[i]));
-    /* Always need START and END even if not in label_list */
-    J("var goto_%s;\n", jv("START"));
-    J("var goto_%s = function() { return null; };\n", jv("END"));
+    /* START and END always registered above — loop covers them */
     J("\n");
 
     /* Emit block functions.
@@ -967,6 +975,7 @@ void js_emit(Program *prog, FILE *f) {
     J("/* --- block functions --- */\n");
 
     int block_open = 0;
+    int end_emitted = 0;  /* set when is_end block is written */
 
     for (STMT_t *s = prog->head; s; s = s->next) {
         /* Labeled stmt: close current block with fall-through to this label */
@@ -988,6 +997,7 @@ void js_emit(Program *prog, FILE *f) {
         if (s->is_end) {
             J("    return null;\n}\n\n");
             block_open = 0;
+            end_emitted = 1;
             break;
         }
 
@@ -1002,6 +1012,10 @@ void js_emit(Program *prog, FILE *f) {
     if (block_open) {
         J("    return null;\n}\n\n");
     }
+
+    /* END sentinel — only needed if program had no explicit END stmt */
+    if (!end_emitted)
+        J("goto_%s = function() { return null; };\n\n", jv("END"));
 
     /* Stubs for undefined goto targets */
     J("/* --- undefined label stubs --- */\n");
@@ -1018,7 +1032,9 @@ void js_emit(Program *prog, FILE *f) {
 
     /* Trampoline kickoff */
     J("/* --- run --- */\n");
-    J("(function() { var _pc = goto_%s; while(_pc) _pc = _pc(); })();\n",
+    /* Plain loop — no IIFE needed; CJS module wrapper already provides scope.
+     * IIFE form crashes in Node v22 strict mode: (intermediate value)(...) is not a function */
+    J("{ var _pc = goto_%s; while(_pc) _pc = _pc(); }\n",
       jv("START"));
 
     /* free */
