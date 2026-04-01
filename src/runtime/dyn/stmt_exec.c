@@ -468,6 +468,108 @@ typedef struct {
     _aframe_t  stack[ARBNO_MAX_S];
 } _arbno_t;
 
+/* ══════════════════════════════════════════════════════════════════════════
+ * M-DYN-OPT — Invariance detection and node cache
+ *
+ * A PATND_t subtree is INVARIANT if it contains no node whose built graph
+ * depends on runtime variable state:
+ *   _XDSAR — *var (indirect pattern reference — value read at match time)
+ *   _XVAR  — var holding a pattern (value may change between builds)
+ *   _XATP  — @ (cursor-position function — has side effects)
+ *   _XFNME — pat $ var (immediate capture — writes NV at match time)
+ *   _XNME  — pat . var (conditional capture — writes NV on success)
+ *
+ * Invariant subtrees produce the SAME bb_node_t on every call to bb_build.
+ * We cache the result (keyed on _PND_t* pointer) and on a cache hit return
+ * a FRESH ζ copy (memcpy of the pristine template) so match state is clean
+ * each time, while avoiding the O(depth) tree walk and calloc chain.
+ *
+ * Cache is a simple open-addressed hash table.  Capacity is intentionally
+ * modest (512 slots) — a typical program has far fewer distinct pattern nodes.
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Invariance predicate ─────────────────────────────────────────────── */
+static int patnd_is_invariant(_PND_t *p)
+{
+    if (!p)                                           return 1;  /* null → epsilon, invariant */
+    switch (p->kind) {
+    case _XDSAR:
+    case _XVAR:
+    case _XATP:
+    case _XFNME:
+    case _XNME:                                       return 0;  /* always variant */
+    default:                                          break;
+    }
+    /* Recurse into children */
+    if (p->left  && !patnd_is_invariant(p->left))    return 0;
+    if (p->right && !patnd_is_invariant(p->right))   return 0;
+    return 1;
+}
+
+/* ── Node cache ───────────────────────────────────────────────────────── */
+#define DYNC_CACHE_CAP 512
+
+typedef struct {
+    _PND_t   *key;          /* NULL = empty slot */
+    bb_node_t template;     /* pristine bb_node_t with fresh ζ as template */
+} _dync_slot_t;
+
+static _dync_slot_t g_node_cache[DYNC_CACHE_CAP];
+static int          g_cache_hits   = 0;
+static int          g_cache_misses = 0;
+
+static _dync_slot_t *_cache_find(_PND_t *key)
+{
+    if (!key) return NULL;
+    uintptr_t h = ((uintptr_t)key >> 4) & (DYNC_CACHE_CAP - 1);
+    for (int i = 0; i < DYNC_CACHE_CAP; i++) {
+        uintptr_t idx = (h + (uintptr_t)i) & (DYNC_CACHE_CAP - 1);
+        if (g_node_cache[idx].key == key)    return &g_node_cache[idx];  /* hit */
+        if (g_node_cache[idx].key == NULL)   return &g_node_cache[idx];  /* empty */
+    }
+    return NULL;  /* full — unlikely, treated as miss */
+}
+
+/* Insert a newly built bb_node_t into the cache for key p.
+ * The template ζ is the pristine calloc'd block; we keep it and will
+ * memcpy from it on future hits. */
+static void _cache_insert(_PND_t *key, bb_node_t node)
+{
+    _dync_slot_t *slot = _cache_find(key);
+    if (!slot || slot->key != NULL) return;  /* full or key already in */
+    slot->key      = key;
+    slot->template = node;
+}
+
+/* On cache hit, return bb_node_t with a FRESH ζ copy so match state
+ * is clean each time.  fn is shared (stateless); ζ is per-match. */
+static bb_node_t _cache_get_fresh(_dync_slot_t *slot)
+{
+    bb_node_t n = slot->template;
+    if (n.ζ_size && n.ζ) {
+        void *fresh = calloc(1, n.ζ_size);
+        memcpy(fresh, n.ζ, n.ζ_size);
+        n.ζ = fresh;
+    }
+    return n;
+}
+
+/* Public: reset the node cache (called between programs / test runs) */
+void dyn_cache_reset(void)
+{
+    for (int i = 0; i < DYNC_CACHE_CAP; i++) g_node_cache[i].key = NULL;
+    g_cache_hits = g_cache_misses = 0;
+}
+
+/* Public: report cache stats */
+void dyn_cache_stats(int *hits, int *misses)
+{
+    if (hits)   *hits   = g_cache_hits;
+    if (misses) *misses = g_cache_misses;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════ */
+
 static bb_node_t bb_build(_PND_t *p)
 {
     bb_node_t n = { NULL, NULL };
@@ -478,6 +580,25 @@ static bb_node_t bb_build(_PND_t *p)
         n.ζ  = ζ;
         n.ζ_size = sizeof(*ζ);
                                                               return n;
+    }
+
+    /* ── M-DYN-OPT: invariance cache ────────────────────────────────── */
+    /*
+     * If this node's subtree is provably invariant (no runtime variable
+     * reads, no side-effecting captures), check the cache first.
+     * On hit: return a fresh ζ copy of the cached template — O(ζ_size)
+     * memcpy instead of O(depth) tree walk + calloc chain.
+     * On miss: build normally, then insert into cache for next time.
+     */
+    int _is_inv = patnd_is_invariant(p);
+    if (_is_inv) {
+        _dync_slot_t *_slot = _cache_find(p);
+        if (_slot && _slot->key == p) {
+            g_cache_hits++;
+                                                              return _cache_get_fresh(_slot);
+        }
+        g_cache_misses++;
+        /* fall through — build it, then insert below */
     }
 
     switch (p->kind) {
@@ -782,6 +903,10 @@ static bb_node_t bb_build(_PND_t *p)
     }
     } /* switch */
 
+    /* ── M-DYN-OPT: insert into cache if invariant ───────────────────── */
+    if (_is_inv)
+        _cache_insert(p, n);
+
                                                               return n;
 }
 
@@ -1052,16 +1177,48 @@ Success:
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
- * stmt_exec_dyn_str — convenience wrapper: subject and pattern as C strings
+ * dyn_cache_test_run — M-DYN-OPT test helper
+ *
+ * Build a synthetic _XCHR (literal) _PND_t node N times via bb_build.
+ * The node is invariant, so hits should equal N-1 (first call = miss,
+ * subsequent = hits).  Returns 1 if hits > 0 (cache working), 0 if not.
+ * ══════════════════════════════════════════════════════════════════════════ */
+int dyn_cache_test_run(const char *lit, int n_iters)
+{
+    /* Build a single static _PND_t node (stack-allocated, same address each
+     * call — required for pointer-keyed cache to work). */
+    static _PND_t node;
+    node.kind         = _XCHR;
+    node.materialising = 0;
+    node.sval         = lit;
+    node.num          = 0;
+    node.left = node.right = NULL;
+    node.args = NULL;
+    node.nargs = 0;
+
+    dyn_cache_reset();
+
+    for (int i = 0; i < n_iters; i++) {
+        bb_node_t n = bb_build(&node);
+        (void)n;   /* result used for correctness only; we test cache counters */
+    }
+
+    int hits = 0, misses = 0;
+    dyn_cache_stats(&hits, &misses);
+    return hits;   /* caller checks hits > 0 */
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * stmt_exec_dyn_str -- convenience wrapper: subject and pattern as C strings
  *
  * Used by the test driver (stmt_exec_test.c) to exercise the executor
  * without going through the full DESCR_t / PATND_t stack.
  *
- * NOTE: subj_name is passed as NULL here — the test driver owns the
+ * NOTE: subj_name is passed as NULL here -- the test driver owns the
  * subject buffer directly.  Phase 5 write-back goes via *out_subject
  * for test purposes only.  In the full runtime, callers always pass
  * a real subj_name.
- * ══════════════════════════════════════════════════════════════════════════ */
+ * ====================================================================== */
 int stmt_exec_dyn_str(const char  *subject,
                       const char  *pattern,
                       const char  *repl_str,

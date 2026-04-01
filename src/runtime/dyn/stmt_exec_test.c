@@ -57,7 +57,10 @@ char *VARVAL_fn(DESCR_t d) {
                                                               return NULL;
 }
 
-/* forward declaration */
+/* forward declarations */
+void dyn_cache_reset(void);
+void dyn_cache_stats(int *hits, int *misses);
+int  dyn_cache_test_run(const char *lit, int n_iters);
 int stmt_exec_dyn_str(const char *subject, const char *pattern,
                       const char *repl_str, char **out_subject);
 
@@ -147,6 +150,15 @@ int main(void)
       CHECK(r==1,"T13: match");
       CHECK(out&&strcmp(out,"WORLD")==0,"T13: replacement");
       if(out) printf("  result: \"%s\"\n",out); }
+
+    /* T14: M-DYN-OPT — invariant pattern cache
+     * bb_build a _XCHR node 10 times via the same static _PND_t pointer.
+     * First call = miss, calls 2-10 = hits (9 hits expected).
+     * dyn_cache_test_run() returns the hit count. */
+    printf("T14: M-DYN-OPT invariant cache — 10x bb_build same _PND_t node\n");
+    { int hits = dyn_cache_test_run("hello", 10);
+      printf("  cache hits=%d (expected >= 9)\n", hits);
+      CHECK(hits >= 9, "T14: cache hit at least 9 of 10 builds"); }
 
     printf("\n%s  (%d failure%s)\n",
            failures==0?"PASS":"FAIL",
