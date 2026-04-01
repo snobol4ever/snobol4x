@@ -708,21 +708,21 @@ static void js_emit_pat(EXPR_t *pat, int uid_γ, int uid_ω,
 static void js_emit_goto(SnoGoto *go, int ok_uid) {
     if (!go) return;
     if (go->uncond) {
-        J("    goto_%s();\n    return;\n", jv(go->uncond));
+        J("    return goto_%s;\n", jv(go->uncond));
         return;
     }
     if (ok_uid < 0) {
         if (go->onsuccess)
-            J("    goto_%s();\n    return;\n", jv(go->onsuccess));
+            J("    return goto_%s;\n", jv(go->onsuccess));
         return;
     }
     if (go->onsuccess && go->onfailure) {
-        J("    if (_ok%d) { goto_%s(); return; }\n", ok_uid, jv(go->onsuccess));
-        J("    else       { goto_%s(); return; }\n", jv(go->onfailure));
+        J("    if (_ok%d) return goto_%s;\n", ok_uid, jv(go->onsuccess));
+        J("    else       return goto_%s;\n", ok_uid, jv(go->onfailure));
     } else if (go->onsuccess) {
-        J("    if (_ok%d) { goto_%s(); return; }\n", ok_uid, jv(go->onsuccess));
+        J("    if (_ok%d) return goto_%s;\n", ok_uid, jv(go->onsuccess));
     } else if (go->onfailure) {
-        J("    if (!_ok%d) { goto_%s(); return; }\n", ok_uid, jv(go->onfailure));
+        J("    if (!_ok%d) return goto_%s;\n", ok_uid, jv(go->onfailure));
     }
 }
 
@@ -858,20 +858,22 @@ static void js_emit_pat_stmt(STMT_t *s) {
     js_emit_goto(s->go, u);
 }
 
+/* js_emit_stmt_body — emit the body of one statement (no open/close brace).
+ * Called from within an open block function. Returns 1 if an explicit
+ * transfer (return) was emitted, 0 if fall-through. */
+static int js_emit_stmt_body(STMT_t *s);
+
 static void js_emit_stmt(STMT_t *s) {
     J("/* line %d */\n", s->lineno);
+    js_emit_stmt_body(s);
+}
 
-    if (s->label) {
-        J("goto_%s = function() {\n", jv(s->label));
-    } else {
-        J("{\n");
-    }
+static int js_emit_stmt_body(STMT_t *s) {
+    J("/* line %d */\n", s->lineno);
 
     if (!s->subject) {
-        if (s->go) js_emit_goto(s->go, -1);
-        J("};\n" + (s->label ? 0 : 1)); /* }; for named fn, } for block */
-        if (!s->label) J("}\n");
-        return;
+        if (s->go) { js_emit_goto(s->go, -1); return 1; }
+        return 0;
     }
 
     /* ---- pure assignment ---- */
@@ -883,28 +885,23 @@ static void js_emit_stmt(STMT_t *s) {
         if (s->subject && s->subject->kind == E_VAR)
             J("        _vars[\"%s\"] = _v%d;\n", s->subject->sval, u);
         J("    }\n");
-        js_emit_goto(s->go, u);
-        if (s->label) J("};\n"); else J("}\n");
-        return;
+        if (s->go) { js_emit_goto(s->go, u); return 1; }
+        return 0;
     }
 
     /* ---- null assign ---- */
     if (!s->pattern && !s->replacement && s->has_eq) {
         if (s->subject && s->subject->kind == E_VAR)
             J("    _vars[\"%s\"] = null;\n", s->subject->sval);
-        js_emit_goto(s->go, -1);
-        if (s->label) J("};\n"); else J("}\n");
-        return;
+        if (s->go) { js_emit_goto(s->go, -1); return 1; }
+        return 0;
     }
 
     /* ---- pattern match ---- */
     if (s->pattern) {
-        /* Initialize _pc to first dispatch entry */
-
-        /* declare saved vars (JS hoists var) — emit block */
         js_emit_pat_stmt(s);
-        if (s->label) J("};\n"); else J("}\n");
-        return;
+        /* pat_stmt emits its own goto internally; check if one was emitted */
+        return (s->go != NULL) ? 1 : 0;
     }
 
     /* ---- expression evaluation only ---- */
@@ -912,8 +909,8 @@ static void js_emit_stmt(STMT_t *s) {
         int u = js_next_uid();
         J("    var _v%d = ", u); js_emit_expr(s->subject); J(";\n");
         J("    var _ok%d = (_v%d !== _FAIL);\n", u, u);
-        js_emit_goto(s->go, u);
-        if (s->label) J("};\n"); else J("}\n");
+        if (s->go) { js_emit_goto(s->go, u); return 1; }
+        return 0;
     }
 }
 
@@ -950,33 +947,79 @@ void js_emit(Program *prog, FILE *f) {
     J("        _apply, _kw } = _rt;\n");
     J("\n");
 
-    /* forward-declare goto_ functions */
+    /* Forward-declare all block function vars using jv() naming throughout.
+     * Block-grouping model (mirrors emit_byrd_c.c):
+     *   goto_vX = function() { <stmts>; return goto_vY; }
+     * Trampoline: var _pc = goto_vSTART; while(_pc) _pc = _pc();
+     * All label refs go through jv() — START -> v_START, END -> v_END, etc.
+     */
     for (int i = 0; i < label_count; i++)
         J("var goto_%s;\n", jv(label_list[i]));
-    if (label_count) J("\n");
+    /* Always need START and END even if not in label_list */
+    J("var goto_%s;\n", jv("START"));
+    J("var goto_%s = function() { return null; };\n", jv("END"));
+    J("\n");
 
-    /* Pass 1: emit all labeled statements as named function assignments.
-     * This ensures goto_X is assigned before any inline code calls it. */
-    J("\n/* --- labeled statement functions --- */\n");
+    /* Emit block functions.
+     * A labeled stmt closes the current block and opens a new one.
+     * Unlabeled stmts accumulate in the current block.
+     * Explicit transfer (return goto_X) terminates that block body. */
+    J("/* --- block functions --- */\n");
+
+    int block_open = 0;
+
     for (STMT_t *s = prog->head; s; s = s->next) {
-        if (s->label) {
-            js_emit_stmt(s);
+        /* Labeled stmt: close current block with fall-through to this label */
+        if (s->label && block_open) {
+            J("    return goto_%s;\n}\n\n", jv(s->label));
+            block_open = 0;
         }
-        if (s->is_end && s->label) break;
+
+        /* Open new block */
+        if (!block_open) {
+            if (s->label) {
+                J("goto_%s = function() {\n", jv(s->label));
+            } else {
+                J("goto_%s = function() {\n", jv("START"));
+            }
+            block_open = 1;
+        }
+
+        if (s->is_end) {
+            J("    return null;\n}\n\n");
+            block_open = 0;
+            break;
+        }
+
+        /* Emit stmt body; returns 1 if an explicit transfer was emitted */
+        int transferred = js_emit_stmt_body(s);
+        if (transferred) {
+            J("}\n\n");
+            block_open = 0;
+        }
     }
 
-    /* Pass 2: emit the main (unlabeled) flow inline.
-     * Reset uid counter so pattern dispatch uids are fresh and
-     * don't collide with any uids consumed in pass 1. */
-    uid_ctr = 0;
-    J("\n/* --- main flow --- */\n");
-    J("(function _main() {\n");
-    for (STMT_t *s = prog->head; s; s = s->next) {
-        if (s->is_end) break;   /* stop before END — don't emit it */
-        if (!s->label) js_emit_stmt(s);
+    if (block_open) {
+        J("    return null;\n}\n\n");
     }
-    J("})();\n");  /* always close _main */
 
+    /* Stubs for undefined goto targets */
+    J("/* --- undefined label stubs --- */\n");
+    for (int i = 0; i < label_count; i++) {
+        const char *lbl = label_list[i];
+        int defined = 0;
+        for (STMT_t *s2 = prog->head; s2; s2 = s2->next)
+            if (s2->label && strcasecmp(s2->label, lbl)==0) { defined=1; break; }
+        if (!defined)
+            J("if (!goto_%s) goto_%s = function() { return null; };\n",
+              jv(lbl), jv(lbl));
+    }
+    J("\n");
+
+    /* Trampoline kickoff */
+    J("/* --- run --- */\n");
+    J("(function() { var _pc = goto_%s; while(_pc) _pc = _pc(); })();\n",
+      jv("START"));
 
     /* free */
     for (int i = 0; i < label_count; i++) free(label_list[i]);
