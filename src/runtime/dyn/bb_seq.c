@@ -85,5 +85,5 @@ seq_t *bb_seq_new(bb_box_fn left_fn, bb_box_fn right_fn)
     ζ->left.ζ   = NULL;
     ζ->right.fn = right_fn;
     ζ->right.ζ  = NULL;
-    return ζ;
+                                                              return ζ;
 }

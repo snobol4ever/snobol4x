@@ -106,5 +106,5 @@ arbno_t *bb_arbno_new(bb_box_fn body_fn)
     arbno_t *ζ = calloc(1, sizeof(arbno_t));
     ζ->body_fn = body_fn;
     ζ->body_ζ  = NULL;
-    return ζ;
+                                                              return ζ;
 }

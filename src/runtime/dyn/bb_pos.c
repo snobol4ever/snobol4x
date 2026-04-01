@@ -45,7 +45,7 @@ pos_t *bb_pos_new(int n)
 {
     pos_t *ζ = calloc(1, sizeof(pos_t));
     ζ->n = n;
-    return ζ;
+                                                              return ζ;
 }
 
 /* ── RPOS ────────────────────────────────────────────────────────────────── */
@@ -75,5 +75,5 @@ rpos_t *bb_rpos_new(int n)
 {
     rpos_t *ζ = calloc(1, sizeof(rpos_t));
     ζ->n = n;
-    return ζ;
+                                                              return ζ;
 }

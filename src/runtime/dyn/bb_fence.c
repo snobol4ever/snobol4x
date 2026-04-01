@@ -48,7 +48,7 @@ spec_t bb_fence(fence_t **ζζ, int entry)
 
 fence_t *bb_fence_new(void)
 {
-    return calloc(1, sizeof(fence_t));
+                                                              return calloc(1, sizeof(fence_t));
 }
 
 /* ── ABORT ───────────────────────────────────────────────────────────────── */
@@ -72,5 +72,5 @@ spec_t bb_abort(abort_t **ζζ, int entry)
 
 abort_t *bb_abort_new(void)
 {
-    return calloc(1, sizeof(abort_t));
+                                                              return calloc(1, sizeof(abort_t));
 }

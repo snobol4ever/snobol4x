@@ -73,5 +73,5 @@ lit_t *bb_lit_new(const char *lit, int len)
     lit_t *ζ = calloc(1, sizeof(lit_t));
     ζ->lit   = lit;
     ζ->len   = len;
-    return ζ;
+                                                              return ζ;
 }

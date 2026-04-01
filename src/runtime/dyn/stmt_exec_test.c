@@ -42,7 +42,7 @@ typedef struct {
 /* ── stubs ──────────────────────────────────────────────────────────────── */
 DESCR_t NV_GET_fn(const char *name) {
     (void)name;
-    DESCR_t d; d.v = DT_SNUL; d.slen = 0; d.s = NULL; return d;
+    DESCR_t d; d.v = DT_SNUL; d.slen = 0; d.s = NULL;         return d;
 }
 void NV_SET_fn(const char *name, DESCR_t val) {
     if (val.v == DT_S && val.s) {
@@ -51,8 +51,8 @@ void NV_SET_fn(const char *name, DESCR_t val) {
     }
 }
 char *VARVAL_fn(DESCR_t d) {
-    if (d.v == DT_S) return d.s;
-    return NULL;
+    if (d.v == DT_S)                                          return d.s;
+                                                              return NULL;
 }
 
 /* forward declaration */
@@ -149,5 +149,5 @@ int main(void)
     printf("\n%s  (%d failure%s)\n",
            failures==0?"PASS":"FAIL",
            failures, failures==1?"":"s");
-    return failures==0?0:1;
+                                                              return failures==0?0:1;
 }

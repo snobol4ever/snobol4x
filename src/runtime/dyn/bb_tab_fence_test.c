@@ -177,5 +177,5 @@ int main(void)
     printf("\n%s  (%d failure%s)\n",
            failures == 0 ? "PASS" : "FAIL",
            failures, failures == 1 ? "" : "s");
-    return failures ? 1 : 0;
+                                                              return failures ? 1 : 0;
 }

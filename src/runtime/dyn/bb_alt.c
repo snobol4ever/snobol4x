@@ -92,5 +92,5 @@ alt_t *bb_alt_new(int n, bb_box_fn *fns)
         ζ->children[i].fn = fns[i];
         ζ->children[i].ζ  = NULL;
     }
-    return ζ;
+                                                              return ζ;
 }

@@ -136,12 +136,12 @@ static spec_t bb_len(len_t **ζζ, int entry)
 
     spec_t         LEN;
 
-    LEN_α:        if (Δ + ζ->n > Ω)                    goto LEN_ω;
-                  LEN = spec(Σ+Δ, ζ->n); Δ += ζ->n;    goto LEN_γ;
-    LEN_β:        Δ -= ζ->n;                            goto LEN_ω;
+    LEN_α:        if (Δ + ζ->n > Ω)                           goto LEN_ω;
+                  LEN = spec(Σ+Δ, ζ->n); Δ += ζ->n;           goto LEN_γ;
+    LEN_β:        Δ -= ζ->n;                                  goto LEN_ω;
 
-    LEN_γ:        return LEN;
-    LEN_ω:        return spec_empty;
+    LEN_γ:                                                    return LEN;
+    LEN_ω:                                                    return spec_empty;
 }
 
 /* ── SPAN(chars) box ────────────────────────────────────────────────────── */
@@ -159,8 +159,8 @@ static spec_t bb_span(span_t **ζζ, int entry)
 
     SPAN_α:       for (SPAN_δ = 0; Σ[Δ+SPAN_δ]; SPAN_δ++)
                       if (!strchr(ζ->chars, Σ[Δ+SPAN_δ])) break;
-                  if (SPAN_δ <= 0)                      goto SPAN_ω;
-                  SPAN = spec(Σ+Δ, SPAN_δ); Δ += SPAN_δ; goto SPAN_γ;
+                  if (SPAN_δ <= 0)                            goto SPAN_ω;
+                  SPAN = spec(Σ+Δ, SPAN_δ); Δ += SPAN_δ;      goto SPAN_γ;
     SPAN_β:       { /* recover δ: walk back until chars mismatch */
                     int d = 0;
                     /* saved in a local — re-scan from new Δ backwards */
@@ -174,11 +174,11 @@ static spec_t bb_span(span_t **ζζ, int entry)
                      * undo the full advance. We need to know SPAN_δ.
                      * Store it in ζ->chars via a side-band int in the struct. */
                     (void)d;
-                    goto SPAN_ω; /* conservative: SPAN does not backtrack */
+                                                              goto SPAN_ω; /* conservative: SPAN does not backtrack */
                   }
 
-    SPAN_γ:       return SPAN;
-    SPAN_ω:       return spec_empty;
+    SPAN_γ:                                                   return SPAN;
+    SPAN_ω:                                                   return spec_empty;
 }
 
 /* ── ANY(chars) box ─────────────────────────────────────────────────────── */
@@ -193,12 +193,12 @@ static spec_t bb_any(any_t **ζζ, int entry)
 
     spec_t         ANY;
 
-    ANY_α:        if (!Σ[Δ] || !strchr(ζ->chars, Σ[Δ])) goto ANY_ω;
-                  ANY = spec(Σ+Δ, 1); Δ += 1;           goto ANY_γ;
-    ANY_β:        Δ -= 1;                               goto ANY_ω;
+    ANY_α:        if (!Σ[Δ] || !strchr(ζ->chars, Σ[Δ]))       goto ANY_ω;
+                  ANY = spec(Σ+Δ, 1); Δ += 1;                 goto ANY_γ;
+    ANY_β:        Δ -= 1;                                     goto ANY_ω;
 
-    ANY_γ:        return ANY;
-    ANY_ω:        return spec_empty;
+    ANY_γ:                                                    return ANY;
+    ANY_ω:                                                    return spec_empty;
 }
 
 /* ── NOTANY(chars) box ──────────────────────────────────────────────────── */
@@ -213,12 +213,12 @@ static spec_t bb_notany(notany_t **ζζ, int entry)
 
     spec_t         NOTANY;
 
-    NOTANY_α:     if (!Σ[Δ] || strchr(ζ->chars, Σ[Δ])) goto NOTANY_ω;
-                  NOTANY = spec(Σ+Δ, 1); Δ += 1;        goto NOTANY_γ;
-    NOTANY_β:     Δ -= 1;                               goto NOTANY_ω;
+    NOTANY_α:     if (!Σ[Δ] || strchr(ζ->chars, Σ[Δ]))        goto NOTANY_ω;
+                  NOTANY = spec(Σ+Δ, 1); Δ += 1;              goto NOTANY_γ;
+    NOTANY_β:     Δ -= 1;                                     goto NOTANY_ω;
 
-    NOTANY_γ:     return NOTANY;
-    NOTANY_ω:     return spec_empty;
+    NOTANY_γ:                                                 return NOTANY;
+    NOTANY_ω:                                                 return spec_empty;
 }
 
 /* ── BREAK(chars) box ───────────────────────────────────────────────────── */
@@ -235,12 +235,12 @@ static spec_t bb_brk(brk_t **ζζ, int entry)
 
     BRK_α:        for (ζ->δ = 0; Σ[Δ+ζ->δ]; ζ->δ++)
                       if (strchr(ζ->chars, Σ[Δ+ζ->δ])) break;
-                  if (Δ + ζ->δ >= Ω)                   goto BRK_ω;
-                  BRK = spec(Σ+Δ, ζ->δ); Δ += ζ->δ;    goto BRK_γ;
-    BRK_β:        Δ -= ζ->δ;                            goto BRK_ω;
+                  if (Δ + ζ->δ >= Ω)                          goto BRK_ω;
+                  BRK = spec(Σ+Δ, ζ->δ); Δ += ζ->δ;           goto BRK_γ;
+    BRK_β:        Δ -= ζ->δ;                                  goto BRK_ω;
 
-    BRK_γ:        return BRK;
-    BRK_ω:        return spec_empty;
+    BRK_γ:                                                    return BRK;
+    BRK_ω:                                                    return spec_empty;
 }
 
 /* ── ARB box (matches 0..n chars, backtracks one at a time) ─────────────── */
@@ -256,14 +256,14 @@ static spec_t bb_arb(arb_t **ζζ, int entry)
     spec_t         ARB;
 
     ARB_α:        ζ->tried = 0;
-                  ARB = spec(Σ+Δ, 0);                    goto ARB_γ;
+                  ARB = spec(Σ+Δ, 0);                         goto ARB_γ;
     ARB_β:        ζ->tried++;
-                  if (Δ + ζ->tried > Ω)                goto ARB_ω;
+                  if (Δ + ζ->tried > Ω)                       goto ARB_ω;
                   ARB = spec(Σ+Δ, ζ->tried);
-                  Δ += ζ->tried;                        goto ARB_γ;
+                  Δ += ζ->tried;                              goto ARB_γ;
 
-    ARB_γ:        return ARB;
-    ARB_ω:        return spec_empty;
+    ARB_γ:                                                    return ARB;
+    ARB_ω:                                                    return spec_empty;
 }
 
 /* ── REM box (match rest of subject) ────────────────────────────────────── */
@@ -278,11 +278,11 @@ static spec_t bb_rem(rem_t **ζζ, int entry)
 
     spec_t         REM;
 
-    REM_α:        REM = spec(Σ+Δ, Ω-Δ); Δ = Ω;         goto REM_γ;
-    REM_β:                                              goto REM_ω;
+    REM_α:        REM = spec(Σ+Δ, Ω-Δ); Δ = Ω;                goto REM_γ;
+    REM_β:                                                    goto REM_ω;
 
-    REM_γ:        return REM;
-    REM_ω:        return spec_empty;
+    REM_γ:                                                    return REM;
+    REM_ω:                                                    return spec_empty;
 }
 
 /* ── SUCCEED box (always succeeds, infinite backtrack) ──────────────────── */
@@ -291,7 +291,7 @@ typedef struct { int dummy; } succeed_t;
 static spec_t bb_succeed(succeed_t **ζζ, int entry)
 {
     (void)ζζ; (void)entry;
-    return spec(Σ+Δ, 0);   /* always γ, zero-width */
+                                                              return spec(Σ+Δ, 0);   /* always γ, zero-width */
 }
 
 /* ── FAIL box ───────────────────────────────────────────────────────────── */
@@ -300,7 +300,7 @@ typedef struct { int dummy; } fail_t;
 static spec_t bb_fail(fail_t **ζζ, int entry)
 {
     (void)ζζ; (void)entry;
-    return spec_empty;   /* always ω */
+                                                              return spec_empty;   /* always ω */
 }
 
 /* ── EPSILON box (zero-width success, no backtrack) ────────────────────── */
@@ -315,13 +315,13 @@ static spec_t bb_eps(eps_t **ζζ, int entry)
 
     spec_t EPS;
 
-    EPS_α:  if (ζ->done) goto EPS_ω;
+    EPS_α:  if (ζ->done)                                      goto EPS_ω;
             ζ->done = 1;
-            EPS = spec(Σ+Δ, 0);                  goto EPS_γ;
-    EPS_β:                                       goto EPS_ω;
+            EPS = spec(Σ+Δ, 0);                               goto EPS_γ;
+    EPS_β:                                                    goto EPS_ω;
 
-    EPS_γ:  return EPS;
-    EPS_ω:  return spec_empty;
+    EPS_γ:                                                    return EPS;
+    EPS_ω:                                                    return spec_empty;
 }
 
 /* ── DEFERRED VAR box — forward declared; defined after bb_build ────────── */
@@ -365,11 +365,11 @@ static spec_t bb_capture(capture_t **ζζ, int entry)
     spec_t         child_r;
 
     CAP_α:        child_r = ζ->child_fn(&ζ->child_ζ, α);
-                  if (spec_is_empty(child_r))           goto CAP_ω;
-                                                        goto CAP_γ_core;
+                  if (spec_is_empty(child_r))                 goto CAP_ω;
+                                                              goto CAP_γ_core;
     CAP_β:        child_r = ζ->child_fn(&ζ->child_ζ, β);
-                  if (spec_is_empty(child_r))           goto CAP_ω;
-                                                        goto CAP_γ_core;
+                  if (spec_is_empty(child_r))                 goto CAP_ω;
+                                                              goto CAP_γ_core;
 
     CAP_γ_core:   if (ζ->varname && *ζ->varname) {
                       if (ζ->immediate) {
@@ -388,10 +388,10 @@ static spec_t bb_capture(capture_t **ζζ, int entry)
                           ζ->has_pending = 1;
                       }
                   }
-                  return child_r;
+                                                              return child_r;
 
     CAP_ω:        ζ->has_pending = 0;   /* backtracked past — discard pending */
-                  return spec_empty;
+                                                              return spec_empty;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -472,7 +472,7 @@ static bb_node_t bb_build(_PND_t *p)
         eps_t *ζ = calloc(1, sizeof(eps_t));
         n.fn = (bb_box_fn)bb_eps;
         n.ζ  = ζ;
-        return n;
+                                                              return n;
     }
 
     switch (p->kind) {
@@ -750,7 +750,7 @@ static bb_node_t bb_build(_PND_t *p)
     }
     } /* switch */
 
-    return n;
+                                                              return n;
 }
 
 /* ── bb_deferred_var — defined here, after bb_build (needs bb_node_t) ───── */
@@ -792,15 +792,15 @@ static spec_t bb_deferred_var(deferred_var_t **ζζ, int entry)
                             memset(ζ->child_ζ, 0, DVAR_CHILD_STATE_MAX);
                     }
                     DVAR = ζ->child_fn(&ζ->child_ζ, α);
-                    if (spec_is_empty(DVAR))            goto DVAR_ω;
-                                                        goto DVAR_γ;
-    DVAR_β:         if (!ζ->child_fn)                  goto DVAR_ω;
+                    if (spec_is_empty(DVAR))                  goto DVAR_ω;
+                                                              goto DVAR_γ;
+    DVAR_β:         if (!ζ->child_fn)                         goto DVAR_ω;
                     DVAR = ζ->child_fn(&ζ->child_ζ, β);
-                    if (spec_is_empty(DVAR))            goto DVAR_ω;
-                                                        goto DVAR_γ;
+                    if (spec_is_empty(DVAR))                  goto DVAR_ω;
+                                                              goto DVAR_γ;
 
-    DVAR_γ:         return DVAR;
-    DVAR_ω:         return spec_empty;
+    DVAR_γ:                                                   return DVAR;
+    DVAR_ω:                                                   return spec_empty;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -948,13 +948,13 @@ int stmt_exec_dyn(const char  *subj_name,
         if (!spec_is_empty(result)) {
             match_start = scan;
             match_end   = Δ;
-            goto Phase4;
+                                                              goto Phase4;
         }
         if (scan == scan_limit) break;
     }
 
     /* match failed → :F */
-    return 0;
+                                                              return 0;
 
 Phase4:
     /* ── Phase 4: build replacement ────────────────────────────────── */
@@ -965,12 +965,12 @@ Phase4:
      * Exception: subj_name=NULL + subj_var provided = test/convenience
      * wrapper (stmt_exec_dyn_str).  We allow direct write in that case.
      */
-    if (has_repl && repl && !subj_name && !subj_var) return 0;
+    if (has_repl && repl && !subj_name && !subj_var)          return 0;
 
     /* Flush XNME (.) conditional captures — overall match succeeded */
     flush_pending_captures();
 
-    if (!has_repl || !repl) goto Success;
+    if (!has_repl || !repl)                                   goto Success;
 
     /* ── Phase 5: perform replacement ──────────────────────────────── */
     {
@@ -1011,7 +1011,7 @@ Phase4:
     }
 
 Success:
-    return 1;
+                                                              return 1;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -1059,5 +1059,5 @@ int stmt_exec_dyn_str(const char  *subject,
     if (out_subject && r) {
         *out_subject = subj.s;
     }
-    return r;
+                                                              return r;
 }

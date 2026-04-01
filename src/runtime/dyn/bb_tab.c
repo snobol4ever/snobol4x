@@ -51,7 +51,7 @@ tab_t *bb_tab_new(int n)
 {
     tab_t *ζ = calloc(1, sizeof(tab_t));
     ζ->n = n;
-    return ζ;
+                                                              return ζ;
 }
 
 /* ── RTAB ────────────────────────────────────────────────────────────────── */
@@ -83,5 +83,5 @@ rtab_t *bb_rtab_new(int n)
 {
     rtab_t *ζ = calloc(1, sizeof(rtab_t));
     ζ->n = n;
-    return ζ;
+                                                              return ζ;
 }

@@ -48,12 +48,12 @@ spec_t bb_len1(len1_t **ζζ, int entry)
     if (entry == β)                                     goto LEN1_β;
 
     spec_t         LEN1;
-    LEN1_α:       if (Δ+1 > Ω)                         goto LEN1_ω;
-                  LEN1 = spec(Σ+Δ,1); Δ+=1;             goto LEN1_γ;
-    LEN1_β:       Δ-=1;                                 goto LEN1_ω;
+    LEN1_α:       if (Δ+1 > Ω)                                goto LEN1_ω;
+                  LEN1 = spec(Σ+Δ,1); Δ+=1;                   goto LEN1_γ;
+    LEN1_β:       Δ-=1;                                       goto LEN1_ω;
 
-    LEN1_γ:       return LEN1;
-    LEN1_ω:       return spec_empty;
+    LEN1_γ:                                                   return LEN1;
+    LEN1_ω:                                                   return spec_empty;
 }
 
 /* ── build the pattern graph ─────────────────────────────────────────────── */
@@ -121,7 +121,7 @@ static int  output_pos = 0;
             output_buf[output_pos++] = '\n';  /* write_str */
             output_buf[output_pos++] = '\n';  /* write_nl  */
         }
-        return s;
+                                                              return s;
     }
 
 /* ── main ────────────────────────────────────────────────────────────────── */
@@ -185,7 +185,7 @@ int main(void)
     /* POS(0) */
     pos_t *pos0 = &pos0_ζ;
     spec_t pos_r = bb_pos((void **)&pos0, α);
-    if (spec_is_empty(pos_r)) goto driver_ω;
+    if (spec_is_empty(pos_r))                                 goto driver_ω;
 
     /* ARBNO loop: collect each γ, then check RPOS(0) */
     {
@@ -259,5 +259,5 @@ driver_ω:
     printf("\n%s  (%d failure%s)\n",
            failures == 0 ? "PASS" : "FAIL",
            failures, failures == 1 ? "" : "s");
-    return failures == 0 ? 0 : 1;
+                                                              return failures == 0 ? 0 : 1;
 }
