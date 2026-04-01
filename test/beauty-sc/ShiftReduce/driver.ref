@@ -1,0 +1,5 @@
+PASS: 1 Shift leaf
+PASS: 2 Reduce 2 children
+PASS: 3 Reduce 0 children
+PASS: 4 Shift empty value
+PASS: 5 Reduce 3 children order

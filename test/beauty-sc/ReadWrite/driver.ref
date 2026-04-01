@@ -1,0 +1,8 @@
+PASS: 1 LineMap[0]=1
+PASS: 2 LineMap offset 6 = line 2
+PASS: 3 LineMap offset 11 = line 3
+PASS: 4 Read FRETURN on bad path
+PASS: 5 Write FRETURN on bad path
+PASS: 6 LineMap empty string creates table
+PASS: 7 LineMap single word no-nl
+PASS: 8 LineMap 2-line second offset
