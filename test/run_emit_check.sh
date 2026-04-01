@@ -55,12 +55,12 @@ done
 # Derive which (frontend × backend) pairs to check from CELLS env var.
 # If CELLS is unset or empty → all pairs (legacy/cross-session behaviour).
 _CELLS="${CELLS:-}"
-_want_sno_asm=1; _want_sno_jvm=1; _want_sno_net=1; _want_sno_js=1
+_want_sno_asm=1; _want_sno_jvm=1; _want_sno_net=1; _want_sno_js=1; _want_sno_wasm=1
 _want_icn_asm=1; _want_icn_jvm=1
 _want_pro_asm=1; _want_pro_jvm=1
 _want_reb_asm=1; _want_reb_jvm=1; _want_reb_net=1
 if [[ -n "$_CELLS" ]]; then
-  _want_sno_asm=0; _want_sno_jvm=0; _want_sno_net=0; _want_sno_js=0
+  _want_sno_asm=0; _want_sno_jvm=0; _want_sno_net=0; _want_sno_js=0; _want_sno_wasm=0
   _want_icn_asm=0; _want_icn_jvm=0
   _want_pro_asm=0; _want_pro_jvm=0
   _want_reb_asm=0; _want_reb_jvm=0; _want_reb_net=0
@@ -68,6 +68,7 @@ if [[ -n "$_CELLS" ]]; then
   echo "$_CELLS" | grep -qw 'snobol4_jvm'   && _want_sno_jvm=1
   echo "$_CELLS" | grep -qw 'snobol4_net'   && _want_sno_net=1
   echo "$_CELLS" | grep -qw 'snobol4_js'    && _want_sno_js=1
+  echo "$_CELLS" | grep -qw 'snobol4_wasm'  && _want_sno_wasm=1
   echo "$_CELLS" | grep -qw 'icon_x86'      && _want_icn_asm=1
   echo "$_CELLS" | grep -qw 'icon_jvm'      && _want_icn_jvm=1
   echo "$_CELLS" | grep -qw 'prolog_x86'    && _want_pro_asm=1
@@ -115,6 +116,7 @@ if [[ $UPDATE -eq 1 ]]; then
   printf '%s\n' "${SNO_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'regen_one "$1" -jvm j'  _ {}
   printf '%s\n' "${SNO_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'regen_one "$1" -net il' _ {}
   printf '%s\n' "${SNO_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'regen_one "$1" -js  js' _ {}
+  printf '%s\n' "${SNO_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'regen_one "$1" -wasm wat' _ {}
   [[ ${#ICN_FILES[@]} -gt 0 ]] && printf '%s\n' "${ICN_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'regen_one "$1" -asm s' _ {}
   [[ ${#ICN_FILES[@]} -gt 0 ]] && printf '%s\n' "${ICN_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'regen_one "$1" -jvm j' _ {}
   [[ ${#PRO_FILES[@]} -gt 0 ]] && printf '%s\n' "${PRO_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'regen_one "$1" -asm s' _ {}
@@ -171,10 +173,11 @@ check_one() {
 export -f check_one; export SCRIP_CC FAIL_LOG CSV
 export TEST_REB
 
-[[ $_want_sno_asm -eq 1 && ${#SNO_FILES[@]} -gt 0 ]] && printf '%s\n' "${SNO_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -asm s'  _ {}
-[[ $_want_sno_jvm -eq 1 && ${#SNO_FILES[@]} -gt 0 ]] && printf '%s\n' "${SNO_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -jvm j'  _ {}
-[[ $_want_sno_net -eq 1 && ${#SNO_FILES[@]} -gt 0 ]] && printf '%s\n' "${SNO_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -net il' _ {}
-[[ $_want_sno_js  -eq 1 && ${#SNO_FILES[@]} -gt 0 ]] && printf '%s\n' "${SNO_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -js  js' _ {}
+[[ $_want_sno_asm  -eq 1 && ${#SNO_FILES[@]} -gt 0 ]] && printf '%s\n' "${SNO_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -asm s'    _ {}
+[[ $_want_sno_jvm  -eq 1 && ${#SNO_FILES[@]} -gt 0 ]] && printf '%s\n' "${SNO_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -jvm j'    _ {}
+[[ $_want_sno_net  -eq 1 && ${#SNO_FILES[@]} -gt 0 ]] && printf '%s\n' "${SNO_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -net il'   _ {}
+[[ $_want_sno_js   -eq 1 && ${#SNO_FILES[@]} -gt 0 ]] && printf '%s\n' "${SNO_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -js  js'   _ {}
+[[ $_want_sno_wasm -eq 1 && ${#SNO_FILES[@]} -gt 0 ]] && printf '%s\n' "${SNO_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -wasm wat' _ {}
 [[ $_want_icn_asm -eq 1 && ${#ICN_FILES[@]} -gt 0 ]] && printf '%s\n' "${ICN_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -asm s' _ {}
 [[ $_want_icn_jvm -eq 1 && ${#ICN_FILES[@]} -gt 0 ]] && printf '%s\n' "${ICN_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -jvm j' _ {}
 [[ $_want_pro_asm -eq 1 && ${#PRO_FILES[@]} -gt 0 ]] && printf '%s\n' "${PRO_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -asm s' _ {}
