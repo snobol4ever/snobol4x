@@ -13,16 +13,23 @@
  *   Ψ     — parent frame stack (inside ζ)
  *   Ω     — backtrack stack
  *   λ     — current node type tag
- *   α     — action variable (holds current port signal)
+ *   α     — action variable — holds current action string
  *
- * Byrd-box four-port signals (α takes these values):
- *   'α'  proceed — enter fresh, cursor at current position
- *   'γ'  succeed — match succeeded, advance cursor forward
- *   'β'  recede  — resume after backtrack from child
- *   'ω'  concede — match failed, restore cursor, propagate back
+ * Action signal — α holds one of these runtime values:
+ *   'proceed' — enter node fresh, cursor at current position
+ *   'succeed' — match succeeded, propagate forward
+ *   'recede'  — resume after backtrack from child
+ *   'concede' — match failed, restore cursor, propagate back
  *
- * NOTE: α/β/γ/ω are RESERVED for Byrd-box port semantics only.
- * Do not use them as standalone identifiers for other purposes.
+ * These are INTERPRETER concepts — runtime values passed through the
+ * dispatch loop.  They are NOT port addresses.
+ *
+ * Byrd-box ports (α/β/γ/ω) are COMPILE-TIME labels in the emitted
+ * code (emit_js.c, emit_byrd_c.c, x64, JVM, .NET).  They name static
+ * entry points wired together at compile time — they never exist as
+ * runtime values.  The interpreter simulates the same state machine
+ * by making wiring explicit as Ψ/Ω stacks and signals explicit as
+ * the 'proceed'/'succeed'/'recede'/'concede' action strings above.
  *
  * Frame is a plain 7-element JS array. Transitions create NEW arrays — the old
  * frame is never mutated. GC reclaims unreachable frames. Ψ inside each frame
@@ -142,7 +149,7 @@ function engine(S, Π, anchorStart) {
 
 /* engine_at: try matching Π against S starting at position startPos */
 function engine_ζ(S, n, Π, startPos) {
-    let α = 'α';
+    let α = 'proceed';
     let ζ = ζ_make(S, Π);
     ζ[1] = startPos; ζ[2] = S; ζ[3] = startPos;  // set Δ=δ=startPos
     let Ω = [];   // backtrack stack: array of saved frames
@@ -152,7 +159,7 @@ function engine_ζ(S, n, Π, startPos) {
 
         /* ── Terminal: Π is null ─────────────────────────────────────────── */
         if (λ === null) {
-            if (α === 'α' || α === 'γ')
+            if (α === 'proceed' || α === 'succeed')
                 return {matched:true, start:startPos, end:ζ[3]};
             else
                 return null;
@@ -161,128 +168,128 @@ function engine_ζ(S, n, Π, startPos) {
         switch (λ + '/' + α) {
 
         /* ── ALT ────────────────────────────────────────────────────────── */
-        case 'ALT/α':
+        case 'ALT/proceed':
             if (ζ[5] <= ζ[4].ap.length) {
                 Ω.push(ζ);
                 ζ = ζ_down(ζ);
-                α = 'α';
+                α = 'proceed';
             } else {
                 ζ = Ω.length ? Ω.pop() : null;
-                α = 'β';
+                α = 'recede';
             }
             break;
-        case 'ALT/γ':
+        case 'ALT/succeed':
             ζ = ζ_up(ζ);
-            α = 'γ';
+            α = 'succeed';
             break;
-        case 'ALT/ω':
+        case 'ALT/concede':
             ζ = ζ_next_retry(ζ);
-            α = 'α';
+            α = 'proceed';
             break;
-        case 'ALT/β':
+        case 'ALT/recede':
             ζ = ζ_next_retry(ζ);
-            α = 'α';
+            α = 'proceed';
             break;
 
         /* ── SEQ ────────────────────────────────────────────────────────── */
-        case 'SEQ/α':
+        case 'SEQ/proceed':
             if (ζ[5] <= ζ[4].ap.length) {
                 ζ = ζ_down(ζ);
-                α = 'α';
+                α = 'proceed';
             } else {
                 ζ = ζ_up(ζ);
-                α = 'γ';
+                α = 'succeed';
             }
             break;
-        case 'SEQ/γ': {
+        case 'SEQ/succeed': {
             // child succeeded — commit its cursor, advance to next child
             const childδ = ζ[3];
             ζ = ζ_next_commit(ζ, childδ);
-            α = 'α';
+            α = 'proceed';
             break;
         }
-        case 'SEQ/ω':
-        case 'SEQ/β':
-            if (Ω.length) { ζ = Ω.pop(); α = 'β'; }
+        case 'SEQ/concede':
+        case 'SEQ/recede':
+            if (Ω.length) { ζ = Ω.pop(); α = 'recede'; }
             else return null;
             break;
 
         /* ── LIT ────────────────────────────────────────────────────────── */
-        case 'LIT/α': {
+        case 'LIT/proceed': {
             const pat = ζ[4];
             const δ   = ζ[3];
             if (δ + pat.length <= n && S.startsWith(pat, δ)) {
                 ζ = ζ_up(ζ, δ + pat.length);
-                α = 'γ';
+                α = 'succeed';
             } else {
                 ζ = ζ_up(ζ);
-                α = 'ω';
+                α = 'concede';
             }
             break;
         }
 
         /* ── ANY ────────────────────────────────────────────────────────── */
-        case 'ANY/α': {
+        case 'ANY/proceed': {
             const δ = ζ[3];
             if (δ < n && ζ[4].cs.includes(S[δ])) {
-                ζ = ζ_up(ζ, δ+1); α = 'γ';
+                ζ = ζ_up(ζ, δ+1); α = 'succeed';
             } else {
-                ζ = ζ_up(ζ);      α = 'ω';
+                ζ = ζ_up(ζ);      α = 'concede';
             }
             break;
         }
 
         /* ── NOTANY ─────────────────────────────────────────────────────── */
-        case 'NOTANY/α': {
+        case 'NOTANY/proceed': {
             const δ = ζ[3];
             if (δ < n && !ζ[4].cs.includes(S[δ])) {
-                ζ = ζ_up(ζ, δ+1); α = 'γ';
+                ζ = ζ_up(ζ, δ+1); α = 'succeed';
             } else {
-                ζ = ζ_up(ζ);      α = 'ω';
+                ζ = ζ_up(ζ);      α = 'concede';
             }
             break;
         }
 
         /* ── SPAN ───────────────────────────────────────────────────────── */
-        case 'SPAN/α': {
+        case 'SPAN/proceed': {
             const cs = ζ[4].cs;
             let δ = ζ[3];
             const start = δ;
             while (δ < n && cs.includes(S[δ])) δ++;
             if (δ > start) {
-                ζ = ζ_up(ζ, δ); α = 'γ';
+                ζ = ζ_up(ζ, δ); α = 'succeed';
             } else {
-                ζ = ζ_up(ζ);    α = 'ω';
+                ζ = ζ_up(ζ);    α = 'concede';
             }
             break;
         }
 
         /* ── BREAK ──────────────────────────────────────────────────────── */
-        case 'BREAK/α': {
+        case 'BREAK/proceed': {
             const cs = ζ[4].cs;
             let δ = ζ[3];
             while (δ < n && !cs.includes(S[δ])) δ++;
             // BREAK succeeds even if 0 chars consumed (stopped at break char or eol)
             // but requires the break char to actually be there (not eol)
             if (δ < n) {
-                ζ = ζ_up(ζ, δ); α = 'γ';
+                ζ = ζ_up(ζ, δ); α = 'succeed';
             } else {
-                ζ = ζ_up(ζ);    α = 'ω';
+                ζ = ζ_up(ζ);    α = 'concede';
             }
             break;
         }
 
         /* ── ARB ────────────────────────────────────────────────────────── */
-        case 'ARB/α': {
+        case 'ARB/proceed': {
             // match 0 chars first; push retry frame with φ=1
             const saved = Object.assign([], ζ);
             saved[5] = 1;
             Ω.push(saved);
             ζ = ζ_up(ζ, ζ[3]);   // succeed with 0 chars
-            α = 'γ';
+            α = 'succeed';
             break;
         }
-        case 'ARB/β': {
+        case 'ARB/recede': {
             const len = ζ[5];
             const δ   = ζ[1];     // Δ is entry position
             if (δ + len <= n) {
@@ -290,96 +297,96 @@ function engine_ζ(S, n, Π, startPos) {
                 saved[5] = len + 1;
                 Ω.push(saved);
                 ζ = ζ_up(ζ, δ + len);
-                α = 'γ';
+                α = 'succeed';
             } else {
-                if (Ω.length) { ζ = Ω.pop(); α = 'β'; }
+                if (Ω.length) { ζ = Ω.pop(); α = 'recede'; }
                 else return null;
             }
             break;
         }
 
         /* ── REM ────────────────────────────────────────────────────────── */
-        case 'REM/α':
+        case 'REM/proceed':
             ζ = ζ_up(ζ, n);
-            α = 'γ';
+            α = 'succeed';
             break;
 
         /* ── LEN ────────────────────────────────────────────────────────── */
-        case 'LEN/α': {
+        case 'LEN/proceed': {
             const δ = ζ[3], len = ζ[4].n;
-            if (δ + len <= n) { ζ = ζ_up(ζ, δ+len); α = 'γ'; }
-            else              { ζ = ζ_up(ζ);         α = 'ω'; }
+            if (δ + len <= n) { ζ = ζ_up(ζ, δ+len); α = 'succeed'; }
+            else              { ζ = ζ_up(ζ);         α = 'concede'; }
             break;
         }
 
         /* ── POS ────────────────────────────────────────────────────────── */
-        case 'POS/α': {
+        case 'POS/proceed': {
             const δ = ζ[3];
-            if (δ === ζ[4].n) { ζ = ζ_up(ζ); α = 'γ'; }
-            else               { ζ = ζ_up(ζ); α = 'ω'; }
+            if (δ === ζ[4].n) { ζ = ζ_up(ζ); α = 'succeed'; }
+            else               { ζ = ζ_up(ζ); α = 'concede'; }
             break;
         }
 
         /* ── RPOS ───────────────────────────────────────────────────────── */
-        case 'RPOS/α': {
+        case 'RPOS/proceed': {
             const δ = ζ[3];
-            if (n - δ === ζ[4].n) { ζ = ζ_up(ζ); α = 'γ'; }
-            else                   { ζ = ζ_up(ζ); α = 'ω'; }
+            if (n - δ === ζ[4].n) { ζ = ζ_up(ζ); α = 'succeed'; }
+            else                   { ζ = ζ_up(ζ); α = 'concede'; }
             break;
         }
 
         /* ── TAB ────────────────────────────────────────────────────────── */
-        case 'TAB/α': {
+        case 'TAB/proceed': {
             const δ = ζ[3], target = ζ[4].n;
-            if (target >= δ && target <= n) { ζ = ζ_up(ζ, target); α = 'γ'; }
-            else                            { ζ = ζ_up(ζ);          α = 'ω'; }
+            if (target >= δ && target <= n) { ζ = ζ_up(ζ, target); α = 'succeed'; }
+            else                            { ζ = ζ_up(ζ);          α = 'concede'; }
             break;
         }
 
         /* ── RTAB ───────────────────────────────────────────────────────── */
-        case 'RTAB/α': {
+        case 'RTAB/proceed': {
             const δ = ζ[3], target = n - ζ[4].n;
-            if (target >= δ) { ζ = ζ_up(ζ, target); α = 'γ'; }
-            else              { ζ = ζ_up(ζ);          α = 'ω'; }
+            if (target >= δ) { ζ = ζ_up(ζ, target); α = 'succeed'; }
+            else              { ζ = ζ_up(ζ);          α = 'concede'; }
             break;
         }
 
         /* ── FENCE ──────────────────────────────────────────────────────── */
-        case 'FENCE/α':
+        case 'FENCE/proceed':
             Ω.push('ABORT');    // sentinel: if we backtrack here, abort
             ζ = ζ_up(ζ);
-            α = 'γ';
+            α = 'succeed';
             break;
-        case 'FENCE/β':
-        case 'FENCE/ω':
+        case 'FENCE/recede':
+        case 'FENCE/concede':
             return null;        // FENCE cuts — no retry
 
         /* ── SUCCEED ────────────────────────────────────────────────────── */
-        case 'SUCCEED/α': {
+        case 'SUCCEED/proceed': {
             const saved = Object.assign([], ζ);
             Ω.push(saved);
             ζ = ζ_up(ζ);
-            α = 'γ';
+            α = 'succeed';
             break;
         }
-        case 'SUCCEED/β':
+        case 'SUCCEED/recede':
             // retry: re-succeed from same position
             ζ = ζ_up(ζ);
-            α = 'γ';
+            α = 'succeed';
             break;
 
         /* ── FAIL ───────────────────────────────────────────────────────── */
-        case 'FAIL/α':
+        case 'FAIL/proceed':
             ζ = ζ_up(ζ);
-            α = 'ω';
+            α = 'concede';
             break;
 
         /* ── ABORT ──────────────────────────────────────────────────────── */
-        case 'ABORT/α':
+        case 'ABORT/proceed':
             return null;
 
         /* ── BAL ────────────────────────────────────────────────────────── */
-        case 'BAL/α': {
+        case 'BAL/proceed': {
             const δ = ζ[3];
             let pos = δ, nest = 0;
             let found = -1;
@@ -395,13 +402,13 @@ function engine_ζ(S, n, Π, startPos) {
                 saved[5] = found; // retry from here
                 Ω.push(saved);
                 ζ = ζ_up(ζ, found);
-                α = 'γ';
+                α = 'succeed';
             } else {
-                ζ = ζ_up(ζ); α = 'ω';
+                ζ = ζ_up(ζ); α = 'concede';
             }
             break;
         }
-        case 'BAL/β': {
+        case 'BAL/recede': {
             // continue scan from saved position
             let pos = ζ[5], nest = 0;
             let found = -1;
@@ -417,16 +424,16 @@ function engine_ζ(S, n, Π, startPos) {
                 saved[5] = found;
                 Ω.push(saved);
                 ζ = ζ_up(ζ, found);
-                α = 'γ';
+                α = 'succeed';
             } else {
-                if (Ω.length) { ζ = Ω.pop(); α = 'β'; }
+                if (Ω.length) { ζ = Ω.pop(); α = 'recede'; }
                 else return null;
             }
             break;
         }
 
         /* ── ARBNO ──────────────────────────────────────────────────────── */
-        case 'ARBNO/α': {
+        case 'ARBNO/proceed': {
             // Expand lazily: ALT[ε, SEQ[P, ARBNO(P)]]
             const P = ζ[4].p;
             const expanded = {t:'ALT', ap: [
@@ -434,69 +441,69 @@ function engine_ζ(S, n, Π, startPos) {
                 {t:'SEQ', ap: [P, ζ[4]]}                // P then recurse
             ]};
             ζ = ζ_down_to(ζ, expanded);
-            α = 'α';
+            α = 'proceed';
             break;
         }
-        case 'ARBNO/γ':
-            ζ = ζ_up(ζ); α = 'γ';
+        case 'ARBNO/succeed':
+            ζ = ζ_up(ζ); α = 'succeed';
             break;
-        case 'ARBNO/ω':
-        case 'ARBNO/β':
-            if (Ω.length) { ζ = Ω.pop(); α = 'β'; }
+        case 'ARBNO/concede':
+        case 'ARBNO/recede':
+            if (Ω.length) { ζ = Ω.pop(); α = 'recede'; }
             else return null;
             break;
 
         /* ── CAPT_IMM ($) ───────────────────────────────────────────────── */
-        case 'CAPT_IMM/α':
+        case 'CAPT_IMM/proceed':
             Ω.push(ζ);
             ζ = ζ_down_to(ζ, ζ[4].p);
-            α = 'α';
+            α = 'proceed';
             break;
-        case 'CAPT_IMM/γ': {
+        case 'CAPT_IMM/succeed': {
             const v    = ζ[4].v;
             const text = S.slice(ζ[1], ζ[3]);   // Δ to δ
             _vars_set(v, text);                   // immediate, unconditional
             ζ = ζ_up(ζ);
-            α = 'γ';
+            α = 'succeed';
             break;
         }
-        case 'CAPT_IMM/ω':
-        case 'CAPT_IMM/β':
-            if (Ω.length) { ζ = Ω.pop(); α = 'β'; }
+        case 'CAPT_IMM/concede':
+        case 'CAPT_IMM/recede':
+            if (Ω.length) { ζ = Ω.pop(); α = 'recede'; }
             else return null;
             break;
 
         /* ── CAPT_COND (.) ──────────────────────────────────────────────── */
-        case 'CAPT_COND/α':
+        case 'CAPT_COND/proceed':
             Ω.push(ζ);
             ζ = ζ_down_to(ζ, ζ[4].p);
-            α = 'α';
+            α = 'proceed';
             break;
-        case 'CAPT_COND/γ': {
+        case 'CAPT_COND/succeed': {
             const v    = ζ[4].v;
             const text = S.slice(ζ[1], ζ[3]);
             _pending_cond.push({v, text});         // deferred until overall success
             ζ = ζ_up(ζ);
-            α = 'γ';
+            α = 'succeed';
             break;
         }
-        case 'CAPT_COND/ω':
-        case 'CAPT_COND/β':
-            if (Ω.length) { ζ = Ω.pop(); α = 'β'; }
+        case 'CAPT_COND/concede':
+        case 'CAPT_COND/recede':
+            if (Ω.length) { ζ = Ω.pop(); α = 'recede'; }
             else return null;
             break;
 
         /* ── fallback: generic fail/recede ──────────────────────────────── */
         default:
-            if (α === 'ω' || α === 'β') {
+            if (α === 'concede' || α === 'recede') {
                 if (Ω.length) {
                     const top = Ω.pop();
                     if (top === 'ABORT') return null;
-                    ζ = top; α = 'β';
+                    ζ = top; α = 'recede';
                 } else return null;
             } else {
                 // unknown node type — treat as fail
-                ζ = ζ_up(ζ); α = 'ω';
+                ζ = ζ_up(ζ); α = 'concede';
             }
             break;
         }
