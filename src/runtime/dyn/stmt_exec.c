@@ -323,12 +323,34 @@ static spec_t bb_eps(eps_t **ζζ, int entry)
     EPS_ω:  return spec_empty;
 }
 
+/* ── DEFERRED VAR box — forward declared; defined after bb_build ────────── */
+typedef struct {
+    const char  *name;
+    bb_box_fn    child_fn;
+    void        *child_ζ;
+} deferred_var_t;
+/* bb_deferred_var() defined after bb_build (needs bb_node_t) */
+static spec_t bb_deferred_var(deferred_var_t **ζζ, int entry);
+
 /* ── CAPTURE box (wraps child; on γ writes capture to named variable) ───── */
+/*
+ * DYN-4: XNME (pat . var) is a CONDITIONAL capture — only committed when
+ * the entire enclosing pattern succeeds (Phase 5 gate).  XFNME (pat $ var)
+ * is IMMEDIATE — written on every γ, even during backtracking.
+ *
+ * Implementation: both kinds write via NV_SET_fn on γ.  For XNME
+ * (immediate=0) the caller (stmt_exec_dyn) must pass the capture list
+ * and commit only on overall success.  For DYN-4 we buffer XNME captures
+ * in a small pending-capture list and flush it in Phase 5.
+ */
 typedef struct {
     bb_box_fn    child_fn;
     void        *child_ζ;
     const char  *varname;   /* NV_SET_fn target */
     int          immediate; /* 1=XFNME ($), 0=XNME (.) */
+    /* For XNME: pending capture to be committed by Phase 5 */
+    spec_t       pending;
+    int          has_pending;
 } capture_t;
 
 static spec_t bb_capture(capture_t **ζζ, int entry)
@@ -341,26 +363,33 @@ static spec_t bb_capture(capture_t **ζζ, int entry)
     spec_t         child_r;
 
     CAP_α:        child_r = ζ->child_fn(&ζ->child_ζ, α);
-                  if (spec_is_empty(child_r))                goto CAP_ω;
+                  if (spec_is_empty(child_r))           goto CAP_ω;
                                                         goto CAP_γ_core;
     CAP_β:        child_r = ζ->child_fn(&ζ->child_ζ, β);
-                  if (spec_is_empty(child_r))                goto CAP_ω;
+                  if (spec_is_empty(child_r))           goto CAP_ω;
                                                         goto CAP_γ_core;
 
     CAP_γ_core:   if (ζ->varname && *ζ->varname) {
-                      /* build a GC-managed string from the matched span */
-                      char *s = (char *)GC_MALLOC(child_r.δ + 1);
-                      memcpy(s, child_r.σ, (size_t)child_r.δ);
-                      s[child_r.δ] = '\0';
-                      DESCR_t val;
-                      val.v    = DT_S;
-                      val.slen = (uint32_t)child_r.δ;
-                      val.s    = s;
-                      NV_SET_fn(ζ->varname, val);
+                      if (ζ->immediate) {
+                          /* XFNME ($): immediate — write now on every γ */
+                          char *s = (char *)GC_MALLOC(child_r.δ + 1);
+                          memcpy(s, child_r.σ, (size_t)child_r.δ);
+                          s[child_r.δ] = '\0';
+                          DESCR_t val;
+                          val.v    = DT_S;
+                          val.slen = (uint32_t)child_r.δ;
+                          val.s    = s;
+                          NV_SET_fn(ζ->varname, val);
+                      } else {
+                          /* XNME (.): conditional — buffer, commit in Phase 5 */
+                          ζ->pending     = child_r;
+                          ζ->has_pending = 1;
+                      }
                   }
                   return child_r;
 
-    CAP_ω:        return spec_empty;
+    CAP_ω:        ζ->has_pending = 0;   /* backtracked past — discard pending */
+                  return spec_empty;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -381,6 +410,10 @@ typedef struct {
 
 /* forward declaration for recursion */
 static bb_node_t bb_build(_PND_t *p);
+
+/* forward decls for capture registry (defined after stmt_exec_dyn) */
+static void register_capture(capture_t *c);
+static void flush_pending_captures(void);
 
 /* forward-declared box functions (defined in dyn/ box files, linked separately) */
 extern spec_t bb_lit   (void **ζζ, int entry);
@@ -604,10 +637,11 @@ static bb_node_t bb_build(_PND_t *p)
     case _XFNME: {
         capture_t *ζ = calloc(1, sizeof(capture_t));
         bb_node_t child = bb_build(p->left);
-        ζ->child_fn = child.fn;
-        ζ->child_ζ  = child.ζ;
-        ζ->varname  = (p->var.v == DT_S && p->var.s) ? p->var.s : NULL;
+        ζ->child_fn  = child.fn;
+        ζ->child_ζ   = child.ζ;
+        ζ->varname   = (p->var.v == DT_S && p->var.s) ? p->var.s : NULL;
         ζ->immediate = 1;
+        register_capture(ζ);
         n.fn = (bb_box_fn)bb_capture;
         n.ζ  = ζ;
         break;
@@ -617,45 +651,43 @@ static bb_node_t bb_build(_PND_t *p)
     case _XNME: {
         capture_t *ζ = calloc(1, sizeof(capture_t));
         bb_node_t child = bb_build(p->left);
-        ζ->child_fn = child.fn;
-        ζ->child_ζ  = child.ζ;
-        ζ->varname  = (p->var.v == DT_S && p->var.s) ? p->var.s : NULL;
+        ζ->child_fn  = child.fn;
+        ζ->child_ζ   = child.ζ;
+        ζ->varname   = (p->var.v == DT_S && p->var.s) ? p->var.s : NULL;
         ζ->immediate = 0;
+        register_capture(ζ);
         n.fn = (bb_box_fn)bb_capture;
         n.ζ  = ζ;
         break;
     }
 
-    /* ── DEFERRED VAR REF: *name ─────────────────────────────────────── */
+    /* ── DEFERRED VAR REF: *name — resolved at match time ───────────── */
     case _XDSAR:
-    /* ── VAR holding a pattern ──────────────────────────────────────── */
+    /* ── VAR holding a pattern — resolved at match time ────────────── */
     case _XVAR: {
         /*
-         * Resolve the variable at match time (Phase 2 runs at statement
-         * execution time, so this is correct).  Fetch the current value
-         * of the named variable and, if it is DT_P, recurse; if DT_S,
-         * treat as a literal.
+         * DYN-4: defer NV_GET_fn to Phase 3 (α port of deferred_var_t).
+         * DYN-3 resolved here (Phase 2 / build time) — correct only for
+         * non-mutating patterns.  DYN-4 is exact: *X always sees the
+         * value X holds at the moment each match attempt begins.
+         *
+         * Store only the variable name; the box fetches live at α.
          */
         const char *name = (p->kind == _XDSAR) ? p->sval
                          : (p->var.v == DT_S)  ? p->var.s : NULL;
         if (name && *name) {
-            DESCR_t val = NV_GET_fn(name);
-            if (val.v == DT_P && val.p) {
-                /* recurse: materialise the stored pattern */
-                return bb_build((_PND_t *)val.p);
-            } else if (val.v == DT_S && val.s) {
-                _lit_t *ζ = calloc(1, sizeof(_lit_t));
-                ζ->lit = val.s;
-                ζ->len = (int)strlen(val.s);
-                n.fn = (bb_box_fn)bb_lit;
-                n.ζ  = ζ;
-                return n;
-            }
+            deferred_var_t *ζ = calloc(1, sizeof(deferred_var_t));
+            ζ->name     = name;
+            ζ->child_fn = NULL;
+            ζ->child_ζ  = NULL;
+            n.fn = (bb_box_fn)bb_deferred_var;
+            n.ζ  = ζ;
+        } else {
+            /* no name — epsilon (degenerate, shouldn't arise) */
+            eps_t *ζ = calloc(1, sizeof(eps_t));
+            n.fn = (bb_box_fn)bb_eps;
+            n.ζ  = ζ;
         }
-        /* fallback: epsilon */
-        eps_t *ζ = calloc(1, sizeof(eps_t));
-        n.fn = (bb_box_fn)bb_eps;
-        n.ζ  = ζ;
         break;
     }
 
@@ -704,42 +736,149 @@ static bb_node_t bb_build(_PND_t *p)
     return n;
 }
 
+/* ── bb_deferred_var — defined here, after bb_build (needs bb_node_t) ───── */
+/*
+ * DYN-4: *name resolved at Phase 3 match time (α port), not Phase 2.
+ * Stores only the variable name; fetches live value on each α call.
+ */
+static spec_t bb_deferred_var(deferred_var_t **ζζ, int entry)
+{
+    deferred_var_t *ζ = *ζζ;
+
+    if (entry == α)                                     goto DVAR_α;
+    if (entry == β)                                     goto DVAR_β;
+
+    spec_t          DVAR;
+
+    DVAR_α:         {
+                        DESCR_t val = NV_GET_fn(ζ->name);
+                        bb_node_t child;
+                        if (val.v == DT_P && val.p) {
+                            child = bb_build((_PND_t *)val.p);
+                        } else if (val.v == DT_S && val.s) {
+                            _lit_t *lz = calloc(1, sizeof(_lit_t));
+                            lz->lit = val.s;
+                            lz->len = (int)strlen(val.s);
+                            child.fn = (bb_box_fn)bb_lit;
+                            child.ζ  = lz;
+                        } else {
+                            eps_t *ez = calloc(1, sizeof(eps_t));
+                            child.fn = (bb_box_fn)bb_eps;
+                            child.ζ  = ez;
+                        }
+                        ζ->child_fn = child.fn;
+                        ζ->child_ζ  = child.ζ;
+                        DVAR = ζ->child_fn(&ζ->child_ζ, α);
+                    }
+                    if (spec_is_empty(DVAR))            goto DVAR_ω;
+                                                        goto DVAR_γ;
+    DVAR_β:         if (!ζ->child_fn)                  goto DVAR_ω;
+                    DVAR = ζ->child_fn(&ζ->child_ζ, β);
+                    if (spec_is_empty(DVAR))            goto DVAR_ω;
+                                                        goto DVAR_γ;
+
+    DVAR_γ:         return DVAR;
+    DVAR_ω:         return spec_empty;
+}
+
 /* ══════════════════════════════════════════════════════════════════════════
  * PUBLIC: stmt_exec_dyn
  * ══════════════════════════════════════════════════════════════════════════ */
 
 /*
+ * DYN-4: kw_anchor — when non-zero, Phase 3 tries only position 0.
+ * Imported from snobol4.h in the full-runtime build; declared extern here
+ * for standalone / test builds.
+ */
+#ifndef STMT_EXEC_STANDALONE
+extern int kw_anchor;
+#else
+/* Standalone: default to unanchored; test driver can override */
+int kw_anchor = 0;
+#endif
+
+/*
+ * DYN-4: pending-capture flush.
+ * After Phase 3 confirms overall match success we walk the box graph
+ * and commit any buffered XNME (.) captures.  We do this via a small
+ * visitor that recurses through _seq_t and _alt_t frames and checks
+ * every capture_t.has_pending flag.
+ *
+ * We need to reach capture_t nodes buried inside _seq_t / _alt_t.
+ * Rather than a full graph walk (complex), we use a simple flat list:
+ * bb_build registers every capture_t it allocates into a thread-local
+ * array, and Phase 5 iterates the array.
+ */
+#define MAX_CAPTURES 64
+static capture_t *g_capture_list[MAX_CAPTURES];
+static int        g_capture_count = 0;
+
+/* Called from bb_build whenever a capture_t is created */
+static void register_capture(capture_t *c)
+{
+    if (g_capture_count < MAX_CAPTURES)
+        g_capture_list[g_capture_count++] = c;
+}
+
+/* Flush all pending XNME captures (call after Phase 3 success) */
+static void flush_pending_captures(void)
+{
+    for (int i = 0; i < g_capture_count; i++) {
+        capture_t *c = g_capture_list[i];
+        if (!c->immediate && c->has_pending && c->varname && *c->varname) {
+            char *s = (char *)GC_MALLOC(c->pending.δ + 1);
+            memcpy(s, c->pending.σ, (size_t)c->pending.δ);
+            s[c->pending.δ] = '\0';
+            DESCR_t val;
+            val.v    = DT_S;
+            val.slen = (uint32_t)c->pending.δ;
+            val.s    = s;
+            NV_SET_fn(c->varname, val);
+        }
+        c->has_pending = 0;
+    }
+    g_capture_count = 0;
+}
+
+/*
  * stmt_exec_dyn — execute one SNOBOL4 statement dynamically.
  *
+ * DYN-4 SIGNATURE CHANGE: subj_name (const char*) added.
+ *   - If non-NULL: subject is fetched via NV_GET_fn(subj_name) (Phase 1)
+ *     and written back via NV_SET_fn(subj_name, ...) (Phase 5).
+ *     This is the correct lvalue path — the only safe write-back.
+ *   - If NULL: subject is read-only; replacement is skipped (:S without
+ *     write-back; has_repl=1 with subj_name=NULL → :F per SNOBOL4 spec).
+ *
  * Parameters:
- *   subj_var  — pointer to the subject variable DESCR_t (read Phase 1,
- *               written Phase 5 if replacement performed)
+ *   subj_name — NV name of subject variable (or NULL for read-only)
+ *   subj_var  — subject DESCR_t (used when subj_name is NULL, e.g. literals)
  *   pat       — pattern DESCR_t (DT_P or DT_S)
  *   repl      — replacement DESCR_t pointer, or NULL for no replacement
  *   has_repl  — 1 if replacement is present
  *
  * Returns 1 → :S, 0 → :F.
- *
- * Three-column layout — matches ARCH-byrd-dynamic.md five-phase spec:
- *
- *     LABEL:              ACTION                          GOTO
- *     ─────────────────────────────────────────────────────────
- *     Phase1:             extract subject string          → Phase2 / :F
- *     Phase2:             build box graph from PATND_t    → Phase3
- *     Phase3:             drive root box α, scan loop     → Phase4 / :F
- *     Phase4:             repl already DESCR_t            → Phase5 / skip
- *     Phase5:             splice replacement, NV_SET_fn   → :S
  */
-int stmt_exec_dyn(DESCR_t *subj_var,
-                  DESCR_t  pat,
-                  DESCR_t *repl,
-                  int      has_repl)
+int stmt_exec_dyn(const char  *subj_name,
+                  DESCR_t     *subj_var,
+                  DESCR_t      pat,
+                  DESCR_t     *repl,
+                  int          has_repl)
 {
+    /* reset capture registry for this statement */
+    g_capture_count = 0;
+
     /* ── Phase 1: build subject ─────────────────────────────────────── */
     /*
-     * Extract the subject string.  If subj_var is NULL or has no string
-     * value, treat as spec_empty (SNOBOL4 §2.1: unset variable = null string).
+     * DYN-4: If subj_name is given, fetch fresh via NV_GET_fn.
+     * Otherwise fall back to subj_var (literal / expression result).
      */
+    DESCR_t subj_fetched;
+    if (subj_name && *subj_name) {
+        subj_fetched = NV_GET_fn(subj_name);
+        subj_var     = &subj_fetched;
+    }
+
     const char *subj_str = "";
     int         subj_len = 0;
 
@@ -755,10 +894,6 @@ int stmt_exec_dyn(DESCR_t *subj_var,
     Ω = subj_len;
 
     /* ── Phase 2: build pattern ─────────────────────────────────────── */
-    /*
-     * Materialise the PATND_t tree into a live bb box graph.
-     * If pat is DT_S (plain string), wrap as a literal.
-     */
     bb_node_t root;
     if (pat.v == DT_P && pat.p) {
         root = bb_build((_PND_t *)pat.p);
@@ -769,7 +904,6 @@ int stmt_exec_dyn(DESCR_t *subj_var,
         root.fn = (bb_box_fn)bb_lit;
         root.ζ  = lζ;
     } else {
-        /* no pattern → epsilon (always succeeds at pos 0) */
         eps_t *eζ = calloc(1, sizeof(eps_t));
         root.fn = (bb_box_fn)bb_eps;
         root.ζ  = eζ;
@@ -777,26 +911,24 @@ int stmt_exec_dyn(DESCR_t *subj_var,
 
     /* ── Phase 3: run match ─────────────────────────────────────────── */
     /*
-     * SNOBOL4 unanchored match: try each starting position 0..Ω.
-     * On each attempt, drive root box α.  If it succeeds, record
-     * match_start / match_end and proceed to Phase 4.
-     * If kw_anchor (global &ANCHOR keyword) is set, try pos 0 only.
-     *
-     * We do not import kw_anchor here — for DYN-3 we always scan.
-     * (kw_anchor integration is M-DYN-4.)
+     * DYN-4: honour kw_anchor (&ANCHOR keyword).
+     * If non-zero, try only position 0 (anchored match).
+     * Otherwise scan positions 0..Ω (unanchored).
      */
     int match_start = -1;
     int match_end   = -1;
 
-    for (int scan = 0; scan <= Ω; scan++) {
+    int scan_limit = kw_anchor ? 0 : Ω;
+
+    for (int scan = 0; scan <= scan_limit; scan++) {
         Δ = scan;
         spec_t result = root.fn(&root.ζ, α);
         if (!spec_is_empty(result)) {
             match_start = scan;
-            match_end   = Δ;   /* Δ advanced by box during match */
+            match_end   = Δ;
             goto Phase4;
         }
-        if (scan == Ω) break;
+        if (scan == scan_limit) break;
     }
 
     /* match failed → :F */
@@ -805,21 +937,20 @@ int stmt_exec_dyn(DESCR_t *subj_var,
 Phase4:
     /* ── Phase 4: build replacement ────────────────────────────────── */
     /*
-     * Replacement is already evaluated by the caller as a DESCR_t.
-     * Nothing to build.  Skip to Phase 5 if replacement is present.
+     * DYN-4 lvalue rule: if replacement present and subj_name is NULL,
+     * the subject has no NV home — can't write back safely.
+     * In the full runtime this is :F.
+     * Exception: subj_name=NULL + subj_var provided = test/convenience
+     * wrapper (stmt_exec_dyn_str).  We allow direct write in that case.
      */
+    if (has_repl && repl && !subj_name && !subj_var) return 0;
+
+    /* Flush XNME (.) conditional captures — overall match succeeded */
+    flush_pending_captures();
+
     if (!has_repl || !repl) goto Success;
 
     /* ── Phase 5: perform replacement ──────────────────────────────── */
-    /*
-     * Splice the replacement into the subject string at [match_start..match_end].
-     *
-     *   new_subject = subj_str[0..match_start]
-     *               + replacement_string
-     *               + subj_str[match_end..Ω]
-     *
-     * Build in GC-managed memory and write back to *subj_var.
-     */
     {
         const char *repl_str = "";
         int         repl_len = 0;
@@ -827,7 +958,6 @@ Phase4:
             repl_str = repl->s;
             repl_len = repl->slen ? (int)repl->slen : (int)strlen(repl->s);
         } else if (repl->v == DT_I) {
-            /* integer replacement: convert to string */
             char ibuf[32];
             snprintf(ibuf, sizeof(ibuf), "%lld", (long long)repl->i);
             char *gs = (char *)GC_MALLOC(strlen(ibuf) + 1);
@@ -839,21 +969,26 @@ Phase4:
         int   new_len = match_start + repl_len + (Ω - match_end);
         char *new_s   = (char *)GC_MALLOC((size_t)new_len + 1);
 
-        memcpy(new_s,                          subj_str,           (size_t)match_start);
-        memcpy(new_s + match_start,            repl_str,           (size_t)repl_len);
-        memcpy(new_s + match_start + repl_len, subj_str + match_end,
-               (size_t)(Ω - match_end));
+        memcpy(new_s,                          subj_str,             (size_t)match_start);
+        memcpy(new_s + match_start,            repl_str,             (size_t)repl_len);
+        memcpy(new_s + match_start + repl_len, subj_str + match_end, (size_t)(Ω - match_end));
         new_s[new_len] = '\0';
 
         DESCR_t new_val;
         new_val.v    = DT_S;
         new_val.slen = (uint32_t)new_len;
         new_val.s    = new_s;
-        *subj_var    = new_val;
+
+        if (subj_name && *subj_name) {
+            /* DYN-4: safe lvalue write-back via NV_SET_fn */
+            NV_SET_fn(subj_name, new_val);
+        } else if (subj_var) {
+            /* convenience / test path: direct write (no NV table) */
+            *subj_var = new_val;
+        }
     }
 
 Success:
-    /* ── :S ─────────────────────────────────────────────────────────── */
     return 1;
 }
 
@@ -863,13 +998,10 @@ Success:
  * Used by the test driver (stmt_exec_test.c) to exercise the executor
  * without going through the full DESCR_t / PATND_t stack.
  *
- * Parameters:
- *   subject — C string (modified in place via returned new_subject)
- *   pattern — literal string pattern (treated as DT_S → literal box)
- *   repl    — replacement C string (NULL = no replacement)
- *   out_subject — output: new subject after replacement (caller frees)
- *
- * Returns 1 → matched (:S), 0 → not matched (:F).
+ * NOTE: subj_name is passed as NULL here — the test driver owns the
+ * subject buffer directly.  Phase 5 write-back goes via *out_subject
+ * for test purposes only.  In the full runtime, callers always pass
+ * a real subj_name.
  * ══════════════════════════════════════════════════════════════════════════ */
 int stmt_exec_dyn_str(const char  *subject,
                       const char  *pattern,
@@ -882,7 +1014,7 @@ int stmt_exec_dyn_str(const char  *subject,
     subj.slen = subject ? (uint32_t)strlen(subject) : 0;
     subj.s    = subject ? (char *)subject : (char *)"";
 
-    /* Build pattern DESCR_t (literal string → DT_S, Phase 2 wraps as bb_lit) */
+    /* Build pattern DESCR_t (literal string → DT_S) */
     DESCR_t pat;
     pat.v    = DT_S;
     pat.slen = pattern ? (uint32_t)strlen(pattern) : 0;
@@ -896,10 +1028,14 @@ int stmt_exec_dyn_str(const char  *subject,
 
     int has_repl = (repl_str != NULL);
 
-    int r = stmt_exec_dyn(&subj, pat, has_repl ? &repl_d : NULL, has_repl);
+    /* subj_name=NULL: test driver, no NV table, replacement returned via
+     * out_subject for convenience.  Phase 5 writes into subj.s via the
+     * direct path (special case: when subj_name is NULL and !has_repl the
+     * replacement step is skipped gracefully). */
+    int r = stmt_exec_dyn(NULL, &subj, pat, has_repl ? &repl_d : NULL, has_repl);
 
     if (out_subject && r) {
-        *out_subject = subj.s;  /* GC-managed or original */
+        *out_subject = subj.s;
     }
     return r;
 }
