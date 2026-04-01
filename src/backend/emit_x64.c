@@ -3898,7 +3898,7 @@ static int emit_expr(EXPR_t *e, int rbp_off) {
 
     /* ---- unary plus — coerce to numeric ---- */
     case E_UPLUS: {
-        const char *fnlab = str_intern("pos");
+        const char *fnlab = str_intern("__num_pos");
         EXPR_t *operand = e->children[0];
         if (!operand) goto fallback;
         if (rbp_off == -32) {

@@ -914,7 +914,7 @@ void SNO_INIT_fn(void) {
     register_fn("DIVIDE_fn",_b_div,      2, 2);
     register_fn("POWER_fn", _b_pow,      2, 2);
     register_fn("neg",      _b_neg,      1, 1);
-    register_fn("pos",      _b_pos,      1, 1);
+    register_fn("__num_pos", _b_pos,      1, 1);
     register_fn("INTEGER",  _b_INTEGER,  1, 1);
     register_fn("REAL",     _b_REAL,     1, 1);
     register_fn("SIZE",        _b_SIZE,     1, 1);
