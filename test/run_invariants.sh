@@ -276,7 +276,7 @@ run_snobol4_x86() {
 
   # Gather all test tuples into a temp file for xargs
   local manifest="$WORK/${cell}_manifest"
-  local DIRS="output assign concat arith_new control_new patterns capture strings functions data keywords"
+  local DIRS="output assign concat arith_new control_new patterns capture strings functions data keywords hello rung3 rung8 rungW01 rungW02 rungW03 rungW04 rungW05 rungW06 rungW07"
   for dir in $DIRS; do
     local full="$CORPUS/crosscheck/$dir"
     [[ -d "$full" ]] || continue
