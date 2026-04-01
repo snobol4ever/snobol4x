@@ -1,0 +1,12 @@
+bench_engine results — 2026-04-01T15:53:35.799Z
+node v22.22.0  WARMUP=2000  MEASURE=20000
+
+ID     one4all    spipatjs   ratio  desc
+B01        207510       6354   32.66x  Literal match
+B02         23578       6072    3.88x  BREAK+SPAN word scan
+B03         28602       6418    4.46x  ARB backtrack depth 12
+B04        232160       6875   33.77x  ARBNO multi-rep
+B05        179353       6457   27.78x  BAL balanced parens
+B06          9196       6379    1.44x  Wide ALT (4 alternatives)
+B07        163845       6268   26.14x  Deep SEQ (10 literals)
+B08        415434       6406   64.85x  CAPT_IMM capture overhead
