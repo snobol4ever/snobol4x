@@ -7,11 +7,22 @@
 #   test/prolog/foo.pro            + foo.s  foo.j
 #
 # Usage:
-#   bash test/run_emit_check.sh            # diff mode
+#   bash test/run_emit_check.sh            # diff mode — all backends (default)
 #   bash test/run_emit_check.sh --update   # regenerate generated files
 #   bash test/run_emit_check.sh --verbose  # print PASS lines too
 #
-# Environment: SCRIP_CC (default: <root>/scrip-cc), JOBS (default: nproc)
+# Scoping (CELLS env var — mirrors run_invariants.sh cell names):
+#   CELLS=snobol4_x86  bash test/run_emit_check.sh   # SNO×asm only (DYN/x86 sessions)
+#   CELLS=snobol4_jvm  bash test/run_emit_check.sh   # SNO×jvm only
+#   CELLS=snobol4_net  bash test/run_emit_check.sh   # SNO×net only
+#   CELLS=icon_x86     bash test/run_emit_check.sh   # ICN×asm only
+#   CELLS=icon_jvm     bash test/run_emit_check.sh   # ICN×jvm only
+#   CELLS=prolog_x86   bash test/run_emit_check.sh   # PRO×asm only
+#   CELLS=prolog_jvm   bash test/run_emit_check.sh   # PRO×jvm only
+#   (combine with spaces: CELLS="snobol4_x86 icon_x86")
+#   Omit CELLS or CELLS="" → all backends (cross-session shared gate)
+#
+# Environment: SCRIP_CC (default: <root>/scrip-cc), JOBS (default: nproc), CELLS
 
 set -uo pipefail
 
@@ -39,6 +50,32 @@ for arg in "$@"; do
   [[ "$arg" == "--update"  ]] && UPDATE=1
   [[ "$arg" == "--verbose" ]] && VERBOSE=1
 done
+
+# ── CELLS-based scope filter ─────────────────────────────────────────────────
+# Derive which (frontend × backend) pairs to check from CELLS env var.
+# If CELLS is unset or empty → all pairs (legacy/cross-session behaviour).
+_CELLS="${CELLS:-}"
+_want_sno_asm=1; _want_sno_jvm=1; _want_sno_net=1
+_want_icn_asm=1; _want_icn_jvm=1
+_want_pro_asm=1; _want_pro_jvm=1
+_want_reb_asm=1; _want_reb_jvm=1; _want_reb_net=1
+if [[ -n "$_CELLS" ]]; then
+  _want_sno_asm=0; _want_sno_jvm=0; _want_sno_net=0
+  _want_icn_asm=0; _want_icn_jvm=0
+  _want_pro_asm=0; _want_pro_jvm=0
+  _want_reb_asm=0; _want_reb_jvm=0; _want_reb_net=0
+  echo "$_CELLS" | grep -qw 'snobol4_x86'   && _want_sno_asm=1
+  echo "$_CELLS" | grep -qw 'snobol4_jvm'   && _want_sno_jvm=1
+  echo "$_CELLS" | grep -qw 'snobol4_net'   && _want_sno_net=1
+  echo "$_CELLS" | grep -qw 'icon_x86'      && _want_icn_asm=1
+  echo "$_CELLS" | grep -qw 'icon_jvm'      && _want_icn_jvm=1
+  echo "$_CELLS" | grep -qw 'prolog_x86'    && _want_pro_asm=1
+  echo "$_CELLS" | grep -qw 'prolog_jvm'    && _want_pro_jvm=1
+  echo "$_CELLS" | grep -qw 'snocone_x86'   && _want_sno_asm=1  # snocone uses same .s oracle
+  _scope_label=" [CELLS=$_CELLS]"
+else
+  _scope_label=" [all backends]"
+fi
 
 GREEN='\033[0;32m'; RED='\033[0;31m'; BOLD='\033[1m'; RESET='\033[0m'
 
@@ -104,7 +141,7 @@ TS=$(date '+%Y%m%d_%H%M%S')
 CSV="$CSV_DIR/emit_${TS}.csv"
 printf 'status,backend,label,timestamp\n' > "$CSV"
 
-echo -e "${BOLD}START  $START_HUMAN  run_emit_check.sh${RESET}"
+echo -e "${BOLD}START  $START_HUMAN  run_emit_check.sh${_scope_label}${RESET}"
 
 check_one() {
   local src="$1" backend="$2" ext="$3"
@@ -132,16 +169,16 @@ check_one() {
 export -f check_one; export SCRIP_CC FAIL_LOG CSV
 export TEST_REB
 
-printf '%s\n' "${SNO_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -asm s'  _ {}
-printf '%s\n' "${SNO_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -jvm j'  _ {}
-printf '%s\n' "${SNO_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -net il' _ {}
-[[ ${#ICN_FILES[@]} -gt 0 ]] && printf '%s\n' "${ICN_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -asm s' _ {}
-[[ ${#ICN_FILES[@]} -gt 0 ]] && printf '%s\n' "${ICN_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -jvm j' _ {}
-[[ ${#PRO_FILES[@]} -gt 0 ]] && printf '%s\n' "${PRO_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -asm s' _ {}
-[[ ${#PRO_FILES[@]} -gt 0 ]] && printf '%s\n' "${PRO_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -jvm j' _ {}
-[[ ${#REB_FILES[@]} -gt 0 ]] && printf '%s\n' "${REB_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -asm s'  _ {}
-[[ ${#REB_FILES[@]} -gt 0 ]] && printf '%s\n' "${REB_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -jvm j'  _ {}
-[[ ${#REB_FILES[@]} -gt 0 ]] && printf '%s\n' "${REB_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -net il' _ {}
+[[ $_want_sno_asm -eq 1 && ${#SNO_FILES[@]} -gt 0 ]] && printf '%s\n' "${SNO_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -asm s'  _ {}
+[[ $_want_sno_jvm -eq 1 && ${#SNO_FILES[@]} -gt 0 ]] && printf '%s\n' "${SNO_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -jvm j'  _ {}
+[[ $_want_sno_net -eq 1 && ${#SNO_FILES[@]} -gt 0 ]] && printf '%s\n' "${SNO_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -net il' _ {}
+[[ $_want_icn_asm -eq 1 && ${#ICN_FILES[@]} -gt 0 ]] && printf '%s\n' "${ICN_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -asm s' _ {}
+[[ $_want_icn_jvm -eq 1 && ${#ICN_FILES[@]} -gt 0 ]] && printf '%s\n' "${ICN_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -jvm j' _ {}
+[[ $_want_pro_asm -eq 1 && ${#PRO_FILES[@]} -gt 0 ]] && printf '%s\n' "${PRO_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -asm s' _ {}
+[[ $_want_pro_jvm -eq 1 && ${#PRO_FILES[@]} -gt 0 ]] && printf '%s\n' "${PRO_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -jvm j' _ {}
+[[ $_want_reb_asm -eq 1 && ${#REB_FILES[@]} -gt 0 ]] && printf '%s\n' "${REB_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -asm s'  _ {}
+[[ $_want_reb_jvm -eq 1 && ${#REB_FILES[@]} -gt 0 ]] && printf '%s\n' "${REB_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -jvm j'  _ {}
+[[ $_want_reb_net -eq 1 && ${#REB_FILES[@]} -gt 0 ]] && printf '%s\n' "${REB_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -net il' _ {}
 
 END=$(date +%s%N 2>/dev/null || date +%s)
 WALL_MS=$(( (END - START) / 1000000 ))
