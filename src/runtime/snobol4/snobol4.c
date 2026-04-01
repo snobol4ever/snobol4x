@@ -384,11 +384,13 @@ static DESCR_t _b_DATATYPE(DESCR_t *a, int n) {
     return STRVAL((char*)datatype(a[0]));
 }
 
-/* EVAL / OPSYN / SORT wrappers — file scope required */
+/* EVAL / CODE / OPSYN / SORT wrappers — file scope required */
 extern DESCR_t EVAL_fn(DESCR_t);
+extern DESCR_t code_dyn(const char *src);
 extern DESCR_t opsyn(DESCR_t, DESCR_t, DESCR_t);
 extern DESCR_t sort_fn(DESCR_t);
 static DESCR_t _b_EVAL(DESCR_t *a, int n)  { return EVAL_fn(n>0?a[0]:NULVCL); }
+static DESCR_t _b_CODE(DESCR_t *a, int n)  { return code_dyn(n>0?VARVAL_fn(a[0]):""); }
 static DESCR_t _b_OPSYN(DESCR_t *a, int n) {
     return opsyn(n>0?a[0]:NULVCL,n>1?a[1]:NULVCL,n>2?a[2]:NULVCL); }
 static DESCR_t _b_SORT(DESCR_t *a, int n)  { return sort_fn(n>0?a[0]:NULVCL); }
@@ -941,6 +943,7 @@ void SNO_INIT_fn(void) {
     register_fn("VALUE",   _b_VALUE,   1, 1);
     register_fn("COPY",    _b_COPY,    1, 1);
     register_fn("EVAL",  _b_EVAL,  1, 1);
+    register_fn("CODE",  _b_CODE,  1, 1);
     register_fn("OPSYN", _b_OPSYN, 2, 3);
     register_fn("ARG",   _b_ARG,   2, 2);
     register_fn("LOCAL", _b_LOCAL, 2, 2);

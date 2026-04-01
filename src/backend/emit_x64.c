@@ -4517,6 +4517,7 @@ static void emit_program(Program *prog) {
     A("    extern  stmt_concat, stmt_is_fail, stmt_finish\n");
     A("    extern  stmt_realval, stmt_set_null, stmt_set_indirect\n");
     A("    extern  stmt_apply, stmt_goto_dispatch\n");
+    A("    extern  execute_code_dyn\n");
     A("    extern  stmt_setup_subject, stmt_apply_replacement\n");
     A("    extern  stmt_apply_replacement_splice\n");
     A("    extern  stmt_set_capture, stmt_match_var, stmt_match_descr\n");
@@ -5011,6 +5012,75 @@ static void emit_program(Program *prog) {
                  * have id == -1 (not in label registry) but emit_jmp handles them correctly
                  * via fn_NAME_γ/ω when cur_fn != NULL.
                  * Also handle S/F-only branches (no unconditional) for completeness. */
+
+                /* Computed goto: :< VAR > — execute CODE block held in VAR,
+                 * then dispatch on the returned label string via stmt_goto_dispatch.
+                 * Emits a name table + jump table in .data/.text; on no-match falls
+                 * through to L_SNO_END (SNOBOL4 undefined-label semantics = terminate). */
+                const char *cue = s->go ? s->go->computed_uncond_expr : NULL;
+                if (cue && *cue) {
+                    /* 1. Load the CODE block from the variable */
+                    const char *vlab = str_intern(cue);
+                    A("    lea     rdi, [rel %s]\n", vlab);
+                    A("    call    stmt_get\n");
+                    A("    mov     [rbp-32], rax\n");
+                    A("    mov     [rbp-24], rdx\n");
+
+                    /* 2. Execute the code block → returns label-name DESCR_t */
+                    A("    mov     rdi, rax\n");
+                    A("    mov     rsi, rdx\n");
+                    A("    call    execute_code_dyn\n");
+                    A("    mov     [rbp-48], rax\n");
+                    A("    mov     [rbp-40], rdx\n");
+
+                    /* 3. Build dispatch table across all registered labels */
+                    char jtab[64], ntab[64], nomatch[64];
+                    snprintf(jtab,    sizeof jtab,    "Lcg_jt_%d", uid);
+                    snprintf(ntab,    sizeof ntab,    "Lcg_nt_%d", uid);
+                    snprintf(nomatch, sizeof nomatch, "Lcg_nm_%d", uid);
+
+                    /* 3a. Call stmt_goto_dispatch(result, name_table, N) */
+                    A("    lea     rdi, [rbp-48]\n");  /* DESCR_t* result */
+                    A("    mov     rsi, [rbp-48]\n");  /* DESCR_t low  */
+                    A("    mov     rdx, [rbp-40]\n");  /* DESCR_t high */
+                    /* reload as value pair per ABI */
+                    A("    mov     rdi, [rbp-48]\n");
+                    A("    mov     rsi, [rbp-40]\n");
+                    A("    lea     rdx, [rel %s]\n", ntab);
+                    A("    mov     ecx, %d\n", label_count);
+                    A("    call    stmt_goto_dispatch\n");
+
+                    /* 3b. On no-match (rax == -1) fall to END */
+                    A("    cmp     rax, -1\n");
+                    A("    je      %s\n", nomatch);
+
+                    /* 3c. Indirect jmp through jump table */
+                    A("    lea     rdx, [rel %s]\n", jtab);
+                    A("    jmp     [rdx + rax*8]\n");
+
+                    /* Jump table — one 8-byte slot per label */
+                    A("\nsection .data\n");
+                    A("align 8\n");
+                    A("%s:\n", jtab);
+                    for (int li = 0; li < label_count; li++)
+                        A("    dq  %s\n", label_nasm(label_table[li]));
+
+                    /* Name table — one pointer per label */
+                    A("%s:\n", ntab);
+                    for (int li = 0; li < label_count; li++) {
+                        const char *slab = str_intern(label_table[li]);
+                        A("    dq  %s\n", slab);
+                    }
+                    A("section .text\n");
+
+                    /* No-match → fall to END */
+                    A("%s:\n", nomatch);
+                    A("    GOTO_ALWAYS  L_SNO_END\n");
+
+                    asmL(next_lbl);
+                    continue;
+                }
+
                 if (tgt_u) {
                     emit_jmp(tgt_u, next_lbl);
                 } else {
@@ -5255,13 +5325,65 @@ static void emit_program(Program *prog) {
     flush_pending_sep(); emit_sep_major("STUB LABELS");
     A("section .text\n"); /* stubs must also be in .text */
     /* ---- Stub definitions for referenced-but-undefined labels ----
-     * These are dangling gotos (e.g. :F(error) with no "error" label defined,
-     * or computed goto dispatch labels not yet implemented).
-     * Map them to _SNO_END so the program assembles and terminates cleanly. */
+     * An undefined label may be a :<VAR> CODE-block execution target.
+     * For each: call stmt_get(S_LABEL) -> if DT_C, execute via
+     * execute_code_dyn(), then dispatch on returned label string.
+     * Dangling labels (no var / no match) fall to L_SNO_END. */
     for (int i = 0; i < label_count; i++) {
         if (!label_defined[i]) {
-            A("%s:  ; STUB → _SNO_END (dangling or computed goto)\n",
-              label_nasm(label_table[i]));
+            const char *raw = label_table[i];
+            const char *slab = str_intern(raw);
+            char jtab[80], ntab[80], nomatch[80];
+            snprintf(jtab,    sizeof jtab,    "Lstub_jt_%d", i);
+            snprintf(ntab,    sizeof ntab,    "Lstub_nt_%d", i);
+            snprintf(nomatch, sizeof nomatch, "Lstub_nm_%d", i);
+
+            A("%s:  ; CODE-block dispatch or dangling\n", label_nasm(raw));
+            /* Align stack: stubs are jumped to (not called), so RSP is in
+             * the same state as the main body. Reserve 32 bytes for calls. */
+            A("    sub     rsp, 32\n");
+            /* 1. Load variable of same name as label */
+            A("    lea     rdi, [rel %s]\n", slab);
+            A("    call    stmt_get\n");
+            /* rax=DESCR.type rdx=DESCR.ptr */
+            /* 2. execute_code_dyn(DESCR_t) -> const char* label */
+            A("    mov     rdi, rax\n");
+            A("    mov     rsi, rdx\n");
+            A("    call    execute_code_dyn\n");
+            /* rax = label string ptr (NULL or empty -> end) */
+            A("    test    rax, rax\n");
+            A("    jz      %s\n", nomatch);
+            A("    cmp     byte [rax], 0\n");
+            A("    je      %s\n", nomatch);
+            /* 3. Wrap in DESCR_t(DT_S=1, ptr=rax) for dispatch */
+            A("    mov     rsi, rax\n");
+            A("    mov     edi, 1\n");
+            /* 4. stmt_goto_dispatch(DESCR_t, names, N) */
+            A("    lea     rdx, [rel %s]\n", ntab);
+            A("    mov     ecx, %d\n", label_count);
+            A("    call    stmt_goto_dispatch\n");
+            /* stmt_goto_dispatch returns int in eax — sign-extend for 64-bit cmp */
+            A("    movsxd  rax, eax\n");
+            A("    cmp     rax, -1\n");
+            /* lea does not affect flags — safe to use before je */
+            A("    lea     rsp, [rsp+32]\n");
+            A("    je      %s\n", nomatch);
+            /* 5. Indirect jmp through jump table */
+            A("    lea     rdx, [rel %s]\n", jtab);
+            A("    jmp     [rdx + rax*8]\n");
+            /* Jump table */
+            A("section .data\nalign 8\n");
+            A("%s:\n", jtab);
+            for (int li = 0; li < label_count; li++)
+                A("    dq  %s\n", label_nasm(label_table[li]));
+            /* Name table */
+            A("%s:\n", ntab);
+            for (int li = 0; li < label_count; li++) {
+                const char *ns = str_intern(label_table[li]);
+                A("    dq  %s\n", ns);
+            }
+            A("section .text\n");
+            A("%s:\n", nomatch);
             A("    GOTO_ALWAYS  L_SNO_END\n");
         }
     }
