@@ -4307,7 +4307,19 @@ static void emit_pat_to_descr(EXPR_t *e) {
         return;
     }
     case E_VAR: {
-        /* Variable in pattern context → pat_ref(name) for *VAR deferred */
+        /* Check for nullary pattern builtins used as bare names (no parens).
+         * FAIL, SUCCEED, ARB, REM, ABORT, BAL, FENCE used without () in patterns. */
+        if (e->sval) {
+            const char *n = e->sval;
+            if      (strcasecmp(n,"FAIL")    == 0) { A("    call    pat_fail\n");    return; }
+            else if (strcasecmp(n,"SUCCEED") == 0) { A("    call    pat_succeed\n"); return; }
+            else if (strcasecmp(n,"ARB")     == 0) { A("    call    pat_arb\n");     return; }
+            else if (strcasecmp(n,"REM")     == 0) { A("    call    pat_rem\n");     return; }
+            else if (strcasecmp(n,"ABORT")   == 0) { A("    call    pat_abort\n");   return; }
+            else if (strcasecmp(n,"BAL")     == 0) { A("    call    pat_bal\n");     return; }
+            else if (strcasecmp(n,"FENCE")   == 0) { A("    call    pat_fence\n");   return; }
+        }
+        /* Variable in pattern context → pat_ref(name) — deferred *VAR lookup */
         const char *lab = str_intern(e->sval ? e->sval : "");
         A("    lea     rdi, [rel %s]\n", lab);
         A("    call    pat_ref\n");
@@ -4315,35 +4327,37 @@ static void emit_pat_to_descr(EXPR_t *e) {
     }
     case E_CONCAT:
     case E_SEQ: {
-        /* Sequence: pat_cat(left, right) */
-        if (!e->children[0] || !e->children[1]) {
-            A("    call    pat_epsilon\n"); return;
-        }
+        /* Parser builds flat n-ary E_SEQ — all children are direct.
+         * Left-fold: emit children[0], then pat_cat(acc, children[i]) for i=1..n-1. */
+        if (e->nchildren == 0) { A("    call    pat_epsilon\n"); return; }
         emit_pat_to_descr(e->children[0]);
-        A("    push    rdx\n");  /* save left.hi */
-        A("    push    rax\n");  /* save left.lo */
-        emit_pat_to_descr(e->children[1]);
-        A("    mov     rcx, rdx\n");  /* right.hi → arg2 hi */
-        A("    mov     rdx, rax\n");  /* right.lo → arg2 lo */
-        A("    pop     rdi\n");        /* left.lo  → arg1 lo */
-        A("    pop     rsi\n");        /* left.hi  → arg1 hi */
-        A("    call    pat_cat\n");
+        for (int i = 1; i < e->nchildren; i++) {
+            A("    push    rdx\n");  /* save acc.hi */
+            A("    push    rax\n");  /* save acc.lo */
+            emit_pat_to_descr(e->children[i]);
+            A("    mov     rcx, rdx\n");  /* next.hi → arg2.hi */
+            A("    mov     rdx, rax\n");  /* next.lo → arg2.lo */
+            A("    pop     rdi\n");        /* acc.lo  → arg1.lo */
+            A("    pop     rsi\n");        /* acc.hi  → arg1.hi */
+            A("    call    pat_cat\n");
+        }
         return;
     }
     case E_ALT: {
-        /* Alternation: pat_alt(left, right) */
-        if (!e->children[0] || !e->children[1]) {
-            A("    call    pat_epsilon\n"); return;
-        }
+        /* Parser builds flat n-ary E_ALT — all children are direct.
+         * Left-fold: emit children[0], then pat_alt(acc, children[i]) for i=1..n-1. */
+        if (e->nchildren == 0) { A("    call    pat_epsilon\n"); return; }
         emit_pat_to_descr(e->children[0]);
-        A("    push    rdx\n");
-        A("    push    rax\n");
-        emit_pat_to_descr(e->children[1]);
-        A("    mov     rcx, rdx\n");
-        A("    mov     rdx, rax\n");
-        A("    pop     rdi\n");
-        A("    pop     rsi\n");
-        A("    call    pat_alt\n");
+        for (int i = 1; i < e->nchildren; i++) {
+            A("    push    rdx\n");
+            A("    push    rax\n");
+            emit_pat_to_descr(e->children[i]);
+            A("    mov     rcx, rdx\n");
+            A("    mov     rdx, rax\n");
+            A("    pop     rdi\n");
+            A("    pop     rsi\n");
+            A("    call    pat_alt\n");
+        }
         return;
     }
     case E_FNC: {
