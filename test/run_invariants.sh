@@ -185,6 +185,22 @@ csv_row() {
 }
 export -f csv_row
 
+# ── save_artifact — copy generated file back beside its source ────────────────
+# Called after every successful compile so the corpus artifact stays current.
+# save_artifact <generated_file> <source_file>
+# Example: save_artifact "$W/foo.s"  "$CORPUS/crosscheck/dir/foo.sno"
+#          save_artifact "$W/foo.j"  "$CORPUS/crosscheck/dir/foo.sno"
+# The artifact is placed in the same directory as the source, same stem, new ext.
+save_artifact() {
+  local gen="$1" src="$2"
+  [[ -f "$gen" ]] || return 0
+  local ext="${gen##*.}"
+  local dest_dir; dest_dir=$(dirname "$src")
+  local stem; stem=$(basename "$src"); stem="${stem%.*}"
+  cp -f "$gen" "$dest_dir/${stem}.${ext}"
+}
+export -f save_artifact
+
 # ── x86 compile worker — written as per-test mini-script (M-G-INV-FAST-X86-FIX)
 # Root cause: exported bash functions are NOT visible inside `bash -c` subshells
 # spawned by xargs (xargs exec's bash fresh; BASH_FUNC_* env vars only work when
@@ -215,6 +231,7 @@ rt_asm_inc=$(printf '%q' "${RT}/asm/")
 tmo=$(printf '%q' "$tmo")
 verb=$(printf '%q' "$verb")
 "\$scrip_cc" -asm -o "\$asm" "\$sno" 2>/dev/null || { echo "COMPILE_FAIL \$base"; printf 'COMPILE_FAIL,snobol4_x86,%s,,\n' "\$base" >> "$CSV"; exit 0; }
+cp -f "\$asm" "\$(dirname "\$sno")/\$base.s" 2>/dev/null || true
 nasm -f elf64 -I"\$rt_asm_inc" "\$asm" -o "\$obj" 2>/dev/null || { echo "ASM_FAIL \$base"; printf 'ASM_FAIL,snobol4_x86,%s,,\n' "\$base" >> "$CSV"; exit 0; }
 gcc -O0 -no-pie "\$obj" "\$lib" -lgc -lm -o "\$bin" 2>/dev/null || { echo "LINK_FAIL \$base"; printf 'LINK_FAIL,snobol4_x86,%s,,\n' "\$base" >> "$CSV"; exit 0; }
 stdin_src=/dev/null; [[ -f "\$input" ]] && stdin_src="\$input"
@@ -262,6 +279,7 @@ run_snobol4_wasm() {
       if ! "$SCRIP_CC" -wasm -o "$wat" "$sno" 2>/dev/null; then
         fail=$((fail+1)); echo "  FAIL $cell $base [compile]"; continue
       fi
+      save_artifact "$wat" "$sno"
       if ! wat2wasm --enable-tail-call "$wat" -o "$wasm" 2>/dev/null; then
         fail=$((fail+1)); echo "  FAIL $cell $base [wat2wasm]"; continue
       fi
@@ -316,6 +334,7 @@ run_snobol4_js() {
         fail=$((fail+1)); echo "  FAIL $cell $base [compile]"
         csv_row FAIL "$cell" "$base" "compile"; continue
       fi
+      save_artifact "$js" "$sno"
       if ! SNO_RUNTIME="$SNO_RT" SNO_ENGINE="$SNO_ENG" \
            timeout "$TIMEOUT_X86" node "$JS_RUNNER" "$js" > "$got" 2>/dev/null; then
         fail=$((fail+1)); echo "  FAIL $cell $base [run/timeout]"
@@ -411,6 +430,7 @@ run_snobol4_jvm() {
       local input="${sno%.sno}.input"
       local jfile="$W/${base}.j"
       if "$SCRIP_CC" -jvm -o "$jfile" "$sno" 2>/dev/null; then
+        save_artifact "$jfile" "$sno"
         # Extract class name — SnoHarness looks for <classname>.ref not <basename>.ref
         local classname; classname=$(grep '\.class public' "$jfile" | head -1 | awk '{print $3}')
         [[ -z "$classname" ]] && classname="$base"
@@ -502,6 +522,7 @@ run_icon_x86() {
            "$obj" "$ICN_INC/icon_runtime.c" \
            -I"$ICN_INC" -I"$RT_H/snobol4" -I"$RT_H" \
            -o "$bin" -lm 2>/dev/null; then
+      save_artifact "$asm" "$icn"
       local got; got=$(timeout "$TIMEOUT_X86" "$bin" 2>/dev/null) || got="__TIMEOUT__"
       if [[ "$got" == "$(cat "$exp")" ]]; then
         pass=$((pass+1)); csv_row PASS "$cell" "$base"
@@ -539,6 +560,7 @@ run_icon_jvm() {
     [[ -f "${icn%.icn}.xfail" ]] && continue
     local jfile="$W/${base}.j"
     if "$SCRIP_CC" -jvm -o "$jfile" "$icn" 2>/dev/null; then
+      save_artifact "$jfile" "$icn"
       local classname; classname=$(grep '\.class public' "$jfile" | head -1 | awk '{print $3}')
       [[ -z "$classname" ]] && classname="$base"
       cp "$exp" "$W/${classname}.ref"
@@ -600,6 +622,7 @@ run_icon_wasm() {
     if ! "$SCRIP_CC" -icn -wasm -o "$wat" "$icn" 2>/dev/null; then
       fail=$((fail+1)); echo "  FAIL $cell $base [compile]"; continue
     fi
+    save_artifact "$wat" "$icn"
     # assemble: .wat → .wasm
     if ! wat2wasm --enable-tail-call "$wat" -o "$wasm" 2>/dev/null; then
       fail=$((fail+1)); echo "  FAIL $cell $base [wat2wasm]"; continue
@@ -679,6 +702,7 @@ run_prolog_jvm() {
     local xfail="${pl%.pl}.xfail"; [[ -f "$xfail" ]] && continue
     local jfile="$W/${base}.j"
     if "$SCRIP_CC" -pl -jvm -o "$jfile" "$pl" 2>/dev/null; then
+      save_artifact "$jfile" "$pl"
       local classname; classname=$(grep '\.class public' "$jfile" | head -1 | awk '{print $3}')
       [[ -z "$classname" ]] && classname="$base"
       cp "$expected" "$W/${classname}.ref"
@@ -818,6 +842,7 @@ run_prolog_wasm() {
       fail=$((fail+1)); echo "  FAIL $cell $base [compile]"
       csv_row COMPILE_FAIL "$cell" "$base" "compile"; continue
     fi
+    save_artifact "$wat" "$pl"
     if ! wat2wasm --enable-tail-call "$wat" -o "$wasm" 2>/dev/null; then
       fail=$((fail+1)); echo "  FAIL $cell $base [wat2wasm]"
       csv_row COMPILE_FAIL "$cell" "$base" "wat2wasm"; continue
