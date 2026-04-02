@@ -3,7 +3,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef struct { int dummy; }  fail_t;
 
 spec_t bb_fail(void *zeta, int entry)
 {

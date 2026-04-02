@@ -3,7 +3,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef struct { int n; }  pos_t;
 
 spec_t bb_pos(void *zeta, int entry)
 {

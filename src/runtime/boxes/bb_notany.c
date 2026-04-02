@@ -3,7 +3,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef struct { const char *chars; }  notany_t;
 
 spec_t bb_notany(void *zeta, int entry)
 {

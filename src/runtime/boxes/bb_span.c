@@ -3,7 +3,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef struct { const char *chars; int δ; }  span_t;
 
 spec_t bb_span(void *zeta, int entry)
 {

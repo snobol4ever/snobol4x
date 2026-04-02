@@ -3,7 +3,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef struct { int dummy; }  succeed_t;
 
 spec_t bb_succeed(void *zeta, int entry)
 {

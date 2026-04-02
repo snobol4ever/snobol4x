@@ -3,7 +3,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef struct { int dummy; }  abort_t;
 
 spec_t bb_abort(void *zeta, int entry)
 {

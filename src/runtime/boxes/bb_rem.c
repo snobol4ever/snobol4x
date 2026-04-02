@@ -3,7 +3,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef struct { int dummy; }  rem_t;
 
 spec_t bb_rem(void *zeta, int entry)
 {

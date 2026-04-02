@@ -3,7 +3,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef struct { const char *lit; int len; }  lit_t;
 
 spec_t bb_lit(void *zeta, int entry)
 {

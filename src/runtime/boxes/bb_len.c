@@ -3,7 +3,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef struct { int n; }  len_t;
 
 spec_t bb_len(void *zeta, int entry)
 {

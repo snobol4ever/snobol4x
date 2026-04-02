@@ -104,4 +104,29 @@ static inline void *bb_enter(void **ζζ, size_t size) {
  */
 typedef spec_t (*bb_box_fn)(void *zeta, int entry);
 
+/* ── box state typedefs — ONE definition, used by bb_*.c, stmt_exec.c, bb_*.s ─
+ * Each box's private state struct lives here.  bb_build() in stmt_exec.c
+ * allocates these; the box functions cast zeta to the appropriate type.
+ * Named with _t suffix; the .s files use field offsets matching these layouts. */
+typedef struct { const char *lit; int len; }          lit_t;
+typedef struct { int n; }                              len_t;
+typedef struct { const char *chars; int δ; }          span_t;
+typedef struct { const char *chars; }                  any_t;
+typedef struct { const char *chars; }                  notany_t;
+typedef struct { const char *chars; int δ; }          brk_t;
+typedef struct { const char *chars; int δ; }          brkx_t;
+typedef struct { int count; int start; }              arb_t;
+typedef struct { int dummy; }                          rem_t;
+typedef struct { int dummy; }                          succeed_t;
+typedef struct { int dummy; }                          fail_t;
+typedef struct { int done; }                           eps_t;
+typedef struct { int n; }                              pos_t;
+typedef struct { int n; }                              rpos_t;
+typedef struct { int n; int advance; }                tab_t;
+typedef struct { int n; int advance; }                rtab_t;
+typedef struct { int fired; }                          fence_t;
+typedef struct { int dummy; }                          abort_t;
+typedef struct { int done; const char *varname; }     atp_t;
+/* deferred_var_t needs bb_node_t (defined in stmt_exec.c) — declared there */
+
 #endif /* BB_BOX_H */

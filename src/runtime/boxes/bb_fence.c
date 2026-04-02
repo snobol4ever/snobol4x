@@ -3,7 +3,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef struct { int fired; }  fence_t;
 
 spec_t bb_fence(void *zeta, int entry)
 {

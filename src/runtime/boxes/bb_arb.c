@@ -3,7 +3,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef struct { int count; int start; }  arb_t;
 
 spec_t bb_arb(void *zeta, int entry)
 {

@@ -3,7 +3,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef struct { const char *chars; int δ; }  brk_t;
 
 spec_t bb_brk(void *zeta, int entry)
 {

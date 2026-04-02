@@ -3,7 +3,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef struct { int n; }  rpos_t;
 
 spec_t bb_rpos(void *zeta, int entry)
 {

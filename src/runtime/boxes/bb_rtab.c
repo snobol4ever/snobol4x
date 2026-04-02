@@ -3,7 +3,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef struct { int n; int advance; }  rtab_t;
 
 spec_t bb_rtab(void *zeta, int entry)
 {

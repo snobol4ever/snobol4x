@@ -3,7 +3,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef struct { const char *chars; }  any_t;
 
 spec_t bb_any(void *zeta, int entry)
 {
