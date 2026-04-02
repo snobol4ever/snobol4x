@@ -51,6 +51,7 @@ typedef enum {
     XNME,  /* conditional capture: pat . var */
     XVAR,          /* variable holding a pattern */
     XATP,    /* user-defined pattern function call */
+    XBRKX,   /* BREAKX(chars) — like BREAK but fails on zero advance */
 } XKIND_t;
 
 /* Forward decl */
@@ -109,6 +110,12 @@ DESCR_t pat_span(const char *chars) {
 
 DESCR_t pat_break_(const char *chars) {
     PATND_t *p = spat_new(XBRKC);
+    p->STRVAL_fn = chars ? GC_strdup(chars) : "";
+    return spat_val(p);
+}
+
+DESCR_t pat_breakx(const char *chars) {
+    PATND_t *p = spat_new(XBRKX);
     p->STRVAL_fn = chars ? GC_strdup(chars) : "";
     return spat_val(p);
 }
@@ -499,6 +506,11 @@ static Pattern *materialise(PATND_t *sp, MatchCtx *ctx) {
 
     case XBRKC:
         p->type  = T_BREAK;
+        p->chars = sp->STRVAL_fn ? sp->STRVAL_fn : "";
+        return p;
+
+    case XBRKX:
+        p->type  = T_BREAKX;
         p->chars = sp->STRVAL_fn ? sp->STRVAL_fn : "";
         return p;
 

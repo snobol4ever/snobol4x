@@ -101,7 +101,7 @@ typedef enum {
     _XFARB = 10, _XARBN = 11, _XSTAR = 12, _XFNCE = 13, _XFAIL = 14,
     _XABRT = 15, _XSUCF = 16, _XBAL  = 17, _XEPS  = 18,
     _XCAT  = 19, _XOR   = 20, _XDSAR = 21, _XFNME = 22, _XNME  = 23,
-    _XVAR  = 24, _XATP  = 25,
+    _XVAR  = 24, _XATP  = 25, _XBRKX = 26,
 } _XKIND_t;
 
 typedef struct _PND {
@@ -249,8 +249,31 @@ static spec_t bb_brk(brk_t **ζζ, int entry)
     BRK_ω:                                                    return spec_empty;
 }
 
+/* ── BREAKX(chars) box — like BREAK but fails on zero advance ───────────── */
+typedef struct { const char *chars; int δ; } brkx_t;
+
+static spec_t bb_breakx(brkx_t **ζζ, int entry)
+{
+    brkx_t *ζ = *ζζ;
+
+    if (entry == α)                                     goto BRKX_α;
+    if (entry == β)                                     goto BRKX_β;
+
+    spec_t         BRKX;
+
+    BRKX_α:       for (ζ->δ = 0; Σ[Δ+ζ->δ]; ζ->δ++)
+                      if (strchr(ζ->chars, Σ[Δ+ζ->δ])) break;
+                  if (ζ->δ == 0)                              goto BRKX_ω; /* zero advance → fail */
+                  if (Δ + ζ->δ >= Ω)                         goto BRKX_ω;
+                  BRKX = spec(Σ+Δ, ζ->δ); Δ += ζ->δ;         goto BRKX_γ;
+    BRKX_β:       Δ -= ζ->δ;                                 goto BRKX_ω;
+
+    BRKX_γ:                                                   return BRKX;
+    BRKX_ω:                                                   return spec_empty;
+}
+
 /* ── ARB box (matches 0..n chars, backtracks one at a time) ─────────────── */
-typedef struct { int tried; } arb_t;
+typedef struct { int tried; int start; } arb_t;
 
 static spec_t bb_arb(arb_t **ζζ, int entry)
 {
@@ -262,9 +285,11 @@ static spec_t bb_arb(arb_t **ζζ, int entry)
     spec_t         ARB;
 
     ARB_α:        ζ->tried = 0;
+                  ζ->start = Δ;
                   ARB = spec(Σ+Δ, 0);                         goto ARB_γ;
     ARB_β:        ζ->tried++;
-                  if (Δ + ζ->tried > Ω)                       goto ARB_ω;
+                  if (ζ->start + ζ->tried > Ω)                goto ARB_ω;
+                  Δ = ζ->start;                /* restore to entry cursor */
                   ARB = spec(Σ+Δ, ζ->tried);
                   Δ += ζ->tried;                              goto ARB_γ;
 
@@ -585,8 +610,7 @@ static spec_t bb_atp(atp_t **ζζ, int entry)
 
     spec_t ATP;
 
-    ATP_α:  if (ζ->done)                goto ATP_ω;
-            ζ->done = 1;
+    ATP_α:  ζ->done = 1;   /* mark for β — no backtrack */
             if (ζ->varname && ζ->varname[0]) {
                 DESCR_t val;
                 val.v = DT_I;
@@ -691,6 +715,16 @@ static bb_node_t bb_build(_PND_t *p)
         brk_t *ζ = calloc(1, sizeof(brk_t));
         ζ->chars = p->STRVAL_fn ? p->STRVAL_fn : "";
         n.fn = (bb_box_fn)bb_brk;
+        n.ζ  = ζ;
+        n.ζ_size = sizeof(*ζ);
+        break;
+    }
+
+    /* ── BREAKX(chars) ──────────────────────────────────────────────── */
+    case _XBRKX: {
+        brkx_t *ζ = calloc(1, sizeof(brkx_t));
+        ζ->chars = p->STRVAL_fn ? p->STRVAL_fn : "";
+        n.fn = (bb_box_fn)bb_breakx;
         n.ζ  = ζ;
         n.ζ_size = sizeof(*ζ);
         break;

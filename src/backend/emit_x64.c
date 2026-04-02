@@ -4386,8 +4386,8 @@ static void emit_pat_to_descr(EXPR_t *e) {
         /* Functions with one argument: evaluate arg, extract char* or int64 */
         EXPR_t *arg = (e->nchildren > 0) ? e->children[0] : NULL;
         if (strcasecmp(fn, "LIT") == 0 || strcasecmp(fn, "SPAN") == 0 ||
-            strcasecmp(fn, "BREAK") == 0 || strcasecmp(fn, "ANY") == 0 ||
-            strcasecmp(fn, "NOTANY") == 0) {
+            strcasecmp(fn, "BREAK") == 0 || strcasecmp(fn, "BREAKX") == 0 ||
+            strcasecmp(fn, "ANY") == 0 || strcasecmp(fn, "NOTANY") == 0) {
             /* Evaluate arg → DESCR_t at [rbp-32/24], then VARVAL_fn(DESCR_t) → char* */
             if (arg) {
                 emit_expr(arg, -32);
@@ -4397,11 +4397,12 @@ static void emit_pat_to_descr(EXPR_t *e) {
                 A("    call    VARVAL_fn\n");    /* → char* in rax */
                 A("    mov     rdi, rax\n");
             }
-            if      (strcasecmp(fn, "SPAN") == 0)    A("    call    pat_span\n");
-            else if (strcasecmp(fn, "BREAK") == 0)   A("    call    pat_break_\n");
-            else if (strcasecmp(fn, "ANY") == 0)     A("    call    pat_any_cs\n");
-            else if (strcasecmp(fn, "NOTANY") == 0)  A("    call    pat_notany\n");
-            else                                      A("    call    pat_lit\n");
+            if      (strcasecmp(fn, "SPAN")   == 0) A("    call    pat_span\n");
+            else if (strcasecmp(fn, "BREAK")  == 0) A("    call    pat_break_\n");
+            else if (strcasecmp(fn, "BREAKX") == 0) A("    call    pat_breakx\n");
+            else if (strcasecmp(fn, "ANY")    == 0) A("    call    pat_any_cs\n");
+            else if (strcasecmp(fn, "NOTANY") == 0) A("    call    pat_notany\n");
+            else                                     A("    call    pat_lit\n");
             return;
         }
         if (strcasecmp(fn, "LEN") == 0 || strcasecmp(fn, "POS") == 0 ||
@@ -4836,7 +4837,7 @@ static void emit_program(Program *prog) {
     A("    extern  stmt_at_capture\n");
     /* M-DYN-S1: 5-phase dynamic execution */
     A("    extern  stmt_exec_dyn\n");
-    A("    extern  pat_lit, pat_cat, pat_alt, pat_span, pat_break_\n");
+    A("    extern  pat_lit, pat_cat, pat_alt, pat_span, pat_break_, pat_breakx\n");
     A("    extern  pat_any_cs, pat_notany, pat_len, pat_pos, pat_rpos\n");
     A("    extern  pat_tab, pat_rtab, pat_arb, pat_arbno, pat_rem\n");
     A("    extern  pat_fence, pat_fence_p, pat_fail, pat_succeed\n");
@@ -5046,6 +5047,18 @@ static void emit_program(Program *prog) {
                     const char *vlab = str_intern(subj_name);
                     const char *rlab = str_intern(s->replacement->sval);
                     A("    ASSIGN_STR  %s, %s, %s\n", vlab, rlab, fail_target);
+                } else if (!is_output && expr_is_pattern_expr(s->replacement)) {
+                    /* Pattern-valued assignment: PAT = <pat-expr>
+                     * emit_pat_to_descr walks the AST and emits calls to pat_*
+                     * constructors, leaving a real DT_P DESCR_t in rax:rdx.
+                     * SET_VAR stores it.  Pat constructors cannot fail — no FAIL_BR. */
+                    emit_pat_to_descr(s->replacement);
+                    /* emit_pat_to_descr leaves DT_P in rax:rdx.
+                     * SET_VAR reads from [rbp-32/24] — store first. */
+                    A("    mov     [rbp-32], rax\n");
+                    A("    mov     [rbp-24], rdx\n");
+                    const char *vlab = str_intern(subj_name);
+                    A("    SET_VAR     %s\n", vlab);
                 } else {
                     /* General path */
                     emit_expr(s->replacement, -32);
