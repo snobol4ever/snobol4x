@@ -42,10 +42,10 @@ extern int stmt_exec_dyn(const char *subj_name,
                           DESCR_t    *repl,
                           int         has_repl);
 
-/* subject globals required by stmt_exec_dyn / eval_code.c */
-const char *Σ = NULL;
-int         Ω = 0;
-int         Δ = 0;
+/* subject globals owned by stmt_exec.c — extern here */
+extern const char *Σ;
+extern int         Ω;
+extern int         Δ;
 
 /* ══════════════════════════════════════════════════════════════════════════
  * label_table — map SNOBOL4 source labels → STMT_t*
@@ -111,9 +111,8 @@ static DESCR_t interp_eval(EXPR_t *e)
 
     case E_KW: {
         if (!e->sval || !*e->sval) return NULVCL;
-        char kbuf[128];
-        snprintf(kbuf, sizeof kbuf, "&%s", e->sval);
-        return NV_GET_fn(kbuf);
+        /* Keywords stored without & prefix in NV store */
+        return NV_GET_fn(e->sval);
     }
 
     case E_NEG:
@@ -284,14 +283,33 @@ static void execute_program(Program *prog)
                     has_repl);
             }
 
-        /* ── pure assignment ───────────────────────────────────────── */
-        } else if (s->has_eq && s->replacement && subj_name) {
-            DESCR_t repl_val = interp_eval(s->replacement);
+        /* ── pure assignment (direct or null) ─────────────────────── */
+        } else if (s->has_eq && subj_name) {
+            /* X = expr  OR  X =  (null assign, no replacement node) */
+            DESCR_t repl_val = s->replacement ? interp_eval(s->replacement) : NULVCL;
             if (IS_FAIL_fn(repl_val)) {
                 succeeded = 0;
             } else {
                 NV_SET_fn(subj_name, repl_val);
                 succeeded = 1;
+            }
+
+        /* ── indirect assignment: $expr = rhs ─────────────────────── */
+        } else if (s->has_eq && s->subject &&
+                   s->subject->kind == E_INDR) {
+            DESCR_t name_d = interp_eval(s->subject->nchildren > 0
+                                         ? s->subject->children[0] : NULL);
+            const char *nm = VARVAL_fn(name_d);
+            if (!nm || !*nm) {
+                succeeded = 0;
+            } else {
+                DESCR_t repl_val = s->replacement ? interp_eval(s->replacement) : NULVCL;
+                if (IS_FAIL_fn(repl_val)) {
+                    succeeded = 0;
+                } else {
+                    NV_SET_fn(nm, repl_val);
+                    succeeded = 1;
+                }
             }
 
         /* ── expression-only (side effects, e.g. bare function call) ─ */
