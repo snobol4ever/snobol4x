@@ -257,7 +257,7 @@ static spec_t bb_breakx(void *zeta, int entry)
 }
 
 /* ── ARB box (matches 0..n chars, backtracks one at a time) ─────────────── */
-typedef struct { int tried; int start; } arb_t;
+typedef struct { int count; int start; } arb_t;
 
 static spec_t bb_arb(void *zeta, int entry)
 {
@@ -268,14 +268,14 @@ static spec_t bb_arb(void *zeta, int entry)
 
     spec_t         ARB;
 
-    ARB_α:        ζ->n = 0;
-                  ζ->position = Δ;
+    ARB_α:        ζ->count = 0;
+                  ζ->start = Δ;
                   ARB = spec(Σ+Δ, 0);                         goto ARB_γ;
     ARB_β:        ζ->count++;
-                  if (ζ->position + ζ->n > Ω)                goto ARB_ω;
-                  Δ = ζ->position;                /* restore to entry cursor */
-                  ARB = spec(Σ+Δ, ζ->n);
-                  Δ += ζ->n;                              goto ARB_γ;
+                  if (ζ->start + ζ->count > Ω)                goto ARB_ω;
+                  Δ = ζ->start;                /* restore to entry cursor */
+                  ARB = spec(Σ+Δ, ζ->count);
+                  Δ += ζ->count;                              goto ARB_γ;
 
     ARB_γ:                                                    return ARB;
     ARB_ω:                                                    return spec_empty;
@@ -286,7 +286,7 @@ typedef struct { int dummy; } rem_t;
 
 static spec_t bb_rem(void *zeta, int entry)
 {
-    (void)ζζ;
+    (void)zeta;
 
     if (entry == α)                                     goto REM_α;
     if (entry == β)                                     goto REM_β;
@@ -305,7 +305,7 @@ typedef struct { int dummy; } succeed_t;
 
 static spec_t bb_succeed(void *zeta, int entry)
 {
-    (void)ζζ; (void)entry;
+    (void)zeta; (void)entry;
                                                               return spec(Σ+Δ, 0);   /* always γ, zero-width */
 }
 
@@ -314,7 +314,7 @@ typedef struct { int dummy; } fail_t;
 
 static spec_t bb_fail(void *zeta, int entry)
 {
-    (void)ζζ; (void)entry;
+    (void)zeta; (void)entry;
                                                               return spec_empty;   /* always ω */
 }
 
@@ -340,12 +340,7 @@ static spec_t bb_eps(void *zeta, int entry)
 }
 
 /* ── DEFERRED VAR box — forward declared; defined after bb_build ────────── */
-typedef struct {
-    const char  *name;
-    bb_box_fn    child_fn;
-    void        *child_ζ;
-    size_t       child_ζ_size; /* sizeof(*child_ζ) — set at first α; used for memset reset */
-} deferred_var_t;
+typedef struct { const char *name; bb_box_fn child_fn; void *child_state; size_t child_size; } deferred_var_t;
 /* bb_deferred_var() defined after bb_build (needs bb_node_t) */
 static spec_t bb_deferred_var(void *zeta, int entry);
 
@@ -361,11 +356,10 @@ static spec_t bb_deferred_var(void *zeta, int entry);
  * in a small pending-capture list and flush it in Phase 5.
  */
 typedef struct {
-    bb_box_fn    child_fn;
-    void        *child_ζ;
-    const char  *varname;   /* NV_SET_fn target */
-    int          immediate; /* 1=XFNME ($), 0=XNME (.) */
-    /* For XNME: pending capture to be committed by Phase 5 */
+    bb_box_fn    fn;
+    void        *state;
+    const char  *varname;
+    int          immediate;
     spec_t       pending;
     int          has_pending;
 } capture_t;
@@ -456,27 +450,27 @@ typedef struct { int fired; }                   _fence_t;
 typedef struct { int dummy; }                   _abort_t;
 
 #define BB_ALT_MAX_S 16
-typedef struct { bb_box_fn fn; void *ζ; }       _bchild_t;
+typedef struct { bb_box_fn fn; void *state; }   _bchild_t;
 typedef struct {
     int       n;
     _bchild_t children[BB_ALT_MAX_S];
-    int       alt_i;
-    int       saved_Δ;
-    spec_t     result;
+    int       current;
+    int       position;
+    spec_t    result;
 } _alt_t;
 
 typedef struct {
     _bchild_t left;
     _bchild_t right;
-    spec_t     seq;
+    spec_t    matched;
 } _seq_t;
 
 #define ARBNO_MAX_S 64
-typedef struct { spec_t ARBNO; int saved_Δ; } _aframe_t;
+typedef struct { spec_t matched; int start; } _aframe_t;
 typedef struct {
-    bb_box_fn  body_fn;
-    void      *body_ζ;
-    int        ARBNO_i;
+    bb_box_fn  fn;
+    void      *state;
+    int        depth;
     _aframe_t  stack[ARBNO_MAX_S];
 } _arbno_t;
 
@@ -558,10 +552,10 @@ static void _cache_insert(_PND_t *key, bb_node_t node)
 static bb_node_t _cache_get_fresh(_dync_slot_t *slot)
 {
     bb_node_t n = slot->template;
-    if (n.ζ_size && n.state) {
+    if (n.ζ_size && n.ζ) {
         void *fresh = calloc(1, n.ζ_size);
-        memcpy(fresh, n.state, n.ζ_size);
-        n.fz = fresh;
+        memcpy(fresh, n.ζ, n.ζ_size);
+        n.ζ = fresh;
     }
     return n;
 }
@@ -617,7 +611,7 @@ static bb_node_t bb_build(_PND_t *p)
         /* null node → epsilon */
         eps_t *ζ = calloc(1, sizeof(eps_t));
         n.fn = (bb_box_fn)bb_eps;
-        n.fz  = ζ;
+        n.ζ  = ζ;
         n.ζ_size = sizeof(*ζ);
                                                               return n;
     }
@@ -649,7 +643,7 @@ static bb_node_t bb_build(_PND_t *p)
         ζ->lit = p->STRVAL_fn ? p->STRVAL_fn : "";
         ζ->len = (int)strlen(ζ->lit);
         n.fn = (bb_box_fn)bb_lit;
-        n.fz  = ζ;
+        n.ζ  = ζ;
         n.ζ_size = sizeof(*ζ);
         break;
     }
@@ -659,7 +653,7 @@ static bb_node_t bb_build(_PND_t *p)
         _pos_t *ζ = calloc(1, sizeof(_pos_t));
         ζ->n = (int)p->num;
         n.fn = (bb_box_fn)bb_pos;
-        n.fz  = ζ;
+        n.ζ  = ζ;
         n.ζ_size = sizeof(*ζ);
         break;
     }
@@ -669,7 +663,7 @@ static bb_node_t bb_build(_PND_t *p)
         _rpos_t *ζ = calloc(1, sizeof(_rpos_t));
         ζ->n = (int)p->num;
         n.fn = (bb_box_fn)bb_rpos;
-        n.fz  = ζ;
+        n.ζ  = ζ;
         n.ζ_size = sizeof(*ζ);
         break;
     }
@@ -679,7 +673,7 @@ static bb_node_t bb_build(_PND_t *p)
         len_t *ζ = calloc(1, sizeof(len_t));
         ζ->n = (int)p->num;
         n.fn = (bb_box_fn)bb_len;
-        n.fz  = ζ;
+        n.ζ  = ζ;
         n.ζ_size = sizeof(*ζ);
         break;
     }
@@ -689,7 +683,7 @@ static bb_node_t bb_build(_PND_t *p)
         span_t *ζ = calloc(1, sizeof(span_t));
         ζ->chars = p->STRVAL_fn ? p->STRVAL_fn : "";
         n.fn = (bb_box_fn)bb_span;
-        n.fz  = ζ;
+        n.ζ  = ζ;
         n.ζ_size = sizeof(*ζ);
         break;
     }
@@ -699,7 +693,7 @@ static bb_node_t bb_build(_PND_t *p)
         brk_t *ζ = calloc(1, sizeof(brk_t));
         ζ->chars = p->STRVAL_fn ? p->STRVAL_fn : "";
         n.fn = (bb_box_fn)bb_brk;
-        n.fz  = ζ;
+        n.ζ  = ζ;
         n.ζ_size = sizeof(*ζ);
         break;
     }
@@ -709,7 +703,7 @@ static bb_node_t bb_build(_PND_t *p)
         brkx_t *ζ = calloc(1, sizeof(brkx_t));
         ζ->chars = p->STRVAL_fn ? p->STRVAL_fn : "";
         n.fn = (bb_box_fn)bb_breakx;
-        n.fz  = ζ;
+        n.ζ  = ζ;
         n.ζ_size = sizeof(*ζ);
         break;
     }
@@ -719,7 +713,7 @@ static bb_node_t bb_build(_PND_t *p)
         any_t *ζ = calloc(1, sizeof(any_t));
         ζ->chars = p->STRVAL_fn ? p->STRVAL_fn : "";
         n.fn = (bb_box_fn)bb_any;
-        n.fz  = ζ;
+        n.ζ  = ζ;
         n.ζ_size = sizeof(*ζ);
         break;
     }
@@ -729,7 +723,7 @@ static bb_node_t bb_build(_PND_t *p)
         notany_t *ζ = calloc(1, sizeof(notany_t));
         ζ->chars = p->STRVAL_fn ? p->STRVAL_fn : "";
         n.fn = (bb_box_fn)bb_notany;
-        n.fz  = ζ;
+        n.ζ  = ζ;
         n.ζ_size = sizeof(*ζ);
         break;
     }
@@ -738,7 +732,7 @@ static bb_node_t bb_build(_PND_t *p)
     case _XFARB: {
         arb_t *ζ = calloc(1, sizeof(arb_t));
         n.fn = (bb_box_fn)bb_arb;
-        n.fz  = ζ;
+        n.ζ  = ζ;
         n.ζ_size = sizeof(*ζ);
         break;
     }
@@ -747,7 +741,7 @@ static bb_node_t bb_build(_PND_t *p)
     case _XSTAR: {
         rem_t *ζ = calloc(1, sizeof(rem_t));
         n.fn = (bb_box_fn)bb_rem;
-        n.fz  = ζ;
+        n.ζ  = ζ;
         n.ζ_size = sizeof(*ζ);
         break;
     }
@@ -756,7 +750,7 @@ static bb_node_t bb_build(_PND_t *p)
     case _XSUCF: {
         succeed_t *ζ = calloc(1, sizeof(succeed_t));
         n.fn = (bb_box_fn)bb_succeed;
-        n.fz  = ζ;
+        n.ζ  = ζ;
         n.ζ_size = sizeof(*ζ);
         break;
     }
@@ -765,7 +759,7 @@ static bb_node_t bb_build(_PND_t *p)
     case _XFAIL: {
         fail_t *ζ = calloc(1, sizeof(fail_t));
         n.fn = (bb_box_fn)bb_fail;
-        n.fz  = ζ;
+        n.ζ  = ζ;
         n.ζ_size = sizeof(*ζ);
         break;
     }
@@ -774,7 +768,7 @@ static bb_node_t bb_build(_PND_t *p)
     case _XEPS: {
         eps_t *ζ = calloc(1, sizeof(eps_t));
         n.fn = (bb_box_fn)bb_eps;
-        n.fz  = ζ;
+        n.ζ  = ζ;
         n.ζ_size = sizeof(*ζ);
         break;
     }
@@ -784,10 +778,10 @@ static bb_node_t bb_build(_PND_t *p)
         _seq_t *ζ = calloc(1, sizeof(_seq_t));
         bb_node_t l = bb_build(p->left);
         bb_node_t r = bb_build(p->right);
-        ζ->left.fn  = l.fn; ζ->left.fz  = l.state;
-        ζ->right.fn = r.fn; ζ->right.fz = r.state;
+        ζ->left.fn  = l.fn; ζ->left.state  = l.ζ;
+        ζ->right.fn = r.fn; ζ->right.state = r.ζ;
         n.fn = (bb_box_fn)bb_seq;
-        n.fz  = ζ;
+        n.ζ  = ζ;
         n.ζ_size = sizeof(*ζ);
         break;
     }
@@ -804,21 +798,21 @@ static bb_node_t bb_build(_PND_t *p)
         int     nc  = 0;
         while (cur && cur->kind == _XOR && nc < BB_ALT_MAX_S - 1) {
             bb_node_t arm        = bb_build(cur->left);
-            ζ->ch[nc].fn  = arm.fn;
-            ζ->ch[nc].fz   = arm.state;
+            ζ->children[nc].fn  = arm.fn;
+            ζ->children[nc].state = arm.ζ;
             nc++;
             cur = cur->right;
         }
         /* last arm (rightmost non-OR node) */
         if (nc < BB_ALT_MAX_S) {
             bb_node_t arm        = bb_build(cur);
-            ζ->ch[nc].fn  = arm.fn;
-            ζ->ch[nc].fz   = arm.state;
+            ζ->children[nc].fn  = arm.fn;
+            ζ->children[nc].state = arm.ζ;
             nc++;
         }
         ζ->n = nc;
         n.fn = (bb_box_fn)bb_alt;
-        n.fz  = ζ;
+        n.ζ  = ζ;
         n.ζ_size = sizeof(*ζ);
         break;
     }
@@ -828,9 +822,9 @@ static bb_node_t bb_build(_PND_t *p)
         _arbno_t *ζ = calloc(1, sizeof(_arbno_t));
         bb_node_t body  = bb_build(p->left);
         ζ->fn = body.fn;
-        ζ->child_state  = body.state;
+        ζ->state  = body.ζ;
         n.fn = (bb_box_fn)bb_arbno;
-        n.fz  = ζ;
+        n.ζ  = ζ;
         n.ζ_size = sizeof(*ζ);
         break;
     }
@@ -840,12 +834,12 @@ static bb_node_t bb_build(_PND_t *p)
         capture_t *ζ = calloc(1, sizeof(capture_t));
         bb_node_t child = bb_build(p->left);
         ζ->fn  = child.fn;
-        ζ->child_state   = child.state;
-        ζ->varname   = (p->varname.v == DT_S && p->varname.s) ? p->varname.s : NULL;
+        ζ->state = child.ζ;
+        ζ->varname   = (p->var.v == DT_S && p->var.s) ? p->var.s : NULL;
         ζ->immediate = 1;
         register_capture(ζ);
         n.fn = (bb_box_fn)bb_capture;
-        n.fz  = ζ;
+        n.ζ  = ζ;
         n.ζ_size = sizeof(*ζ);
         break;
     }
@@ -855,12 +849,12 @@ static bb_node_t bb_build(_PND_t *p)
         capture_t *ζ = calloc(1, sizeof(capture_t));
         bb_node_t child = bb_build(p->left);
         ζ->fn  = child.fn;
-        ζ->child_state   = child.state;
-        ζ->varname   = (p->varname.v == DT_S && p->varname.s) ? p->varname.s : NULL;
+        ζ->state = child.ζ;
+        ζ->varname   = (p->var.v == DT_S && p->var.s) ? p->var.s : NULL;
         ζ->immediate = 0;
         register_capture(ζ);
         n.fn = (bb_box_fn)bb_capture;
-        n.fz  = ζ;
+        n.ζ  = ζ;
         n.ζ_size = sizeof(*ζ);
         break;
     }
@@ -878,22 +872,22 @@ static bb_node_t bb_build(_PND_t *p)
          * Store only the variable name; the box fetches live at α.
          */
         const char *name = (p->kind == _XDSAR) ? p->STRVAL_fn
-                         : (p->varname.v == DT_S)  ? p->varname.s : NULL;
+                         : (p->var.v == DT_S)  ? p->var.s : NULL;
         if (name && *name) {
             deferred_var_t *ζ = calloc(1, sizeof(deferred_var_t));
             ζ->name     = name;
-            ζ->fn = NULL;
+            ζ->child_fn = NULL;
             ζ->child_state  = NULL;
-            ζ->child_state_size = 0;
+            ζ->child_size = 0;
             n.fn     = (bb_box_fn)bb_deferred_var;
-            n.fz      = ζ;
+            n.ζ      = ζ;
             n.ζ_size = sizeof(deferred_var_t);
         n.ζ_size = sizeof(*ζ);
         } else {
             /* no name — epsilon (degenerate, shouldn't arise) */
             eps_t *ζ = calloc(1, sizeof(eps_t));
             n.fn = (bb_box_fn)bb_eps;
-            n.fz  = ζ;
+            n.ζ  = ζ;
         n.ζ_size = sizeof(*ζ);
         }
         break;
@@ -906,7 +900,7 @@ static bb_node_t bb_build(_PND_t *p)
         _tab_t *ζ = calloc(1, sizeof(_tab_t));
         ζ->n = (int)p->num;
         n.fn = (bb_box_fn)bb_tab;
-        n.fz  = ζ;
+        n.ζ  = ζ;
         n.ζ_size = sizeof(*ζ);
         break;
     }
@@ -916,7 +910,7 @@ static bb_node_t bb_build(_PND_t *p)
         _rtab_t *ζ = calloc(1, sizeof(_rtab_t));
         ζ->n = (int)p->num;
         n.fn = (bb_box_fn)bb_rtab;
-        n.fz  = ζ;
+        n.ζ  = ζ;
         n.ζ_size = sizeof(*ζ);
         break;
     }
@@ -925,7 +919,7 @@ static bb_node_t bb_build(_PND_t *p)
     case _XFNCE: {
         _fence_t *ζ = calloc(1, sizeof(_fence_t));
         n.fn = (bb_box_fn)bb_fence;
-        n.fz  = ζ;
+        n.ζ  = ζ;
         n.ζ_size = sizeof(*ζ);
         break;
     }
@@ -934,7 +928,7 @@ static bb_node_t bb_build(_PND_t *p)
     case _XABRT: {
         _abort_t *ζ = calloc(1, sizeof(_abort_t));
         n.fn = (bb_box_fn)bb_abort;
-        n.fz  = ζ;
+        n.ζ  = ζ;
         n.ζ_size = sizeof(*ζ);
         break;
     }
@@ -951,7 +945,7 @@ static bb_node_t bb_build(_PND_t *p)
             atp_t *ζ = calloc(1, sizeof(atp_t));
             ζ->varname = varname;
             n.fn     = (bb_box_fn)bb_atp;
-            n.fz      = ζ;
+            n.ζ      = ζ;
             n.ζ_size = sizeof(atp_t);
             break;
         }
@@ -960,7 +954,7 @@ static bb_node_t bb_build(_PND_t *p)
                 p->STRVAL_fn ? p->STRVAL_fn : "");
         eps_t *ζ2 = calloc(1, sizeof(eps_t));
         n.fn = (bb_box_fn)bb_eps;
-        n.fz  = ζ2;
+        n.ζ  = ζ2;
         n.ζ_size = sizeof(*ζ2);
         break;
     }
@@ -972,7 +966,7 @@ static bb_node_t bb_build(_PND_t *p)
                 (int)p->kind);
         eps_t *ζ = calloc(1, sizeof(eps_t));
         n.fn = (bb_box_fn)bb_eps;
-        n.fz  = ζ;
+        n.ζ  = ζ;
         n.ζ_size = sizeof(*ζ);
         break;
     }
@@ -1022,33 +1016,33 @@ static spec_t bb_deferred_var(void *zeta, int entry)
                         int rebuilt = 0;
 
                         if (val.v == DT_P && val.p) {
-                            if (val.p != ζ->child_state || !ζ->fn) {
+                            if (val.p != ζ->child_state || !ζ->child_fn) {
                                 /* Value changed (or first call): rebuild */
                                 child = bb_build((_PND_t *)val.p);
-                                ζ->fn     = child.fn;
-                                ζ->child_state      = child.state;
-                                ζ->child_state_size = child.ζ_size;
+                                ζ->child_fn  = child.fn;
+                                ζ->child_state = child.ζ;
+                                ζ->child_size = child.ζ_size;
                                 rebuilt = 1;
                             }
                         } else if (val.v == DT_S && val.s) {
                             /* String value: always treat as fresh literal.
                              * Compare pointer for stability (interned strings). */
-                            _lit_t *lz = (_lit_t *)ζ->state;
+                            _lit_t *lz = (_lit_t *)ζ->child_state;
                             if (!lz || lz->lit != val.s) {
                                 lz = calloc(1, sizeof(_lit_t));
                                 lz->lit = val.s;
                                 lz->len = (int)strlen(val.s);
-                                ζ->fn     = (bb_box_fn)bb_lit;
+                                ζ->child_fn     = (bb_box_fn)bb_lit;
                                 ζ->child_state      = lz;
-                                ζ->child_state_size = sizeof(_lit_t);
+                                ζ->child_size = sizeof(_lit_t);
                                 rebuilt = 1;
                             }
                         } else {
-                            if (!ζ->fn) {
+                            if (!ζ->child_fn) {
                                 eps_t *ez = calloc(1, sizeof(eps_t));
-                                ζ->fn     = (bb_box_fn)bb_eps;
+                                ζ->child_fn     = (bb_box_fn)bb_eps;
                                 ζ->child_state      = ez;
-                                ζ->child_state_size = sizeof(eps_t);
+                                ζ->child_size = sizeof(eps_t);
                                 rebuilt = 1;
                             }
                         }
@@ -1061,17 +1055,17 @@ static spec_t bb_deferred_var(void *zeta, int entry)
                          * fields are configuration, not mutable match state.
                          * Memset zeroes len, causing bb_lit to match everywhere
                          * with δ=0. Only memset nodes whose child_fn is NOT bb_lit. */
-                        if (!rebuilt && ζ->state && ζ->child_state_size
-                                && ζ->fn != (bb_box_fn)bb_lit)
-                            memset(ζ->state, 0, ζ->child_state_size);
+                        if (!rebuilt && ζ->child_state && ζ->child_size
+                                && ζ->child_fn != (bb_box_fn)bb_lit)
+                            memset(ζ->child_state, 0, ζ->child_size);
                     }
-                    if (!ζ->fn)                         goto DVAR_ω;
-                    DVAR = ζ->fn(ζ->state, α);
+                    if (!ζ->child_fn)                         goto DVAR_ω;
+                    DVAR = ζ->child_fn(ζ->child_state, α);
                     if (spec_is_empty(DVAR))                  goto DVAR_ω;
                                                               goto DVAR_γ;
 
-    DVAR_β:         if (!ζ->fn)                         goto DVAR_ω;
-                    DVAR = ζ->fn(ζ->state, β);
+    DVAR_β:         if (!ζ->child_fn)                         goto DVAR_ω;
+                    DVAR = ζ->child_fn(ζ->child_state, β);
                     if (spec_is_empty(DVAR))                  goto DVAR_ω;
                                                               goto DVAR_γ;
 
@@ -1205,11 +1199,11 @@ int stmt_exec_dyn(const char  *subj_name,
         lζ->lit = pat.s;
         lζ->len = (int)strlen(pat.s);
         root.fn = (bb_box_fn)bb_lit;
-        root.fz  = lζ;
+        root.ζ  = lζ;
     } else {
         eps_t *eζ = calloc(1, sizeof(eps_t));
         root.fn = (bb_box_fn)bb_eps;
-        root.fz  = eζ;
+        root.ζ  = eζ;
     }
 
     /* ── Phase 3: run match ─────────────────────────────────────────── */
@@ -1225,7 +1219,7 @@ int stmt_exec_dyn(const char  *subj_name,
 
     for (int scan = 0; scan <= scan_limit; scan++) {
         Δ = scan;
-        spec_t result = root.fn(root.state, α);
+        spec_t result = root.fn(root.ζ, α);
         if (!spec_is_empty(result)) {
             match_start = scan;
             match_end   = Δ;
@@ -1422,14 +1416,14 @@ int dyn_deferred_var_test(void)
     /* First alpha — will resolve via NV_GET_fn. Since test stub returns SNUL,
      * child becomes epsilon (always matches zero-width).  What we verify is
      * that the re-resolve branch runs without crash and returns a valid spec. */
-    spec_t r1 = dvar.fn(dvar.state, α);
+    spec_t r1 = dvar.fn(dvar.ζ, α);
     /* epsilon matches → non-empty spec at position 0 */
     ok &= !spec_is_empty(r1) ? 1 : 0;   /* epsilon always succeeds */
 
     /* Second alpha on same box — re-resolve must run again (not skip) */
     /* Reset Δ */
     Δ = 0;
-    spec_t r2 = dvar.fn(dvar.state, α);
+    spec_t r2 = dvar.fn(dvar.ζ, α);
     ok &= !spec_is_empty(r2) ? 1 : 0;
 
     printf("  deferred_var: r1=%s r2=%s (both non-empty = re-resolve ran)\n",
