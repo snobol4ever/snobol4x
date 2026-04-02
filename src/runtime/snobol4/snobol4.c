@@ -434,6 +434,15 @@ static DESCR_t _ARRAY_(DESCR_t *a, int n) {
         sscanf(proto, "%d:%d", &lo, &hi);
         return ARRAY_VAL(array_new(lo, hi));
     }
+    if (proto && strchr(proto, ',')) {
+        /* Parse "R,C" or "R,C,..." — multi-dim without explicit bounds.
+         * Only 2D supported in runtime; first two dimensions used. */
+        int r = 1, c = 1;
+        sscanf(proto, "%d,%d", &r, &c);
+        if (r < 1) r = 1;
+        if (c < 1) c = 1;
+        return ARRAY_VAL(array_new2d(1, r, 1, c));
+    }
     int sz = (int)to_int(a[0]);
     if (sz < 1) return FAILDESCR;
     ARBLK_t *arr = array_new(1, sz);
@@ -742,6 +751,8 @@ static DESCR_t (*_facc_fns[FIELD_ACCESSOR_MAX])(DESCR_t *, int) = {
     _facc_get_124, _facc_get_125, _facc_get_126, _facc_get_127,
 };
 
+static int fn_has_builtin(const char *name);  /* forward — defined after FNCBLK_t */
+static void _func_init(void);  /* forward */
 static DESCR_t _DATA_(DESCR_t *a, int n) {
     if (n < 1) return NULVCL;
     const char *spec = VARVAL_fn(a[0]);
@@ -791,9 +802,12 @@ static DESCR_t _DATA_(DESCR_t *a, int n) {
         int slot = _facc_n++;
         _facc_slots[slot].tidx = tidx;
         _facc_slots[slot].fidx = fi;
-        /* Only register if not already registered (don't override next/value builtins) */
+        /* Register field accessor, but never overwrite a C-backed builtin.
+         * fn_has_builtin() checks the hash table before FNCBLK_t is visible here;
+         * it is defined later in this file and forward-declared below. */
         const char *fname = _data_types[tidx].fields[fi];
-        register_fn(fname, _facc_fns[slot], 1, 1);
+        if (!fn_has_builtin(fname))
+            register_fn(fname, _facc_fns[slot], 1, 1);
     }
 
     return NULVCL;
@@ -850,11 +864,17 @@ static DESCR_t _PROTOTYPE_(DESCR_t *a, int n) {
         ARBLK_t *arr = v.arr;
         char buf[128];
         if (arr->ndim > 1) {
-            /* 2D: ndim repurposed as cols count; rows span lo..hi */
+            /* 2D: ndim repurposed as cols count; rows span lo..hi.
+             * lo2 is not stored separately — only cols=hi2-lo2+1.
+             * SPITBOL returns "R,C" for standard 1-based arrays,
+             * "lo:hi,C" only when row lo != 1 (col lo always 1). */
             int rows = arr->hi - arr->lo + 1;
             int cols = arr->ndim;  /* stored as cols count */
-            snprintf(buf, sizeof(buf), "%d:%d,%d:%d",
-                     arr->lo, arr->lo + rows - 1, 1, cols);
+            if (arr->lo == 1)
+                snprintf(buf, sizeof(buf), "%d,%d", rows, cols);
+            else
+                snprintf(buf, sizeof(buf), "%d:%d,%d",
+                         arr->lo, arr->hi, cols);
         } else {
             /* 1D: SPITBOL returns "N" for standard 1-based arrays,
              * "lo:hi" only when lo != 1 */
@@ -989,8 +1009,8 @@ void SNO_INIT_fn(void) {
     register_fn("t",        _b_tree_t,      1, 1);
     register_fn("v",        _b_tree_v,      1, 1);
     register_fn("c",        _b_tree_c,      1, 1);
-    register_fn("value",    _b_field_value, 1, 1);
-    register_fn("next",     _b_field_next,  1, 1);
+
+
     register_fn("DUMP",     _DUMP_,        0, 1);
     register_fn("TRACE",    _TRACE_,       1, 4);
     register_fn("STOPTR",   _STOPTR_,      1, 2);
@@ -1745,6 +1765,20 @@ typedef struct _FNCBLK_t {
 
 static FNCBLK_t *_func_buckets[FUNC_BUCKETS];
 static int        _func_init_done = 0;
+
+/* fn_has_builtin — returns 1 if a C-backed (fn!=NULL) entry exists for name.
+ * Must use the same hash as _func_hash (h*33^toupper, mod FUNC_BUCKETS). */
+static int fn_has_builtin(const char *name) {
+    if (!name) return 0;
+    _func_init();
+    unsigned h = 0;
+    for (const char *p = name; *p; p++)
+        h = h * 33 ^ (unsigned char)toupper((unsigned char)*p);
+    h %= FUNC_BUCKETS;
+    for (FNCBLK_t *e = _func_buckets[h]; e; e = e->next)
+        if (strcasecmp(e->name, name) == 0 && e->fn != NULL) return 1;
+    return 0;
+}
 
 static void _func_init(void) {
     if (_func_init_done) return;

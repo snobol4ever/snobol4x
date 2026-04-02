@@ -270,6 +270,32 @@ static DESCR_t call_user_function(const char *fname, DESCR_t *args, int nargs)
                         } else { subscript_set(base, idx, rv); }
                         succeeded = 1;
                     }
+                } else if (s->has_eq && s->subject && s->subject->kind == E_FNC &&
+                           s->subject->sval && s->subject->nchildren >= 1) {
+                    /* ITEM(arr,i[,j]) = val  or  field(obj) = val at statement level */
+                    DESCR_t rv = s->replacement ? interp_eval(s->replacement) : NULVCL;
+                    if (!IS_FAIL_fn(rv)) {
+                        if (strcasecmp(s->subject->sval, "ITEM") == 0 && s->subject->nchildren >= 2) {
+                            DESCR_t base = interp_eval(s->subject->children[0]);
+                            DESCR_t idx  = interp_eval(s->subject->children[1]);
+                            if (!IS_FAIL_fn(base) && !IS_FAIL_fn(idx)) {
+                                if (s->subject->nchildren >= 3) {
+                                    DESCR_t idx2 = interp_eval(s->subject->children[2]);
+                                    if (!IS_FAIL_fn(idx2)) subscript_set2(base, idx, idx2, rv);
+                                } else {
+                                    subscript_set(base, idx, rv);
+                                }
+                                succeeded = 1;
+                            } else succeeded = 0;
+                        } else {
+                            /* DATA field setter: fname(obj) = val */
+                            DESCR_t obj = interp_eval(s->subject->children[0]);
+                            if (!IS_FAIL_fn(obj)) {
+                                FIELD_SET_fn(obj, s->subject->sval, rv);
+                                succeeded = 1;
+                            } else succeeded = 0;
+                        }
+                    } else succeeded = 0;
                 } else if (s->has_eq && s->subject && s->subject->kind == E_INDIRECT) {
                     EXPR_t *ichild = s->subject->nchildren > 0 ? s->subject->children[0] : NULL;
                     const char *nm = NULL;
@@ -469,13 +495,46 @@ static DESCR_t interp_eval(EXPR_t *e)
         EXPR_t *lv = e->children[0];
         if (lv && lv->kind == E_VAR && lv->sval)
             NV_SET_fn(lv->sval, val);
+        else if (lv && lv->kind == E_IDX && lv->nchildren >= 2) {
+            /* arr<i> = val  or  arr<i,j> = val */
+            DESCR_t base = interp_eval(lv->children[0]);
+            if (!IS_FAIL_fn(base)) {
+                DESCR_t idx = interp_eval(lv->children[1]);
+                if (!IS_FAIL_fn(idx)) {
+                    if (lv->nchildren >= 3) {
+                        DESCR_t idx2 = interp_eval(lv->children[2]);
+                        if (!IS_FAIL_fn(idx2))
+                            subscript_set2(base, idx, idx2, val);
+                    } else {
+                        subscript_set(base, idx, val);
+                    }
+                }
+            }
+        }
         else if (lv && lv->kind == E_FNC && lv->sval && lv->nchildren >= 1) {
-            /* DATA field setter: fname(obj) = val
-             * Evaluate the first argument; if it's a DT_DATA instance,
-             * dispatch through FIELD_SET_fn using the function name as field name. */
-            DESCR_t obj = interp_eval(lv->children[0]);
-            if (!IS_FAIL_fn(obj))
-                FIELD_SET_fn(obj, lv->sval, val);
+            if (strcasecmp(lv->sval, "ITEM") == 0 && lv->nchildren >= 2) {
+                /* ITEM(arr, i [,j]) = val — programmatic subscript setter */
+                DESCR_t base = interp_eval(lv->children[0]);
+                if (!IS_FAIL_fn(base)) {
+                    DESCR_t idx = interp_eval(lv->children[1]);
+                    if (!IS_FAIL_fn(idx)) {
+                        if (lv->nchildren >= 3) {
+                            DESCR_t idx2 = interp_eval(lv->children[2]);
+                            if (!IS_FAIL_fn(idx2))
+                                subscript_set2(base, idx, idx2, val);
+                        } else {
+                            subscript_set(base, idx, val);
+                        }
+                    }
+                }
+            } else {
+                /* DATA field setter: fname(obj) = val
+                 * Evaluate the first argument; if it's a DT_DATA instance,
+                 * dispatch through FIELD_SET_fn using the function name as field name. */
+                DESCR_t obj = interp_eval(lv->children[0]);
+                if (!IS_FAIL_fn(obj))
+                    FIELD_SET_fn(obj, lv->sval, val);
+            }
         }
         else if (lv && lv->kind == E_INDIRECT && lv->nchildren > 0) {
             EXPR_t *ichild = lv->children[0];
