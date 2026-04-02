@@ -848,7 +848,7 @@ static void execute_program(Program *prog)
                 if (IS_FAIL_fn(base) || IS_FAIL_fn(idx) || IS_FAIL_fn(repl_val)) {
                     succeeded = 0;
                 } else {
-                    if (idx_e->nchildren == 3) {
+                    if (idx_e->nchildren >= 3) {
                         DESCR_t idx2 = interp_eval(idx_e->children[2]);
                         subscript_set2(base, idx, idx2, repl_val);
                     } else {
@@ -887,17 +887,35 @@ static void execute_program(Program *prog)
                 }
             }
 
-        /* ── DATA field setter: fname(obj) = expr ─────────────────── */
+        /* ── ITEM setter or DATA field setter: fname(obj[,i]) = expr ── */
         } else if (s->has_eq && s->subject &&
                    s->subject->kind == E_FNC && s->subject->sval &&
                    s->subject->nchildren >= 1) {
-            DESCR_t obj = interp_eval(s->subject->children[0]);
             DESCR_t repl_val = s->replacement ? interp_eval(s->replacement) : NULVCL;
-            if (IS_FAIL_fn(obj) || IS_FAIL_fn(repl_val)) {
+            if (IS_FAIL_fn(repl_val)) {
                 succeeded = 0;
+            } else if (strcasecmp(s->subject->sval, "ITEM") == 0 &&
+                       s->subject->nchildren >= 2) {
+                DESCR_t base = interp_eval(s->subject->children[0]);
+                DESCR_t idx  = interp_eval(s->subject->children[1]);
+                if (IS_FAIL_fn(base) || IS_FAIL_fn(idx)) {
+                    succeeded = 0;
+                } else if (s->subject->nchildren >= 3) {
+                    DESCR_t idx2 = interp_eval(s->subject->children[2]);
+                    if (IS_FAIL_fn(idx2)) { succeeded = 0; }
+                    else { subscript_set2(base, idx, idx2, repl_val); succeeded = 1; }
+                } else {
+                    subscript_set(base, idx, repl_val);
+                    succeeded = 1;
+                }
             } else {
-                FIELD_SET_fn(obj, s->subject->sval, repl_val);
-                succeeded = 1;
+                DESCR_t obj = interp_eval(s->subject->children[0]);
+                if (IS_FAIL_fn(obj)) {
+                    succeeded = 0;
+                } else {
+                    FIELD_SET_fn(obj, s->subject->sval, repl_val);
+                    succeeded = 1;
+                }
             }
 
         /* ── expression-only (side effects, e.g. bare function call) ─ */

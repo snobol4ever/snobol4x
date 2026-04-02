@@ -664,11 +664,11 @@ static struct { int tidx; int fidx; } _facc_slots[FIELD_ACCESSOR_MAX];
 static int _facc_n = 0;
 
 static DESCR_t _make_fget(int slot, DESCR_t obj) {
-    if (slot < 0 || slot >= _facc_n) return NULVCL;
+    if (slot < 0 || slot >= _facc_n) return FAILDESCR;
     int tidx = _facc_slots[slot].tidx;
     int fidx = _facc_slots[slot].fidx;
-    if (obj.v != DT_DATA || !obj.u) return NULVCL;
-    if (fidx < 0 || fidx >= obj.u->type->nfields) return NULVCL;
+    if (obj.v != DT_DATA || !obj.u) return FAILDESCR;  /* error 041: wrong datatype */
+    if (fidx < 0 || fidx >= obj.u->type->nfields) return FAILDESCR;
     return obj.u->fields[fidx];
 }
 static void _make_fset(int slot, DESCR_t obj, DESCR_t val) {
@@ -806,8 +806,7 @@ static DESCR_t _DATA_(DESCR_t *a, int n) {
          * fn_has_builtin() checks the hash table before FNCBLK_t is visible here;
          * it is defined later in this file and forward-declared below. */
         const char *fname = _data_types[tidx].fields[fi];
-        if (!fn_has_builtin(fname))
-            register_fn(fname, _facc_fns[slot], 1, 1);
+        register_fn(fname, _facc_fns[slot], 1, 1);
     }
 
     return NULVCL;
@@ -1771,7 +1770,7 @@ static int        _func_init_done = 0;
 static int fn_has_builtin(const char *name) {
     if (!name) return 0;
     _func_init();
-    unsigned h = 0;
+    unsigned h = 5381;
     for (const char *p = name; *p; p++)
         h = h * 33 ^ (unsigned char)toupper((unsigned char)*p);
     h %= FUNC_BUCKETS;
