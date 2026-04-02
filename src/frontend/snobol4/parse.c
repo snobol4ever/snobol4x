@@ -231,13 +231,13 @@ static EXPR_t *parse_expr14(Lex *lx) {
     switch (t.kind) {
         case T_AT:     uk=E_CAPT_CURSOR;    break;
         case T_TILDE:  uk=E_INDIRECT; break;  /* ~ is NOT in scrip-cc.h so map to DEREF for now */
-        case T_QMARK:  uk=E_CAPT_COND_ASGN;  break;  /* unary ? = interrogation */
+        case T_QMARK:  uk=E_INTERROGATE; break; /* ?X = interrogation (o$int) */
         case T_AMP:    uk=E_OPSYN;break;
         case T_PLUS:   uk=E_PLS; break;  /* unary + = numeric coerce */
         case T_MINUS:  uk=E_MNS;   break;
         case T_STAR:   uk=E_DEFER; break;   /* *X = deferred pattern ref */
         case T_DOLLAR: uk=E_INDIRECT; break;  /* $X = indirect reference */
-        case T_DOT:    uk=E_CAPT_COND_ASGN;  break;  /* .X = name */
+        case T_DOT:    uk=E_NAME; break;    /* .X = name reference (o$nam) */
         case T_BANG:   uk=E_POW;   break;  /* !X = definable unary */
         case T_PCT:    uk=E_DIV;   break;  /* %X = definable unary */
         case T_SLASH:  uk=E_DIV;   break;  /* /X = definable unary */

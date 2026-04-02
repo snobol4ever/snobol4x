@@ -60,6 +60,8 @@ typedef enum EKind {
 
     /* --- Arithmetic ------------------------------------------------------ */
 
+    E_INTERROGATE,  /* ?X  interrogation: null if X succeeds, fail if X fails  (o$int)  */
+    E_NAME,         /* .X  name reference: return name descriptor of X         (o$nam)  */
     E_MNS,          /* Unary minus          (MNS proc in SIL; o$com in MINIMAL) */
     E_PLS,          /* Unary plus / numeric coerce  (PLS proc in SIL; o$aff in MINIMAL) */
     E_ADD,          /* Addition                                              */
@@ -271,6 +273,8 @@ static const char * const ekind_name[E_KIND_COUNT] = {
     [E_KEYWORD]           = "E_KEYWORD",
     [E_INDIRECT]         = "E_INDIRECT",
     [E_DEFER]        = "E_DEFER",
+    [E_INTERROGATE]  = "E_INTERROGATE",
+    [E_NAME]         = "E_NAME",
     [E_MNS]          = "E_MNS",
     [E_PLS]          = "E_PLS",
     [E_ADD]          = "E_ADD",

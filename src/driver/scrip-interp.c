@@ -372,6 +372,25 @@ static DESCR_t interp_eval(EXPR_t *e)
         return NV_GET_fn(e->sval);
     }
 
+    case E_INTERROGATE: {
+        /* ?X — o$int: null string if X succeeds; fail if X fails */
+        if (e->nchildren < 1) return FAILDESCR;
+        DESCR_t v = interp_eval(e->children[0]);
+        if (IS_FAIL_fn(v)) return FAILDESCR;
+        return NULVCL;
+    }
+
+    case E_NAME: {
+        /* .X — o$nam: return the name of X as a string descriptor */
+        if (e->nchildren < 1) return FAILDESCR;
+        EXPR_t *child = e->children[0];
+        const char *nm = NULL;
+        if (child->kind == E_VAR || child->kind == E_FNC || child->kind == E_KEYWORD)
+            nm = child->sval;
+        if (nm) return STRVAL((char *)nm);
+        return interp_eval(child);  /* complex lvalue — best effort */
+    }
+
     case E_MNS:
         if (e->nchildren < 1) return FAILDESCR;
         return neg(interp_eval(e->children[0]));
@@ -584,6 +603,15 @@ static DESCR_t interp_eval(EXPR_t *e)
         return interp_eval(e->children[0]);
     }
 
+    case E_NOT: {
+        /* \X — o$nta/b/c: succeed (null) iff X fails; fail if X succeeds.
+         * Expression-context version; pattern-context uses bb_not. */
+        if (e->nchildren < 1) return FAILDESCR;
+        DESCR_t v = interp_eval(e->children[0]);
+        if (IS_FAIL_fn(v)) return NULVCL;
+        return FAILDESCR;
+    }
+
     case E_ALT: {
         /* child[0] | child[1] | ... — build pat_alt chain left-to-right */
         if (e->nchildren == 0) return NULVCL;
@@ -617,6 +645,48 @@ static DESCR_t interp_eval(EXPR_t *e)
         DESCR_t atp = pat_at_cursor(nm);
         return pat_cat(left_pat, atp);
     }
+
+    /* ── Numeric relational operators ─────────────────────────────────────
+     * Each compares two numeric operands; succeeds (returns lhs) or fails.
+     * SNOBOL4 relops return the left operand on success (not a boolean). */
+#define NUMREL(op) do { \
+        if (e->nchildren < 2) return FAILDESCR; \
+        DESCR_t l = interp_eval(e->children[0]); \
+        DESCR_t r = interp_eval(e->children[1]); \
+        if (IS_FAIL_fn(l) || IS_FAIL_fn(r)) return FAILDESCR; \
+        double lv = (l.v==DT_R) ? l.r : (double)(l.v==DT_I ? l.i : 0); \
+        double rv = (r.v==DT_R) ? r.r : (double)(r.v==DT_I ? r.i : 0); \
+        if (!(lv op rv)) return FAILDESCR; \
+        return l; \
+    } while(0)
+    case E_LT: NUMREL(<);
+    case E_LE: NUMREL(<=);
+    case E_GT: NUMREL(>);
+    case E_GE: NUMREL(>=);
+    case E_EQ: NUMREL(==);
+    case E_NE: NUMREL(!=);
+#undef NUMREL
+
+    /* ── Lexicographic (string) relational operators ───────────────────────
+     * Each compares two string operands; succeeds (returns lhs) or fails. */
+#define STRREL(cmpop) do { \
+        if (e->nchildren < 2) return FAILDESCR; \
+        DESCR_t l = interp_eval(e->children[0]); \
+        DESCR_t r = interp_eval(e->children[1]); \
+        if (IS_FAIL_fn(l) || IS_FAIL_fn(r)) return FAILDESCR; \
+        const char *ls = VARVAL_fn(l); if (!ls) ls = ""; \
+        const char *rs = VARVAL_fn(r); if (!rs) rs = ""; \
+        int cmp = strcmp(ls, rs); \
+        if (!(cmp cmpop 0)) return FAILDESCR; \
+        return l; \
+    } while(0)
+    case E_LLT: STRREL(<);
+    case E_LLE: STRREL(<=);
+    case E_LGT: STRREL(>);
+    case E_LGE: STRREL(>=);
+    case E_LEQ: STRREL(==);
+    case E_LNE: STRREL(!=);
+#undef STRREL
 
     default:
         return NULVCL;
