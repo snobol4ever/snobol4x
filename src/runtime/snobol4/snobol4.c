@@ -388,6 +388,22 @@ static DESCR_t _b_DATATYPE(DESCR_t *a, int n) {
     if (n < 1) return STRVAL("STRING");
     return STRVAL((char*)datatype(a[0]));
 }
+static DESCR_t _b_LCASE(DESCR_t *a, int n) {
+    if (n < 1) return NULVCL;
+    const char *s = VARVAL_fn(a[0]);
+    if (!s) return NULVCL;
+    char *r = GC_strdup(s);
+    for (int i = 0; r[i]; i++) r[i] = (char)tolower((unsigned char)r[i]);
+    return STRVAL(r);
+}
+static DESCR_t _b_UCASE_fn(DESCR_t *a, int n) {
+    if (n < 1) return NULVCL;
+    const char *s = VARVAL_fn(a[0]);
+    if (!s) return NULVCL;
+    char *r = GC_strdup(s);
+    for (int i = 0; r[i]; i++) r[i] = (char)toupper((unsigned char)r[i]);
+    return STRVAL(r);
+}
 
 /* EVAL / CODE / OPSYN / SORT wrappers — file scope required */
 extern DESCR_t EVAL_fn(DESCR_t);
@@ -940,6 +956,8 @@ void SNO_INIT_fn(void) {
     register_fn("SUBSTR",      _b_SUBSTR,   2, 3);
     register_fn("REVERSE",  _b_REVERSE,  1, 1);
     register_fn("DATATYPE", _b_DATATYPE, 1, 1);
+    register_fn("LCASE",    _b_LCASE,    1, 1);
+    register_fn("UCASE",    _b_UCASE_fn, 1, 1);
     register_fn("DATA",        _b_DATA,     1, 1);
     register_fn("ARRAY",   _b_ARRAY,   1, 2);
     register_fn("TABLE",   _b_TABLE,   0, 2);
@@ -1519,6 +1537,7 @@ DESCR_t NV_GET_fn(const char *name) {
     if (strcasecmp(name, "ANCHOR")   == 0) return INTVAL(kw_anchor);
     if (strcasecmp(name, "TRIM")     == 0) return INTVAL(kw_trim);
     if (strcasecmp(name, "FULLSCAN") == 0) return INTVAL(kw_fullscan);
+    if (strcasecmp(name, "ALPHABET") == 0) return BSTRVAL(alphabet, 256);
     unsigned h = _var_hash(name);
     for (NV_t *e = _var_buckets[h]; e; e = e->next)
         if (strcmp(e->name, name) == 0) return e->val;
