@@ -62,23 +62,23 @@ static const KindSpec kind_spec[E_KIND_COUNT] = {
 
     /* References */
     [E_VAR]        = ANY_S,        /* sval = name; children = (none or subscripts) */
-    [E_KW]         = EXACT_S(0),   /* sval = keyword name */
-    [E_INDR]       = EXACT(1),     /* $expr — one child (the indirect expr) */
+    [E_KEYWORD]         = EXACT_S(0),   /* sval = keyword name */
+    [E_INDIRECT]       = EXACT(1),     /* $expr — one child (the indirect expr) */
     [E_DEFER]      = EXACT(1),     /* *expr — one child */
 
     /* Arithmetic — all binary except unaries */
-    [E_NEG]        = EXACT(1),
+    [E_MNS]        = EXACT(1),
     [E_PLS]        = EXACT(1),
     [E_ADD]        = EXACT(2),
     [E_SUB]        = EXACT(2),
-    [E_MPY]        = EXACT(2),
+    [E_MUL]        = EXACT(2),
     [E_DIV]        = EXACT(2),
     [E_MOD]        = EXACT(2),
     [E_POW]        = EXACT(2),
 
     /* Sequence / alternation — n-ary, at least 2 */
-    [E_SEQ]        = MIN(2),
-    [E_ALT]        = MIN(2),
+    [E_PAT_SEQ]        = MIN(2),
+    [E_PAT_ALT]        = MIN(2),
     [E_OPSYN]      = EXACT(2),
 
     /* Pattern primitives — leaves (no children) or 1 arg */
@@ -102,15 +102,15 @@ static const KindSpec kind_spec[E_KIND_COUNT] = {
     [E_BAL]        = EXACT(0),
 
     /* Captures */
-    [E_CAPT_COND]  = MIN_S(1),    /* sval = var name; child = sub-pattern */
-    [E_CAPT_IMM]   = MIN_S(1),
-    [E_CAPT_CUR]   = EXACT_S(0),  /* @var — sval = var name, no children */
+    [E_CAPT_COND_ASGN]  = MIN_S(1),    /* sval = var name; child = sub-pattern */
+    [E_CAPT_IMMED_ASGN]   = MIN_S(1),
+    [E_CAPT_CURSOR]   = EXACT_S(0),  /* @var — sval = var name, no children */
 
     /* Call / access / assignment / scan / swap */
     [E_FNC]        = ANY_S,        /* sval = function name; children = args */
     [E_IDX]        = MIN(1),       /* children[0] = array/expr or name via sval */
     [E_ASSIGN]     = EXACT(2),     /* lhs, rhs */
-    [E_MATCH]      = EXACT(2),     /* subject ? pattern */
+    [E_SCAN]      = EXACT(2),     /* subject ? pattern */
     [E_SWAP]       = EXACT(2),     /* lhs :=: rhs */
 
     /* Icon generators / constructors */
@@ -118,7 +118,7 @@ static const KindSpec kind_spec[E_KIND_COUNT] = {
     [E_TO]         = EXACT(2),     /* i to j */
     [E_TO_BY]      = EXACT(3),     /* i to j by k */
     [E_LIMIT]      = EXACT(2),     /* E \ N */
-    [E_GENALT]     = MIN(2),
+    [E_ALTERNATES]     = MIN(2),
     [E_ITER]       = EXACT(1),     /* !E */
     [E_MAKELIST]   = ANY_KIND,     /* [] is valid */
 
@@ -293,16 +293,16 @@ int main(void) {
         else fprintf(stderr, "PASS test3: E_ADD with 1 child caught\n");
     }
 
-    /* --- Test 4: E_SEQ with 2 valid children --- */
+    /* --- Test 4: E_PAT_SEQ with 2 valid children --- */
     {
-        EXPR_t *s  = mk(E_SEQ);
+        EXPR_t *s  = mk(E_PAT_SEQ);
         EXPR_t *q1 = mk(E_QLIT); q1->sval = "hello";
         EXPR_t *q2 = mk(E_QLIT); q2->sval = "world";
         add_child(s, q1);
         add_child(s, q2);
         int errs = ir_verify_node(s, "test4", stderr);
         if (errs != 0) { fprintf(stderr, "FAIL test4: expected 0 violations, got %d\n", errs); failures++; }
-        else fprintf(stderr, "PASS test4: valid E_SEQ\n");
+        else fprintf(stderr, "PASS test4: valid E_PAT_SEQ\n");
     }
 
     /* --- Test 5: E_QLIT missing sval --- */

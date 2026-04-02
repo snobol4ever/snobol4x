@@ -678,7 +678,7 @@ static void emit_arith_i32(const EXPR_t *e, int env_idx) {
         emit_arith_i32(e->children[1], env_idx);
         W("    (i32.sub)\n");
         return;
-    case E_MPY:
+    case E_MUL:
         emit_arith_i32(e->children[0], env_idx);
         emit_arith_i32(e->children[1], env_idx);
         W("    (i32.mul)\n");
@@ -693,7 +693,7 @@ static void emit_arith_i32(const EXPR_t *e, int env_idx) {
         emit_arith_i32(e->children[1], env_idx);
         W("    (i32.rem_s)\n");
         return;
-    case E_NEG:
+    case E_MNS:
         emit_arith_i32(e->children[0], env_idx);
         W("    (i32.const -1)\n    (i32.mul)\n");
         return;
@@ -718,7 +718,7 @@ static void emit_goals(const EXPR_t *g, int env_idx, int in_disj_left);
 static void emit_goal(const EXPR_t *goal, int env_idx, int in_disj_left) {
     if (!goal) return;
 
-    if (goal->kind == E_SEQ) {
+    if (goal->kind == E_PAT_SEQ) {
         for (int i = 0; i < goal->nchildren; i++)
             emit_goal(goal->children[i], env_idx, in_disj_left);
         return;

@@ -187,12 +187,12 @@ static void emit_term_val(EXPR_t *e) {
             }
             return;
         }
-        case E_ADD: case E_SUB: case E_MPY: case E_DIV: {
+        case E_ADD: case E_SUB: case E_MUL: case E_DIV: {
             /* Arithmetic subexpression — only valid inside is/2 rhs.
              * Emitted as integer Term* nodes evaluated at runtime. */
             const char *op = (e->kind == E_ADD) ? "+" :
                              (e->kind == E_SUB) ? "-" :
-                             (e->kind == E_MPY) ? "*" : "/";
+                             (e->kind == E_MUL) ? "*" : "/";
             PL_C("term_new_int(");
             PL_C("(");
             emit_term_val(e->children[0]);
@@ -232,7 +232,7 @@ static void emit_arith_expr(EXPR_t *e) {
         case E_SUB:
             PL_C("("); emit_arith_expr(e->children[0]);
             PL_C(" - "); emit_arith_expr(e->children[1]); PL_C(")"); return;
-        case E_MPY:
+        case E_MUL:
             PL_C("("); emit_arith_expr(e->children[0]);
             PL_C(" * "); emit_arith_expr(e->children[1]); PL_C(")"); return;
         case E_DIV:

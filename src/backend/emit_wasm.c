@@ -132,7 +132,7 @@ static void emit_runtime_imports(void) {
     W("  ;; (global $str_ptr is internal to runtime; programs use sno_str_alloc)\n");
 }
 
-static int needs_indr = 0;  /* set during prescan if E_INDR found */
+static int needs_indr = 0;  /* set during prescan if E_INDIRECT found */
 
 /* ── DATA type registry (Part A — M-SW-C02) ──────────────────────────────── */
 /* Populated during prescan when E_FNC "data" is seen.                        */
@@ -258,7 +258,7 @@ static void prescan_intern_alphabet(void) {
 static void prescan_expr(const EXPR_t *e) {
     if (!e) return;
     if (e->kind == E_QLIT) { strlit_intern(e->sval); return; }
-    if (e->kind == E_KW && e->sval) {
+    if (e->kind == E_KEYWORD && e->sval) {
         const char *kw = e->sval;
         if      (strcasecmp(kw, "alphabet") == 0) prescan_intern_alphabet();
         else if (strcasecmp(kw, "ucase")    == 0) strlit_intern("ABCDEFGHIJKLMNOPQRSTUVWXYZ");
@@ -269,13 +269,13 @@ static void prescan_expr(const EXPR_t *e) {
     }
     if (e->kind == E_VAR && e->sval && !is_keyword_name(e->sval))
         var_intern(e->sval);
-    if (e->kind == E_INDR) {
+    if (e->kind == E_INDIRECT) {
         needs_indr = 1;
-        /* $.var: child is E_CAPT_COND; intern the variable name */
+        /* $.var: child is E_CAPT_COND_ASGN; intern the variable name */
         const EXPR_t *ch = e->nchildren > 0 ? e->children[0] : NULL;
-        if (ch && ch->kind == E_CAPT_COND && ch->sval)
+        if (ch && ch->kind == E_CAPT_COND_ASGN && ch->sval)
             var_intern(ch->sval);
-        else if (ch && ch->kind == E_CAPT_COND && ch->nchildren > 0
+        else if (ch && ch->kind == E_CAPT_COND_ASGN && ch->nchildren > 0
                  && ch->children[0] && ch->children[0]->sval)
             var_intern(ch->children[0]->sval);
     }
@@ -284,7 +284,7 @@ static void prescan_expr(const EXPR_t *e) {
     if (e->kind == E_FNC && e->sval && strcasecmp(e->sval, "data") == 0)
         parse_data_spec(e);  /* register DATA type for constructor/field dispatch */
     /* CAPT_COND/CAPT_IMM/CAPT_CUR: varname in children[1]->sval (binop shape) */
-    if (e->kind == E_CAPT_COND || e->kind == E_CAPT_IMM || e->kind == E_CAPT_CUR) {
+    if (e->kind == E_CAPT_COND_ASGN || e->kind == E_CAPT_IMMED_ASGN || e->kind == E_CAPT_CURSOR) {
         /* Try sval first (legacy path), then children[1] (parser binop path) */
         const char *vn = e->sval;
         if (!vn && e->nchildren >= 2 && e->children[1] && e->children[1]->sval)
@@ -340,7 +340,7 @@ static void emit_var_globals(void) {
 /*   Looks up variable by name string; returns ("", 0) for unknown.          */
 /* $sno_var_set(name_off, name_len, val_off, val_len)                         */
 /*   Assigns to variable by name; no-op for unknown.                         */
-/* Emitted only when E_INDR nodes are present. Uses if-else chain over       */
+/* Emitted only when E_INDIRECT nodes are present. Uses if-else chain over       */
 /* all interned var names, each compared with $sno_str_eq.                   */
 static void emit_var_indirect_funcs(void) {
     if (!needs_indr || nvar == 0) return;
@@ -439,7 +439,7 @@ WasmTy emit_wasm_expr(const EXPR_t *e) {
     case E_FLIT:
         W("    (f64.const %g)\n", e->dval);
         return TY_FLOAT;
-    case E_NEG: {
+    case E_MNS: {
         /* For literals: always wraps a numeric child */
         WasmTy t = emit_wasm_expr(e->nchildren > 0 ? e->children[0] : NULL);
         if (t == TY_INT) {
@@ -452,7 +452,7 @@ WasmTy emit_wasm_expr(const EXPR_t *e) {
     }
     case E_PLS:
         return emit_wasm_expr(e->nchildren > 0 ? e->children[0] : NULL);
-    case E_ADD: case E_SUB: case E_MPY: case E_DIV: case E_MOD: case E_POW: {
+    case E_ADD: case E_SUB: case E_MUL: case E_DIV: case E_MOD: case E_POW: {
         WasmTy lt = emit_wasm_expr(e->children[0]);
         if (lt == TY_STR) { W("    (call $sno_str_to_int)\n"); lt = TY_INT; }
         WasmTy rt = emit_wasm_expr(e->children[1]);
@@ -488,7 +488,7 @@ WasmTy emit_wasm_expr(const EXPR_t *e) {
         if (!floaty) {
             if      (e->kind == E_ADD) W("    (i64.add)\n");
             else if (e->kind == E_SUB) W("    (i64.sub)\n");
-            else if (e->kind == E_MPY) W("    (i64.mul)\n");
+            else if (e->kind == E_MUL) W("    (i64.mul)\n");
             else if (e->kind == E_DIV) W("    (i64.div_s)\n");
             else if (e->kind == E_MOD) W("    (i64.rem_s)\n");
             return TY_INT;
@@ -505,7 +505,7 @@ WasmTy emit_wasm_expr(const EXPR_t *e) {
         }
         if      (e->kind == E_ADD) W("    (f64.add)\n");
         else if (e->kind == E_SUB) W("    (f64.sub)\n");
-        else if (e->kind == E_MPY) W("    (f64.mul)\n");
+        else if (e->kind == E_MUL) W("    (f64.mul)\n");
         else if (e->kind == E_DIV) W("    (f64.div)\n");
         return TY_FLOAT;
     }
@@ -523,7 +523,7 @@ WasmTy emit_wasm_expr(const EXPR_t *e) {
         }
         return TY_STR;
     }
-    case E_INDR: {
+    case E_INDIRECT: {
         /* $expr — indirect: look up variable by name.
          * SNOBOL4 semantics:
          *   $'lit'  → sno_var_get("lit")     — name is the literal string
@@ -542,12 +542,12 @@ WasmTy emit_wasm_expr(const EXPR_t *e) {
             int si = strlit_intern(name_e->sval);
             W("    (i32.const %d) ;; $var name=%s\n", strlit_abs(si), name_e->sval);
             W("    (i32.const %d)\n", str_lits[si].len);
-        } else if (name_e->kind == E_CAPT_COND && name_e->sval) {
-            /* $.var — parser wraps as E_INDR(E_CAPT_COND(var)); use identifier name */
+        } else if (name_e->kind == E_CAPT_COND_ASGN && name_e->sval) {
+            /* $.var — parser wraps as E_INDIRECT(E_CAPT_COND_ASGN(var)); use identifier name */
             int si = strlit_intern(name_e->sval);
             W("    (i32.const %d) ;; $.var name=%s\n", strlit_abs(si), name_e->sval);
             W("    (i32.const %d)\n", str_lits[si].len);
-        } else if (name_e->kind == E_CAPT_COND && name_e->nchildren > 0
+        } else if (name_e->kind == E_CAPT_COND_ASGN && name_e->nchildren > 0
                    && name_e->children[0] && name_e->children[0]->sval) {
             /* $.var alternative: sval on child E_VAR */
             const char *vn = name_e->children[0]->sval;
@@ -563,7 +563,7 @@ WasmTy emit_wasm_expr(const EXPR_t *e) {
         W("    (call $sno_var_get)\n");
         return TY_STR;
     }
-    case E_CONCAT: {
+    case E_CAT: {
         if (e->nchildren == 0) {
             int idx = strlit_intern("");
             W("    (i32.const %d)\n", strlit_abs(idx));
@@ -581,7 +581,7 @@ WasmTy emit_wasm_expr(const EXPR_t *e) {
         }
         return TY_STR;
     }
-    case E_KW: {
+    case E_KEYWORD: {
         /* &KEYWORD — emit as pre-interned string constant */
         const char *kw = e->sval ? e->sval : "";
         const char *val = "";
@@ -1265,7 +1265,7 @@ static void emit_differ(const EXPR_t *e) {
 /* and length are in locals $pat_subj_off / $pat_subj_len, starting from the  */
 /* current value of local $pat_cursor.  On success $pat_cursor is updated to  */
 /* the position past the match.  On failure $pat_cursor is set to -1.         */
-/* Handles: E_QLIT (literal), E_SEQ (left then right, cursor threaded).       */
+/* Handles: E_QLIT (literal), E_PAT_SEQ (left then right, cursor threaded).       */
 static void emit_pattern_node(const EXPR_t *pat) {
     if (!pat || pat->kind == E_NUL) {
         /* empty pattern — always succeeds, cursor unchanged */
@@ -1284,9 +1284,9 @@ static void emit_pattern_node(const EXPR_t *pat) {
         W("      (local.set $pat_cursor)\n");
         return;
     }
-    if (pat->kind == E_SEQ) {
+    if (pat->kind == E_PAT_SEQ) {
         /* sequential: emit left then right, threading cursor */
-        W("      ;; E_SEQ pattern node: left then right\n");
+        W("      ;; E_PAT_SEQ pattern node: left then right\n");
         if (pat->nchildren >= 1) emit_pattern_node(pat->children[0]);
         /* only attempt right if left succeeded (cursor >= 0) */
         W("      (if (i32.ge_s (local.get $pat_cursor) (i32.const 0)) (then\n");
@@ -1313,9 +1313,9 @@ static void emit_pattern_node(const EXPR_t *pat) {
         W("      ))\n");
         return;
     }
-    if (pat->kind == E_ALT) {
+    if (pat->kind == E_PAT_ALT) {
         /* alternation: try left; if cursor==-1 restore and try right */
-        W("      ;; E_ALT: save cursor, try left, restore+try right on fail\n");
+        W("      ;; E_PAT_ALT: save cursor, try left, restore+try right on fail\n");
         W("      (local.set $pat_save_cursor (local.get $pat_cursor))\n");
         if (pat->nchildren >= 1) emit_pattern_node(pat->children[0]);
         W("      (if (i32.lt_s (local.get $pat_cursor) (i32.const 0)) (then\n");
@@ -1324,16 +1324,16 @@ static void emit_pattern_node(const EXPR_t *pat) {
         W("      ))\n");
         return;
     }
-    /* E_CAPT_COND (.var) — conditional capture: extract subj[before..cursor] on success
-     * IR shape: binop(E_CAPT_COND, pattern_child, E_VAR(varname))
+    /* E_CAPT_COND_ASGN (.var) — conditional capture: extract subj[before..cursor] on success
+     * IR shape: binop(E_CAPT_COND_ASGN, pattern_child, E_VAR(varname))
      * sval is NOT set; varname lives in children[1]->sval. */
-    if (pat->kind == E_CAPT_COND) {
+    if (pat->kind == E_CAPT_COND_ASGN) {
         const EXPR_t *child   = (pat->nchildren >= 1) ? pat->children[0] : NULL;
         const EXPR_t *varnode = (pat->nchildren >= 2) ? pat->children[1] : NULL;
         const char *varname = varnode && varnode->sval ? varnode->sval
                             : (pat->sval ? pat->sval : "");
 
-        W("      ;; E_CAPT_COND .%s: save cursor, run child, capture on success\n", varname);
+        W("      ;; E_CAPT_COND_ASGN .%s: save cursor, run child, capture on success\n", varname);
         W("      (local.set $pat_before (local.get $pat_cursor))\n");
         if (child) emit_pattern_node(child);
         /* only assign if child succeeded (cursor >= 0) */
@@ -1347,18 +1347,18 @@ static void emit_pattern_node(const EXPR_t *pat) {
         }
         return;
     }
-    /* E_CAPT_IMM ($var) — immediate capture: captures exactly what the inner pattern matched.
-     * IR shape: binop(E_CAPT_IMM, pattern_child, E_VAR(varname))
+    /* E_CAPT_IMMED_ASGN ($var) — immediate capture: captures exactly what the inner pattern matched.
+     * IR shape: binop(E_CAPT_IMMED_ASGN, pattern_child, E_VAR(varname))
      * For a QLIT child: sno_pat_search may scan forward from cursor to find the literal,
      * so the match starts at (new_cursor - ndl_len), not at pat_before.
      * We track child cursor-before to compute match length = new_cursor - child_cursor_before,
      * and match offset via a second local $pat_imm_start that we set before child runs. */
-    if (pat->kind == E_CAPT_IMM) {
+    if (pat->kind == E_CAPT_IMMED_ASGN) {
         const EXPR_t *child   = (pat->nchildren >= 1) ? pat->children[0] : NULL;
         const EXPR_t *varnode = (pat->nchildren >= 2) ? pat->children[1] : NULL;
         const char *varname = varnode && varnode->sval ? varnode->sval
                             : (pat->sval ? pat->sval : "");
-        W("      ;; E_CAPT_IMM $%s: run child, capture exactly matched span\n", varname);
+        W("      ;; E_CAPT_IMMED_ASGN $%s: run child, capture exactly matched span\n", varname);
         /* Save cursor before child so we can detect how far child advanced */
         W("      (local.set $pat_before (local.get $pat_cursor))\n");
         if (child) emit_pattern_node(child);
@@ -1394,18 +1394,18 @@ static void emit_pattern_node(const EXPR_t *pat) {
         }
         return;
     }
-    /* E_CAPT_CUR (@var) — zero-width cursor capture: store cursor position as integer string
-     * IR shape (cursor-after): binop(E_CAPT_CUR, pattern_child, E_VAR(varname))
+    /* E_CAPT_CURSOR (@var) — zero-width cursor capture: store cursor position as integer string
+     * IR shape (cursor-after): binop(E_CAPT_CURSOR, pattern_child, E_VAR(varname))
      * children[0] = pattern to match first; children[1] = target variable.
      * Cursor position captured AFTER children[0] matches. */
-    if (pat->kind == E_CAPT_CUR) {
+    if (pat->kind == E_CAPT_CURSOR) {
         const EXPR_t *child   = (pat->nchildren >= 1) ? pat->children[0] : NULL;
         const EXPR_t *varnode = (pat->nchildren >= 2) ? pat->children[1] : NULL;
         const char *varname = varnode && varnode->sval ? varnode->sval
                             : (pat->sval ? pat->sval : "");
         /* Run the child pattern first (advances cursor), then capture position */
         if (child) emit_pattern_node(child);
-        W("      ;; E_CAPT_CUR @%s: store cursor position as int string into var\n", varname);
+        W("      ;; E_CAPT_CURSOR @%s: store cursor position as int string into var\n", varname);
         if (*varname && !is_keyword_name(varname)) {
             /* Only capture if child succeeded */
             W("      (if (i32.ge_s (local.get $pat_cursor) (i32.const 0)) (then\n");
@@ -1805,12 +1805,12 @@ static void emit_main_body(Program *prog) {
         int is_idxassign = 0;
         if (s->has_eq && s->subject) {
             const char *n = s->subject->sval ? s->subject->sval : "";
-            if ((s->subject->kind == E_VAR || s->subject->kind == E_KW)) {
+            if ((s->subject->kind == E_VAR || s->subject->kind == E_KEYWORD)) {
                 if (strcasecmp(n, "OUTPUT") == 0)
                     is_output = 1;
                 else if (!is_keyword_name(n))
                     is_varassign = 1;
-            } else if (s->subject->kind == E_INDR) {
+            } else if (s->subject->kind == E_INDIRECT) {
                 is_indrassign = 1;
             } else if (s->subject->kind == E_IDX) {
                 is_idxassign = 1;
@@ -1842,7 +1842,7 @@ static void emit_main_body(Program *prog) {
         } else if (is_indrassign) {
             /* $name_expr = replacement — indirect assignment */
             W("      ;; $... = (indirect assign)\n");
-            /* Evaluate name expression — same semantics as E_INDR rvalue */
+            /* Evaluate name expression — same semantics as E_INDIRECT rvalue */
             const EXPR_t *name_e = s->subject->nchildren > 0
                                    ? s->subject->children[0] : NULL;
             if (!name_e) {
@@ -1853,11 +1853,11 @@ static void emit_main_body(Program *prog) {
                 int si = strlit_intern(name_e->sval);
                 W("      (i32.const %d) ;; $var lval name=%s\n", strlit_abs(si), name_e->sval);
                 W("      (i32.const %d)\n", str_lits[si].len);
-            } else if (name_e->kind == E_CAPT_COND && name_e->sval) {
+            } else if (name_e->kind == E_CAPT_COND_ASGN && name_e->sval) {
                 int si = strlit_intern(name_e->sval);
                 W("      (i32.const %d) ;; $.var lval name=%s\n", strlit_abs(si), name_e->sval);
                 W("      (i32.const %d)\n", str_lits[si].len);
-            } else if (name_e->kind == E_CAPT_COND && name_e->nchildren > 0
+            } else if (name_e->kind == E_CAPT_COND_ASGN && name_e->nchildren > 0
                        && name_e->children[0] && name_e->children[0]->sval) {
                 const char *vn = name_e->children[0]->sval;
                 int si = strlit_intern(vn);

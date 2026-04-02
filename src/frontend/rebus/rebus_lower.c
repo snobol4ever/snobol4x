@@ -105,10 +105,10 @@ static EXPR_t *lower_expr(RebLow *L, RExpr *e) {
 
     /* --- References --- */
     case RE_VAR:     { EXPR_t *x = expr_new(E_VAR); x->sval = strdup(e->sval); return x; }
-    case RE_KEYWORD: { EXPR_t *x = expr_new(E_KW);  x->sval = strdup(e->sval); return x; }
+    case RE_KEYWORD: { EXPR_t *x = expr_new(E_KEYWORD);  x->sval = strdup(e->sval); return x; }
 
     /* --- Unary arithmetic --- */
-    case RE_NEG:   return expr_unary(E_NEG, lower_expr(L, e->left));
+    case RE_NEG:   return expr_unary(E_MNS, lower_expr(L, e->left));
     case RE_POS:   return lower_expr(L, e->left); /* identity — drop */
     case RE_NOT:   return make_fnc("DIFFER", 1, lower_expr(L, e->left));
     case RE_VALUE: return make_fnc("IDENT",  1, lower_expr(L, e->left));
@@ -119,15 +119,15 @@ static EXPR_t *lower_expr(RebLow *L, RExpr *e) {
     /* --- Binary arithmetic --- */
     case RE_ADD: return expr_binary(E_ADD,    lower_expr(L,e->left), lower_expr(L,e->right));
     case RE_SUB: return expr_binary(E_SUB,    lower_expr(L,e->left), lower_expr(L,e->right));
-    case RE_MUL: return expr_binary(E_MPY,    lower_expr(L,e->left), lower_expr(L,e->right));
+    case RE_MUL: return expr_binary(E_MUL,    lower_expr(L,e->left), lower_expr(L,e->right));
     case RE_DIV: return expr_binary(E_DIV,    lower_expr(L,e->left), lower_expr(L,e->right));
     case RE_POW: return expr_binary(E_POW,    lower_expr(L,e->left), lower_expr(L,e->right));
     case RE_MOD: return make_fnc("REMDR", 2,  lower_expr(L,e->left), lower_expr(L,e->right));
 
     /* --- String/pattern --- */
-    case RE_STRCAT: return expr_binary(E_CONCAT, lower_expr(L,e->left), lower_expr(L,e->right));
-    case RE_PATCAT: return expr_binary(E_CONCAT, lower_expr(L,e->left), lower_expr(L,e->right));
-    case RE_ALT:    return expr_binary(E_ALT,    lower_expr(L,e->left), lower_expr(L,e->right));
+    case RE_STRCAT: return expr_binary(E_CAT, lower_expr(L,e->left), lower_expr(L,e->right));
+    case RE_PATCAT: return expr_binary(E_CAT, lower_expr(L,e->left), lower_expr(L,e->right));
+    case RE_ALT:    return expr_binary(E_PAT_ALT,    lower_expr(L,e->left), lower_expr(L,e->right));
 
     /* --- Comparison (SNOBOL4 pool) --- */
     case RE_EQ:  return make_fnc("EQ",     2, lower_expr(L,e->left), lower_expr(L,e->right));
@@ -156,7 +156,7 @@ static EXPR_t *lower_expr(RebLow *L, RExpr *e) {
                expr_binary(E_SUB, lower_expr(L,e->left), lower_expr(L,e->right)));
     case RE_CATASSIGN:
         return expr_binary(E_ASSIGN, lower_expr(L,e->left),
-               expr_binary(E_CONCAT, lower_expr(L,e->left), lower_expr(L,e->right)));
+               expr_binary(E_CAT, lower_expr(L,e->left), lower_expr(L,e->right)));
 
     /* --- Call / subscript --- */
     case RE_CALL: {
@@ -177,10 +177,10 @@ static EXPR_t *lower_expr(RebLow *L, RExpr *e) {
         return expr_binary(E_IDX, lower_expr(L,e->left), lower_expr(L,e->right));
 
     /* --- Pattern captures (SNOBOL4 pool) --- */
-    case RE_COND:   return expr_binary(E_CAPT_COND, lower_expr(L,e->left), lower_expr(L,e->right));
-    case RE_IMM:    return expr_binary(E_CAPT_IMM,  lower_expr(L,e->left), lower_expr(L,e->right));
-    case RE_CURSOR: { EXPR_t *x = expr_new(E_CAPT_CUR); x->sval = strdup(e->sval); return x; }
-    case RE_DEREF:  return expr_unary(E_INDR, lower_expr(L, e->left));
+    case RE_COND:   return expr_binary(E_CAPT_COND_ASGN, lower_expr(L,e->left), lower_expr(L,e->right));
+    case RE_IMM:    return expr_binary(E_CAPT_IMMED_ASGN,  lower_expr(L,e->left), lower_expr(L,e->right));
+    case RE_CURSOR: { EXPR_t *x = expr_new(E_CAPT_CURSOR); x->sval = strdup(e->sval); return x; }
+    case RE_DEREF:  return expr_unary(E_INDIRECT, lower_expr(L, e->left));
     case RE_PATOPT: return expr_unary(E_ARBNO, lower_expr(L, e->left)); /* ~pat → E_ARBNO */
 
     /* --- Augmented (generic) --- */
@@ -191,9 +191,9 @@ static EXPR_t *lower_expr(RebLow *L, RExpr *e) {
             switch (e->augop) {
             case RE_ADD: op = E_ADD; break;
             case RE_SUB: op = E_SUB; break;
-            case RE_MUL: op = E_MPY; break;
+            case RE_MUL: op = E_MUL; break;
             case RE_DIV: op = E_DIV; break;
-            default:     op = E_CONCAT; break;
+            default:     op = E_CAT; break;
             }
             return expr_binary(E_ASSIGN, lower_expr(L,e->left),
                    expr_binary(op, lower_expr(L,e->left), lower_expr(L,e->right)));

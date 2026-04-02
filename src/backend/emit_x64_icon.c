@@ -195,8 +195,8 @@ static char icn_expr_kind(EXPR_t *n) {
         case E_QLIT:    return 'S';
         case E_CSET:   return 'S';
         case E_ILIT:    return 'I';
-        case E_CONCAT: case E_LCONCAT: return 'S';
-        case E_ADD: case E_SUB: case E_MPY:
+        case E_CAT: case E_LCONCAT: return 'S';
+        case E_ADD: case E_SUB: case E_MUL:
         case E_DIV: case E_MOD:        return 'I';
         case E_VAR:
             if (strcmp(n->sval, "&subject") == 0) return 'S';
@@ -601,7 +601,7 @@ static void emit_call(EXPR_t *n, const char *γ, const char *ω,
         } else if(arg->kind==E_CSET){
             /* emit_cset sets rdi via lea; nothing on hw stack — just call */
             E("    call    icn_write_str\n");
-        } else if(arg->kind==E_CONCAT || arg->kind==E_LCONCAT){
+        } else if(arg->kind==E_CAT || arg->kind==E_LCONCAT){
             /* emit_concat pushes result char* onto hw stack */
             E("    pop     rdi\n");
             E("    call    icn_write_str\n");
@@ -1227,7 +1227,7 @@ static void emit_binop(EXPR_t *n, const char *γ, const char *ω,
     snprintf(lstore, sizeof lstore, "icon_%d_lstore",id);
     strncpy(oa,a,63); strncpy(ob,b,63);
     strncpy(oa,a,63); strncpy(ob,b,63);
-    const char *op=n->kind==E_ADD?"ADD":n->kind==E_SUB?"SUB":n->kind==E_MPY?"MUL":n->kind==E_DIV?"DIV":"MOD";
+    const char *op=n->kind==E_ADD?"ADD":n->kind==E_SUB?"SUB":n->kind==E_MUL?"MUL":n->kind==E_DIV?"DIV":"MOD";
     E("    ; %s  id=%d\n",op,id);
 
     int lc_slot = locals_alloc_tmp();
@@ -1275,7 +1275,7 @@ static void emit_binop(EXPR_t *n, const char *γ, const char *ω,
     switch(n->kind){
         case E_ADD: E("    add     rcx, rax\n"); break;
         case E_SUB: E("    sub     rcx, rax\n"); break;
-        case E_MPY: E("    imul    rcx, rax\n"); break;
+        case E_MUL: E("    imul    rcx, rax\n"); break;
         case E_DIV: E("    xchg    rax, rcx\n    cqo\n    idiv    rcx\n    mov     rcx, rax\n"); break;
         case E_MOD: E("    xchg    rax, rcx\n    cqo\n    idiv    rcx\n    mov     rcx, rdx\n"); break;
         default: break;
@@ -1641,10 +1641,10 @@ static void emit_augop(EXPR_t *n, const char *γ, const char *ω,
     switch ((IcnTkKind)n->ival) {
         case TK_AUGPLUS:   op_kind = E_ADD;    break;
         case TK_AUGMINUS:  op_kind = E_SUB;    break;
-        case TK_AUGSTAR:   op_kind = E_MPY;    break;
+        case TK_AUGSTAR:   op_kind = E_MUL;    break;
         case TK_AUGSLASH:  op_kind = E_DIV;    break;
         case TK_AUGMOD:    op_kind = E_MOD;    break;
-        case TK_AUGCONCAT: op_kind = E_CONCAT; break;
+        case TK_AUGCONCAT: op_kind = E_CAT; break;
         case TK_AUGEQ:     op_kind = E_EQ;     break;
         case TK_AUGSEQ:    op_kind = E_SSEQ;    break;
         case TK_AUGLT:     op_kind = E_LT;     break;
@@ -1688,7 +1688,7 @@ static void emit_augop(EXPR_t *n, const char *γ, const char *ω,
     /* store: result is on hw stack (all binop/relop/concat push a value).
      * Pop it and write back into LHS variable. */
     Ldef( store);
-    if (op_kind == E_CONCAT) {
+    if (op_kind == E_CAT) {
         /* concat pushes a char* — pop into rax, store as pointer */
         E( "    pop     rax\n");
     } else {
@@ -2461,15 +2461,15 @@ static void emit_expr(EXPR_t *n, const char *γ, const char *ω,
         case E_SUSPEND:emit_suspend(n, γ, ω, oa, ob); break;
         case E_FAIL:   emit_fail_node(n, γ, ω, oa, ob); break;
         case E_IF:     emit_if(n, γ, ω, oa, ob); break;
-        case E_GENALT:    emit_alt(n, γ, ω, oa, ob); break;
-        case E_MATCH:   emit_scan(n, γ, ω, oa, ob); break;
-        case E_NEG:    emit_neg(n, γ, ω, oa, ob); break;
+        case E_ALTERNATES:    emit_alt(n, γ, ω, oa, ob); break;
+        case E_SCAN:   emit_scan(n, γ, ω, oa, ob); break;
+        case E_MNS:    emit_neg(n, γ, ω, oa, ob); break;
         case E_NOT:    emit_not(n, γ, ω, oa, ob); break;
         case E_NULL:   emit_not(n, γ, ω, oa, ob); break;
         case E_SSEQ:    emit_seq(n, γ, ω, oa, ob); break;
-        case E_CONCAT: case E_LCONCAT:
+        case E_CAT: case E_LCONCAT:
                          emit_concat(n, γ, ω, oa, ob); break;
-        case E_ADD: case E_SUB: case E_MPY: case E_DIV: case E_MOD:
+        case E_ADD: case E_SUB: case E_MUL: case E_DIV: case E_MOD:
                          emit_binop(n, γ, ω, oa, ob); break;
         case E_LT: case E_LE: case E_GT: case E_GE: case E_EQ: case E_NE:
                          emit_relop(n, γ, ω, oa, ob); break;
@@ -2523,7 +2523,7 @@ static void emit_expr(EXPR_t *n, const char *γ, const char *ω,
         case E_CSET_UNION:  emit_cset_binop(n, γ, ω, oa, ob); break;
         case E_CSET_DIFF:   emit_cset_binop(n, γ, ω, oa, ob); break;
         case E_CSET_INTER:  emit_cset_binop(n, γ, ω, oa, ob); break;
-        case E_SEQ: {
+        case E_PAT_SEQ: {
             /* n-ary conjunction: E1 & E2 & ... & En
              * irgen.icn ir_conjunction wiring:
              *   α → E1.α; E1_γ → E2.α; ...; En_γ → node_γ

@@ -20,10 +20,10 @@
  *   ICN_REAL  → E_FLIT (fval)
  *   ICN_STR   → E_QLIT (sval)
  *   ICN_VAR   → E_VAR  (sval)
- *   ICN_ADD   → E_ADD, ICN_SUB → E_SUB, ICN_MUL → E_MPY
- *   ICN_DIV   → E_DIV, ICN_MOD → E_MOD, ICN_NEG → E_NEG
+ *   ICN_ADD   → E_ADD, ICN_SUB → E_SUB, ICN_MUL → E_MUL
+ *   ICN_DIV   → E_DIV, ICN_MOD → E_MOD, ICN_NEG → E_MNS
  *   ICN_LT    → E_LT, LE→E_LE, GT→E_GT, GE→E_GE, EQ→E_EQ, NE→E_NE
- *   ICN_TO    → E_TO, ICN_ALT → E_GENALT
+ *   ICN_TO    → E_TO, ICN_ALT → E_ALTERNATES
  *   ICN_EVERY → E_EVERY, ICN_RETURN → E_RETURN, ICN_FAIL → E_FAIL
  *   ICN_ASSIGN→ E_ASSIGN
  *
@@ -475,7 +475,7 @@ static void emit_icn_binop(const EXPR_t *n, int id,
     switch (n->kind) {
         case E_ADD: op_instr = "i64.add";   op_comment = "ADD"; break;
         case E_SUB: op_instr = "i64.sub";   op_comment = "SUB"; break;
-        case E_MPY: op_instr = "i64.mul";   op_comment = "MUL"; break;
+        case E_MUL: op_instr = "i64.mul";   op_comment = "MUL"; break;
         case E_DIV: op_instr = "i64.div_s"; op_comment = "DIV"; break;
         case E_MOD: op_instr = "i64.rem_s"; op_comment = "MOD"; break;
         default: break;
@@ -537,13 +537,13 @@ static void emit_icn_unop(const EXPR_t *n, int id,
     wfn(es, sizeof es, id, "esucc");
 
     WI("  ;; E_%s unary  (node %d)\n",
-       n->kind == E_NEG ? "NEG" : "POS", id);
+       n->kind == E_MNS ? "NEG" : "POS", id);
     WI("  (func $%s (result i32)  return_call $%s)\n", sa, e_start);
     WI("  (func $%s (result i32)  return_call $%s)\n", ra, e_resume);
     emit_passthrough(ef, fail);
     WI("  (func $%s (result i32)\n", es);
     WI("    global.get $icn_int%d\n", e_val_id);
-    if (n->kind == E_NEG) { WI("    i64.const -1\n"); WI("    i64.mul\n"); }
+    if (n->kind == E_MNS) { WI("    i64.const -1\n"); WI("    i64.mul\n"); }
     WI("    global.set $icn_int%d\n", id);
     WI("    return_call $%s)\n", succ);
 }
@@ -713,7 +713,7 @@ static void emit_icn_alt(const EXPR_t *n, int id,
     wfn(e2f, sizeof e2f, id, "e2fail");
     wfn(e2s, sizeof e2s, id, "e2succ");
 
-    WI("  ;; E_GENALT  (node %d, branch-slot %d @ 0x%x)\n", id, slot, slot_addr);
+    WI("  ;; E_ALTERNATES  (node %d, branch-slot %d @ 0x%x)\n", id, slot, slot_addr);
     WI("  (func $%s (result i32)\n", sa);
     WI("    i32.const %d\n", slot_addr);
     WI("    i32.const 1\n");
@@ -854,7 +854,7 @@ static void emit_expr_wasm(const EXPR_t *n,
         break;
 
     /* ── Unary arithmetic ────────────────────────────────────────────────── */
-    case E_NEG:
+    case E_MNS:
     case E_POS: {
         if (n->nchildren < 1) { emit_icn_stub(n, id, fail); break; }
         char esucc[64], efail[64];
@@ -868,7 +868,7 @@ static void emit_expr_wasm(const EXPR_t *n,
     }
 
     /* ── Binary arithmetic ───────────────────────────────────────────────── */
-    case E_ADD: case E_SUB: case E_MPY:
+    case E_ADD: case E_SUB: case E_MUL:
     case E_DIV: case E_MOD: {
         if (n->nchildren < 2) { emit_icn_stub(n, id, fail); break; }
         char e1f[64], e1s[64], e2f[64], e2s[64];
@@ -920,10 +920,10 @@ static void emit_expr_wasm(const EXPR_t *n,
         emit_expr_wasm(n->children[0], e1s, e1f, e1_start, e1_resume);
         int e2_id = wasm_icon_ctr;
         emit_expr_wasm(n->children[1], e2s, e2f, e2_start, e2_resume);
-        /* e2_is_gen: if e2 is a generator (E_TO, E_GENALT etc.) the exhaust handler
+        /* e2_is_gen: if e2 is a generator (E_TO, E_ALTERNATES etc.) the exhaust handler
          * should try e2_resume to get a new upper bound. For literals/vars, just fail. */
         int e2_is_gen = (n->children[1]->kind == E_TO   ||
-                         n->children[1]->kind == E_GENALT ||
+                         n->children[1]->kind == E_ALTERNATES ||
                          n->children[1]->kind == E_EVERY);
         emit_icn_to(n, id, succ, fail,
                     e1_start, e1_resume, e2_start, e2_resume,
@@ -931,8 +931,8 @@ static void emit_expr_wasm(const EXPR_t *n,
         break;
     }
 
-    /* ── Value alternation: E1 | E2 (E_GENALT) ──────────────────────────── */
-    case E_GENALT: {
+    /* ── Value alternation: E1 | E2 (E_ALTERNATES) ──────────────────────────── */
+    case E_ALTERNATES: {
         if (n->nchildren < 2) { emit_icn_stub(n, id, fail); break; }
         char e1f[64], e1s[64], e2f[64], e2s[64];
         wfn(e1f, sizeof e1f, id, "e1fail");

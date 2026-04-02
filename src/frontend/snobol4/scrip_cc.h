@@ -24,8 +24,8 @@
  * of truth for all 59 canonical node kinds).
  *
  * M-G3-ALIAS-CLEANUP: IR_COMPAT_ALIASES removed — all consumers now use
- * canonical EKind names (E_VAR, E_ALT, E_NEG, E_POW, E_CAPT_COND,
- * E_CAPT_IMM, E_CAPT_CUR, E_NUL, E_ASSIGN, E_MATCH, E_ITER, E_GENALT,
+ * canonical EKind names (E_VAR, E_PAT_ALT, E_MNS, E_POW, E_CAPT_COND_ASGN,
+ * E_CAPT_IMMED_ASGN, E_CAPT_CURSOR, E_NUL, E_ASSIGN, E_SCAN, E_ITER, E_ALTERNATES,
  * E_IDX) throughout.
  *
  * ir.h defines EXPR_t (with fval, nalloc, id) when included first.
@@ -42,11 +42,11 @@
  * directly in backends; the macros give NULL-safe bounds-checked access.
  *
  * Layout by kind:
- *   leaves  (E_QLIT/E_ILIT/E_FLIT/E_NUL/E_VAR/E_KW)     nchildren=0
- *   unary   (E_NEG/E_CAPT_CUR/E_INDR/...)                nchildren=1
- *   binary  (E_ADD/E_SUB/E_MPY/E_DIV/E_POW/E_OPSYN/
- *            E_ASSIGN/E_CAPT_COND/E_CAPT_IMM/E_IDX)      nchildren=2
- *   n-ary   (E_SEQ / E_CONCAT / E_ALT)                   nchildren>=0
+ *   leaves  (E_QLIT/E_ILIT/E_FLIT/E_NUL/E_VAR/E_KEYWORD)     nchildren=0
+ *   unary   (E_MNS/E_CAPT_CURSOR/E_INDIRECT/...)                nchildren=1
+ *   binary  (E_ADD/E_SUB/E_MUL/E_DIV/E_POW/E_OPSYN/
+ *            E_ASSIGN/E_CAPT_COND_ASGN/E_CAPT_IMMED_ASGN/E_IDX)      nchildren=2
+ *   n-ary   (E_PAT_SEQ / E_CAT / E_PAT_ALT)                   nchildren>=0
  *   call    (E_FNC)                                       nchildren=nargs
  *   subscript (E_IDX)                                     children[0]=base, children[1..]=indices
  *
@@ -61,7 +61,7 @@
 typedef struct EXPR_t EXPR_t;
 struct EXPR_t {
     EKind    kind;
-    char    *sval;        /* E_QLIT text, E_VAR/E_KW/E_FNC/E_IDX name */
+    char    *sval;        /* E_QLIT text, E_VAR/E_KEYWORD/E_FNC/E_IDX name */
     long     ival;        /* E_ILIT */
     double   dval;        /* E_FLIT */
     EXPR_t **children;    /* realloc-grown child array */

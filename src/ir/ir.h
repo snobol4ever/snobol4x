@@ -54,31 +54,30 @@ typedef enum EKind {
     /* --- References ------------------------------------------------------ */
 
     E_VAR,          /* Variable reference               (VARTYP=3; was E_VART) */
-    E_KW,           /* &IDENT keyword reference         (K=10 data type)     */
-    E_INDR,         /* $expr  indirect / imm-assign target                  */
+    E_KEYWORD,           /* &IDENT keyword reference         (K=10 data type)     */
+    E_INDIRECT,         /* $expr  indirect / imm-assign target                  */
     E_DEFER,        /* *expr  deferred / indirect pattern ref (XSTAR=32; was E_STAR) */
 
     /* --- Arithmetic ------------------------------------------------------ */
 
-    E_NEG,          /* Unary minus          (MNSR proc in SIL; was E_MNS)   */
-    E_UPLUS,        /* Unary plus — coerce to numeric (str→int)              */
-    E_PLS,          /* Unary plus / numeric coerce  (PLS proc; '' → 0)      */
+    E_MNS,          /* Unary minus          (MNS proc in SIL; o$com in MINIMAL) */
+    E_PLS,          /* Unary plus / numeric coerce  (PLS proc in SIL; o$aff in MINIMAL) */
     E_ADD,          /* Addition                                              */
     E_SUB,          /* Subtraction                                           */
-    E_MPY,          /* Multiplication                                        */
+    E_MUL,          /* Multiplication                                        */
     E_DIV,          /* Division                                              */
     E_MOD,          /* Modulo / remainder                                    */
     E_POW,          /* Exponentiation       (EXR in SIL; was E_EXPOP)        */
 
     /* --- Sequence and Alternation ---------------------------------------- */
 
-    E_SEQ,          /* Goal-directed sequence, n-ary — Byrd-box wiring       */
+    E_PAT_SEQ,          /* Goal-directed sequence, n-ary — Byrd-box wiring       */
                     /* α→lα, lγ→rα, rω→lβ, rγ→γ. SNOBOL4 pattern CAT;      */
                     /* Icon ||/;/&/loop bodies. (CONCAT/CONCL in SIL)          */
-    E_CONCAT,       /* Pure value-context string concat, n-ary, cannot fail  */
+    E_CAT,       /* Pure value-context string concat, n-ary, cannot fail  */
                     /* SNOBOL4 value ctx; JVM StringBuilder; .NET Concat.     */
                     /* M-G4-SPLIT-SEQ-CONCAT (2026-03-28).                   */
-    E_ALT,          /* Pattern alternation, n-ary (ORPP in SIL; was E_OR)   */
+    E_PAT_ALT,          /* Pattern alternation, n-ary (ORPP in SIL; was E_OR)   */
     E_OPSYN,        /* & operator: reduce(left, right)                      */
 
     /* --- Pattern Primitives ---------------------------------------------- */
@@ -109,16 +108,16 @@ typedef enum EKind {
 
     /* --- Captures -------------------------------------------------------- */
 
-    E_CAPT_COND,    /* .var  conditional capture (on success) (was E_NAM)   */
-    E_CAPT_IMM,     /* $var  immediate capture               (was E_DOL)    */
-    E_CAPT_CUR,     /* @var  cursor position capture (XATP=4; was E_ATP)    */
+    E_CAPT_COND_ASGN,    /* .var  conditional capture (on success) (was E_NAM)   */
+    E_CAPT_IMMED_ASGN,     /* $var  immediate capture               (was E_DOL)    */
+    E_CAPT_CURSOR,     /* @var  cursor position capture (XATP=4; was E_ATP)    */
 
     /* --- Call, Access, Assignment, Scan, Swap ---------------------------- */
 
     E_FNC,          /* Function call / goal / builtin, n-ary (FNCTYP=5)     */
     E_IDX,          /* Array / table / record subscript (ARYTYP=7; absorbs E_ARY) */
     E_ASSIGN,       /* Assignment  (ASGN proc in SIL; was E_ASGN)           */
-    E_MATCH,        /* E ? E  scanning  (XSCON=30/SCONCL; was E_SCAN)       */
+    E_SCAN,        /* E ? E  scanning  (XSCON=30/SCONCL; was E_SCAN)       */
     E_SWAP,         /* :=:  swap bindings  (SWAP proc in SIL)               */
 
     /* --- Icon Generators and Constructors -------------------------------- */
@@ -127,7 +126,7 @@ typedef enum EKind {
     E_TO,           /* i to j  generator                                    */
     E_TO_BY,        /* i to j by k  generator                               */
     E_LIMIT,        /* E \ N  limitation                                    */
-    E_GENALT,       /* Icon / Rebus alt generator, left-then-right (was E_ALT_GEN) */
+    E_ALTERNATES,       /* Icon / Rebus alt generator, left-then-right (was E_ALT_GEN) */
     E_ITER,         /* !E  iterate list or string elements (was E_BANG)     */
     E_MAKELIST,     /* [e1,e2,...]  list constructor                        */
 
@@ -155,7 +154,7 @@ typedef enum EKind {
 
     /* --- Icon: String Relational -----------------------------------------
      * Same goal-directed semantics; operate on string values.
-     * E_SSEQ chosen (not E_SEQ) because E_SEQ = goal-directed sequence. */
+     * E_SSEQ chosen (not E_PAT_SEQ) because E_PAT_SEQ = goal-directed sequence. */
 
     E_SLT,          /* E1 << E2  (string less-than)                         */
     E_SLE,          /* E1 <<= E2 (string less-or-equal)                     */
@@ -219,7 +218,7 @@ typedef enum EKind {
  * EXPR_t — unified n-ary expression node
  *
  * All structural children live in the `children` array (realloc-grown).
- * Leaf nodes (E_QLIT / E_ILIT / E_FLIT / E_CSET / E_NUL / E_VAR / E_KW)
+ * Leaf nodes (E_QLIT / E_ILIT / E_FLIT / E_CSET / E_NUL / E_VAR / E_KEYWORD)
  * have nchildren == 0.
  *
  * The `id` field is assigned during the emit pass (unique per program).
@@ -228,7 +227,7 @@ typedef enum EKind {
  * sval / ival / fval union is not a C union here — all three exist as
  * separate fields to avoid aliasing hazards across frontends. The active
  * field is determined by kind:
- *   sval — E_QLIT (text), E_VAR/E_KW/E_FNC/E_IDX (name), E_CSET (chars)
+ *   sval — E_QLIT (text), E_VAR/E_KEYWORD/E_FNC/E_IDX (name), E_CSET (chars)
  *   ival — E_ILIT
  *   fval — E_FLIT
  * ========================================================================= */
@@ -269,21 +268,20 @@ static const char * const ekind_name[E_KIND_COUNT] = {
     [E_CSET]         = "E_CSET",
     [E_NUL]          = "E_NUL",
     [E_VAR]          = "E_VAR",
-    [E_KW]           = "E_KW",
-    [E_INDR]         = "E_INDR",
+    [E_KEYWORD]           = "E_KEYWORD",
+    [E_INDIRECT]         = "E_INDIRECT",
     [E_DEFER]        = "E_DEFER",
-    [E_NEG]          = "E_NEG",
-    [E_UPLUS]        = "E_UPLUS",
+    [E_MNS]          = "E_MNS",
     [E_PLS]          = "E_PLS",
     [E_ADD]          = "E_ADD",
     [E_SUB]          = "E_SUB",
-    [E_MPY]          = "E_MPY",
+    [E_MUL]          = "E_MUL",
     [E_DIV]          = "E_DIV",
     [E_MOD]          = "E_MOD",
     [E_POW]          = "E_POW",
-    [E_SEQ]          = "E_SEQ",
-    [E_CONCAT]       = "E_CONCAT",
-    [E_ALT]          = "E_ALT",
+    [E_PAT_SEQ]          = "E_PAT_SEQ",
+    [E_CAT]       = "E_CAT",
+    [E_PAT_ALT]          = "E_PAT_ALT",
     [E_OPSYN]        = "E_OPSYN",
     [E_ARB]          = "E_ARB",
     [E_ARBNO]        = "E_ARBNO",
@@ -303,19 +301,19 @@ static const char * const ekind_name[E_KIND_COUNT] = {
     [E_FENCE]        = "E_FENCE",
     [E_ABORT]        = "E_ABORT",
     [E_BAL]          = "E_BAL",
-    [E_CAPT_COND]    = "E_CAPT_COND",
-    [E_CAPT_IMM]     = "E_CAPT_IMM",
-    [E_CAPT_CUR]     = "E_CAPT_CUR",
+    [E_CAPT_COND_ASGN]    = "E_CAPT_COND_ASGN",
+    [E_CAPT_IMMED_ASGN]     = "E_CAPT_IMMED_ASGN",
+    [E_CAPT_CURSOR]     = "E_CAPT_CURSOR",
     [E_FNC]          = "E_FNC",
     [E_IDX]          = "E_IDX",
     [E_ASSIGN]       = "E_ASSIGN",
-    [E_MATCH]        = "E_MATCH",
+    [E_SCAN]        = "E_SCAN",
     [E_SWAP]         = "E_SWAP",
     [E_SUSPEND]      = "E_SUSPEND",
     [E_TO]           = "E_TO",
     [E_TO_BY]        = "E_TO_BY",
     [E_LIMIT]        = "E_LIMIT",
-    [E_GENALT]       = "E_GENALT",
+    [E_ALTERNATES]       = "E_ALTERNATES",
     [E_ITER]         = "E_ITER",
     [E_MAKELIST]     = "E_MAKELIST",
     [E_UNIFY]        = "E_UNIFY",
@@ -390,17 +388,17 @@ static const char * const ekind_name[E_KIND_COUNT] = {
 #define E_NULV      E_NUL
 #define E_VART      E_VAR
 #define E_STAR      E_DEFER
-#define E_MNS       E_NEG
+#define E_MNS       E_MNS
 #define E_EXPOP     E_POW
-#define E_OR        E_ALT
-#define E_NAM       E_CAPT_COND
-#define E_DOL       E_CAPT_IMM
-#define E_ATP       E_CAPT_CUR
+#define E_OR        E_PAT_ALT
+#define E_NAM       E_CAPT_COND_ASGN
+#define E_DOL       E_CAPT_IMMED_ASGN
+#define E_ATP       E_CAPT_CURSOR
 #define E_ARY       E_IDX
 #define E_ASGN      E_ASSIGN
-#define E_SCAN      E_MATCH
+#define E_SCAN      E_SCAN
 #define E_BANG      E_ITER
-#define E_ALT_GEN   E_GENALT
+#define E_ALT_GEN   E_ALTERNATES
 
 #endif /* IR_COMPAT_ALIASES */
 

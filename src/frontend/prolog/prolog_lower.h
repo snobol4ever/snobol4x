@@ -19,7 +19,7 @@
  *   E_FLIT  float literals
  *   E_VAR  variables (sval=slot index as decimal string, ival=slot)
  *   E_FNC   goals / compound terms (sval=functor name, children=args)
- *   E_ADD/E_SUB/E_MPY/E_DIV  arithmetic within is/2
+ *   E_ADD/E_SUB/E_MUL/E_DIV  arithmetic within is/2
  *
  * EnvLayout per clause is stored in the STMT_t's subject EXPR_t:
  *   subject->ival = n_vars

@@ -3315,12 +3315,12 @@ static void pl_emit_term(EXPR_t *e, int *var_locals, int n_vars) {
         }
         break;
     }
-    case E_ADD: case E_SUB: case E_MPY: case E_DIV: {
+    case E_ADD: case E_SUB: case E_MUL: case E_DIV: {
         /* Arithmetic op node in TERM position (e.g. write(X-Y), write(A+B)).
-         * Lowerer maps -/+/* to E_SUB/E_ADD/E_MPY unconditionally.
+         * Lowerer maps -/+/* to E_SUB/E_ADD/E_MUL unconditionally.
          * In term position emit as compound so write/1 and unification work. */
         const char *afn = (e->kind==E_ADD)?"+": (e->kind==E_SUB)?"-":
-                          (e->kind==E_MPY)?"*": "/";
+                          (e->kind==E_MUL)?"*": "/";
         int arity = e->nchildren;
         if (arity == 0) {
             J("    ldc \"%s\"\n", afn);
@@ -3449,7 +3449,7 @@ static void pl_emit_arith(EXPR_t *e, int *var_locals, int n_vars) {
         }
         break;
     }
-    case E_MPY: {
+    case E_MUL: {
         int lf = pl_arith_is_float(e->children[0]);
         int rf = pl_arith_is_float(e->children[1]);
         int lv = pl_arith_has_var(e->children[0]);
@@ -3951,11 +3951,11 @@ static void pl_emit_arith_as_term(EXPR_t *e, int *var_locals, int n_vars) {
             J("    invokestatic %s/pl_max_mixed(JJ)[Ljava/lang/Object;\n", classname);
     } else if (pl_arith_has_var(e) && !pl_arith_is_float(e) &&
                (e->kind == E_ADD || e->kind == E_SUB ||
-                e->kind == E_MPY || e->kind == E_DIV)) {
+                e->kind == E_MUL || e->kind == E_DIV)) {
         /* var-containing binary op: use runtime pl_varnum_* helper */
         const char *vn_fn = (e->kind==E_ADD) ? "pl_varnum_add" :
                             (e->kind==E_SUB) ? "pl_varnum_sub" :
-                            (e->kind==E_MPY) ? "pl_varnum_mul" : "pl_varnum_div";
+                            (e->kind==E_MUL) ? "pl_varnum_mul" : "pl_varnum_div";
         pl_emit_arith_as_term(e->children[0], var_locals, n_vars);
         pl_emit_arith_as_term(e->children[1], var_locals, n_vars);
         J("    invokestatic %s/%s([Ljava/lang/Object;[Ljava/lang/Object;)[Ljava/lang/Object;\n",

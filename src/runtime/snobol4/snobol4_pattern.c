@@ -992,7 +992,7 @@ int match_pattern(DESCR_t pat, const char *subject) {
  * ===================================================================== */
 
 /* =========================================================================
- * match_pattern_at — cursor-aware anchored MATCH_fn for E_INDR / *varname
+ * match_pattern_at — cursor-aware anchored MATCH_fn for E_INDIRECT / *varname
  *
  * Matches pat against subject starting at position cursor (anchored — no
  * scan loop).  Returns the new cursor position (>= cursor) on success, or

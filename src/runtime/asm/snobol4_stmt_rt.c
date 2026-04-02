@@ -113,7 +113,7 @@ DESCR_t stmt_get_indirect(DESCR_t name_val) {
 
 /* ---- NRETURN deref: if return val is a string (NAME), resolve it;
  *      if it's already a typed value (DT_I, DT_DATA, etc.), pass through.
- *      Needed because E_CAPT_COND+E_FNC resolves .field(obj) to the actual value
+ *      Needed because E_CAPT_COND_ASGN+E_FNC resolves .field(obj) to the actual value
  *      at assignment time, while .varname still stores the name string. ---- */
 DESCR_t stmt_nreturn_deref(DESCR_t retval) {
     const char *s = NULL;
@@ -238,7 +238,7 @@ int stmt_any_ptr(uint64_t vtype, void *vptr, int64_t cursor,
 }
 
 /* stmt_break_ptr — BREAK() with a pre-evaluated DESCR_t (type+ptr pair).
- * Used for BREAK(runtime-expr) where arg is E_CONCAT, not a named variable. */
+ * Used for BREAK(runtime-expr) where arg is E_CAT, not a named variable. */
 int64_t stmt_break_ptr(uint64_t vtype, void *vptr, int64_t cursor,
                        const char *subj, int64_t subj_len) {
     DESCR_t v; v.v = (int)vtype; v.p = vptr;

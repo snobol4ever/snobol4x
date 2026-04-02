@@ -115,7 +115,7 @@ static const char *define_spec_from_expr(EXPR_t *subj)
     if (subj->nchildren < 1 || !subj->children[0]) return NULL;
     EXPR_t *arg = subj->children[0];
     if (arg->kind == E_QLIT) return arg->sval;
-    if (arg->kind == E_CONCAT) {
+    if (arg->kind == E_CAT) {
         static char flatbuf[1024];
         size_t pos = 0;
         flatbuf[0] = '\0';
@@ -253,7 +253,7 @@ static DESCR_t call_user_function(const char *fname, DESCR_t *args, int nargs)
                     DESCR_t repl_val = s->replacement ? interp_eval(s->replacement) : NULVCL;
                     if (IS_FAIL_fn(repl_val)) succeeded = 0;
                     else { NV_SET_fn(subj_name, repl_val); succeeded = 1; }
-                } else if (s->has_eq && s->subject && s->subject->kind == E_KW && s->subject->sval) {
+                } else if (s->has_eq && s->subject && s->subject->kind == E_KEYWORD && s->subject->sval) {
                     DESCR_t repl_val = s->replacement ? interp_eval(s->replacement) : NULVCL;
                     if (IS_FAIL_fn(repl_val)) succeeded = 0;
                     else { NV_SET_fn(s->subject->sval, repl_val); succeeded = 1; }
@@ -270,10 +270,10 @@ static DESCR_t call_user_function(const char *fname, DESCR_t *args, int nargs)
                         } else { subscript_set(base, idx, rv); }
                         succeeded = 1;
                     }
-                } else if (s->has_eq && s->subject && s->subject->kind == E_INDR) {
+                } else if (s->has_eq && s->subject && s->subject->kind == E_INDIRECT) {
                     EXPR_t *ichild = s->subject->nchildren > 0 ? s->subject->children[0] : NULL;
                     const char *nm = NULL;
-                    if (ichild && ichild->kind == E_CAPT_COND && ichild->nchildren == 1
+                    if (ichild && ichild->kind == E_CAPT_COND_ASGN && ichild->nchildren == 1
                             && ichild->children[0]->kind == E_VAR && ichild->children[0]->sval)
                         nm = ichild->children[0]->sval;
                     else if (ichild) { DESCR_t nd = interp_eval(ichild); nm = VARVAL_fn(nd); }
@@ -366,17 +366,17 @@ static DESCR_t interp_eval(EXPR_t *e)
         }
         return NULVCL;
 
-    case E_KW: {
+    case E_KEYWORD: {
         if (!e->sval || !*e->sval) return NULVCL;
         /* Keywords stored without & prefix in NV store */
         return NV_GET_fn(e->sval);
     }
 
-    case E_NEG:
+    case E_MNS:
         if (e->nchildren < 1) return FAILDESCR;
         return neg(interp_eval(e->children[0]));
 
-    case E_UPLUS: {
+    case E_PLS: {
         /* Unary + coerces operand to numeric (int or real) */
         if (e->nchildren < 1) return FAILDESCR;
         DESCR_t v = interp_eval(e->children[0]);
@@ -407,7 +407,7 @@ static DESCR_t interp_eval(EXPR_t *e)
         if (IS_FAIL_fn(l) || IS_FAIL_fn(r)) return FAILDESCR;
         return sub(l, r);
     }
-    case E_MPY: {
+    case E_MUL: {
         if (e->nchildren < 2) return FAILDESCR;
         DESCR_t l = interp_eval(e->children[0]);
         DESCR_t r = interp_eval(e->children[1]);
@@ -429,8 +429,8 @@ static DESCR_t interp_eval(EXPR_t *e)
         return POWER_fn(l, r);
     }
 
-    case E_CONCAT:
-    case E_SEQ: {
+    case E_CAT:
+    case E_PAT_SEQ: {
         if (e->nchildren == 0) return NULVCL;
         DESCR_t acc = interp_eval(e->children[0]);
         if (IS_FAIL_fn(acc)) return FAILDESCR;
@@ -450,10 +450,10 @@ static DESCR_t interp_eval(EXPR_t *e)
         EXPR_t *lv = e->children[0];
         if (lv && lv->kind == E_VAR && lv->sval)
             NV_SET_fn(lv->sval, val);
-        else if (lv && lv->kind == E_INDR && lv->nchildren > 0) {
+        else if (lv && lv->kind == E_INDIRECT && lv->nchildren > 0) {
             EXPR_t *ichild = lv->children[0];
             const char *nm = NULL;
-            if (ichild->kind == E_CAPT_COND && ichild->nchildren == 1
+            if (ichild->kind == E_CAPT_COND_ASGN && ichild->nchildren == 1
                     && ichild->children[0]->kind == E_VAR && ichild->children[0]->sval)
                 nm = ichild->children[0]->sval;
             else { DESCR_t nd = interp_eval(ichild); nm = VARVAL_fn(nd); }
@@ -462,10 +462,10 @@ static DESCR_t interp_eval(EXPR_t *e)
         return val;
     }
 
-    case E_INDR: {
+    case E_INDIRECT: {
         if (e->nchildren < 1) return FAILDESCR;
         EXPR_t *child = e->children[0];
-        /* $.var and $.var<idx> both parse as E_INDR(E_CAPT_COND(inner))
+        /* $.var and $.var<idx> both parse as E_INDIRECT(E_CAPT_COND_ASGN(inner))
          * with nchildren==1 (unary dot).
          *
          * Semantics confirmed from emitted x86 (.s oracle):
@@ -475,7 +475,7 @@ static DESCR_t interp_eval(EXPR_t *e)
          * The unary dot uses the identifier name literally — not its value.
          * When the inner expr under the dot is E_IDX(E_VAR"name", idx...),
          * we resolve the variable by name then apply the subscript. */
-        if (child->kind == E_CAPT_COND && child->nchildren == 1) {
+        if (child->kind == E_CAPT_COND_ASGN && child->nchildren == 1) {
             EXPR_t *inner = child->children[0];
             /* $.var<idx> case: dot child is E_IDX whose base is E_VAR */
             if (inner->kind == E_IDX && inner->nchildren >= 2
@@ -584,7 +584,7 @@ static DESCR_t interp_eval(EXPR_t *e)
         return interp_eval(e->children[0]);
     }
 
-    case E_ALT: {
+    case E_PAT_ALT: {
         /* child[0] | child[1] | ... — build pat_alt chain left-to-right */
         if (e->nchildren == 0) return NULVCL;
         DESCR_t acc = interp_eval(e->children[0]);
@@ -592,21 +592,21 @@ static DESCR_t interp_eval(EXPR_t *e)
             acc = pat_alt(acc, interp_eval(e->children[i]));
         return acc;
     }
-    case E_CAPT_COND: {
+    case E_CAPT_COND_ASGN: {
         /* pat . var — conditional assignment on match success */
         if (e->nchildren < 2) return NULVCL;
         DESCR_t pat = interp_eval(e->children[0]);
         const char *nm = e->children[1]->sval;
         return nm ? pat_assign_cond(pat, STRVAL((char *)nm)) : pat;
     }
-    case E_CAPT_IMM: {
+    case E_CAPT_IMMED_ASGN: {
         /* pat $ var — immediate assignment during match */
         if (e->nchildren < 2) return NULVCL;
         DESCR_t pat = interp_eval(e->children[0]);
         const char *nm = e->children[1]->sval;
         return nm ? pat_assign_imm(pat, STRVAL((char *)nm)) : pat;
     }
-    case E_CAPT_CUR: {
+    case E_CAPT_CURSOR: {
         /* pat @ var — cursor-position capture after matching pat.
          * children[0] = left pattern, children[1] = variable (E_VAR, sval=name).
          * Build: pat_cat(pat_left, pat_at_cursor(varname)) */
@@ -723,7 +723,7 @@ static void execute_program(Program *prog)
 
         /* ── keyword assignment: &KW = expr ───────────────────────── */
         } else if (s->has_eq && s->subject &&
-                   s->subject->kind == E_KW && s->subject->sval) {
+                   s->subject->kind == E_KEYWORD && s->subject->sval) {
             DESCR_t repl_val = s->replacement ? interp_eval(s->replacement) : NULVCL;
             if (IS_FAIL_fn(repl_val)) {
                 succeeded = 0;
@@ -734,7 +734,7 @@ static void execute_program(Program *prog)
 
         /* ── indirect assignment: $expr = rhs ─────────────────────── */
         } else if (s->has_eq && s->subject &&
-                   s->subject->kind == E_INDR) {
+                   s->subject->kind == E_INDIRECT) {
             DESCR_t name_d = interp_eval(s->subject->nchildren > 0
                                          ? s->subject->children[0] : NULL);
             const char *nm = VARVAL_fn(name_d);

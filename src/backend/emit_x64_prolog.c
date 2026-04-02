@@ -242,11 +242,11 @@ static void emit_pl_term_load(EXPR_t *e, int frame_base_words) {
             A("    call    term_new_float\n");
             break;
         }
-        case E_ADD: case E_SUB: case E_MPY: case E_DIV: {
+        case E_ADD: case E_SUB: case E_MUL: case E_DIV: {
             /* Build a compound Term for pl_eval_arith: +(L,R) etc. */
             const char *opname = (e->kind==E_ADD) ? "+" :
                                  (e->kind==E_SUB) ? "-" :
-                                 (e->kind==E_MPY) ? "*" : "/";
+                                 (e->kind==E_MUL) ? "*" : "/";
             const char *oplbl = pl_intern_atom(opname);
             int cuid2 = next_uid();
             A("    sub     rsp, 16          ; arith compound args[2] pl_uid%d\n", cuid2);

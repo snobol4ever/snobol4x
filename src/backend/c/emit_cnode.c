@@ -176,10 +176,10 @@ CNODE_t *build_expr(CArena *a, EXPR_t *e) {
             return cn_rawf(a, "NV_GET_fn(\"%s\")", e->sval);
         return cn_rawf(a, "get(%s)", cs_cn(e->sval));
 
-    case E_KW:
+    case E_KEYWORD:
         return cn_rawf(a, "kw(\"%s\")", e->sval);
 
-    case E_INDR:
+    case E_INDIRECT:
         if (!e->children[0]) {
             /* $expr — indirect lookup: operand is in e->children[1] */
             return cn_call1(a, "deref", build_expr(a, e->children[1]));
@@ -198,10 +198,10 @@ CNODE_t *build_expr(CArena *a, EXPR_t *e) {
         /* *(expr) — deref of compound expression */
         return cn_call1(a, "deref", build_expr(a, e->children[0]));
 
-    case E_NEG:
+    case E_MNS:
         return cn_call1(a, "neg", build_expr(a, e->children[0]));
 
-    case E_CONCAT: {
+    case E_CAT: {
         if (e->nchildren == 1) return build_expr(a, e->children[0]);
         CNODE_t *_acc = cn_call2(a, "CONCAT_fn", build_expr(a, e->children[0]), build_expr(a, e->children[1]));
         for (int _i = 2; _i < e->nchildren; _i++)
@@ -209,7 +209,7 @@ CNODE_t *build_expr(CArena *a, EXPR_t *e) {
         return _acc;
     }
 
-    case E_ALT: {
+    case E_PAT_ALT: {
         if (e->nchildren == 0) return cn_raw(a, "FAILDESCR");
         if (e->nchildren == 1) return build_expr(a, e->children[0]);
         int _is_pat = 0;
@@ -234,7 +234,7 @@ CNODE_t *build_expr(CArena *a, EXPR_t *e) {
 
     case E_ADD: return cn_call2(a, "add",    build_expr(a,e->children[0]), build_expr(a,e->children[1]));
     case E_SUB: return cn_call2(a, "sub",    build_expr(a,e->children[0]), build_expr(a,e->children[1]));
-    case E_MPY: return cn_call2(a, "mul",    build_expr(a,e->children[0]), build_expr(a,e->children[1]));
+    case E_MUL: return cn_call2(a, "mul",    build_expr(a,e->children[0]), build_expr(a,e->children[1]));
     case E_DIV: return cn_call2(a, "DIVIDE_fn", build_expr(a,e->children[0]), build_expr(a,e->children[1]));
     case E_POW: return cn_call2(a, "POWER_fn",   build_expr(a,e->children[0]), build_expr(a,e->children[1]));
 
@@ -275,7 +275,7 @@ CNODE_t *build_expr(CArena *a, EXPR_t *e) {
         }
     }
 
-    case E_CAPT_CUR:
+    case E_CAPT_CURSOR:
         return cn_rawf(a, "cursor_get(\"%s\")", e->sval);
 
     case E_ASSIGN:
@@ -298,7 +298,7 @@ CNODE_t *build_pat(CArena *a, EXPR_t *e) {
     case E_QLIT:  return cn_call1(a, "pat_lit", cn_cstr(a, e->sval));
     case E_VAR:  return cn_rawf(a, "pat_var(\"%s\")", e->sval);
 
-    case E_INDR:
+    case E_INDIRECT:
         if (e->children[0] && e->children[0]->kind == E_VAR)
             return cn_rawf(a, "pat_ref(\"%s\")", e->children[0]->sval);
         if (e->children[0] && e->children[0]->kind == E_FNC && e->children[0]->nchildren >= 1
@@ -310,10 +310,10 @@ CNODE_t *build_pat(CArena *a, EXPR_t *e) {
         return cn_call1(a, "pat_deref",
             build_expr(a, e->children[1] ? e->children[1] : e->children[0]));
 
-    case E_SEQ:
+    case E_PAT_SEQ:
         return cn_call2(a, "pat_cat", build_pat(a, e->children[0]), build_pat(a, e->children[1]));
 
-    case E_MPY:
+    case E_MUL:
         if (e->children[1] && e->children[1]->kind == E_VAR)
             return cn_seq(a,
                 cn_raw(a, "pat_cat("),
@@ -327,7 +327,7 @@ CNODE_t *build_pat(CArena *a, EXPR_t *e) {
             cn_seq(a, build_expr(a, e->children[1]),
                    cn_raw(a, "))")))));
 
-    case E_ALT:
+    case E_PAT_ALT:
         return cn_call2(a, "pat_alt", build_pat(a, e->children[0]), build_pat(a, e->children[1]));
 
     case E_FNC: {

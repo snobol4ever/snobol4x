@@ -98,11 +98,11 @@ static EXPR_t *lower_node(const IcnNode *n) {
     /* ----- Arithmetic ----------------------------------------------------- */
     case ICN_ADD:   return binary(E_ADD,  n);    /* SHARED */
     case ICN_SUB:   return binary(E_SUB,  n);    /* SHARED */
-    case ICN_MUL:   return binary(E_MPY,  n);    /* SHARED */
+    case ICN_MUL:   return binary(E_MUL,  n);    /* SHARED */
     case ICN_DIV:   return binary(E_DIV,  n);    /* SHARED */
     case ICN_MOD:   return binary(E_MOD,  n);    /* SHARED */
     case ICN_POW:   return binary(E_POW,  n);    /* SHARED */
-    case ICN_NEG:   return unary (E_NEG,  n);    /* SHARED */
+    case ICN_NEG:   return unary (E_MNS,  n);    /* SHARED */
     case ICN_POS:   return unary (E_PLS,  n);    /* SHARED: unary coerce */
 
     /* ----- Numeric relational (NEW) --------------------------------------- */
@@ -115,7 +115,7 @@ static EXPR_t *lower_node(const IcnNode *n) {
 
     /* ----- String relational (NEW) ----------------------------------------
      * ICN_SEQ is string equality (==), NOT goal-directed sequence.
-     * Maps to E_SSEQ (E_SEQ is already taken for goal-directed sequence).   */
+     * Maps to E_SSEQ (E_PAT_SEQ is already taken for goal-directed sequence).   */
     case ICN_SLT:   return binary(E_SLT,  n);
     case ICN_SLE:   return binary(E_SLE,  n);
     case ICN_SGT:   return binary(E_SGT,  n);
@@ -130,7 +130,7 @@ static EXPR_t *lower_node(const IcnNode *n) {
     case ICN_CSET_INTER:  return binary(E_CSET_INTER, n);
 
     /* ----- String / list concat ------------------------------------------ */
-    case ICN_CONCAT:  return binary(E_CONCAT,  n);  /* SHARED: || string */
+    case ICN_CONCAT:  return binary(E_CAT,  n);  /* SHARED: || string */
     case ICN_LCONCAT: return binary(E_LCONCAT, n);  /* NEW:    ||| list  */
 
     /* ----- Unary operators (NEW) ----------------------------------------- */
@@ -153,23 +153,23 @@ static EXPR_t *lower_node(const IcnNode *n) {
     /* ----- Assignment / swap / scan -------------------------------------- */
     case ICN_ASSIGN: return binary(E_ASSIGN, n);  /* SHARED */
     case ICN_SWAP:   return binary(E_SWAP,   n);  /* SHARED */
-    case ICN_MATCH:  return binary(E_MATCH,  n);  /* SHARED: E ? body */
+    case ICN_MATCH:  return binary(E_SCAN,  n);  /* SHARED: E ? body */
     case ICN_SCAN_AUGOP: return binary(E_SCAN_AUGOP, n);  /* NEW */
 
     /* ICN_SCAN — E ? body: string scanning (E is subject, body is expr).
-     * Maps to E_MATCH (NEW EKind added in M-G9-ICON-IR-WIRE). */
+     * Maps to E_SCAN (NEW EKind added in M-G9-ICON-IR-WIRE). */
     case ICN_SCAN:
-        return binary(E_MATCH, n);  /* NEW */
+        return binary(E_SCAN, n);  /* NEW */
 
     /* ----- Control flow (NEW) -------------------------------------------- */
     case ICN_SEQ_EXPR: return nary(E_SEQ_EXPR, n);
 
     /* ICN_AND — n-ary conjunction with full Byrd-box wiring.
-     * Semantically identical to E_SEQ (goal-directed sequence): SHARED.   */
-    case ICN_AND: return nary(E_SEQ, n);           /* SHARED */
+     * Semantically identical to E_PAT_SEQ (goal-directed sequence): SHARED.   */
+    case ICN_AND: return nary(E_PAT_SEQ, n);           /* SHARED */
 
-    /* ICN_ALT — value alternation (left | right), same as E_GENALT. */
-    case ICN_ALT: return nary(E_GENALT, n);        /* SHARED */
+    /* ICN_ALT — value alternation (left | right), same as E_ALTERNATES. */
+    case ICN_ALT: return nary(E_ALTERNATES, n);        /* SHARED */
 
     case ICN_EVERY:
         e = expr_new(E_EVERY);

@@ -243,7 +243,7 @@ static const NamedPat *named_pat_lookup(const char *varname) {
 
 static int expr_has_pat_fn(EXPR_t *e) {
     if (!e) return 0;
-    if (e->kind == E_FNC || e->kind == E_CAPT_COND || e->kind == E_CAPT_IMM) return 1;
+    if (e->kind == E_FNC || e->kind == E_CAPT_COND_ASGN || e->kind == E_CAPT_IMMED_ASGN) return 1;
     for (int i = 0; i < expr_nargs(e); i++)
         if (expr_has_pat_fn(expr_arg(e, i))) return 1;
     return 0;
@@ -251,9 +251,9 @@ static int expr_has_pat_fn(EXPR_t *e) {
 
 static int expr_is_pattern_expr(EXPR_t *e) {
     if (!e) return 0;
-    if (e->kind == E_ALT)   return 1;
-    if (e->kind == E_SEQ) return 1;
-    if (e->kind == E_CONCAT) return 0;
+    if (e->kind == E_PAT_ALT)   return 1;
+    if (e->kind == E_PAT_SEQ) return 1;
+    if (e->kind == E_CAT) return 0;
     return expr_has_pat_fn(e);
 }
 
@@ -301,12 +301,12 @@ static void scan_expr_vars(EXPR_t *e) {
     if (e->kind == E_VAR && e->sval && !is_output(e->sval)
             && !is_input(e->sval))
         var_register(e->sval);
-    /* E_CAPT_COND (. capture) and E_CAPT_IMM ($ capture): sval = target variable name */
-    if ((e->kind == E_CAPT_COND || e->kind == E_CAPT_IMM) && e->sval
+    /* E_CAPT_COND_ASGN (. capture) and E_CAPT_IMMED_ASGN ($ capture): sval = target variable name */
+    if ((e->kind == E_CAPT_COND_ASGN || e->kind == E_CAPT_IMMED_ASGN) && e->sval
             && !is_output(e->sval) && !is_input(e->sval))
         var_register(e->sval);
-    /* E_CAPT_CUR (@VAR): varname in children[0]->sval */
-    if (e->kind == E_CAPT_CUR && expr_left(e) && expr_left(e)->sval
+    /* E_CAPT_CURSOR (@VAR): varname in children[0]->sval */
+    if (e->kind == E_CAPT_CURSOR && expr_left(e) && expr_left(e)->sval
             && !is_output(expr_left(e)->sval) && !is_input(expr_left(e)->sval))
         var_register(expr_left(e)->sval);
     for (int i = 0; i < expr_nargs(e); i++)
@@ -347,7 +347,7 @@ static void ldstr(const char *s) {
  * ----------------------------------------------------------------------- */
 
 /* expr_can_fail: returns 1 if expression can set local 0 = 0 (failure).
- * Used by E_CONCAT to decide whether to emit a goal-directed short-circuit check.
+ * Used by E_CAT to decide whether to emit a goal-directed short-circuit check.
  * Only predicate/comparison functions actually fail — pattern constructors and
  * string functions always succeed and must NOT be treated as failing. */
 static int expr_can_fail(EXPR_t *e) {
@@ -375,7 +375,7 @@ static int expr_can_fail(EXPR_t *e) {
         /* Pattern constructors and string functions: always succeed */
         return 0;
     }
-    if (e->kind == E_CONCAT || e->kind == E_SEQ) {
+    if (e->kind == E_CAT || e->kind == E_PAT_SEQ) {
         for (int i = 0; i < e->nchildren; i++)
             if (expr_can_fail(e->children[i])) return 1;
     }
@@ -410,7 +410,7 @@ static void emit_expr(EXPR_t *e) {
         ldstr(buf);
         break;
     }
-    case E_INDR: {
+    case E_INDIRECT: {
         /* $expr — indirect variable read: eval name, call net_indr_get */
         emit_expr(expr_arg(e, 0));
         N("    call       string %s::net_indr_get(string)\n", classname);
@@ -462,7 +462,7 @@ static void emit_expr(EXPR_t *e) {
         N("    ldsfld     string %s::%s\n", classname, fn);
         break;
     }
-    case E_KW:
+    case E_KEYWORD:
         /* &ALPHABET → call sno_alphabet(); &STNO → statement counter; others → "" stub */
         if (e->sval && strcasecmp(e->sval, "ALPHABET") == 0) {
             N("    call       string [snobol4lib]Snobol4Lib::sno_alphabet()\n");
@@ -821,12 +821,12 @@ static void emit_expr(EXPR_t *e) {
         ldstr("");
         break;
     }
-    case E_CONCAT: {  /* M-G4-SPLIT-SEQ-CONCAT: value context — string concat */
+    case E_CAT: {  /* M-G4-SPLIT-SEQ-CONCAT: value context — string concat */
         /* String concatenation with goal-directed short-circuit.
          * After each child that can set local 0 = 0 (failure), check and branch
          * to the statement fail label WITHOUT leaving any string on the stack.
          * Stack discipline: after the check+branch the stack depth is the same
-         * as it was before this E_CONCAT started (zero strings contributed).
+         * as it was before this E_CAT started (zero strings contributed).
          * On success path: one accumulated string remains on stack (as expected).
          *
          * CIL stack balance rule: every branch target must have consistent depth.
@@ -867,7 +867,7 @@ static void emit_expr(EXPR_t *e) {
         }
         break;
     }
-    case E_ALT:
+    case E_PAT_ALT:
         /* Pattern alternation used as an expression value (e.g. P = 'a' | 'b').
          * The string value is a placeholder — pattern matching uses the structural
          * node tree, not this string.  Push non-empty sentinel so assignment succeeds. */
@@ -883,7 +883,7 @@ static void emit_expr(EXPR_t *e) {
         emit_expr(expr_arg(e, 1));
         N("    call       string [snobol4lib]Snobol4Lib::sno_sub(string, string)\n");
         break;
-    case E_MPY:
+    case E_MUL:
         emit_expr(expr_arg(e, 0));
         emit_expr(expr_arg(e, 1));
         N("    call       string [snobol4lib]Snobol4Lib::sno_mpy(string, string)\n");
@@ -898,7 +898,7 @@ static void emit_expr(EXPR_t *e) {
         emit_expr(expr_arg(e, 1));
         N("    call       string [snobol4lib]Snobol4Lib::sno_pow(string, string)\n");
         break;
-    case E_NEG:
+    case E_MNS:
         /* unary minus */
         emit_expr(expr_arg(e, 0));
         N("    call       string [snobol4lib]Snobol4Lib::sno_neg(string)\n");
@@ -1054,7 +1054,7 @@ static void emit_pat_node(EXPR_t *pat,
         break;
     }
 
-    case E_SEQ: {  /* M-G4-SPLIT-SEQ-CONCAT: pattern context — Byrd-box SEQ */
+    case E_PAT_SEQ: {  /* M-G4-SPLIT-SEQ-CONCAT: pattern context — Byrd-box SEQ */
         /* SEQ: chain γ/ω left-to-right.
          *
          * Deferred-commit for NAM(ARB,...):
@@ -1088,7 +1088,7 @@ static void emit_pat_node(EXPR_t *pat,
         int has_dc = 0;
         for (int i = 0; i < nkids; i++) {
             EXPR_t *c = expr_arg(pat, i);
-            if (c && c->kind == E_CAPT_COND) {
+            if (c && c->kind == E_CAPT_COND_ASGN) {
                 EXPR_t *lc = expr_left(c);
                 if (lc && ((lc->kind == E_FNC  && lc->sval && strcasecmp(lc->sval,"ARB")==0) ||
                            (lc->kind == E_VAR && lc->sval && strcasecmp(lc->sval,"ARB")==0)))
@@ -1120,7 +1120,7 @@ static void emit_pat_node(EXPR_t *pat,
 
             /* NAM(ARB,...) — deferred capture */
             int is_nam_arb = 0;
-            if (child && child->kind == E_CAPT_COND) {
+            if (child && child->kind == E_CAPT_COND_ASGN) {
                 EXPR_t *lc = expr_left(child);
                 if (lc && ((lc->kind == E_FNC  && lc->sval && strcasecmp(lc->sval,"ARB")==0) ||
                            (lc->kind == E_VAR && lc->sval && strcasecmp(lc->sval,"ARB")==0)))
@@ -1184,7 +1184,7 @@ static void emit_pat_node(EXPR_t *pat,
         break;
     }
 
-    case E_ALT: {
+    case E_PAT_ALT: {
         /* ALT: try each arm; restore cursor on failure, try next */
         int nkids = expr_nargs(pat);
         if (nkids == 0) { N("    br         %s\n", ω); break; }
@@ -1214,7 +1214,7 @@ static void emit_pat_node(EXPR_t *pat,
         break;
     }
 
-    case E_CAPT_COND: {
+    case E_CAPT_COND_ASGN: {
         int loc_before = (*p_next_int)++;
         char lbl_ok[64]; snprintf(lbl_ok, sizeof lbl_ok, "Nn%d_nam_ok", uid);
         const char *varname = (expr_right(pat) && expr_right(pat)->sval) ? expr_right(pat)->sval : "";
@@ -1234,7 +1234,7 @@ static void emit_pat_node(EXPR_t *pat,
         break;
     }
 
-    case E_CAPT_IMM: {
+    case E_CAPT_IMMED_ASGN: {
         int loc_before = (*p_next_int)++;
         char lbl_ok[64]; snprintf(lbl_ok, sizeof lbl_ok, "Nn%d_dol_ok", uid);
         ldloc_i(loc_cursor); stloc_i(loc_before);
@@ -1581,7 +1581,7 @@ static void emit_pat_node(EXPR_t *pat,
         break;
     }
 
-    case E_INDR: {
+    case E_INDIRECT: {
         /* *VAR — indirect pattern ref: get variable name, load its value,
          * match the value as a literal string (same logic as VART literal path).
          * Inner child (children[1] or children[0]) holds the E_VAR whose sval
@@ -1609,11 +1609,11 @@ static void emit_pat_node(EXPR_t *pat,
         break;
     }
 
-    case E_CAPT_CUR: {
+    case E_CAPT_CURSOR: {
         /* @VAR — capture current cursor position (0-based) into var.
          * Zero-width: does not advance cursor. Always succeeds.
          * Stores integer string of current cursor position.
-         * Parser builds @VAR as unop(E_CAPT_CUR, E_VAR("VAR")), varname in children[0]->sval. */
+         * Parser builds @VAR as unop(E_CAPT_CURSOR, E_VAR("VAR")), varname in children[0]->sval. */
         const char *varname = (expr_left(pat) && expr_left(pat)->sval) ? expr_left(pat)->sval
                             : (pat->sval ? pat->sval : "");
         /* Convert cursor (int32) to string via Int32.ToString() */
@@ -1662,7 +1662,7 @@ static void emit_one_stmt(STMT_t *s, const char *next_lbl) {
 
     /* Case 1: pure assignment — subject is a variable or OUTPUT, has_eq set, NO pattern */
     if (s->has_eq && s->subject && !s->pattern &&
-        (s->subject->kind == E_VAR || s->subject->kind == E_KW)) {
+        (s->subject->kind == E_VAR || s->subject->kind == E_KEYWORD)) {
 
         int is_out = is_output(s->subject->sval);
         EXPR_t *rhs = s->replacement;
@@ -1688,7 +1688,7 @@ static void emit_one_stmt(STMT_t *s, const char *next_lbl) {
         if (is_out) {
             /* OUTPUT = expr → Console.WriteLine */
             N("    call       void [mscorlib]System.Console::WriteLine(string)\n");
-        } else if (s->subject->kind == E_KW) {
+        } else if (s->subject->kind == E_KEYWORD) {
             /* &KEYWORD = expr — write to known keyword field */
             const char *kw = s->subject->sval ? s->subject->sval : "";
             if (strcasecmp(kw, "ANCHOR") == 0)
@@ -1734,7 +1734,7 @@ static void emit_one_stmt(STMT_t *s, const char *next_lbl) {
     }
 
     /* Case 1b: indirect assignment — $expr = val */
-    if (s->has_eq && s->subject && s->subject->kind == E_INDR && !s->pattern) {
+    if (s->has_eq && s->subject && s->subject->kind == E_INDIRECT && !s->pattern) {
         EXPR_t *indr_operand = expr_arg(s->subject, 0);
         EXPR_t *rhs = s->replacement;
         /* push name string */

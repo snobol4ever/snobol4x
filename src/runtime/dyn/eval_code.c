@@ -102,7 +102,7 @@ static DESCR_t eval_node(EXPR_t *e)
             return NV_GET_fn(e->sval);
         return NULVCL;
 
-    case E_KW: {
+    case E_KEYWORD: {
         /* &KEYWORD — prepend '&' for the NV table key */
         if (!e->sval || !*e->sval) return NULVCL;
         char kbuf[128];
@@ -111,7 +111,7 @@ static DESCR_t eval_node(EXPR_t *e)
     }
 
     /* ── unary minus ─────────────────────────────────────────────────── */
-    case E_NEG:
+    case E_MNS:
         if (e->nchildren < 1) return FAILDESCR;
         return neg(eval_node(e->children[0]));
 
@@ -130,7 +130,7 @@ static DESCR_t eval_node(EXPR_t *e)
         if (IS_FAIL_fn(l) || IS_FAIL_fn(r)) return FAILDESCR;
         return sub(l, r);
     }
-    case E_MPY: {
+    case E_MUL: {
         if (e->nchildren < 2) return FAILDESCR;
         DESCR_t l = eval_node(e->children[0]);
         DESCR_t r = eval_node(e->children[1]);
@@ -153,8 +153,8 @@ static DESCR_t eval_node(EXPR_t *e)
     }
 
     /* ── string concatenation ────────────────────────────────────────── */
-    case E_CONCAT:
-    case E_SEQ: {
+    case E_CAT:
+    case E_PAT_SEQ: {
         if (e->nchildren == 0) return NULVCL;
         DESCR_t acc = eval_node(e->children[0]);
         if (IS_FAIL_fn(acc)) return FAILDESCR;
@@ -170,13 +170,13 @@ static DESCR_t eval_node(EXPR_t *e)
     /* ── assignment: subject = replacement (value context → yield repl) */
     case E_ASSIGN: {
         if (e->nchildren < 2) return FAILDESCR;
-        /* left child is lvalue (E_VAR or E_INDR) */
+        /* left child is lvalue (E_VAR or E_INDIRECT) */
         DESCR_t val = eval_node(e->children[1]);
         if (IS_FAIL_fn(val)) return FAILDESCR;
         EXPR_t *lv = e->children[0];
         if (lv && lv->kind == E_VAR && lv->sval)
             NV_SET_fn(lv->sval, val);
-        else if (lv && lv->kind == E_INDR && lv->nchildren > 0) {
+        else if (lv && lv->kind == E_INDIRECT && lv->nchildren > 0) {
             DESCR_t name_d = eval_node(lv->children[0]);
             const char *nm = VARVAL_fn(name_d);
             if (nm && *nm) NV_SET_fn(nm, val);
@@ -185,7 +185,7 @@ static DESCR_t eval_node(EXPR_t *e)
     }
 
     /* ── indirect reference $expr ────────────────────────────────────── */
-    case E_INDR: {
+    case E_INDIRECT: {
         if (e->nchildren < 1) return FAILDESCR;
         DESCR_t name_d = eval_node(e->children[0]);
         const char *nm = VARVAL_fn(name_d);
@@ -226,7 +226,7 @@ static DESCR_t eval_node(EXPR_t *e)
 
     /* ── unhandled / pattern nodes — fall through as NULVCL ─────────── */
     default:
-        /* Pattern-context nodes (E_ALT, E_CAPT_COND, etc.) arrive here
+        /* Pattern-context nodes (E_PAT_ALT, E_CAPT_COND_ASGN, etc.) arrive here
          * when EVAL is given a pattern expression string.  The old
          * _ev_expr hand-roller in snobol4_pattern.c handles those.
          * In value context, treat unknown nodes as null. */

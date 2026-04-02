@@ -132,7 +132,7 @@ static EXPR_t *lower_term(Term *t) {
 
             /* Arithmetic operators within is/2 rhs */
             struct { const char *name; EKind kind; } arith[] = {
-                { "+", E_ADD }, { "-", E_SUB }, { "*", E_MPY },
+                { "+", E_ADD }, { "-", E_SUB }, { "*", E_MUL },
                 { "/", E_DIV }, { "//", E_DIV }, { NULL, 0 }
             };
             if (arity == 2) {
@@ -411,7 +411,7 @@ static void expr_dump(EXPR_t *e, int indent, FILE *out) {
         case E_VAR:        kname = "E_VAR";        break;
         case E_ADD:         kname = "E_ADD";         break;
         case E_SUB:         kname = "E_SUB";         break;
-        case E_MPY:         kname = "E_MPY";         break;
+        case E_MUL:         kname = "E_MUL";         break;
         case E_DIV:         kname = "E_DIV";         break;
         default: break;
     }

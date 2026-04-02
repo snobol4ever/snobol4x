@@ -399,3 +399,45 @@ Sprint state lives in [snobol4ever/.github](https://github.com/snobol4ever/.gith
 | Docs / Markdown | 2 | 1,080 | 814 | — |
 | **Total (src)** | **54** | **31,090** | **28,306** | **100%** |
 
+
+---
+
+## IR EKind — SNOBOL4 Operator Name Reference
+
+Four-column reference: SIL/CSNOBOL4 proc name · MINIMAL/SPITBOL `o$` entry · functional name · current IR node.
+Source authority: `snobol4-2.3.3/v311.sil` (CSNOBOL4) and `spitbol-docs/v37.min` (SPITBOL v3.7).
+
+### Unary operators
+
+| Syntax | SIL / CSNOBOL4 | MINIMAL / SPITBOL | Functional name | IR node |
+|--------|---------------|-------------------|-----------------|---------|
+| `+X` | `PLS` | `o$aff` — affirmation | numeric coerce / affirmation | `E_PLS` → **`E_PLS`** (unary plus; see note) |
+| `-X` | `MNS` | `o$com` — complementation | arithmetic negation | `E_MNS` |
+| `\X` | `NEG` | `o$nta/b/c` — negation | logical negation (not) | `E_NOT` |
+| `?X` | `QUES` | `o$int` — interrogation | interrogation | `E_INTERROGATE` |
+| `@X` | `ATOP` | `o$cas` — cursor assignment | cursor position capture | `E_CAPT_CURSOR` |
+| `$X` | *(c$ind, inline)* | `o$inv` — indirection | indirection | `E_INDIRECT` |
+| `&X` | *(c$key, inline)* | `o$kwv` — keyword reference | keyword reference | `E_KEYWORD` |
+| `*X` | *(c$def, inline)* | *(c$def, no o$ entry)* | deferred expression | `E_DEFER` |
+| `.X` | *(unary, via NAM)* | `o$nam` — name reference | name reference (unary) | `E_NAME` |
+
+**Note on `E_PLS` vs `E_PLS`:** SIL `PLS` and MINIMAL `o$aff` are the same operation.
+The IR currently has both `E_PLS` and `E_PLS` with identical semantics — one must be removed.
+Decision: `E_PLS` is the canonical name (matches SIL); `E_PLS` is deprecated.
+
+### Binary operators
+
+| Syntax | SIL / CSNOBOL4 | MINIMAL / SPITBOL | Functional name | IR node |
+|--------|---------------|-------------------|-----------------|---------|
+| `X + Y` | `ADD` | `o$add` — addition | addition | `E_ADD` |
+| `X - Y` | `SUB` | `o$sub` — subtraction | subtraction | `E_SUB` |
+| `X * Y` | `MPY` | `o$mlt` — multiplication | multiplication | `E_MUL` |
+| `X / Y` | `DIV` | `o$dvd` — division | division | `E_DIV` |
+| `X ! Y` | `EXPOP` | `o$exp` — exponentiation | exponentiation | `E_POW` |
+| `X Y` (blank, value ctx) | `CONCAT` | `o$cnc` — concatenation | string concatenation | `E_CAT` |
+| `X Y` (blank, pattern ctx) | *(BINCON path, CONCL)* | *(c$cnc type, Byrd wiring)* | goal-directed pattern sequence | `E_PAT_SEQ` |
+| `X \| Y` | `OR` / `ORPP` | `o$alt` — alternation | pattern alternation | `E_PAT_ALT` |
+| `X ? Y` | `SCAN` | `o$pmv/pmn/pms` — pattern match | pattern match / scan | `E_SCAN` |
+| `X = Y` | `ASGN` | `o$ass` — assignment | assignment | `E_ASSIGN` |
+| `X . Y` | `NAM` | `o$pas` — pattern assignment | conditional capture (on match) | `E_CAPT_COND_ASGN` |
+| `X $ Y` | `DOL` | `o$ima` — immediate assignment | immediate capture | `E_CAPT_IMMED_ASGN` |

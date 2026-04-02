@@ -139,13 +139,13 @@ static void js_emit_expr(EXPR_t *e) {
     case E_VAR:
         J("_vars[\"%s\"]", js_upper_var(e->sval));
         break;
-    case E_KW:
+    case E_KEYWORD:
         J("_kw(\"%s\")", e->sval);
         break;
-    case E_INDR: {
+    case E_INDIRECT: {
         EXPR_t *operand = (e->nchildren > 1 && e->children[1]) ? e->children[1] : e->children[0];
-        /* $.var: E_CAPT_COND(E_VAR) — indirect by name, not by value */
-        if (operand->kind == E_CAPT_COND && operand->nchildren == 1
+        /* $.var: E_CAPT_COND_ASGN(E_VAR) — indirect by name, not by value */
+        if (operand->kind == E_CAPT_COND_ASGN && operand->nchildren == 1
                 && operand->children[0]->kind == E_VAR) {
             J("_vars[\"%s\"]", js_upper_var(operand->children[0]->sval));
         } else {
@@ -154,13 +154,13 @@ static void js_emit_expr(EXPR_t *e) {
         }
         break;
     }
-    case E_NEG:
+    case E_MNS:
         J("(-_num("); js_emit_expr(e->children[0]); J("))");
         break;
-    case E_UPLUS:
+    case E_PLS:
         J("_num("); js_emit_expr(e->children[0]); J(")");
         break;
-    case E_CONCAT:
+    case E_CAT:
         J("_cat(");
         for (int i = 0; i < e->nchildren; i++) {
             if (i) J(", ");
@@ -174,7 +174,7 @@ static void js_emit_expr(EXPR_t *e) {
     case E_SUB:
         J("_sub("); js_emit_expr(e->children[0]); J(", "); js_emit_expr(e->children[1]); J(")");
         break;
-    case E_MPY:
+    case E_MUL:
         J("_mul("); js_emit_expr(e->children[0]); J(", "); js_emit_expr(e->children[1]); J(")");
         break;
     case E_DIV:
@@ -191,8 +191,8 @@ static void js_emit_expr(EXPR_t *e) {
         }
         J("])");
         break;
-    case E_CAPT_COND:
-    case E_CAPT_IMM:
+    case E_CAPT_COND_ASGN:
+    case E_CAPT_IMMED_ASGN:
         js_emit_expr(e->children[0]);
         break;
     case E_ASSIGN: {
@@ -689,7 +689,7 @@ static void js_emit_pat(EXPR_t *pat, int uid_γ, int uid_ω,
         break;
     }
 
-    case E_SEQ:
+    case E_PAT_SEQ:
         if (pat->nchildren == 2) {
             js_emit_pat_seq(pat->children[0], pat->children[1],
                             uid, uid_γ, uid_ω, subj, uid_stmt);
@@ -702,7 +702,7 @@ static void js_emit_pat(EXPR_t *pat, int uid_γ, int uid_ω,
         }
         break;
 
-    case E_ALT:
+    case E_PAT_ALT:
         if (pat->nchildren == 2) {
             js_emit_pat_alt(pat->children[0], pat->children[1],
                             uid, uid_γ, uid_ω, subj, uid_stmt);
@@ -712,12 +712,12 @@ static void js_emit_pat(EXPR_t *pat, int uid_γ, int uid_ω,
         }
         break;
 
-    case E_CAPT_IMM:
-    case E_CAPT_COND: {
+    case E_CAPT_IMMED_ASGN:
+    case E_CAPT_COND_ASGN: {
         const char *vname = "OUTPUT";
         if (pat->nchildren > 1 && pat->children[1] && pat->children[1]->sval)
             vname = pat->children[1]->sval;
-        js_emit_pat_capt(pat, vname, pat->kind == E_CAPT_IMM,
+        js_emit_pat_capt(pat, vname, pat->kind == E_CAPT_IMMED_ASGN,
                          uid, uid_γ, uid_ω, subj, uid_stmt);
         break;
     }
@@ -914,10 +914,10 @@ static int js_emit_stmt_body(STMT_t *s) {
         J("    if (_ok%d) {\n", u);
         if (s->subject && s->subject->kind == E_VAR)
             J("        _vars[\"%s\"] = _v%d;\n", js_upper_var(s->subject->sval), u);
-        else if (s->subject && s->subject->kind == E_INDR) {
+        else if (s->subject && s->subject->kind == E_INDIRECT) {
             EXPR_t *op = (s->subject->nchildren > 1 && s->subject->children[1])
                          ? s->subject->children[1] : s->subject->children[0];
-            if (op->kind == E_CAPT_COND && op->nchildren == 1
+            if (op->kind == E_CAPT_COND_ASGN && op->nchildren == 1
                     && op->children[0]->kind == E_VAR)
                 J("        _vars[\"%s\"] = _v%d;\n", js_upper_var(op->children[0]->sval), u);
             else {

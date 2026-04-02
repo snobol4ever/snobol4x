@@ -835,12 +835,12 @@ static int expr_is_real(EXPR_t *n) {
     if (!n) return 0;
     if (n->kind == E_FLIT) return 1;
     /* ICN_NEG: real if child is real */
-    if (n->kind == E_NEG && n->nchildren >= 1)
+    if (n->kind == E_MNS && n->nchildren >= 1)
         return expr_is_real(n->children[0]);
     /* ICN_POW always returns double (Math.pow returns D) */
     if (n->kind == E_POW) return 1;
     /* Binop is real if either operand is real */
-    if (n->kind == E_ADD || n->kind == E_SUB || n->kind == E_MPY ||
+    if (n->kind == E_ADD || n->kind == E_SUB || n->kind == E_MUL ||
         n->kind == E_DIV || n->kind == E_MOD) {
         if (n->nchildren >= 2)
             return expr_is_real(n->children[0]) || expr_is_real(n->children[1]);
@@ -852,7 +852,7 @@ static int expr_is_real(EXPR_t *n) {
             return expr_is_real(n->children[0]) || expr_is_real(n->children[1]);
     }
     /* ICN_ALT: real if first alternative is real (all alternatives must be same type) */
-    if (n->kind == E_GENALT && n->nchildren >= 1)
+    if (n->kind == E_ALTERNATES && n->nchildren >= 1)
         return expr_is_real(n->children[0]);
     /* real() builtin call always returns double */
     if (n->kind == E_FNC && n->nchildren >= 1) {
@@ -3968,7 +3968,7 @@ static void emit_jvm_icon_binop(EXPR_t *n, Ports ports, char *oα, char *oβ) {
         switch (n->kind) {
             case E_ADD: JI("dadd",""); break;
             case E_SUB: JI("dsub",""); break;
-            case E_MPY: JI("dmul",""); break;
+            case E_MUL: JI("dmul",""); break;
             case E_DIV: JI("ddiv",""); break;
             case E_MOD: JI("drem",""); break;
             default: break;
@@ -3977,7 +3977,7 @@ static void emit_jvm_icon_binop(EXPR_t *n, Ports ports, char *oα, char *oβ) {
         switch (n->kind) {
             case E_ADD: JI("ladd",""); break;
             case E_SUB: JI("lsub",""); break;
-            case E_MPY: JI("lmul",""); break;
+            case E_MUL: JI("lmul",""); break;
             case E_DIV: JI("ldiv",""); break;
             case E_MOD: JI("lrem",""); break;
             default: break;
@@ -4408,7 +4408,7 @@ static int expr_is_string(EXPR_t *n) {
     switch (n->kind) {
         case E_QLIT:    return 1;
         case E_CSET:   return 1;  /* cset literal is a String */
-        case E_CONCAT: return 1;
+        case E_CAT: return 1;
         case E_LCONCAT:return 1;  /* Tiny-ICON: ||| treated as string concat */
         case E_ITER:
             /* !E yields single-char Strings for string operands,
@@ -4468,8 +4468,8 @@ static int expr_is_string(EXPR_t *n) {
             if (n->nchildren >= 2) return expr_is_string(n->children[1]);
             return 0;
         }
-        case E_MATCH: {
-            /* E_MATCH covers =E pattern match and E?body scan.
+        case E_SCAN: {
+            /* E_SCAN covers =E pattern match and E?body scan.
              * Both yield a substring — return 1 (string). */
             return 1;
         }
@@ -4492,14 +4492,14 @@ static int expr_is_string(EXPR_t *n) {
             if (n->nchildren >= 3) return expr_is_string(n->children[2]);
             return 0;
         }
-        case E_GENALT: {
+        case E_ALTERNATES: {
             /* ALT is string-typed if all alternatives are strings */
             if (n->nchildren == 0) return 0;
             for (int i = 0; i < n->nchildren; i++)
                 if (!expr_is_string(n->children[i])) return 0;
             return 1;
         }
-        case E_SEQ: {
+        case E_PAT_SEQ: {
             /* AND chain result type = last child's type */
             if (n->nchildren >= 1)
                 return expr_is_string(n->children[n->nchildren - 1]);
@@ -4553,7 +4553,7 @@ static int expr_is_string(EXPR_t *n) {
             return 1;  /* s[i:j] always yields a String */
         case E_SECTION_PLUS: case E_SECTION_MINUS:
             return 1;  /* s[i+:n] / s[i-:n] are also String sections */
-        /* E_MATCH case handled above (line ~4471) */
+        /* E_SCAN case handled above (line ~4471) */
         case E_NONNULL: {
             /* \E: transparent passthrough — same type as child */
             if (n->nchildren >= 1) return expr_is_string(n->children[0]);
@@ -4724,7 +4724,7 @@ static void emit_jvm_icon_concat(EXPR_t *n, Ports ports, char *oα, char *oβ) {
     EXPR_t *lchild = n->children[0];
     /* left_is_value: true only for one-shot string producers (literals, vars, one-shot calls).
      * ICN_ALT is a generator — its β must be used to advance it, not restart from α. */
-    int left_is_value = expr_is_string(lchild) && lchild->kind != E_GENALT;
+    int left_is_value = expr_is_string(lchild) && lchild->kind != E_ALTERNATES;
 
     /* left_relay: String ref on stack → astore into lc_fld → lstore */
     JL(left_relay); put_str_field(lc_fld); JGoto(lstore);
@@ -6475,7 +6475,7 @@ static void emit_jvm_icon_identical(EXPR_t *n, Ports ports, char *oα, char *oβ
  * which returns new pos or -1 on failure.
  * ======================================================================= */
 static void emit_jvm_icon_match(EXPR_t *n, Ports ports, char *oα, char *oβ) {
-    /* E_MATCH with 2 children = E ? body scan — delegate to scan emitter */
+    /* E_SCAN with 2 children = E ? body scan — delegate to scan emitter */
     if (n->nchildren >= 2) { emit_jvm_icon_scan(n, ports, oα, oβ); return; }
 
     int id = next_uid(); char a[64], b[64];
@@ -6603,8 +6603,8 @@ static void emit_jvm_icon_expr(EXPR_t *n, Ports ports, char *oα, char *oβ) {
         case E_FAIL:    emit_jvm_icon_fail_node(n,ports,oα,oβ); break;
         case E_IF:      emit_jvm_icon_if       (n,ports,oα,oβ); break;
         case E_CASE:    emit_jvm_icon_case     (n,ports,oα,oβ); break;
-        case E_GENALT:     emit_jvm_icon_alt      (n,ports,oα,oβ); break;
-        case E_SEQ: {
+        case E_ALTERNATES:     emit_jvm_icon_alt      (n,ports,oα,oβ); break;
+        case E_PAT_SEQ: {
             /* n-ary conjunction: E1 & E2 & ... & En
              * irgen.icn ir_conjunction: Ei.γ → E(i+1).α; Ei.ω → E(i-1).β; β → En.β
              *
@@ -6672,14 +6672,14 @@ static void emit_jvm_icon_expr(EXPR_t *n, Ports ports, char *oα, char *oβ) {
             free(cca); free(ccb); free(relay_g);
             break;
         }
-        case E_ADD: case E_SUB: case E_MPY: case E_DIV: case E_MOD:
+        case E_ADD: case E_SUB: case E_MUL: case E_DIV: case E_MOD:
                           emit_jvm_icon_binop    (n,ports,oα,oβ); break;
         case E_POW:     emit_jvm_icon_pow      (n,ports,oα,oβ); break;
-        case E_CONCAT:  emit_jvm_icon_concat   (n,ports,oα,oβ); break;
+        case E_CAT:  emit_jvm_icon_concat   (n,ports,oα,oβ); break;
         case E_LCONCAT: emit_jvm_icon_concat   (n,ports,oα,oβ); break; /* Tiny-ICON: ||| = || */
         case E_SWAP:    emit_jvm_icon_swap      (n,ports,oα,oβ); break;
         case E_IDENTICAL: emit_jvm_icon_identical(n,ports,oα,oβ); break;
-        case E_MATCH:   emit_jvm_icon_match     (n,ports,oα,oβ); break;
+        case E_SCAN:   emit_jvm_icon_match     (n,ports,oα,oβ); break;
         case E_SECTION_PLUS:
         case E_SECTION_MINUS:
             /* M+:N / M-:N — emit as plain section for now (stub) */
@@ -6726,7 +6726,7 @@ static void emit_jvm_icon_expr(EXPR_t *n, Ports ports, char *oα, char *oβ) {
             JL(b2); JGoto(ports.ω);
             break;
         }
-        case E_NEG:     emit_jvm_icon_neg      (n,ports,oα,oβ); break;
+        case E_MNS:     emit_jvm_icon_neg      (n,ports,oα,oβ); break;
         /* G1: ICN_POS — identity, emit child unchanged */
         case E_PLS:     emit_jvm_icon_expr(n->children[0],ports,oα,oβ); break;
         /* G2: ICN_RANDOM — ?E: random integer 1..E via IcnRuntime.random() */
@@ -7318,7 +7318,7 @@ void emit_jvm_icon_file(EXPR_t **nodes, int count, FILE *fp, const char *filenam
                 EXPR_t *ret_expr = stmt->children[0];
                 /* Direct non-VAR check (works without statics) */
                 int is_str = (ret_expr->kind == E_QLIT    ||
-                              ret_expr->kind == E_CONCAT  ||
+                              ret_expr->kind == E_CAT  ||
                               ret_expr->kind == E_LCONCAT);
                 /* For VAR returns: scan body for string assignment to that var */
                 if (!is_str && ret_expr->kind == E_VAR) {
@@ -7332,7 +7332,7 @@ void emit_jvm_icon_file(EXPR_t **nodes, int count, FILE *fp, const char *filenam
                             strcmp(s2->children[0]->sval, vname) == 0) {
                             EXPR_t *rhs = s2->children[1];
                             if (rhs && (rhs->kind == E_QLIT ||
-                                        rhs->kind == E_CONCAT ||
+                                        rhs->kind == E_CAT ||
                                         rhs->kind == E_LCONCAT)) is_str = 1;
                         }
                         /* var ||:= anything  (ICN_AUGOP with TK_AUGCONCAT==36) */

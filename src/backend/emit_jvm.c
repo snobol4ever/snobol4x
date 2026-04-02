@@ -350,20 +350,20 @@ static const NamedPat *named_pat_lookup(const char *varname) {
     return NULL;
 }
 
-/* expr_is_pattern_expr — mirrors ASM backend: E_ALT is always a pattern;
- * E_SEQ/E_CONCAT or E_FNC is a pattern if any descendant is E_FNC/E_CAPT_COND/E_CAPT_IMM. */
+/* expr_is_pattern_expr — mirrors ASM backend: E_PAT_ALT is always a pattern;
+ * E_PAT_SEQ/E_CAT or E_FNC is a pattern if any descendant is E_FNC/E_CAPT_COND_ASGN/E_CAPT_IMMED_ASGN. */
 static int expr_has_pat_fn(EXPR_t *e) {
     if (!e) return 0;
-    if (e->kind == E_FNC || e->kind == E_CAPT_COND || e->kind == E_CAPT_IMM) return 1;
+    if (e->kind == E_FNC || e->kind == E_CAPT_COND_ASGN || e->kind == E_CAPT_IMMED_ASGN) return 1;
     for (int i = 0; i < e->nchildren; i++)
         if (expr_has_pat_fn(e->children[i])) return 1;
     return 0;
 }
 static int expr_is_pattern_expr(EXPR_t *e) {
     if (!e) return 0;
-    if (e->kind == E_ALT)   return 1;   /* alternation is always a pattern */
-    if (e->kind == E_SEQ) return 1;
-    if (e->kind == E_CONCAT) return 0;
+    if (e->kind == E_PAT_ALT)   return 1;   /* alternation is always a pattern */
+    if (e->kind == E_PAT_SEQ) return 1;
+    if (e->kind == E_CAT) return 0;
     return expr_has_pat_fn(e);
 }
 
@@ -509,7 +509,7 @@ static void emit_jvm_expr(EXPR_t *e) {
         /* Null/empty string */
         JI("ldc", "\"\"");
         break;
-    case E_KW: {
+    case E_KEYWORD: {
         /* &KEYWORD — read from sno_kw_get() helper */
         if (!e->sval) { JI("ldc", "\"\""); break; }
         char kwesc[128];
@@ -560,7 +560,7 @@ static void emit_jvm_expr(EXPR_t *e) {
         JI("invokestatic", igdesc);
         break;
     }
-    case E_INDR: {
+    case E_INDIRECT: {
         /* $expr — indirect variable read: evaluate expr → string → lookup in sno_vars map */
         EXPR_t *_op = ECHILD(e,1) ? ECHILD(e,1) : ECHILD(e,0);
         emit_jvm_expr(_op);
@@ -569,9 +569,9 @@ static void emit_jvm_expr(EXPR_t *e) {
         JI("invokestatic", ivdesc);
         break;
     }
-    case E_CAPT_COND: {
+    case E_CAPT_COND_ASGN: {
         /* .var in value context — name reference: push the variable name as a string.
-         * Used in $.var (E_INDR wrapping E_CAPT_COND): the name is the lookup key,
+         * Used in $.var (E_INDIRECT wrapping E_CAPT_COND_ASGN): the name is the lookup key,
          * not the variable's value. e->sval holds the name. */
         if (e->sval) {
             char nameesc[256];
@@ -649,7 +649,7 @@ static void emit_jvm_expr(EXPR_t *e) {
     }
     case E_ADD:
     case E_SUB:
-    case E_MPY:
+    case E_MUL:
     case E_POW: {
         /* Arithmetic: parse both sides to double, operate, convert back */
         emit_jvm_expr(e->children[0]);
@@ -659,7 +659,7 @@ static void emit_jvm_expr(EXPR_t *e) {
         switch (e->kind) {
         case E_ADD:   JI("dadd", ""); break;
         case E_SUB:   JI("dsub", ""); break;
-        case E_MPY:   JI("dmul", ""); break;
+        case E_MUL:   JI("dmul", ""); break;
         case E_POW:
             /* Math.pow(a, b) */
             JI("invokestatic", "java/lang/Math/pow(DD)D");
@@ -700,7 +700,7 @@ static void emit_jvm_expr(EXPR_t *e) {
         J("%s:\n", ardone);
         break;
     }
-    case E_CONCAT: {  /* M-G4-SPLIT-SEQ-CONCAT: value context — StringBuilder concat */
+    case E_CAT: {  /* M-G4-SPLIT-SEQ-CONCAT: value context — StringBuilder concat */
         /* String concatenation: StringBuilder — n-ary, fold all children.
          * Null propagation: if any child returns null (failure), discard
          * the StringBuilder and return null to propagate the failure. */
@@ -731,7 +731,7 @@ static void emit_jvm_expr(EXPR_t *e) {
         J("%s:\n", conc_done);
         break;
     }
-    case E_NEG: {
+    case E_MNS: {
         /* Unary minus: -expr */
         emit_jvm_expr(e->children[0]);
         emit_jvm_to_double();
@@ -1554,14 +1554,14 @@ static void emit_jvm_pat_node(EXPR_t *pat,
 
     /* ------------------------------------------------------------------ */
     /* ------------------------------------------------------------------ */
-    case E_SEQ: {  /* M-G4-SPLIT-SEQ-CONCAT: pattern context — Byrd-box SEQ */
+    case E_PAT_SEQ: {  /* M-G4-SPLIT-SEQ-CONCAT: pattern context — Byrd-box SEQ */
         /* SEQ node.  Walk right-spine of left subtree to find trailing ARB or
          * ARB.NAM node; if found, emit greedy ARB+backtrack loop around right. */
         EXPR_t *arb_nam = NULL;
         {
             EXPR_t *cur = pat->children[0];
-            while (cur && cur->kind == E_SEQ) cur = cur->children[1];
-            if (cur && cur->kind == E_CAPT_COND && cur->children[0] &&
+            while (cur && cur->kind == E_PAT_SEQ) cur = cur->children[1];
+            if (cur && cur->kind == E_CAPT_COND_ASGN && cur->children[0] &&
                 ((cur->children[0]->kind == E_FNC  && cur->children[0]->sval && strcasecmp(cur->children[0]->sval, "ARB") == 0) ||
                  (cur->children[0]->kind == E_VAR && cur->children[0]->sval && strcasecmp(cur->children[0]->sval, "ARB") == 0)))
                 arb_nam = cur;
@@ -1582,11 +1582,11 @@ static void emit_jvm_pat_node(EXPR_t *pat,
             {
                 EXPR_t *nodes[64]; int n = 0;
                 EXPR_t *cur = pat->children[0];
-                while (cur && cur->kind == E_SEQ) {
+                while (cur && cur->kind == E_PAT_SEQ) {
                     nodes[n++] = cur->children[0];
                     if (cur->children[1] == arb_nam) break;
                     cur = cur->children[1];
-                    if (!cur || cur->kind != E_SEQ) break;
+                    if (!cur || cur->kind != E_PAT_SEQ) break;
                 }
                 if (n > 0) {
                     char chain[64][64];
@@ -1632,7 +1632,7 @@ static void emit_jvm_pat_node(EXPR_t *pat,
             /* Deferred capture: store ARB span in a temp local; only commit
              * (call sno_var_put) after right child SUCCEEDS.  This prevents
              * spurious output (e.g. OUTPUT =) on each backtrack attempt.    */
-            if (arb_nam->kind == E_CAPT_COND && arb_nam->children[1] && arb_nam->children[1]->sval) {
+            if (arb_nam->kind == E_CAPT_COND_ASGN && arb_nam->children[1] && arb_nam->children[1]->sval) {
                 const char *capvar = arb_nam->children[1]->sval;
                 int loc_tmp_cap = (*p_cap_local)++;
 
@@ -1684,7 +1684,7 @@ static void emit_jvm_pat_node(EXPR_t *pat,
         if (pat->nchildren > 2) {
             int _nc = pat->nchildren;
             EXPR_t **_fn, **_fk;
-            EXPR_t *_r = ir_nary_right_fold(pat, E_SEQ, &_fn, &_fk);
+            EXPR_t *_r = ir_nary_right_fold(pat, E_PAT_SEQ, &_fn, &_fk);
             emit_jvm_pat_node(_r, γ, ω, loc_subj, loc_cursor, loc_len, p_cap_local, out, classname);
             ir_nary_right_fold_free(_fn, _fk, _nc - 1);
             break;
@@ -1700,7 +1700,7 @@ static void emit_jvm_pat_node(EXPR_t *pat,
         break;
     }
 
-    case E_ALT: {
+    case E_PAT_ALT: {
         /* ALT node: try left; on failure restore cursor and try right
          * Wiring:
          *   save cursor_save
@@ -1710,7 +1710,7 @@ static void emit_jvm_pat_node(EXPR_t *pat,
         if (pat->nchildren > 2) {
             int _nc = pat->nchildren;
             EXPR_t **_fn, **_fk;
-            EXPR_t *_r = ir_nary_right_fold(pat, E_ALT, &_fn, &_fk);
+            EXPR_t *_r = ir_nary_right_fold(pat, E_PAT_ALT, &_fn, &_fk);
             emit_jvm_pat_node(_r, γ, ω, loc_subj, loc_cursor, loc_len, p_cap_local, out, classname);
             ir_nary_right_fold_free(_fn, _fk, _nc - 1);
             break;
@@ -1739,7 +1739,7 @@ static void emit_jvm_pat_node(EXPR_t *pat,
     }
 
     /* ------------------------------------------------------------------ */
-    case E_CAPT_CUR: {
+    case E_CAPT_CURSOR: {
         /* @VAR — cursor-position capture.
          * Zero-width: store current cursor as decimal string into VAR, always succeed.
          * Parser: unary node, children[0] = E_VAR(varname). */
@@ -1765,7 +1765,7 @@ static void emit_jvm_pat_node(EXPR_t *pat,
     }
 
     /* ------------------------------------------------------------------ */
-    case E_CAPT_COND: {
+    case E_CAPT_COND_ASGN: {
         /* Conditional assign:  pat . var
          * Match pat; on success capture matched substring into var.
          * cursor_before saved, on γ: var = subject.substring(cursor_before, cursor) */
@@ -1810,8 +1810,8 @@ static void emit_jvm_pat_node(EXPR_t *pat,
     }
 
     /* ------------------------------------------------------------------ */
-    case E_CAPT_IMM: {
-        /* Immediate assign:  pat $ var  — same as E_CAPT_COND for J4 */
+    case E_CAPT_IMMED_ASGN: {
+        /* Immediate assign:  pat $ var  — same as E_CAPT_COND_ASGN for J4 */
         int loc_before = (*p_cap_local)++;
         char lbl_inner_ok[64];
         snprintf(lbl_inner_ok, sizeof lbl_inner_ok, "Jn%d_dol_ok", uid);
@@ -2279,7 +2279,7 @@ static void emit_jvm_pat_node(EXPR_t *pat,
         }
 
         /* Check named-pattern registry (compile-time pattern variable assignments).
-         * E.g.  P = ('a' | 'b' | 'c')  registers P → E_ALT tree.
+         * E.g.  P = ('a' | 'b' | 'c')  registers P → E_PAT_ALT tree.
          * When we see P in pattern context, inline-expand its stored tree. */
         {
             const NamedPat *np = named_pat_lookup(vname);
@@ -2331,7 +2331,7 @@ static void emit_jvm_pat_node(EXPR_t *pat,
     }
 
     /* ------------------------------------------------------------------ */
-    case E_INDR: {
+    case E_INDIRECT: {
         /* *VAR — indirect pattern reference: evaluate inner expr to get
          * the variable NAME, look up its value, match as literal.
          * The inner expr for *PAT is E_VAR("PAT") — we need its name
@@ -2726,12 +2726,12 @@ static void emit_jvm_stmt(STMT_t *s, int stmt_idx) {
 
     /* Case 1: pure assignment — no pattern */
     if (s->has_eq && s->subject &&
-        (s->subject->kind == E_VAR || s->subject->kind == E_KW) &&
+        (s->subject->kind == E_VAR || s->subject->kind == E_KEYWORD) &&
         !s->pattern) {
 
         const char *subj = s->subject->sval ? s->subject->sval : "";
         int is_output = strcasecmp(subj, "OUTPUT") == 0;
-        int is_kw     = (s->subject->kind == E_KW);
+        int is_kw     = (s->subject->kind == E_KEYWORD);
 
         /* Pre-hoist: if INPUT is nested inside the RHS expression (not direct),
          * read it into local slot 5 now with a null check, before any stack buildup. */
@@ -2917,7 +2917,7 @@ static void emit_jvm_stmt(STMT_t *s, int stmt_idx) {
     }
 
     /* Case 3: indirect assignment — $expr = val */
-    if (s->has_eq && s->subject && s->subject->kind == E_INDR && !s->pattern) {
+    if (s->has_eq && s->subject && s->subject->kind == E_INDIRECT && !s->pattern) {
         /* Evaluate the indirect target name — parser uses unop→children[0];
          * guard nchildren before accessing to avoid OOB read. */
         EXPR_t *indr_operand = (s->subject->nchildren > 1 && s->subject->children[1])
@@ -4329,7 +4329,7 @@ static void parse_proto(const char *proto, FnDef *fn) {
 static const char *flatten_str(EXPR_t *e, char *buf, int bufsz) {
     if (!e) return NULL;
     if (e->kind == E_QLIT) { strncpy(buf, e->sval ? e->sval : "", bufsz-1); return buf; }
-    if (e->kind == E_CONCAT) {
+    if (e->kind == E_CAT) {
         char lb[2048], rb[2048];
         const char *l = flatten_str(e->children[0], lb, sizeof lb);
         const char *r = flatten_str(e->children[1], rb, sizeof rb);

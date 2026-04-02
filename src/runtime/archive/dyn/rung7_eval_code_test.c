@@ -11,7 +11,7 @@
  *   T3: EVAL(\"'hello'\")      → string 'hello'       (quoted string passthrough)
  *   T4: CODE executes stmts  → OUTPUT = 'PASS'       (f13 corpus case)
  *   T5: CODE with goto label → jump works            (:<C> dispatch)
- *   T6: EVAL of concat expr  → string 'ab'           (E_CONCAT path)
+ *   T6: EVAL of concat expr  → string 'ab'           (E_CAT path)
  *
  * Build (from one4all/):
  *   gcc -Wall -Wno-unused-label -Wno-unused-variable -g -O0 \
@@ -228,7 +228,7 @@ static void test_code_output(void) {
     }
 }
 
-/* T5: EVAL of concat '\"a\" \"b\"' → "ab" (E_CONCAT path) */
+/* T5: EVAL of concat '\"a\" \"b\"' → "ab" (E_CAT path) */
 static void test_eval_concat(void) {
     runtime_reset();
     DESCR_t r = eval_expr("\"a\" \"b\"");

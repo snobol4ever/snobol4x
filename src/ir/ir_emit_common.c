@@ -18,7 +18,7 @@
  * Usage pattern (replacing the duplicated right-fold in each emitter):
  *
  *   EXPR_t **fold_nodes = NULL, **fold_kids = NULL;
- *   EXPR_t *root = ir_nary_right_fold(pat, E_SEQ, &fold_nodes, &fold_kids);
+ *   EXPR_t *root = ir_nary_right_fold(pat, E_PAT_SEQ, &fold_nodes, &fold_kids);
  *   int n = pat->nchildren - 1;
  *   // ... emit root ...
  *   ir_nary_right_fold_free(fold_nodes, fold_kids, n);

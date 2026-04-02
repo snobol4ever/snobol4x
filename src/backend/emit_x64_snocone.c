@@ -18,9 +18,9 @@
  *   Program *emit_x64_snocone_compile(const char *source, const char *filename);
  *
  * Operator table (from bconv[] in snocone.sc / snocone.snobol4):
- *   &&  → E_CONCAT (blank concat)
- *   ||  → E_ALT  (pattern alt in pattern ctx; sc_val_alt_to_concat → E_CONCAT in value ctx)
- *   |   → E_ALT  (same as ||)
+ *   &&  → E_CAT (blank concat)
+ *   ||  → E_PAT_ALT  (pattern alt in pattern ctx; sc_val_alt_to_concat → E_CAT in value ctx)
+ *   |   → E_PAT_ALT  (same as ||)
  *   ==  → EQ(a,b)    !=  → NE(a,b)
  *   <   → LT(a,b)    >   → GT(a,b)
  *   <=  → LE(a,b)    >=  → GE(a,b)
@@ -30,12 +30,12 @@
  *   :>=: → LGE      :<=: → LLE
  *   %   → REMDR(a,b)
  *   ^   → E_POW (right-assoc)
- *   .   → E_CAPT_COND    $  → E_CAPT_IMM
- *   unary *  → E_INDR
+ *   .   → E_CAPT_COND_ASGN    $  → E_CAPT_IMMED_ASGN
+ *   unary *  → E_INDIRECT
  *   unary ~  → NOT(x)
  *   unary ?  → DIFFER(x)
- *   &name    → E_KW
- *   @var     → E_CAPT_CUR
+ *   &name    → E_KEYWORD
+ *   @var     → E_CAPT_CURSOR
  *
  * Control-flow lowering (for loop separator note):
  *   Our for uses ; separators: for (init; cond; step)
@@ -143,17 +143,17 @@ static int lower_token(const ScPToken *tok, ExprStack *s,
     }
     case SNOCONE_MINUS:
         if (tok->is_unary) {
-            es_push(s, expr_unary(E_NEG, es_pop(s))); return 0;
+            es_push(s, expr_unary(E_MNS, es_pop(s))); return 0;
         } else {
             EXPR_t *r = es_pop(s), *l = es_pop(s);
             es_push(s, expr_binary(E_SUB, l, r)); return 0;
         }
     case SNOCONE_STAR:
         if (tok->is_unary) {
-            es_push(s, expr_unary(E_INDR, es_pop(s))); return 0;
+            es_push(s, expr_unary(E_INDIRECT, es_pop(s))); return 0;
         } else {
             EXPR_t *r = es_pop(s), *l = es_pop(s);
-            es_push(s, expr_binary(E_MPY, l, r)); return 0;
+            es_push(s, expr_binary(E_MUL, l, r)); return 0;
         }
     case SNOCONE_SLASH: {
         EXPR_t *r = es_pop(s), *l = es_pop(s);
@@ -167,38 +167,38 @@ static int lower_token(const ScPToken *tok, ExprStack *s,
     /* ---- String / pattern composition ---- */
     case SNOCONE_CONCAT: { /* && → blank concat (pattern seq / value concat) */
         EXPR_t *r = es_pop(s), *l = es_pop(s);
-        es_push(s, expr_binary(E_CONCAT, l, r)); return 0;
+        es_push(s, expr_binary(E_CAT, l, r)); return 0;
     }
-    case SNOCONE_PIPE:     /* |  → E_ALT; sc_val_alt_to_concat rewrites to E_CONCAT in value ctx */
-    case SNOCONE_OR: {     /* || → E_ALT; same rewrite in value ctx */
+    case SNOCONE_PIPE:     /* |  → E_PAT_ALT; sc_val_alt_to_concat rewrites to E_CAT in value ctx */
+    case SNOCONE_OR: {     /* || → E_PAT_ALT; same rewrite in value ctx */
         EXPR_t *r = es_pop(s), *l = es_pop(s);
-        es_push(s, expr_binary(E_ALT, l, r)); return 0;
+        es_push(s, expr_binary(E_PAT_ALT, l, r)); return 0;
     }
     case SNOCONE_PERIOD:
         if (tok->is_unary) {
             /* .VAR — unevaluated name reference → DT_N (name descriptor).
-             * Mirrors SNOBOL4 frontend T_DOT → E_CAPT_COND unary path.
-             * emit_x64.c E_CAPT_COND value-context handler (nchildren==1)
+             * Mirrors SNOBOL4 frontend T_DOT → E_CAPT_COND_ASGN unary path.
+             * emit_x64.c E_CAPT_COND_ASGN value-context handler (nchildren==1)
              * emits DT_N(9) + lea varname, which DIFFER/IDENT receive as
              * a name-typed descriptor — correct for IsSpitbol/IsSnobol4. */
-            es_push(s, expr_unary(E_CAPT_COND, es_pop(s))); return 0;
+            es_push(s, expr_unary(E_CAPT_COND_ASGN, es_pop(s))); return 0;
         } else {
             EXPR_t *var = es_pop(s), *expr = es_pop(s);
-            es_push(s, expr_binary(E_CAPT_COND, expr, var)); return 0;
+            es_push(s, expr_binary(E_CAPT_COND_ASGN, expr, var)); return 0;
         }
     case SNOCONE_DOLLAR:
         if (tok->is_unary) {
-            es_push(s, expr_unary(E_INDR, es_pop(s))); return 0;
+            es_push(s, expr_unary(E_INDIRECT, es_pop(s))); return 0;
         } else {
             EXPR_t *var = es_pop(s), *expr = es_pop(s);
-            es_push(s, expr_binary(E_CAPT_IMM, expr, var)); return 0;
+            es_push(s, expr_binary(E_CAPT_IMMED_ASGN, expr, var)); return 0;
         }
     case SNOCONE_AT: {
-        es_push(s, expr_unary(E_CAPT_CUR, es_pop(s))); return 0;
+        es_push(s, expr_unary(E_CAPT_CURSOR, es_pop(s))); return 0;
     }
     case SNOCONE_AMPERSAND: {
         EXPR_t *operand = es_pop(s);
-        EXPR_t *e = expr_new(E_KW);
+        EXPR_t *e = expr_new(E_KEYWORD);
         e->sval = strdup(operand && operand->sval ? operand->sval : "");
         free(operand);
         es_push(s, e); return 0;
@@ -210,9 +210,9 @@ static int lower_token(const ScPToken *tok, ExprStack *s,
         if (tok->is_unary) {
             es_push(s, make_fnc1("DIFFER", es_pop(s)));
         } else {
-            /* binary: subject ? pattern  →  E_MATCH (scan/pattern-match IR node) */
+            /* binary: subject ? pattern  →  E_SCAN (scan/pattern-match IR node) */
             EXPR_t *r = es_pop(s), *l = es_pop(s);
-            es_push(s, expr_binary(E_MATCH, l, r));
+            es_push(s, expr_binary(E_SCAN, l, r));
         }
         return 0;
 
@@ -252,7 +252,7 @@ static int lower_token(const ScPToken *tok, ExprStack *s,
     case SNOCONE_STAR_ASSIGN: {
         EXPR_t *rhs = es_pop(s), *lhs = es_pop(s);
         EXPR_t *lhs2 = expr_new(E_VAR); lhs2->sval = strdup(lhs->sval ? lhs->sval : "");
-        es_push(s, expr_binary(E_ASSIGN, lhs, expr_binary(E_MPY, lhs2, rhs))); return 0;
+        es_push(s, expr_binary(E_ASSIGN, lhs, expr_binary(E_MUL, lhs2, rhs))); return 0;
     }
     case SNOCONE_SLASH_ASSIGN: {
         EXPR_t *rhs = es_pop(s), *lhs = es_pop(s);
@@ -345,24 +345,24 @@ static int lower_token(const ScPToken *tok, ExprStack *s,
     }
 }
 
-/* sc_pat_concat_to_seq — rewrite E_CONCAT → E_SEQ in a pattern tree in-place.
- * Snocone uses && (E_CONCAT) for pattern sequence; the shared emit_x64 pattern
- * emitter only knows E_SEQ.  This rewrite is Snocone-local and does not touch
+/* sc_pat_concat_to_seq — rewrite E_CAT → E_PAT_SEQ in a pattern tree in-place.
+ * Snocone uses && (E_CAT) for pattern sequence; the shared emit_x64 pattern
+ * emitter only knows E_PAT_SEQ.  This rewrite is Snocone-local and does not touch
  * any other frontend's IR. */
 static void sc_pat_concat_to_seq(EXPR_t *e) {
     if (!e) return;
-    if (e->kind == E_CONCAT) e->kind = E_SEQ;
+    if (e->kind == E_CAT) e->kind = E_PAT_SEQ;
     for (int i = 0; i < e->nchildren; i++)
         sc_pat_concat_to_seq(e->children[i]);
 }
 
-/* sc_val_alt_to_concat -- rewrite E_ALT -> E_CONCAT in a value tree in-place.
+/* sc_val_alt_to_concat -- rewrite E_PAT_ALT -> E_CAT in a value tree in-place.
  * Snocone || is dual-use: pattern alternation in pattern context, string
- * concatenation in value context.  Parser always emits E_ALT for ||;
- * this rewrite fixes value subtrees so emit_x64 sees E_CONCAT. */
+ * concatenation in value context.  Parser always emits E_PAT_ALT for ||;
+ * this rewrite fixes value subtrees so emit_x64 sees E_CAT. */
 static void sc_val_alt_to_concat(EXPR_t *e) {
     if (!e) return;
-    if (e->kind == E_ALT) e->kind = E_CONCAT;
+    if (e->kind == E_PAT_ALT) e->kind = E_CAT;
     for (int i = 0; i < e->nchildren; i++)
         sc_val_alt_to_concat(e->children[i]);
 }
@@ -380,7 +380,7 @@ static STMT_t *assemble_stmt(ExprStack *s, int lineno) {
         free(top);
         /* X ? pat = repl  lowers to ASSIGN(MATCH(X, pat), repl).
          * Unwrap so subject/pattern/replacement are set correctly. */
-        if (lhs && lhs->kind == E_MATCH) {
+        if (lhs && lhs->kind == E_SCAN) {
             st->subject     = expr_left(lhs);
             st->pattern     = expr_right(lhs);
             sc_pat_concat_to_seq(st->pattern);
@@ -395,7 +395,7 @@ static STMT_t *assemble_stmt(ExprStack *s, int lineno) {
             sc_val_alt_to_concat(st->subject);     /* || in subject expr = string concat */
             st->has_eq      = 1;
         }
-    } else if (top->kind == E_MATCH) {
+    } else if (top->kind == E_SCAN) {
         /* X ? pat  (no replacement) — unwrap into subject + pattern */
         es_pop(s);
         st->subject = expr_left(top);
