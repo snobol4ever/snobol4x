@@ -271,9 +271,14 @@ static DESCR_t call_user_function(const char *fname, DESCR_t *args, int nargs)
                         succeeded = 1;
                     }
                 } else if (s->has_eq && s->subject && s->subject->kind == E_INDR) {
-                    DESCR_t name_d = interp_eval(
-                        s->subject->nchildren > 0 ? s->subject->children[0] : NULL);
-                    const char *nm = VARVAL_fn(name_d);
+                    EXPR_t *ichild = s->subject->nchildren > 0 ? s->subject->children[0] : NULL;
+                    const char *nm = NULL;
+                    if (ichild && ichild->kind == E_CAPT_COND && ichild->nchildren == 1
+                            && ichild->children[0]->kind == E_VAR && ichild->children[0]->sval)
+                        nm = ichild->children[0]->sval;
+                    else if (ichild) { DESCR_t nd = interp_eval(ichild); nm = VARVAL_fn(nd); }
+                    DESCR_t name_d = nm ? STRVAL((char*)nm) : NULVCL;
+                    nm = VARVAL_fn(name_d);
                     if (!nm || !*nm) { succeeded = 0; }
                     else {
                         DESCR_t repl_val = s->replacement ? interp_eval(s->replacement) : NULVCL;
@@ -446,8 +451,12 @@ static DESCR_t interp_eval(EXPR_t *e)
         if (lv && lv->kind == E_VAR && lv->sval)
             NV_SET_fn(lv->sval, val);
         else if (lv && lv->kind == E_INDR && lv->nchildren > 0) {
-            DESCR_t nd = interp_eval(lv->children[0]);
-            const char *nm = VARVAL_fn(nd);
+            EXPR_t *ichild = lv->children[0];
+            const char *nm = NULL;
+            if (ichild->kind == E_CAPT_COND && ichild->nchildren == 1
+                    && ichild->children[0]->kind == E_VAR && ichild->children[0]->sval)
+                nm = ichild->children[0]->sval;
+            else { DESCR_t nd = interp_eval(ichild); nm = VARVAL_fn(nd); }
             if (nm && *nm) NV_SET_fn(nm, val);
         }
         return val;
@@ -455,7 +464,47 @@ static DESCR_t interp_eval(EXPR_t *e)
 
     case E_INDR: {
         if (e->nchildren < 1) return FAILDESCR;
-        DESCR_t nd = interp_eval(e->children[0]);
+        EXPR_t *child = e->children[0];
+        /* $.var and $.var<idx> both parse as E_INDR(E_CAPT_COND(inner))
+         * with nchildren==1 (unary dot).
+         *
+         * Semantics confirmed from emitted x86 (.s oracle):
+         *   $.var      => NV_GET_fn("var")             (same as $'var')
+         *   $.var<idx> => subscript( NV_GET_fn("var"), idx )
+         *
+         * The unary dot uses the identifier name literally — not its value.
+         * When the inner expr under the dot is E_IDX(E_VAR"name", idx...),
+         * we resolve the variable by name then apply the subscript. */
+        if (child->kind == E_CAPT_COND && child->nchildren == 1) {
+            EXPR_t *inner = child->children[0];
+            /* $.var<idx> case: dot child is E_IDX whose base is E_VAR */
+            if (inner->kind == E_IDX && inner->nchildren >= 2
+                    && inner->children[0]->kind == E_VAR
+                    && inner->children[0]->sval) {
+                const char *nm = inner->children[0]->sval;
+                DESCR_t base = NV_GET_fn(nm);
+                if (IS_FAIL_fn(base)) return FAILDESCR;
+                if (inner->nchildren == 2) {
+                    DESCR_t idx = interp_eval(inner->children[1]);
+                    if (IS_FAIL_fn(idx)) return FAILDESCR;
+                    return subscript_get(base, idx);
+                }
+                DESCR_t i1 = interp_eval(inner->children[1]);
+                DESCR_t i2 = interp_eval(inner->children[2]);
+                if (IS_FAIL_fn(i1) || IS_FAIL_fn(i2)) return FAILDESCR;
+                return subscript_get2(base, i1, i2);
+            }
+            /* $.var case: dot child is plain E_VAR */
+            if (inner->kind == E_VAR && inner->sval)
+                return NV_GET_fn(inner->sval);
+            /* fallback: evaluate inner directly */
+            DESCR_t nd = interp_eval(inner);
+            const char *nm2 = VARVAL_fn(nd);
+            if (!nm2 || !*nm2) return NULVCL;
+            return NV_GET_fn(nm2);
+        }
+        /* $expr — indirect through runtime string value */
+        DESCR_t nd = interp_eval(child);
         const char *nm = VARVAL_fn(nd);
         if (!nm || !*nm) return NULVCL;
         return NV_GET_fn(nm);
