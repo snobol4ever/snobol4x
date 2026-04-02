@@ -1,5 +1,3 @@
-package snobol4.runtime.boxes;
-
 /**
  * BbBreakx.java — BREAKX: like BRK but fails on zero advance
  * Port of bb_breakx.c / bb_breakx.s
@@ -9,7 +7,7 @@ package snobol4.runtime.boxes;
  *              BREAKX=spec(Σ+Δ,δ); Δ+=δ;       goto BREAKX_γ;
  *   BREAKX_β:  Δ-=δ;                            goto BREAKX_ω;
  */
-public class BbBreakx extends BbBox {
+class BbBreakx extends BbBox {
     private final String chars;
     private int          delta;
 

@@ -1,5 +1,3 @@
-package snobol4.runtime.boxes;
-
 /**
  * BbBox.java — JVM Byrd Box Runtime
  *
@@ -15,7 +13,7 @@ package snobol4.runtime.boxes;
  *
  * Canonical three-column layout preserved in comments for each box.
  */
-public abstract class BbBox {
+abstract class BbBox {
 
     /* ── Entry port constants (mirrors bb_box.h α=0, β=1) ─────────────── */
     public static final int ALPHA = 0;

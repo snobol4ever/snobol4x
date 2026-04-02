@@ -1,5 +1,3 @@
-package snobol4.runtime.boxes;
-
 /**
  * BbDvar.java — DVAR: *VAR — re-resolve live variable value on every α
  * Port of bb_dvar.c / bb_dvar.s
@@ -13,7 +11,7 @@ package snobol4.runtime.boxes;
  *            DVAR = child(α);  if empty → DVAR_ω;  else → DVAR_γ;
  *   DVAR_β:  DVAR = child(β);  if empty → DVAR_ω;  else → DVAR_γ;
  */
-public class BbDvar extends BbBox {
+class BbDvar extends BbBox {
 
     /** Callback to resolve variable → current BbBox (handles DT_P and DT_S) */
     public interface BoxResolver {

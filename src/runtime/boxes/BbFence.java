@@ -1,5 +1,3 @@
-package snobol4.runtime.boxes;
-
 /**
  * BbFence.java — FENCE: succeed once; β cuts (no retry)
  * Port of bb_fence.c / bb_fence.s
@@ -9,7 +7,7 @@ package snobol4.runtime.boxes;
  *   FENCE_γ:  return spec(Σ+Δ,0);
  *   FENCE_ω:  return spec_empty;
  */
-public class BbFence extends BbBox {
+class BbFence extends BbBox {
 
     public BbFence(MatchState ms) { super(ms); }
 

@@ -1,5 +1,3 @@
-package snobol4.runtime.boxes;
-
 /**
  * BbInterr.java — INTERR: ?X — succeed zero-width if X succeeds; ω if X fails
  * Port of bb_interr.c / bb_interr.s
@@ -14,7 +12,7 @@ package snobol4.runtime.boxes;
  *   INT_γ:  return spec(Σ+Δ,0);
  *   INT_ω:  return spec_empty;
  */
-public class BbInterr extends BbBox {
+class BbInterr extends BbBox {
     private final BbBox child;
     private int         start;
 

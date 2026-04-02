@@ -1,5 +1,3 @@
-package snobol4.runtime.boxes;
-
 /**
  * BbBrk.java — BRK (BREAK): scan to first char in set (zero-width possible)
  * Port of bb_brk.c / bb_brk.s
@@ -9,7 +7,7 @@ package snobol4.runtime.boxes;
  *           BRK=spec(Σ+Δ,δ); Δ+=δ;     goto BRK_γ;
  *   BRK_β:  Δ-=δ;                       goto BRK_ω;
  */
-public class BbBrk extends BbBox {
+class BbBrk extends BbBox {
     private final String chars;
     private int          delta;
 

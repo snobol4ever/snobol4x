@@ -1,5 +1,3 @@
-package snobol4.runtime.boxes;
-
 /**
  * BbArb.java — ARB: match 0..n chars lazily; β extends by 1
  * Port of bb_arb.c / bb_arb.s
@@ -11,7 +9,7 @@ package snobol4.runtime.boxes;
  *   ARB_γ:                                              return ARB;
  *   ARB_ω:                                              return spec_empty;
  */
-public class BbArb extends BbBox {
+class BbArb extends BbBox {
     private int count;
     private int start;
 

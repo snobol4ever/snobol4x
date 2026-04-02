@@ -1,5 +1,3 @@
-package snobol4.runtime.boxes;
-
 /**
  * BbLen.java — LEN: match exactly n characters
  * Port of bb_len.c / bb_len.s
@@ -8,7 +6,7 @@ package snobol4.runtime.boxes;
  *           LEN=spec(Σ+Δ,n); Δ+=n;  goto LEN_γ;
  *   LEN_β:  Δ-=n;                   goto LEN_ω;
  */
-public class BbLen extends BbBox {
+class BbLen extends BbBox {
     private final int n;
 
     public BbLen(MatchState ms, int n) { super(ms); this.n=n; }

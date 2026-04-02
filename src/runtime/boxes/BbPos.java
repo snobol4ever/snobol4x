@@ -1,5 +1,3 @@
-package snobol4.runtime.boxes;
-
 /**
  * BbPos.java — POS: assert cursor == n (zero-width)
  * Port of bb_pos.c / bb_pos.s
@@ -8,7 +6,7 @@ package snobol4.runtime.boxes;
  *           POS=spec(Σ+Δ,0); goto POS_γ;
  *   POS_β:                   goto POS_ω;
  */
-public class BbPos extends BbBox {
+class BbPos extends BbBox {
     private final int n;
 
     public BbPos(MatchState ms, int n) { super(ms); this.n=n; }

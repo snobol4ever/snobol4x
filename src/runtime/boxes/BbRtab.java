@@ -1,5 +1,3 @@
-package snobol4.runtime.boxes;
-
 /**
  * BbRtab.java — RTAB: advance cursor TO position Ω-n
  * Port of bb_rtab.c / bb_rtab.s
@@ -8,7 +6,7 @@ package snobol4.runtime.boxes;
  *            advance=(Ω-n)-Δ; RTAB=spec(Σ+Δ,advance); Δ=Ω-n;  goto RTAB_γ;
  *   RTAB_β:  Δ -= advance;                              goto RTAB_ω;
  */
-public class BbRtab extends BbBox {
+class BbRtab extends BbBox {
     private final int n;
     private int       advance;
 

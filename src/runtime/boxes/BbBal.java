@@ -1,5 +1,3 @@
-package snobol4.runtime.boxes;
-
 /**
  * BbBal.java — BAL: match a balanced parenthesised string
  *
@@ -19,7 +17,7 @@ package snobol4.runtime.boxes;
  *           goto BAL_ω;
  *   BAL_β:  Δ -= len;  goto BAL_ω;
  */
-public class BbBal extends BbBox {
+class BbBal extends BbBox {
     private int len;   /* saved match length for β restore */
 
     public BbBal(MatchState ms) { super(ms); }

@@ -1,5 +1,3 @@
-package snobol4.runtime.boxes;
-
 /**
  * BbNotany.java — NOTANY: match one char if NOT in set
  * Port of bb_notany.c / bb_notany.s
@@ -8,7 +6,7 @@ package snobol4.runtime.boxes;
  *              NOTANY=spec(Σ+Δ,1); Δ++;               goto NOTANY_γ;
  *   NOTANY_β:  Δ--;                                   goto NOTANY_ω;
  */
-public class BbNotany extends BbBox {
+class BbNotany extends BbBox {
     private final String chars;
 
     public BbNotany(MatchState ms, String chars) { super(ms); this.chars=chars; }

@@ -1,5 +1,3 @@
-package snobol4.runtime.boxes;
-
 /**
  * BbSpan.java — SPAN: longest prefix of chars in set (≥1 char required)
  * Port of bb_span.c / bb_span.s
@@ -9,7 +7,7 @@ package snobol4.runtime.boxes;
  *            SPAN=spec(Σ+Δ,δ); Δ+=δ;     goto SPAN_γ;
  *   SPAN_β:  Δ-=δ;                        goto SPAN_ω;
  */
-public class BbSpan extends BbBox {
+class BbSpan extends BbBox {
     private final String chars;
     private int          delta;   /* saved match length */
 

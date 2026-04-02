@@ -1,5 +1,3 @@
-package snobol4.runtime.boxes;
-
 /**
  * BbNot.java — NOT: \X — succeed iff X fails; β always ω
  * Port of bb_not.c / bb_not.s
@@ -15,7 +13,7 @@ package snobol4.runtime.boxes;
  *   NOT_γ:  return spec(Σ+Δ,0);
  *   NOT_ω:  return spec_empty;
  */
-public class BbNot extends BbBox {
+class BbNot extends BbBox {
     private final BbBox child;
     private int         start;
 

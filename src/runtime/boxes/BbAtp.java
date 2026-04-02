@@ -1,5 +1,3 @@
-package snobol4.runtime.boxes;
-
 /**
  * BbAtp.java — ATP: @var — write cursor position Δ as integer into varname
  * Port of bb_atp.c / bb_atp.s
@@ -8,7 +6,7 @@ package snobol4.runtime.boxes;
  *           ATP=spec(Σ+Δ,0);                    goto ATP_γ;
  *   ATP_β:                                      goto ATP_ω;
  */
-public class BbAtp extends BbBox {
+class BbAtp extends BbBox {
 
     public interface IntSetter { void set(String varname, int value); }
 

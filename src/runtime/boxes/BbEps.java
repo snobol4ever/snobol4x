@@ -1,5 +1,3 @@
-package snobol4.runtime.boxes;
-
 /**
  * BbEps.java — EPS: zero-width success once; done flag prevents double-γ
  * Port of bb_eps.c / bb_eps.s
@@ -8,7 +6,7 @@ package snobol4.runtime.boxes;
  *           done=1; EPS=spec(Σ+Δ,0); goto EPS_γ;
  *   EPS_β:                    goto EPS_ω;
  */
-public class BbEps extends BbBox {
+class BbEps extends BbBox {
     private boolean done;
 
     public BbEps(MatchState ms) { super(ms); }

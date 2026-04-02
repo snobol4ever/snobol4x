@@ -1,5 +1,3 @@
-package snobol4.runtime.boxes;
-
 import java.util.ArrayList;
 import java.util.List;
 
@@ -25,7 +23,7 @@ import java.util.List;
  *
  * Returns SUCCESS (true → :S branch) or FAILURE (false → :F branch).
  */
-public class BbExecutor {
+class BbExecutor {
 
     public interface VarStore {
         String get(String name);

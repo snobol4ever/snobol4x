@@ -1,5 +1,3 @@
-package snobol4.runtime.boxes;
-
 /**
  * BbSeq.java — SEQ: concatenation; left then right; β retries right then left
  * Port of bb_seq.c / bb_seq.s
@@ -16,7 +14,7 @@ package snobol4.runtime.boxes;
  *   SEQ_γ:                                         return SEQ;
  *   SEQ_ω:                                         return spec_empty;
  */
-public class BbSeq extends BbBox {
+class BbSeq extends BbBox {
     private final BbBox left, right;
     private int matchedStart, matchedLen;  /* accumulated span */
 

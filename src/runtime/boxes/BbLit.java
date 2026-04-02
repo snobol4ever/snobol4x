@@ -1,5 +1,3 @@
-package snobol4.runtime.boxes;
-
 /**
  * BbLit.java — LIT: literal string match
  * Port of bb_lit.c / bb_lit.s
@@ -12,7 +10,7 @@ package snobol4.runtime.boxes;
  *   LIT_γ:                                       return LIT;
  *   LIT_ω:                                       return spec_empty;
  */
-public class BbLit extends BbBox {
+class BbLit extends BbBox {
     private final String lit;
     private final int    len;
 

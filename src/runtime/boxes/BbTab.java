@@ -1,5 +1,3 @@
-package snobol4.runtime.boxes;
-
 /**
  * BbTab.java — TAB: advance cursor TO absolute position n
  * Port of bb_tab.c / bb_tab.s
@@ -8,7 +6,7 @@ package snobol4.runtime.boxes;
  *           advance=n-Δ; TAB=spec(Σ+Δ,advance); Δ=n;  goto TAB_γ;
  *   TAB_β:  Δ -= advance;                   goto TAB_ω;
  */
-public class BbTab extends BbBox {
+class BbTab extends BbBox {
     private final int n;
     private int       advance;
 

@@ -1,5 +1,3 @@
-package snobol4.runtime.boxes;
-
 /**
  * BbCapture.java — CAPTURE: wrap child; $ writes on every γ; . buffers for Phase-5 commit
  * Port of bb_capture.c / bb_capture.s
@@ -14,7 +12,7 @@ package snobol4.runtime.boxes;
  * The executor calls commitPending() after overall match success to flush
  * deferred (.) captures — mirroring match.clj commit-pending! and stmt_exec.c.
  */
-public class BbCapture extends BbBox {
+class BbCapture extends BbBox {
 
     /** Callback interface for variable assignment (NV_SET_fn equivalent) */
     public interface VarSetter {

@@ -1,5 +1,3 @@
-package snobol4.runtime.boxes;
-
 /**
  * BbAbort.java — ABORT: always ω on both ports — force match failure entirely
  * Port of bb_abort.c / bb_abort.s
@@ -8,7 +6,7 @@ package snobol4.runtime.boxes;
  * abandon the entire match and take the :F branch immediately.
  * The executor checks for this via the AbortException.
  */
-public class BbAbort extends BbBox {
+class BbAbort extends BbBox {
 
     /** Thrown by BbAbort to signal immediate match termination */
     public static final class AbortException extends RuntimeException {

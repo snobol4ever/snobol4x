@@ -1,5 +1,3 @@
-package snobol4.runtime.boxes;
-
 /**
  * BbRpos.java — RPOS: assert cursor == Ω-n (zero-width)
  * Port of bb_rpos.c / bb_rpos.s
@@ -8,7 +6,7 @@ package snobol4.runtime.boxes;
  *            RPOS=spec(Σ+Δ,0); goto RPOS_γ;
  *   RPOS_β:                    goto RPOS_ω;
  */
-public class BbRpos extends BbBox {
+class BbRpos extends BbBox {
     private final int n;
 
     public BbRpos(MatchState ms, int n) { super(ms); this.n=n; }

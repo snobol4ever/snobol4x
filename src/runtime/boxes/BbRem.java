@@ -1,5 +1,3 @@
-package snobol4.runtime.boxes;
-
 /**
  * BbRem.java — REM: match entire remainder; no backtrack
  * Port of bb_rem.c / bb_rem.s
@@ -7,7 +5,7 @@ package snobol4.runtime.boxes;
  *   REM_α:  REM=spec(Σ+Δ, Ω-Δ); Δ=Ω;  goto REM_γ;
  *   REM_β:                              goto REM_ω;
  */
-public class BbRem extends BbBox {
+class BbRem extends BbBox {
 
     public BbRem(MatchState ms) { super(ms); }
 

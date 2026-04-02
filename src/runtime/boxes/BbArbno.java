@@ -1,5 +1,3 @@
-package snobol4.runtime.boxes;
-
 /**
  * BbArbno.java — ARBNO: zero-or-more greedy; zero-advance guard; β unwinds stack
  * Port of bb_arbno.c / bb_arbno.s
@@ -18,7 +16,7 @@ package snobol4.runtime.boxes;
  *   ARBNO_γ:                                       return ARBNO;
  *   ARBNO_ω:                                       return spec_empty;
  */
-public class BbArbno extends BbBox {
+class BbArbno extends BbBox {
     private static final int MAX_DEPTH = 64;
 
     private final BbBox body;

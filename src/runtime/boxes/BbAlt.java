@@ -1,5 +1,3 @@
-package snobol4.runtime.boxes;
-
 /**
  * BbAlt.java — ALT: alternation; try each child on α; β retries same child
  * Port of bb_alt.c / bb_alt.s
@@ -18,7 +16,7 @@ package snobol4.runtime.boxes;
  *   ALT_γ:                                             return result;
  *   ALT_ω:                                             return spec_empty;
  */
-public class BbAlt extends BbBox {
+class BbAlt extends BbBox {
     private final BbBox[] children;
     private final int     n;
     private int           current;   /* 1-based index of active child */
