@@ -294,7 +294,19 @@ static DESCR_t call_user_function(const char *fname, DESCR_t *args, int nargs)
                 } else if (s->has_eq && subj_name) {
                     DESCR_t repl_val = s->replacement ? interp_eval(s->replacement) : NULVCL;
                     if (IS_FAIL_fn(repl_val)) succeeded = 0;
-                    else { NV_SET_fn(subj_name, repl_val); succeeded = 1; }
+                    else {
+                        /* NRETURN lvalue write-through: subj_name may be a zero-param
+                         * user fn returning DT_N (name ref). Only check when not already
+                         * inside a function body (call_depth==0) to avoid re-entrant
+                         * assignment during body execution (e.g. "ref_a = .a" in body). */
+                        if (call_depth == 0 && FNCEX_fn(subj_name)
+                                && FUNC_NPARAMS_fn(subj_name) == 0) {
+                            DESCR_t fres = call_user_function(subj_name, NULL, 0);
+                            if (fres.v == DT_N && fres.s && *fres.s) {
+                                NV_SET_fn(fres.s, repl_val); succeeded = 1;
+                            } else { NV_SET_fn(subj_name, repl_val); succeeded = 1; }
+                        } else { NV_SET_fn(subj_name, repl_val); succeeded = 1; }
+                    }
                 } else if (s->has_eq && s->subject && s->subject->kind == E_KEYWORD && s->subject->sval) {
                     DESCR_t repl_val = s->replacement ? interp_eval(s->replacement) : NULVCL;
                     if (IS_FAIL_fn(repl_val)) succeeded = 0;
