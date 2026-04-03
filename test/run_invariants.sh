@@ -43,6 +43,28 @@ for arg in "$@"; do
   [[ "$arg" == "--verbose" ]] && VERBOSE=1
 done
 
+# ── BACKEND filter ─────────────────────────────────────────────────────────────
+# Set BACKEND=jvm to run only JVM cells (skip x86, nasm, libgc entirely).
+# Set BACKEND=x64 to run only x86 cells.  Default "all" runs everything.
+# This matches the SESSION_SETUP.sh BACKEND= convention.
+BACKEND="${BACKEND:-all}"
+_backend_wants() {
+  # _backend_wants x64  → true if BACKEND is all or x64
+  [[ "$BACKEND" == "all" || "$BACKEND" == "$1" ]]
+}
+# Derive which cells are active from BACKEND when no explicit cell args given.
+# Explicit cell args always take priority (existing behaviour).
+if [[ -z "${*:-}" && "$BACKEND" != "all" ]]; then
+  case "$BACKEND" in
+    jvm)  set -- snobol4_jvm icon_jvm prolog_jvm ;;
+    x64)  set -- snobol4_x86 icon_x86 prolog_x86 snocone_x86 ;;
+    net)  set -- snobol4_net ;;
+    wasm) set -- snobol4_wasm icon_wasm prolog_wasm ;;
+    js)   set -- snobol4_js ;;
+  esac
+  echo -e "${YELLOW}INFO${RESET}  BACKEND=${BACKEND} → running cells: $*"
+fi
+
 GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[0;33m'
 BOLD='\033[1m'; RESET='\033[0m'
 
@@ -65,7 +87,10 @@ _need "scrip-cc"    "$([[ -x "$SCRIP_CC" && -s "$SCRIP_CC" ]] && echo 1 || echo 
 _cells_arg="$*"
 _needs_x86=0; _needs_jvm=0; _needs_wasm=0
 if [[ -z "$_cells_arg" ]]; then
-  _needs_x86=1; _needs_jvm=1
+  _backend_wants x64  && _needs_x86=1
+  _backend_wants jvm  && _needs_jvm=1
+  _backend_wants wasm && _needs_wasm=1
+  [[ "$BACKEND" == "all" ]] && { _needs_x86=1; _needs_jvm=1; }
 else
   echo "$_cells_arg" | grep -qE '(x86|x64|net)' && _needs_x86=1
   echo "$_cells_arg" | grep -qE 'jvm'            && _needs_jvm=1
