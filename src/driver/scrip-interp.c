@@ -172,6 +172,21 @@ static void prescan_defines(Program *prog)
 /* ── call_user_function — forward decl (needs interp_eval, declared below) ── */
 static DESCR_t interp_eval(EXPR_t *e);  /* forward */
 
+/* DYN-54: returns 1 if expr tree contains any pattern-only node.
+ * Mirrors is_pat() in snobol4.y but accessible at eval time. */
+static int _expr_is_pat(EXPR_t *e) {
+    if (!e) return 0;
+    switch (e->kind) {
+        case E_ARB: case E_ARBNO: case E_CAPT_COND_ASGN:
+        case E_CAPT_IMMED_ASGN: case E_CAPT_CURSOR: case E_DEFER:
+            return 1;
+        default: break;
+    }
+    for (int i = 0; i < e->nchildren; i++)
+        if (_expr_is_pat(e->children[i])) return 1;
+    return 0;
+}
+
 static DESCR_t call_user_function(const char *fname, DESCR_t *args, int nargs)
 {
     if (call_depth >= CALL_STACK_MAX) return FAILDESCR;
@@ -550,13 +565,24 @@ static DESCR_t interp_eval(EXPR_t *e)
     case E_CAT:
     case E_SEQ: {
         if (e->nchildren == 0) return NULVCL;
+        /* DYN-54 fix: if any child is pattern-bearing, use pat_cat chain
+         * instead of string CONCAT_fn.  E_CAT is always string context;
+         * E_SEQ may be pattern context when it contains captures/ARB/etc. */
+        int pat_ctx = (e->kind == E_SEQ) && _expr_is_pat(e);
+                e->nchildren, pat_ctx,
+                e->nchildren>0?e->children[0]->kind:-1,
+                e->nchildren>1?e->children[1]->kind:-1);
         DESCR_t acc = interp_eval(e->children[0]);
         if (IS_FAIL_fn(acc)) return FAILDESCR;
         for (int i = 1; i < e->nchildren; i++) {
             DESCR_t nxt = interp_eval(e->children[i]);
             if (IS_FAIL_fn(nxt)) return FAILDESCR;
-            acc = CONCAT_fn(acc, nxt);
-            if (IS_FAIL_fn(acc)) return FAILDESCR;
+            if (pat_ctx) {
+                acc = pat_cat(acc, nxt);
+            } else {
+                acc = CONCAT_fn(acc, nxt);
+                if (IS_FAIL_fn(acc)) return FAILDESCR;
+            }
         }
         return acc;
     }
