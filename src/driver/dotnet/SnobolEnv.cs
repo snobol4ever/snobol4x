@@ -30,7 +30,23 @@ public sealed class SnobolVal
 
     public static SnobolVal Of(string s) => new(DType.String, s, 0, 0.0);
     public static SnobolVal Of(long   i) => new(DType.Int,    i.ToString(), i, 0.0);
-    public static SnobolVal Of(double r) => new(DType.Real,   r.ToString(), 0, r);
+    public static SnobolVal Of(double r)
+    {
+        // SNOBOL4 real format: strip trailing zeros after decimal, keep point
+        // 1.0 → "1."   0.5 → ".5"   1.5 → "1.5"   0.0 → "0."
+        string s = r.ToString("G", System.Globalization.CultureInfo.InvariantCulture);
+        // If no decimal point, it's been formatted as integer-like — add point
+        if (!s.Contains('.') && !s.Contains('E') && !s.Contains('e'))
+            s += ".";
+        // Strip trailing zeros after decimal (but keep the point itself)
+        if (s.Contains('.'))
+        {
+            s = s.TrimEnd('0');
+            if (s.EndsWith('.')) { /* keep trailing dot */ }
+        }
+        // "0." edge case
+        return new(DType.Real, s, 0, r);
+    }
 
     public override string ToString() => Type switch
     {
@@ -132,7 +148,9 @@ public sealed class SnobolEnv
             "ORD"     => args.Length >= 1 && args[0].ToString().Length > 0 ? SnobolVal.Of((long)args[0].ToString()[0]) : SnobolVal.Fail,
             "REVERSE" => args.Length >= 1 ? SnobolVal.Of(new string(args[0].ToString().Reverse().ToArray())) : SnobolVal.Null,
             "UPPER"   => args.Length >= 1 ? SnobolVal.Of(args[0].ToString().ToUpperInvariant()) : SnobolVal.Null,
+            "UCASE"   => args.Length >= 1 ? SnobolVal.Of(args[0].ToString().ToUpperInvariant()) : SnobolVal.Null,
             "LOWER"   => args.Length >= 1 ? SnobolVal.Of(args[0].ToString().ToLowerInvariant()) : SnobolVal.Null,
+            "LCASE"   => args.Length >= 1 ? SnobolVal.Of(args[0].ToString().ToLowerInvariant()) : SnobolVal.Null,
             "ARRAY"   => SnobolVal.Null,  // stub — arrays need SnobolArray type (future)
             "TABLE"   => SnobolVal.Null,  // stub
             "PROTOTYPE" => args.Length >= 1 ? SnobolVal.Of(args[0].Type.ToString().ToUpperInvariant()) : SnobolVal.Fail,

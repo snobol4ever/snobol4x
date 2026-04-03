@@ -1,13 +1,10 @@
-// PatternBuilder.cs — Walks a scrip-interp Node AST → IByrdBox graph
+// PatternBuilder.cs — Walks IrNode pattern subtree → IByrdBox graph
 //
-// Mirrors ByrdBoxFactory.cs (src/runtime/boxes/shared/bb_factory.cs) but
-// takes our Pidgin-produced Node tree instead of the snobol4dotnet Pattern hierarchy.
-//
-// Variable access is injected via delegates so boxes can write/read
-// SnobolEnv without a hard dependency.
+// Dispatches on IrKind (not bespoke Node records).
+// Mirrors ByrdBoxFactory.cs but takes IrNode trees from Snobol4Parser.
 //
 // AUTHORS: Lon Jones Cherryholmes · Claude Sonnet 4.6
-// SPRINT:  M-NET-INTERP-A01
+// SPRINT:  M-NET-INTERP-A01b
 
 using Snobol4.Runtime.Boxes;
 
@@ -18,9 +15,8 @@ public sealed class PatternBuilder
     private readonly Action<string, string>   _setVar;
     private readonly Func<string, string>     _getStringVar;
     private readonly Func<string, IByrdBox?>  _getPatternVar;
-    private readonly Func<Node, SnobolVal>    _evalNode;
+    private readonly Func<IrNode, SnobolVal>  _evalNode;
 
-    // Pending .var captures — committed by Executor on :S (Phase 5)
     private readonly List<BbCapture> _captures = new();
     public IReadOnlyList<BbCapture> Captures => _captures;
 
@@ -28,7 +24,7 @@ public sealed class PatternBuilder
         Action<string, string>   setVar,
         Func<string, string>     getStringVar,
         Func<string, IByrdBox?>  getPatternVar,
-        Func<Node, SnobolVal>    evalNode)
+        Func<IrNode, SnobolVal>  evalNode)
     {
         _setVar        = setVar;
         _getStringVar  = getStringVar;
@@ -38,7 +34,7 @@ public sealed class PatternBuilder
 
     // ── Entry point ──────────────────────────────────────────────────────────
 
-    public IByrdBox Build(Node n)
+    public IByrdBox Build(IrNode n)
     {
         _captures.Clear();
         return BuildNode(n);
@@ -46,61 +42,97 @@ public sealed class PatternBuilder
 
     // ── Recursive builder ────────────────────────────────────────────────────
 
-    private IByrdBox BuildNode(Node n) => n switch
+    private IByrdBox BuildNode(IrNode n)
     {
-        // Structural
-        Alt(var l, var r)   => BuildAlt(l, r),
-        Cat(var l, var r)   => BuildSeq(l, r),
-        Seq(var l, var r)   => BuildSeq(l, r),
+        return n.Kind switch
+        {
+            // Structural
+            IrKind.E_ALT  => BuildAlt(n),
+            IrKind.E_SEQ  => BuildSeq(n),
+            IrKind.E_CAT  => BuildSeq(n),   // CAT in pattern context = sequence
 
-        // Literals — build a BbLit from the string value
-        SLit(var v)         => new BbLit(v),
-        NLit(var v)         => new BbLit(v),   // numeric literal used as pattern → match text
+            // Literals
+            IrKind.E_QLIT => new BbLit(n.SVal ?? ""),
+            IrKind.E_ILIT => new BbLit(n.IVal.ToString()),
+            IrKind.E_FLIT => new BbLit(n.DVal.ToString()),
 
-        // Captures
-        CaptCond(var inner, var vname) => BuildCaptureCond(inner, vname),
-        CaptImm(var inner, var vname)  => BuildCaptureImm(inner, vname),
-        CaptCursor(var vname)          => new BbAtp(vname) { SetVar = _setVar },
-        DeferredPat(var inner)         => BuildDeferred(inner),
+            // Captures
+            IrKind.E_CAPT_COND_ASGN  => BuildCaptureCond(n),
+            IrKind.E_CAPT_IMMED_ASGN => BuildCaptureImm(n),
+            IrKind.E_CAPT_CURSOR      => BuildCaptCursor(n),
 
-        // Variable — look up at build time as string (literal match) or
-        // deferred pattern variable; if it names a pattern var → use it
-        Var(var name)       => BuildVar(name),
+            // Deferred pattern
+            IrKind.E_DEFER => BuildDeferred(n),
 
-        // Function calls that map to named pattern builtins
-        FncCall(var name, var args) => BuildFncPattern(name, args),
+            // Variable — resolve at build time
+            IrKind.E_VAR  => BuildVar(n.SVal!),
 
-        // Indirect $expr — resolve to string at build time
-        IndirectRef(var inner) => BuildIndirect(inner),
+            // Indirect $expr
+            IrKind.E_INDIRECT => BuildIndirect(n),
 
-        _ => new BbLit("")   // safe fallback
-    };
+            // Nullary pattern primitives
+            IrKind.E_ARB     => new BbArb(),
+            IrKind.E_REM     => new BbRem(),
+            IrKind.E_FAIL    => new BbFail(),
+            IrKind.E_SUCCEED => new BbSucceed(),
+            IrKind.E_FENCE   => new BbFence(),
+            IrKind.E_ABORT   => new BbAbort(),
+            IrKind.E_BAL     => new BbBal(),
+
+            // Unary pattern primitives — arg in Children[0]
+            IrKind.E_ANY     => new BbAny(StrArg(n, 0)),
+            IrKind.E_NOTANY  => new BbNotany(StrArg(n, 0)),
+            IrKind.E_SPAN    => new BbSpan(StrArg(n, 0)),
+            IrKind.E_BREAK   => new BbBrk(StrArg(n, 0)),
+            IrKind.E_BREAKX  => new BbBreakx(StrArg(n, 0)),
+            IrKind.E_LEN     => new BbLen(IntArg(n, 0)),
+            IrKind.E_TAB     => new BbTab(IntArg(n, 0)),
+            IrKind.E_RTAB    => new BbRtab(IntArg(n, 0)),
+            IrKind.E_POS     => new BbPos(IntArg(n, 0)),
+            IrKind.E_RPOS    => new BbRpos(IntArg(n, 0)),
+            IrKind.E_ARBNO   => n.Children.Length >= 1
+                                    ? new BbArbno(BuildNode(n.Children[0]))
+                                    : new BbEps(),
+
+            // Function call — may be a pattern builtin with dynamic args
+            IrKind.E_FNC  => BuildFncPattern(n),
+
+            _ => new BbLit("")   // safe fallback
+        };
+    }
 
     // ── Alt ──────────────────────────────────────────────────────────────────
 
-    private IByrdBox BuildAlt(Node l, Node r)
+    private IByrdBox BuildAlt(IrNode n)
     {
-        // Flatten nested Alt into n-ary array (mirrors ByrdBoxFactory.FlattenAlt)
-        var parts = new List<Node>();
-        void Collect(Node x) { if (x is Alt(var a, var b)) { Collect(a); Collect(b); } else parts.Add(x); }
-        Collect(new Alt(l, r));
+        var parts = new List<IrNode>();
+        void Collect(IrNode x)
+        {
+            if (x.Kind == IrKind.E_ALT)
+                foreach (var c in x.Children) Collect(c);
+            else
+                parts.Add(x);
+        }
+        Collect(n);
         return new BbAlt(parts.Select(BuildNode).ToArray());
     }
 
     // ── Seq ──────────────────────────────────────────────────────────────────
 
-    private IByrdBox BuildSeq(Node l, Node r)
+    private IByrdBox BuildSeq(IrNode n)
     {
-        // Flatten nested Cat/Seq into right-fold (mirrors ByrdBoxFactory.BuildSeq)
-        var parts = new List<Node>();
-        void Collect(Node x)
+        var parts = new List<IrNode>();
+        void Collect(IrNode x)
         {
-            if (x is Cat(var a, var b)) { Collect(a); Collect(b); }
-            else if (x is Seq(var sa, var sb)) { Collect(sa); Collect(sb); }
-            else parts.Add(x);
+            if (x.Kind == IrKind.E_SEQ || x.Kind == IrKind.E_CAT)
+                foreach (var c in x.Children) Collect(c);
+            else
+                parts.Add(x);
         }
-        Collect(new Cat(l, r));
+        Collect(n);
+        if (parts.Count == 0) return new BbEps();
         if (parts.Count == 1) return BuildNode(parts[0]);
+        // Right-fold
         IByrdBox right = BuildNode(parts[^1]);
         for (int i = parts.Count - 2; i >= 0; i--)
             right = new BbSeq(BuildNode(parts[i]), right);
@@ -109,80 +141,110 @@ public sealed class PatternBuilder
 
     // ── Captures ─────────────────────────────────────────────────────────────
 
-    private IByrdBox BuildCaptureCond(Node inner, string vname)
+    private IByrdBox BuildCaptureCond(IrNode n)
     {
-        var child = BuildNode(inner);
-        var box   = new BbCapture(child, vname, immediate: false) { SetVar = _setVar };
+        // Children[0] = inner pattern node, SVal or Children[0] of inner = varname
+        // For E_CAPT_COND_ASGN the child is E_VAR(varname) — the inner pattern
+        // is the surrounding context; here we wrap the previous box.
+        // When parser emits E_CAPT_COND_ASGN with one child E_VAR, the pattern
+        // is the containing SEQ node's left sibling. For standalone .var, wrap Eps.
+        var varName = n.Children.Length > 0 && n.Children[0].Kind == IrKind.E_VAR
+                    ? n.Children[0].SVal!
+                    : (n.SVal ?? "");
+        var inner   = new BbEps();
+        var box     = new BbCapture(inner, varName, immediate: false) { SetVar = _setVar };
         _captures.Add(box);
         return box;
     }
 
-    private IByrdBox BuildCaptureImm(Node inner, string vname)
+    private IByrdBox BuildCaptureImm(IrNode n)
     {
-        var child = BuildNode(inner);
-        return new BbCapture(child, vname, immediate: true) { SetVar = _setVar };
+        var varName = n.Children.Length > 0 && n.Children[0].Kind == IrKind.E_VAR
+                    ? n.Children[0].SVal!
+                    : (n.SVal ?? "");
+        var inner   = new BbEps();
+        return new BbCapture(inner, varName, immediate: true) { SetVar = _setVar };
     }
 
-    private IByrdBox BuildDeferred(Node inner)
+    private IByrdBox BuildCaptCursor(IrNode n)
     {
-        // *var — re-resolve pattern variable at match time
-        if (inner is Var(var name))
-            return new BbDvar(name) { GetStringVar = _getStringVar, GetPatternVar = _getPatternVar };
-        // *expr — evaluate to string and match as literal (simplified)
-        var val = _evalNode(inner).ToString();
+        var varName = n.Children.Length > 0 && n.Children[0].Kind == IrKind.E_VAR
+                    ? n.Children[0].SVal!
+                    : (n.SVal ?? "");
+        return new BbAtp(varName) { SetVar = _setVar };
+    }
+
+    // ── Deferred ─────────────────────────────────────────────────────────────
+
+    private IByrdBox BuildDeferred(IrNode n)
+    {
+        if (n.Children.Length > 0 && n.Children[0].Kind == IrKind.E_VAR)
+        {
+            var name = n.Children[0].SVal!;
+            return new BbDvar(name)
+                   { GetStringVar = _getStringVar, GetPatternVar = _getPatternVar };
+        }
+        var val = _evalNode(n.Children.Length > 0 ? n.Children[0] : n).ToString();
         return new BbLit(val);
     }
 
+    // ── Variable ─────────────────────────────────────────────────────────────
+
     private IByrdBox BuildVar(string name)
     {
-        // Check if the variable currently holds a pattern → use as pattern box
         var patBox = _getPatternVar(name);
         if (patBox != null) return patBox;
-        // Otherwise: variable holds a string — match its current value as literal
         var str = _getStringVar(name);
         return new BbLit(str);
     }
 
-    private IByrdBox BuildIndirect(Node inner)
+    // ── Indirect ─────────────────────────────────────────────────────────────
+
+    private IByrdBox BuildIndirect(IrNode n)
     {
-        var val = _evalNode(inner).ToString();
-        // val is a variable name — resolve it
+        var val = n.Children.Length > 0 ? _evalNode(n.Children[0]).ToString() : "";
         return BuildVar(val);
     }
 
-    // ── Named pattern builtins → boxes ───────────────────────────────────────
+    // ── Function call — pattern builtins with dynamic args ───────────────────
 
-    private IByrdBox BuildFncPattern(string name, Node[] args)
+    private IByrdBox BuildFncPattern(IrNode n)
     {
-        // Evaluate integer/string args eagerly at build time (static args).
-        // Dynamic args (variables) are re-evaluated at match time via BbDvar.
-        int    IntArg(int i) => args.Length > i ? (int)_evalNode(args[i]).ToInt() : 0;
-        string StrArg(int i) => args.Length > i ? _evalNode(args[i]).ToString() : "";
+        var name = n.SVal?.ToUpperInvariant() ?? "";
+        var args = n.Children;
 
-        return name.ToUpperInvariant() switch
+        int    IntArg2(int i) => args.Length > i ? (int)_evalNode(args[i]).ToInt() : 0;
+        string StrArg2(int i) => args.Length > i ? _evalNode(args[i]).ToString() : "";
+
+        return name switch
         {
-            "LEN"     => new BbLen(IntArg(0)),
-            "POS"     => new BbPos(IntArg(0)),
-            "RPOS"    => new BbRpos(IntArg(0)),
-            "TAB"     => new BbTab(IntArg(0)),
-            "RTAB"    => new BbRtab(IntArg(0)),
+            "LEN"     => new BbLen(IntArg2(0)),
+            "POS"     => new BbPos(IntArg2(0)),
+            "RPOS"    => new BbRpos(IntArg2(0)),
+            "TAB"     => new BbTab(IntArg2(0)),
+            "RTAB"    => new BbRtab(IntArg2(0)),
             "REM"     => new BbRem(),
-            "ANY"     => new BbAny(StrArg(0)),
-            "NOTANY"  => new BbNotany(StrArg(0)),
-            "SPAN"    => new BbSpan(StrArg(0)),
-            "BREAK"   => new BbBrk(StrArg(0)),
-            "BREAKX"  => new BbBreakx(StrArg(0)),
+            "ANY"     => new BbAny(StrArg2(0)),
+            "NOTANY"  => new BbNotany(StrArg2(0)),
+            "SPAN"    => new BbSpan(StrArg2(0)),
+            "BREAK"   => new BbBrk(StrArg2(0)),
+            "BREAKX"  => new BbBreakx(StrArg2(0)),
             "BAL"     => new BbBal(),
             "FENCE"   => new BbFence(),
             "ABORT"   => new BbAbort(),
             "FAIL"    => new BbFail(),
             "SUCCEED" => new BbSucceed(),
             "ARB"     => new BbArb(),
-            "ARBNO"   => args.Length >= 1
-                            ? new BbArbno(BuildNode(args[0]))
-                            : new BbEps(),
-            // Fallback: evaluate as string and match literally
-            _ => new BbLit(StrArg(0))
+            "ARBNO"   => args.Length >= 1 ? new BbArbno(BuildNode(args[0])) : new BbEps(),
+            _         => new BbLit(StrArg2(0))
         };
     }
+
+    // ── Arg helpers ──────────────────────────────────────────────────────────
+
+    private int    IntArg(IrNode n, int i) =>
+        n.Children.Length > i ? (int)_evalNode(n.Children[i]).ToInt() : 0;
+
+    private string StrArg(IrNode n, int i) =>
+        n.Children.Length > i ? _evalNode(n.Children[i]).ToString() : "";
 }
