@@ -104,7 +104,7 @@ static const char *backend_ext(void) {
 
 /* Compile infile (NULL = stdin) and emit to out. outpath used for JVM class name. */
 static int compile_one(const char *infile, const char *outpath, FILE *out) {
-    snoc_reset();   /* clear per-file parser state: nerrors, include dirs */
+    sno_reset();   /* clear per-file parser state: nerrors, include dirs */
 
     int file_sc  = sc_mode  || ends_with(infile, ".sc");
     int file_pl  = pl_mode  || ends_with(infile, ".pl") || ends_with(infile, ".pro");
@@ -118,8 +118,8 @@ static int compile_one(const char *infile, const char *outpath, FILE *out) {
         if (!file_sc && !file_pl && !file_icn) {
             char *dir = strdup(infile);
             char *sl  = strrchr(dir, '/');
-            if (sl) { *sl = '\0'; snoc_add_include_dir(dir); }
-            else snoc_add_include_dir(".");
+            if (sl) { *sl = '\0'; sno_add_include_dir(dir); }
+            else sno_add_include_dir(".");
             free(dir);
         }
     }
@@ -201,9 +201,9 @@ static int compile_one(const char *infile, const char *outpath, FILE *out) {
         free(src);
         if (!prog) { rc = 1; goto done; }
     } else {
-        prog = snoc_parse(in, infile ? infile : "<stdin>");
-        if (snoc_nerrors) {
-            fprintf(stderr, "scrip-cc: %d error(s)\n", snoc_nerrors); rc = 1; goto done;
+        prog = sno_parse(in, infile ? infile : "<stdin>");
+        if (sno_nerrors) {
+            fprintf(stderr, "scrip-cc: %d error(s)\n", sno_nerrors); rc = 1; goto done;
         }
     }
 
@@ -226,9 +226,9 @@ int main(int argc, char *argv[]) {
 
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "-I") && i+1 < argc) {
-            snoc_add_include_dir(argv[++i]);
+            sno_add_include_dir(argv[++i]);
         } else if (!strncmp(argv[i], "-I", 2)) {
-            snoc_add_include_dir(argv[i]+2);
+            sno_add_include_dir(argv[i]+2);
         } else if (!strcmp(argv[i], "-o") && i+1 < argc) {
             explicit_out = argv[++i];
         } else if (!strcmp(argv[i], "-trampoline")) { trampoline_mode = 1;

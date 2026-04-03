@@ -1,7 +1,7 @@
 /*
  * test_lex.c — TDD harness for the SNOBOL4 lexer (lex.c / lex.l)
  *
- * Ports dotnet TestLexer tests to C, targeting the lex_open_str / snoc_parse
+ * Ports dotnet TestLexer tests to C, targeting the lex_open_str / sno_parse
  * interface. Run standalone; prints PASS/FAIL per test.
  *
  * Tests covered (matching dotnet numbering):
@@ -78,12 +78,12 @@ static void test_214(void) {
     /*
      * Source line: "LOOP  OUTPUT = N"
      * Label "LOOP" is at col-1; body is "OUTPUT = N"
-     * snoc_parse produces a linked-list program; first stmt->label == "LOOP"
+     * sno_parse produces a linked-list program; first stmt->label == "LOOP"
      */
     const char *src = "LOOP  OUTPUT = N\n     END\n";
     FILE *f = tmpfile(); fputs(src, f); rewind(f);
-    snoc_reset();
-    Program *prog = snoc_parse(f, "<t214>");
+    sno_reset();
+    Program *prog = sno_parse(f, "<t214>");
     fclose(f);
 
     if (!prog || prog->nstmts == 0 || !prog->head) {
@@ -103,8 +103,8 @@ static void test_218(void) {
      */
     const char *src = "      X = Y  :S(DONE)F(ERR)\n     END\n";
     FILE *f = tmpfile(); fputs(src, f); rewind(f);
-    snoc_reset();
-    Program *prog = snoc_parse(f, "<t218>");
+    sno_reset();
+    Program *prog = sno_parse(f, "<t218>");
     fclose(f);
 
     if (!prog || prog->nstmts == 0 || !prog->head) {

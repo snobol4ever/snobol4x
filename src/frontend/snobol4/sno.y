@@ -24,7 +24,7 @@
  * The grammar expresses what was previously smuggled into the lexer.
  */
 
-#include "snoc.h"
+#include "scrip_cc.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -274,7 +274,7 @@ glabel
 
 %%
 
-void snoc_parse_init(void) {
+void sno_parse_init(void) {
     prog = calloc(1, sizeof *prog);
     parsed_program = prog;
 }

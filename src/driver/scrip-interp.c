@@ -24,7 +24,7 @@
 
 /* ── frontend ─────────────────────────────────────────────────────────── */
 #include "../frontend/snobol4/scrip_cc.h"
-extern Program *snoc_parse(FILE *f, const char *filename);
+extern Program *sno_parse(FILE *f, const char *filename);
 
 /* ── runtime ──────────────────────────────────────────────────────────── */
 #include "../runtime/snobol4/snobol4.h"
@@ -1075,7 +1075,7 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    Program *prog = snoc_parse(f, argv[1]);
+    Program *prog = sno_parse(f, argv[1]);
     fclose(f);
 
     if (!prog || !prog->head) {

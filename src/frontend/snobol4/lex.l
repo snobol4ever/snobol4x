@@ -34,6 +34,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
 #include <ctype.h>
 
 typedef struct {
@@ -53,9 +54,8 @@ typedef struct {
 /* extern symbols from lex.c / scrip_cc */
 extern char       *inc_dirs[];
 extern int         n_inc;
-void   snoc_error(int, const char *, ...);
-const char *intern_n(const char *, int);
-const char *intern(const char *);
+void   sno_error(int, const char *, ...);
+/* intern/intern_n provided as static inline by scrip_cc.h — no extern needed */
 
 static Token make_tok(TokKind k, const char *sv, long iv, double dv, int ln) {
     Token t; t.kind=k; t.sval=sv; t.ival=iv; t.dval=dv; t.lineno=ln; return t;
@@ -126,7 +126,7 @@ EXP     [eE][+-]?{DIGIT}+
             }
         }
         if (!inc)
-            snoc_error(yylineno, "cannot open include '%s'", iname);
+            sno_error(yylineno, "cannot open include '%s'", iname);
         else
             yypush_buffer_state(yy_create_buffer(inc, YY_BUF_SIZE, yyscanner),
                                 yyscanner);
@@ -175,9 +175,10 @@ EXP     [eE][+-]?{DIGIT}+
     /* ── EOF: flush last logical line, pop include stack ─────── */
 <<EOF>>                         {
     if (EX->llen) { emit_logical_to_pending(EX); }
-    yypop_buffer_state(yyscanner);
+    int _ln = yyget_lineno(yyscanner);
+    if (YY_CURRENT_BUFFER) yypop_buffer_state(yyscanner);
     if (!YY_CURRENT_BUFFER) {
-        pq_push(EX, make_tok(T_EOF, NULL, 0, 0, yylineno));
+        pq_push(EX, make_tok(T_EOF, NULL, 0, 0, _ln));
         return 0;
     }
 }
@@ -349,7 +350,7 @@ static void tokenise_body_pending(FlexExtra *ex,
             case '[': k=T_LBRACKET; break; case ']': k=T_RBRACKET; break;
             case '<': k=T_LANGLE;   break; case '>': k=T_RANGLE;   break;
             default:
-                snoc_error(ln,"unexpected char '%c'",ch); pos++; continue;
+                sno_error(ln,"unexpected char '%c'",ch); pos++; continue;
         }
         pos++;
         pq_push(ex, make_tok(k,NULL,0,0,ln));
@@ -395,3 +396,115 @@ void flex_lex_destroy(Lex *lx) {
         lx->_extra   = NULL;
     }
 }
+
+/* ── Storage for externs declared above ─────────────────────────────────── */
+
+char *inc_dirs[64];
+int   n_inc = 0;
+
+/* intern/intern_n: static inline in scrip_cc.h — no definition needed here */
+
+void sno_error(int lineno, const char *fmt, ...) {
+    va_list ap;
+    fprintf(stderr, "snobol4:%d: error: ", lineno);
+    va_start(ap, fmt); vfprintf(stderr, fmt, ap); va_end(ap);
+    fputc('\n', stderr);
+}
+
+/* ── lex_open_str: str-slice path for body/goto sub-parsing in parse.c ─── */
+
+void lex_open_str(Lex *lx, const char *s, int len, int lineno) {
+    memset(lx, 0, sizeof *lx);
+    lx->src = s; lx->pos = 0; lx->len = len; lx->lineno = lineno;
+}
+
+/* raw_next_str: minimal tokeniser for in-memory body/goto strings */
+static Token raw_next_str(Lex *lx) {
+    const char *s = lx->src;
+    int pos = lx->pos, len = lx->len, ln = lx->lineno;
+#define EMIT(k,sv,iv,dv) do { lx->pos=pos; return (Token){k,sv,iv,dv,ln}; } while(0)
+    if (pos >= len) EMIT(T_EOF, NULL, 0, 0.0);
+    if (s[pos]==' '||s[pos]=='\t') {
+        while (pos<len&&(s[pos]==' '||s[pos]=='\t')) pos++;
+        EMIT(T_WS," ",0,0.0);
+    }
+    if (s[pos]=='\''||s[pos]=='"') {
+        char q=s[pos++]; int st=pos;
+        while (pos<len&&s[pos]!=q) pos++;
+        const char *sv=intern_n(s+st,pos-st);
+        if (pos<len) pos++;
+        EMIT(T_STR,sv,0,0.0);
+    }
+    if (isdigit((unsigned char)s[pos])) {
+        int st=pos,real=0;
+        while (pos<len&&isdigit((unsigned char)s[pos])) pos++;
+        if (pos<len&&s[pos]=='.'){real=1;pos++;while(pos<len&&isdigit((unsigned char)s[pos]))pos++;}
+        if (pos<len&&(s[pos]=='e'||s[pos]=='E')){real=1;pos++;
+            if(pos<len&&(s[pos]=='+'||s[pos]=='-'))pos++;
+            while(pos<len&&isdigit((unsigned char)s[pos]))pos++;}
+        const char *sv=intern_n(s+st,pos-st);
+        if (real) EMIT(T_REAL,sv,0,atof(sv)); else EMIT(T_INT,sv,atol(sv),0.0);
+    }
+    if (s[pos]=='&') {
+        int st=++pos;
+        while (pos<len&&(isalnum((unsigned char)s[pos])||s[pos]=='_')) pos++;
+        EMIT(T_KEYWORD,intern_n(s+st,pos-st),0,0.0);
+    }
+    if (isalpha((unsigned char)s[pos])||s[pos]=='_') {
+        int st=pos;
+        while (pos<len&&(isalnum((unsigned char)s[pos])||s[pos]=='_'||s[pos]=='.')) pos++;
+        const char *sv=intern_n(s+st,pos-st);
+        if (strcmp(sv,"END")==0) EMIT(T_END,sv,0,0.0);
+        EMIT(T_IDENT,sv,0,0.0);
+    }
+    char c=s[pos++];
+    if (c=='*'&&pos<len&&s[pos]=='*'){pos++;EMIT(T_STARSTAR,"**",0,0.0);}
+    if (c==':'&&pos<len&&(s[pos]=='S'||s[pos]=='s')){pos++;EMIT(T_SGOTO,":S",0,0.0);}
+    if (c==':'&&pos<len&&(s[pos]=='F'||s[pos]=='f')){pos++;EMIT(T_FGOTO,":F",0,0.0);}
+    static const struct{char c;TokKind k;} ops[]={
+        {'+',T_PLUS},{'-',T_MINUS},{'*',T_STAR},{'/',T_SLASH},{'%',T_PCT},
+        {'^',T_CARET},{'!',T_BANG},{'&',T_AMP},{'@',T_AT},{'~',T_TILDE},
+        {'$',T_DOLLAR},{'.', T_DOT},{'#',T_HASH},{'|',T_PIPE},{'=',T_EQ},
+        {'?',T_QMARK},{',',T_COMMA},{'(',T_LPAREN},{')',T_RPAREN},
+        {'[',T_LBRACKET},{']',T_RBRACKET},{'<',T_LANGLE},{'>',T_RANGLE},
+        {':',T_COLON},{0,T_ERR}};
+    for (int i=0;ops[i].c;i++) if (ops[i].c==c) EMIT(ops[i].k,intern_n(&c,1),0,0.0);
+    EMIT(T_ERR,NULL,0,0.0);
+#undef EMIT
+}
+
+/* ── lex_next / lex_peek / lex_at_end ───────────────────────────────────── */
+
+Token lex_next(Lex *lx) {
+    if (lx->peeked) { lx->peeked=0; return lx->peek; }
+    if (lx->src)       return raw_next_str(lx);
+    if (lx->_scanner)  return flex_lex_next(lx);
+    return (Token){T_EOF,NULL,0,0.0,lx->lineno};
+}
+
+Token lex_peek(Lex *lx) {
+    if (!lx->peeked) {
+        lx->peek = lx->src      ? raw_next_str(lx) :
+                   lx->_scanner ? flex_lex_next(lx) :
+                   (Token){T_EOF,NULL,0,0.0,lx->lineno};
+        lx->peeked=1;
+    }
+    return lx->peek;
+}
+
+int lex_at_end(Lex *lx) { return lex_peek(lx).kind==T_EOF; }
+
+/* ── sno_parse ──────────────────────────────────────────────────────────── */
+
+extern Program *parse_program_tokens(Lex *stream);
+
+Program *sno_parse(FILE *f, const char *filename) {
+    Lex lx; memset(&lx,0,sizeof lx);
+    flex_lex_open(&lx, f, filename);
+    Program *prog = parse_program_tokens(&lx);
+    flex_lex_destroy(&lx);
+    return prog;
+}
+
+/* sno_reset: no-op in one-pass path — no global queue state to clear */
+void sno_reset(void) {}

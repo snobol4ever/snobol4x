@@ -9,7 +9,7 @@
  *       Returns FAILDESCR on parse or eval failure.
  *
  *   DESCR_t     code(const char *src)
- *       Parse src as SNOBOL4 statements via snoc_parse() (fmemopen),
+ *       Parse src as SNOBOL4 statements via sno_parse() (fmemopen),
  *       stash the Program* in a DT_C DESCR_t.
  *       Returns FAILDESCR on parse failure.
  *
@@ -24,7 +24,7 @@
  *   always does with source that arrived late (ARCH-byrd-dynamic.md).
  *
  *   eval_expr: parse_expr_from_str → eval_node (recursive EXPR_t walk)
- *   code:      fmemopen → snoc_parse → Program* stored as DT_C
+ *   code:      fmemopen → sno_parse → Program* stored as DT_C
  *   exec_code: walk Program stmts, call exec_stmt per stmt,
  *                     resolve gotos, return first branch target.
  *
@@ -53,13 +53,13 @@
 /* ── runtime ─────────────────────────────────────────────────────────── */
 #include "snobol4.h"
 
-/* ── frontend (parse_expr_from_str, snoc_parse) ──────────────────────── */
+/* ── frontend (parse_expr_from_str, sno_parse) ──────────────────────── */
 #include "../../frontend/snobol4/lex.h"
 #include "../../frontend/snobol4/scrip_cc.h"
 
 /* parse_expr_from_str declared in parse.c, exposed via scrip_cc.h context */
 extern EXPR_t   *parse_expr_from_str(const char *src);
-extern Program  *snoc_parse(FILE *f, const char *filename);
+extern Program  *sno_parse(FILE *f, const char *filename);
 
 /* exec_stmt — the five-phase executor */
 extern int exec_stmt(const char  *subj_name,
@@ -268,7 +268,7 @@ DESCR_t code(const char *src)
     FILE *f = fmemopen(buf, len + 1, "r");
     if (!f) { free(buf); return FAILDESCR; }
 
-    Program *prog = snoc_parse(f, "<eval>");
+    Program *prog = sno_parse(f, "<eval>");
     fclose(f);
     free(buf);
 

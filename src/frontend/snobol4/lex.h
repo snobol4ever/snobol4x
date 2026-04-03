@@ -1,6 +1,8 @@
 #ifndef LEX_H
 #define LEX_H
 
+#include <stdio.h>
+
 /* Token kinds */
 typedef enum {
     T_IDENT, T_INT, T_REAL, T_STR, T_KEYWORD,

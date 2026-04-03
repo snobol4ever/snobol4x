@@ -21,20 +21,20 @@
 #include <string.h>
 #include <stdarg.h>
 #include <ctype.h>
-#include "snoc.h"
+#include "scrip_cc.h"
 #include "sno.tab.h"
 
 /* ---- error ---- */
-int   snoc_nerrors  = 0;
+int   sno_nerrors  = 0;
 char *yyfilename    = (char *)"<stdin>";
 int   lineno_stmt   = 1;
 
-void snoc_error(int lineno, const char *fmt, ...) {
+void sno_error(int lineno, const char *fmt, ...) {
     va_list ap;
     fprintf(stderr, "%s:%d: error: ", yyfilename, lineno);
     va_start(ap, fmt); vfprintf(stderr, fmt, ap); va_end(ap);
     fputc('\n', stderr);
-    snoc_nerrors++;
+    sno_nerrors++;
 }
 
 /* ---- include dirs ---- */
@@ -42,7 +42,7 @@ void snoc_error(int lineno, const char *fmt, ...) {
 static char *inc_dirs[MAX_INC_DIRS];
 static int   n_inc_dirs = 0;
 
-void snoc_add_include_dir(const char *d) {
+void sno_add_include_dir(const char *d) {
     if (n_inc_dirs < MAX_INC_DIRS-1) inc_dirs[n_inc_dirs++] = strdup(d);
 }
 
@@ -117,7 +117,7 @@ static void join_file(FILE *fp, const char *fname) {
                 }
                 if (!inc) {
                     fprintf(stderr, "%s: cannot open include '%s'\n", fname, iname);
-                    snoc_nerrors++;
+                    sno_nerrors++;
                 } else { join_file(inc, iname); fclose(inc); }
             }
             continue;
@@ -208,7 +208,7 @@ WS      [ \t]+
 "@"             { return AT; }
 ";"[^\n]*       { return NEWLINE; }
 
-.               { snoc_error(yylineno, "unexpected char '%s'", yytext); }
+.               { sno_error(yylineno, "unexpected char '%s'", yytext); }
 
     /* ---- goto field ---- */
 <GT>{WS}        { return __; }
@@ -244,14 +244,14 @@ WS      [ \t]+
 %%
 
 /* ---- yyerror ---- */
-void yyerror(const char *msg) { snoc_error(yylineno, "%s", msg); }
+void yyerror(const char *msg) { sno_error(yylineno, "%s", msg); }
 
 /* ---- parse entry ---- */
 extern int  yyparse(void);
-extern void snoc_parse_init(void);
+extern void sno_parse_init(void);
 Program *parsed_program = NULL;
 
-Program *snoc_parse(FILE *f, const char *filename) {
+Program *sno_parse(FILE *f, const char *filename) {
     yyfilename  = (char *)filename;
     lineno_stmt = 1;
 
@@ -275,7 +275,7 @@ Program *snoc_parse(FILE *f, const char *filename) {
 
     yy_switch_to_buffer(yy_create_buffer(NULL, YY_BUF_SIZE));
 
-    snoc_parse_init();
+    sno_parse_init();
     yyparse();
 
     free(jbuf); jbuf = NULL;

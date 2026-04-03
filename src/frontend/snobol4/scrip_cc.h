@@ -168,17 +168,17 @@ static inline char *intern_n(const char *s, int n) {
 }
 
 /* ---- public API ---- */
-void     snoc_add_include_dir(const char *d);
-void     snoc_reset(void);          /* reset per-file state between multi-file compilations */
-Program *snoc_parse(FILE *f, const char *filename);
+void     sno_add_include_dir(const char *d);
+void     sno_reset(void);          /* reset per-file state between multi-file compilations */
+Program *sno_parse(FILE *f, const char *filename);
 EXPR_t  *parse_expr_from_str(const char *src);
 void     c_emit(Program *prog, FILE *out);
 
 /* emit_byrd.c interface now internal to emit_byrd_c.c */
 
 /* ---- error ---- */
-void snoc_error(int lineno, const char *fmt, ...);
-extern int   snoc_nerrors;
+void sno_error(int lineno, const char *fmt, ...);
+extern int   sno_nerrors;
 extern char *yyfilename;
 extern int   lineno_stmt;
 

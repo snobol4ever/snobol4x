@@ -250,7 +250,7 @@ static EXPR_t *parse_expr14(Lex *lx) {
     lex_next(lx);
     EXPR_t *operand = parse_expr14(lx);
     if (!operand) {
-        snoc_error(lx->lineno, "expected operand after unary operator");
+        sno_error(lx->lineno, "expected operand after unary operator");
         return expr_new(E_NUL);
     }
     /* emit.c contract for E_INDIRECT:
@@ -697,7 +697,7 @@ static SnoGoto *parse_goto_field(const char *goto_str, int lineno) {
             skip_ws(lx); continue;
         }
         /* unexpected */
-        snoc_error(lineno, "unexpected token in goto field");
+        sno_error(lineno, "unexpected token in goto field");
         lex_next(lx);
     }
 

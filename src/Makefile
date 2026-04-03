@@ -11,6 +11,7 @@ CFLAGS = -Wall -Wno-unused-function -g -O0 \
 
 FRONTEND_SNO = \
     frontend/snobol4/lex.c \
+    frontend/snobol4/sno.tab.c \
     frontend/snobol4/parse.c
 
 FRONTEND_PROLOG = \
@@ -100,6 +101,20 @@ frontend/rebus/lex.rebus.c: | frontend/rebus/rebus.l frontend/rebus/rebus.tab.h
 	@if [ ! -f frontend/rebus/lex.rebus.c ]; then \
 	    flex -o frontend/rebus/lex.rebus.c frontend/rebus/rebus.l; \
 	fi
+
+# SNOBOL4 scrip-cc parser+lexer — same pattern: generated files committed,
+# only regenerate if absent. bison/flex not required on a normal build.
+frontend/snobol4/sno.tab.c frontend/snobol4/sno.tab.h: | frontend/snobol4/sno.y
+	@if [ ! -f frontend/snobol4/sno.tab.c ] || [ ! -f frontend/snobol4/sno.tab.h ]; then \
+	    bison -d -o frontend/snobol4/sno.tab.c frontend/snobol4/sno.y; \
+	fi
+
+frontend/snobol4/lex.c: | frontend/snobol4/sno.l frontend/snobol4/sno.tab.h
+	@if [ ! -f frontend/snobol4/lex.c ]; then \
+	    lex -t frontend/snobol4/sno.l > frontend/snobol4/lex.c; \
+	fi
+
+frontend/snobol4/sno.tab.o frontend/snobol4/lex.o: frontend/snobol4/sno.tab.h
 
 frontend/rebus/rebus.tab.o frontend/rebus/lex.rebus.o frontend/rebus/rebus_lower.o frontend/rebus/rebus_print.o: frontend/rebus/rebus.tab.h
 
