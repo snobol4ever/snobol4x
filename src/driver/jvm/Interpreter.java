@@ -119,7 +119,76 @@ public class Interpreter {
     // DESCR — runtime value (mirrors DESCR_t from snobol4.h)
     // ══════════════════════════════════════════════════════════════════════════
 
-    public enum VType { SNUL, STR, INT, REAL, FAIL, PAT }
+    public enum VType { SNUL, STR, INT, REAL, FAIL, PAT, ARR, TBL, DAT }
+
+    // ── Heap: ARR/TBL/DAT objects ────────────────────────────────────────────
+    private static final java.util.concurrent.atomic.AtomicLong HEAP_SEQ
+        = new java.util.concurrent.atomic.AtomicLong(0);
+
+    public static final class ARRAY {
+        // Dimensions: each dim has (lo, hi). Total cells = product of (hi-lo+1) per dim.
+        public final int[]   lo;   // lower bound per dimension (default 1)
+        public final int[]   hi;   // upper bound per dimension
+        public final int[]   stride; // stride per dimension
+        public final DESCR[] cells;
+        public final String  proto; // e.g. "3" or "2,2" or "-1:1,2"
+
+        ARRAY(String spec) {
+            // spec: "3" or "2,2" or "-1:1,2"
+            String[] dimSpecs = spec.trim().split(",");
+            int ndim = dimSpecs.length;
+            lo = new int[ndim]; hi = new int[ndim]; stride = new int[ndim];
+            int total = 1;
+            for (int i = ndim - 1; i >= 0; i--) {
+                String ds = dimSpecs[i].trim();
+                int colon = ds.indexOf(':');
+                if (colon >= 0) {
+                    lo[i] = Integer.parseInt(ds.substring(0, colon).trim());
+                    hi[i] = Integer.parseInt(ds.substring(colon + 1).trim());
+                } else {
+                    lo[i] = 1;
+                    hi[i] = Integer.parseInt(ds.trim());
+                }
+                stride[i] = total;
+                total *= (hi[i] - lo[i] + 1);
+            }
+            cells = new DESCR[total];
+            java.util.Arrays.fill(cells, DESCR.NUL);
+            // Build prototype string
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < ndim; i++) {
+                if (i > 0) sb.append(',');
+                if (lo[i] == 1) sb.append(hi[i]);
+                else sb.append(lo[i]).append(':').append(hi[i]);
+            }
+            proto = sb.toString();
+        }
+
+        // linear index from (possibly multi-dim) subscripts; returns -1 if OOB
+        int linearIndex(int... idxs) {
+            if (idxs.length != lo.length) return -1;
+            int linear = 0;
+            for (int i = 0; i < lo.length; i++) {
+                if (idxs[i] < lo[i] || idxs[i] > hi[i]) return -1;
+                linear += (idxs[i] - lo[i]) * stride[i];
+            }
+            return linear;
+        }
+    }
+    public static final class TABLE {
+        public final Map<String,DESCR> map = new java.util.LinkedHashMap<>();
+    }
+    public static final class DATA {
+        public final String   typeName;
+        public final String[] fields;
+        public final DESCR[]  vals;
+        DATA(String t, String[] f, DESCR[] v) { typeName=t; fields=f; vals=v; }
+    }
+    private static final Map<Long,Object> HEAP = new java.util.concurrent.ConcurrentHashMap<>();
+    private static long heapAlloc(Object obj) {
+        long id = HEAP_SEQ.incrementAndGet(); HEAP.put(id, obj); return id;
+    }
+
 
     public static final class DESCR {
         public final VType  type;
@@ -139,6 +208,13 @@ public class Interpreter {
         public static DESCR intv(long i)           { return new DESCR(VType.INT,  null, i, 0, null); }
         public static DESCR realv(double d)        { return new DESCR(VType.REAL, null, 0, d, null); }
         public static DESCR pat(Parser.ExprNode n) { return new DESCR(VType.PAT,  null, 0, 0, n); }
+        public static DESCR arr(long id)           { return new DESCR(VType.ARR,  null, id, 0, null); }
+        public static DESCR tbl(long id)           { return new DESCR(VType.TBL,  null, id, 0, null); }
+        public static DESCR dat(long id)           { return new DESCR(VType.DAT,  null, id, 0, null); }
+
+        public ARRAY asArr() { return (ARRAY) HEAP.get(ival); }
+        public TABLE asTbl() { return (TABLE) HEAP.get(ival); }
+        public DATA  asDat() { return (DATA)  HEAP.get(ival); }
 
         public boolean isFail() { return type == VType.FAIL; }
         public boolean isNull() { return type == VType.SNUL || (type == VType.STR && (sval == null || sval.isEmpty())); }
@@ -164,6 +240,9 @@ public class Interpreter {
                     }
                     return s;
                 }
+                case ARR: return "<ARRAY " + ival + ">";
+                case TBL: return "<TABLE " + ival + ">";
+                case DAT: { DATA d = asDat(); return d != null ? d.typeName : "<DATA>"; }
                 default: return "";
             }
         }
@@ -196,6 +275,8 @@ public class Interpreter {
     }
 
     private final Map<String,FuncDef> funcTable = new HashMap<>();
+    /** DATA type field registry: typename → field names (uppercase). */
+    private final Map<String,String[]> dataTypes = new HashMap<>();
 
     // Return/FReturn exceptions used for SNOBOL4 function return
     static class SnobolReturn  extends RuntimeException {
@@ -392,17 +473,50 @@ public class Interpreter {
                 if (e.sval == null) return DESCR.FAIL;
                 List<DESCR> args = new ArrayList<>();
                 for (Parser.ExprNode c : e.children) args.add(eval(c));
-                return callBuiltin(e.sval.toUpperCase(), args);
+                String fname = e.sval.toUpperCase();
+                // DATA field accessors shadow builtins only when arg is a DAT object
+                FuncDef fncDef = funcTable.get(fname);
+                if (fncDef != null && fncDef.entryLabel.startsWith("__DATA_FGET__")) {
+                    boolean argIsDat = !args.isEmpty() && args.get(0).type == VType.DAT;
+                    if (argIsDat) return callUserFunc(fncDef, args);
+                    // else fall through to builtin (e.g. VALUE builtin when 'value' is also a field name)
+                }
+                return callBuiltin(fname, args);
             }
 
             case E_IDX: {
-                // arr<i> or arr<i,j>
+                // arr<i> or tbl['k']
                 if (e.children.size() < 2) return DESCR.FAIL;
                 DESCR base = eval(e.children.get(0));
                 if (base.isFail()) return DESCR.FAIL;
-                // For strings: SUBSTR-like access — SNOBOL4 doesn't directly do this
-                // but arrays are represented as string-keyed maps stored in NV
-                // For now: return NUL (array support is M-JVM-INTERP-A05+)
+                DESCR key = eval(e.children.get(1));
+                if (key.isFail()) return DESCR.FAIL;
+                if (base.type == VType.ARR) {
+                    ARRAY a = base.asArr();
+                    if (a == null) return DESCR.FAIL;
+                    // collect all subscript children
+                    int[] idxs = new int[e.children.size() - 1];
+                    idxs[0] = (int) toDouble(key);
+                    for (int _i = 1; _i < idxs.length; _i++)
+                        idxs[_i] = (int) toDouble(eval(e.children.get(_i + 1)));
+                    int lin = a.linearIndex(idxs);
+                    if (lin < 0) return DESCR.FAIL;
+                    return a.cells[lin];
+                }
+                if (base.type == VType.TBL) {
+                    TABLE t = base.asTbl();
+                    if (t == null) return DESCR.NUL;
+                    DESCR v = t.map.get(key.toSnoStr());
+                    return v != null ? v : DESCR.NUL;
+                }
+                if (base.type == VType.DAT) {
+                    DATA d = base.asDat();
+                    if (d == null) return DESCR.NUL;
+                    String fld = key.toSnoStr().toUpperCase();
+                    for (int i = 0; i < d.fields.length; i++)
+                        if (d.fields[i].equalsIgnoreCase(fld)) return d.vals[i];
+                    return DESCR.NUL;
+                }
                 return DESCR.NUL;
             }
 
@@ -560,6 +674,67 @@ public class Interpreter {
                 }
                 break;
             }
+            case E_FNC: {
+                if (lv.sval == null || lv.children.isEmpty()) break;
+                String fld = lv.sval.toUpperCase();
+                // ITEM(arr/tbl, key...) as lvalue
+                if (fld.equals("ITEM") && lv.children.size() >= 2) {
+                    DESCR base = eval(lv.children.get(0));
+                    if (base.type == VType.ARR) {
+                        ARRAY a = base.asArr();
+                        if (a != null) {
+                            int[] idxs = new int[lv.children.size() - 1];
+                            for (int _i = 0; _i < idxs.length; _i++)
+                                idxs[_i] = (int) toDouble(eval(lv.children.get(_i + 1)));
+                            int lin = a.linearIndex(idxs);
+                            if (lin >= 0) a.cells[lin] = val;
+                        }
+                    } else if (base.type == VType.TBL) {
+                        TABLE t = base.asTbl();
+                        if (t != null && lv.children.size() >= 2)
+                            t.map.put(eval(lv.children.get(1)).toSnoStr(), val);
+                    }
+                    break;
+                }
+                // DATA field setter: x(P) = val
+                DESCR obj = eval(lv.children.get(0));
+                if (obj.type == VType.DAT) {
+                    DATA d = obj.asDat();
+                    if (d != null) {
+                        for (int i = 0; i < d.fields.length; i++) {
+                            if (d.fields[i].equalsIgnoreCase(fld)) { d.vals[i] = val; break; }
+                        }
+                    }
+                }
+                break;
+            }
+            case E_IDX: {
+                if (lv.children.size() < 2) break;
+                DESCR base = eval(lv.children.get(0));
+                DESCR key  = eval(lv.children.get(1));
+                if (base.isFail() || key.isFail()) break;
+                if (base.type == VType.ARR) {
+                    ARRAY a = base.asArr();
+                    if (a == null) break;
+                    int[] idxs = new int[lv.children.size() - 1];
+                    idxs[0] = (int) toDouble(key);
+                    for (int _i = 1; _i < idxs.length; _i++)
+                        idxs[_i] = (int) toDouble(eval(lv.children.get(_i + 1)));
+                    int lin = a.linearIndex(idxs);
+                    if (lin >= 0) a.cells[lin] = val;
+                } else if (base.type == VType.TBL) {
+                    TABLE t = base.asTbl();
+                    if (t != null) t.map.put(key.toSnoStr(), val);
+                } else if (base.type == VType.DAT) {
+                    DATA d = base.asDat();
+                    if (d != null) {
+                        String fld = key.toSnoStr();
+                        for (int i = 0; i < d.fields.length; i++)
+                            if (d.fields[i].equalsIgnoreCase(fld)) { d.vals[i] = val; break; }
+                    }
+                }
+                break;
+            }
             default:
                 // complex lvalue — best effort eval (captures etc.)
                 break;
@@ -624,6 +799,16 @@ public class Interpreter {
             case "REVERSE": {
                 return DESCR.str(new StringBuilder(a0.toSnoStr()).reverse().toString());
             }
+            case "LCASE": return DESCR.str(a0.toSnoStr().toLowerCase());
+            case "UCASE": return DESCR.str(a0.toSnoStr().toUpperCase());
+
+            // Lexicographic comparisons (string ordering)
+            case "LGT": { int c = a0.toSnoStr().compareTo(a1.toSnoStr()); return c > 0 ? a0 : DESCR.FAIL; }
+            case "LLT": { int c = a0.toSnoStr().compareTo(a1.toSnoStr()); return c < 0 ? a0 : DESCR.FAIL; }
+            case "LGE": { int c = a0.toSnoStr().compareTo(a1.toSnoStr()); return c >= 0 ? a0 : DESCR.FAIL; }
+            case "LLE": { int c = a0.toSnoStr().compareTo(a1.toSnoStr()); return c <= 0 ? a0 : DESCR.FAIL; }
+            case "LEQ": { return a0.toSnoStr().equals(a1.toSnoStr()) ? a0 : DESCR.FAIL; }
+            case "LNE": { return a0.toSnoStr().equals(a1.toSnoStr()) ? DESCR.FAIL : a0; }
             case "LPAD": {
                 String s = a0.toSnoStr();
                 int w = (int) toDouble(a1);
@@ -684,8 +869,153 @@ public class Interpreter {
                 switch (a0.type) {
                     case INT:  return DESCR.str("INTEGER");
                     case REAL: return DESCR.str("REAL");
+                    case ARR:  return DESCR.str("ARRAY");
+                    case TBL:  return DESCR.str("TABLE");
+                    case DAT:  { DATA d = a0.asDat(); return DESCR.str(d != null ? d.typeName : "DATA"); }
                     default:   return DESCR.str("STRING");
                 }
+            }
+
+            // ARRAY(size) or ARRAY(size, default) — 1-based fixed array
+            case "ARRAY": {
+                String spec = a0.toSnoStr().trim();
+                if (spec.isEmpty()) return DESCR.FAIL;
+                // Accept numeric or spec string
+                try {
+                    ARRAY a = new ARRAY(spec);
+                    if (args.size() > 1) java.util.Arrays.fill(a.cells, a1);
+                    return DESCR.arr(heapAlloc(a));
+                } catch (Exception e2) { return DESCR.FAIL; }
+            }
+
+            // TABLE(initial_size) — default-NUL hash table
+            case "TABLE": {
+                return DESCR.tbl(heapAlloc(new TABLE()));
+            }
+
+            // DATA('typename(f1,f2,...)') — defines a constructor function + field accessors
+            case "DATA": {
+                String spec = a0.toSnoStr().trim();
+                int lp = spec.indexOf('('), rp = spec.lastIndexOf(')');
+                if (lp < 0) return DESCR.FAIL;
+                final String tname = spec.substring(0, lp).trim().toUpperCase();
+                String fstr = lp + 1 <= rp - 1 ? spec.substring(lp + 1, rp).trim() : "";
+                final String[] flds = fstr.isEmpty() ? new String[0]
+                    : java.util.Arrays.stream(fstr.split(","))
+                        .map(String::trim).map(String::toUpperCase).toArray(String[]::new);
+                // Register constructor in funcTable
+                funcTable.put(tname, new FuncDef(tname, flds, new String[0], "__DATA_CTOR__" + tname));
+                // Register field accessor functions
+                for (String fld : flds) {
+                    final String fname = fld;
+                    funcTable.put(fname, new FuncDef(fname, new String[]{"__OBJ__"}, new String[0], "__DATA_FGET__" + fname));
+                }
+                // Store field list for ctor use
+                dataTypes.put(tname, flds);
+                return DESCR.NUL;
+            }
+
+            // ITEM(arr/tbl, key...) — subscript equivalent
+            case "ITEM": {
+                if (args.size() < 2) return DESCR.FAIL;
+                if (a0.type == VType.ARR) {
+                    ARRAY a = a0.asArr();
+                    if (a == null) return DESCR.FAIL;
+                    int[] idxs = new int[args.size() - 1];
+                    for (int _i = 0; _i < idxs.length; _i++)
+                        idxs[_i] = (int) toDouble(args.get(_i + 1));
+                    int lin = a.linearIndex(idxs);
+                    return lin < 0 ? DESCR.FAIL : a.cells[lin];
+                }
+                if (a0.type == VType.TBL) {
+                    TABLE t = a0.asTbl();
+                    if (t == null) return DESCR.FAIL;
+                    DESCR v = t.map.get(a1.toSnoStr());
+                    return v != null ? v : DESCR.NUL;
+                }
+                return DESCR.FAIL;
+            }
+
+            // PROTOTYPE — returns structure description
+            case "PROTOTYPE": {
+                if (a0.type == VType.ARR) {
+                    ARRAY a = a0.asArr();
+                    return a != null ? DESCR.str(a.proto) : DESCR.NUL;
+                }
+                if (a0.type == VType.TBL) return DESCR.str("TABLE");
+                if (a0.type == VType.DAT) {
+                    DATA d = a0.asDat();
+                    if (d == null) return DESCR.NUL;
+                    return DESCR.str(d.typeName + "(" + String.join(",", d.fields) + ")");
+                }
+                return DESCR.NUL;
+            }
+
+            // CONVERT(val, type-string)
+            case "CONVERT": {
+                String tgt = a1.toSnoStr().trim().toUpperCase();
+                switch (tgt) {
+                    case "INTEGER": {
+                        try { return DESCR.intv(Long.parseLong(a0.toSnoStr().trim())); }
+                        catch (NumberFormatException ex) { return DESCR.FAIL; }
+                    }
+                    case "REAL": {
+                        try { return DESCR.realv(Double.parseDouble(a0.toSnoStr().trim())); }
+                        catch (NumberFormatException ex) { return DESCR.FAIL; }
+                    }
+                    case "STRING": return DESCR.str(a0.toSnoStr());
+                    case "ARRAY": {
+                        // TABLE→ARRAY: 2-column array [key, value] per entry
+                        if (a0.type == VType.TBL) {
+                            TABLE t = a0.asTbl();
+                            if (t == null) return DESCR.FAIL;
+                            int n = t.map.size();
+                            ARRAY a = new ARRAY(n + "," + 2);
+                            int row = 1;
+                            for (Map.Entry<String,DESCR> e2 : t.map.entrySet()) {
+                                int l1 = a.linearIndex(row, 1);
+                                int l2 = a.linearIndex(row, 2);
+                                if (l1 >= 0) a.cells[l1] = DESCR.str(e2.getKey());
+                                if (l2 >= 0) a.cells[l2] = e2.getValue();
+                                row++;
+                            }
+                            return DESCR.arr(heapAlloc(a));
+                        }
+                        return DESCR.FAIL;
+                    }
+                    case "TABLE": {
+                        // ARRAY→TABLE: use first column as key, second as value; or int index
+                        if (a0.type == VType.ARR) {
+                            ARRAY a = a0.asArr();
+                            if (a == null) return DESCR.FAIL;
+                            TABLE t = new TABLE();
+                            if (a.lo.length == 2) {
+                                for (int r = a.lo[0]; r <= a.hi[0]; r++) {
+                                    int lk = a.linearIndex(r, 1);
+                                    int lv2 = a.linearIndex(r, 2);
+                                    if (lk >= 0 && lv2 >= 0)
+                                        t.map.put(a.cells[lk].toSnoStr(), a.cells[lv2]);
+                                }
+                            } else {
+                                for (int i = a.lo[0]; i <= a.hi[0]; i++) {
+                                    int li = a.linearIndex(i);
+                                    if (li >= 0) t.map.put(String.valueOf(i), a.cells[li]);
+                                }
+                            }
+                            return DESCR.tbl(heapAlloc(t));
+                        }
+                        return DESCR.FAIL;
+                    }
+                    default: return DESCR.FAIL;
+                }
+            }
+
+            // VALUE(name) — retrieve value of named variable
+            case "VALUE": {
+                String vname = a0.toSnoStr().trim();
+                if (vname.isEmpty()) return DESCR.FAIL;
+                DESCR v = nvGet(vname);
+                return v;
             }
 
             // Math
@@ -742,8 +1072,6 @@ public class Interpreter {
                 return DESCR.NUL;
             }
 
-            // PROTOTYPE — synonym for DEFINE in some usages
-            case "PROTOTYPE": return DESCR.NUL;
 
             default: {
                 // Check user-defined function table
@@ -764,6 +1092,28 @@ public class Interpreter {
     private Parser.StmtNode[] programStmts; // set by execute() before running
 
     private DESCR callUserFunc(FuncDef fd, List<DESCR> args) {
+        // DATA constructor: __DATA_CTOR__<TYPE>
+        if (fd.entryLabel.startsWith("__DATA_CTOR__")) {
+            String tname = fd.entryLabel.substring("__DATA_CTOR__".length());
+            String[] flds = dataTypes.getOrDefault(tname, new String[0]);
+            DESCR[] vals = new DESCR[flds.length];
+            for (int i = 0; i < flds.length; i++)
+                vals[i] = i < args.size() ? args.get(i) : DESCR.NUL;
+            return DESCR.dat(heapAlloc(new DATA(tname, flds, vals)));
+        }
+        // DATA field getter/setter: __DATA_FGET__<FIELD>
+        if (fd.entryLabel.startsWith("__DATA_FGET__")) {
+            String fname = fd.entryLabel.substring("__DATA_FGET__".length());
+            DESCR obj = args.isEmpty() ? DESCR.NUL : args.get(0);
+            if (obj.type == VType.DAT) {
+                DATA d = obj.asDat();
+                if (d != null) {
+                    for (int i = 0; i < d.fields.length; i++)
+                        if (d.fields[i].equalsIgnoreCase(fname)) return d.vals[i];
+                }
+            }
+            return DESCR.NUL;
+        }
         if (programStmts == null) return DESCR.FAIL;
 
         // Save caller's copies of param/local names
@@ -879,6 +1229,21 @@ public class Interpreter {
                     DESCR replVal = s.replacement != null ? eval(s.replacement) : DESCR.NUL;
                     if (replVal.isFail()) succeeded = false;
                     else { nv.put(s.subject.sval.toUpperCase(), replVal); succeeded = true; }
+                } else if (s.hasEq && s.subject != null
+                           && s.subject.kind == Parser.EKind.E_FNC) {
+                    DESCR replVal = s.replacement != null ? eval(s.replacement) : DESCR.NUL;
+                    if (replVal.isFail()) succeeded = false;
+                    else { assignTo(s.subject, replVal); succeeded = true; }
+                } else if (s.hasEq && s.subject != null
+                           && s.subject.kind == Parser.EKind.E_IDX) {
+                    DESCR replVal = s.replacement != null ? eval(s.replacement) : DESCR.NUL;
+                    if (replVal.isFail()) succeeded = false;
+                    else { assignTo(s.subject, replVal); succeeded = true; }
+                } else if (s.hasEq && s.subject != null
+                           && s.subject.kind == Parser.EKind.E_FNC) {
+                    DESCR replVal = s.replacement != null ? eval(s.replacement) : DESCR.NUL;
+                    if (replVal.isFail()) succeeded = false;
+                    else { assignTo(s.subject, replVal); succeeded = true; }
                 } else if (s.subject != null && !s.hasEq) {
                     if (subjVal.isFail()) succeeded = false;
                 }
@@ -1061,6 +1426,20 @@ public class Interpreter {
                     if (replVal.isFail()) succeeded = false;
                     else { nvSet(nm, replVal); succeeded = true; }
                 }
+            } else if (s.hasEq && s.subject != null
+                       && s.subject.kind == Parser.EKind.E_IDX) {
+                DESCR replVal = s.replacement != null ? eval(s.replacement) : DESCR.NUL;
+                if (replVal.isFail()) {
+                    succeeded = false;
+                } else {
+                    assignTo(s.subject, replVal);
+                    succeeded = true;
+                }
+            } else if (s.hasEq && s.subject != null
+                       && s.subject.kind == Parser.EKind.E_FNC) {
+                DESCR replVal = s.replacement != null ? eval(s.replacement) : DESCR.NUL;
+                if (replVal.isFail()) succeeded = false;
+                else { assignTo(s.subject, replVal); succeeded = true; }
             } else if (s.subject != null && !s.hasEq) {
                 // Value statement — just evaluates subject; fails if subject fails
                 if (subjVal.isFail()) succeeded = false;
