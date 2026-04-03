@@ -28,30 +28,30 @@ public sealed class bb_seq : IByrdBox
     public Spec α(MatchState ms)
     {
         _matched = Spec.ZeroWidth(ms.Cursor);
-        return TryLeft(ms, fromα: true);
+        return TryLeft(ms, fromAlpha: true);
     }
 
     public Spec β(MatchState ms)
     {
-        return TryRight(ms, fromα: false);
+        return TryRight(ms, fromAlpha: false);
     }
 
     // ── internal state machine ──────────────────────────────────────────
 
-    private Spec TryLeft(MatchState ms, bool fromα)
+    private Spec TryLeft(MatchState ms, bool fromAlpha)
     {
-        var lr = fromα ? _left.α(ms) : _left.β(ms);
+        var lr = fromAlpha ? _left.α(ms) : _left.β(ms);
         if (lr.IsFail) return Spec.Fail;                    // left_ω → SEQ_ω
         // left_γ
         _matched = _matched.Cat(lr);
-        return TryRight(ms, fromα: true);
+        return TryRight(ms, fromAlpha: true);
     }
 
-    private Spec TryRight(MatchState ms, bool fromα)
+    private Spec TryRight(MatchState ms, bool fromAlpha)
     {
         while (true)
         {
-            var rr = fromα ? _right.α(ms) : _right.β(ms);
+            var rr = fromAlpha ? _right.α(ms) : _right.β(ms);
             if (!rr.IsFail)
                 return _matched.Cat(rr);                    // right_γ → SEQ_γ
 
