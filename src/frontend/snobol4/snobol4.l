@@ -30,7 +30,7 @@
  */
 
 #include "scrip_cc.h"
-#include "snobol4_scanner.h"
+#include "snobol4.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

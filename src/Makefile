@@ -100,9 +100,9 @@ frontend/rebus/lex.rebus.c: | frontend/rebus/rebus.l frontend/rebus/rebus.tab.h
 	    flex -o frontend/rebus/lex.rebus.c frontend/rebus/rebus.l; \
 	fi
 
-frontend/snobol4/snobol4_scanner.yy.c: | frontend/snobol4/snobol4_scanner.l
-	@if [ ! -f frontend/snobol4/snobol4_scanner.yy.c ]; then \
-	    flex -o frontend/snobol4/snobol4_scanner.yy.c frontend/snobol4/snobol4_scanner.l; \
+frontend/snobol4/snobol4.yy.c: | frontend/snobol4/snobol4.l
+	@if [ ! -f frontend/snobol4/snobol4.yy.c ]; then \
+	    flex -o frontend/snobol4/snobol4.yy.c frontend/snobol4/snobol4.l; \
 	fi
 
 frontend/rebus/rebus.tab.o frontend/rebus/lex.rebus.o frontend/rebus/rebus_lower.o frontend/rebus/rebus_print.o: frontend/rebus/rebus.tab.h
@@ -113,7 +113,7 @@ backend/emit_x64.o: backend/emit_x64_prolog.c
 # Pattern rule — each .c depends on the shared headers
 %.o: %.c \
      frontend/snobol4/scrip_cc.h \
-     frontend/snobol4/snobol4_scanner.h \
+     frontend/snobol4/snobol4.h \
      backend/c/emit_cnode.h \
      backend/c/emit_pretty.h
 	$(CC) $(CFLAGS) -c -o $@ $<
