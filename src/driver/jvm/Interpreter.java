@@ -2,6 +2,7 @@ package driver.jvm;
 
 import java.io.*;
 import java.util.*;
+import java.util.Arrays;
 
 /**
  * Interpreter.java — SNOBOL4 tree-walk interpreter for the JVM.
@@ -83,6 +84,38 @@ public class Interpreter {
     }
 
     // ══════════════════════════════════════════════════════════════════════════
+    // User-defined function table (DEFINE)
+    // ══════════════════════════════════════════════════════════════════════════
+
+    private static final class FuncDef {
+        final String   name;
+        final String[] params;
+        final String[] locals;
+        final String   entryLabel;
+
+        FuncDef(String name, String[] params, String[] locals, String entryLabel) {
+            this.name       = name;
+            this.params     = params;
+            this.locals     = locals;
+            this.entryLabel = entryLabel;
+        }
+    }
+
+    private final Map<String,FuncDef> funcTable = new HashMap<>();
+
+    // Return/FReturn exceptions used for SNOBOL4 function return
+    static class SnobolReturn  extends RuntimeException {
+        final DESCR val;
+        SnobolReturn(DESCR v)  { super(null,null,true,false); val = v; }
+    }
+    static class SnobolFReturn extends RuntimeException {
+        SnobolFReturn()        { super(null,null,true,false); }
+    }
+    static class SnobolNReturn extends RuntimeException {
+        SnobolNReturn()        { super(null,null,true,false); }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
     // Variable store (mirrors NV_GET_fn / NV_SET_fn)
     // ══════════════════════════════════════════════════════════════════════════
 
@@ -125,6 +158,13 @@ public class Interpreter {
         nv.put("MAXLNGTH", DESCR.intv(5000));
         nv.put("STLIMIT",  DESCR.intv(1000000));
         nv.put("STCOUNT",  DESCR.intv(0));
+        // Standard character-set keywords
+        nv.put("LCASE",    DESCR.str("abcdefghijklmnopqrstuvwxyz"));
+        nv.put("UCASE",    DESCR.str("ABCDEFGHIJKLMNOPQRSTUVWXYZ"));
+        // Build &ALPHABET: all 256 chars
+        StringBuilder alpha = new StringBuilder(256);
+        for (int i = 0; i < 256; i++) alpha.append((char)i);
+        nv.put("ALPHABET", DESCR.str(alpha.toString()));
     }
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -436,6 +476,18 @@ public class Interpreter {
         DESCR a1 = args.size() > 1 ? args.get(1) : DESCR.NUL;
         DESCR a2 = args.size() > 2 ? args.get(2) : DESCR.NUL;
 
+        // Propagate FAIL from any argument for most builtins
+        // (IDENT/DIFFER/EQ/NE/etc. handle their own fail logic)
+        switch (name) {
+            case "IDENT": case "DIFFER": case "EQ": case "NE":
+            case "LT": case "LE": case "GT": case "GE":
+            case "DEFINE": case "PROTOTYPE": case "INPUT":
+            case "OUTPUT": case "SUCCEED": case "FAIL": case "ABORT":
+                break; // these handle FAIL themselves
+            default:
+                for (DESCR a : args) if (a.isFail()) return DESCR.FAIL;
+        }
+
         switch (name) {
             // String functions
             case "SIZE":   return DESCR.intv(a0.toSnoStr().length());
@@ -550,11 +602,212 @@ public class Interpreter {
             case "FENCE":   return DESCR.NUL;
             case "ABORT":   throw new SnobolAbort("ABORT called");
 
-            default:
-                // Unknown function — return NUL (not fail) for unknown calls
-                // This lets programs with forward-declared functions not break
+            // Integer remainder
+            case "REMDR": {
+                long lv = (long) toDouble(a0);
+                long rv = (long) toDouble(a1);
+                if (rv == 0) return DESCR.FAIL;
+                return DESCR.intv(lv % rv);
+            }
+
+            // DEFINE('name(p1,p2)local1,local2', 'entryLabel')
+            case "DEFINE": {
+                String spec = a0.toSnoStr().trim();
+                String entry = a1.isNull() ? null : a1.toSnoStr().trim();
+                // Parse: name(p1,...) local1,...
+                int lp = spec.indexOf('(');
+                int rp = spec.indexOf(')');
+                if (lp < 0) {
+                    // no params: DEFINE('name')
+                    String fname = spec.toUpperCase();
+                    if (entry == null || entry.isEmpty()) entry = fname;
+                    funcTable.put(fname, new FuncDef(fname, new String[0], new String[0], entry));
+                } else {
+                    String fname = spec.substring(0, lp).trim().toUpperCase();
+                    String pStr  = lp + 1 <= rp - 1 ? spec.substring(lp + 1, rp).trim() : "";
+                    String lStr  = rp + 1 < spec.length() ? spec.substring(rp + 1).trim() : "";
+                    if (lStr.startsWith(",")) lStr = lStr.substring(1).trim();
+                    String[] params = pStr.isEmpty() ? new String[0]
+                        : Arrays.stream(pStr.split(",")).map(String::trim).map(String::toUpperCase).toArray(String[]::new);
+                    String[] locs   = lStr.isEmpty() ? new String[0]
+                        : Arrays.stream(lStr.split(",")).map(String::trim).map(String::toUpperCase).toArray(String[]::new);
+                    if (entry == null || entry.isEmpty()) entry = fname;
+                    funcTable.put(fname, new FuncDef(fname, params, locs, entry));
+                }
                 return DESCR.NUL;
+            }
+
+            // PROTOTYPE — synonym for DEFINE in some usages
+            case "PROTOTYPE": return DESCR.NUL;
+
+            default: {
+                // Check user-defined function table
+                FuncDef fd = funcTable.get(name);
+                if (fd != null) {
+                    return callUserFunc(fd, args);
+                }
+                // Unknown function — return NUL
+                return DESCR.NUL;
+            }
         }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // User-defined function call
+    // ══════════════════════════════════════════════════════════════════════════
+
+    private Parser.StmtNode[] programStmts; // set by execute() before running
+
+    private DESCR callUserFunc(FuncDef fd, List<DESCR> args) {
+        if (programStmts == null) return DESCR.FAIL;
+
+        // Save caller's copies of param/local names
+        Map<String,DESCR> saved = new HashMap<>();
+        // Save function-name variable (return value slot)
+        saved.put(fd.name, nvGet(fd.name));
+        for (String p : fd.params) saved.put(p, nvGet(p));
+        for (String l : fd.locals)  saved.put(l, nvGet(l));
+
+        // Bind parameters
+        for (int i = 0; i < fd.params.length; i++) {
+            DESCR val = i < args.size() ? args.get(i) : DESCR.NUL;
+            nv.put(fd.params[i], val);
+        }
+        // Clear locals
+        for (String l : fd.locals) nv.put(l, DESCR.NUL);
+        // Clear return slot
+        nv.put(fd.name, DESCR.NUL);
+
+        // Find entry label
+        int entryPc = labelLookup(fd.entryLabel);
+        if (entryPc < 0) {
+            // restore and fail
+            restore(saved);
+            return DESCR.FAIL;
+        }
+
+        // Execute from entry label until RETURN/FRETURN/NReturn or END
+        DESCR retVal = DESCR.NUL;
+        boolean freturn = false;
+
+        int pc    = entryPc;
+        int limit = 1_000_000;
+        try {
+            while (pc < programStmts.length && limit-- > 0) {
+                Parser.StmtNode s = programStmts[pc];
+                if (s.isEnd) break;
+
+                // Increment &STCOUNT
+                DESCR stcount = nvGet("STCOUNT");
+                nv.put("STCOUNT", DESCR.intv((stcount.type == VType.INT ? stcount.ival : 0) + 1));
+
+                // Phase 1
+                String  subjName = null;
+                DESCR  subjVal  = DESCR.NUL;
+                if (s.subject != null) {
+                    if (s.subject.kind == Parser.EKind.E_VAR && s.subject.sval != null) {
+                        subjName = s.subject.sval;
+                        subjVal  = nvGet(subjName);
+                    } else {
+                        subjVal = eval(s.subject);
+                    }
+                }
+
+                boolean succeeded = true;
+
+                // Pattern matching (reuse outer logic)
+                if (s.pattern != null) {
+                    String sv = subjVal.toSnoStr();
+                    boolean anchor = false;
+                    DESCR anchorVal = nvGet("ANCHOR");
+                    if (anchorVal.type == VType.INT && anchorVal.ival != 0) anchor = true;
+                    bb_box.MatchState pms = new bb_box.MatchState(sv);
+                    PatternBuilder pb = new PatternBuilder(
+                        pms,
+                        (nm, v) -> nvSet(nm, DESCR.str(v)),
+                        (nm, v) -> nvSet(nm, DESCR.intv((long) v)),
+                        (varName, pms2) -> {
+                            DESCR d = nvGet(varName);
+                            if (d.type == VType.PAT && d.patNode != null) {
+                                PatternBuilder inner = new PatternBuilder(pms2,
+                                    (n, v) -> nvSet(n, DESCR.str(v)),
+                                    (n, v) -> nvSet(n, DESCR.intv((long) v)),
+                                    (vn, pms3) -> new bb_lit(pms3, nvGet(vn).toSnoStr()),
+                                    nm2 -> nvGet(nm2).toSnoStr());
+                                return inner.build(d.patNode);
+                            }
+                            return new bb_lit(pms2, d.toSnoStr());
+                        },
+                        nm -> nvGet(nm).toSnoStr()
+                    );
+                    bb_box root = pb.build(s.pattern);
+                    // hasEq + null replacement = delete (replace with "")
+                    String replStr = null;
+                    boolean hasRepl = s.hasEq;
+                    if (s.hasEq && s.replacement != null) {
+                        DESCR rv = eval(s.replacement);
+                        if (rv.isFail()) { hasRepl = false; } else { replStr = rv.toSnoStr(); }
+                    } else if (s.hasEq) {
+                        replStr = ""; // bare = deletes matched portion
+                    }
+                    bb_executor ex = new bb_executor(new bb_executor.VarStore() {
+                        public String get(String n) { return nvGet(n).toSnoStr(); }
+                        public void   set(String n, String v) { nvSet(n, DESCR.str(v)); }
+                    });
+                    for (bb_capture cap : pb.deferredCaptures()) ex.registerCapture(cap);
+                    try {
+                        succeeded = ex.exec(subjName, sv, pms, root,
+                                            hasRepl, replStr != null ? replStr : "", anchor);
+                    } catch (bb_abort.AbortException ae) { succeeded = false; }
+                } else if (s.hasEq && subjName != null) {
+                    DESCR replVal = s.replacement != null ? eval(s.replacement) : DESCR.NUL;
+                    if (replVal.isFail()) succeeded = false;
+                    else { nvSet(subjName, replVal); succeeded = true; }
+                } else if (s.hasEq && s.subject != null
+                           && s.subject.kind == Parser.EKind.E_KEYWORD && s.subject.sval != null) {
+                    DESCR replVal = s.replacement != null ? eval(s.replacement) : DESCR.NUL;
+                    if (replVal.isFail()) succeeded = false;
+                    else { nv.put(s.subject.sval.toUpperCase(), replVal); succeeded = true; }
+                } else if (s.subject != null && !s.hasEq) {
+                    if (subjVal.isFail()) succeeded = false;
+                }
+
+                // Goto dispatch — handle RETURN/FRETURN
+                int next = pc + 1;
+                if (s.gotoField != null) {
+                    String target = null;
+                    if (s.gotoField.uncond != null)
+                        target = s.gotoField.uncond;
+                    else if (succeeded && s.gotoField.onsuccess != null)
+                        target = s.gotoField.onsuccess;
+                    else if (!succeeded && s.gotoField.onfailure != null)
+                        target = s.gotoField.onfailure;
+
+                    if (target != null) {
+                        if (target.equalsIgnoreCase("END")) break;
+                        if (target.equalsIgnoreCase("RETURN")) {
+                            retVal = nvGet(fd.name); break;
+                        }
+                        if (target.equalsIgnoreCase("FRETURN")) {
+                            freturn = true; break;
+                        }
+                        if (target.equalsIgnoreCase("NRETURN")) break; // treat as RETURN for now
+                        int dest = labelLookup(target);
+                        if (dest >= 0) { pc = dest; continue; }
+                    }
+                }
+                pc = next;
+            }
+        } finally {
+            restore(saved);
+        }
+
+        return freturn ? DESCR.FAIL : retVal;
+    }
+
+    private void restore(Map<String,DESCR> saved) {
+        for (Map.Entry<String,DESCR> e : saved.entrySet())
+            nv.put(e.getKey(), e.getValue());
     }
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -570,6 +823,7 @@ public class Interpreter {
     // ══════════════════════════════════════════════════════════════════════════
 
     public int execute(Parser.StmtNode[] stmts) {
+        programStmts = stmts;
         buildLabels(stmts);
         int pc   = 0;
         int limit = 1_000_000; // mirrors &STLIMIT default

@@ -47,19 +47,31 @@ class PatternBuilder {
         void set(String name, int value);
     }
 
+    /** Callback for variable lookup (used by intArg for POS/LEN/TAB with var args). */
+    interface VarGetter {
+        String get(String name);
+    }
+
     private final bb_box.MatchState ms;
     private final VarSetter         varSetter;
     private final IntSetter         intSetter;
     private final bb_dvar.BoxResolver varResolver;
+    private final VarGetter         varGetter;
     /** Deferred (.var) captures registered for Phase-5 commit. */
     private final java.util.List<bb_capture> deferred = new java.util.ArrayList<>();
 
     PatternBuilder(bb_box.MatchState ms, VarSetter varSetter, IntSetter intSetter,
                    bb_dvar.BoxResolver varResolver) {
+        this(ms, varSetter, intSetter, varResolver, null);
+    }
+
+    PatternBuilder(bb_box.MatchState ms, VarSetter varSetter, IntSetter intSetter,
+                   bb_dvar.BoxResolver varResolver, VarGetter varGetter) {
         this.ms          = ms;
         this.varSetter   = varSetter;
         this.intSetter   = intSetter;
         this.varResolver = varResolver;
+        this.varGetter   = varGetter;
     }
 
     /** Return list of deferred captures to commit on :S (Phase 5). */
@@ -230,8 +242,12 @@ class PatternBuilder {
         if (idx >= args.size()) return 0;
         Parser.ExprNode a = args.get(idx);
         if (a.kind == Parser.EKind.E_ILIT) return (int) a.ival;
+        if (a.kind == Parser.EKind.E_VAR && a.sval != null && varGetter != null) {
+            String v = varGetter.get(a.sval);
+            try { return Integer.parseInt(v.trim()); } catch (NumberFormatException ex) {}
+        }
         if (a.sval != null) {
-            try { return Integer.parseInt(a.sval); } catch (NumberFormatException ex) {}
+            try { return Integer.parseInt(a.sval.trim()); } catch (NumberFormatException ex) {}
         }
         return 0;
     }
