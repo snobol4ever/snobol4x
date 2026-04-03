@@ -172,6 +172,21 @@ static void prescan_defines(Program *prog)
 /* ── call_user_function — forward decl (needs interp_eval, declared below) ── */
 static DESCR_t interp_eval(EXPR_t *e);  /* forward */
 
+/* DYN-57: E_FNC names that always yield a pattern value.
+ * Mirrors PAT_FNC_NAMES in SJ-17 (sno-interp.js ec6c0b3).
+ * Scoped to _expr_is_pat only — do NOT intercept E_VAR (breaks 210_indirect_ref)
+ * and do NOT touch S=PR split/has_eq guard (breaks 062_capture_replacement). */
+static const char *PAT_FNC_NAMES[] = {
+    "ANY","NOTANY","SPAN","BREAK","BREAKX","LEN","POS","RPOS","TAB","RTAB",
+    "ARB","ARBNO","REM","FAIL","SUCCEED","FENCE","ABORT","BAL","CALL", NULL
+};
+static int _is_pat_fnc_name(const char *s) {
+    if (!s) return 0;
+    for (int i = 0; PAT_FNC_NAMES[i]; i++)
+        if (strcasecmp(s, PAT_FNC_NAMES[i]) == 0) return 1;
+    return 0;
+}
+
 /* DYN-54: returns 1 if expr tree contains any pattern-only node.
  * Mirrors is_pat() in snobol4.y but accessible at eval time. */
 static int _expr_is_pat(EXPR_t *e) {
@@ -182,6 +197,11 @@ static int _expr_is_pat(EXPR_t *e) {
             return 1;
         default: break;
     }
+    /* DYN-57: E_FNC whose name is a pattern primitive (LEN, POS, TAB, ARB, etc.) */
+    if (e->kind == E_FNC && _is_pat_fnc_name(e->sval)) return 1;
+    /* DYN-58: E_VAR whose name is a zero-arg pattern primitive (ARB, REM, FAIL, etc.)
+     * Only in _expr_is_pat — do NOT change the general E_VAR eval path (breaks 210). */
+    if (e->kind == E_VAR && _is_pat_fnc_name(e->sval)) return 1;
     for (int i = 0; i < e->nchildren; i++)
         if (_expr_is_pat(e->children[i])) return 1;
     return 0;
