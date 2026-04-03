@@ -819,7 +819,9 @@ function interp_eval(e) {
                   const r=-_num(a); return _is_int(a)?r:_real_result(r); }
     case E_PLS: { const a=interp_eval(e.children[0]); if(_is_fail(a)) return _FAIL;
                   const r=_num(a); return _is_int(a)?r:_real_result(r); }
-    case E_SEQ:  /* fall through — E_SEQ in value context = string concat */
+    case E_SEQ:  /* M-SJ-B07: E_SEQ with pattern children → pattern object */
+      if (_expr_is_pat(e)) return _build_pat(e);
+      /* fall through — pure E_SEQ (no pattern nodes) = string concat */
     case E_CAT: {
       let s='';
       for(const c of e.children){const v=interp_eval(c);if(_is_fail(v))return _FAIL;s+=_str(v);}
@@ -887,6 +889,15 @@ function _assign(lhs, val) {
       const obj=interp_eval(lhs.children[0]); if(obj&&typeof obj==='object') obj[fd.field]=val;
     }
   }
+}
+
+/* ── _expr_is_pat: true if expr tree contains pattern-only nodes ─────────── */
+/* M-SJ-B07: used by interp_eval to route E_SEQ containing pattern nodes     */
+/* to _build_pat instead of string concat.  Mirrors parser._is_pat().        */
+function _expr_is_pat(e) {
+  if (!e) return false;
+  if ([E_ARB, E_ARBNO, E_CAPT_COND_ASGN, E_CAPT_IMMED_ASGN, E_CAPT_CURSOR, E_DEFER].includes(e.kind)) return true;
+  return (e.children||[]).some(c => _expr_is_pat(c));
 }
 
 /* ── _build_pat: EXPR_t → PAT_* node for sno_engine.js ─────────────────── */
