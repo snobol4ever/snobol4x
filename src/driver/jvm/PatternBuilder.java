@@ -84,11 +84,17 @@ class PatternBuilder {
         String get(String name);
     }
 
+    /** Evaluates a general expression node; returns null on FAIL, string value on success. */
+    interface ExprEvaluator {
+        String eval(Parser.ExprNode e);
+    }
+
     private final bb.bb_box.MatchState ms;
     private final VarSetter         varSetter;
     private final IntSetter         intSetter;
     private final bb.bb_dvar.BoxResolver varResolver;
     private final VarGetter         varGetter;
+    private final ExprEvaluator     exprEval;
     /** Deferred (.var) captures registered for Phase-5 commit.
      *  May be shared with inner PatternBuilders (for PAT-valued variable expansion)
      *  so that inner .var captures are committed when the outer match succeeds.
@@ -102,7 +108,7 @@ class PatternBuilder {
 
     PatternBuilder(bb.bb_box.MatchState ms, VarSetter varSetter, IntSetter intSetter,
                    bb.bb_dvar.BoxResolver varResolver, VarGetter varGetter) {
-        this(ms, varSetter, intSetter, varResolver, varGetter, null);
+        this(ms, varSetter, intSetter, varResolver, varGetter, null, null);
     }
 
     /** Constructor with shared external deferred list — inner builders use this
@@ -110,11 +116,18 @@ class PatternBuilder {
     PatternBuilder(bb.bb_box.MatchState ms, VarSetter varSetter, IntSetter intSetter,
                    bb.bb_dvar.BoxResolver varResolver, VarGetter varGetter,
                    java.util.List<bb_capture> sharedDeferred) {
+        this(ms, varSetter, intSetter, varResolver, varGetter, sharedDeferred, null);
+    }
+
+    PatternBuilder(bb.bb_box.MatchState ms, VarSetter varSetter, IntSetter intSetter,
+                   bb.bb_dvar.BoxResolver varResolver, VarGetter varGetter,
+                   java.util.List<bb_capture> sharedDeferred, ExprEvaluator exprEval) {
         this.ms          = ms;
         this.varSetter   = varSetter;
         this.intSetter   = intSetter;
         this.varResolver = varResolver;
         this.varGetter   = varGetter;
+        this.exprEval    = exprEval;
         this.deferred    = sharedDeferred != null ? sharedDeferred : new java.util.ArrayList<>();
     }
 
@@ -209,7 +222,30 @@ class PatternBuilder {
                         return new bb_arbno(ms, body);
                     }
                     default:
-                        // Unknown function in pattern context — fail safe
+                        // Non-primitive function in pattern context: evaluate as predicate.
+                        // If it returns FAIL → bb_fail. If it returns a value v → match literal v.
+                        if (exprEval != null) {
+                            final Parser.ExprNode capturedE = e;
+                            final ExprEvaluator   capturedEval = exprEval;
+                            return new bb_box(ms) {
+                                private String lastLit = null;
+                                private int    lastLen = 0;
+                                @Override public bb_box.Spec α() {
+                                    String v = capturedEval.eval(capturedE);
+                                    if (v == null) return null;          // FAIL → no match
+                                    lastLit = v; lastLen = v.length();
+                                    if (ms.delta + lastLen > ms.omega) return null;
+                                    if (!ms.sigma.regionMatches(ms.delta, lastLit, 0, lastLen)) return null;
+                                    bb_box.Spec r = new bb_box.Spec(ms.delta, lastLen);
+                                    ms.delta += lastLen;
+                                    return r;
+                                }
+                                @Override public bb_box.Spec β() {
+                                    ms.delta -= lastLen;
+                                    return null;
+                                }
+                            };
+                        }
                         return new bb_fail(ms);
                 }
             }

@@ -346,7 +346,7 @@ public class Parser {
             default:       return parseExpr15();
         }
         next();
-        ExprNode operand = parseExpr14();
+        ExprNode operand = parseExpr15();
         if (operand == null) {
             nerrors++;
             return nul();
@@ -696,16 +696,25 @@ public class Parser {
         for (ExprNode c : e.children) fixupValTree(c);
     }
 
+    private static final java.util.Set<String> PAT_FNC_NAMES = new java.util.HashSet<>(java.util.Arrays.asList(
+        "LEN","POS","TAB","RPOS","RTAB","ANY","NOTANY","SPAN","BREAK","BREAKX",
+        "ARB","ARBNO","REM","FAIL","SUCCEED","FENCE","ABORT","BAL"
+    ));
+
     private static boolean replIsPatTree(ExprNode e) {
         if (e == null) return false;
         switch (e.kind) {
             case E_ARB: case E_ARBNO:
             case E_CAPT_COND_ASGN: case E_CAPT_IMMED_ASGN: case E_CAPT_CURSOR: case E_DEFER:
                 return true;
+            case E_FNC:
+                if (e.sval != null && PAT_FNC_NAMES.contains(e.sval.toUpperCase())) return true;
+                break;
             default:
-                for (ExprNode c : e.children) if (replIsPatTree(c)) return true;
-                return false;
+                break;
         }
+        for (ExprNode c : e.children) if (replIsPatTree(c)) return true;
+        return false;
     }
 
     // ── Body field parser ─────────────────────────────────────────────────────
@@ -748,6 +757,26 @@ public class Parser {
                 s.hasEq = true;
                 bp.skipWs();
                 if (!bp.atEnd()) s.replacement = bp.parseExpr();
+                // S = P R split: `fact = eq(n,1) 1` → subject=fact, pattern=eq(n,1), replacement=1
+                // If rhs is a multi-child SEQ/CAT whose first child is E_FNC and the whole
+                // rhs is not a pure pattern value, split: [0..n-2] → pattern, [n-1] → replacement.
+                if (s.subject != null && s.replacement != null
+                        && (s.replacement.kind == EKind.E_SEQ || s.replacement.kind == EKind.E_CAT)
+                        && s.replacement.children.size() >= 2
+                        && s.replacement.children.get(0).kind == EKind.E_FNC
+                        && !replIsPatTree(s.replacement)) {
+                    List<ExprNode> kids = s.replacement.children;
+                    ExprNode replKid = kids.get(kids.size() - 1);
+                    List<ExprNode> patKids = kids.subList(0, kids.size() - 1);
+                    if (patKids.size() == 1) {
+                        s.pattern = patKids.get(0);
+                    } else {
+                        ExprNode patNode = new ExprNode(s.replacement.kind);
+                        patNode.children.addAll(patKids);
+                        s.pattern = patNode;
+                    }
+                    s.replacement = replKid;
+                }
             } else if (!bp.atEnd()) {
                 // subject WS pattern [WS = replacement]
                 s.pattern = bp.parseExpr3();

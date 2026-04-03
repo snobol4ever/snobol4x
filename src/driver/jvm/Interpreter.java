@@ -803,12 +803,13 @@ public class Interpreter {
             case "UCASE": return DESCR.str(a0.toSnoStr().toUpperCase());
 
             // Lexicographic comparisons (string ordering)
-            case "LGT": { int c = a0.toSnoStr().compareTo(a1.toSnoStr()); return c > 0 ? a0 : DESCR.FAIL; }
-            case "LLT": { int c = a0.toSnoStr().compareTo(a1.toSnoStr()); return c < 0 ? a0 : DESCR.FAIL; }
-            case "LGE": { int c = a0.toSnoStr().compareTo(a1.toSnoStr()); return c >= 0 ? a0 : DESCR.FAIL; }
-            case "LLE": { int c = a0.toSnoStr().compareTo(a1.toSnoStr()); return c <= 0 ? a0 : DESCR.FAIL; }
-            case "LEQ": { return a0.toSnoStr().equals(a1.toSnoStr()) ? a0 : DESCR.FAIL; }
-            case "LNE": { return a0.toSnoStr().equals(a1.toSnoStr()) ? DESCR.FAIL : a0; }
+            // String predicates: return null string on success (SPITBOL manual ch.19)
+            case "LGT": { int c = a0.toSnoStr().compareTo(a1.toSnoStr()); return c > 0  ? DESCR.NUL : DESCR.FAIL; }
+            case "LLT": { int c = a0.toSnoStr().compareTo(a1.toSnoStr()); return c < 0  ? DESCR.NUL : DESCR.FAIL; }
+            case "LGE": { int c = a0.toSnoStr().compareTo(a1.toSnoStr()); return c >= 0 ? DESCR.NUL : DESCR.FAIL; }
+            case "LLE": { int c = a0.toSnoStr().compareTo(a1.toSnoStr()); return c <= 0 ? DESCR.NUL : DESCR.FAIL; }
+            case "LEQ": { return a0.toSnoStr().equals(a1.toSnoStr()) ? DESCR.NUL : DESCR.FAIL; }
+            case "LNE": { return a0.toSnoStr().equals(a1.toSnoStr()) ? DESCR.FAIL : DESCR.NUL; }
             case "LPAD": {
                 String s = a0.toSnoStr();
                 int w = (int) toDouble(a1);
@@ -840,14 +841,16 @@ public class Interpreter {
             case "STRING": return DESCR.str(a0.toSnoStr());
 
             // Comparison functions (succeed by returning arg, fail otherwise)
-            case "IDENT":  return a0.toSnoStr().equals(a1.toSnoStr()) ? a0 : DESCR.FAIL;
-            case "DIFFER": return a0.toSnoStr().equals(a1.toSnoStr()) ? DESCR.FAIL : a0;
-            case "EQ":     return toDouble(a0) == toDouble(a1) ? a0 : DESCR.FAIL;
-            case "NE":     return toDouble(a0) != toDouble(a1) ? a0 : DESCR.FAIL;
-            case "LT":     return toDouble(a0) <  toDouble(a1) ? a0 : DESCR.FAIL;
-            case "LE":     return toDouble(a0) <= toDouble(a1) ? a0 : DESCR.FAIL;
-            case "GT":     return toDouble(a0) >  toDouble(a1) ? a0 : DESCR.FAIL;
-            case "GE":     return toDouble(a0) >= toDouble(a1) ? a0 : DESCR.FAIL;
+            // IDENT/DIFFER: return null string on success (SPITBOL manual ch.19)
+            case "IDENT":  return a0.toSnoStr().equals(a1.toSnoStr()) ? DESCR.NUL : DESCR.FAIL;
+            case "DIFFER": return a0.toSnoStr().equals(a1.toSnoStr()) ? DESCR.FAIL : DESCR.NUL;
+            // Numeric predicates: return null string on success (SPITBOL manual ch.19)
+            case "EQ":     return toDouble(a0) == toDouble(a1) ? DESCR.NUL : DESCR.FAIL;
+            case "NE":     return toDouble(a0) != toDouble(a1) ? DESCR.NUL : DESCR.FAIL;
+            case "LT":     return toDouble(a0) <  toDouble(a1) ? DESCR.NUL : DESCR.FAIL;
+            case "LE":     return toDouble(a0) <= toDouble(a1) ? DESCR.NUL : DESCR.FAIL;
+            case "GT":     return toDouble(a0) >  toDouble(a1) ? DESCR.NUL : DESCR.FAIL;
+            case "GE":     return toDouble(a0) >= toDouble(a1) ? DESCR.NUL : DESCR.FAIL;
 
             // I/O
             case "OUTPUT": out.println(a0.toSnoStr()); return a0;
@@ -1193,13 +1196,15 @@ public class Interpreter {
                                     (n, v) -> nvSet(n, DESCR.intv((long) v)),
                                     (vn, pms3) -> new bb_lit(pms3, nvGet(vn).toSnoStr()),
                                     ufVg,
-                                    sharedDeferred);
+                                    sharedDeferred,
+                                    ex2 -> { DESCR dx = eval(ex2); return dx.isFail() ? null : dx.toSnoStr(); });
                                 return inner.build(d.patNode);
                             }
                             return new bb_lit(pms2, d.toSnoStr());
                         },
                         ufVg,
-                        sharedDeferred
+                        sharedDeferred,
+                        ex2 -> { DESCR dx = eval(ex2); return dx.isFail() ? null : dx.toSnoStr(); }
                     );
                     bb_box root = pb.build(s.pattern);
                     // hasEq + null replacement = delete (replace with "")
@@ -1358,7 +1363,8 @@ public class Interpreter {
                                     return new bb_lit(pms3, d2.toSnoStr());
                                 },
                                 ufVg2,
-                                sharedDeferred2
+                                sharedDeferred2,
+                                ex2 -> { DESCR dx = eval(ex2); return dx.isFail() ? null : dx.toSnoStr(); }
                             );
                             return inner.build(d.patNode);
                         }
@@ -1366,7 +1372,8 @@ public class Interpreter {
                         return new bb_lit(pms2, d.toSnoStr());
                     },
                     ufVg2,
-                    sharedDeferred2
+                    sharedDeferred2,
+                    ex2 -> { DESCR dx = eval(ex2); return dx.isFail() ? null : dx.toSnoStr(); }
                 );
 
                 bb_box root = pb.build(s.pattern);
