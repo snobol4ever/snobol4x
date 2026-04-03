@@ -38,7 +38,7 @@ static Lex *g_lx;
 %}
 
 %define api.prefix {snobol4_}
-%pure-parser
+%define api.pure full
 %parse-param { void *yyparse_param }
 
 %union { EXPR_t *expr; Token tok; }

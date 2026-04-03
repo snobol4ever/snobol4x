@@ -1,6 +1,6 @@
-#line 2 "src/frontend/snobol4/snobol4.lex.c"
+#line 2 "snobol4.lex.c"
 
-#line 4 "src/frontend/snobol4/snobol4.lex.c"
+#line 4 "snobol4.lex.c"
 
 #define  YY_INT_ALIGNED short int
 
@@ -176,27 +176,8 @@ typedef size_t yy_size_t;
 #define EOB_ACT_END_OF_FILE 1
 #define EOB_ACT_LAST_MATCH 2
     
-    /* Note: We specifically omit the test for yy_rule_can_match_eol because it requires
-     *       access to the local variable yy_act. Since yyless() is a macro, it would break
-     *       existing scanners that call yyless() from OUTSIDE yylex.
-     *       One obvious solution it to make yy_act a global. I tried that, and saw
-     *       a 5% performance hit in a non-yylineno scanner, because yy_act is
-     *       normally declared as a register variable-- so it is not worth it.
-     */
-    #define  YY_LESS_LINENO(n) \
-            do { \
-                int yyl;\
-                for ( yyl = n; yyl < yyleng; ++yyl )\
-                    if ( yytext[yyl] == '\n' )\
-                        --yylineno;\
-            }while(0)
-    #define YY_LINENO_REWIND_TO(dst) \
-            do {\
-                const char *p;\
-                for ( p = yy_cp-1; p >= (dst); --p)\
-                    if ( *p == '\n' )\
-                        --yylineno;\
-            }while(0)
+    #define YY_LESS_LINENO(n)
+    #define YY_LINENO_REWIND_TO(ptr)
     
 /* Return all but the first "n" matched characters back to the input stream. */
 #define yyless(n) \
@@ -358,8 +339,8 @@ static void yynoreturn yy_fatal_error ( const char* msg , yyscan_t yyscanner );
 	yyg->yy_hold_char = *yy_cp; \
 	*yy_cp = '\0'; \
 	yyg->yy_c_buf_p = yy_cp;
-#define YY_NUM_RULES 9
-#define YY_END_OF_BUFFER 10
+#define YY_NUM_RULES 66
+#define YY_END_OF_BUFFER 67
 /* This struct is not used in this scanner,
    but its presence is necessary. */
 struct yy_trans_info
@@ -367,12 +348,22 @@ struct yy_trans_info
 	flex_int32_t yy_verify;
 	flex_int32_t yy_nxt;
 	};
-static const flex_int16_t yy_accept[37] =
+static const flex_int16_t yy_accept[131] =
     {   0,
-        0,    0,    0,    0,    0,    0,   10,    9,    8,    7,
-        7,    1,    7,    6,    7,    0,    1,    0,    2,    0,
-        0,    5,    0,    0,    0,    0,    0,    0,    4,    0,
-        4,    0,    0,    3,    3,    0
+        0,    0,    0,    0,    0,    0,    0,    0,   46,   46,
+       50,   50,   58,   58,    0,    0,   67,    6,    3,    1,
+        2,    5,    4,    7,    8,    9,   45,   10,   11,   29,
+       21,   34,   32,   27,   15,   20,   39,   40,   25,   23,
+       38,   24,   33,   26,   19,   13,   12,   43,   36,   44,
+       37,   30,   16,   41,   42,   28,   35,   31,   55,   54,
+       57,   56,   46,   49,   48,   50,   53,   52,   58,   59,
+       64,   66,   65,   66,   66,   64,   64,    7,   10,   14,
+       22,    0,   19,    0,   16,   55,   54,   46,   47,   50,
+       51,   58,   64,    0,   65,    0,    0,    0,    0,   63,
+
+        0,   62,   64,   64,   14,   17,    0,   18,    0,    0,
+       64,   64,    0,    0,    0,   61,   64,    0,   17,   61,
+        0,   61,   64,    0,   64,    0,   60,   60,   60,    0
     } ;
 
 static const YY_CHAR yy_ec[256] =
@@ -380,81 +371,187 @@ static const YY_CHAR yy_ec[256] =
         1,    1,    1,    1,    1,    1,    1,    1,    2,    3,
         1,    1,    1,    1,    1,    1,    1,    1,    1,    1,
         1,    1,    1,    1,    1,    1,    1,    1,    1,    1,
-        1,    2,    4,    1,    1,    1,    1,    1,    1,    1,
-        1,    4,    5,    1,    6,    5,    1,    1,    1,    1,
-        1,    1,    1,    1,    1,    1,    1,    1,    4,    1,
-        1,    1,    1,    1,    1,    1,    7,    8,    9,    1,
-        1,    1,   10,    1,    1,   11,    1,   12,   13,   14,
-        1,    1,    1,    1,   15,    1,    1,    1,   16,    1,
-        1,    1,    1,    1,    1,    1,    1,    1,    7,    8,
+        1,    2,    4,    5,    6,    7,    8,    9,   10,   11,
+       12,   13,   14,   15,   16,   17,   18,   19,   19,   19,
+       19,   19,   19,   19,   19,   19,   19,   20,   21,   22,
+       23,   24,   25,   26,   27,   27,   28,   29,   30,   27,
+       27,   27,   31,   27,   27,   32,   27,   33,   34,   35,
+       27,   27,   27,   27,   36,   27,   27,   27,   37,   27,
+       38,    1,   39,   40,   41,    1,   27,   27,   28,   29,
 
-        9,    1,    1,    1,   10,    1,    1,   11,    1,   12,
-       13,   14,    1,    1,    1,    1,   15,    1,    1,    1,
-       16,    1,    1,    4,    1,    1,    1,    1,    1,    1,
-        1,    1,    1,    1,    1,    1,    1,    1,    1,    1,
-        1,    1,    1,    1,    1,    1,    1,    1,    1,    1,
-        1,    1,    1,    1,    1,    1,    1,    1,    1,    1,
-        1,    1,    1,    1,    1,    1,    1,    1,    1,    1,
-        1,    1,    1,    1,    1,    1,    1,    1,    1,    1,
-        1,    1,    1,    1,    1,    1,    1,    1,    1,    1,
-        1,    1,    1,    1,    1,    1,    1,    1,    1,    1,
+       30,   27,   27,   27,   31,   27,   27,   32,   27,   33,
+       34,   35,   27,   27,   27,   27,   36,   27,   27,   27,
+       37,   27,    1,   42,    1,   43,    1,   44,   44,   44,
+       44,   44,   44,   44,   44,   44,   44,   44,   44,   44,
+       44,   44,   44,   44,   44,   44,   44,   44,   44,   44,
+       44,   44,   44,   44,   44,   44,   44,   44,   44,   44,
+       44,   44,   44,   44,   44,   44,   44,   44,   44,   44,
+       44,   44,   44,   44,   44,   44,   44,   44,   44,   44,
+       44,   44,   44,   44,   44,   44,   44,   44,   44,   44,
+       44,   44,   44,   44,   44,   44,   44,   44,   44,   44,
 
-        1,    1,    1,    1,    1,    1,    1,    1,    1,    1,
-        1,    1,    1,    1,    1,    1,    1,    1,    1,    1,
-        1,    1,    1,    1,    1,    1,    1,    1,    1,    1,
-        1,    1,    1,    1,    1,    1,    1,    1,    1,    1,
-        1,    1,    1,    1,    1,    1,    1,    1,    1,    1,
-        1,    1,    1,    1,    1
+       44,   44,   44,   44,   44,   44,   44,   44,   44,   44,
+       44,   44,   44,   44,   44,   44,   44,   44,   44,   44,
+       44,   44,   44,   44,   44,   44,   44,   44,   44,   44,
+       44,   44,   44,   44,   44,   44,   44,   44,   44,   44,
+       44,   44,   44,   44,   44,   44,   44,   44,   44,   44,
+       44,   44,   44,   44,   44
     } ;
 
-static const YY_CHAR yy_meta[17] =
+static const YY_CHAR yy_meta[45] =
     {   0,
-        1,    1,    1,    1,    1,    1,    1,    1,    1,    1,
-        1,    1,    1,    1,    1,    1
+        1,    2,    3,    1,    4,    1,    1,    1,    1,    5,
+        1,    1,    1,    1,    1,    1,    6,    1,    7,    1,
+        8,    1,    1,    1,    1,    1,    9,    9,    9,    9,
+        9,    9,    9,    9,    9,    9,    9,    1,    1,    1,
+        7,    1,    1,   10
     } ;
 
-static const flex_int16_t yy_base[41] =
+static const flex_int16_t yy_base[150] =
     {   0,
-       49,    0,    0,    0,    0,    0,   51,   53,   53,   53,
-        5,   53,   47,   53,    7,    9,   53,   46,   53,   45,
-       16,   53,   12,   10,   13,   17,   18,   25,   27,   28,
-       30,   32,   35,   39,   43,   53,   46,   38,   36,    0
+        0,   41,    3,    5,   83,    0,    7,    9,   12,   15,
+       21,   24,  224,  223,   36,   46,  224,  403,  403,  403,
+      403,  403,  403,    0,  403,  403,  403,  221,  403,  403,
+      403,  403,  403,  403,    0,  403,  403,  403,  209,  403,
+      403,  403,  403,  403,   17,  403,  403,  403,  403,  403,
+      403,  403,    0,  403,  403,  403,  403,  403,    0,  218,
+      403,  403,    0,  403,  209,    0,  403,  203,    0,  403,
+       30,   50,  403,   56,   60,  126,  130,    0,  201,    0,
+      403,  181,   49,   57,    0,    0,  192,    0,  403,    0,
+      403,    0,  136,  182,  403,  140,   16,  131,   77,  166,
+
+       62,  151,  142,  146,    0,    1,  118,   56,   34,  127,
+      156,  170,  151,  147,  150,  176,  185,   41,    4,  189,
+      173,  194,  196,  154,  202,  159,  208,  212,  214,  403,
+      232,  242,  252,  262,  272,  282,  292,  302,  304,  309,
+      319,  329,  339,  349,  359,  369,  379,  389,  393
     } ;
 
-static const flex_int16_t yy_def[41] =
+static const flex_int16_t yy_def[150] =
     {   0,
-       37,   38,   37,   37,   37,   37,   36,   36,   36,   36,
-       36,   36,   39,   36,   40,   36,   36,   39,   36,   40,
-       40,   36,   40,   40,   40,   40,   40,   40,   40,   40,
-       40,   40,   40,   40,   40,    0,   36,   36,   36,   36
+      131,  131,  132,  132,  130,    5,  133,  133,  134,  134,
+      135,  135,  136,  136,  137,  137,  130,  130,  130,  130,
+      130,  130,  130,  138,  130,  130,  130,  130,  130,  130,
+      130,  130,  130,  130,  139,  130,  130,  130,  130,  130,
+      130,  130,  130,  130,  130,  130,  130,  130,  130,  130,
+      130,  130,  140,  130,  130,  130,  130,  130,  141,  130,
+      130,  130,  142,  130,  130,  143,  130,  130,  144,  130,
+      145,  146,  130,  147,  148,  145,  145,  138,  130,  149,
+      130,  130,  130,  130,  140,  141,  130,  142,  130,  143,
+      130,  144,  145,  146,  130,  146,  146,  146,  147,  146,
+
+      148,  146,  145,  145,  149,  130,  130,  130,  146,  146,
+      145,  145,  130,  146,  146,  145,  145,  130,  130,  146,
+      146,  146,  145,  146,  145,  146,  145,  146,  146,    0,
+      130,  130,  130,  130,  130,  130,  130,  130,  130,  130,
+      130,  130,  130,  130,  130,  130,  130,  130,  130
     } ;
 
-static const flex_int16_t yy_nxt[70] =
+static const flex_int16_t yy_nxt[448] =
     {   0,
-       20,   11,   12,   13,   14,   15,   16,   17,   21,   22,
-       16,   17,   22,   23,   22,   22,   24,   21,   22,   22,
-       22,   26,   23,   28,   25,   24,   27,   22,   31,   22,
-       22,   31,   22,   29,   22,   30,   18,   22,   10,   33,
-       35,   22,   32,   34,   35,   22,    8,   22,   19,   19,
-       36,    9,    7,   36,   36,   36,   36,   36,   36,   36,
-       36,   36,   36,   36,   36,   36,   36,   36,   36
+      130,   19,   20,   21,   25,   26,   25,   26,   60,   61,
+       60,   61,   21,   22,   64,   23,   22,   64,   95,  106,
+       21,   65,  119,   67,   65,   68,   67,   62,   68,   62,
+      113,   94,   95,   82,   94,   83,   95,   72,   73,   94,
+       74,   21,   19,   20,   21,   75,   84,   72,   73,  109,
+       74,   96,   95,   21,   22,   75,   23,   22,   95,  119,
+      100,   21,   95,   76,   95,   82,   77,   83,  114,  102,
+      107,  102,  107,   76,  108,  108,   77,   97,   84,   95,
+       98,  100,   21,   27,   28,   29,   30,   31,   32,   33,
+       34,   35,   36,   37,   38,   39,   40,   41,   42,   43,
+
+       44,   45,   46,   47,   48,   49,   50,   51,   52,   53,
+       53,   53,   53,   53,   53,   53,   53,   53,   53,   53,
+       54,   55,   56,   27,   57,   58,   53,   94,   95,   95,
+       94,   94,   95,   95,   94,   94,  108,   94,   95,   94,
+       94,   96,   95,   94,   95,   94,   94,   94,   95,   95,
+       94,   94,   95,   95,  115,   94,   95,   94,   95,  103,
+       94,   95,  104,  110,  118,   94,  118,   97,   95,  119,
+       98,   94,   95,  112,   94,   95,  111,  122,   95,   94,
+       94,  121,  126,  120,   95,   94,   94,   95,  128,   94,
+      122,   95,  116,   87,   94,  122,   95,   94,   95,  106,
+
+       94,  117,   79,   94,   95,   94,   94,   91,  124,  129,
+       95,   94,   94,  129,   95,  129,   95,   94,   89,   87,
+      123,   81,   79,  130,  125,   70,   70,  130,  130,  130,
+      130,  127,   18,   18,   18,   18,   18,   18,   18,   18,
+       18,   18,   24,   24,   24,   24,   24,   24,   24,   24,
+       24,   24,   59,   59,   59,   59,   59,   59,   59,   59,
+       59,   59,   63,   63,   63,   63,   63,   63,   63,   63,
+       63,   63,   66,   66,   66,   66,   66,   66,   66,   66,
+       66,   66,   69,   69,   69,   69,   69,   69,   69,   69,
+       69,   69,   71,   71,   71,   71,   71,   71,   71,   71,
+
+       71,   71,   78,  130,  130,   78,   78,   78,   78,   78,
+       78,   78,   80,   80,   85,   85,  130,   85,   85,   86,
+      130,  130,   86,   86,   86,   86,  130,   86,   86,   88,
+       88,  130,   88,  130,   88,   88,   88,   88,   88,   90,
+       90,  130,  130,   90,   90,   90,   90,   90,   90,   92,
+       92,  130,   92,   92,   92,   92,   92,   92,   92,   93,
+       93,   93,   93,   93,   93,   93,   93,   93,   93,   94,
+       94,   94,   94,   94,   94,   94,   94,   94,   94,   99,
+       99,   99,   99,   99,   99,   99,   99,   99,   99,  101,
+      101,  101,  101,  101,  101,  101,  101,  101,  101,  105,
+
+      130,  105,   17,  130,  130,  130,  130,  130,  130,  130,
+      130,  130,  130,  130,  130,  130,  130,  130,  130,  130,
+      130,  130,  130,  130,  130,  130,  130,  130,  130,  130,
+      130,  130,  130,  130,  130,  130,  130,  130,  130,  130,
+      130,  130,  130,  130,  130,  130,  130
     } ;
 
-static const flex_int16_t yy_chk[70] =
+static const flex_int16_t yy_chk[448] =
     {   0,
-       40,    2,    2,    2,    2,    2,   11,   11,   15,   15,
-       16,   16,   24,   15,   23,   25,   15,   21,   21,   26,
-       27,   24,   21,   26,   23,   21,   25,   28,   29,   29,
-       30,   31,   31,   27,   32,   28,   39,   33,   38,   32,
-       34,   34,   30,   33,   35,   35,   37,   20,   18,   13,
-        7,    1,   36,   36,   36,   36,   36,   36,   36,   36,
-       36,   36,   36,   36,   36,   36,   36,   36,   36
-    } ;
+        0,    1,    1,    1,    3,    3,    4,    4,    7,    7,
+        8,    8,    1,    1,    9,    1,    1,   10,   97,  106,
+        1,    9,  119,   11,   10,   11,   12,    7,   12,    8,
+      106,   71,   71,   45,   71,   45,  109,   15,   15,   71,
+       15,    1,    2,    2,    2,   15,   45,   16,   16,   97,
+       16,   72,   72,    2,    2,   16,    2,    2,   74,  118,
+       74,    2,   75,   15,  101,   83,   15,   83,  109,   75,
+       84,  101,   84,   16,  108,   84,   16,   72,   83,   99,
+       72,   99,    2,    5,    5,    5,    5,    5,    5,    5,
+        5,    5,    5,    5,    5,    5,    5,    5,    5,    5,
 
-/* Table of booleans, true if rule could match eol. */
-static const flex_int32_t yy_rule_can_match_eol[10] =
-    {   0,
-1, 1, 0, 0, 1, 0, 0, 1, 0,     };
+        5,    5,    5,    5,    5,    5,    5,    5,    5,    5,
+        5,    5,    5,    5,    5,    5,    5,    5,    5,    5,
+        5,    5,    5,    5,    5,    5,    5,   76,   76,  110,
+       76,   77,   77,   98,   77,   76,  107,   93,   93,   77,
+       93,   96,   96,  103,  103,   93,  103,  104,  104,  114,
+      104,  103,  115,  102,  110,  104,  124,  111,  111,   76,
+      111,  126,   77,   98,  113,  111,  113,   96,  100,  113,
+       96,  112,  112,  104,  112,  121,  103,  116,  116,  112,
+      116,  115,  124,  114,   94,  116,  117,  117,  126,  117,
+      120,  120,  111,   87,  117,  122,  122,  123,  123,   82,
+
+      123,  112,   79,  125,  125,  123,  125,   68,  121,  127,
+      127,  125,  127,  128,  128,  129,  129,  127,   65,   60,
+      117,   39,   28,   17,  123,   14,   13,    0,    0,    0,
+        0,  125,  131,  131,  131,  131,  131,  131,  131,  131,
+      131,  131,  132,  132,  132,  132,  132,  132,  132,  132,
+      132,  132,  133,  133,  133,  133,  133,  133,  133,  133,
+      133,  133,  134,  134,  134,  134,  134,  134,  134,  134,
+      134,  134,  135,  135,  135,  135,  135,  135,  135,  135,
+      135,  135,  136,  136,  136,  136,  136,  136,  136,  136,
+      136,  136,  137,  137,  137,  137,  137,  137,  137,  137,
+
+      137,  137,  138,    0,    0,  138,  138,  138,  138,  138,
+      138,  138,  139,  139,  140,  140,    0,  140,  140,  141,
+        0,    0,  141,  141,  141,  141,    0,  141,  141,  142,
+      142,    0,  142,    0,  142,  142,  142,  142,  142,  143,
+      143,    0,    0,  143,  143,  143,  143,  143,  143,  144,
+      144,    0,  144,  144,  144,  144,  144,  144,  144,  145,
+      145,  145,  145,  145,  145,  145,  145,  145,  145,  146,
+      146,  146,  146,  146,  146,  146,  146,  146,  146,  147,
+      147,  147,  147,  147,  147,  147,  147,  147,  147,  148,
+      148,  148,  148,  148,  148,  148,  148,  148,  148,  149,
+
+        0,  149,  130,  130,  130,  130,  130,  130,  130,  130,
+      130,  130,  130,  130,  130,  130,  130,  130,  130,  130,
+      130,  130,  130,  130,  130,  130,  130,  130,  130,  130,
+      130,  130,  130,  130,  130,  130,  130,  130,  130,  130,
+      130,  130,  130,  130,  130,  130,  130
+    } ;
 
 /* The intent behind this definition is that it'll catch
  * any uses of REJECT which flex missed.
@@ -463,38 +560,33 @@ static const flex_int32_t yy_rule_can_match_eol[10] =
 #define yymore() yymore_used_but_not_detected
 #define YY_MORE_ADJ 0
 #define YY_RESTORE_YY_MORE_OFFSET
-#line 1 "src/frontend/snobol4/snobol4.l"
-#line 2 "src/frontend/snobol4/snobol4.l"
+#line 1 "snobol4.l"
+#line 2 "snobol4.l"
 /*
- * lex.l — SNOBOL4 one-pass character-stream lexer for scrip-interp
+ * snobol4.l - SNOBOL4 one-pass flex lexer
  *
- * One pure pipeline: character stream → lex.l → tokens → parse.c → IR
- * No preprocessing step. Include depth handled via yypush/pop_buffer_state.
- * Continuation lines joined in-scanner. Goto field scanned in GT condition.
+ * One character stream. No line accumulation. No sub-buffers.
+ * Include files handled by yypush/pop_buffer_state.
  *
- * Card format (CARDTB, CSNOBOL4 equ.h / snobol4.c NEWCRD):
- *   col-1 * ! | ; or empty → CMT comment, discard
- *   col-1 -                → CTL control line (INCLUDE/COPY + others silently skipped)
- *   col-1 + or .           → CNT continuation, join to previous logical line
- *   col-1 anything else    → NEW normal statement
+ * Card format handled as rules:
+ *   col-1 * ! | ;   -> comment: skip to newline
+ *   col-1 -         -> CTL: INCLUDE/COPY handled; others skipped
+ *   col-1 + or .    -> continuation: swallow newline, keep scanning body
+ *   col-1 space/tab -> body continues (label was empty)
+ *   col-1 other     -> label token, then body
  *
- * Token contract to parse.c (unchanged):
- *   T_LABEL    sval=name ival=1-if-END
- *   T_WS       whitespace field separator
- *   T_GOTO     sval=raw-goto-text
- *   T_STMT_END end of logical statement
- *   T_IDENT T_INT T_REAL T_STR T_KEYWORD + all operators
- *
- * Architecture:
- *   INITIAL state drives line-at-a-time card dispatch.
- *   Logical lines are accumulated in ex->logical[] handling continuations.
- *   When a complete logical line is ready it is parsed by
- *   emit_logical_to_pending() into ex->pending[].
- *   flex_lex_next() drains pending[] before calling yylex() again.
+ * Start conditions:
+ *   INITIAL   - col-1 character dispatch
+ *   LABEL     - reading label identifier
+ *   BODY      - statement body tokens
+ *   GT        - goto field (raw text after ':')
+ *   STR1      - single-quoted string
+ *   STR2      - double-quoted string
+ *   SKIP      - skipping to end of line (comment/CTL)
+ *   INCL      - reading filename after -INCLUDE/-COPY
  *
  * AUTHORS: Lon Jones Cherryholmes · Claude Sonnet 4.6
  */
-
 #include "scrip_cc.h"
 #include "snobol4.h"
 #include <stdio.h>
@@ -503,47 +595,32 @@ static const flex_int32_t yy_rule_can_match_eol[10] =
 #include <stdarg.h>
 #include <ctype.h>
 
-typedef struct {
-    /* pending token mini-queue */
-    Token   pending[64];
-    int     phead, ptail;
-    /* logical-line accumulation */
-    char    logical[65536];
-    int     llen;
-    int     logical_lineno;
-    /* scratch for current token */
-    Token   tok;
-} FlexExtra;
+void sno_error(int, const char *, ...);
+char *inc_dirs[64];
+int   n_inc = 0;
 
-#define EX ((FlexExtra*)yyextra)
+static int   lineno = 1;
+static char  strbuf[65536];
+static int   strpos;
+static int   depth;   /* paren depth in BODY for ':' detection */
 
-/* extern symbols from lex.c / scrip_cc */
-extern char       *inc_dirs[];
-extern int         n_inc;
-void   sno_error(int, const char *, ...);
-/* intern/intern_n provided as static inline by scrip_cc.h — no extern needed */
-
-static Token make_tok(TokKind k, const char *sv, long iv, double dv, int ln) {
-    Token t; t.kind=k; t.sval=sv; t.ival=iv; t.dval=dv; t.lineno=ln; return t;
+static Token mktok(TokKind k, const char *sv, long iv, double dv) {
+    Token t; t.kind=k; t.sval=sv; t.ival=iv; t.dval=dv; t.lineno=lineno;
+    return t;
 }
-static void pq_push(FlexExtra *ex, Token t) {
-    ex->pending[ex->ptail % 64] = t; ex->ptail++;
-}
-static int pq_empty(FlexExtra *ex) { return ex->phead == ex->ptail; }
-static Token pq_pop(FlexExtra *ex) { return ex->pending[ex->phead++ % 64]; }
 
-/* forward */
-static void emit_logical_to_pending(FlexExtra *ex);
-static void emit_stmt_seg(FlexExtra *ex, const char *s, int len, int ln, int first);
-static void tokenise_body_pending(FlexExtra *ex, const char *s, int len, int ln);
+#line 613 "snobol4.lex.c"
 
-#line 541 "src/frontend/snobol4/snobol4.lex.c"
-
-#line 543 "src/frontend/snobol4/snobol4.lex.c"
+#line 615 "snobol4.lex.c"
 
 #define INITIAL 0
-#define BODY 1
-#define GT_STATE 2
+#define LABEL 1
+#define BODY 2
+#define GT 3
+#define STR1 4
+#define STR2 5
+#define SKIP 6
+#define INCL 7
 
 #ifndef YY_NO_UNISTD_H
 /* Special case for "unistd.h", since it is non-ANSI. We include it way
@@ -553,7 +630,7 @@ static void tokenise_body_pending(FlexExtra *ex, const char *s, int len, int ln)
 #include <unistd.h>
 #endif
 
-#define YY_EXTRA_TYPE FlexExtra *
+#define YY_EXTRA_TYPE void *
 
 /* Holds the entire state of the reentrant scanner. */
 struct yyguts_t
@@ -767,9 +844,6 @@ extern int yylex (yyscan_t yyscanner);
 #endif
 
 #define YY_RULE_SETUP \
-	if ( yyleng > 0 ) \
-		YY_CURRENT_BUFFER_LVALUE->yy_at_bol = \
-				(yytext[yyleng - 1] == '\n'); \
 	YY_USER_ACTION
 
 /** The main scanner function which does all the work.
@@ -808,12 +882,13 @@ YY_DECL
 		}
 
 	{
-#line 89 "src/frontend/snobol4/snobol4.l"
+#line 63 "snobol4.l"
 
 
-#line 92 "src/frontend/snobol4/snobol4.l"
-    /* ── comment lines ───────────────────────────────────────── */
-#line 817 "src/frontend/snobol4/snobol4.lex.c"
+#line 66 "snobol4.l"
+    /* ---- INITIAL: col-1 dispatch ---- */
+
+#line 892 "snobol4.lex.c"
 
 	while ( /*CONSTCOND*/1 )		/* loops until end-of-file is reached */
 		{
@@ -828,7 +903,6 @@ YY_DECL
 		yy_bp = yy_cp;
 
 		yy_current_state = yyg->yy_start;
-		yy_current_state += YY_AT_BOL();
 yy_match:
 		do
 			{
@@ -841,13 +915,13 @@ yy_match:
 			while ( yy_chk[yy_base[yy_current_state] + yy_c] != yy_current_state )
 				{
 				yy_current_state = (int) yy_def[yy_current_state];
-				if ( yy_current_state >= 37 )
+				if ( yy_current_state >= 131 )
 					yy_c = yy_meta[yy_c];
 				}
 			yy_current_state = yy_nxt[yy_base[yy_current_state] + yy_c];
 			++yy_cp;
 			}
-		while ( yy_current_state != 36 );
+		while ( yy_current_state != 130 );
 		yy_cp = yyg->yy_last_accepting_cpos;
 		yy_current_state = yyg->yy_last_accepting_state;
 
@@ -855,18 +929,6 @@ yy_find_action:
 		yy_act = yy_accept[yy_current_state];
 
 		YY_DO_BEFORE_ACTION;
-
-		if ( yy_act != YY_END_OF_BUFFER && yy_rule_can_match_eol[yy_act] )
-			{
-			int yyl;
-			for ( yyl = 0; yyl < yyleng; ++yyl )
-				if ( yytext[yyl] == '\n' )
-					
-    do{ yylineno++;
-        yycolumn=0;
-    }while(0)
-;
-			}
 
 do_action:	/* This label is used only to access EOF actions. */
 
@@ -882,137 +944,462 @@ do_action:	/* This label is used only to access EOF actions. */
 case 1:
 /* rule 1 can match eol */
 YY_RULE_SETUP
-#line 93 "src/frontend/snobol4/snobol4.l"
-{ /* blank */
-    if (EX->llen) { emit_logical_to_pending(EX); }
-}
+#line 68 "snobol4.l"
+{ lineno++; /* blank line */ }
 	YY_BREAK
 case 2:
-/* rule 2 can match eol */
 YY_RULE_SETUP
-#line 96 "src/frontend/snobol4/snobol4.l"
-{ /* comment */
-    if (EX->llen) { emit_logical_to_pending(EX); }
-}
+#line 69 "snobol4.l"
+{ BEGIN(SKIP); }
 	YY_BREAK
-/* ── -INCLUDE / -COPY ────────────────────────────────────── */
 case 3:
-#line 102 "src/frontend/snobol4/snobol4.l"
+YY_RULE_SETUP
+#line 70 "snobol4.l"
+{ BEGIN(BODY); depth=0; }
+	YY_BREAK
 case 4:
 YY_RULE_SETUP
-#line 102 "src/frontend/snobol4/snobol4.l"
+#line 72 "snobol4.l"
 {
-    if (EX->llen) { emit_logical_to_pending(EX); }
-    char iname[4096]; int fi = 0;
-    int c = input(yyscanner);
-    if (c == '\'' || c == '"') {
-        int q = c; c = input(yyscanner);
-        while (c != EOF && c != q && c != '\n') {
-            if (fi < 4095) iname[fi++] = (char)c;
-            c = input(yyscanner);
-        }
-    } else {
-        while (c != EOF && c != '\n' && c != ' ' && c != '\t') {
-            if (fi < 4095) iname[fi++] = (char)c;
-            c = input(yyscanner);
-        }
-    }
-    iname[fi] = '\0';
-    while (c != EOF && c != '\n') c = input(yyscanner);
-    if (fi > 0) {
-        FILE *inc = fopen(iname, "r");
-        if (!inc) {
-            char path[4096];
-            for (int i = 0; i < n_inc && !inc; i++) {
-                snprintf(path, sizeof path, "%s/%s", inc_dirs[i], iname);
-                inc = fopen(path, "r");
-            }
-        }
-        if (!inc)
-            sno_error(yylineno, "cannot open include '%s'", iname);
-        else
-            yypush_buffer_state(yy_create_buffer(inc, YY_BUF_SIZE, yyscanner),
-                                yyscanner);
-    }
+    /* CTL line: check for INCLUDE/COPY */
+    BEGIN(INCL);
 }
 	YY_BREAK
-/* ── other CTL lines: silently skip ─────────────────────── */
 case 5:
-/* rule 5 can match eol */
 YY_RULE_SETUP
-#line 138 "src/frontend/snobol4/snobol4.l"
+#line 77 "snobol4.l"
 {
-    if (EX->llen) { emit_logical_to_pending(EX); }
+    /* continuation: discard, stay in BODY (don't emit STMT_END) */
+    BEGIN(BODY);
 }
 	YY_BREAK
-/* ── continuation: col-1 + or . ─────────────────────────── */
 case 6:
 YY_RULE_SETUP
-#line 143 "src/frontend/snobol4/snobol4.l"
+#line 82 "snobol4.l"
 {
-    /* trim trailing whitespace from accumulated logical line */
-    while (EX->llen > 0 &&
-           (EX->logical[EX->llen-1]==' '||EX->logical[EX->llen-1]=='\t'))
-        EX->llen--;
-    /* append space then rest of line */
-    int c = input(yyscanner);
-    while (c == ' ' || c == '\t') c = input(yyscanner);
-    if (EX->llen < (int)sizeof(EX->logical)-1)
-        EX->logical[EX->llen++] = ' ';
-    while (c != '\n' && c != EOF) {
-        if (EX->llen < (int)sizeof(EX->logical)-1)
-            EX->logical[EX->llen++] = (char)c;
-        c = input(yyscanner);
-    }
+    /* col-1 non-space: start of label */
+    strbuf[0] = yytext[0]; strpos = 1;
+    BEGIN(LABEL);
 }
 	YY_BREAK
-/* ── normal statement line ───────────────────────────────── */
+/* ---- LABEL: read rest of label ---- */
 case 7:
 YY_RULE_SETUP
-#line 161 "src/frontend/snobol4/snobol4.l"
+#line 90 "snobol4.l"
 {
-    /* flush previous logical line */
-    if (EX->llen) { emit_logical_to_pending(EX); }
-    EX->logical_lineno = yylineno;
-    EX->logical[0] = yytext[0];
-    EX->llen = 1;
-    /* read rest of line */
-    int c = input(yyscanner);
-    while (c != '\n' && c != EOF) {
-        if (EX->llen < (int)sizeof(EX->logical)-1)
-            EX->logical[EX->llen++] = (char)c;
-        c = input(yyscanner);
-    }
+    int take = yyleng < (int)sizeof(strbuf)-strpos-1
+               ? yyleng : (int)sizeof(strbuf)-strpos-1;
+    memcpy(strbuf+strpos, yytext, take); strpos += take;
+    strbuf[strpos] = '\0';
+    const char *sv = intern(strbuf);
+    BEGIN(BODY); depth = 0;
+    return T_LABEL;   /* sval set via yyextra trick — see flex_lex_next */
 }
 	YY_BREAK
-/* ── EOF: flush last logical line, pop include stack ─────── */
-case YY_STATE_EOF(INITIAL):
-case YY_STATE_EOF(BODY):
-case YY_STATE_EOF(GT_STATE):
-#line 177 "src/frontend/snobol4/snobol4.l"
-{
-    if (EX->llen) { emit_logical_to_pending(EX); }
-    int _ln = yyget_lineno(yyscanner);
-    if (YY_CURRENT_BUFFER) yypop_buffer_state(yyscanner);
-    if (!YY_CURRENT_BUFFER) {
-        pq_push(EX, make_tok(T_EOF, NULL, 0, 0, _ln));
-        return 0;
-    }
-}
-	YY_BREAK
-/* ── catch stray newlines in INITIAL (shouldn't happen) ─── */
 case 8:
-/* rule 8 can match eol */
 YY_RULE_SETUP
-#line 188 "src/frontend/snobol4/snobol4.l"
-{ }
+#line 100 "snobol4.l"
+{
+    strbuf[strpos] = '\0';
+    const char *sv = intern(strbuf);
+    BEGIN(BODY); depth = 0;
+    return T_LABEL;
+}
 	YY_BREAK
 case 9:
+/* rule 9 can match eol */
 YY_RULE_SETUP
-#line 190 "src/frontend/snobol4/snobol4.l"
+#line 107 "snobol4.l"
+{
+    /* label-only line */
+    strbuf[strpos] = '\0';
+    lineno++;
+    BEGIN(INITIAL);
+    return T_LABEL;
+    /* STMT_END emitted next call via INITIAL newline path — actually
+       parse.y handles label-only via T_STMT_END; emit it now */
+}
+	YY_BREAK
+/* ---- BODY: statement body ---- */
+case 10:
+YY_RULE_SETUP
+#line 119 "snobol4.l"
+{ /* discard whitespace */ }
+	YY_BREAK
+case 11:
+/* rule 11 can match eol */
+YY_RULE_SETUP
+#line 121 "snobol4.l"
+{
+    lineno++; BEGIN(INITIAL);
+    return T_STMT_END;
+}
+	YY_BREAK
+case 12:
+YY_RULE_SETUP
+#line 126 "snobol4.l"
+{
+    /* inline semicolon: end statement, next char is col-1 of next stmt */
+    depth = 0;
+    return T_STMT_END;
+}
+	YY_BREAK
+case 13:
+YY_RULE_SETUP
+#line 132 "snobol4.l"
+{
+    if (depth == 0) { BEGIN(GT); }
+    /* else: colon inside parens not used in SNOBOL4 */
+}
+	YY_BREAK
+case 14:
+YY_RULE_SETUP
+#line 137 "snobol4.l"
+{
+    strbuf[0]='\0'; strncat(strbuf, yytext+1, sizeof(strbuf)-1);
+    return T_KEYWORD;
+}
+	YY_BREAK
+case 15:
+YY_RULE_SETUP
+#line 141 "snobol4.l"
+{ return T_AMP; }
+	YY_BREAK
+case 16:
+YY_RULE_SETUP
+#line 143 "snobol4.l"
+{
+    strbuf[0]='\0'; strncat(strbuf, yytext, sizeof(strbuf)-1);
+    return strcasecmp(strbuf,"END")==0 ? T_END : T_IDENT;
+}
+	YY_BREAK
+case 17:
+#line 149 "snobol4.l"
+case 18:
+YY_RULE_SETUP
+#line 149 "snobol4.l"
+{
+    strbuf[0]='\0'; strncat(strbuf, yytext, sizeof(strbuf)-1);
+    return T_REAL;
+}
+	YY_BREAK
+case 19:
+YY_RULE_SETUP
+#line 153 "snobol4.l"
+{
+    strbuf[0]='\0'; strncat(strbuf, yytext, sizeof(strbuf)-1);
+    return T_INT;
+}
+	YY_BREAK
+case 20:
+YY_RULE_SETUP
+#line 158 "snobol4.l"
+{ strpos=0; BEGIN(STR1); }
+	YY_BREAK
+case 21:
+YY_RULE_SETUP
+#line 159 "snobol4.l"
+{ strpos=0; BEGIN(STR2); }
+	YY_BREAK
+case 22:
+YY_RULE_SETUP
+#line 161 "snobol4.l"
+{ return T_STARSTAR; }
+	YY_BREAK
+case 23:
+YY_RULE_SETUP
+#line 162 "snobol4.l"
+{ return T_PLUS;     }
+	YY_BREAK
+case 24:
+YY_RULE_SETUP
+#line 163 "snobol4.l"
+{ return T_MINUS;    }
+	YY_BREAK
+case 25:
+YY_RULE_SETUP
+#line 164 "snobol4.l"
+{ return T_STAR;     }
+	YY_BREAK
+case 26:
+YY_RULE_SETUP
+#line 165 "snobol4.l"
+{ return T_SLASH;    }
+	YY_BREAK
+case 27:
+YY_RULE_SETUP
+#line 166 "snobol4.l"
+{ return T_PCT;      }
+	YY_BREAK
+case 28:
+YY_RULE_SETUP
+#line 167 "snobol4.l"
+{ return T_CARET;    }
+	YY_BREAK
+case 29:
+YY_RULE_SETUP
+#line 168 "snobol4.l"
+{ return T_BANG;     }
+	YY_BREAK
+case 30:
+YY_RULE_SETUP
+#line 169 "snobol4.l"
+{ return T_AT;       }
+	YY_BREAK
+case 31:
+YY_RULE_SETUP
+#line 170 "snobol4.l"
+{ return T_TILDE;    }
+	YY_BREAK
+case 32:
+YY_RULE_SETUP
+#line 171 "snobol4.l"
+{ return T_DOLLAR;   }
+	YY_BREAK
+case 33:
+YY_RULE_SETUP
+#line 172 "snobol4.l"
+{ return T_DOT;      }
+	YY_BREAK
+case 34:
+YY_RULE_SETUP
+#line 173 "snobol4.l"
+{ return T_HASH;     }
+	YY_BREAK
+case 35:
+YY_RULE_SETUP
+#line 174 "snobol4.l"
+{ return T_PIPE;     }
+	YY_BREAK
+case 36:
+YY_RULE_SETUP
+#line 175 "snobol4.l"
+{ return T_EQ;       }
+	YY_BREAK
+case 37:
+YY_RULE_SETUP
+#line 176 "snobol4.l"
+{ return T_QMARK;    }
+	YY_BREAK
+case 38:
+YY_RULE_SETUP
+#line 177 "snobol4.l"
+{ return T_COMMA;    }
+	YY_BREAK
+case 39:
+YY_RULE_SETUP
+#line 178 "snobol4.l"
+{ depth++; return T_LPAREN;   }
+	YY_BREAK
+case 40:
+YY_RULE_SETUP
+#line 179 "snobol4.l"
+{ depth--; return T_RPAREN;   }
+	YY_BREAK
+case 41:
+YY_RULE_SETUP
+#line 180 "snobol4.l"
+{ depth++; return T_LBRACKET; }
+	YY_BREAK
+case 42:
+YY_RULE_SETUP
+#line 181 "snobol4.l"
+{ depth--; return T_RBRACKET; }
+	YY_BREAK
+case 43:
+YY_RULE_SETUP
+#line 182 "snobol4.l"
+{ depth++; return T_LANGLE;   }
+	YY_BREAK
+case 44:
+YY_RULE_SETUP
+#line 183 "snobol4.l"
+{ depth--; return T_RANGLE;   }
+	YY_BREAK
+case 45:
+YY_RULE_SETUP
+#line 184 "snobol4.l"
+{ sno_error(lineno,"unexpected char '%s'",yytext); }
+	YY_BREAK
+/* ---- STR1: single-quoted string ---- */
+case 46:
+YY_RULE_SETUP
+#line 188 "snobol4.l"
+{
+    int take = yyleng < (int)sizeof(strbuf)-strpos-1
+               ? yyleng : (int)sizeof(strbuf)-strpos-1;
+    memcpy(strbuf+strpos, yytext, take); strpos += take;
+}
+	YY_BREAK
+case 47:
+YY_RULE_SETUP
+#line 193 "snobol4.l"
+{
+    /* escaped quote: '' inside single-quoted string */
+    if (strpos < (int)sizeof(strbuf)-1) strbuf[strpos++] = '\'';
+}
+	YY_BREAK
+case 48:
+YY_RULE_SETUP
+#line 197 "snobol4.l"
+{
+    strbuf[strpos] = '\0';
+    BEGIN(BODY);
+    return T_STR;
+}
+	YY_BREAK
+case 49:
+/* rule 49 can match eol */
+YY_RULE_SETUP
+#line 202 "snobol4.l"
+{
+    sno_error(lineno,"unterminated string"); lineno++; BEGIN(BODY);
+}
+	YY_BREAK
+/* ---- STR2: double-quoted string ---- */
+case 50:
+YY_RULE_SETUP
+#line 208 "snobol4.l"
+{
+    int take = yyleng < (int)sizeof(strbuf)-strpos-1
+               ? yyleng : (int)sizeof(strbuf)-strpos-1;
+    memcpy(strbuf+strpos, yytext, take); strpos += take;
+}
+	YY_BREAK
+case 51:
+YY_RULE_SETUP
+#line 213 "snobol4.l"
+{
+    if (strpos < (int)sizeof(strbuf)-1) strbuf[strpos++] = '"';
+}
+	YY_BREAK
+case 52:
+YY_RULE_SETUP
+#line 216 "snobol4.l"
+{
+    strbuf[strpos] = '\0';
+    BEGIN(BODY);
+    return T_STR;
+}
+	YY_BREAK
+case 53:
+/* rule 53 can match eol */
+YY_RULE_SETUP
+#line 221 "snobol4.l"
+{
+    sno_error(lineno,"unterminated string"); lineno++; BEGIN(BODY);
+}
+	YY_BREAK
+/* ---- GT: goto field ---- */
+case 54:
+YY_RULE_SETUP
+#line 227 "snobol4.l"
+{ /* skip leading/trailing ws */ }
+	YY_BREAK
+case 55:
+YY_RULE_SETUP
+#line 228 "snobol4.l"
+{
+    strbuf[0]='\0'; strncat(strbuf, yytext, sizeof(strbuf)-1);
+    return T_GOTO;
+}
+	YY_BREAK
+case 56:
+YY_RULE_SETUP
+#line 232 "snobol4.l"
+{
+    /* semicolon after goto: end statement, next is col-1 */
+    depth = 0;
+    BEGIN(BODY);   /* next char after ; is NOT col-1, it's inline */
+    return T_STMT_END;
+}
+	YY_BREAK
+case 57:
+/* rule 57 can match eol */
+YY_RULE_SETUP
+#line 238 "snobol4.l"
+{
+    lineno++; BEGIN(INITIAL);
+    return T_STMT_END;
+}
+	YY_BREAK
+/* ---- SKIP: comment or unknown CTL line ---- */
+case 58:
+YY_RULE_SETUP
+#line 245 "snobol4.l"
+{ /* discard */ }
+	YY_BREAK
+case 59:
+/* rule 59 can match eol */
+YY_RULE_SETUP
+#line 246 "snobol4.l"
+{ lineno++; BEGIN(INITIAL); }
+	YY_BREAK
+/* ---- INCL: -INCLUDE / -COPY filename ---- */
+case 60:
+#line 251 "snobol4.l"
+case 61:
+YY_RULE_SETUP
+#line 251 "snobol4.l"
+{ /* keyword consumed */ }
+	YY_BREAK
+case 62:
+#line 254 "snobol4.l"
+case 63:
+YY_RULE_SETUP
+#line 254 "snobol4.l"
+{
+    char iname[4096];
+    int fi = yyleng-2; if(fi>=(int)sizeof iname) fi=(int)sizeof iname-1;
+    memcpy(iname,yytext+1,fi); iname[fi]='\0';
+    FILE *inc = fopen(iname,"r");
+    if(!inc){char p[4096];for(int i=0;i<n_inc&&!inc;i++){snprintf(p,sizeof p,"%s/%s",inc_dirs[i],iname);inc=fopen(p,"r");}}
+    if(!inc) sno_error(lineno,"cannot open include '%s'",iname);
+    else yypush_buffer_state(yy_create_buffer(inc,YY_BUF_SIZE,yyscanner),yyscanner);
+    BEGIN(INITIAL);
+}
+	YY_BREAK
+case 64:
+YY_RULE_SETUP
+#line 264 "snobol4.l"
+{
+    char iname[4096];
+    int fi=yyleng; if(fi>=(int)sizeof iname) fi=(int)sizeof iname-1;
+    memcpy(iname,yytext,fi); iname[fi]='\0';
+    FILE *inc = fopen(iname,"r");
+    if(!inc){char p[4096];for(int i=0;i<n_inc&&!inc;i++){snprintf(p,sizeof p,"%s/%s",inc_dirs[i],iname);inc=fopen(p,"r");}}
+    if(!inc) sno_error(lineno,"cannot open include '%s'",iname);
+    else yypush_buffer_state(yy_create_buffer(inc,YY_BUF_SIZE,yyscanner),yyscanner);
+    BEGIN(INITIAL);
+}
+	YY_BREAK
+case 65:
+/* rule 65 can match eol */
+YY_RULE_SETUP
+#line 274 "snobol4.l"
+{ lineno++; BEGIN(INITIAL); /* no filename found, skip */ }
+	YY_BREAK
+/* ---- EOF: pop include stack or done ---- */
+case YY_STATE_EOF(INITIAL):
+case YY_STATE_EOF(LABEL):
+case YY_STATE_EOF(BODY):
+case YY_STATE_EOF(GT):
+case YY_STATE_EOF(STR1):
+case YY_STATE_EOF(STR2):
+case YY_STATE_EOF(SKIP):
+case YY_STATE_EOF(INCL):
+#line 278 "snobol4.l"
+{
+    if (YY_CURRENT_BUFFER) yypop_buffer_state(yyscanner);
+    if (!YY_CURRENT_BUFFER) return T_EOF;
+}
+	YY_BREAK
+case 66:
+YY_RULE_SETUP
+#line 283 "snobol4.l"
 ECHO;
 	YY_BREAK
-#line 1016 "src/frontend/snobol4/snobol4.lex.c"
+#line 1403 "snobol4.lex.c"
 
 	case YY_END_OF_BUFFER:
 		{
@@ -1298,7 +1685,6 @@ static int yy_get_next_buffer (yyscan_t yyscanner)
     struct yyguts_t * yyg = (struct yyguts_t*)yyscanner;
 
 	yy_current_state = yyg->yy_start;
-	yy_current_state += YY_AT_BOL();
 
 	for ( yy_cp = yyg->yytext_ptr + YY_MORE_ADJ; yy_cp < yyg->yy_c_buf_p; ++yy_cp )
 		{
@@ -1311,7 +1697,7 @@ static int yy_get_next_buffer (yyscan_t yyscanner)
 		while ( yy_chk[yy_base[yy_current_state] + yy_c] != yy_current_state )
 			{
 			yy_current_state = (int) yy_def[yy_current_state];
-			if ( yy_current_state >= 37 )
+			if ( yy_current_state >= 131 )
 				yy_c = yy_meta[yy_c];
 			}
 		yy_current_state = yy_nxt[yy_base[yy_current_state] + yy_c];
@@ -1340,11 +1726,11 @@ static int yy_get_next_buffer (yyscan_t yyscanner)
 	while ( yy_chk[yy_base[yy_current_state] + yy_c] != yy_current_state )
 		{
 		yy_current_state = (int) yy_def[yy_current_state];
-		if ( yy_current_state >= 37 )
+		if ( yy_current_state >= 131 )
 			yy_c = yy_meta[yy_c];
 		}
 	yy_current_state = yy_nxt[yy_base[yy_current_state] + yy_c];
-	yy_is_jam = (yy_current_state == 36);
+	yy_is_jam = (yy_current_state == 130);
 
 	(void)yyg;
 	return yy_is_jam ? 0 : yy_current_state;
@@ -1384,10 +1770,6 @@ static int yy_get_next_buffer (yyscan_t yyscanner)
 		}
 
 	*--yy_cp = (char) c;
-
-    if ( c == '\n' ){
-        --yylineno;
-    }
 
 	yyg->yytext_ptr = yy_bp;
 	yyg->yy_hold_char = *yy_cp;
@@ -1466,14 +1848,6 @@ static int yy_get_next_buffer (yyscan_t yyscanner)
 	c = *(unsigned char *) yyg->yy_c_buf_p;	/* cast for 8-bit char's */
 	*yyg->yy_c_buf_p = '\0';	/* preserve yytext */
 	yyg->yy_hold_char = *++yyg->yy_c_buf_p;
-
-	YY_CURRENT_BUFFER_LVALUE->yy_at_bol = (c == '\n');
-	if ( YY_CURRENT_BUFFER_LVALUE->yy_at_bol )
-		
-    do{ yylineno++;
-        yycolumn=0;
-    }while(0)
-;
 
 	return c;
 }
@@ -2234,292 +2608,112 @@ void yyfree (void * ptr , yyscan_t yyscanner)
 
 #define YYTABLES_NAME "yytables"
 
-#line 190 "src/frontend/snobol4/snobol4.l"
+#line 283 "snobol4.l"
 
 
-/* ── emit_logical_to_pending ─────────────────────────────────────────────
- * Parse one accumulated logical line into the pending queue.
- * Mirrors old emit_logical() but writes to pending[] instead of Q.
- */
-static void emit_logical_to_pending(FlexExtra *ex) {
-    const char *s   = ex->logical;
-    int         len = ex->llen;
-    int         ln  = ex->logical_lineno;
-    ex->llen = 0;
-    emit_stmt_seg(ex, s, len, ln, 1);
+/* ---- Public interface ---- */
+
+void sno_error(int ln, const char *fmt, ...) {
+    va_list ap;
+    fprintf(stderr,"snobol4:%d: error: ",ln);
+    va_start(ap,fmt); vfprintf(stderr,fmt,ap); va_end(ap);
+    fputc('\n',stderr);
 }
 
-static void emit_stmt_seg(FlexExtra *ex,
-                           const char *s, int len, int ln, int first) {
-    int pos = 0;
-
-    /* label — first segment only, col-1 non-space */
-    if (first && len > 0 && s[0] != ' ' && s[0] != '\t') {
-        int le = 0;
-        while (le < len && s[le] != ' ' && s[le] != '\t') le++;
-        const char *lbl = intern_n(s, le);
-        pq_push(ex, make_tok(T_LABEL, lbl, strcasecmp(lbl,"END")==0, 0, ln));
-        pos = le;
-        while (pos < len && (s[pos]==' '||s[pos]=='\t')) pos++;
-    }
-
-    const char *rest = s + pos;
-    int rlen = len - pos;
-
-    /* find ':' or ';' outside strings/parens */
-    int body_len = rlen, semi_pos = -1;
-    const char *goto_str = NULL;
-    {
-        int depth=0, inq=0; char qch=0;
-        for (int i = 0; i < rlen; i++) {
-            char c = rest[i];
-            if (inq) { if (c==qch) inq=0; continue; }
-            if (c=='\''||c=='"') { inq=1; qch=c; continue; }
-            if (c=='(') { depth++; continue; }
-            if (c==')') { depth--; continue; }
-            if (c==';' && depth==0) { semi_pos=i; body_len=i; break; }
-            if (c==':' && depth==0) {
-                body_len = i;
-                while (body_len>0 &&
-                       (rest[body_len-1]==' '||rest[body_len-1]=='\t'))
-                    body_len--;
-                const char *gs = rest+i+1; int gl = rlen-i-1;
-                while (gl>0 && (gs[0]==' '||gs[0]=='\t')) { gs++; gl--; }
-                for (int k=0; k<gl; k++) if (gs[k]==';') { gl=k; break; }
-                while (gl>0 && (gs[gl-1]==' '||gs[gl-1]=='\t')) gl--;
-                if (gl > 0) goto_str = intern_n(gs, gl);
-                break;
-            }
-        }
-    }
-    while (body_len>0 && (rest[body_len-1]==' '||rest[body_len-1]=='\t'))
-        body_len--;
-
-    if (body_len > 0) tokenise_body_pending(ex, rest, body_len, ln);
-    if (goto_str)     pq_push(ex, make_tok(T_GOTO, goto_str, 0, 0, ln));
-    pq_push(ex, make_tok(T_STMT_END, NULL, 0, 0, ln));
-
-    /* recurse for semicolon-separated statements */
-    if (semi_pos >= 0) {
-        const char *next = rest+semi_pos+1;
-        int nlen = rlen-semi_pos-1;
-        while (nlen>0 && (*next==' '||*next=='\t')) { next++; nlen--; }
-        if (nlen>0 && next[0]!='*')
-            emit_stmt_seg(ex, next, nlen, ln, 0);
-    }
-}
-
-
-static void tokenise_body_pending(FlexExtra *ex,
-                                   const char *s, int len, int ln) {
-    int pos = 0;
-    while (pos < len) {
-        unsigned char ch = (unsigned char)s[pos];
-        /* whitespace — silently consumed; grammar resolves unary/binary */
-        if (ch==' '||ch=='\t') {
-            while (pos<len&&((unsigned char)s[pos]==' '||(unsigned char)s[pos]=='\t')) pos++;
-            continue;
-        }
-        /* single-quoted string */
-        if (ch=='\'') {
-            int st=pos+1; pos++;
-            while (pos<len&&s[pos]!='\'') pos++;
-            pq_push(ex, make_tok(T_STR,intern_n(s+st,pos-st),0,0,ln));
-            if (pos<len) pos++;
-            continue;
-        }
-        /* double-quoted string */
-        if (ch=='"') {
-            int st=pos+1; pos++;
-            while (pos<len&&s[pos]!='"') pos++;
-            pq_push(ex, make_tok(T_STR,intern_n(s+st,pos-st),0,0,ln));
-            if (pos<len) pos++;
-            continue;
-        }
-        /* number */
-        if (isdigit(ch)) {
-            int st=pos;
-            while (pos<len&&isdigit((unsigned char)s[pos])) pos++;
-            if (pos<len&&s[pos]=='.'&&pos+1<len&&isdigit((unsigned char)s[pos+1])) {
-                pos++;
-                while (pos<len&&isdigit((unsigned char)s[pos])) pos++;
-                if (pos<len&&(s[pos]=='e'||s[pos]=='E')) {
-                    pos++; if (pos<len&&(s[pos]=='+'||s[pos]=='-')) pos++;
-                    while (pos<len&&isdigit((unsigned char)s[pos])) pos++;
-                }
-                char b[64]; int bl=pos-st<63?pos-st:63;
-                memcpy(b,s+st,bl); b[bl]='\0';
-                pq_push(ex, make_tok(T_REAL,intern_n(s+st,pos-st),0,atof(b),ln));
-                continue;
-            }
-            if (pos<len&&(s[pos]=='e'||s[pos]=='E')) {
-                pos++; if (pos<len&&(s[pos]=='+'||s[pos]=='-')) pos++;
-                while (pos<len&&isdigit((unsigned char)s[pos])) pos++;
-                char b[64]; int bl=pos-st<63?pos-st:63;
-                memcpy(b,s+st,bl); b[bl]='\0';
-                pq_push(ex, make_tok(T_REAL,intern_n(s+st,pos-st),0,atof(b),ln));
-                continue;
-            }
-            char b[64]; int bl=pos-st<63?pos-st:63;
-            memcpy(b,s+st,bl); b[bl]='\0';
-            pq_push(ex, make_tok(T_INT,NULL,atol(b),0,ln));
-            continue;
-        }
-        /* &KEYWORD or bare & */
-        if (ch=='&') {
-            pos++;
-            int st=pos;
-            while (pos<len&&(isalnum((unsigned char)s[pos])||s[pos]=='_')) pos++;
-            if (pos>st) { pq_push(ex, make_tok(T_KEYWORD,intern_n(s+st,pos-st),0,0,ln)); continue; }
-            pq_push(ex, make_tok(T_AMP,NULL,0,0,ln)); continue;
-        }
-        /* identifier */
-        if (isalpha(ch)||ch>=0x80) {
-            int st=pos;
-            while (pos<len&&(isalnum((unsigned char)s[pos])||
-                   s[pos]=='_'||s[pos]=='.'||(unsigned char)s[pos]>=0x80)) pos++;
-            const char *sv=intern_n(s+st,pos-st);
-            if (strcasecmp(sv,"END")==0) { pq_push(ex, make_tok(T_END,sv,0,0,ln)); continue; }
-            pq_push(ex, make_tok(T_IDENT,sv,0,0,ln)); continue;
-        }
-        /* ** before * */
-        if (ch=='*'&&pos+1<len&&s[pos+1]=='*') {
-            pos+=2; pq_push(ex, make_tok(T_STARSTAR,NULL,0,0,ln)); continue;
-        }
-        /* all other operators — one token kind; grammar resolves unary/binary */
-        {
-            TokKind k;
-            switch(ch) {
-                case '+': k=T_PLUS;     break; case '-': k=T_MINUS;    break;
-                case '*': k=T_STAR;     break; case '/': k=T_SLASH;    break;
-                case '%': k=T_PCT;      break; case '^': k=T_CARET;    break;
-                case '!': k=T_BANG;     break; case '@': k=T_AT;       break;
-                case '~': k=T_TILDE;    break; case '$': k=T_DOLLAR;   break;
-                case '.': k=T_DOT;      break; case '#': k=T_HASH;     break;
-                case '|': k=T_PIPE;     break; case '=': k=T_EQ;       break;
-                case '?': k=T_QMARK;    break; case ',': k=T_COMMA;    break;
-                case '(': k=T_LPAREN;   break; case ')': k=T_RPAREN;   break;
-                case '[': k=T_LBRACKET; break; case ']': k=T_RBRACKET; break;
-                case '<': k=T_LANGLE;   break; case '>': k=T_RANGLE;   break;
-                default:  sno_error(ln,"unexpected char '%c'",ch); pos++; continue;
-            }
-            pos++;
-            pq_push(ex, make_tok(k,NULL,0,0,ln));
-        }
-    }
-}
-
-/* ── Public interface ────────────────────────────────────────────────────── */
+/* Lex wraps a single reentrant scanner + strbuf pointer for sval. */
 
 void flex_lex_open(Lex *lx, FILE *f, const char *fname) {
-    FlexExtra *ex = calloc(1, sizeof(FlexExtra));
-    ex->logical_lineno = 1;
     yyscan_t sc;
-    yylex_init_extra(ex, &sc);
+    yylex_init(&sc);
     yy_switch_to_buffer(yy_create_buffer(f, YY_BUF_SIZE, sc), sc);
+    lineno = 1;
     lx->_scanner = sc;
-    lx->_extra   = ex;
+    lx->_extra   = NULL;
     (void)fname;
 }
 
 Token flex_lex_next(Lex *lx) {
-    FlexExtra *ex = (FlexExtra *)lx->_extra;
-    yyscan_t   sc = (yyscan_t)lx->_scanner;
+    yyscan_t sc = (yyscan_t)lx->_scanner;
     for (;;) {
-        if (!pq_empty(ex)) return pq_pop(ex);
         int r = yylex(sc);
-        if (r == 0) {
-            if (!pq_empty(ex)) return pq_pop(ex);
-            return make_tok(T_EOF, NULL, 0, 0, yyget_lineno(sc));
-        }
-        /* yylex returned a direct token kind from BODY/GT rules (future) */
-        Token t = ex->tok;
+        Token t;
+        t.lineno = lineno;
+        t.ival   = 0;
+        t.dval   = 0.0;
+        t.sval   = NULL;
         t.kind   = (TokKind)r;
-        t.lineno = yyget_lineno(sc);
-        return t;
+
+        switch (r) {
+        case T_EOF:
+            t.kind = T_EOF; return t;
+
+        case T_LABEL:
+            t.sval = intern(strbuf);
+            t.ival = strcasecmp(strbuf,"END")==0 ? 1 : 0;
+            return t;
+
+        case T_IDENT: case T_END: case T_KEYWORD:
+        case T_GOTO:
+            t.sval = intern(strbuf);
+            return t;
+
+        case T_STR:
+            t.sval = intern(strbuf);
+            return t;
+
+        case T_INT:
+            t.ival = atol(strbuf);
+            return t;
+
+        case T_REAL:
+            t.sval = intern(strbuf);
+            t.dval = atof(strbuf);
+            return t;
+
+        default:
+            return t;
+        }
     }
 }
 
 void flex_lex_destroy(Lex *lx) {
     if (lx->_scanner) {
         yylex_destroy((yyscan_t)lx->_scanner);
-        free(lx->_extra);
         lx->_scanner = NULL;
-        lx->_extra   = NULL;
     }
 }
 
-/* ── Storage for externs declared above ─────────────────────────────────── */
-
-char *inc_dirs[64];
-int   n_inc = 0;
-
-/* intern/intern_n: static inline in scrip_cc.h — no definition needed here */
-
-void sno_error(int lineno, const char *fmt, ...) {
-    va_list ap;
-    fprintf(stderr, "snobol4:%d: error: ", lineno);
-    va_start(ap, fmt); vfprintf(stderr, fmt, ap); va_end(ap);
-    fputc('\n', stderr);
+void lex_open_str(Lex *lx, const char *s, int len, int ln) {
+    yyscan_t sc;
+    yylex_init(&sc);
+    yy_scan_bytes(s, len, sc);
+    lineno = ln;
+    /* yy_push_state is static in this TU — valid to call from user section */
+    yy_push_state(BODY, sc);
+    lx->_scanner = sc;
+    lx->_extra   = NULL;
 }
-
-/* ── lex_open_str: tokenise a sub-string using the body tokeniser ────────── */
-/* Pre-populates the pending queue via tokenise_body_pending — same tokenizer,
- * no new flex scanner, no fmemopen. flex_lex_next drains the queue then
- * returns T_EOF. */
-
-void lex_open_str(Lex *lx, const char *s, int len, int lineno) {
-    memset(lx, 0, sizeof *lx);
-    lx->lineno = lineno;
-    FlexExtra *ex = calloc(1, sizeof(FlexExtra));
-    ex->logical_lineno = lineno;
-    lx->_extra   = ex;
-    lx->_scanner = NULL;   /* no scanner — queue-only mode */
-    tokenise_body_pending(ex, s, len, lineno);
-    /* Append EOF sentinel so flex_lex_next knows when to stop */
-    pq_push(ex, make_tok(T_EOF, NULL, 0, 0, lineno));
-}
-
-/* ── lex_next / lex_peek / lex_at_end ───────────────────────────────────── */
 
 Token lex_next(Lex *lx) {
     if (lx->peeked) { lx->peeked=0; return lx->peek; }
-    if (lx->_scanner) return flex_lex_next(lx);
-    /* queue-only mode: _extra holds pre-tokenized pq */
-    if (lx->_extra) {
-        FlexExtra *ex = (FlexExtra *)lx->_extra;
-        if (!pq_empty(ex)) return pq_pop(ex);
-    }
-    return (Token){T_EOF,NULL,0,0,lx->lineno};
+    return flex_lex_next(lx);
 }
-
 Token lex_peek(Lex *lx) {
-    if (!lx->peeked) {
-        lx->peek = lex_next(lx);
-        lx->peeked = 1;
-    }
+    if (!lx->peeked) { lx->peek=lex_next(lx); lx->peeked=1; }
     return lx->peek;
 }
-
-int lex_at_end(Lex *lx) { return lex_peek(lx).kind==T_EOF; }
-
-void lex_destroy(Lex *lx) {
-    if (lx->_scanner) flex_lex_destroy(lx);
-    else if (lx->_extra) { free(lx->_extra); lx->_extra = NULL; }
-}
-
-/* ── sno_parse ──────────────────────────────────────────────────────────── */
+int  lex_at_end(Lex *lx) { return lex_peek(lx).kind==T_EOF; }
+void lex_destroy(Lex *lx) { flex_lex_destroy(lx); }
 
 extern Program *parse_program_tokens(Lex *stream);
 
-Program *sno_parse(FILE *f, const char *filename) {
+Program *sno_parse(FILE *f, const char *fname) {
     Lex lx; memset(&lx,0,sizeof lx);
-    flex_lex_open(&lx, f, filename);
+    flex_lex_open(&lx,f,fname);
     Program *prog = parse_program_tokens(&lx);
     flex_lex_destroy(&lx);
     return prog;
 }
 
-/* sno_reset: no-op in one-pass path — no global queue state to clear */
 void sno_reset(void) {}
 
