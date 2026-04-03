@@ -1109,7 +1109,7 @@ function _call(fname, arg_exprs) {
       const dest=(_str(args[0]??'')).toUpperCase();
       const src =(_str(args[1]??'')).toUpperCase();
       if(dest && src && func_table[src]) func_table[dest]=func_table[src];
-      return dest||null;
+      return null;  /* OPSYN returns null on success (oracle: snobol4_pattern.c opsyn()) */
     }
     case 'SETEXIT': case 'STOPTR': case 'TRACE': case 'SPITBOL': return null;
     case 'INPUT':   {
