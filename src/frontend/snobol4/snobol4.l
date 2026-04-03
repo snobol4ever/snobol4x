@@ -26,6 +26,8 @@
  */
 #include "scrip_cc.h"
 #include "snobol4.h"
+#include "snobol4.tab.h"
+#define T_EOF SNOBOL4_EOF
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -42,7 +44,7 @@ static int   strpos;
 static int   depth;      /* paren depth in BODY for ':' detection */
 
 
-static Token mktok(TokKind k, const char *sv, long iv, double dv) {
+static Token mktok(int k, const char *sv, long iv, double dv) {
     Token t; t.kind=k; t.sval=sv; t.ival=iv; t.dval=dv; t.lineno=lineno;
     return t;
 }
@@ -325,7 +327,7 @@ Token flex_lex_next(Lex *lx) {
         t.ival   = 0;
         t.dval   = 0.0;
         t.sval   = NULL;
-        t.kind   = (TokKind)r;
+        t.kind   = r;
 
         switch (r) {
         case T_EOF:

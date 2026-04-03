@@ -35,8 +35,8 @@
    especially those whose name start with YY_ or yy_.  They are
    private implementation details that can be changed or removed.  */
 
-#ifndef YY_SNOBOL4_SRC_FRONTEND_SNOBOL4_SNOBOL4_TAB_H_INCLUDED
-# define YY_SNOBOL4_SRC_FRONTEND_SNOBOL4_SNOBOL4_TAB_H_INCLUDED
+#ifndef YY_SNOBOL4_SNOBOL4_TAB_H_INCLUDED
+# define YY_SNOBOL4_SNOBOL4_TAB_H_INCLUDED
 /* Debug traces.  */
 #ifndef SNOBOL4_DEBUG
 # if defined YYDEBUG
@@ -53,10 +53,12 @@
 extern int snobol4_debug;
 #endif
 /* "%code requires" blocks.  */
-#line 1 "src/frontend/snobol4/snobol4.y"
- #include "scrip_cc.h" #include "snobol4.h" #include "lex.h" 
+#line 1 "snobol4.y"
 
-#line 60 "src/frontend/snobol4/snobol4.tab.h"
+#include "scrip_cc.h"
+#include "snobol4.h"
+
+#line 62 "snobol4.tab.h"
 
 /* Token kinds.  */
 #ifndef SNOBOL4_TOKENTYPE
@@ -67,54 +69,54 @@ extern int snobol4_debug;
     SNOBOL4_EOF = 0,               /* "end of file"  */
     SNOBOL4_error = 256,           /* error  */
     SNOBOL4_UNDEF = 257,           /* "invalid token"  */
-    TK_IDENT = 258,                /* TK_IDENT  */
-    TK_FUNCTION = 259,             /* TK_FUNCTION  */
-    TK_KEYWORD = 260,              /* TK_KEYWORD  */
-    TK_END = 261,                  /* TK_END  */
-    TK_INT = 262,                  /* TK_INT  */
-    TK_REAL = 263,                 /* TK_REAL  */
-    TK_STR = 264,                  /* TK_STR  */
-    TK_LABEL = 265,                /* TK_LABEL  */
-    TK_GOTO = 266,                 /* TK_GOTO  */
-    TK_STMT_END = 267,             /* TK_STMT_END  */
-    TK_ASSIGNMENT = 268,           /* TK_ASSIGNMENT  */
-    TK_MATCH = 269,                /* TK_MATCH  */
-    TK_ALTERNATION = 270,          /* TK_ALTERNATION  */
-    TK_ADDITION = 271,             /* TK_ADDITION  */
-    TK_SUBTRACTION = 272,          /* TK_SUBTRACTION  */
-    TK_MULTIPLICATION = 273,       /* TK_MULTIPLICATION  */
-    TK_DIVISION = 274,             /* TK_DIVISION  */
-    TK_EXPONENTIATION = 275,       /* TK_EXPONENTIATION  */
-    TK_IMMEDIATE_ASSIGN = 276,     /* TK_IMMEDIATE_ASSIGN  */
-    TK_COND_ASSIGN = 277,          /* TK_COND_ASSIGN  */
-    TK_AMPERSAND = 278,            /* TK_AMPERSAND  */
-    TK_AT_SIGN = 279,              /* TK_AT_SIGN  */
-    TK_POUND = 280,                /* TK_POUND  */
-    TK_PERCENT = 281,              /* TK_PERCENT  */
-    TK_TILDE = 282,                /* TK_TILDE  */
-    TK_UN_AT_SIGN = 283,           /* TK_UN_AT_SIGN  */
-    TK_UN_TILDE = 284,             /* TK_UN_TILDE  */
-    TK_UN_QUESTION_MARK = 285,     /* TK_UN_QUESTION_MARK  */
-    TK_UN_AMPERSAND = 286,         /* TK_UN_AMPERSAND  */
-    TK_UN_PLUS = 287,              /* TK_UN_PLUS  */
-    TK_UN_MINUS = 288,             /* TK_UN_MINUS  */
-    TK_UN_ASTERISK = 289,          /* TK_UN_ASTERISK  */
-    TK_UN_DOLLAR_SIGN = 290,       /* TK_UN_DOLLAR_SIGN  */
-    TK_UN_PERIOD = 291,            /* TK_UN_PERIOD  */
-    TK_UN_EXCLAMATION = 292,       /* TK_UN_EXCLAMATION  */
-    TK_UN_PERCENT = 293,           /* TK_UN_PERCENT  */
-    TK_UN_SLASH = 294,             /* TK_UN_SLASH  */
-    TK_UN_POUND = 295,             /* TK_UN_POUND  */
-    TK_UN_EQUAL = 296,             /* TK_UN_EQUAL  */
-    TK_UN_VERTICAL_BAR = 297,      /* TK_UN_VERTICAL_BAR  */
-    TK_CONCAT = 298,               /* TK_CONCAT  */
-    TK_COMMA = 299,                /* TK_COMMA  */
-    TK_LPAREN = 300,               /* TK_LPAREN  */
-    TK_RPAREN = 301,               /* TK_RPAREN  */
-    TK_LBRACK = 302,               /* TK_LBRACK  */
-    TK_RBRACK = 303,               /* TK_RBRACK  */
-    TK_LANGLE = 304,               /* TK_LANGLE  */
-    TK_RANGLE = 305                /* TK_RANGLE  */
+    T_IDENT = 258,                 /* T_IDENT  */
+    T_FUNCTION = 259,              /* T_FUNCTION  */
+    T_KEYWORD = 260,               /* T_KEYWORD  */
+    T_END = 261,                   /* T_END  */
+    T_INT = 262,                   /* T_INT  */
+    T_REAL = 263,                  /* T_REAL  */
+    T_STR = 264,                   /* T_STR  */
+    T_LABEL = 265,                 /* T_LABEL  */
+    T_GOTO = 266,                  /* T_GOTO  */
+    T_STMT_END = 267,              /* T_STMT_END  */
+    T_ASSIGNMENT = 268,            /* T_ASSIGNMENT  */
+    T_MATCH = 269,                 /* T_MATCH  */
+    T_ALTERNATION = 270,           /* T_ALTERNATION  */
+    T_ADDITION = 271,              /* T_ADDITION  */
+    T_SUBTRACTION = 272,           /* T_SUBTRACTION  */
+    T_MULTIPLICATION = 273,        /* T_MULTIPLICATION  */
+    T_DIVISION = 274,              /* T_DIVISION  */
+    T_EXPONENTIATION = 275,        /* T_EXPONENTIATION  */
+    T_IMMEDIATE_ASSIGN = 276,      /* T_IMMEDIATE_ASSIGN  */
+    T_COND_ASSIGN = 277,           /* T_COND_ASSIGN  */
+    T_AMPERSAND = 278,             /* T_AMPERSAND  */
+    T_AT_SIGN = 279,               /* T_AT_SIGN  */
+    T_POUND = 280,                 /* T_POUND  */
+    T_PERCENT = 281,               /* T_PERCENT  */
+    T_TILDE = 282,                 /* T_TILDE  */
+    T_UN_AT_SIGN = 283,            /* T_UN_AT_SIGN  */
+    T_UN_TILDE = 284,              /* T_UN_TILDE  */
+    T_UN_QUESTION_MARK = 285,      /* T_UN_QUESTION_MARK  */
+    T_UN_AMPERSAND = 286,          /* T_UN_AMPERSAND  */
+    T_UN_PLUS = 287,               /* T_UN_PLUS  */
+    T_UN_MINUS = 288,              /* T_UN_MINUS  */
+    T_UN_ASTERISK = 289,           /* T_UN_ASTERISK  */
+    T_UN_DOLLAR_SIGN = 290,        /* T_UN_DOLLAR_SIGN  */
+    T_UN_PERIOD = 291,             /* T_UN_PERIOD  */
+    T_UN_EXCLAMATION = 292,        /* T_UN_EXCLAMATION  */
+    T_UN_PERCENT = 293,            /* T_UN_PERCENT  */
+    T_UN_SLASH = 294,              /* T_UN_SLASH  */
+    T_UN_POUND = 295,              /* T_UN_POUND  */
+    T_UN_EQUAL = 296,              /* T_UN_EQUAL  */
+    T_UN_VERTICAL_BAR = 297,       /* T_UN_VERTICAL_BAR  */
+    T_CONCAT = 298,                /* T_CONCAT  */
+    T_COMMA = 299,                 /* T_COMMA  */
+    T_LPAREN = 300,                /* T_LPAREN  */
+    T_RPAREN = 301,                /* T_RPAREN  */
+    T_LBRACK = 302,                /* T_LBRACK  */
+    T_RBRACK = 303,                /* T_RBRACK  */
+    T_LANGLE = 304,                /* T_LANGLE  */
+    T_RANGLE = 305                 /* T_RANGLE  */
   };
   typedef enum snobol4_tokentype snobol4_token_kind_t;
 #endif
@@ -123,10 +125,10 @@ extern int snobol4_debug;
 #if ! defined SNOBOL4_STYPE && ! defined SNOBOL4_STYPE_IS_DECLARED
 union SNOBOL4_STYPE
 {
-#line 19 "src/frontend/snobol4/snobol4.y"
+#line 22 "snobol4.y"
  EXPR_t *expr; Token tok; 
 
-#line 130 "src/frontend/snobol4/snobol4.tab.h"
+#line 132 "snobol4.tab.h"
 
 };
 typedef union SNOBOL4_STYPE SNOBOL4_STYPE;
@@ -140,4 +142,4 @@ typedef union SNOBOL4_STYPE SNOBOL4_STYPE;
 int snobol4_parse (void *yyparse_param);
 
 
-#endif /* !YY_SNOBOL4_SRC_FRONTEND_SNOBOL4_SNOBOL4_TAB_H_INCLUDED  */
+#endif /* !YY_SNOBOL4_SNOBOL4_TAB_H_INCLUDED  */

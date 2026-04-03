@@ -102,54 +102,54 @@ enum yysymbol_kind_t
   YYSYMBOL_YYEOF = 0,                      /* "end of file"  */
   YYSYMBOL_YYerror = 1,                    /* error  */
   YYSYMBOL_YYUNDEF = 2,                    /* "invalid token"  */
-  YYSYMBOL_TK_IDENT = 3,                   /* TK_IDENT  */
-  YYSYMBOL_TK_FUNCTION = 4,                /* TK_FUNCTION  */
-  YYSYMBOL_TK_KEYWORD = 5,                 /* TK_KEYWORD  */
-  YYSYMBOL_TK_END = 6,                     /* TK_END  */
-  YYSYMBOL_TK_INT = 7,                     /* TK_INT  */
-  YYSYMBOL_TK_REAL = 8,                    /* TK_REAL  */
-  YYSYMBOL_TK_STR = 9,                     /* TK_STR  */
-  YYSYMBOL_TK_LABEL = 10,                  /* TK_LABEL  */
-  YYSYMBOL_TK_GOTO = 11,                   /* TK_GOTO  */
-  YYSYMBOL_TK_STMT_END = 12,               /* TK_STMT_END  */
-  YYSYMBOL_TK_ASSIGNMENT = 13,             /* TK_ASSIGNMENT  */
-  YYSYMBOL_TK_MATCH = 14,                  /* TK_MATCH  */
-  YYSYMBOL_TK_ALTERNATION = 15,            /* TK_ALTERNATION  */
-  YYSYMBOL_TK_ADDITION = 16,               /* TK_ADDITION  */
-  YYSYMBOL_TK_SUBTRACTION = 17,            /* TK_SUBTRACTION  */
-  YYSYMBOL_TK_MULTIPLICATION = 18,         /* TK_MULTIPLICATION  */
-  YYSYMBOL_TK_DIVISION = 19,               /* TK_DIVISION  */
-  YYSYMBOL_TK_EXPONENTIATION = 20,         /* TK_EXPONENTIATION  */
-  YYSYMBOL_TK_IMMEDIATE_ASSIGN = 21,       /* TK_IMMEDIATE_ASSIGN  */
-  YYSYMBOL_TK_COND_ASSIGN = 22,            /* TK_COND_ASSIGN  */
-  YYSYMBOL_TK_AMPERSAND = 23,              /* TK_AMPERSAND  */
-  YYSYMBOL_TK_AT_SIGN = 24,                /* TK_AT_SIGN  */
-  YYSYMBOL_TK_POUND = 25,                  /* TK_POUND  */
-  YYSYMBOL_TK_PERCENT = 26,                /* TK_PERCENT  */
-  YYSYMBOL_TK_TILDE = 27,                  /* TK_TILDE  */
-  YYSYMBOL_TK_UN_AT_SIGN = 28,             /* TK_UN_AT_SIGN  */
-  YYSYMBOL_TK_UN_TILDE = 29,               /* TK_UN_TILDE  */
-  YYSYMBOL_TK_UN_QUESTION_MARK = 30,       /* TK_UN_QUESTION_MARK  */
-  YYSYMBOL_TK_UN_AMPERSAND = 31,           /* TK_UN_AMPERSAND  */
-  YYSYMBOL_TK_UN_PLUS = 32,                /* TK_UN_PLUS  */
-  YYSYMBOL_TK_UN_MINUS = 33,               /* TK_UN_MINUS  */
-  YYSYMBOL_TK_UN_ASTERISK = 34,            /* TK_UN_ASTERISK  */
-  YYSYMBOL_TK_UN_DOLLAR_SIGN = 35,         /* TK_UN_DOLLAR_SIGN  */
-  YYSYMBOL_TK_UN_PERIOD = 36,              /* TK_UN_PERIOD  */
-  YYSYMBOL_TK_UN_EXCLAMATION = 37,         /* TK_UN_EXCLAMATION  */
-  YYSYMBOL_TK_UN_PERCENT = 38,             /* TK_UN_PERCENT  */
-  YYSYMBOL_TK_UN_SLASH = 39,               /* TK_UN_SLASH  */
-  YYSYMBOL_TK_UN_POUND = 40,               /* TK_UN_POUND  */
-  YYSYMBOL_TK_UN_EQUAL = 41,               /* TK_UN_EQUAL  */
-  YYSYMBOL_TK_UN_VERTICAL_BAR = 42,        /* TK_UN_VERTICAL_BAR  */
-  YYSYMBOL_TK_CONCAT = 43,                 /* TK_CONCAT  */
-  YYSYMBOL_TK_COMMA = 44,                  /* TK_COMMA  */
-  YYSYMBOL_TK_LPAREN = 45,                 /* TK_LPAREN  */
-  YYSYMBOL_TK_RPAREN = 46,                 /* TK_RPAREN  */
-  YYSYMBOL_TK_LBRACK = 47,                 /* TK_LBRACK  */
-  YYSYMBOL_TK_RBRACK = 48,                 /* TK_RBRACK  */
-  YYSYMBOL_TK_LANGLE = 49,                 /* TK_LANGLE  */
-  YYSYMBOL_TK_RANGLE = 50,                 /* TK_RANGLE  */
+  YYSYMBOL_T_IDENT = 3,                    /* T_IDENT  */
+  YYSYMBOL_T_FUNCTION = 4,                 /* T_FUNCTION  */
+  YYSYMBOL_T_KEYWORD = 5,                  /* T_KEYWORD  */
+  YYSYMBOL_T_END = 6,                      /* T_END  */
+  YYSYMBOL_T_INT = 7,                      /* T_INT  */
+  YYSYMBOL_T_REAL = 8,                     /* T_REAL  */
+  YYSYMBOL_T_STR = 9,                      /* T_STR  */
+  YYSYMBOL_T_LABEL = 10,                   /* T_LABEL  */
+  YYSYMBOL_T_GOTO = 11,                    /* T_GOTO  */
+  YYSYMBOL_T_STMT_END = 12,                /* T_STMT_END  */
+  YYSYMBOL_T_ASSIGNMENT = 13,              /* T_ASSIGNMENT  */
+  YYSYMBOL_T_MATCH = 14,                   /* T_MATCH  */
+  YYSYMBOL_T_ALTERNATION = 15,             /* T_ALTERNATION  */
+  YYSYMBOL_T_ADDITION = 16,                /* T_ADDITION  */
+  YYSYMBOL_T_SUBTRACTION = 17,             /* T_SUBTRACTION  */
+  YYSYMBOL_T_MULTIPLICATION = 18,          /* T_MULTIPLICATION  */
+  YYSYMBOL_T_DIVISION = 19,                /* T_DIVISION  */
+  YYSYMBOL_T_EXPONENTIATION = 20,          /* T_EXPONENTIATION  */
+  YYSYMBOL_T_IMMEDIATE_ASSIGN = 21,        /* T_IMMEDIATE_ASSIGN  */
+  YYSYMBOL_T_COND_ASSIGN = 22,             /* T_COND_ASSIGN  */
+  YYSYMBOL_T_AMPERSAND = 23,               /* T_AMPERSAND  */
+  YYSYMBOL_T_AT_SIGN = 24,                 /* T_AT_SIGN  */
+  YYSYMBOL_T_POUND = 25,                   /* T_POUND  */
+  YYSYMBOL_T_PERCENT = 26,                 /* T_PERCENT  */
+  YYSYMBOL_T_TILDE = 27,                   /* T_TILDE  */
+  YYSYMBOL_T_UN_AT_SIGN = 28,              /* T_UN_AT_SIGN  */
+  YYSYMBOL_T_UN_TILDE = 29,                /* T_UN_TILDE  */
+  YYSYMBOL_T_UN_QUESTION_MARK = 30,        /* T_UN_QUESTION_MARK  */
+  YYSYMBOL_T_UN_AMPERSAND = 31,            /* T_UN_AMPERSAND  */
+  YYSYMBOL_T_UN_PLUS = 32,                 /* T_UN_PLUS  */
+  YYSYMBOL_T_UN_MINUS = 33,                /* T_UN_MINUS  */
+  YYSYMBOL_T_UN_ASTERISK = 34,             /* T_UN_ASTERISK  */
+  YYSYMBOL_T_UN_DOLLAR_SIGN = 35,          /* T_UN_DOLLAR_SIGN  */
+  YYSYMBOL_T_UN_PERIOD = 36,               /* T_UN_PERIOD  */
+  YYSYMBOL_T_UN_EXCLAMATION = 37,          /* T_UN_EXCLAMATION  */
+  YYSYMBOL_T_UN_PERCENT = 38,              /* T_UN_PERCENT  */
+  YYSYMBOL_T_UN_SLASH = 39,                /* T_UN_SLASH  */
+  YYSYMBOL_T_UN_POUND = 40,                /* T_UN_POUND  */
+  YYSYMBOL_T_UN_EQUAL = 41,                /* T_UN_EQUAL  */
+  YYSYMBOL_T_UN_VERTICAL_BAR = 42,         /* T_UN_VERTICAL_BAR  */
+  YYSYMBOL_T_CONCAT = 43,                  /* T_CONCAT  */
+  YYSYMBOL_T_COMMA = 44,                   /* T_COMMA  */
+  YYSYMBOL_T_LPAREN = 45,                  /* T_LPAREN  */
+  YYSYMBOL_T_RPAREN = 46,                  /* T_RPAREN  */
+  YYSYMBOL_T_LBRACK = 47,                  /* T_LBRACK  */
+  YYSYMBOL_T_RBRACK = 48,                  /* T_RBRACK  */
+  YYSYMBOL_T_LANGLE = 49,                  /* T_LANGLE  */
+  YYSYMBOL_T_RANGLE = 50,                  /* T_RANGLE  */
   YYSYMBOL_YYACCEPT = 51,                  /* $accept  */
   YYSYMBOL_top = 52,                       /* top  */
   YYSYMBOL_program = 53,                   /* program  */
@@ -182,7 +182,7 @@ typedef enum yysymbol_kind_t yysymbol_kind_t;
 
 
 /* Unqualified %code blocks.  */
-#line 2 "src/frontend/snobol4/snobol4.y"
+#line 5 "snobol4.y"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -197,7 +197,7 @@ static char    *goto_label(Lex*);
 static SnoGoto *goto_field(const char*,int);
 static EXPR_t  *parse_expr(Lex*);
 
-#line 201 "src/frontend/snobol4/snobol4.tab.c"
+#line 201 "snobol4.tab.c"
 
 #ifdef short
 # undef short
@@ -583,14 +583,14 @@ static const yytype_int8 yytranslate[] =
 /* YYRLINE[YYN] -- Source line where rule number YYN was defined.  */
 static const yytype_uint8 yyrline[] =
 {
-       0,    44,    44,    46,    46,    47,    49,    50,    52,    53,
-      58,    59,    61,    62,    66,    67,    68,    70,    71,    73,
-      74,    76,    77,    79,    80,    82,    83,    84,    86,    87,
-      89,    90,    92,    93,    95,    96,    98,    99,   101,   102,
-     103,   105,   106,   108,   109,   110,   111,   112,   113,   114,
-     115,   116,   117,   118,   119,   120,   121,   122,   123,   125,
-     126,   127,   129,   130,   132,   133,   134,   136,   137,   138,
-     139,   140,   141,   142,   143,   144,   145
+       0,    47,    47,    49,    49,    50,    52,    53,    55,    56,
+      61,    62,    64,    65,    69,    70,    71,    73,    74,    76,
+      77,    79,    80,    82,    83,    85,    86,    87,    89,    90,
+      92,    93,    95,    96,    98,    99,   101,   102,   104,   105,
+     106,   108,   109,   111,   112,   113,   114,   115,   116,   117,
+     118,   119,   120,   121,   122,   123,   124,   125,   126,   128,
+     129,   130,   132,   133,   135,   136,   137,   139,   140,   141,
+     142,   143,   144,   145,   146,   147,   148
 };
 #endif
 
@@ -606,22 +606,21 @@ static const char *yysymbol_name (yysymbol_kind_t yysymbol) YY_ATTRIBUTE_UNUSED;
    First, the terminals, then, starting at YYNTOKENS, nonterminals.  */
 static const char *const yytname[] =
 {
-  "\"end of file\"", "error", "\"invalid token\"", "TK_IDENT",
-  "TK_FUNCTION", "TK_KEYWORD", "TK_END", "TK_INT", "TK_REAL", "TK_STR",
-  "TK_LABEL", "TK_GOTO", "TK_STMT_END", "TK_ASSIGNMENT", "TK_MATCH",
-  "TK_ALTERNATION", "TK_ADDITION", "TK_SUBTRACTION", "TK_MULTIPLICATION",
-  "TK_DIVISION", "TK_EXPONENTIATION", "TK_IMMEDIATE_ASSIGN",
-  "TK_COND_ASSIGN", "TK_AMPERSAND", "TK_AT_SIGN", "TK_POUND", "TK_PERCENT",
-  "TK_TILDE", "TK_UN_AT_SIGN", "TK_UN_TILDE", "TK_UN_QUESTION_MARK",
-  "TK_UN_AMPERSAND", "TK_UN_PLUS", "TK_UN_MINUS", "TK_UN_ASTERISK",
-  "TK_UN_DOLLAR_SIGN", "TK_UN_PERIOD", "TK_UN_EXCLAMATION",
-  "TK_UN_PERCENT", "TK_UN_SLASH", "TK_UN_POUND", "TK_UN_EQUAL",
-  "TK_UN_VERTICAL_BAR", "TK_CONCAT", "TK_COMMA", "TK_LPAREN", "TK_RPAREN",
-  "TK_LBRACK", "TK_RBRACK", "TK_LANGLE", "TK_RANGLE", "$accept", "top",
-  "program", "stmt", "opt_label", "opt_subject", "opt_repl", "opt_goto",
-  "expr0", "expr2", "expr3", "expr4", "expr5", "expr6", "expr7", "expr8",
-  "expr9", "expr10", "expr11", "expr12", "expr13", "expr14", "expr15",
-  "exprlist", "exprlist_ne", "expr17", YY_NULLPTR
+  "\"end of file\"", "error", "\"invalid token\"", "T_IDENT",
+  "T_FUNCTION", "T_KEYWORD", "T_END", "T_INT", "T_REAL", "T_STR",
+  "T_LABEL", "T_GOTO", "T_STMT_END", "T_ASSIGNMENT", "T_MATCH",
+  "T_ALTERNATION", "T_ADDITION", "T_SUBTRACTION", "T_MULTIPLICATION",
+  "T_DIVISION", "T_EXPONENTIATION", "T_IMMEDIATE_ASSIGN", "T_COND_ASSIGN",
+  "T_AMPERSAND", "T_AT_SIGN", "T_POUND", "T_PERCENT", "T_TILDE",
+  "T_UN_AT_SIGN", "T_UN_TILDE", "T_UN_QUESTION_MARK", "T_UN_AMPERSAND",
+  "T_UN_PLUS", "T_UN_MINUS", "T_UN_ASTERISK", "T_UN_DOLLAR_SIGN",
+  "T_UN_PERIOD", "T_UN_EXCLAMATION", "T_UN_PERCENT", "T_UN_SLASH",
+  "T_UN_POUND", "T_UN_EQUAL", "T_UN_VERTICAL_BAR", "T_CONCAT", "T_COMMA",
+  "T_LPAREN", "T_RPAREN", "T_LBRACK", "T_RBRACK", "T_LANGLE", "T_RANGLE",
+  "$accept", "top", "program", "stmt", "opt_label", "opt_subject",
+  "opt_repl", "opt_goto", "expr0", "expr2", "expr3", "expr4", "expr5",
+  "expr6", "expr7", "expr8", "expr9", "expr10", "expr11", "expr12",
+  "expr13", "expr14", "expr15", "exprlist", "exprlist_ne", "expr17", YY_NULLPTR
 };
 
 static const char *
@@ -1244,445 +1243,445 @@ yyreduce:
   switch (yyn)
     {
   case 2: /* top: program  */
-#line 44 "src/frontend/snobol4/snobol4.y"
+#line 47 "snobol4.y"
                                                                                                     { }
-#line 1250 "src/frontend/snobol4/snobol4.tab.c"
+#line 1249 "snobol4.tab.c"
     break;
 
-  case 5: /* stmt: opt_label opt_subject opt_repl opt_goto TK_STMT_END  */
-#line 47 "src/frontend/snobol4/snobol4.y"
-                                                                                      { sno4_stmt_commit(yyparse_param,(yyvsp[-4].tok),(yyvsp[-3].expr),NULL,((yyvsp[-2].expr)!=NULL),(yyvsp[-2].expr),(yyvsp[-1].tok)); }
-#line 1256 "src/frontend/snobol4/snobol4.tab.c"
+  case 5: /* stmt: opt_label opt_subject opt_repl opt_goto T_STMT_END  */
+#line 50 "snobol4.y"
+                                                                                     { sno4_stmt_commit(yyparse_param,(yyvsp[-4].tok),(yyvsp[-3].expr),NULL,((yyvsp[-2].expr)!=NULL),(yyvsp[-2].expr),(yyvsp[-1].tok)); }
+#line 1255 "snobol4.tab.c"
     break;
 
-  case 6: /* opt_label: TK_LABEL  */
-#line 49 "src/frontend/snobol4/snobol4.y"
-                                                                                                   { (yyval.tok)=(yyvsp[0].tok); }
-#line 1262 "src/frontend/snobol4/snobol4.tab.c"
+  case 6: /* opt_label: T_LABEL  */
+#line 52 "snobol4.y"
+                                                                                                  { (yyval.tok)=(yyvsp[0].tok); }
+#line 1261 "snobol4.tab.c"
     break;
 
   case 7: /* opt_label: %empty  */
-#line 50 "src/frontend/snobol4/snobol4.y"
+#line 53 "snobol4.y"
                                                                                                    { (yyval.tok).sval=NULL;(yyval.tok).ival=0;(yyval.tok).lineno=0;(yyval.tok).kind=0; }
-#line 1268 "src/frontend/snobol4/snobol4.tab.c"
+#line 1267 "snobol4.tab.c"
     break;
 
   case 8: /* opt_subject: expr3  */
-#line 52 "src/frontend/snobol4/snobol4.y"
+#line 55 "snobol4.y"
                                                                                                   { (yyval.expr)=(yyvsp[0].expr); }
-#line 1274 "src/frontend/snobol4/snobol4.tab.c"
+#line 1273 "snobol4.tab.c"
     break;
 
   case 9: /* opt_subject: %empty  */
-#line 53 "src/frontend/snobol4/snobol4.y"
+#line 56 "snobol4.y"
                                                                                                    { (yyval.expr)=NULL; }
-#line 1280 "src/frontend/snobol4/snobol4.tab.c"
+#line 1279 "snobol4.tab.c"
     break;
 
-  case 10: /* opt_repl: TK_ASSIGNMENT expr0  */
-#line 58 "src/frontend/snobol4/snobol4.y"
-                                                                                                   { (yyval.expr)=(yyvsp[0].expr); }
-#line 1286 "src/frontend/snobol4/snobol4.tab.c"
+  case 10: /* opt_repl: T_ASSIGNMENT expr0  */
+#line 61 "snobol4.y"
+                                                                                                  { (yyval.expr)=(yyvsp[0].expr); }
+#line 1285 "snobol4.tab.c"
     break;
 
   case 11: /* opt_repl: %empty  */
-#line 59 "src/frontend/snobol4/snobol4.y"
+#line 62 "snobol4.y"
                                                                                                    { (yyval.expr)=NULL; }
-#line 1292 "src/frontend/snobol4/snobol4.tab.c"
+#line 1291 "snobol4.tab.c"
     break;
 
-  case 12: /* opt_goto: TK_GOTO  */
-#line 61 "src/frontend/snobol4/snobol4.y"
-                                                                                                   { (yyval.tok)=(yyvsp[0].tok); }
-#line 1298 "src/frontend/snobol4/snobol4.tab.c"
+  case 12: /* opt_goto: T_GOTO  */
+#line 64 "snobol4.y"
+                                                                                                  { (yyval.tok)=(yyvsp[0].tok); }
+#line 1297 "snobol4.tab.c"
     break;
 
   case 13: /* opt_goto: %empty  */
-#line 62 "src/frontend/snobol4/snobol4.y"
+#line 65 "snobol4.y"
                                                                                                    { (yyval.tok).sval=NULL;(yyval.tok).ival=0;(yyval.tok).lineno=0;(yyval.tok).kind=0; }
-#line 1304 "src/frontend/snobol4/snobol4.tab.c"
+#line 1303 "snobol4.tab.c"
     break;
 
-  case 14: /* expr0: expr2 TK_ASSIGNMENT expr0  */
-#line 66 "src/frontend/snobol4/snobol4.y"
-                                                                                                   { (yyval.expr)=expr_binary(E_ASSIGN,          (yyvsp[-2].expr),(yyvsp[0].expr)); }
-#line 1310 "src/frontend/snobol4/snobol4.tab.c"
+  case 14: /* expr0: expr2 T_ASSIGNMENT expr0  */
+#line 69 "snobol4.y"
+                                                                                                  { (yyval.expr)=expr_binary(E_ASSIGN,          (yyvsp[-2].expr),(yyvsp[0].expr)); }
+#line 1309 "snobol4.tab.c"
     break;
 
-  case 15: /* expr0: expr2 TK_MATCH expr0  */
-#line 67 "src/frontend/snobol4/snobol4.y"
-                                                                                                   { (yyval.expr)=expr_binary(E_SCAN,            (yyvsp[-2].expr),(yyvsp[0].expr)); }
-#line 1316 "src/frontend/snobol4/snobol4.tab.c"
+  case 15: /* expr0: expr2 T_MATCH expr0  */
+#line 70 "snobol4.y"
+                                                                                                  { (yyval.expr)=expr_binary(E_SCAN,            (yyvsp[-2].expr),(yyvsp[0].expr)); }
+#line 1315 "snobol4.tab.c"
     break;
 
   case 16: /* expr0: expr2  */
-#line 68 "src/frontend/snobol4/snobol4.y"
+#line 71 "snobol4.y"
                                                                                                    { (yyval.expr)=(yyvsp[0].expr); }
-#line 1322 "src/frontend/snobol4/snobol4.tab.c"
+#line 1321 "snobol4.tab.c"
     break;
 
-  case 17: /* expr2: expr2 TK_AMPERSAND expr3  */
-#line 70 "src/frontend/snobol4/snobol4.y"
-                                                                                                   { (yyval.expr)=expr_binary(E_OPSYN,           (yyvsp[-2].expr),(yyvsp[0].expr)); }
-#line 1328 "src/frontend/snobol4/snobol4.tab.c"
+  case 17: /* expr2: expr2 T_AMPERSAND expr3  */
+#line 73 "snobol4.y"
+                                                                                                  { (yyval.expr)=expr_binary(E_OPSYN,           (yyvsp[-2].expr),(yyvsp[0].expr)); }
+#line 1327 "snobol4.tab.c"
     break;
 
   case 18: /* expr2: expr3  */
-#line 71 "src/frontend/snobol4/snobol4.y"
+#line 74 "snobol4.y"
                                                                                                    { (yyval.expr)=(yyvsp[0].expr); }
-#line 1334 "src/frontend/snobol4/snobol4.tab.c"
+#line 1333 "snobol4.tab.c"
     break;
 
-  case 19: /* expr3: expr3 TK_ALTERNATION expr4  */
-#line 73 "src/frontend/snobol4/snobol4.y"
-                                                                                                   { if((yyvsp[-2].expr)->kind==E_ALT){expr_add_child((yyvsp[-2].expr),(yyvsp[0].expr));(yyval.expr)=(yyvsp[-2].expr);}else{EXPR_t*a=expr_new(E_ALT);expr_add_child(a,(yyvsp[-2].expr));expr_add_child(a,(yyvsp[0].expr));(yyval.expr)=a;} }
-#line 1340 "src/frontend/snobol4/snobol4.tab.c"
+  case 19: /* expr3: expr3 T_ALTERNATION expr4  */
+#line 76 "snobol4.y"
+                                                                                                  { if((yyvsp[-2].expr)->kind==E_ALT){expr_add_child((yyvsp[-2].expr),(yyvsp[0].expr));(yyval.expr)=(yyvsp[-2].expr);}else{EXPR_t*a=expr_new(E_ALT);expr_add_child(a,(yyvsp[-2].expr));expr_add_child(a,(yyvsp[0].expr));(yyval.expr)=a;} }
+#line 1339 "snobol4.tab.c"
     break;
 
   case 20: /* expr3: expr4  */
-#line 74 "src/frontend/snobol4/snobol4.y"
+#line 77 "snobol4.y"
                                                                                                    { (yyval.expr)=(yyvsp[0].expr); }
-#line 1346 "src/frontend/snobol4/snobol4.tab.c"
+#line 1345 "snobol4.tab.c"
     break;
 
-  case 21: /* expr4: expr4 TK_CONCAT expr5  */
-#line 76 "src/frontend/snobol4/snobol4.y"
-                                                                                                             { if((yyvsp[-2].expr)->kind==E_SEQ){expr_add_child((yyvsp[-2].expr),(yyvsp[0].expr));(yyval.expr)=(yyvsp[-2].expr);}else{EXPR_t*s=expr_new(E_SEQ);expr_add_child(s,(yyvsp[-2].expr));expr_add_child(s,(yyvsp[0].expr));(yyval.expr)=s;} }
-#line 1352 "src/frontend/snobol4/snobol4.tab.c"
+  case 21: /* expr4: expr4 T_CONCAT expr5  */
+#line 79 "snobol4.y"
+                                                                                                            { if((yyvsp[-2].expr)->kind==E_SEQ){expr_add_child((yyvsp[-2].expr),(yyvsp[0].expr));(yyval.expr)=(yyvsp[-2].expr);}else{EXPR_t*s=expr_new(E_SEQ);expr_add_child(s,(yyvsp[-2].expr));expr_add_child(s,(yyvsp[0].expr));(yyval.expr)=s;} }
+#line 1351 "snobol4.tab.c"
     break;
 
   case 22: /* expr4: expr5  */
-#line 77 "src/frontend/snobol4/snobol4.y"
+#line 80 "snobol4.y"
                                                                                                    { (yyval.expr)=(yyvsp[0].expr); }
-#line 1358 "src/frontend/snobol4/snobol4.tab.c"
+#line 1357 "snobol4.tab.c"
     break;
 
-  case 23: /* expr5: expr5 TK_AT_SIGN expr6  */
-#line 79 "src/frontend/snobol4/snobol4.y"
-                                                                                                   { (yyval.expr)=expr_binary(E_CAPT_CURSOR,     (yyvsp[-2].expr),(yyvsp[0].expr)); }
-#line 1364 "src/frontend/snobol4/snobol4.tab.c"
+  case 23: /* expr5: expr5 T_AT_SIGN expr6  */
+#line 82 "snobol4.y"
+                                                                                                  { (yyval.expr)=expr_binary(E_CAPT_CURSOR,     (yyvsp[-2].expr),(yyvsp[0].expr)); }
+#line 1363 "snobol4.tab.c"
     break;
 
   case 24: /* expr5: expr6  */
-#line 80 "src/frontend/snobol4/snobol4.y"
+#line 83 "snobol4.y"
                                                                                                    { (yyval.expr)=(yyvsp[0].expr); }
-#line 1370 "src/frontend/snobol4/snobol4.tab.c"
+#line 1369 "snobol4.tab.c"
     break;
 
-  case 25: /* expr6: expr6 TK_ADDITION expr7  */
-#line 82 "src/frontend/snobol4/snobol4.y"
-                                                                                                   { (yyval.expr)=expr_binary(E_ADD,             (yyvsp[-2].expr),(yyvsp[0].expr)); }
-#line 1376 "src/frontend/snobol4/snobol4.tab.c"
+  case 25: /* expr6: expr6 T_ADDITION expr7  */
+#line 85 "snobol4.y"
+                                                                                                  { (yyval.expr)=expr_binary(E_ADD,             (yyvsp[-2].expr),(yyvsp[0].expr)); }
+#line 1375 "snobol4.tab.c"
     break;
 
-  case 26: /* expr6: expr6 TK_SUBTRACTION expr7  */
-#line 83 "src/frontend/snobol4/snobol4.y"
-                                                                                                   { (yyval.expr)=expr_binary(E_SUB,             (yyvsp[-2].expr),(yyvsp[0].expr)); }
-#line 1382 "src/frontend/snobol4/snobol4.tab.c"
+  case 26: /* expr6: expr6 T_SUBTRACTION expr7  */
+#line 86 "snobol4.y"
+                                                                                                  { (yyval.expr)=expr_binary(E_SUB,             (yyvsp[-2].expr),(yyvsp[0].expr)); }
+#line 1381 "snobol4.tab.c"
     break;
 
   case 27: /* expr6: expr7  */
-#line 84 "src/frontend/snobol4/snobol4.y"
+#line 87 "snobol4.y"
                                                                                                    { (yyval.expr)=(yyvsp[0].expr); }
-#line 1388 "src/frontend/snobol4/snobol4.tab.c"
+#line 1387 "snobol4.tab.c"
     break;
 
-  case 28: /* expr7: expr7 TK_POUND expr8  */
-#line 86 "src/frontend/snobol4/snobol4.y"
-                                                                                                   { (yyval.expr)=expr_binary(E_MUL,             (yyvsp[-2].expr),(yyvsp[0].expr)); }
-#line 1394 "src/frontend/snobol4/snobol4.tab.c"
+  case 28: /* expr7: expr7 T_POUND expr8  */
+#line 89 "snobol4.y"
+                                                                                                  { (yyval.expr)=expr_binary(E_MUL,             (yyvsp[-2].expr),(yyvsp[0].expr)); }
+#line 1393 "snobol4.tab.c"
     break;
 
   case 29: /* expr7: expr8  */
-#line 87 "src/frontend/snobol4/snobol4.y"
+#line 90 "snobol4.y"
                                                                                                    { (yyval.expr)=(yyvsp[0].expr); }
-#line 1400 "src/frontend/snobol4/snobol4.tab.c"
+#line 1399 "snobol4.tab.c"
     break;
 
-  case 30: /* expr8: expr8 TK_DIVISION expr9  */
-#line 89 "src/frontend/snobol4/snobol4.y"
-                                                                                                   { (yyval.expr)=expr_binary(E_DIV,             (yyvsp[-2].expr),(yyvsp[0].expr)); }
-#line 1406 "src/frontend/snobol4/snobol4.tab.c"
+  case 30: /* expr8: expr8 T_DIVISION expr9  */
+#line 92 "snobol4.y"
+                                                                                                  { (yyval.expr)=expr_binary(E_DIV,             (yyvsp[-2].expr),(yyvsp[0].expr)); }
+#line 1405 "snobol4.tab.c"
     break;
 
   case 31: /* expr8: expr9  */
-#line 90 "src/frontend/snobol4/snobol4.y"
+#line 93 "snobol4.y"
                                                                                                    { (yyval.expr)=(yyvsp[0].expr); }
-#line 1412 "src/frontend/snobol4/snobol4.tab.c"
+#line 1411 "snobol4.tab.c"
     break;
 
-  case 32: /* expr9: expr9 TK_MULTIPLICATION expr10  */
-#line 92 "src/frontend/snobol4/snobol4.y"
-                                                                                                   { (yyval.expr)=expr_binary(E_MUL,             (yyvsp[-2].expr),(yyvsp[0].expr)); }
-#line 1418 "src/frontend/snobol4/snobol4.tab.c"
+  case 32: /* expr9: expr9 T_MULTIPLICATION expr10  */
+#line 95 "snobol4.y"
+                                                                                                  { (yyval.expr)=expr_binary(E_MUL,             (yyvsp[-2].expr),(yyvsp[0].expr)); }
+#line 1417 "snobol4.tab.c"
     break;
 
   case 33: /* expr9: expr10  */
-#line 93 "src/frontend/snobol4/snobol4.y"
+#line 96 "snobol4.y"
                                                                                                    { (yyval.expr)=(yyvsp[0].expr); }
-#line 1424 "src/frontend/snobol4/snobol4.tab.c"
+#line 1423 "snobol4.tab.c"
     break;
 
-  case 34: /* expr10: expr10 TK_PERCENT expr11  */
-#line 95 "src/frontend/snobol4/snobol4.y"
-                                                                                                   { (yyval.expr)=expr_binary(E_DIV,             (yyvsp[-2].expr),(yyvsp[0].expr)); }
-#line 1430 "src/frontend/snobol4/snobol4.tab.c"
+  case 34: /* expr10: expr10 T_PERCENT expr11  */
+#line 98 "snobol4.y"
+                                                                                                  { (yyval.expr)=expr_binary(E_DIV,             (yyvsp[-2].expr),(yyvsp[0].expr)); }
+#line 1429 "snobol4.tab.c"
     break;
 
   case 35: /* expr10: expr11  */
-#line 96 "src/frontend/snobol4/snobol4.y"
+#line 99 "snobol4.y"
                                                                                                    { (yyval.expr)=(yyvsp[0].expr); }
-#line 1436 "src/frontend/snobol4/snobol4.tab.c"
+#line 1435 "snobol4.tab.c"
     break;
 
-  case 36: /* expr11: expr12 TK_EXPONENTIATION expr11  */
-#line 98 "src/frontend/snobol4/snobol4.y"
-                                                                                                   { (yyval.expr)=expr_binary(E_POW,             (yyvsp[-2].expr),(yyvsp[0].expr)); }
-#line 1442 "src/frontend/snobol4/snobol4.tab.c"
+  case 36: /* expr11: expr12 T_EXPONENTIATION expr11  */
+#line 101 "snobol4.y"
+                                                                                                  { (yyval.expr)=expr_binary(E_POW,             (yyvsp[-2].expr),(yyvsp[0].expr)); }
+#line 1441 "snobol4.tab.c"
     break;
 
   case 37: /* expr11: expr12  */
-#line 99 "src/frontend/snobol4/snobol4.y"
+#line 102 "snobol4.y"
                                                                                                    { (yyval.expr)=(yyvsp[0].expr); }
-#line 1448 "src/frontend/snobol4/snobol4.tab.c"
+#line 1447 "snobol4.tab.c"
     break;
 
-  case 38: /* expr12: expr12 TK_IMMEDIATE_ASSIGN expr13  */
-#line 101 "src/frontend/snobol4/snobol4.y"
-                                                                                                   { (yyval.expr)=expr_binary(E_CAPT_IMMED_ASGN,(yyvsp[-2].expr),(yyvsp[0].expr)); }
-#line 1454 "src/frontend/snobol4/snobol4.tab.c"
+  case 38: /* expr12: expr12 T_IMMEDIATE_ASSIGN expr13  */
+#line 104 "snobol4.y"
+                                                                                                  { (yyval.expr)=expr_binary(E_CAPT_IMMED_ASGN,(yyvsp[-2].expr),(yyvsp[0].expr)); }
+#line 1453 "snobol4.tab.c"
     break;
 
-  case 39: /* expr12: expr12 TK_COND_ASSIGN expr13  */
-#line 102 "src/frontend/snobol4/snobol4.y"
-                                                                                                   { (yyval.expr)=expr_binary(E_CAPT_COND_ASGN, (yyvsp[-2].expr),(yyvsp[0].expr)); }
-#line 1460 "src/frontend/snobol4/snobol4.tab.c"
+  case 39: /* expr12: expr12 T_COND_ASSIGN expr13  */
+#line 105 "snobol4.y"
+                                                                                                  { (yyval.expr)=expr_binary(E_CAPT_COND_ASGN, (yyvsp[-2].expr),(yyvsp[0].expr)); }
+#line 1459 "snobol4.tab.c"
     break;
 
   case 40: /* expr12: expr13  */
-#line 103 "src/frontend/snobol4/snobol4.y"
+#line 106 "snobol4.y"
                                                                                                    { (yyval.expr)=(yyvsp[0].expr); }
-#line 1466 "src/frontend/snobol4/snobol4.tab.c"
+#line 1465 "snobol4.tab.c"
     break;
 
-  case 41: /* expr13: expr14 TK_TILDE expr13  */
-#line 105 "src/frontend/snobol4/snobol4.y"
-                                                                                                   { (yyval.expr)=expr_binary(E_CAPT_COND_ASGN, (yyvsp[-2].expr),(yyvsp[0].expr)); }
-#line 1472 "src/frontend/snobol4/snobol4.tab.c"
+  case 41: /* expr13: expr14 T_TILDE expr13  */
+#line 108 "snobol4.y"
+                                                                                                  { (yyval.expr)=expr_binary(E_CAPT_COND_ASGN, (yyvsp[-2].expr),(yyvsp[0].expr)); }
+#line 1471 "snobol4.tab.c"
     break;
 
   case 42: /* expr13: expr14  */
-#line 106 "src/frontend/snobol4/snobol4.y"
+#line 109 "snobol4.y"
                                                                                                    { (yyval.expr)=(yyvsp[0].expr); }
-#line 1478 "src/frontend/snobol4/snobol4.tab.c"
+#line 1477 "snobol4.tab.c"
     break;
 
-  case 43: /* expr14: TK_UN_AT_SIGN expr14  */
-#line 108 "src/frontend/snobol4/snobol4.y"
-                                                                                                   { (yyval.expr)=expr_unary(E_CAPT_CURSOR,     (yyvsp[0].expr)); }
-#line 1484 "src/frontend/snobol4/snobol4.tab.c"
+  case 43: /* expr14: T_UN_AT_SIGN expr14  */
+#line 111 "snobol4.y"
+                                                                                                  { (yyval.expr)=expr_unary(E_CAPT_CURSOR,     (yyvsp[0].expr)); }
+#line 1483 "snobol4.tab.c"
     break;
 
-  case 44: /* expr14: TK_UN_TILDE expr14  */
-#line 109 "src/frontend/snobol4/snobol4.y"
-                                                                                                   { (yyval.expr)=expr_unary(E_INDIRECT,        (yyvsp[0].expr)); }
-#line 1490 "src/frontend/snobol4/snobol4.tab.c"
+  case 44: /* expr14: T_UN_TILDE expr14  */
+#line 112 "snobol4.y"
+                                                                                                  { (yyval.expr)=expr_unary(E_INDIRECT,        (yyvsp[0].expr)); }
+#line 1489 "snobol4.tab.c"
     break;
 
-  case 45: /* expr14: TK_UN_QUESTION_MARK expr14  */
-#line 110 "src/frontend/snobol4/snobol4.y"
-                                                                                                   { (yyval.expr)=expr_unary(E_INTERROGATE,     (yyvsp[0].expr)); }
-#line 1496 "src/frontend/snobol4/snobol4.tab.c"
+  case 45: /* expr14: T_UN_QUESTION_MARK expr14  */
+#line 113 "snobol4.y"
+                                                                                                  { (yyval.expr)=expr_unary(E_INTERROGATE,     (yyvsp[0].expr)); }
+#line 1495 "snobol4.tab.c"
     break;
 
-  case 46: /* expr14: TK_UN_AMPERSAND expr14  */
-#line 111 "src/frontend/snobol4/snobol4.y"
-                                                                                                   { (yyval.expr)=expr_unary(E_OPSYN,           (yyvsp[0].expr)); }
-#line 1502 "src/frontend/snobol4/snobol4.tab.c"
+  case 46: /* expr14: T_UN_AMPERSAND expr14  */
+#line 114 "snobol4.y"
+                                                                                                  { (yyval.expr)=expr_unary(E_OPSYN,           (yyvsp[0].expr)); }
+#line 1501 "snobol4.tab.c"
     break;
 
-  case 47: /* expr14: TK_UN_PLUS expr14  */
-#line 112 "src/frontend/snobol4/snobol4.y"
-                                                                                                   { (yyval.expr)=expr_unary(E_PLS,             (yyvsp[0].expr)); }
-#line 1508 "src/frontend/snobol4/snobol4.tab.c"
+  case 47: /* expr14: T_UN_PLUS expr14  */
+#line 115 "snobol4.y"
+                                                                                                  { (yyval.expr)=expr_unary(E_PLS,             (yyvsp[0].expr)); }
+#line 1507 "snobol4.tab.c"
     break;
 
-  case 48: /* expr14: TK_UN_MINUS expr14  */
-#line 113 "src/frontend/snobol4/snobol4.y"
-                                                                                                   { (yyval.expr)=expr_unary(E_MNS,             (yyvsp[0].expr)); }
-#line 1514 "src/frontend/snobol4/snobol4.tab.c"
+  case 48: /* expr14: T_UN_MINUS expr14  */
+#line 116 "snobol4.y"
+                                                                                                  { (yyval.expr)=expr_unary(E_MNS,             (yyvsp[0].expr)); }
+#line 1513 "snobol4.tab.c"
     break;
 
-  case 49: /* expr14: TK_UN_ASTERISK expr14  */
-#line 114 "src/frontend/snobol4/snobol4.y"
-                                                                                                   { (yyval.expr)=expr_unary(E_DEFER,           (yyvsp[0].expr)); }
-#line 1520 "src/frontend/snobol4/snobol4.tab.c"
+  case 49: /* expr14: T_UN_ASTERISK expr14  */
+#line 117 "snobol4.y"
+                                                                                                  { (yyval.expr)=expr_unary(E_DEFER,           (yyvsp[0].expr)); }
+#line 1519 "snobol4.tab.c"
     break;
 
-  case 50: /* expr14: TK_UN_DOLLAR_SIGN expr14  */
-#line 115 "src/frontend/snobol4/snobol4.y"
-                                                                                                   { (yyval.expr)=expr_unary(E_INDIRECT,        (yyvsp[0].expr)); }
-#line 1526 "src/frontend/snobol4/snobol4.tab.c"
+  case 50: /* expr14: T_UN_DOLLAR_SIGN expr14  */
+#line 118 "snobol4.y"
+                                                                                                  { (yyval.expr)=expr_unary(E_INDIRECT,        (yyvsp[0].expr)); }
+#line 1525 "snobol4.tab.c"
     break;
 
-  case 51: /* expr14: TK_UN_PERIOD expr14  */
-#line 116 "src/frontend/snobol4/snobol4.y"
-                                                                                                   { (yyval.expr)=expr_unary(E_NAME,            (yyvsp[0].expr)); }
-#line 1532 "src/frontend/snobol4/snobol4.tab.c"
+  case 51: /* expr14: T_UN_PERIOD expr14  */
+#line 119 "snobol4.y"
+                                                                                                  { (yyval.expr)=expr_unary(E_NAME,            (yyvsp[0].expr)); }
+#line 1531 "snobol4.tab.c"
     break;
 
-  case 52: /* expr14: TK_UN_EXCLAMATION expr14  */
-#line 117 "src/frontend/snobol4/snobol4.y"
-                                                                                                   { (yyval.expr)=expr_unary(E_POW,             (yyvsp[0].expr)); }
-#line 1538 "src/frontend/snobol4/snobol4.tab.c"
+  case 52: /* expr14: T_UN_EXCLAMATION expr14  */
+#line 120 "snobol4.y"
+                                                                                                  { (yyval.expr)=expr_unary(E_POW,             (yyvsp[0].expr)); }
+#line 1537 "snobol4.tab.c"
     break;
 
-  case 53: /* expr14: TK_UN_PERCENT expr14  */
-#line 118 "src/frontend/snobol4/snobol4.y"
-                                                                                                   { (yyval.expr)=expr_unary(E_DIV,             (yyvsp[0].expr)); }
-#line 1544 "src/frontend/snobol4/snobol4.tab.c"
+  case 53: /* expr14: T_UN_PERCENT expr14  */
+#line 121 "snobol4.y"
+                                                                                                  { (yyval.expr)=expr_unary(E_DIV,             (yyvsp[0].expr)); }
+#line 1543 "snobol4.tab.c"
     break;
 
-  case 54: /* expr14: TK_UN_SLASH expr14  */
-#line 119 "src/frontend/snobol4/snobol4.y"
-                                                                                                   { (yyval.expr)=expr_unary(E_DIV,             (yyvsp[0].expr)); }
-#line 1550 "src/frontend/snobol4/snobol4.tab.c"
+  case 54: /* expr14: T_UN_SLASH expr14  */
+#line 122 "snobol4.y"
+                                                                                                  { (yyval.expr)=expr_unary(E_DIV,             (yyvsp[0].expr)); }
+#line 1549 "snobol4.tab.c"
     break;
 
-  case 55: /* expr14: TK_UN_POUND expr14  */
-#line 120 "src/frontend/snobol4/snobol4.y"
-                                                                                                   { (yyval.expr)=expr_unary(E_MUL,             (yyvsp[0].expr)); }
-#line 1556 "src/frontend/snobol4/snobol4.tab.c"
+  case 55: /* expr14: T_UN_POUND expr14  */
+#line 123 "snobol4.y"
+                                                                                                  { (yyval.expr)=expr_unary(E_MUL,             (yyvsp[0].expr)); }
+#line 1555 "snobol4.tab.c"
     break;
 
-  case 56: /* expr14: TK_UN_EQUAL expr14  */
-#line 121 "src/frontend/snobol4/snobol4.y"
-                                                                                                   { (yyval.expr)=expr_unary(E_ASSIGN,          (yyvsp[0].expr)); }
-#line 1562 "src/frontend/snobol4/snobol4.tab.c"
+  case 56: /* expr14: T_UN_EQUAL expr14  */
+#line 124 "snobol4.y"
+                                                                                                  { (yyval.expr)=expr_unary(E_ASSIGN,          (yyvsp[0].expr)); }
+#line 1561 "snobol4.tab.c"
     break;
 
-  case 57: /* expr14: TK_UN_VERTICAL_BAR expr14  */
-#line 122 "src/frontend/snobol4/snobol4.y"
-                                                                                                   { (yyval.expr)=expr_unary(E_ALT,             (yyvsp[0].expr)); }
-#line 1568 "src/frontend/snobol4/snobol4.tab.c"
+  case 57: /* expr14: T_UN_VERTICAL_BAR expr14  */
+#line 125 "snobol4.y"
+                                                                                                  { (yyval.expr)=expr_unary(E_ALT,             (yyvsp[0].expr)); }
+#line 1567 "snobol4.tab.c"
     break;
 
   case 58: /* expr14: expr15  */
-#line 123 "src/frontend/snobol4/snobol4.y"
+#line 126 "snobol4.y"
                                                                                                    { (yyval.expr)=(yyvsp[0].expr); }
-#line 1574 "src/frontend/snobol4/snobol4.tab.c"
+#line 1573 "snobol4.tab.c"
     break;
 
-  case 59: /* expr15: expr15 TK_LBRACK exprlist TK_RBRACK  */
-#line 125 "src/frontend/snobol4/snobol4.y"
-                                                                                                  { EXPR_t*i=expr_new(E_IDX);expr_add_child(i,(yyvsp[-3].expr));for(int j=0;j<(yyvsp[-1].expr)->nchildren;j++)expr_add_child(i,(yyvsp[-1].expr)->children[j]);free((yyvsp[-1].expr)->children);free((yyvsp[-1].expr));(yyval.expr)=i; }
-#line 1580 "src/frontend/snobol4/snobol4.tab.c"
+  case 59: /* expr15: expr15 T_LBRACK exprlist T_RBRACK  */
+#line 128 "snobol4.y"
+                                                                                                { EXPR_t*i=expr_new(E_IDX);expr_add_child(i,(yyvsp[-3].expr));for(int j=0;j<(yyvsp[-1].expr)->nchildren;j++)expr_add_child(i,(yyvsp[-1].expr)->children[j]);free((yyvsp[-1].expr)->children);free((yyvsp[-1].expr));(yyval.expr)=i; }
+#line 1579 "snobol4.tab.c"
     break;
 
-  case 60: /* expr15: expr15 TK_LANGLE exprlist TK_RANGLE  */
-#line 126 "src/frontend/snobol4/snobol4.y"
-                                                                                                  { EXPR_t*i=expr_new(E_IDX);expr_add_child(i,(yyvsp[-3].expr));for(int j=0;j<(yyvsp[-1].expr)->nchildren;j++)expr_add_child(i,(yyvsp[-1].expr)->children[j]);free((yyvsp[-1].expr)->children);free((yyvsp[-1].expr));(yyval.expr)=i; }
-#line 1586 "src/frontend/snobol4/snobol4.tab.c"
+  case 60: /* expr15: expr15 T_LANGLE exprlist T_RANGLE  */
+#line 129 "snobol4.y"
+                                                                                                { EXPR_t*i=expr_new(E_IDX);expr_add_child(i,(yyvsp[-3].expr));for(int j=0;j<(yyvsp[-1].expr)->nchildren;j++)expr_add_child(i,(yyvsp[-1].expr)->children[j]);free((yyvsp[-1].expr)->children);free((yyvsp[-1].expr));(yyval.expr)=i; }
+#line 1585 "snobol4.tab.c"
     break;
 
   case 61: /* expr15: expr17  */
-#line 127 "src/frontend/snobol4/snobol4.y"
+#line 130 "snobol4.y"
                                                                                                    { (yyval.expr)=(yyvsp[0].expr); }
-#line 1592 "src/frontend/snobol4/snobol4.tab.c"
+#line 1591 "snobol4.tab.c"
     break;
 
   case 62: /* exprlist: exprlist_ne  */
-#line 129 "src/frontend/snobol4/snobol4.y"
+#line 132 "snobol4.y"
                                                                                                    { (yyval.expr)=(yyvsp[0].expr); }
-#line 1598 "src/frontend/snobol4/snobol4.tab.c"
+#line 1597 "snobol4.tab.c"
     break;
 
   case 63: /* exprlist: %empty  */
-#line 130 "src/frontend/snobol4/snobol4.y"
+#line 133 "snobol4.y"
                                                                                                    { (yyval.expr)=expr_new(E_NUL); }
-#line 1604 "src/frontend/snobol4/snobol4.tab.c"
+#line 1603 "snobol4.tab.c"
     break;
 
-  case 64: /* exprlist_ne: exprlist_ne TK_COMMA expr0  */
-#line 132 "src/frontend/snobol4/snobol4.y"
-                                                                                                   { expr_add_child((yyvsp[-2].expr),(yyvsp[0].expr));(yyval.expr)=(yyvsp[-2].expr); }
-#line 1610 "src/frontend/snobol4/snobol4.tab.c"
+  case 64: /* exprlist_ne: exprlist_ne T_COMMA expr0  */
+#line 135 "snobol4.y"
+                                                                                                  { expr_add_child((yyvsp[-2].expr),(yyvsp[0].expr));(yyval.expr)=(yyvsp[-2].expr); }
+#line 1609 "snobol4.tab.c"
     break;
 
-  case 65: /* exprlist_ne: exprlist_ne TK_COMMA  */
-#line 133 "src/frontend/snobol4/snobol4.y"
-                                                                                                   { expr_add_child((yyvsp[-1].expr),expr_new(E_NUL));(yyval.expr)=(yyvsp[-1].expr); }
-#line 1616 "src/frontend/snobol4/snobol4.tab.c"
+  case 65: /* exprlist_ne: exprlist_ne T_COMMA  */
+#line 136 "snobol4.y"
+                                                                                                  { expr_add_child((yyvsp[-1].expr),expr_new(E_NUL));(yyval.expr)=(yyvsp[-1].expr); }
+#line 1615 "snobol4.tab.c"
     break;
 
   case 66: /* exprlist_ne: expr0  */
-#line 134 "src/frontend/snobol4/snobol4.y"
+#line 137 "snobol4.y"
                                                                                                    { EXPR_t*l=expr_new(E_NUL);expr_add_child(l,(yyvsp[0].expr));(yyval.expr)=l; }
-#line 1622 "src/frontend/snobol4/snobol4.tab.c"
+#line 1621 "snobol4.tab.c"
     break;
 
-  case 67: /* expr17: TK_LPAREN expr0 TK_RPAREN  */
-#line 136 "src/frontend/snobol4/snobol4.y"
-                                                                                                  { (yyval.expr)=(yyvsp[-1].expr); }
-#line 1628 "src/frontend/snobol4/snobol4.tab.c"
+  case 67: /* expr17: T_LPAREN expr0 T_RPAREN  */
+#line 139 "snobol4.y"
+                                                                                                { (yyval.expr)=(yyvsp[-1].expr); }
+#line 1627 "snobol4.tab.c"
     break;
 
-  case 68: /* expr17: TK_LPAREN expr0 TK_COMMA exprlist_ne TK_RPAREN  */
-#line 137 "src/frontend/snobol4/snobol4.y"
-                                                                                                  { EXPR_t*a=expr_new(E_ALT);expr_add_child(a,(yyvsp[-3].expr));for(int i=0;i<(yyvsp[-1].expr)->nchildren;i++)expr_add_child(a,(yyvsp[-1].expr)->children[i]);free((yyvsp[-1].expr)->children);free((yyvsp[-1].expr));(yyval.expr)=a; }
-#line 1634 "src/frontend/snobol4/snobol4.tab.c"
+  case 68: /* expr17: T_LPAREN expr0 T_COMMA exprlist_ne T_RPAREN  */
+#line 140 "snobol4.y"
+                                                                                               { EXPR_t*a=expr_new(E_ALT);expr_add_child(a,(yyvsp[-3].expr));for(int i=0;i<(yyvsp[-1].expr)->nchildren;i++)expr_add_child(a,(yyvsp[-1].expr)->children[i]);free((yyvsp[-1].expr)->children);free((yyvsp[-1].expr));(yyval.expr)=a; }
+#line 1633 "snobol4.tab.c"
     break;
 
-  case 69: /* expr17: TK_LPAREN TK_RPAREN  */
-#line 138 "src/frontend/snobol4/snobol4.y"
-                                                                                                  { (yyval.expr)=expr_new(E_NUL); }
-#line 1640 "src/frontend/snobol4/snobol4.tab.c"
+  case 69: /* expr17: T_LPAREN T_RPAREN  */
+#line 141 "snobol4.y"
+                                                                                                { (yyval.expr)=expr_new(E_NUL); }
+#line 1639 "snobol4.tab.c"
     break;
 
-  case 70: /* expr17: TK_FUNCTION TK_LPAREN exprlist TK_RPAREN  */
-#line 139 "src/frontend/snobol4/snobol4.y"
-                                                                                                  { EXPR_t*e=expr_new(E_FNC);e->sval=(char*)(yyvsp[-3].tok).sval;for(int i=0;i<(yyvsp[-1].expr)->nchildren;i++)expr_add_child(e,(yyvsp[-1].expr)->children[i]);free((yyvsp[-1].expr)->children);free((yyvsp[-1].expr));(yyval.expr)=e; }
-#line 1646 "src/frontend/snobol4/snobol4.tab.c"
+  case 70: /* expr17: T_FUNCTION T_LPAREN exprlist T_RPAREN  */
+#line 142 "snobol4.y"
+                                                                                               { EXPR_t*e=expr_new(E_FNC);e->sval=(char*)(yyvsp[-3].tok).sval;for(int i=0;i<(yyvsp[-1].expr)->nchildren;i++)expr_add_child(e,(yyvsp[-1].expr)->children[i]);free((yyvsp[-1].expr)->children);free((yyvsp[-1].expr));(yyval.expr)=e; }
+#line 1645 "snobol4.tab.c"
     break;
 
-  case 71: /* expr17: TK_IDENT  */
-#line 140 "src/frontend/snobol4/snobol4.y"
-                                                                                                   { EXPR_t*e=expr_new(E_VAR);    e->sval=(char*)(yyvsp[0].tok).sval;(yyval.expr)=e; }
-#line 1652 "src/frontend/snobol4/snobol4.tab.c"
+  case 71: /* expr17: T_IDENT  */
+#line 143 "snobol4.y"
+                                                                                                  { EXPR_t*e=expr_new(E_VAR);    e->sval=(char*)(yyvsp[0].tok).sval;(yyval.expr)=e; }
+#line 1651 "snobol4.tab.c"
     break;
 
-  case 72: /* expr17: TK_END  */
-#line 141 "src/frontend/snobol4/snobol4.y"
-                                                                                                   { EXPR_t*e=expr_new(E_VAR);    e->sval=(char*)(yyvsp[0].tok).sval;(yyval.expr)=e; }
-#line 1658 "src/frontend/snobol4/snobol4.tab.c"
+  case 72: /* expr17: T_END  */
+#line 144 "snobol4.y"
+                                                                                                  { EXPR_t*e=expr_new(E_VAR);    e->sval=(char*)(yyvsp[0].tok).sval;(yyval.expr)=e; }
+#line 1657 "snobol4.tab.c"
     break;
 
-  case 73: /* expr17: TK_KEYWORD  */
-#line 142 "src/frontend/snobol4/snobol4.y"
-                                                                                                   { EXPR_t*e=expr_new(E_KEYWORD);e->sval=(char*)(yyvsp[0].tok).sval;(yyval.expr)=e; }
-#line 1664 "src/frontend/snobol4/snobol4.tab.c"
+  case 73: /* expr17: T_KEYWORD  */
+#line 145 "snobol4.y"
+                                                                                                  { EXPR_t*e=expr_new(E_KEYWORD);e->sval=(char*)(yyvsp[0].tok).sval;(yyval.expr)=e; }
+#line 1663 "snobol4.tab.c"
     break;
 
-  case 74: /* expr17: TK_STR  */
-#line 143 "src/frontend/snobol4/snobol4.y"
-                                                                                                   { EXPR_t*e=expr_new(E_QLIT);   e->sval=(char*)(yyvsp[0].tok).sval;(yyval.expr)=e; }
-#line 1670 "src/frontend/snobol4/snobol4.tab.c"
+  case 74: /* expr17: T_STR  */
+#line 146 "snobol4.y"
+                                                                                                  { EXPR_t*e=expr_new(E_QLIT);   e->sval=(char*)(yyvsp[0].tok).sval;(yyval.expr)=e; }
+#line 1669 "snobol4.tab.c"
     break;
 
-  case 75: /* expr17: TK_INT  */
-#line 144 "src/frontend/snobol4/snobol4.y"
-                                                                                                   { EXPR_t*e=expr_new(E_ILIT);   e->ival=(yyvsp[0].tok).ival;(yyval.expr)=e; }
-#line 1676 "src/frontend/snobol4/snobol4.tab.c"
+  case 75: /* expr17: T_INT  */
+#line 147 "snobol4.y"
+                                                                                                  { EXPR_t*e=expr_new(E_ILIT);   e->ival=(yyvsp[0].tok).ival;(yyval.expr)=e; }
+#line 1675 "snobol4.tab.c"
     break;
 
-  case 76: /* expr17: TK_REAL  */
-#line 145 "src/frontend/snobol4/snobol4.y"
-                                                                                                   { EXPR_t*e=expr_new(E_FLIT);   e->dval=(yyvsp[0].tok).dval;(yyval.expr)=e; }
-#line 1682 "src/frontend/snobol4/snobol4.tab.c"
+  case 76: /* expr17: T_REAL  */
+#line 148 "snobol4.y"
+                                                                                                  { EXPR_t*e=expr_new(E_FLIT);   e->dval=(yyvsp[0].tok).dval;(yyval.expr)=e; }
+#line 1681 "snobol4.tab.c"
     break;
 
 
-#line 1686 "src/frontend/snobol4/snobol4.tab.c"
+#line 1685 "snobol4.tab.c"
 
       default: break;
     }
@@ -1875,39 +1874,11 @@ yyreturnlab:
   return yyresult;
 }
 
-#line 147 "src/frontend/snobol4/snobol4.y"
+#line 150 "snobol4.y"
 
 int snobol4_lex(YYSTYPE *yylval_param, void *yyparse_param) {
     (void)yyparse_param; Token t=lex_next(g_lx); yylval_param->tok=t;
-    switch(t.kind){
-        case T_IDENT:            return TK_IDENT;           case T_FUNCTION:         return TK_FUNCTION;
-        case T_KEYWORD:          return TK_KEYWORD;         case T_END:              return TK_END;
-        case T_INT:              return TK_INT;             case T_REAL:             return TK_REAL;
-        case T_STR:              return TK_STR;
-        case T_LABEL:            return TK_LABEL;           case T_GOTO:             return TK_GOTO;
-        case T_STMT_END:         return TK_STMT_END;
-        case T_ASSIGNMENT:       return TK_ASSIGNMENT;      case T_MATCH:            return TK_MATCH;
-        case T_ALTERNATION:      return TK_ALTERNATION;     case T_ADDITION:         return TK_ADDITION;
-        case T_SUBTRACTION:      return TK_SUBTRACTION;     case T_MULTIPLICATION:   return TK_MULTIPLICATION;
-        case T_DIVISION:         return TK_DIVISION;        case T_EXPONENTIATION:   return TK_EXPONENTIATION;
-        case T_IMMEDIATE_ASSIGN: return TK_IMMEDIATE_ASSIGN;case T_COND_ASSIGN:      return TK_COND_ASSIGN;
-        case T_AMPERSAND:        return TK_AMPERSAND;       case T_AT_SIGN:          return TK_AT_SIGN;
-        case T_POUND:            return TK_POUND;           case T_PERCENT:          return TK_PERCENT;
-        case T_TILDE:            return TK_TILDE;
-        case T_UN_AT_SIGN:       return TK_UN_AT_SIGN;      case T_UN_TILDE:         return TK_UN_TILDE;
-        case T_UN_QUESTION_MARK: return TK_UN_QUESTION_MARK;case T_UN_AMPERSAND:     return TK_UN_AMPERSAND;
-        case T_UN_PLUS:          return TK_UN_PLUS;         case T_UN_MINUS:         return TK_UN_MINUS;
-        case T_UN_ASTERISK:      return TK_UN_ASTERISK;     case T_UN_DOLLAR_SIGN:   return TK_UN_DOLLAR_SIGN;
-        case T_UN_PERIOD:        return TK_UN_PERIOD;       case T_UN_EXCLAMATION:   return TK_UN_EXCLAMATION;
-        case T_UN_PERCENT:       return TK_UN_PERCENT;      case T_UN_SLASH:         return TK_UN_SLASH;
-        case T_UN_POUND:         return TK_UN_POUND;        case T_UN_EQUAL:         return TK_UN_EQUAL;
-        case T_UN_VERTICAL_BAR:  return TK_UN_VERTICAL_BAR;
-        case T_CONCAT:           return TK_CONCAT;  case T_COMMA:            return TK_COMMA;
-        case T_LPAREN:           return TK_LPAREN;          case T_RPAREN:           return TK_RPAREN;
-        case T_LBRACK:           return TK_LBRACK;          case T_RBRACK:           return TK_RBRACK;
-        case T_LANGLE:           return TK_LANGLE;          case T_RANGLE:           return TK_RANGLE;
-        default:                 return 0;
-    }
+    return t.kind;
 }
 void snobol4_error(void *p,const char *msg){(void)p;sno_error(g_lx?g_lx->lineno:0,"parse error: %s",msg);}
 static void fixup_val(EXPR_t *e){
@@ -1921,7 +1892,7 @@ static int is_pat(EXPR_t *e){
     return 0;
 }
 static char *goto_label(Lex *lx){
-    Token t=lex_peek(lx); TokKind open=t.kind,close;
+    Token t=lex_peek(lx); int open=t.kind,close;
     if(open==T_LPAREN) close=T_RPAREN; else if(open==T_LANGLE) close=T_RANGLE; else return NULL;
     lex_next(lx); t=lex_peek(lx); char *label=NULL;
     if(t.kind==T_IDENT||t.kind==T_FUNCTION||t.kind==T_KEYWORD||t.kind==T_END){lex_next(lx);label=(char*)t.sval;}
