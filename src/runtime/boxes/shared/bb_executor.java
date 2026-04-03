@@ -57,20 +57,24 @@ class bb_executor {
      * @param anchor    &ANCHOR — if true, try position 0 only
      * @return true → :S branch taken; false → :F branch taken
      */
+    /**
+     * Overload that accepts an existing MatchState (shared with PatternBuilder/boxes).
+     * This is the canonical entry point — boxes must be built with this same ms.
+     */
     public boolean exec(String subjVar, String subjVal,
+                        bb_box.MatchState ms,
                         bb_box root,     boolean hasRepl,
                         String replVal, boolean anchor) {
 
-        // Phase 1: subject is already in subjVal — build MatchState
-        bb_box.MatchState ms = new bb_box.MatchState(subjVal);
+        // Sync MatchState subject in case it changed
+        ms.sigma = subjVal;
+        ms.omega = subjVal.length();
 
         if (root == null) {
-            // No pattern — Phase 5 (assignment only, always :S if no pattern)
             if (hasRepl && subjVar != null) vars.set(subjVar, replVal);
             return true;
         }
 
-        // Phase 3: scan loop
         int scanLimit = anchor ? 0 : ms.omega;
 
         for (int scanPos = 0; scanPos <= scanLimit; scanPos++) {

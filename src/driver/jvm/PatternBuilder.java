@@ -188,6 +188,16 @@ class PatternBuilder {
                 return new bb_interr(ms, child);
             }
 
+            // ── *var — indirect pattern dereference (E_DEFER) ────────────────
+            case E_DEFER: {
+                if (e.children.isEmpty()) return new bb_fail(ms);
+                Parser.ExprNode inner = e.children.get(0);
+                String varName = (inner.kind == Parser.EKind.E_VAR && inner.sval != null)
+                                 ? inner.sval : "";
+                if (varName.isEmpty()) return new bb_fail(ms);
+                return new bb_dvar(ms, varName, varResolver);
+            }
+
             // ── Fallback ─────────────────────────────────────────────────────
             default:
                 // Unrecognised node in pattern context — treat as failure
@@ -226,12 +236,17 @@ class PatternBuilder {
         return 0;
     }
 
-    /** Extract capture variable name from a capture node. */
+    /** Extract capture variable name from a capture node.
+     *  Binary form: E_CAPT_COND_ASGN(left=patternChild, right=varNode)
+     *  The variable is always the LAST child (index 1 for binary nodes).
+     */
     private String captureVarName(Parser.ExprNode e) {
-        // The variable name is in sval, or in a child E_VAR node
+        // sval directly on node (unary form)
         if (e.sval != null && !e.sval.isEmpty()) return e.sval;
-        for (Parser.ExprNode c : e.children) {
-            if (c.kind == Parser.EKind.E_VAR && c.sval != null) return c.sval;
+        // Binary form: last child is the variable node
+        if (!e.children.isEmpty()) {
+            Parser.ExprNode last = e.children.get(e.children.size() - 1);
+            if (last.kind == Parser.EKind.E_VAR && last.sval != null) return last.sval;
         }
         return "";
     }

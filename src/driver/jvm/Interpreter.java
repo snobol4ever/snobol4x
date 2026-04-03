@@ -24,24 +24,26 @@ public class Interpreter {
     // DESCR — runtime value (mirrors DESCR_t from snobol4.h)
     // ══════════════════════════════════════════════════════════════════════════
 
-    public enum VType { SNUL, STR, INT, REAL, FAIL }
+    public enum VType { SNUL, STR, INT, REAL, FAIL, PAT }
 
     public static final class DESCR {
         public final VType  type;
-        public final String sval;   // STR / SNUL
-        public final long   ival;   // INT
-        public final double dval;   // REAL
+        public final String sval;        // STR / SNUL
+        public final long   ival;        // INT
+        public final double dval;        // REAL
+        public final Parser.ExprNode patNode; // PAT — pattern-valued variable
 
-        private DESCR(VType t, String s, long i, double d) {
-            type = t; sval = s; ival = i; dval = d;
+        private DESCR(VType t, String s, long i, double d, Parser.ExprNode p) {
+            type = t; sval = s; ival = i; dval = d; patNode = p;
         }
 
-        public static final DESCR NUL  = new DESCR(VType.SNUL, "", 0, 0);
-        public static final DESCR FAIL = new DESCR(VType.FAIL, null, 0, 0);
+        public static final DESCR NUL  = new DESCR(VType.SNUL, "", 0, 0, null);
+        public static final DESCR FAIL = new DESCR(VType.FAIL, null, 0, 0, null);
 
-        public static DESCR str(String s)  { return new DESCR(VType.STR,  s != null ? s : "", 0, 0); }
-        public static DESCR intv(long i)   { return new DESCR(VType.INT,  null, i, 0); }
-        public static DESCR realv(double d){ return new DESCR(VType.REAL, null, 0, d); }
+        public static DESCR str(String s)          { return new DESCR(VType.STR,  s != null ? s : "", 0, 0, null); }
+        public static DESCR intv(long i)           { return new DESCR(VType.INT,  null, i, 0, null); }
+        public static DESCR realv(double d)        { return new DESCR(VType.REAL, null, 0, d, null); }
+        public static DESCR pat(Parser.ExprNode n) { return new DESCR(VType.PAT,  null, 0, 0, n); }
 
         public boolean isFail() { return type == VType.FAIL; }
         public boolean isNull() { return type == VType.SNUL || (type == VType.STR && (sval == null || sval.isEmpty())); }
@@ -222,12 +224,8 @@ public class Interpreter {
             }
 
             case E_ALT: {
-                // Pattern alternation — return first non-failing child value
-                for (Parser.ExprNode child : e.children) {
-                    DESCR v = eval(child);
-                    if (!v.isFail()) return v;
-                }
-                return DESCR.FAIL;
+                // Pattern alternation stored as a pattern-valued DESCR
+                return DESCR.pat(e);
             }
 
             case E_INDIRECT: {
@@ -614,9 +612,24 @@ public class Interpreter {
                     (name, val) -> nvSet(name, DESCR.str(val)),
                     (name, val) -> nvSet(name, DESCR.intv((long) val)),
                     (varName, pms2) -> {
-                        // Resolve pattern-valued variable at match time as string literal
-                        String live = nvGet(varName).toSnoStr();
-                        return new bb_lit(pms2, live);
+                        // Resolve pattern-valued variable at match time
+                        DESCR d = nvGet(varName);
+                        if (d.type == VType.PAT && d.patNode != null) {
+                            // Re-build from stored pattern ExprNode (shares pms2)
+                            PatternBuilder inner = new PatternBuilder(
+                                pms2,
+                                (n, v) -> nvSet(n, DESCR.str(v)),
+                                (n, v) -> nvSet(n, DESCR.intv((long) v)),
+                                (vn, pms3) -> {
+                                    DESCR d2 = nvGet(vn);
+                                    if (d2.type == VType.PAT && d2.patNode != null) return new bb_fail(pms3);
+                                    return new bb_lit(pms3, d2.toSnoStr());
+                                }
+                            );
+                            return inner.build(d.patNode);
+                        }
+                        // String-valued: match as literal
+                        return new bb_lit(pms2, d.toSnoStr());
                     }
                 );
 
@@ -638,7 +651,7 @@ public class Interpreter {
                 for (bb_capture cap : pb.deferredCaptures()) ex.registerCapture(cap);
 
                 try {
-                    succeeded = ex.exec(subjName, sv, root,
+                    succeeded = ex.exec(subjName, sv, pms, root,
                                         replStr != null, replStr != null ? replStr : "",
                                         anchor);
                 } catch (bb_abort.AbortException ae) {
