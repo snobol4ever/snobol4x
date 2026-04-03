@@ -23,7 +23,7 @@
  * AUTHORS: Lon Jones Cherryholmes · Claude Sonnet 4.6
  */
 
-#include "snobol4_lexer.h"
+#include "snobol4_scanner.h"
 #include "scrip_cc.h"
 #include <stdio.h>
 #include <stdlib.h>

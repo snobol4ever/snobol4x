@@ -73,10 +73,10 @@
 #define yynerrs         snobol4_nerrs
 
 /* First part of user prologue.  */
-#line 28 "snobol4_parser.y"
+#line 28 "snobol4_grammar.y"
 
 #include "scrip_cc.h"
-#include "snobol4_lexer.h"
+#include "snobol4_scanner.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -85,7 +85,7 @@
 typedef struct { Lex *lx; EXPR_t **result; } ParseParm;
 static Lex *g_lx;
 
-#line 89 "snobol4_parser.tab.c"
+#line 89 "snobol4_grammar.tab.c"
 
 # ifndef YY_CAST
 #  ifdef __cplusplus
@@ -108,7 +108,7 @@ static Lex *g_lx;
 #  endif
 # endif
 
-#include "snobol4_parser.tab.h"
+#include "snobol4_grammar.tab.h"
 /* Symbol kind.  */
 enum yysymbol_kind_t
 {
@@ -1211,449 +1211,449 @@ yyreduce:
   switch (yyn)
     {
   case 2: /* top: expr  */
-#line 57 "snobol4_parser.y"
+#line 57 "snobol4_grammar.y"
                   { *(((ParseParm*)yyparse_param)->result) = (yyvsp[0].expr); }
-#line 1217 "snobol4_parser.tab.c"
+#line 1217 "snobol4_grammar.tab.c"
     break;
 
   case 3: /* top: %empty  */
-#line 58 "snobol4_parser.y"
+#line 58 "snobol4_grammar.y"
                   { *(((ParseParm*)yyparse_param)->result) = NULL; }
-#line 1223 "snobol4_parser.tab.c"
+#line 1223 "snobol4_grammar.tab.c"
     break;
 
   case 4: /* expr: expr0  */
-#line 61 "snobol4_parser.y"
+#line 61 "snobol4_grammar.y"
              { (yyval.expr) = (yyvsp[0].expr); }
-#line 1229 "snobol4_parser.tab.c"
+#line 1229 "snobol4_grammar.tab.c"
     break;
 
   case 5: /* expr0: expr2 TK_EQ expr0  */
-#line 65 "snobol4_parser.y"
+#line 65 "snobol4_grammar.y"
                             { (yyval.expr) = expr_binary(E_ASSIGN,         (yyvsp[-2].expr), (yyvsp[0].expr)); }
-#line 1235 "snobol4_parser.tab.c"
+#line 1235 "snobol4_grammar.tab.c"
     break;
 
   case 6: /* expr0: expr2 TK_QMARK expr0  */
-#line 66 "snobol4_parser.y"
+#line 66 "snobol4_grammar.y"
                             { (yyval.expr) = expr_binary(E_CAPT_COND_ASGN, (yyvsp[-2].expr), (yyvsp[0].expr)); }
-#line 1241 "snobol4_parser.tab.c"
+#line 1241 "snobol4_grammar.tab.c"
     break;
 
   case 7: /* expr0: expr2  */
-#line 67 "snobol4_parser.y"
+#line 67 "snobol4_grammar.y"
                              { (yyval.expr) = (yyvsp[0].expr); }
-#line 1247 "snobol4_parser.tab.c"
+#line 1247 "snobol4_grammar.tab.c"
     break;
 
   case 8: /* expr2: expr2 TK_AMP expr3  */
-#line 72 "snobol4_parser.y"
+#line 72 "snobol4_grammar.y"
                           { (yyval.expr) = expr_binary(E_OPSYN, (yyvsp[-2].expr), (yyvsp[0].expr)); }
-#line 1253 "snobol4_parser.tab.c"
+#line 1253 "snobol4_grammar.tab.c"
     break;
 
   case 9: /* expr2: expr3  */
-#line 73 "snobol4_parser.y"
+#line 73 "snobol4_grammar.y"
                           { (yyval.expr) = (yyvsp[0].expr); }
-#line 1259 "snobol4_parser.tab.c"
+#line 1259 "snobol4_grammar.tab.c"
     break;
 
   case 10: /* expr3: expr3 TK_PIPE expr4  */
-#line 79 "snobol4_parser.y"
+#line 79 "snobol4_grammar.y"
         {
             if ((yyvsp[-2].expr)->kind==E_ALT) { expr_add_child((yyvsp[-2].expr),(yyvsp[0].expr)); (yyval.expr)=(yyvsp[-2].expr); }
             else { EXPR_t*a=expr_new(E_ALT); expr_add_child(a,(yyvsp[-2].expr)); expr_add_child(a,(yyvsp[0].expr)); (yyval.expr)=a; }
         }
-#line 1268 "snobol4_parser.tab.c"
+#line 1268 "snobol4_grammar.tab.c"
     break;
 
   case 11: /* expr3: expr4  */
-#line 83 "snobol4_parser.y"
+#line 83 "snobol4_grammar.y"
              { (yyval.expr) = (yyvsp[0].expr); }
-#line 1274 "snobol4_parser.tab.c"
+#line 1274 "snobol4_grammar.tab.c"
     break;
 
   case 12: /* expr4: expr4 expr5  */
-#line 89 "snobol4_parser.y"
+#line 89 "snobol4_grammar.y"
         {
             if ((yyvsp[-1].expr)->kind==E_SEQ) { expr_add_child((yyvsp[-1].expr),(yyvsp[0].expr)); (yyval.expr)=(yyvsp[-1].expr); }
             else { EXPR_t*s=expr_new(E_SEQ); expr_add_child(s,(yyvsp[-1].expr)); expr_add_child(s,(yyvsp[0].expr)); (yyval.expr)=s; }
         }
-#line 1283 "snobol4_parser.tab.c"
+#line 1283 "snobol4_grammar.tab.c"
     break;
 
   case 13: /* expr4: expr5  */
-#line 93 "snobol4_parser.y"
+#line 93 "snobol4_grammar.y"
              { (yyval.expr) = (yyvsp[0].expr); }
-#line 1289 "snobol4_parser.tab.c"
+#line 1289 "snobol4_grammar.tab.c"
     break;
 
   case 14: /* expr5: expr5 TK_AT expr6  */
-#line 98 "snobol4_parser.y"
+#line 98 "snobol4_grammar.y"
                          { (yyval.expr) = expr_binary(E_CAPT_CURSOR, (yyvsp[-2].expr), (yyvsp[0].expr)); }
-#line 1295 "snobol4_parser.tab.c"
+#line 1295 "snobol4_grammar.tab.c"
     break;
 
   case 15: /* expr5: expr6  */
-#line 99 "snobol4_parser.y"
+#line 99 "snobol4_grammar.y"
                          { (yyval.expr) = (yyvsp[0].expr); }
-#line 1301 "snobol4_parser.tab.c"
+#line 1301 "snobol4_grammar.tab.c"
     break;
 
   case 16: /* expr6: expr6 TK_PLUS expr7  */
-#line 104 "snobol4_parser.y"
+#line 104 "snobol4_grammar.y"
                             { (yyval.expr) = expr_binary(E_ADD, (yyvsp[-2].expr), (yyvsp[0].expr)); }
-#line 1307 "snobol4_parser.tab.c"
+#line 1307 "snobol4_grammar.tab.c"
     break;
 
   case 17: /* expr6: expr6 TK_MINUS expr7  */
-#line 105 "snobol4_parser.y"
+#line 105 "snobol4_grammar.y"
                             { (yyval.expr) = expr_binary(E_SUB, (yyvsp[-2].expr), (yyvsp[0].expr)); }
-#line 1313 "snobol4_parser.tab.c"
+#line 1313 "snobol4_grammar.tab.c"
     break;
 
   case 18: /* expr6: expr7  */
-#line 106 "snobol4_parser.y"
+#line 106 "snobol4_grammar.y"
                             { (yyval.expr) = (yyvsp[0].expr); }
-#line 1319 "snobol4_parser.tab.c"
+#line 1319 "snobol4_grammar.tab.c"
     break;
 
   case 19: /* expr7: expr7 TK_HASH expr8  */
-#line 111 "snobol4_parser.y"
+#line 111 "snobol4_grammar.y"
                            { (yyval.expr) = expr_binary(E_MUL, (yyvsp[-2].expr), (yyvsp[0].expr)); }
-#line 1325 "snobol4_parser.tab.c"
+#line 1325 "snobol4_grammar.tab.c"
     break;
 
   case 20: /* expr7: expr8  */
-#line 112 "snobol4_parser.y"
+#line 112 "snobol4_grammar.y"
                            { (yyval.expr) = (yyvsp[0].expr); }
-#line 1331 "snobol4_parser.tab.c"
+#line 1331 "snobol4_grammar.tab.c"
     break;
 
   case 21: /* expr8: expr8 TK_SLASH expr9  */
-#line 117 "snobol4_parser.y"
+#line 117 "snobol4_grammar.y"
                             { (yyval.expr) = expr_binary(E_DIV, (yyvsp[-2].expr), (yyvsp[0].expr)); }
-#line 1337 "snobol4_parser.tab.c"
+#line 1337 "snobol4_grammar.tab.c"
     break;
 
   case 22: /* expr8: expr9  */
-#line 118 "snobol4_parser.y"
+#line 118 "snobol4_grammar.y"
                             { (yyval.expr) = (yyvsp[0].expr); }
-#line 1343 "snobol4_parser.tab.c"
+#line 1343 "snobol4_grammar.tab.c"
     break;
 
   case 23: /* expr9: expr9 TK_STAR expr10  */
-#line 123 "snobol4_parser.y"
+#line 123 "snobol4_grammar.y"
                             { (yyval.expr) = expr_binary(E_MUL, (yyvsp[-2].expr), (yyvsp[0].expr)); }
-#line 1349 "snobol4_parser.tab.c"
+#line 1349 "snobol4_grammar.tab.c"
     break;
 
   case 24: /* expr9: expr10  */
-#line 124 "snobol4_parser.y"
+#line 124 "snobol4_grammar.y"
                             { (yyval.expr) = (yyvsp[0].expr); }
-#line 1355 "snobol4_parser.tab.c"
+#line 1355 "snobol4_grammar.tab.c"
     break;
 
   case 25: /* expr10: expr10 TK_PCT expr11  */
-#line 129 "snobol4_parser.y"
+#line 129 "snobol4_grammar.y"
                             { (yyval.expr) = expr_binary(E_DIV, (yyvsp[-2].expr), (yyvsp[0].expr)); }
-#line 1361 "snobol4_parser.tab.c"
+#line 1361 "snobol4_grammar.tab.c"
     break;
 
   case 26: /* expr10: expr11  */
-#line 130 "snobol4_parser.y"
+#line 130 "snobol4_grammar.y"
                             { (yyval.expr) = (yyvsp[0].expr); }
-#line 1367 "snobol4_parser.tab.c"
+#line 1367 "snobol4_grammar.tab.c"
     break;
 
   case 27: /* expr11: expr12 TK_CARET expr11  */
-#line 135 "snobol4_parser.y"
+#line 135 "snobol4_grammar.y"
                                  { (yyval.expr) = expr_binary(E_POW, (yyvsp[-2].expr), (yyvsp[0].expr)); }
-#line 1373 "snobol4_parser.tab.c"
+#line 1373 "snobol4_grammar.tab.c"
     break;
 
   case 28: /* expr11: expr12 TK_BANG expr11  */
-#line 136 "snobol4_parser.y"
+#line 136 "snobol4_grammar.y"
                                  { (yyval.expr) = expr_binary(E_POW, (yyvsp[-2].expr), (yyvsp[0].expr)); }
-#line 1379 "snobol4_parser.tab.c"
+#line 1379 "snobol4_grammar.tab.c"
     break;
 
   case 29: /* expr11: expr12 TK_STARSTAR expr11  */
-#line 137 "snobol4_parser.y"
+#line 137 "snobol4_grammar.y"
                                  { (yyval.expr) = expr_binary(E_POW, (yyvsp[-2].expr), (yyvsp[0].expr)); }
-#line 1385 "snobol4_parser.tab.c"
+#line 1385 "snobol4_grammar.tab.c"
     break;
 
   case 30: /* expr11: expr12  */
-#line 138 "snobol4_parser.y"
+#line 138 "snobol4_grammar.y"
                                  { (yyval.expr) = (yyvsp[0].expr); }
-#line 1391 "snobol4_parser.tab.c"
+#line 1391 "snobol4_grammar.tab.c"
     break;
 
   case 31: /* expr12: expr12 TK_DOLLAR expr13  */
-#line 143 "snobol4_parser.y"
+#line 143 "snobol4_grammar.y"
                                { (yyval.expr) = expr_binary(E_CAPT_IMMED_ASGN, (yyvsp[-2].expr), (yyvsp[0].expr)); }
-#line 1397 "snobol4_parser.tab.c"
+#line 1397 "snobol4_grammar.tab.c"
     break;
 
   case 32: /* expr12: expr12 TK_DOT expr13  */
-#line 144 "snobol4_parser.y"
+#line 144 "snobol4_grammar.y"
                                { (yyval.expr) = expr_binary(E_CAPT_COND_ASGN,  (yyvsp[-2].expr), (yyvsp[0].expr)); }
-#line 1403 "snobol4_parser.tab.c"
+#line 1403 "snobol4_grammar.tab.c"
     break;
 
   case 33: /* expr12: expr13  */
-#line 145 "snobol4_parser.y"
+#line 145 "snobol4_grammar.y"
                                { (yyval.expr) = (yyvsp[0].expr); }
-#line 1409 "snobol4_parser.tab.c"
+#line 1409 "snobol4_grammar.tab.c"
     break;
 
   case 34: /* expr13: expr14 TK_TILDE expr13  */
-#line 150 "snobol4_parser.y"
+#line 150 "snobol4_grammar.y"
                               { (yyval.expr) = expr_binary(E_CAPT_COND_ASGN, (yyvsp[-2].expr), (yyvsp[0].expr)); }
-#line 1415 "snobol4_parser.tab.c"
+#line 1415 "snobol4_grammar.tab.c"
     break;
 
   case 35: /* expr13: expr14  */
-#line 151 "snobol4_parser.y"
+#line 151 "snobol4_grammar.y"
                               { (yyval.expr) = (yyvsp[0].expr); }
-#line 1421 "snobol4_parser.tab.c"
+#line 1421 "snobol4_grammar.tab.c"
     break;
 
   case 36: /* expr14: TK_AT expr14  */
-#line 156 "snobol4_parser.y"
+#line 156 "snobol4_grammar.y"
                         { (yyval.expr) = expr_unary(E_CAPT_CURSOR,  (yyvsp[0].expr)); }
-#line 1427 "snobol4_parser.tab.c"
+#line 1427 "snobol4_grammar.tab.c"
     break;
 
   case 37: /* expr14: TK_TILDE expr14  */
-#line 157 "snobol4_parser.y"
+#line 157 "snobol4_grammar.y"
                         { (yyval.expr) = expr_unary(E_INDIRECT,     (yyvsp[0].expr)); }
-#line 1433 "snobol4_parser.tab.c"
+#line 1433 "snobol4_grammar.tab.c"
     break;
 
   case 38: /* expr14: TK_QMARK expr14  */
-#line 158 "snobol4_parser.y"
+#line 158 "snobol4_grammar.y"
                         { (yyval.expr) = expr_unary(E_INTERROGATE,  (yyvsp[0].expr)); }
-#line 1439 "snobol4_parser.tab.c"
+#line 1439 "snobol4_grammar.tab.c"
     break;
 
   case 39: /* expr14: TK_AMP expr14  */
-#line 159 "snobol4_parser.y"
+#line 159 "snobol4_grammar.y"
                         { (yyval.expr) = expr_unary(E_OPSYN,        (yyvsp[0].expr)); }
-#line 1445 "snobol4_parser.tab.c"
+#line 1445 "snobol4_grammar.tab.c"
     break;
 
   case 40: /* expr14: TK_PLUS expr14  */
-#line 160 "snobol4_parser.y"
+#line 160 "snobol4_grammar.y"
                         { (yyval.expr) = expr_unary(E_PLS,          (yyvsp[0].expr)); }
-#line 1451 "snobol4_parser.tab.c"
+#line 1451 "snobol4_grammar.tab.c"
     break;
 
   case 41: /* expr14: TK_MINUS expr14  */
-#line 161 "snobol4_parser.y"
+#line 161 "snobol4_grammar.y"
                         { (yyval.expr) = expr_unary(E_MNS,          (yyvsp[0].expr)); }
-#line 1457 "snobol4_parser.tab.c"
+#line 1457 "snobol4_grammar.tab.c"
     break;
 
   case 42: /* expr14: TK_STAR expr14  */
-#line 162 "snobol4_parser.y"
+#line 162 "snobol4_grammar.y"
                         { (yyval.expr) = expr_unary(E_DEFER,        (yyvsp[0].expr)); }
-#line 1463 "snobol4_parser.tab.c"
+#line 1463 "snobol4_grammar.tab.c"
     break;
 
   case 43: /* expr14: TK_DOLLAR expr14  */
-#line 163 "snobol4_parser.y"
+#line 163 "snobol4_grammar.y"
                         { (yyval.expr) = expr_unary(E_INDIRECT,     (yyvsp[0].expr)); }
-#line 1469 "snobol4_parser.tab.c"
+#line 1469 "snobol4_grammar.tab.c"
     break;
 
   case 44: /* expr14: TK_DOT expr14  */
-#line 164 "snobol4_parser.y"
+#line 164 "snobol4_grammar.y"
                         { (yyval.expr) = expr_unary(E_NAME,         (yyvsp[0].expr)); }
-#line 1475 "snobol4_parser.tab.c"
+#line 1475 "snobol4_grammar.tab.c"
     break;
 
   case 45: /* expr14: TK_BANG expr14  */
-#line 165 "snobol4_parser.y"
+#line 165 "snobol4_grammar.y"
                         { (yyval.expr) = expr_unary(E_POW,          (yyvsp[0].expr)); }
-#line 1481 "snobol4_parser.tab.c"
+#line 1481 "snobol4_grammar.tab.c"
     break;
 
   case 46: /* expr14: TK_PCT expr14  */
-#line 166 "snobol4_parser.y"
+#line 166 "snobol4_grammar.y"
                         { (yyval.expr) = expr_unary(E_DIV,          (yyvsp[0].expr)); }
-#line 1487 "snobol4_parser.tab.c"
+#line 1487 "snobol4_grammar.tab.c"
     break;
 
   case 47: /* expr14: TK_SLASH expr14  */
-#line 167 "snobol4_parser.y"
+#line 167 "snobol4_grammar.y"
                         { (yyval.expr) = expr_unary(E_DIV,          (yyvsp[0].expr)); }
-#line 1493 "snobol4_parser.tab.c"
+#line 1493 "snobol4_grammar.tab.c"
     break;
 
   case 48: /* expr14: TK_HASH expr14  */
-#line 168 "snobol4_parser.y"
+#line 168 "snobol4_grammar.y"
                         { (yyval.expr) = expr_unary(E_MUL,          (yyvsp[0].expr)); }
-#line 1499 "snobol4_parser.tab.c"
+#line 1499 "snobol4_grammar.tab.c"
     break;
 
   case 49: /* expr14: TK_EQ expr14  */
-#line 169 "snobol4_parser.y"
+#line 169 "snobol4_grammar.y"
                         { (yyval.expr) = expr_unary(E_ASSIGN,       (yyvsp[0].expr)); }
-#line 1505 "snobol4_parser.tab.c"
+#line 1505 "snobol4_grammar.tab.c"
     break;
 
   case 50: /* expr14: TK_PIPE expr14  */
-#line 170 "snobol4_parser.y"
+#line 170 "snobol4_grammar.y"
                         { (yyval.expr) = expr_unary(E_ALT,          (yyvsp[0].expr)); }
-#line 1511 "snobol4_parser.tab.c"
+#line 1511 "snobol4_grammar.tab.c"
     break;
 
   case 51: /* expr14: TK_CARET expr14  */
-#line 171 "snobol4_parser.y"
+#line 171 "snobol4_grammar.y"
                         { (yyval.expr) = expr_unary(E_POW,          (yyvsp[0].expr)); }
-#line 1517 "snobol4_parser.tab.c"
+#line 1517 "snobol4_grammar.tab.c"
     break;
 
   case 52: /* expr14: TK_STARSTAR expr14  */
-#line 172 "snobol4_parser.y"
+#line 172 "snobol4_grammar.y"
                          { (yyval.expr) = expr_unary(E_DEFER,       (yyvsp[0].expr)); }
-#line 1523 "snobol4_parser.tab.c"
+#line 1523 "snobol4_grammar.tab.c"
     break;
 
   case 53: /* expr14: expr15  */
-#line 173 "snobol4_parser.y"
+#line 173 "snobol4_grammar.y"
                          { (yyval.expr) = (yyvsp[0].expr); }
-#line 1529 "snobol4_parser.tab.c"
+#line 1529 "snobol4_grammar.tab.c"
     break;
 
   case 54: /* expr15: expr15 TK_LBRACKET exprlist TK_RBRACKET  */
-#line 179 "snobol4_parser.y"
+#line 179 "snobol4_grammar.y"
         { EXPR_t*idx=expr_new(E_IDX); expr_add_child(idx,(yyvsp[-3].expr));
           for(int i=0;i<(yyvsp[-1].expr)->nchildren;i++) expr_add_child(idx,(yyvsp[-1].expr)->children[i]);
           free((yyvsp[-1].expr)->children); free((yyvsp[-1].expr)); (yyval.expr)=idx; }
-#line 1537 "snobol4_parser.tab.c"
+#line 1537 "snobol4_grammar.tab.c"
     break;
 
   case 55: /* expr15: expr15 TK_LANGLE exprlist TK_RANGLE  */
-#line 183 "snobol4_parser.y"
+#line 183 "snobol4_grammar.y"
         { EXPR_t*idx=expr_new(E_IDX); expr_add_child(idx,(yyvsp[-3].expr));
           for(int i=0;i<(yyvsp[-1].expr)->nchildren;i++) expr_add_child(idx,(yyvsp[-1].expr)->children[i]);
           free((yyvsp[-1].expr)->children); free((yyvsp[-1].expr)); (yyval.expr)=idx; }
-#line 1545 "snobol4_parser.tab.c"
+#line 1545 "snobol4_grammar.tab.c"
     break;
 
   case 56: /* expr15: expr17  */
-#line 186 "snobol4_parser.y"
+#line 186 "snobol4_grammar.y"
               { (yyval.expr) = (yyvsp[0].expr); }
-#line 1551 "snobol4_parser.tab.c"
+#line 1551 "snobol4_grammar.tab.c"
     break;
 
   case 57: /* exprlist: exprlist_ne  */
-#line 191 "snobol4_parser.y"
+#line 191 "snobol4_grammar.y"
                     { (yyval.expr) = (yyvsp[0].expr); }
-#line 1557 "snobol4_parser.tab.c"
+#line 1557 "snobol4_grammar.tab.c"
     break;
 
   case 58: /* exprlist: %empty  */
-#line 192 "snobol4_parser.y"
+#line 192 "snobol4_grammar.y"
                     { (yyval.expr) = expr_new(E_NUL); }
-#line 1563 "snobol4_parser.tab.c"
+#line 1563 "snobol4_grammar.tab.c"
     break;
 
   case 59: /* exprlist_ne: exprlist_ne TK_COMMA expr0  */
-#line 195 "snobol4_parser.y"
+#line 195 "snobol4_grammar.y"
                                   { expr_add_child((yyvsp[-2].expr),(yyvsp[0].expr)); (yyval.expr)=(yyvsp[-2].expr); }
-#line 1569 "snobol4_parser.tab.c"
+#line 1569 "snobol4_grammar.tab.c"
     break;
 
   case 60: /* exprlist_ne: exprlist_ne TK_COMMA  */
-#line 196 "snobol4_parser.y"
+#line 196 "snobol4_grammar.y"
                                   { expr_add_child((yyvsp[-1].expr),expr_new(E_NUL)); (yyval.expr)=(yyvsp[-1].expr); }
-#line 1575 "snobol4_parser.tab.c"
+#line 1575 "snobol4_grammar.tab.c"
     break;
 
   case 61: /* exprlist_ne: expr0  */
-#line 197 "snobol4_parser.y"
+#line 197 "snobol4_grammar.y"
              { EXPR_t*l=expr_new(E_NUL); expr_add_child(l,(yyvsp[0].expr)); (yyval.expr)=l; }
-#line 1581 "snobol4_parser.tab.c"
+#line 1581 "snobol4_grammar.tab.c"
     break;
 
   case 62: /* expr17: TK_LPAREN expr0 TK_RPAREN  */
-#line 202 "snobol4_parser.y"
+#line 202 "snobol4_grammar.y"
                                                        { (yyval.expr) = (yyvsp[-1].expr); }
-#line 1587 "snobol4_parser.tab.c"
+#line 1587 "snobol4_grammar.tab.c"
     break;
 
   case 63: /* expr17: TK_LPAREN expr0 TK_COMMA exprlist_ne TK_RPAREN  */
-#line 204 "snobol4_parser.y"
+#line 204 "snobol4_grammar.y"
         { EXPR_t*a=expr_new(E_ALT); expr_add_child(a,(yyvsp[-3].expr));
           for(int i=0;i<(yyvsp[-1].expr)->nchildren;i++) expr_add_child(a,(yyvsp[-1].expr)->children[i]);
           free((yyvsp[-1].expr)->children); free((yyvsp[-1].expr)); (yyval.expr)=a; }
-#line 1595 "snobol4_parser.tab.c"
+#line 1595 "snobol4_grammar.tab.c"
     break;
 
   case 64: /* expr17: TK_LPAREN TK_RPAREN  */
-#line 207 "snobol4_parser.y"
+#line 207 "snobol4_grammar.y"
                                                        { (yyval.expr) = expr_new(E_NUL); }
-#line 1601 "snobol4_parser.tab.c"
+#line 1601 "snobol4_grammar.tab.c"
     break;
 
   case 65: /* expr17: TK_IDENT TK_LPAREN exprlist TK_RPAREN  */
-#line 209 "snobol4_parser.y"
+#line 209 "snobol4_grammar.y"
         { EXPR_t*e=expr_new(E_FNC); e->sval=(char*)(yyvsp[-3].tok).sval;
           for(int i=0;i<(yyvsp[-1].expr)->nchildren;i++) expr_add_child(e,(yyvsp[-1].expr)->children[i]);
           free((yyvsp[-1].expr)->children); free((yyvsp[-1].expr)); (yyval.expr)=e; }
-#line 1609 "snobol4_parser.tab.c"
+#line 1609 "snobol4_grammar.tab.c"
     break;
 
   case 66: /* expr17: TK_END TK_LPAREN exprlist TK_RPAREN  */
-#line 213 "snobol4_parser.y"
+#line 213 "snobol4_grammar.y"
         { EXPR_t*e=expr_new(E_FNC); e->sval=(char*)(yyvsp[-3].tok).sval;
           for(int i=0;i<(yyvsp[-1].expr)->nchildren;i++) expr_add_child(e,(yyvsp[-1].expr)->children[i]);
           free((yyvsp[-1].expr)->children); free((yyvsp[-1].expr)); (yyval.expr)=e; }
-#line 1617 "snobol4_parser.tab.c"
+#line 1617 "snobol4_grammar.tab.c"
     break;
 
   case 67: /* expr17: TK_IDENT  */
-#line 216 "snobol4_parser.y"
+#line 216 "snobol4_grammar.y"
                   { EXPR_t*e=expr_new(E_VAR);     e->sval=(char*)(yyvsp[0].tok).sval; (yyval.expr)=e; }
-#line 1623 "snobol4_parser.tab.c"
+#line 1623 "snobol4_grammar.tab.c"
     break;
 
   case 68: /* expr17: TK_END  */
-#line 217 "snobol4_parser.y"
+#line 217 "snobol4_grammar.y"
                   { EXPR_t*e=expr_new(E_VAR);     e->sval=(char*)(yyvsp[0].tok).sval; (yyval.expr)=e; }
-#line 1629 "snobol4_parser.tab.c"
+#line 1629 "snobol4_grammar.tab.c"
     break;
 
   case 69: /* expr17: TK_KEYWORD  */
-#line 218 "snobol4_parser.y"
+#line 218 "snobol4_grammar.y"
                   { EXPR_t*e=expr_new(E_KEYWORD); e->sval=(char*)(yyvsp[0].tok).sval; (yyval.expr)=e; }
-#line 1635 "snobol4_parser.tab.c"
+#line 1635 "snobol4_grammar.tab.c"
     break;
 
   case 70: /* expr17: TK_STR  */
-#line 219 "snobol4_parser.y"
+#line 219 "snobol4_grammar.y"
                   { EXPR_t*e=expr_new(E_QLIT);    e->sval=(char*)(yyvsp[0].tok).sval; (yyval.expr)=e; }
-#line 1641 "snobol4_parser.tab.c"
+#line 1641 "snobol4_grammar.tab.c"
     break;
 
   case 71: /* expr17: TK_INT  */
-#line 220 "snobol4_parser.y"
+#line 220 "snobol4_grammar.y"
                   { EXPR_t*e=expr_new(E_ILIT);    e->ival=(yyvsp[0].tok).ival;         (yyval.expr)=e; }
-#line 1647 "snobol4_parser.tab.c"
+#line 1647 "snobol4_grammar.tab.c"
     break;
 
   case 72: /* expr17: TK_REAL  */
-#line 221 "snobol4_parser.y"
+#line 221 "snobol4_grammar.y"
                   { EXPR_t*e=expr_new(E_FLIT);    e->dval=(yyvsp[0].tok).dval;         (yyval.expr)=e; }
-#line 1653 "snobol4_parser.tab.c"
+#line 1653 "snobol4_grammar.tab.c"
     break;
 
 
-#line 1657 "snobol4_parser.tab.c"
+#line 1657 "snobol4_grammar.tab.c"
 
       default: break;
     }
@@ -1846,7 +1846,7 @@ yyreturnlab:
   return yyresult;
 }
 
-#line 224 "snobol4_parser.y"
+#line 224 "snobol4_grammar.y"
 
 
 int snobol4_lex(YYSTYPE *yylval_param, void *yyparse_param) {

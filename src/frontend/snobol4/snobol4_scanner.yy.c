@@ -1,6 +1,6 @@
-#line 2 "snobol4_lexer.yy.c"
+#line 2 "snobol4_scanner.yy.c"
 
-#line 4 "snobol4_lexer.yy.c"
+#line 4 "snobol4_scanner.yy.c"
 
 #define  YY_INT_ALIGNED short int
 
@@ -463,8 +463,8 @@ static const flex_int32_t yy_rule_can_match_eol[10] =
 #define yymore() yymore_used_but_not_detected
 #define YY_MORE_ADJ 0
 #define YY_RESTORE_YY_MORE_OFFSET
-#line 1 "snobol4_lexer.l"
-#line 2 "snobol4_lexer.l"
+#line 1 "snobol4_scanner.l"
+#line 2 "snobol4_scanner.l"
 /*
  * lex.l — SNOBOL4 one-pass character-stream lexer for scrip-interp
  *
@@ -496,7 +496,7 @@ static const flex_int32_t yy_rule_can_match_eol[10] =
  */
 
 #include "scrip_cc.h"
-#include "snobol4_lexer.h"
+#include "snobol4_scanner.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -537,9 +537,9 @@ static void emit_logical_to_pending(FlexExtra *ex);
 static void emit_stmt_seg(FlexExtra *ex, const char *s, int len, int ln, int first);
 static void tokenise_body_pending(FlexExtra *ex, const char *s, int len, int ln);
 
-#line 541 "snobol4_lexer.yy.c"
+#line 541 "snobol4_scanner.yy.c"
 
-#line 543 "snobol4_lexer.yy.c"
+#line 543 "snobol4_scanner.yy.c"
 
 #define INITIAL 0
 #define BODY 1
@@ -808,12 +808,12 @@ YY_DECL
 		}
 
 	{
-#line 89 "snobol4_lexer.l"
+#line 89 "snobol4_scanner.l"
 
 
-#line 92 "snobol4_lexer.l"
+#line 92 "snobol4_scanner.l"
     /* ── comment lines ───────────────────────────────────────── */
-#line 817 "snobol4_lexer.yy.c"
+#line 817 "snobol4_scanner.yy.c"
 
 	while ( /*CONSTCOND*/1 )		/* loops until end-of-file is reached */
 		{
@@ -882,7 +882,7 @@ do_action:	/* This label is used only to access EOF actions. */
 case 1:
 /* rule 1 can match eol */
 YY_RULE_SETUP
-#line 93 "snobol4_lexer.l"
+#line 93 "snobol4_scanner.l"
 { /* blank */
     if (EX->llen) { emit_logical_to_pending(EX); }
 }
@@ -890,17 +890,17 @@ YY_RULE_SETUP
 case 2:
 /* rule 2 can match eol */
 YY_RULE_SETUP
-#line 96 "snobol4_lexer.l"
+#line 96 "snobol4_scanner.l"
 { /* comment */
     if (EX->llen) { emit_logical_to_pending(EX); }
 }
 	YY_BREAK
 /* ── -INCLUDE / -COPY ────────────────────────────────────── */
 case 3:
-#line 102 "snobol4_lexer.l"
+#line 102 "snobol4_scanner.l"
 case 4:
 YY_RULE_SETUP
-#line 102 "snobol4_lexer.l"
+#line 102 "snobol4_scanner.l"
 {
     if (EX->llen) { emit_logical_to_pending(EX); }
     char iname[4096]; int fi = 0;
@@ -940,7 +940,7 @@ YY_RULE_SETUP
 case 5:
 /* rule 5 can match eol */
 YY_RULE_SETUP
-#line 138 "snobol4_lexer.l"
+#line 138 "snobol4_scanner.l"
 {
     if (EX->llen) { emit_logical_to_pending(EX); }
 }
@@ -948,7 +948,7 @@ YY_RULE_SETUP
 /* ── continuation: col-1 + or . ─────────────────────────── */
 case 6:
 YY_RULE_SETUP
-#line 143 "snobol4_lexer.l"
+#line 143 "snobol4_scanner.l"
 {
     /* trim trailing whitespace from accumulated logical line */
     while (EX->llen > 0 &&
@@ -969,7 +969,7 @@ YY_RULE_SETUP
 /* ── normal statement line ───────────────────────────────── */
 case 7:
 YY_RULE_SETUP
-#line 161 "snobol4_lexer.l"
+#line 161 "snobol4_scanner.l"
 {
     /* flush previous logical line */
     if (EX->llen) { emit_logical_to_pending(EX); }
@@ -989,7 +989,7 @@ YY_RULE_SETUP
 case YY_STATE_EOF(INITIAL):
 case YY_STATE_EOF(BODY):
 case YY_STATE_EOF(GT_STATE):
-#line 177 "snobol4_lexer.l"
+#line 177 "snobol4_scanner.l"
 {
     if (EX->llen) { emit_logical_to_pending(EX); }
     int _ln = yyget_lineno(yyscanner);
@@ -1004,15 +1004,15 @@ case YY_STATE_EOF(GT_STATE):
 case 8:
 /* rule 8 can match eol */
 YY_RULE_SETUP
-#line 188 "snobol4_lexer.l"
+#line 188 "snobol4_scanner.l"
 { }
 	YY_BREAK
 case 9:
 YY_RULE_SETUP
-#line 190 "snobol4_lexer.l"
+#line 190 "snobol4_scanner.l"
 ECHO;
 	YY_BREAK
-#line 1016 "snobol4_lexer.yy.c"
+#line 1016 "snobol4_scanner.yy.c"
 
 	case YY_END_OF_BUFFER:
 		{
@@ -2234,7 +2234,7 @@ void yyfree (void * ptr , yyscan_t yyscanner)
 
 #define YYTABLES_NAME "yytables"
 
-#line 190 "snobol4_lexer.l"
+#line 190 "snobol4_scanner.l"
 
 
 /* ── emit_logical_to_pending ─────────────────────────────────────────────

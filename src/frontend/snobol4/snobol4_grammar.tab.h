@@ -35,8 +35,8 @@
    especially those whose name start with YY_ or yy_.  They are
    private implementation details that can be changed or removed.  */
 
-#ifndef YY_SNOBOL4_SNOBOL4_PARSER_TAB_H_INCLUDED
-# define YY_SNOBOL4_SNOBOL4_PARSER_TAB_H_INCLUDED
+#ifndef YY_SNOBOL4_SNOBOL4_GRAMMAR_TAB_H_INCLUDED
+# define YY_SNOBOL4_SNOBOL4_GRAMMAR_TAB_H_INCLUDED
 /* Debug traces.  */
 #ifndef SNOBOL4_DEBUG
 # if defined YYDEBUG
@@ -100,10 +100,10 @@ extern int snobol4_debug;
 #if ! defined SNOBOL4_STYPE && ! defined SNOBOL4_STYPE_IS_DECLARED
 union SNOBOL4_STYPE
 {
-#line 44 "snobol4_parser.y"
+#line 44 "snobol4_grammar.y"
  EXPR_t *expr; Token tok; 
 
-#line 107 "snobol4_parser.tab.h"
+#line 107 "snobol4_grammar.tab.h"
 
 };
 typedef union SNOBOL4_STYPE SNOBOL4_STYPE;
@@ -117,4 +117,4 @@ typedef union SNOBOL4_STYPE SNOBOL4_STYPE;
 int snobol4_parse (void *yyparse_param);
 
 
-#endif /* !YY_SNOBOL4_SNOBOL4_PARSER_TAB_H_INCLUDED  */
+#endif /* !YY_SNOBOL4_SNOBOL4_GRAMMAR_TAB_H_INCLUDED  */
