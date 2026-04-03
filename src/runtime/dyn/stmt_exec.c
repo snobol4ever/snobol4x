@@ -179,7 +179,11 @@ typedef struct {
     int          immediate;
     spec_t       pending;
     int          has_pending;
+    int          registered;  /* set on first CAP_α; prevents double-register */
 } capture_t;
+
+/* forward decl — used in bb_capture body below */
+static void register_capture(capture_t *c);
 
 static spec_t bb_capture(void *zeta, int entry)
 {
@@ -190,7 +194,9 @@ static spec_t bb_capture(void *zeta, int entry)
 
     spec_t         child_r;
 
-    CAP_α:        child_r = ζ->fn(ζ->state, α);
+    CAP_α:        if (!ζ->immediate)
+                      register_capture(ζ);
+                  child_r = ζ->fn(ζ->state, α);
                   if (spec_is_empty(child_r))                 goto CAP_ω;
                                                               goto CAP_γ_core;
     CAP_β:        child_r = ζ->fn(ζ->state, β);
@@ -241,7 +247,6 @@ typedef struct {
 static bb_node_t bb_build(_PND_t *p);
 
 /* forward decls for capture registry (defined after exec_stmt) */
-static void register_capture(capture_t *c);
 static void flush_pending_captures(void);
 
 /* Box state types are now in bb_box.h (canonical).
@@ -652,7 +657,8 @@ static bb_node_t bb_build(_PND_t *p)
         ζ->state = child.ζ;
         ζ->varname   = (p->var.v == DT_S && p->var.s) ? p->var.s : NULL;
         ζ->immediate = 0;
-        register_capture(ζ);
+        /* register_capture deferred to CAP_α (match time) so g_capture_count
+         * reset in stmt_exec_dyn does not lose the node */
         n.fn = (bb_box_fn)bb_capture;
         n.ζ  = ζ;
         n.ζ_size = sizeof(*ζ);
@@ -908,6 +914,9 @@ static int        g_capture_count = 0;
 /* Called from bb_build whenever a capture_t is created */
 static void register_capture(capture_t *c)
 {
+    /* idempotent: skip if already registered this statement */
+    for (int i = 0; i < g_capture_count; i++)
+        if (g_capture_list[i] == c) return;
     if (g_capture_count < MAX_CAPTURES)
         g_capture_list[g_capture_count++] = c;
 }
