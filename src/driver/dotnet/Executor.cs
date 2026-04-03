@@ -171,19 +171,25 @@ public sealed class Executor
         if (stmt.Pattern != null)
         {
             // Phase 2: build box graph
+            // setVar: intercepts OUTPUT (side-effect write) vs normal env vars
+            Action<string, string> setVar = (n, v) => {
+                if (n == "OUTPUT") _output.WriteLine(v);
+                else _env.Set(n, DESCR.Of(v));
+            };
+
             var builder = new PatternBuilder(
-                setVar:        (n, v) => _env.Set(n, DESCR.Of(v)),
+                setVar:        setVar,
                 getStringVar:  n      => _env.Get(n).ToString(),
                 getPatternVar: n      => {
                     var patIr = _env.GetPattern(n);
                     if (patIr == null) return null;
                     var inner = new PatternBuilder(
-                        setVar:        (vn, v) => _env.Set(vn, DESCR.Of(v)),
+                        setVar:        setVar,
                         getStringVar:  vn      => _env.Get(vn).ToString(),
                         getPatternVar: vn      => {
                             var pi = _env.GetPattern(vn);
                             return pi == null ? null : new PatternBuilder(
-                                (vn2, v2) => _env.Set(vn2, DESCR.Of(v2)),
+                                setVar,
                                 vn2 => _env.Get(vn2).ToString(),
                                 _ => null,
                                 EvalNode).Build(pi);

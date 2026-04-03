@@ -1,0 +1,12 @@
+/tmp/sni/Snobol4.Runtime.Boxes.deps.json
+/tmp/sni/Snobol4.Runtime.Boxes.dll
+/tmp/sni/Snobol4.Runtime.Boxes.pdb
+/home/claude/one4all/src/runtime/boxes/shared/obj/Release/net8.0/bb_boxes.GeneratedMSBuildEditorConfig.editorconfig
+/home/claude/one4all/src/runtime/boxes/shared/obj/Release/net8.0/bb_boxes.AssemblyInfoInputs.cache
+/home/claude/one4all/src/runtime/boxes/shared/obj/Release/net8.0/bb_boxes.AssemblyInfo.cs
+/home/claude/one4all/src/runtime/boxes/shared/obj/Release/net8.0/bb_boxes.csproj.CoreCompileInputs.cache
+/home/claude/one4all/src/runtime/boxes/shared/obj/Release/net8.0/bb_boxes.sourcelink.json
+/home/claude/one4all/src/runtime/boxes/shared/obj/Release/net8.0/Snobol4.Runtime.Boxes.dll
+/home/claude/one4all/src/runtime/boxes/shared/obj/Release/net8.0/refint/Snobol4.Runtime.Boxes.dll
+/home/claude/one4all/src/runtime/boxes/shared/obj/Release/net8.0/Snobol4.Runtime.Boxes.pdb
+/home/claude/one4all/src/runtime/boxes/shared/obj/Release/net8.0/ref/Snobol4.Runtime.Boxes.dll

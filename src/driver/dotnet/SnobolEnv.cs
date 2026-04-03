@@ -212,7 +212,7 @@ public sealed class SnobolEnv
     public SnobolEnv()
     {
         Set("&ANCHOR",   DESCR.Of(0L));
-        Set("&TRIM",     DESCR.Of(0L));
+        Set("&TRIM",     DESCR.Of(1L));  // SPITBOL default: trim trailing whitespace from input
         Set("&FULLSCAN", DESCR.Of(0L));
         Set("&STCOUNT",  DESCR.Of(0L));
         Set("&STNO",     DESCR.Of(0L));

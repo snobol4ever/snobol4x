@@ -427,6 +427,12 @@ public static class Snobol4Parser
         if (src == "-") return IrNode.QStr("-");
         if (src == "+") return IrNode.QStr("+");
 
+        // Unary +/- with operand attached (e.g. +'4', -X, -(expr))
+        if (src.StartsWith('+') && src.Length > 1)
+            return IrNode.Nary(IrKind.E_PLS, ParseAtom(src[1..]));
+        if (src.StartsWith('-') && src.Length > 1 && !char.IsDigit(src[1]))
+            return IrNode.Nary(IrKind.E_MNS, ParseAtom(src[1..]));
+
         // Parenthesised group
         if (src.StartsWith('(') && src.EndsWith(')') && src.Length >= 2)
         {

@@ -89,7 +89,7 @@
     ldloca.s   V_lr
     call       instance bool Snobol4.Runtime.Boxes.Spec::get_IsFail()
     brtrue     SEQ_A_OMEGA
-    // left_γ from beta: re-accumulate and retry right.α
+    // left_γ from β: re-accumulate and retry right.α
     ldarg.0
     ldarg.0
     ldfld      int32 Snobol4.Runtime.Boxes.bb_seq::_mLen

@@ -3,9 +3,9 @@
 //
 // Given a root IByrdBox and a MatchState, runs the scan loop:
 //   for cursor = startPos .. Length:
-//     try root.Alpha()
+//     try root.α()
 //     on success: commit captures, return MatchResult.Success
-//     on failure: try root.Beta() for backtrack within same start pos
+//     on failure: try root.β() for backtrack within same start pos
 //   return MatchResult.Failure
 //
 // Phase 5 (capture commit) is triggered here on :S.

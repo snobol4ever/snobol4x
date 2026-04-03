@@ -3,8 +3,8 @@
 // Mirrors src/runtime/boxes/bb_box.h
 //
 // Every box implements two entry ports:
-//   Alpha()  — fresh entry (α port)
-//   Beta()   — backtrack re-entry (β port)
+//   α()  — fresh entry (α port)
+//   β()   — backtrack re-entry (β port)
 //
 // Return convention (mirrors spec_t):
 //   Spec.Fail  — ω fired (failure)
