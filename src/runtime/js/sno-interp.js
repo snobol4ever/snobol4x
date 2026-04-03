@@ -984,7 +984,18 @@ function _build_pat(e) {
     case E_BREAKX: return PAT_break(_str(interp_eval(e.children[0])));
     case E_CAPT_COND_ASGN:  return PAT_capt_cond(_build_pat(e.children[0]), e.children[1]?.sval||'');
     case E_CAPT_IMMED_ASGN: return PAT_capt_imm(_build_pat(e.children[0]),  e.children[1]?.sval||'');
-    case E_CAPT_CURSOR:     return PAT_capt_cursor(e.children[0]?.sval||e.children[0]?.children?.[0]?.sval||'');
+    case E_CAPT_CURSOR: {
+      /* Binary form: P @ V — match P then capture cursor into V.
+       * Unary form (prefix @V from _e14): children[0] is the variable E_VAR/E_NAME.
+       * Distinguish: if children[1] exists, it's binary (P @ V). */
+      if (e.children[1] !== undefined) {
+        const varname = e.children[1]?.sval || '';
+        return PAT_seq(_build_pat(e.children[0]), PAT_capt_cursor(varname));
+      }
+      /* Unary prefix @V */
+      const varname = e.children[0]?.sval || e.children[0]?.children?.[0]?.sval || '';
+      return PAT_capt_cursor(varname);
+    }
     case E_FNC: {
       const fn=e.sval.toUpperCase();
       const a0=()=>_str(interp_eval(e.children[0]));
