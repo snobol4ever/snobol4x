@@ -6,10 +6,10 @@
 
 namespace Snobol4.Runtime.Boxes;
 
-public sealed class BbAny : IByrdBox
+public sealed class bb_any : IByrdBox
 {
     private readonly string _chars;
-    public BbAny(string chars) { _chars = chars ?? ""; }
+    public bb_any(string chars) { _chars = chars ?? ""; }
 
     public Spec Alpha(MatchState ms)
     {

@@ -17,8 +17,8 @@ public sealed class PatternBuilder
     private readonly Func<string, IByrdBox?>  _getPatternVar;
     private readonly Func<IrNode, SnobolVal>  _evalNode;
 
-    private readonly List<BbCapture> _captures = new();
-    public IReadOnlyList<BbCapture> Captures => _captures;
+    private readonly List<bb_capture> _captures = new();
+    public IReadOnlyList<bb_capture> Captures => _captures;
 
     public PatternBuilder(
         Action<string, string>   setVar,
@@ -52,9 +52,9 @@ public sealed class PatternBuilder
             IrKind.E_CAT  => BuildSeq(n),   // CAT in pattern context = sequence
 
             // Literals
-            IrKind.E_QLIT => new BbLit(n.SVal ?? ""),
-            IrKind.E_ILIT => new BbLit(n.IVal.ToString()),
-            IrKind.E_FLIT => new BbLit(n.DVal.ToString()),
+            IrKind.E_QLIT => new bb_lit(n.SVal ?? ""),
+            IrKind.E_ILIT => new bb_lit(n.IVal.ToString()),
+            IrKind.E_FLIT => new bb_lit(n.DVal.ToString()),
 
             // Captures
             IrKind.E_CAPT_COND_ASGN  => BuildCaptureCond(n),
@@ -71,33 +71,33 @@ public sealed class PatternBuilder
             IrKind.E_INDIRECT => BuildIndirect(n),
 
             // Nullary pattern primitives
-            IrKind.E_ARB     => new BbArb(),
-            IrKind.E_REM     => new BbRem(),
-            IrKind.E_FAIL    => new BbFail(),
-            IrKind.E_SUCCEED => new BbSucceed(),
-            IrKind.E_FENCE   => new BbFence(),
-            IrKind.E_ABORT   => new BbAbort(),
-            IrKind.E_BAL     => new BbBal(),
+            IrKind.E_ARB     => new bb_arb(),
+            IrKind.E_REM     => new bb_rem(),
+            IrKind.E_FAIL    => new bb_fail(),
+            IrKind.E_SUCCEED => new bb_succeed(),
+            IrKind.E_FENCE   => new bb_fence(),
+            IrKind.E_ABORT   => new bb_abort(),
+            IrKind.E_BAL     => new bb_bal(),
 
             // Unary pattern primitives — arg in Children[0]
-            IrKind.E_ANY     => new BbAny(StrArg(n, 0)),
-            IrKind.E_NOTANY  => new BbNotany(StrArg(n, 0)),
-            IrKind.E_SPAN    => new BbSpan(StrArg(n, 0)),
-            IrKind.E_BREAK   => new BbBrk(StrArg(n, 0)),
-            IrKind.E_BREAKX  => new BbBreakx(StrArg(n, 0)),
-            IrKind.E_LEN     => new BbLen(IntArg(n, 0)),
-            IrKind.E_TAB     => new BbTab(IntArg(n, 0)),
-            IrKind.E_RTAB    => new BbRtab(IntArg(n, 0)),
-            IrKind.E_POS     => new BbPos(IntArg(n, 0)),
-            IrKind.E_RPOS    => new BbRpos(IntArg(n, 0)),
+            IrKind.E_ANY     => new bb_any(StrArg(n, 0)),
+            IrKind.E_NOTANY  => new bb_notany(StrArg(n, 0)),
+            IrKind.E_SPAN    => new bb_span(StrArg(n, 0)),
+            IrKind.E_BREAK   => new bb_brk(StrArg(n, 0)),
+            IrKind.E_BREAKX  => new bb_breakx(StrArg(n, 0)),
+            IrKind.E_LEN     => new bb_len(IntArg(n, 0)),
+            IrKind.E_TAB     => new bb_tab(IntArg(n, 0)),
+            IrKind.E_RTAB    => new bb_rtab(IntArg(n, 0)),
+            IrKind.E_POS     => new bb_pos(IntArg(n, 0)),
+            IrKind.E_RPOS    => new bb_rpos(IntArg(n, 0)),
             IrKind.E_ARBNO   => n.Children.Length >= 1
-                                    ? new BbArbno(BuildNode(n.Children[0]))
-                                    : new BbEps(),
+                                    ? new bb_arbno(BuildNode(n.Children[0]))
+                                    : new bb_eps(),
 
             // Function call — may be a pattern builtin with dynamic args
             IrKind.E_FNC  => BuildFncPattern(n),
 
-            _ => new BbLit("")   // safe fallback
+            _ => new bb_lit("")   // safe fallback
         };
     }
 
@@ -114,7 +114,7 @@ public sealed class PatternBuilder
                 parts.Add(x);
         }
         Collect(n);
-        return new BbAlt(parts.Select(BuildNode).ToArray());
+        return new bb_alt(parts.Select(BuildNode).ToArray());
     }
 
     // ── Seq ──────────────────────────────────────────────────────────────────
@@ -130,7 +130,7 @@ public sealed class PatternBuilder
                 parts.Add(x);
         }
         Collect(n);
-        if (parts.Count == 0) return new BbEps();
+        if (parts.Count == 0) return new bb_eps();
         if (parts.Count == 1) return BuildNode(parts[0]);
 
         // Build left-to-right as a list of IByrdBox, handling capture wrapping:
@@ -149,7 +149,7 @@ public sealed class PatternBuilder
                 var varName = part.Children.Length > 0 && part.Children[0].Kind == IrKind.E_VAR
                             ? part.Children[0].SVal!
                             : (part.SVal ?? "");
-                var cap = new BbCapture(prev, varName, immediate: isImmed) { SetVar = _setVar };
+                var cap = new bb_capture(prev, varName, immediate: isImmed) { SetVar = _setVar };
                 _captures.Add(cap);
                 boxes.Add(cap);
             }
@@ -159,7 +159,7 @@ public sealed class PatternBuilder
                 var varName = part.Children.Length > 0 && part.Children[0].Kind == IrKind.E_VAR
                             ? part.Children[0].SVal!
                             : (part.SVal ?? "");
-                boxes.Add(new BbAtp(varName) { SetVar = _setVar });
+                boxes.Add(new bb_atp(varName) { SetVar = _setVar });
             }
             else
             {
@@ -168,10 +168,10 @@ public sealed class PatternBuilder
         }
 
         if (boxes.Count == 1) return boxes[0];
-        // Right-fold into BbSeq chain
+        // Right-fold into bb_seq chain
         IByrdBox right = boxes[^1];
         for (int i = boxes.Count - 2; i >= 0; i--)
-            right = new BbSeq(boxes[i], right);
+            right = new bb_seq(boxes[i], right);
         return right;
     }
 
@@ -187,8 +187,8 @@ public sealed class PatternBuilder
         var varName = n.Children.Length > 0 && n.Children[0].Kind == IrKind.E_VAR
                     ? n.Children[0].SVal!
                     : (n.SVal ?? "");
-        var inner   = new BbEps();
-        var box     = new BbCapture(inner, varName, immediate: false) { SetVar = _setVar };
+        var inner   = new bb_eps();
+        var box     = new bb_capture(inner, varName, immediate: false) { SetVar = _setVar };
         _captures.Add(box);
         return box;
     }
@@ -198,8 +198,8 @@ public sealed class PatternBuilder
         var varName = n.Children.Length > 0 && n.Children[0].Kind == IrKind.E_VAR
                     ? n.Children[0].SVal!
                     : (n.SVal ?? "");
-        var inner   = new BbEps();
-        return new BbCapture(inner, varName, immediate: true) { SetVar = _setVar };
+        var inner   = new bb_eps();
+        return new bb_capture(inner, varName, immediate: true) { SetVar = _setVar };
     }
 
     private IByrdBox BuildCaptCursor(IrNode n)
@@ -207,7 +207,7 @@ public sealed class PatternBuilder
         var varName = n.Children.Length > 0 && n.Children[0].Kind == IrKind.E_VAR
                     ? n.Children[0].SVal!
                     : (n.SVal ?? "");
-        return new BbAtp(varName) { SetVar = _setVar };
+        return new bb_atp(varName) { SetVar = _setVar };
     }
 
     // ── Deferred ─────────────────────────────────────────────────────────────
@@ -217,11 +217,11 @@ public sealed class PatternBuilder
         if (n.Children.Length > 0 && n.Children[0].Kind == IrKind.E_VAR)
         {
             var name = n.Children[0].SVal!;
-            return new BbDvar(name)
+            return new bb_dvar(name)
                    { GetStringVar = _getStringVar, GetPatternVar = _getPatternVar };
         }
         var val = _evalNode(n.Children.Length > 0 ? n.Children[0] : n).ToString();
-        return new BbLit(val);
+        return new bb_lit(val);
     }
 
     // ── Variable ─────────────────────────────────────────────────────────────
@@ -231,7 +231,7 @@ public sealed class PatternBuilder
         var patBox = _getPatternVar(name);
         if (patBox != null) return patBox;
         var str = _getStringVar(name);
-        return new BbLit(str);
+        return new bb_lit(str);
     }
 
     // ── Indirect ─────────────────────────────────────────────────────────────
@@ -254,25 +254,25 @@ public sealed class PatternBuilder
 
         return name switch
         {
-            "LEN"     => new BbLen(IntArg2(0)),
-            "POS"     => new BbPos(IntArg2(0)),
-            "RPOS"    => new BbRpos(IntArg2(0)),
-            "TAB"     => new BbTab(IntArg2(0)),
-            "RTAB"    => new BbRtab(IntArg2(0)),
-            "REM"     => new BbRem(),
-            "ANY"     => new BbAny(StrArg2(0)),
-            "NOTANY"  => new BbNotany(StrArg2(0)),
-            "SPAN"    => new BbSpan(StrArg2(0)),
-            "BREAK"   => new BbBrk(StrArg2(0)),
-            "BREAKX"  => new BbBreakx(StrArg2(0)),
-            "BAL"     => new BbBal(),
-            "FENCE"   => new BbFence(),
-            "ABORT"   => new BbAbort(),
-            "FAIL"    => new BbFail(),
-            "SUCCEED" => new BbSucceed(),
-            "ARB"     => new BbArb(),
-            "ARBNO"   => args.Length >= 1 ? new BbArbno(BuildNode(args[0])) : new BbEps(),
-            _         => new BbLit(StrArg2(0))
+            "LEN"     => new bb_len(IntArg2(0)),
+            "POS"     => new bb_pos(IntArg2(0)),
+            "RPOS"    => new bb_rpos(IntArg2(0)),
+            "TAB"     => new bb_tab(IntArg2(0)),
+            "RTAB"    => new bb_rtab(IntArg2(0)),
+            "REM"     => new bb_rem(),
+            "ANY"     => new bb_any(StrArg2(0)),
+            "NOTANY"  => new bb_notany(StrArg2(0)),
+            "SPAN"    => new bb_span(StrArg2(0)),
+            "BREAK"   => new bb_brk(StrArg2(0)),
+            "BREAKX"  => new bb_breakx(StrArg2(0)),
+            "BAL"     => new bb_bal(),
+            "FENCE"   => new bb_fence(),
+            "ABORT"   => new bb_abort(),
+            "FAIL"    => new bb_fail(),
+            "SUCCEED" => new bb_succeed(),
+            "ARB"     => new bb_arb(),
+            "ARBNO"   => args.Length >= 1 ? new bb_arbno(BuildNode(args[0])) : new bb_eps(),
+            _         => new bb_lit(StrArg2(0))
         };
     }
 

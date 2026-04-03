@@ -1,4 +1,4 @@
-// BbBal.cs — BAL: match a balanced-parentheses expression
+// bb_bal.cs — BAL: match a balanced-parentheses expression
 // No direct C box (BAL is a primitive in SNOBOL4 spec).
 // Semantics: match shortest string that is balanced with respect to
 // parentheses '(' and ')'. No backtrack — matches exactly one balanced
@@ -10,7 +10,7 @@
 
 namespace Snobol4.Runtime.Boxes;
 
-public sealed class BbBal : IByrdBox
+public sealed class bb_bal : IByrdBox
 {
     private int _matchedLen;
 

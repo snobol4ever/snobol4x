@@ -32,9 +32,9 @@ public readonly struct MatchResult
 public sealed class ByrdBoxExecutor
 {
     private readonly IByrdBox           _root;
-    private readonly IReadOnlyList<BbCapture> _captures;
+    private readonly IReadOnlyList<bb_capture> _captures;
 
-    public ByrdBoxExecutor(IByrdBox root, IReadOnlyList<BbCapture> captures)
+    public ByrdBoxExecutor(IByrdBox root, IReadOnlyList<bb_capture> captures)
     {
         _root     = root;
         _captures = captures;

@@ -1,4 +1,4 @@
-// BbSpan.cs — SPAN: longest prefix of chars in set (must be ≥1)
+// bb_span.cs — SPAN: longest prefix of chars in set (must be ≥1)
 // Mirrors src/runtime/boxes/bb_span.c
 //
 // α: scan forward while char in charset; if none matched → ω;
@@ -7,12 +7,12 @@
 
 namespace Snobol4.Runtime.Boxes;
 
-public sealed class BbSpan : IByrdBox
+public sealed class bb_span : IByrdBox
 {
     private readonly string _chars;
     private int _count;
 
-    public BbSpan(string chars) { _chars = chars ?? ""; }
+    public bb_span(string chars) { _chars = chars ?? ""; }
 
     public Spec Alpha(MatchState ms)
     {

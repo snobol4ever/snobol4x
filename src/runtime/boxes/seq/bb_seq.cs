@@ -1,4 +1,4 @@
-// BbSeq.cs — SEQ: concatenation — left then right; β retries right then left
+// bb_seq.cs — SEQ: concatenation — left then right; β retries right then left
 // Mirrors src/runtime/boxes/bb_seq.c
 //
 // State machine (mirrors the C goto model exactly):
@@ -13,13 +13,13 @@
 
 namespace Snobol4.Runtime.Boxes;
 
-public sealed class BbSeq : IByrdBox
+public sealed class bb_seq : IByrdBox
 {
     private readonly IByrdBox _left;
     private readonly IByrdBox _right;
     private Spec _matched;
 
-    public BbSeq(IByrdBox left, IByrdBox right)
+    public bb_seq(IByrdBox left, IByrdBox right)
     {
         _left  = left;
         _right = right;

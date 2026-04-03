@@ -1,4 +1,4 @@
-// BbArb.cs — ARB: match 0..N chars lazily; β tries one more
+// bb_arb.cs — ARB: match 0..N chars lazily; β tries one more
 // Mirrors src/runtime/boxes/bb_arb.c
 //
 // α: count=0; start=cursor; γ(zero-width) — try empty first
@@ -7,7 +7,7 @@
 
 namespace Snobol4.Runtime.Boxes;
 
-public sealed class BbArb : IByrdBox
+public sealed class bb_arb : IByrdBox
 {
     private int _count;
     private int _start;

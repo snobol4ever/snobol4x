@@ -1,4 +1,4 @@
-// BbEps.cs — EPS: zero-width success once; done flag prevents double-γ
+// bb_eps.cs — EPS: zero-width success once; done flag prevents double-γ
 // Mirrors src/runtime/boxes/bb_eps.c
 //
 // α: if done → ω;  done=true; γ zero-width
@@ -6,7 +6,7 @@
 
 namespace Snobol4.Runtime.Boxes;
 
-public sealed class BbEps : IByrdBox
+public sealed class bb_eps : IByrdBox
 {
     private bool _done;
 

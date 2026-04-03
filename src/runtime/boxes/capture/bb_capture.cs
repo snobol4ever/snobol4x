@@ -1,4 +1,4 @@
-// BbCapture.cs — CAPTURE: $ writes on every γ; . buffers for Phase-5 commit
+// bb_capture.cs — CAPTURE: $ writes on every γ; . buffers for Phase-5 commit
 // Mirrors src/runtime/boxes/bb_capture.c
 //
 // Wraps a child box.  On every γ (α or β):
@@ -11,7 +11,7 @@
 
 namespace Snobol4.Runtime.Boxes;
 
-public sealed class BbCapture : IByrdBox
+public sealed class bb_capture : IByrdBox
 {
     private readonly IByrdBox _child;
     private readonly string   _varname;
@@ -23,7 +23,7 @@ public sealed class BbCapture : IByrdBox
     public  string?                 Pending   { get; private set; }
     public  bool                    HasPending { get; private set; }
 
-    public BbCapture(IByrdBox child, string varname, bool immediate)
+    public bb_capture(IByrdBox child, string varname, bool immediate)
     {
         _child     = child;
         _varname   = varname ?? "";

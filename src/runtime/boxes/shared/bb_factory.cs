@@ -22,9 +22,9 @@ public sealed class ByrdBoxFactory
     private readonly Func<string, IByrdBox?>   _getPatternVar;
 
     // Pending captures registered during Build — Phase 5 commits them on :S
-    private readonly List<BbCapture> _captures = new();
+    private readonly List<bb_capture> _captures = new();
 
-    public IReadOnlyList<BbCapture> Captures => _captures;
+    public IReadOnlyList<bb_capture> Captures => _captures;
 
     public ByrdBoxFactory(
         Action<string, string>   setVar,
@@ -50,29 +50,29 @@ public sealed class ByrdBoxFactory
     {
         return p switch
         {
-            LiteralPattern   lit  => new BbLit(lit.Literal),
+            LiteralPattern   lit  => new bb_lit(lit.Literal),
             ConcatenatePattern cat => BuildSeq(cat),
             AlternatePattern   alt => BuildAlt(alt),
             ArbNoPattern       arb => BuildArbno(arb),
             ArbPattern             => BuildArb(),
 
-            LenPattern         len  => new BbLen(GetIntArg(len)),
-            PosPattern         pos  => new BbPos(GetIntArg(pos)),
-            RPosPattern        rpos => new BbRpos(GetIntArg(rpos)),
-            TabPattern         tab  => new BbTab(GetIntArg(tab)),
-            RTabPattern        rtab => new BbRtab(GetIntArg(rtab)),
-            RemPattern              => new BbRem(),
-            AnyPattern         any  => new BbAny(GetCharsetArg(any)),
-            NotAnyPattern      not  => new BbNotany(GetCharsetArg(not)),
-            SpanPattern        spn  => new BbSpan(GetCharsetArg(spn)),
-            BreakPattern       brk  => new BbBrk(GetCharsetArg(brk)),
-            BreakXPattern      brkx => new BbBreakx(GetCharsetArg(brkx)),
-            BalPattern              => new BbBal(),
-            FencePattern            => new BbFence(),
-            AbortPattern            => new BbAbort(),
-            FailPattern             => new BbFail(),
-            SucceedPattern          => new BbSucceed(),
-            NullPattern             => new BbEps(),
+            LenPattern         len  => new bb_len(GetIntArg(len)),
+            PosPattern         pos  => new bb_pos(GetIntArg(pos)),
+            RPosPattern        rpos => new bb_rpos(GetIntArg(rpos)),
+            TabPattern         tab  => new bb_tab(GetIntArg(tab)),
+            RTabPattern        rtab => new bb_rtab(GetIntArg(rtab)),
+            RemPattern              => new bb_rem(),
+            AnyPattern         any  => new bb_any(GetCharsetArg(any)),
+            NotAnyPattern      not  => new bb_notany(GetCharsetArg(not)),
+            SpanPattern        spn  => new bb_span(GetCharsetArg(spn)),
+            BreakPattern       brk  => new bb_brk(GetCharsetArg(brk)),
+            BreakXPattern      brkx => new bb_breakx(GetCharsetArg(brkx)),
+            BalPattern              => new bb_bal(),
+            FencePattern            => new bb_fence(),
+            AbortPattern            => new bb_abort(),
+            FailPattern             => new bb_fail(),
+            SucceedPattern          => new bb_succeed(),
+            NullPattern             => new bb_eps(),
 
             ConditionalVariableAssociationPattern cond => BuildCaptureCond(cond),
             // Immediate capture ($var) — wrapped around child
@@ -81,7 +81,7 @@ public sealed class ByrdBoxFactory
 
             UnevaluatedPattern uep => BuildDvar(uep),
 
-            _ => new BbLit("")   // unknown pattern → empty literal (safe fallback)
+            _ => new bb_lit("")   // unknown pattern → empty literal (safe fallback)
         };
     }
 
@@ -95,7 +95,7 @@ public sealed class ByrdBoxFactory
         // Right-fold: SEQ(a, SEQ(b, SEQ(c, d)))
         IByrdBox right = BuildNode(children[^1]);
         for (int i = children.Count - 2; i >= 0; i--)
-            right = new BbSeq(BuildNode(children[i]), right);
+            right = new bb_seq(BuildNode(children[i]), right);
         return right;
     }
 
@@ -114,7 +114,7 @@ public sealed class ByrdBoxFactory
     private IByrdBox BuildAlt(AlternatePattern alt)
     {
         var children = FlattenAlt(alt);
-        return new BbAlt(children.Select(BuildNode).ToArray());
+        return new bb_alt(children.Select(BuildNode).ToArray());
     }
 
     private List<Pattern> FlattenAlt(AlternatePattern alt)
@@ -132,19 +132,19 @@ public sealed class ByrdBoxFactory
     private IByrdBox BuildArbno(ArbNoPattern arb)
     {
         // ArbNoPattern wraps its child pattern
-        var child = arb.ArbPattern != null ? BuildNode(arb.ArbPattern) : new BbEps();
-        return new BbArbno(child);
+        var child = arb.ArbPattern != null ? BuildNode(arb.ArbPattern) : new bb_eps();
+        return new bb_arbno(child);
     }
 
-    private static IByrdBox BuildArb() => new BbArb();
+    private static IByrdBox BuildArb() => new bb_arb();
 
     // ── Capture builders ─────────────────────────────────────────────────────
 
     private IByrdBox BuildCaptureCond(ConditionalVariableAssociationPattern cond)
     {
-        var child   = cond.LeftPattern  != null ? BuildNode(cond.LeftPattern)  : new BbEps();
+        var child   = cond.LeftPattern  != null ? BuildNode(cond.LeftPattern)  : new bb_eps();
         var varname = cond.VariableName ?? "";
-        var box     = new BbCapture(child, varname, immediate: false)
+        var box     = new bb_capture(child, varname, immediate: false)
                       { SetVar = _setVar };
         _captures.Add(box);
         return box;
@@ -152,15 +152,15 @@ public sealed class ByrdBoxFactory
 
     private IByrdBox BuildAtp(CursorAssignmentPattern atp)
     {
-        return new BbAtp(atp.VariableName ?? "") { SetVar = _setVar };
+        return new bb_atp(atp.VariableName ?? "") { SetVar = _setVar };
     }
 
     private IByrdBox BuildDvar(UnevaluatedPattern uep)
     {
         // UnevaluatedPattern wraps a DeferredCode delegate — at match time
-        // it evaluates to a pattern.  Map to BbDvar which re-resolves on α.
+        // it evaluates to a pattern.  Map to bb_dvar which re-resolves on α.
         var varname = uep.VariableName ?? "";
-        return new BbDvar(varname)
+        return new bb_dvar(varname)
         {
             GetStringVar  = _getStringVar,
             GetPatternVar = _getPatternVar,

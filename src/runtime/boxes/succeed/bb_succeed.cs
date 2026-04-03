@@ -6,7 +6,7 @@
 
 namespace Snobol4.Runtime.Boxes;
 
-public sealed class BbSucceed : IByrdBox
+public sealed class bb_succeed : IByrdBox
 {
     public Spec Alpha(MatchState ms) => Spec.ZeroWidth(ms.Cursor);
     public Spec Beta(MatchState ms)  => Spec.ZeroWidth(ms.Cursor);

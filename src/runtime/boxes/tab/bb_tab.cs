@@ -6,12 +6,12 @@
 
 namespace Snobol4.Runtime.Boxes;
 
-public sealed class BbTab : IByrdBox
+public sealed class bb_tab : IByrdBox
 {
     private readonly int _n;
     private int _advance;
 
-    public BbTab(int n) { _n = n; }
+    public bb_tab(int n) { _n = n; }
 
     public Spec Alpha(MatchState ms)
     {

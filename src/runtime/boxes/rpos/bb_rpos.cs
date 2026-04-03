@@ -6,10 +6,10 @@
 
 namespace Snobol4.Runtime.Boxes;
 
-public sealed class BbRpos : IByrdBox
+public sealed class bb_rpos : IByrdBox
 {
     private readonly int _n;
-    public BbRpos(int n) { _n = n; }
+    public bb_rpos(int n) { _n = n; }
 
     public Spec Alpha(MatchState ms)
     {

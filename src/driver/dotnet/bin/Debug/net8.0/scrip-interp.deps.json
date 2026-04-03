@@ -26,10 +26,7 @@
       },
       "Snobol4.Runtime.Boxes/1.0.0": {
         "runtime": {
-          "Snobol4.Runtime.Boxes.dll": {
-            "assemblyVersion": "1.0.0",
-            "fileVersion": ""
-          }
+          "Snobol4.Runtime.Boxes.dll": {}
         }
       },
       "Snobol4.Runtime.Boxes.Reference/1.0.0.0": {

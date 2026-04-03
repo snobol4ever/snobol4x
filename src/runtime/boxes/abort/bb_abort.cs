@@ -3,7 +3,7 @@
 
 namespace Snobol4.Runtime.Boxes;
 
-public sealed class BbAbort : IByrdBox
+public sealed class bb_abort : IByrdBox
 {
     public Spec Alpha(MatchState ms) => Spec.Fail;
     public Spec Beta(MatchState ms)  => Spec.Fail;

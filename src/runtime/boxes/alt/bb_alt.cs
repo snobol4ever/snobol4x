@@ -1,4 +1,4 @@
-// BbAlt.cs — ALT: alternation — try each child on α; β retries same child
+// bb_alt.cs — ALT: alternation — try each child on α; β retries same child
 // Mirrors src/runtime/boxes/bb_alt.c
 //
 // α: save cursor; try children[0].α ... children[n-1].α in order
@@ -10,13 +10,13 @@
 
 namespace Snobol4.Runtime.Boxes;
 
-public sealed class BbAlt : IByrdBox
+public sealed class bb_alt : IByrdBox
 {
     private readonly IByrdBox[] _children;
     private int  _current;   // 0-based index of child that last fired γ
     private int  _savedPos;
 
-    public BbAlt(params IByrdBox[] children)
+    public bb_alt(params IByrdBox[] children)
     {
         _children = children ?? [];
     }

@@ -8,12 +8,12 @@
 
 namespace Snobol4.Runtime.Boxes;
 
-public sealed class BbBrk : IByrdBox
+public sealed class bb_brk : IByrdBox
 {
     private readonly string _chars;
     private int _count;
 
-    public BbBrk(string chars) { _chars = chars ?? ""; }
+    public bb_brk(string chars) { _chars = chars ?? ""; }
 
     public Spec Alpha(MatchState ms)
     {

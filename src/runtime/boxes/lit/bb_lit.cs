@@ -1,4 +1,4 @@
-// BbLit.cs — LIT: literal string match
+// bb_lit.cs — LIT: literal string match
 // Mirrors src/runtime/boxes/bb_lit.c
 //
 // α: if cursor+len > Ω → ω
@@ -8,12 +8,12 @@
 
 namespace Snobol4.Runtime.Boxes;
 
-public sealed class BbLit : IByrdBox
+public sealed class bb_lit : IByrdBox
 {
     private readonly string _lit;
     private readonly int    _len;
 
-    public BbLit(string lit)
+    public bb_lit(string lit)
     {
         _lit = lit ?? "";
         _len = _lit.Length;

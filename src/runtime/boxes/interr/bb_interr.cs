@@ -1,4 +1,4 @@
-// BbInterr.cs — INTERR: ?X — zero-width if child succeeds; ω if child fails
+// bb_interr.cs — INTERR: ?X — zero-width if child succeeds; ω if child fails
 // Mirrors src/runtime/boxes/bb_interr.c
 //
 // The interrogation operator (o$int): run child; if child γ → discard the
@@ -8,11 +8,11 @@
 
 namespace Snobol4.Runtime.Boxes;
 
-public sealed class BbInterr : IByrdBox
+public sealed class bb_interr : IByrdBox
 {
     private readonly IByrdBox _child;
 
-    public BbInterr(IByrdBox child) { _child = child; }
+    public bb_interr(IByrdBox child) { _child = child; }
 
     public Spec Alpha(MatchState ms)
     {

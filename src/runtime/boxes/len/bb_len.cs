@@ -1,4 +1,4 @@
-// BbLen.cs — LEN: match exactly n characters
+// bb_len.cs — LEN: match exactly n characters
 // Mirrors src/runtime/boxes/bb_len.c
 //
 // α: if cursor+n > Ω → ω;  cursor += n; γ
@@ -6,10 +6,10 @@
 
 namespace Snobol4.Runtime.Boxes;
 
-public sealed class BbLen : IByrdBox
+public sealed class bb_len : IByrdBox
 {
     private readonly int _n;
-    public BbLen(int n) { _n = n; }
+    public bb_len(int n) { _n = n; }
 
     public Spec Alpha(MatchState ms)
     {

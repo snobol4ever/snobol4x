@@ -1,4 +1,4 @@
-// BbNot.cs — NOT: \X — succeed iff child fails; β always ω
+// bb_not.cs — NOT: \X — succeed iff child fails; β always ω
 // Mirrors src/runtime/boxes/bb_not.c
 //
 // α: save cursor; run child.α
@@ -8,11 +8,11 @@
 
 namespace Snobol4.Runtime.Boxes;
 
-public sealed class BbNot : IByrdBox
+public sealed class bb_not : IByrdBox
 {
     private readonly IByrdBox _child;
 
-    public BbNot(IByrdBox child) { _child = child; }
+    public bb_not(IByrdBox child) { _child = child; }
 
     public Spec Alpha(MatchState ms)
     {

@@ -1,15 +1,15 @@
-// BbDvar.cs — DVAR: *VAR — re-resolve variable's live value on every α
+// bb_dvar.cs — DVAR: *VAR — re-resolve variable's live value on every α
 // Mirrors src/runtime/boxes/bb_dvar.c
 //
 // On α: read varname from IdentifierTable.
 //   If value is a pattern (IByrdBox) → use it as child
-//   If value is a string → wrap as BbLit child
+//   If value is a string → wrap as bb_lit child
 //   Re-build child only when value changes.
 // α/β: delegate entirely to child.
 
 namespace Snobol4.Runtime.Boxes;
 
-public sealed class BbDvar : IByrdBox
+public sealed class bb_dvar : IByrdBox
 {
     private readonly string _varname;
 
@@ -20,7 +20,7 @@ public sealed class BbDvar : IByrdBox
     private IByrdBox? _child;
     private string?   _lastStringValue;
 
-    public BbDvar(string varname) { _varname = varname ?? ""; }
+    public bb_dvar(string varname) { _varname = varname ?? ""; }
 
     public Spec Alpha(MatchState ms)
     {
@@ -51,8 +51,8 @@ public sealed class BbDvar : IByrdBox
 
         // Fall back to string value → wrap as literal
         var s = GetStringVar?.Invoke(_varname) ?? "";
-        if (_child is BbLit && s == _lastStringValue) return;  // unchanged
+        if (_child is bb_lit && s == _lastStringValue) return;  // unchanged
         _lastStringValue = s;
-        _child = new BbLit(s);
+        _child = new bb_lit(s);
     }
 }

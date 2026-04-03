@@ -1,4 +1,4 @@
-// BbArbno.cs — ARBNO: zero-or-more greedy; zero-advance guard; β unwinds stack
+// bb_arbno.cs — ARBNO: zero-or-more greedy; zero-advance guard; β unwinds stack
 // Mirrors src/runtime/boxes/bb_arbno.c
 //
 // Stack of (matched_spec, start_cursor) frames — each greedy iteration
@@ -14,7 +14,7 @@
 
 namespace Snobol4.Runtime.Boxes;
 
-public sealed class BbArbno : IByrdBox
+public sealed class bb_arbno : IByrdBox
 {
     private const int StackMax = 64;
 
@@ -24,7 +24,7 @@ public sealed class BbArbno : IByrdBox
     private readonly int[]  _startStack   = new int[StackMax];
     private int              _depth;
 
-    public BbArbno(IByrdBox body) { _body = body; }
+    public bb_arbno(IByrdBox body) { _body = body; }
 
     public Spec Alpha(MatchState ms)
     {

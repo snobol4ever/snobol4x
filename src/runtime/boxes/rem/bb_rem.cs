@@ -1,4 +1,4 @@
-// BbRem.cs — REM: match entire remainder; no backtrack
+// bb_rem.cs — REM: match entire remainder; no backtrack
 // Mirrors src/runtime/boxes/bb_rem.c
 //
 // α: result = spec(cursor, Length-cursor); cursor = Length; γ
@@ -6,7 +6,7 @@
 
 namespace Snobol4.Runtime.Boxes;
 
-public sealed class BbRem : IByrdBox
+public sealed class bb_rem : IByrdBox
 {
     public Spec Alpha(MatchState ms)
     {
