@@ -2876,3 +2876,5 @@ Program *sno_parse(FILE *f, const char *fname) {
 
 void sno_reset(void) {}
 
+int sno_nerrors = 0;
+void sno_add_include_dir(const char *d) { (void)d; }

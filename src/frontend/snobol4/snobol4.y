@@ -48,6 +48,7 @@ top        : program                                                            
            ;
 program    : program stmt | stmt                                                                    ;
 stmt       : opt_label opt_subject opt_repl opt_goto T_STMT_END                      { sno4_stmt_commit(yyparse_param,$1,$2,NULL,($3!=NULL),$3,$4); }
+           | opt_label expr2 T_MATCH opt_pattern opt_repl opt_goto T_STMT_END        { EXPR_t*sc=expr_binary(E_SCAN,$2,$4); sno4_stmt_commit(yyparse_param,$1,sc,NULL,($5!=NULL),$5,$6); }
            ;
 opt_label  : T_LABEL                                                                              { $$=$1; }
            | /* empty */                                                                           { $$.sval=NULL;$$.ival=0;$$.lineno=0;$$.kind=0; }
@@ -153,10 +154,7 @@ int snobol4_lex(YYSTYPE *yylval_param, void *yyparse_param) {
     return t.kind;
 }
 void snobol4_error(void *p,const char *msg){(void)p;sno_error(g_lx?g_lx->lineno:0,"parse error: %s",msg);}
-static void fixup_val(EXPR_t *e){
-    if(!e) return; if(e->kind==E_SEQ) e->kind=E_CAT;
-    for(int i=0;i<e->nchildren;i++) fixup_val(e->children[i]);
-}
+static void fixup_val(EXPR_t *e){ (void)e; /* SNOBOL4: no-op — E_SEQ never converted to E_CAT; runtime handles both */ }
 static int is_pat(EXPR_t *e){
     if(!e) return 0;
     switch(e->kind){case E_ARB:case E_ARBNO:case E_CAPT_COND_ASGN:case E_CAPT_IMMED_ASGN:case E_CAPT_CURSOR:case E_DEFER:return 1;default:break;}
@@ -228,7 +226,7 @@ static void sno4_stmt_commit(void *param,Token lbl,EXPR_t *subj,EXPR_t *pat,int 
     }
     /* S=PR split: if subj is E_SEQ with first child a bare name, split into
      * subject=first_child, pattern=rest. Grammar puts everything in opt_subject. */
-    if(!pat && subj && (subj->kind==E_SEQ||subj->kind==E_CAT) && subj->nchildren>=2) {
+    if(!pat && subj && (subj->kind==E_SEQ) && subj->nchildren>=2) {
         EXPR_t *first = subj->children[0];
         if(first->kind==E_VAR || first->kind==E_KEYWORD) {
             int nc = subj->nchildren - 1;

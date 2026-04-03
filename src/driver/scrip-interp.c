@@ -115,7 +115,7 @@ static const char *define_spec_from_expr(EXPR_t *subj)
     if (subj->nchildren < 1 || !subj->children[0]) return NULL;
     EXPR_t *arg = subj->children[0];
     if (arg->kind == E_QLIT) return arg->sval;
-    if (arg->kind == E_CAT) {
+    if (arg->kind == E_CAT || arg->kind == E_SEQ) {
         static char flatbuf[1024];
         size_t pos = 0;
         flatbuf[0] = '\0';

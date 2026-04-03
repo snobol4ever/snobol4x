@@ -10,7 +10,8 @@ CFLAGS = -Wall -Wno-unused-function -g -O0 \
          -I backend
 
 FRONTEND_SNO = \
-    frontend/snobol4/parse.c
+    frontend/snobol4/snobol4.tab.c \
+    frontend/snobol4/snobol4.lex.c
 
 FRONTEND_PROLOG = \
     frontend/prolog/prolog_atom.c \
