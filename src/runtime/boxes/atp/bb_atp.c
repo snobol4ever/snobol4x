@@ -1,10 +1,9 @@
 /* _XATP     ATP         @var — write cursor Δ as DT_I into varname; no backtrack */
 #include "bb_box.h"
+#include "../../snobol4/snobol4.h"
 #include <stdlib.h>
 #include <string.h>
 
-typedef struct { int done; const char *varname; }  atp_t;
-extern void (*NV_SET_fn)(const char*, DESCR_t);
 
 spec_t bb_atp(void *zeta, int entry)
 {

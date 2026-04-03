@@ -1,10 +1,9 @@
 /* _XDSAR/_XVAR  DVAR        *VAR/VAR — re-resolve live value on every α */
 #include "bb_box.h"
+#include "../../snobol4/snobol4.h"
 #include <stdlib.h>
 #include <string.h>
 
-extern DESCR_t (*NV_GET_fn)(const char*);
-extern bb_node_t bb_build(void*);
 typedef struct { const char *name; bb_box_fn child_fn; void *child_state; size_t child_size; } dvar_t;
 
 spec_t bb_deferred_var(void *zeta, int entry)
@@ -18,11 +17,11 @@ spec_t bb_deferred_var(void *zeta, int entry)
                           bb_node_t c=bb_build(val.p);                          
                           ζ->child_fn=c.fn; ζ->child_state=c.ζ; ζ->child_size=c.ζ_size; rebuilt=1; }
                       else if (val.v==DT_S && val.s) {                          
-                          _lit_t *lz=(_lit_t*)ζ->child_state;                   
+                          lit_t *lz=(lit_t*)ζ->child_state;                   
                           if (!lz||lz->lit!=val.s) {                            
-                              lz=calloc(1,sizeof(_lit_t)); lz->lit=val.s; lz->len=(int)strlen(val.s);
+                              lz=calloc(1,sizeof(lit_t)); lz->lit=val.s; lz->len=(int)strlen(val.s);
                               ζ->child_fn=(bb_box_fn)bb_lit; ζ->child_state=lz; 
-                              ζ->child_size=sizeof(_lit_t); rebuilt=1; } }      
+                              ζ->child_size=sizeof(lit_t); rebuilt=1; } }      
                       if (!rebuilt&&ζ->child_state&&ζ->child_size               
                           &&ζ->child_fn!=(bb_box_fn)bb_lit)                     
                           memset(ζ->child_state,0,ζ->child_size); }             

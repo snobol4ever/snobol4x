@@ -24,51 +24,8 @@
  * PATND_t — lazy pattern node
  * ===================================================================== */
 
-typedef enum {
-    XCHR,          /* literal string */
-    XSPNC,         /* SPAN(chars) */
-    XBRKC,        /* BREAK(chars) */
-    XANYC,          /* ANY(chars) */
-    XNNYC,       /* NOTANY(chars) */
-    XLNTH,          /* LEN(n) */
-    XPOSI,          /* POS(n) */
-    XRPSI,         /* RPOS(n) */
-    XTB,          /* TAB(n) */
-    XRTB,         /* RTAB(n) */
-    XFARB,          /* ARB */
-    XARBN,        /* ARBNO(p) */
-    XSTAR,          /* REM */
-    XFNCE,        /* FENCE or FENCE(p) */
-    XFAIL,         /* DT_FAIL */
-    XABRT,        /* ABORT */
-    XSUCF,      /* SUCCEED */
-    XBAL,          /* BAL */
-    XEPS,      /* epsilon (always succeeds, no chars consumed) */
-    XCAT,          /* concatenation: left right */
-    XOR,          /* alternation:   left | right */
-    XDSAR,          /* deferred var ref: *name */
-    XFNME,   /* immediate capture: pat $ var */
-    XNME,  /* conditional capture: pat . var */
-    XVAR,          /* variable holding a pattern */
-    XATP,    /* user-defined pattern function call */
-    XBRKX,   /* BREAKX(chars) — like BREAK but fails on zero advance */
-} XKIND_t;
 
 /* Forward decl */
-struct _PATND_t;
-typedef struct _PATND_t PATND_t;
-
-struct _PATND_t {
-    XKIND_t  kind;
-    int         materialising; /* cycle detection flag */
-    const char *STRVAL_fn;       /* XCHR / XSPNC / XBRKC / XANYC / XNNYC / XDSAR / XATP */
-    int64_t     num;       /* XLNTH / XPOSI / XRPSI / XTB / XRTB */
-    PATND_t *left;      /* XCAT / XOR / XARBN / XFNCE / XFNME / XNME */
-    PATND_t *right;     /* XCAT / XOR */
-    DESCR_t      var;       /* XFNME / XNME / XVAR capture target or value */
-    DESCR_t     *args;      /* XATP args */
-    int         nargs;     /* XATP nargs */
-};
 
 /* GC-allocate a PATND_t */
 static PATND_t *spat_new(XKIND_t kind) {

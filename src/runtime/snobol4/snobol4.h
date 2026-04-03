@@ -41,11 +41,11 @@ typedef enum {
 } DTYPE_t;
 
 struct _TREEBLK_t;
-struct _PATND_t;
 struct _ARBLK_t;
 struct _TBBLK_t;
 struct _DATINST_t;
 
+struct _PATND_t;  /* defined in patnd.h — included below */
 typedef struct DESCR_t {
     DTYPE_t v;             /* type tag — SIL v field (DTYPE_t enum) */
     uint32_t slen;         /* binary string byte length; 0 = use strlen (fits in padding) */
@@ -60,6 +60,8 @@ typedef struct DESCR_t {
         void             *ptr; /* generic GC pointer            */
     };
 } DESCR_t;
+
+#include "patnd.h"  /* XKIND_t + PATND_t — requires DESCR_t */
 
 /* descr_slen: byte length of a string descriptor.
  * If slen field is nonzero, use it (binary string with possible embedded NULs).

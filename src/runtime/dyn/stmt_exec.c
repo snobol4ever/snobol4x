@@ -88,33 +88,6 @@ static const int β = 1;
 
 #endif /* STMT_EXEC_STANDALONE */
 
-/* ── forward-declare the PATND_t internals we need ──────────────────────── */
-/*
- * PATND_t is defined locally in snobol4_pattern.c (file-scope struct).
- * We redeclare only the fields we touch, matching the layout exactly.
- * This is fragile to layout changes but acceptable for DYN-3 scope —
- * the proper fix (expose PATND_t in a shared header) is M-DYN-4 cleanup.
- */
-typedef enum {
-    _XCHR  =  0, _XSPNC =  1, _XBRKC =  2, _XANYC =  3, _XNNYC =  4,
-    _XLNTH =  5, _XPOSI =  6, _XRPSI =  7, _XTB   =  8, _XRTB  =  9,
-    _XFARB = 10, _XARBN = 11, _XSTAR = 12, _XFNCE = 13, _XFAIL = 14,
-    _XABRT = 15, _XSUCF = 16, _XBAL  = 17, _XEPS  = 18,
-    _XCAT  = 19, _XOR   = 20, _XDSAR = 21, _XFNME = 22, _XNME  = 23,
-    _XVAR  = 24, _XATP  = 25, _XBRKX = 26,
-} _XKIND_t;
-
-typedef struct _PND {
-    _XKIND_t     kind;
-    int          materialising;
-    const char  *STRVAL_fn;     /* XCHR/XSPNC/XBRKC/XANYC/XNNYC/XDSAR — matches PATND_t layout */
-    int64_t      num;           /* XLNTH/XPOSI/XRPSI/XTB/XRTB */
-    struct _PND *left;          /* XCAT/XOR/XARBN/XFNCE/XFNME/XNME */
-    struct _PND *right;         /* XCAT/XOR */
-    DESCR_t      var;           /* XFNME/XNME capture target / XVAR value */
-    DESCR_t     *args;
-    int          nargs;
-} _PND_t;
 
 /* ── global match state ─────────────────────────────────────────────────── */
 /* Defined by the test driver or the generated main. Declared extern here. */
@@ -244,7 +217,7 @@ typedef struct {
 } bb_node_t;
 
 /* forward declaration for recursion */
-static bb_node_t bb_build(_PND_t *p);
+static bb_node_t bb_build(PATND_t *p);
 
 /* forward decls for capture registry (defined after exec_stmt) */
 static void flush_pending_captures(void);
@@ -282,14 +255,14 @@ typedef struct {
  *
  * A PATND_t subtree is INVARIANT if it contains no node whose built graph
  * depends on runtime variable state:
- *   _XDSAR — *var (indirect pattern reference — value read at match time)
- *   _XVAR  — var holding a pattern (value may change between builds)
- *   _XATP  — @ (cursor-position function — has side effects)
- *   _XFNME — pat $ var (immediate capture — writes NV at match time)
- *   _XNME  — pat . var (conditional capture — writes NV on success)
+ *   XDSAR — *var (indirect pattern reference — value read at match time)
+ *   XVAR  — var holding a pattern (value may change between builds)
+ *   XATP  — @ (cursor-position function — has side effects)
+ *   XFNME — pat $ var (immediate capture — writes NV at match time)
+ *   XNME  — pat . var (conditional capture — writes NV on success)
  *
  * Invariant subtrees produce the SAME bb_node_t on every call to bb_build.
- * We cache the result (keyed on _PND_t* pointer) and on a cache hit return
+ * We cache the result (keyed on PATND_t* pointer) and on a cache hit return
  * a FRESH ζ copy (memcpy of the pristine template) so match state is clean
  * each time, while avoiding the O(depth) tree walk and calloc chain.
  *
@@ -298,17 +271,17 @@ typedef struct {
  * ══════════════════════════════════════════════════════════════════════════ */
 
 /* ── Invariance predicate ─────────────────────────────────────────────── */
-static int patnd_is_invariant(_PND_t *p)
+static int patnd_is_invariant(PATND_t *p)
 {
     if (!p)                                           return 1;  /* null → epsilon, invariant */
     switch (p->kind) {
-    case _XDSAR:
-    case _XVAR:
-    case _XATP:
-    case _XFNME:
-    case _XNME:                                       return 0;  /* always variant */
-    case _XFARB:                                      return 0;  /* ARB: mutable count/start in arb_t */
-    case _XSTAR:                                      return 0;  /* REM: mutable ζ state */
+    case XDSAR:
+    case XVAR:
+    case XATP:
+    case XFNME:
+    case XNME:                                       return 0;  /* always variant */
+    case XFARB:                                      return 0;  /* ARB: mutable count/start in arb_t */
+    case XSTAR:                                      return 0;  /* REM: mutable ζ state */
     default:                                          break;
     }
     /* Recurse into children */
@@ -321,7 +294,7 @@ static int patnd_is_invariant(_PND_t *p)
 #define DYNC_CACHE_CAP 512
 
 typedef struct {
-    _PND_t   *key;          /* NULL = empty slot */
+    PATND_t   *key;          /* NULL = empty slot */
     bb_node_t template;     /* pristine bb_node_t with fresh ζ as template */
 } cache_slot_t;
 
@@ -329,7 +302,7 @@ static cache_slot_t g_node_cache[DYNC_CACHE_CAP];
 static int          g_cache_hits   = 0;
 static int          g_cache_misses = 0;
 
-static cache_slot_t *cache_find(_PND_t *key)
+static cache_slot_t *cache_find(PATND_t *key)
 {
     if (!key) return NULL;
     uintptr_t h = ((uintptr_t)key >> 4) & (DYNC_CACHE_CAP - 1);
@@ -344,7 +317,7 @@ static cache_slot_t *cache_find(_PND_t *key)
 /* Insert a newly built bb_node_t into the cache for key p.
  * The template ζ is the pristine calloc'd block; we keep it and will
  * memcpy from it on future hits. */
-static void cache_insert(_PND_t *key, bb_node_t node)
+static void cache_insert(PATND_t *key, bb_node_t node)
 {
     cache_slot_t *slot = cache_find(key);
     if (!slot || slot->key != NULL) return;  /* full or key already in */
@@ -409,7 +382,7 @@ static spec_t bb_atp(void *zeta, int entry)
 
 /* ══════════════════════════════════════════════════════════════════════════ */
 
-static bb_node_t bb_build(_PND_t *p)
+static bb_node_t bb_build(PATND_t *p)
 {
     bb_node_t n = { NULL, NULL };
     if (!p) {
@@ -443,7 +416,7 @@ static bb_node_t bb_build(_PND_t *p)
     switch (p->kind) {
 
     /* ── literal string ─────────────────────────────────────────────── */
-    case _XCHR: {
+    case XCHR: {
         lit_t *ζ = calloc(1, sizeof(lit_t));
         ζ->lit = p->STRVAL_fn ? p->STRVAL_fn : "";
         ζ->len = (int)strlen(ζ->lit);
@@ -454,7 +427,7 @@ static bb_node_t bb_build(_PND_t *p)
     }
 
     /* ── POS(n) ─────────────────────────────────────────────────────── */
-    case _XPOSI: {
+    case XPOSI: {
         pos_t *ζ = calloc(1, sizeof(pos_t));
         ζ->n = (int)p->num;
         n.fn = (bb_box_fn)bb_pos;
@@ -464,7 +437,7 @@ static bb_node_t bb_build(_PND_t *p)
     }
 
     /* ── RPOS(n) ────────────────────────────────────────────────────── */
-    case _XRPSI: {
+    case XRPSI: {
         rpos_t *ζ = calloc(1, sizeof(rpos_t));
         ζ->n = (int)p->num;
         n.fn = (bb_box_fn)bb_rpos;
@@ -474,7 +447,7 @@ static bb_node_t bb_build(_PND_t *p)
     }
 
     /* ── LEN(n) ─────────────────────────────────────────────────────── */
-    case _XLNTH: {
+    case XLNTH: {
         len_t *ζ = calloc(1, sizeof(len_t));
         ζ->n = (int)p->num;
         n.fn = (bb_box_fn)bb_len;
@@ -484,7 +457,7 @@ static bb_node_t bb_build(_PND_t *p)
     }
 
     /* ── SPAN(chars) ────────────────────────────────────────────────── */
-    case _XSPNC: {
+    case XSPNC: {
         span_t *ζ = calloc(1, sizeof(span_t));
         ζ->chars = p->STRVAL_fn ? p->STRVAL_fn : "";
         n.fn = (bb_box_fn)bb_span;
@@ -494,7 +467,7 @@ static bb_node_t bb_build(_PND_t *p)
     }
 
     /* ── BREAK(chars) ───────────────────────────────────────────────── */
-    case _XBRKC: {
+    case XBRKC: {
         brk_t *ζ = calloc(1, sizeof(brk_t));
         ζ->chars = p->STRVAL_fn ? p->STRVAL_fn : "";
         n.fn = (bb_box_fn)bb_brk;
@@ -504,7 +477,7 @@ static bb_node_t bb_build(_PND_t *p)
     }
 
     /* ── BREAKX(chars) ──────────────────────────────────────────────── */
-    case _XBRKX: {
+    case XBRKX: {
         brkx_t *ζ = calloc(1, sizeof(brkx_t));
         ζ->chars = p->STRVAL_fn ? p->STRVAL_fn : "";
         n.fn = (bb_box_fn)bb_breakx;
@@ -514,7 +487,7 @@ static bb_node_t bb_build(_PND_t *p)
     }
 
     /* ── ANY(chars) ─────────────────────────────────────────────────── */
-    case _XANYC: {
+    case XANYC: {
         any_t *ζ = calloc(1, sizeof(any_t));
         ζ->chars = p->STRVAL_fn ? p->STRVAL_fn : "";
         n.fn = (bb_box_fn)bb_any;
@@ -524,7 +497,7 @@ static bb_node_t bb_build(_PND_t *p)
     }
 
     /* ── NOTANY(chars) ──────────────────────────────────────────────── */
-    case _XNNYC: {
+    case XNNYC: {
         notany_t *ζ = calloc(1, sizeof(notany_t));
         ζ->chars = p->STRVAL_fn ? p->STRVAL_fn : "";
         n.fn = (bb_box_fn)bb_notany;
@@ -534,7 +507,7 @@ static bb_node_t bb_build(_PND_t *p)
     }
 
     /* ── ARB ────────────────────────────────────────────────────────── */
-    case _XFARB: {
+    case XFARB: {
         arb_t *ζ = calloc(1, sizeof(arb_t));
         n.fn = (bb_box_fn)bb_arb;
         n.ζ  = ζ;
@@ -543,7 +516,7 @@ static bb_node_t bb_build(_PND_t *p)
     }
 
     /* ── REM ────────────────────────────────────────────────────────── */
-    case _XSTAR: {
+    case XSTAR: {
         rem_t *ζ = calloc(1, sizeof(rem_t));
         n.fn = (bb_box_fn)bb_rem;
         n.ζ  = ζ;
@@ -552,7 +525,7 @@ static bb_node_t bb_build(_PND_t *p)
     }
 
     /* ── SUCCEED ────────────────────────────────────────────────────── */
-    case _XSUCF: {
+    case XSUCF: {
         succeed_t *ζ = calloc(1, sizeof(succeed_t));
         n.fn = (bb_box_fn)bb_succeed;
         n.ζ  = ζ;
@@ -561,7 +534,7 @@ static bb_node_t bb_build(_PND_t *p)
     }
 
     /* ── FAIL ───────────────────────────────────────────────────────── */
-    case _XFAIL: {
+    case XFAIL: {
         fail_t *ζ = calloc(1, sizeof(fail_t));
         n.fn = (bb_box_fn)bb_fail;
         n.ζ  = ζ;
@@ -570,7 +543,7 @@ static bb_node_t bb_build(_PND_t *p)
     }
 
     /* ── EPSILON ────────────────────────────────────────────────────── */
-    case _XEPS: {
+    case XEPS: {
         eps_t *ζ = calloc(1, sizeof(eps_t));
         n.fn = (bb_box_fn)bb_eps;
         n.ζ  = ζ;
@@ -579,7 +552,7 @@ static bb_node_t bb_build(_PND_t *p)
     }
 
     /* ── CONCATENATION (left right) ─────────────────────────────────── */
-    case _XCAT: {
+    case XCAT: {
         seq_t *ζ = calloc(1, sizeof(seq_t));
         bb_node_t l = bb_build(p->left);
         bb_node_t r = bb_build(p->right);
@@ -592,16 +565,16 @@ static bb_node_t bb_build(_PND_t *p)
     }
 
     /* ── ALTERNATION (left | right) ─────────────────────────────────── */
-    case _XOR: {
+    case XOR: {
         /*
          * Flatten nested XOR into a single ALT with N children.
          * This matches the test_sno_1.c alt_α/alt_β pattern exactly.
          */
         alt_t *ζ = calloc(1, sizeof(alt_t));
         /* collect all OR arms by walking right-spine */
-        _PND_t *cur = p;
+        PATND_t *cur = p;
         int     nc  = 0;
-        while (cur && cur->kind == _XOR && nc < BB_ALT_MAX_S - 1) {
+        while (cur && cur->kind == XOR && nc < BB_ALT_MAX_S - 1) {
             bb_node_t arm        = bb_build(cur->left);
             ζ->children[nc].fn  = arm.fn;
             ζ->children[nc].state = arm.ζ;
@@ -623,7 +596,7 @@ static bb_node_t bb_build(_PND_t *p)
     }
 
     /* ── ARBNO(body) ────────────────────────────────────────────────── */
-    case _XARBN: {
+    case XARBN: {
         arbno_t *ζ = calloc(1, sizeof(arbno_t));
         bb_node_t body  = bb_build(p->left);
         ζ->fn = body.fn;
@@ -635,7 +608,7 @@ static bb_node_t bb_build(_PND_t *p)
     }
 
     /* ── IMMEDIATE CAPTURE: pat $ var ───────────────────────────────── */
-    case _XFNME: {
+    case XFNME: {
         capture_t *ζ = calloc(1, sizeof(capture_t));
         bb_node_t child = bb_build(p->left);
         ζ->fn  = child.fn;
@@ -650,7 +623,7 @@ static bb_node_t bb_build(_PND_t *p)
     }
 
     /* ── CONDITIONAL CAPTURE: pat . var ─────────────────────────────── */
-    case _XNME: {
+    case XNME: {
         capture_t *ζ = calloc(1, sizeof(capture_t));
         bb_node_t child = bb_build(p->left);
         ζ->fn  = child.fn;
@@ -666,9 +639,9 @@ static bb_node_t bb_build(_PND_t *p)
     }
 
     /* ── DEFERRED VAR REF: *name — resolved at match time ───────────── */
-    case _XDSAR:
+    case XDSAR:
     /* ── VAR holding a pattern — resolved at match time ────────────── */
-    case _XVAR: {
+    case XVAR: {
         /*
          * DYN-4: defer NV_GET_fn to Phase 3 (α port of deferred_var_t).
          * DYN-3 resolved here (Phase 2 / build time) — correct only for
@@ -677,7 +650,7 @@ static bb_node_t bb_build(_PND_t *p)
          *
          * Store only the variable name; the box fetches live at α.
          */
-        const char *name = (p->kind == _XDSAR) ? p->STRVAL_fn
+        const char *name = (p->kind == XDSAR) ? p->STRVAL_fn
                          : (p->var.v == DT_S)  ? p->var.s : NULL;
         if (name && *name) {
             deferred_var_t *ζ = calloc(1, sizeof(deferred_var_t));
@@ -700,7 +673,7 @@ static bb_node_t bb_build(_PND_t *p)
     }
 
     /* ── TAB(n) — advance cursor TO absolute position n ─────────────── */
-    case _XTB: {
+    case XTB: {
         /* TAB(n): if Δ <= n, advance Δ to n (zero-width match at n).
          * Distinct from POS(n): POS requires Δ==n; TAB allows Δ<=n. */
         tab_t *ζ = calloc(1, sizeof(tab_t));
@@ -712,7 +685,7 @@ static bb_node_t bb_build(_PND_t *p)
     }
 
     /* ── RTAB(n) — advance cursor TO position (Ω-n) from right ──────── */
-    case _XRTB: {
+    case XRTB: {
         rtab_t *ζ = calloc(1, sizeof(rtab_t));
         ζ->n = (int)p->num;
         n.fn = (bb_box_fn)bb_rtab;
@@ -722,7 +695,7 @@ static bb_node_t bb_build(_PND_t *p)
     }
 
     /* ── FENCE — cut: γ on α, ω on all β (no backtrack across fence) ── */
-    case _XFNCE: {
+    case XFNCE: {
         fence_t *ζ = calloc(1, sizeof(fence_t));
         n.fn = (bb_box_fn)bb_fence;
         n.ζ  = ζ;
@@ -731,7 +704,7 @@ static bb_node_t bb_build(_PND_t *p)
     }
 
     /* ── ABORT — immediate match failure, no backtracking ───────────── */
-    case _XABRT: {
+    case XABRT: {
         abort_t *ζ = calloc(1, sizeof(abort_t));
         n.fn = (bb_box_fn)bb_abort;
         n.ζ  = ζ;
@@ -740,7 +713,7 @@ static bb_node_t bb_build(_PND_t *p)
     }
 
     /* ── ATP (@var) — cursor-position capture ───────────────────────────── */
-    case _XATP: {
+    case XATP: {
         /* XATP with STRVAL_fn=="@" is the cursor-capture operator built by
          * pat_at_cursor().  args[0].s holds the variable name.
          * On alpha: write Δ as DT_I into varname, succeed (epsilon).
@@ -766,7 +739,7 @@ static bb_node_t bb_build(_PND_t *p)
     }
 
     /* ── BAL / unimplemented: epsilon stub (logged) ─────────────────────── */
-    case _XBAL:
+    case XBAL:
     default: {
         fprintf(stderr, "stmt_exec: unimplemented XKIND %d — using epsilon\n",
                 (int)p->kind);
@@ -824,7 +797,7 @@ static spec_t bb_deferred_var(void *zeta, int entry)
                         if (val.v == DT_P && val.p) {
                             if (val.p != ζ->child_state || !ζ->child_fn) {
                                 /* Value changed (or first call): rebuild */
-                                child = bb_build((_PND_t *)val.p);
+                                child = bb_build((PATND_t *)val.p);
                                 ζ->child_fn  = child.fn;
                                 ζ->child_state = child.ζ;
                                 ζ->child_size = child.ζ_size;
@@ -1002,7 +975,7 @@ int exec_stmt(const char  *subj_name,
     /* ── Phase 2: build pattern ─────────────────────────────────────── */
     bb_node_t root;
     if (pat.v == DT_P && pat.p) {
-        root = bb_build((_PND_t *)pat.p);
+        root = bb_build((PATND_t *)pat.p);
     } else if (pat.v == DT_S && pat.s) {
         lit_t *lζ = calloc(1, sizeof(lit_t));
         lζ->lit = pat.s;
@@ -1104,16 +1077,16 @@ Success:
 /* ══════════════════════════════════════════════════════════════════════════
  * cache_test_run — M-DYN-OPT test helper
  *
- * Build a synthetic _XCHR (literal) _PND_t node N times via bb_build.
+ * Build a synthetic XCHR (literal) PATND_t node N times via bb_build.
  * The node is invariant, so hits should equal N-1 (first call = miss,
  * subsequent = hits).  Returns 1 if hits > 0 (cache working), 0 if not.
  * ══════════════════════════════════════════════════════════════════════════ */
 int cache_test_run(const char *lit, int n_iters)
 {
-    /* Build a single static _PND_t node (stack-allocated, same address each
+    /* Build a single static PATND_t node (stack-allocated, same address each
      * call — required for pointer-keyed cache to work). */
-    static _PND_t node;
-    node.kind         = _XCHR;
+    static PATND_t node;
+    node.kind         = XCHR;
     node.materialising = 0;
     node.STRVAL_fn         = lit;
     node.num          = 0;
@@ -1145,7 +1118,7 @@ int cache_test_run(const char *lit, int n_iters)
  *
  * Uses the NV table stubs in the test driver (NV_GET_fn returns whatever
  * was last set via NV_SET_fn).  We set PAT, then exercise exec_stmt
- * with a DT_P pattern whose _PND_t contains _XDSAR pointing to "PAT".
+ * with a DT_P pattern whose PATND_t contains XDSAR pointing to "PAT".
  *
  * Returns 1 if all three assertions pass, 0 if any fail.
  * ══════════════════════════════════════════════════════════════════════════ */
@@ -1188,7 +1161,7 @@ static DESCR_t nv_get(const char *name)
 /* (test driver defines NV_GET_fn/NV_SET_fn as extern; we provide a
  *  delegating wrapper that uses our table for names prefixed "T15_") */
 
-/* Build a _PND_t _XDSAR node pointing to a variable name, exercise
+/* Build a PATND_t XDSAR node pointing to a variable name, exercise
  * bb_deferred_var via direct call.  We own Σ/Δ/Ω globals. */
 int deferred_var_test(void)
 {
@@ -1197,8 +1170,8 @@ int deferred_var_test(void)
     nv_set_str("T15_PAT", "Bird");
 
     /* Build deferred_var_t for *T15_PAT */
-    static _PND_t dsar_node;
-    dsar_node.kind  = _XDSAR;
+    static PATND_t dsar_node;
+    dsar_node.kind  = XDSAR;
     dsar_node.STRVAL_fn  = "T15_PAT";
     dsar_node.left  = dsar_node.right = NULL;
     dsar_node.args  = NULL;

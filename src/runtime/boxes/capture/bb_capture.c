@@ -1,10 +1,9 @@
 /* _XNME/_XFNME  CAPTURE     $ writes on every γ; . buffers for Phase-5 commit */
 #include "bb_box.h"
+#include "../../snobol4/snobol4.h"
 #include <stdlib.h>
 #include <string.h>
 
-extern void (*NV_SET_fn)(const char*, DESCR_t);
-extern void *GC_MALLOC(size_t);
 typedef struct {
     bb_box_fn fn; void *state; const char *varname;
     int immediate; spec_t pending; int has_pending;
