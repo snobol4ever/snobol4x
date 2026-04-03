@@ -110,7 +110,7 @@ arbno_beta_omega:
 ; private Spec tryBody()
 .method private tryBody()Lbb/bb_box$Spec;
     .limit stack 6
-    .limit locals 3
+    .limit locals 4
 tryBody_loop:
     aload_0
     getfield bb/bb_arbno/body Lbb/bb_box;
@@ -181,12 +181,12 @@ tryBody_advance:
     iload_2
     iastore
     ; frame_match_ln[depth] = newMatchLn (still on stack — need to store)
+    istore 3                           ; save newMatchLn to local 3
     aload_0
     getfield bb/bb_arbno/frame_match_ln [I
     aload_0
     getfield bb/bb_arbno/depth I
-    ; newMatchLn is on stack below — use swap trick
-    swap
+    iload 3                            ; newMatchLn
     iastore
     ; frame_start[depth] = delta
     aload_0

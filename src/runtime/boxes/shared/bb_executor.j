@@ -78,12 +78,12 @@ exec_no_repl_nopattern:
 exec_has_pattern:
     ; scanLimit = anchor ? 0 : ms.omega
     iload 6
-    ifeq exec_anchor_zero
+    ifeq exec_anchor_omega             ; anchor==false → scan full string
+    iconst_0                           ; anchor==true  → only position 0
+    goto exec_scan_limit_done
+exec_anchor_omega:
     aload 7
     getfield bb/bb_box$MatchState/omega I
-    goto exec_scan_limit_done
-exec_anchor_zero:
-    iconst_0
 exec_scan_limit_done:
     istore 8                           ; scanLimit
 
@@ -205,12 +205,12 @@ exec7_no_repl:
 exec7_has_pattern:
     ; scanLimit = anchor ? 0 : ms.omega
     iload 7
-    ifeq exec7_anchor_zero
+    ifeq exec7_anchor_omega            ; anchor==false → scan full string
+    iconst_0                           ; anchor==true  → only position 0
+    goto exec7_scan_limit_done
+exec7_anchor_omega:
     aload_3
     getfield bb/bb_box$MatchState/omega I
-    goto exec7_scan_limit_done
-exec7_anchor_zero:
-    iconst_0
 exec7_scan_limit_done:
     istore 8
 
