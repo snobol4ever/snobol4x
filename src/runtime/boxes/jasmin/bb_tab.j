@@ -48,7 +48,7 @@ tab_val_static:
     invokevirtual bb/bb_tab/val()I
     ireturn
 .end method
-.method public alpha()Lbb/bb_box$Spec;
+.method public α()Lbb/bb_box$Spec;
     .limit stack 5
     .limit locals 3
     aload_0
@@ -86,7 +86,7 @@ tab_omega:
     aconst_null
     areturn
 .end method
-.method public beta()Lbb/bb_box$Spec;
+.method public β()Lbb/bb_box$Spec;
     .limit stack 4
     .limit locals 1
     aload_0

@@ -100,9 +100,9 @@ exec_scan_loop:
     iload 9
     putfield bb/bb_box$MatchState/delta I
 
-    ; try { result = root.alpha() }
+    ; try { result = root.α() }
     aload_3
-    invokevirtual bb/bb_box/alpha()Lbb/bb_box$Spec;
+    invokevirtual bb/bb_box/α()Lbb/bb_box$Spec;
     astore 10                          ; result (null or Spec)
     aload 10
     ifnull exec_scan_next
@@ -227,7 +227,7 @@ exec7_scan_loop:
     putfield bb/bb_box$MatchState/delta I
 
     aload 4
-    invokevirtual bb/bb_box/alpha()Lbb/bb_box$Spec;
+    invokevirtual bb/bb_box/α()Lbb/bb_box$Spec;
     astore 10
     aload 10
     ifnull exec7_next

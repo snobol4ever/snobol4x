@@ -13,7 +13,7 @@ public class bb_fence extends bb_box {
 
     public bb_fence(MatchState ms) { super(ms); }
 
-    @Override public Spec alpha() { return new Spec(ms.delta, 0); }  // FENCE_γ
+    @Override public Spec α() { return new Spec(ms.delta, 0); }  // FENCE_γ
 
-    @Override public Spec beta()  { return null; }                   // FENCE_ω
+    @Override public Spec β()  { return null; }                   // FENCE_ω
 }

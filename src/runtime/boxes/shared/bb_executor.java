@@ -13,7 +13,7 @@ import java.util.List;
  * ------
  *   Phase 1: buildSubject  — subject string already resolved by caller → MatchState
  *   Phase 2: buildPattern  — pattern bb_box graph built by caller → root bb_box
- *   Phase 3: runMatch      — scan loop drives root.alpha()/beta(), collects captures
+ *   Phase 3: runMatch      — scan loop drives root.α()/beta(), collects captures
  *   Phase 4: buildRepl     — replacement value already as String → caller provides
  *   Phase 5: performRepl   — splice into subject, assign, return :S/:F
  *
@@ -81,7 +81,7 @@ public class bb_executor {
             ms.delta = scanPos;
 
             try {
-                bb_box.Spec result = root.alpha();
+                bb_box.Spec result = root.α();
 
                 if (result != null) {
                     // Match succeeded at scanPos
@@ -103,7 +103,7 @@ public class bb_executor {
                 }
 
                 // No match at this position — backtrack fully before advancing
-                // (root.beta() would extend, but scan loop advances cursor instead)
+                // (root.β() would extend, but scan loop advances cursor instead)
 
             } catch (bb_abort.AbortException e) {
                 // ABORT: unconditional match failure

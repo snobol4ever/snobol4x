@@ -14,7 +14,7 @@
     putfield bb/bb_any/chars Ljava/lang/String;
     return
 .end method
-.method public alpha()Lbb/bb_box$Spec;
+.method public α()Lbb/bb_box$Spec;
     .limit stack 5
     .limit locals 2
     aload_0
@@ -56,7 +56,7 @@ any_omega:
     aconst_null
     areturn
 .end method
-.method public beta()Lbb/bb_box$Spec;
+.method public β()Lbb/bb_box$Spec;
     .limit stack 4
     .limit locals 1
     aload_0

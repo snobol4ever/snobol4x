@@ -17,11 +17,11 @@ public class bb_pos extends bb_box {
 
     private int val() { return dyn != null ? dyn.getAsInt() : n; }
 
-    @Override public Spec alpha() {
+    @Override public Spec α() {
         int v = val();
         if (ms.delta != v) return null;
         return new Spec(ms.delta, 0);
     }
 
-    @Override public Spec beta() { return null; }
+    @Override public Spec β() { return null; }
 }

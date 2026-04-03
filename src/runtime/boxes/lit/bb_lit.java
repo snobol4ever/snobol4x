@@ -22,7 +22,7 @@ public class bb_lit extends bb_box {
         this.len = lit.length();
     }
 
-    @Override public Spec alpha() {
+    @Override public Spec α() {
         // LIT_α
         if (ms.delta + len > ms.omega)                              return null; // LIT_ω
         if (!ms.sigma.regionMatches(ms.delta, lit, 0, len))        return null; // LIT_ω
@@ -31,7 +31,7 @@ public class bb_lit extends bb_box {
         return r;                                                               // LIT_γ
     }
 
-    @Override public Spec beta() {
+    @Override public Spec β() {
         // LIT_β
         ms.delta -= len;
         return null;                                                            // LIT_ω

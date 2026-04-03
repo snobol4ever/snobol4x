@@ -18,10 +18,10 @@
     return
 .end method
 
-.method public abstract alpha()Lbb/bb_box$Spec;
+.method public abstract α()Lbb/bb_box$Spec;
 .end method
 
-.method public abstract beta()Lbb/bb_box$Spec;
+.method public abstract β()Lbb/bb_box$Spec;
 .end method
 
 .method public final call(I)Lbb/bb_box$Spec;
@@ -30,10 +30,10 @@
     iload_1
     ifne call_beta
     aload_0
-    invokevirtual bb/bb_box/alpha()Lbb/bb_box$Spec;
+    invokevirtual bb/bb_box/α()Lbb/bb_box$Spec;
     areturn
 call_beta:
     aload_0
-    invokevirtual bb/bb_box/beta()Lbb/bb_box$Spec;
+    invokevirtual bb/bb_box/β()Lbb/bb_box$Spec;
     areturn
 .end method

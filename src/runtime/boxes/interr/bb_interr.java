@@ -20,13 +20,13 @@ public class bb_interr extends bb_box {
 
     public bb_interr(MatchState ms, bb_box child) { super(ms); this.child=child; }
 
-    @Override public Spec alpha() {
+    @Override public Spec α() {
         start    = ms.delta;
-        Spec cr  = child.alpha();
+        Spec cr  = child.α();
         if (cr == null) return null;                                           // INT_ω
         ms.delta = start;                                                      // discard advance
         return new Spec(ms.delta, 0);                                          // INT_γ zero-width
     }
 
-    @Override public Spec beta() { return null; }                              // INT_ω
+    @Override public Spec β() { return null; }                              // INT_ω
 }

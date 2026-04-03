@@ -21,13 +21,13 @@ public class bb_not extends bb_box {
 
     public bb_not(MatchState ms, bb_box child) { super(ms); this.child=child; }
 
-    @Override public Spec alpha() {
+    @Override public Spec α() {
         start   = ms.delta;
-        Spec cr = child.alpha();
+        Spec cr = child.α();
         if (cr != null) return null;                                           // NOT_ω (child succeeded)
         ms.delta = start;
         return new Spec(ms.delta, 0);                                          // NOT_γ
     }
 
-    @Override public Spec beta() { return null; }                              // NOT_ω
+    @Override public Spec β() { return null; }                              // NOT_ω
 }

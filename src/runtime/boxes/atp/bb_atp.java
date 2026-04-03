@@ -21,11 +21,11 @@ public class bb_atp extends bb_box {
         this.setter  = setter;
     }
 
-    @Override public Spec alpha() {
+    @Override public Spec α() {
         if (varname != null && !varname.isEmpty())
             setter.set(varname, ms.delta);
         return new Spec(ms.delta, 0);                                          // ATP_γ
     }
 
-    @Override public Spec beta() { return null; }                              // ATP_ω
+    @Override public Spec β() { return null; }                              // ATP_ω
 }

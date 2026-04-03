@@ -17,7 +17,7 @@ public class bb_len extends bb_box {
 
     private int val() { return dyn != null ? dyn.getAsInt() : n; }
 
-    @Override public Spec alpha() {
+    @Override public Spec α() {
         int v = val();
         if (ms.delta + v > ms.omega) return null;
         Spec r = new Spec(ms.delta, v);
@@ -25,5 +25,5 @@ public class bb_len extends bb_box {
         return r;
     }
 
-    @Override public Spec beta() { ms.delta -= val(); return null; }
+    @Override public Spec β() { ms.delta -= val(); return null; }
 }

@@ -17,14 +17,14 @@ public class bb_arb extends bb_box {
 
     public bb_arb(MatchState ms) { super(ms); }
 
-    @Override public Spec alpha() {
+    @Override public Spec α() {
         // ARB_α: start lazy (zero-width)
         count = 0;
         start = ms.delta;
         return new Spec(ms.delta, 0);                                          // ARB_γ
     }
 
-    @Override public Spec beta() {
+    @Override public Spec β() {
         // ARB_β: extend by one char
         count++;
         if (start + count > ms.omega) return null;                             // ARB_ω

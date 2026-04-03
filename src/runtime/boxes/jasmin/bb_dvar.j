@@ -22,7 +22,7 @@
     return
 .end method
 
-.method public alpha()Lbb/bb_box$Spec;
+.method public α()Lbb/bb_box$Spec;
     .limit stack 4
     .limit locals 1
     ; child = resolver.resolve(varname, ms)
@@ -43,11 +43,11 @@
 dvar_alpha_call:
     aload_0
     getfield bb/bb_dvar/child Lbb/bb_box;
-    invokevirtual bb/bb_box/alpha()Lbb/bb_box$Spec;
+    invokevirtual bb/bb_box/α()Lbb/bb_box$Spec;
     areturn
 .end method
 
-.method public beta()Lbb/bb_box$Spec;
+.method public β()Lbb/bb_box$Spec;
     .limit stack 2
     .limit locals 1
     aload_0
@@ -58,6 +58,6 @@ dvar_alpha_call:
 dvar_beta_call:
     aload_0
     getfield bb/bb_dvar/child Lbb/bb_box;
-    invokevirtual bb/bb_box/beta()Lbb/bb_box$Spec;
+    invokevirtual bb/bb_box/β()Lbb/bb_box$Spec;
     areturn
 .end method

@@ -26,20 +26,20 @@ public class bb_seq extends bb_box {
         this.right = right;
     }
 
-    @Override public Spec alpha() {
+    @Override public Spec α() {
         // SEQ_α
         matchedStart = ms.delta;
         matchedLen   = 0;
-        Spec lr = left.alpha();
+        Spec lr = left.α();
         if (lr == null) return null;                                   // left_ω → SEQ_ω
         // left_γ
         matchedLen += lr.len;
         return rightAlpha();
     }
 
-    @Override public Spec beta() {
+    @Override public Spec β() {
         // SEQ_β: retry right first
-        Spec rr = right.beta();
+        Spec rr = right.β();
         if (rr != null) return new Spec(matchedStart, matchedLen + rr.len); // right_γ
         // right_ω: backtrack left
         return leftBeta();
@@ -47,7 +47,7 @@ public class bb_seq extends bb_box {
 
     /* right_ω path: try left.β then right.α */
     private Spec leftBeta() {
-        Spec lr = left.beta();
+        Spec lr = left.β();
         if (lr == null) return null;                                   // left_ω → SEQ_ω
         // left_γ
         matchedLen = lr.len;
@@ -55,7 +55,7 @@ public class bb_seq extends bb_box {
     }
 
     private Spec rightAlpha() {
-        Spec rr = right.alpha();
+        Spec rr = right.α();
         if (rr == null) return leftBeta();                             // right_ω
         return new Spec(matchedStart, matchedLen + rr.len);           // right_γ → SEQ_γ
     }

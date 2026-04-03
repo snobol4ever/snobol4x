@@ -17,6 +17,6 @@ public class bb_abort extends bb_box {
 
     public bb_abort(MatchState ms) { super(ms); }
 
-    @Override public Spec alpha() { throw new AbortException(); }
-    @Override public Spec beta()  { throw new AbortException(); }
+    @Override public Spec α() { throw new AbortException(); }
+    @Override public Spec β()  { throw new AbortException(); }
 }

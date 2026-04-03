@@ -23,7 +23,7 @@
     return
 .end method
 
-.method public alpha()Lbb/bb_box$Spec;
+.method public α()Lbb/bb_box$Spec;
     .limit stack 3
     .limit locals 1
     ; position = delta; current = 1
@@ -35,16 +35,16 @@
     aload_0
     iconst_1
     putfield bb/bb_alt/current I
-    ; fall through to tryAlpha loop
+    ; fall through to tryα loop
     aload_0
-    invokevirtual bb/bb_alt/tryAlpha()Lbb/bb_box$Spec;
+    invokevirtual bb/bb_alt/tryα()Lbb/bb_box$Spec;
     areturn
 .end method
 
-.method public beta()Lbb/bb_box$Spec;
+.method public β()Lbb/bb_box$Spec;
     .limit stack 4
     .limit locals 2
-    ; retry same child with beta
+    ; retry same child with β
     aload_0
     getfield bb/bb_alt/children [Lbb/bb_box;
     aload_0
@@ -52,35 +52,35 @@
     iconst_1
     isub
     aaload                              ; children[current-1]
-    invokevirtual bb/bb_box/beta()Lbb/bb_box$Spec;
+    invokevirtual bb/bb_box/β()Lbb/bb_box$Spec;
     astore_1
     aload_1
-    ifnull alt_beta_omega
+    ifnull alt_β_omega
     aload_1
     areturn
-alt_beta_omega:
+alt_β_omega:
     aconst_null
     areturn
 .end method
 
-; private Spec tryAlpha()
-.method private tryAlpha()Lbb/bb_box$Spec;
+; private Spec tryα()
+.method private tryα()Lbb/bb_box$Spec;
     .limit stack 4
     .limit locals 2
-try_alpha_loop:
+try_α_loop:
     ; while current <= n
     aload_0
     getfield bb/bb_alt/current I
     aload_0
     getfield bb/bb_alt/n I
-    if_icmpgt try_alpha_omega
+    if_icmpgt try_α_omega
     ; delta = position
     aload_0
     getfield bb/bb_alt/ms Lbb/bb_box$MatchState;
     aload_0
     getfield bb/bb_alt/position I
     putfield bb/bb_box$MatchState/delta I
-    ; cr = children[current-1].alpha()
+    ; cr = children[current-1].α()
     aload_0
     getfield bb/bb_alt/children [Lbb/bb_box;
     aload_0
@@ -88,13 +88,13 @@ try_alpha_loop:
     iconst_1
     isub
     aaload
-    invokevirtual bb/bb_box/alpha()Lbb/bb_box$Spec;
+    invokevirtual bb/bb_box/α()Lbb/bb_box$Spec;
     astore_1
     aload_1
-    ifnull try_alpha_next
+    ifnull try_α_next
     aload_1
     areturn
-try_alpha_next:
+try_α_next:
     ; current++
     aload_0
     dup
@@ -102,8 +102,8 @@ try_alpha_next:
     iconst_1
     iadd
     putfield bb/bb_alt/current I
-    goto try_alpha_loop
-try_alpha_omega:
+    goto try_α_loop
+try_α_omega:
     aconst_null
     areturn
 .end method

@@ -17,10 +17,10 @@ public class bb_rpos extends bb_box {
 
     private int val() { return dyn != null ? dyn.getAsInt() : n; }
 
-    @Override public Spec alpha() {
+    @Override public Spec α() {
         if (ms.delta != ms.omega - val()) return null;
         return new Spec(ms.delta, 0);
     }
 
-    @Override public Spec beta() { return null; }
+    @Override public Spec β() { return null; }
 }

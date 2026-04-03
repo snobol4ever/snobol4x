@@ -31,17 +31,17 @@ public class bb_dvar extends bb_box {
         this.resolver = resolver;
     }
 
-    @Override public Spec alpha() {
+    @Override public Spec α() {
         // DVAR_α: re-resolve on every fresh entry
         child = resolver.resolve(varname, ms);
         if (child == null) return null;                                        // DVAR_ω
-        Spec r = child.alpha();
+        Spec r = child.α();
         return r;                                                              // DVAR_γ or DVAR_ω
     }
 
-    @Override public Spec beta() {
+    @Override public Spec β() {
         // DVAR_β: delegate to same child (no re-resolve on backtrack)
         if (child == null) return null;                                        // DVAR_ω
-        return child.beta();
+        return child.β();
     }
 }

@@ -33,7 +33,7 @@
     return
 .end method
 
-.method public alpha()Lbb/bb_box$Spec;
+.method public α()Lbb/bb_box$Spec;
     .limit stack 5
     .limit locals 1
     ; depth=0; frame[0].match_st=delta; frame[0].match_ln=0; frame[0].start=delta
@@ -64,7 +64,7 @@
     areturn
 .end method
 
-.method public beta()Lbb/bb_box$Spec;
+.method public β()Lbb/bb_box$Spec;
     .limit stack 5
     .limit locals 1
     ; if depth <= 0 → ω
@@ -114,7 +114,7 @@ arbno_beta_omega:
 tryBody_loop:
     aload_0
     getfield bb/bb_arbno/body Lbb/bb_box;
-    invokevirtual bb/bb_box/alpha()Lbb/bb_box$Spec;
+    invokevirtual bb/bb_box/α()Lbb/bb_box$Spec;
     astore_1
     aload_1
     ifnull tryBody_body_omega

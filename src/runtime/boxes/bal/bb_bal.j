@@ -11,7 +11,7 @@
     invokespecial bb/bb_box/<init>(Lbb/bb_box$MatchState;)V
     return
 .end method
-.method public alpha()Lbb/bb_box$Spec;
+.method public α()Lbb/bb_box$Spec;
     .limit stack 6
     .limit locals 4
     ; depth=0; len=0
@@ -110,7 +110,7 @@ bal_omega:
     aconst_null
     areturn
 .end method
-.method public beta()Lbb/bb_box$Spec;
+.method public β()Lbb/bb_box$Spec;
     .limit stack 4
     .limit locals 1
     aload_0

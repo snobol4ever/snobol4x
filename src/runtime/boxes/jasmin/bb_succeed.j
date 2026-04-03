@@ -10,7 +10,7 @@
     invokespecial bb/bb_box/<init>(Lbb/bb_box$MatchState;)V
     return
 .end method
-.method public alpha()Lbb/bb_box$Spec;
+.method public α()Lbb/bb_box$Spec;
     .limit stack 5
     .limit locals 1
     new bb/bb_box$Spec
@@ -22,7 +22,7 @@
     invokespecial bb/bb_box$Spec/<init>(II)V
     areturn
 .end method
-.method public beta()Lbb/bb_box$Spec;
+.method public β()Lbb/bb_box$Spec;
     .limit stack 5
     .limit locals 1
     new bb/bb_box$Spec

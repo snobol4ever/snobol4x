@@ -31,7 +31,7 @@ public class bb_arbno extends bb_box {
 
     public bb_arbno(MatchState ms, bb_box body) { super(ms); this.body=body; }
 
-    @Override public Spec alpha() {
+    @Override public Spec α() {
         // ARBNO_α
         depth = 0;
         frameMatchSt[0] = ms.delta;
@@ -40,7 +40,7 @@ public class bb_arbno extends bb_box {
         return tryBody();
     }
 
-    @Override public Spec beta() {
+    @Override public Spec β() {
         // ARBNO_β: unwind one stack frame
         if (depth <= 0) return null;                                           // ARBNO_ω
         depth--;
@@ -50,7 +50,7 @@ public class bb_arbno extends bb_box {
 
     private Spec tryBody() {
         while (true) {
-            Spec br = body.alpha();
+            Spec br = body.α();
             if (br == null) {
                 // body_ω: stop looping, return current accumulated match
                 return new Spec(frameMatchSt[depth], frameMatchLn[depth]);     // ARBNO_γ

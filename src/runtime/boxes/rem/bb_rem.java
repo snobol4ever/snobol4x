@@ -11,11 +11,11 @@ public class bb_rem extends bb_box {
 
     public bb_rem(MatchState ms) { super(ms); }
 
-    @Override public Spec alpha() {
+    @Override public Spec α() {
         Spec r = new Spec(ms.delta, ms.omega - ms.delta);
         ms.delta = ms.omega;
         return r;
     }
 
-    @Override public Spec beta() { return null; }
+    @Override public Spec β() { return null; }
 }

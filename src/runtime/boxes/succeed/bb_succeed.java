@@ -8,6 +8,6 @@ public class bb_succeed extends bb_box {
 
     public bb_succeed(MatchState ms) { super(ms); }
 
-    @Override public Spec alpha() { return new Spec(ms.delta, 0); }
-    @Override public Spec beta()  { return new Spec(ms.delta, 0); }
+    @Override public Spec α() { return new Spec(ms.delta, 0); }
+    @Override public Spec β()  { return new Spec(ms.delta, 0); }
 }

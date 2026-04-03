@@ -17,7 +17,7 @@
     return
 .end method
 
-.method public alpha()Lbb/bb_box$Spec;
+.method public α()Lbb/bb_box$Spec;
     .limit stack 5
     .limit locals 2
     aload_0
@@ -27,7 +27,7 @@
     putfield bb/bb_interr/start I
     aload_0
     getfield bb/bb_interr/child Lbb/bb_box;
-    invokevirtual bb/bb_box/alpha()Lbb/bb_box$Spec;
+    invokevirtual bb/bb_box/α()Lbb/bb_box$Spec;
     astore_1
     aload_1
     ifnull interr_omega
@@ -50,7 +50,7 @@ interr_omega:
     areturn
 .end method
 
-.method public beta()Lbb/bb_box$Spec;
+.method public β()Lbb/bb_box$Spec;
     .limit stack 1
     .limit locals 1
     aconst_null

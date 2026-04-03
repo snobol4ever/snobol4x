@@ -13,11 +13,11 @@ public class bb_notany extends bb_box {
 
     public bb_notany(MatchState ms, String chars) { super(ms); this.chars=chars; }
 
-    @Override public Spec alpha() {
+    @Override public Spec α() {
         if (ms.delta >= ms.omega) return null;
         if (chars.indexOf(ms.sigma.charAt(ms.delta)) >= 0) return null;
         return new Spec(ms.delta++, 1);
     }
 
-    @Override public Spec beta() { ms.delta--; return null; }
+    @Override public Spec β() { ms.delta--; return null; }
 }

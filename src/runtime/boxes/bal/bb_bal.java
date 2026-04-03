@@ -24,7 +24,7 @@ public class bb_bal extends bb_box {
 
     public bb_bal(MatchState ms) { super(ms); }
 
-    @Override public Spec alpha() {
+    @Override public Spec α() {
         int depth = 0;
         len = 0;
         while (ms.delta + len < ms.omega) {
@@ -42,5 +42,5 @@ public class bb_bal extends bb_box {
         return null;                                                           // BAL_ω
     }
 
-    @Override public Spec beta() { ms.delta -= len; return null; }            // BAL_ω
+    @Override public Spec β() { ms.delta -= len; return null; }            // BAL_ω
 }

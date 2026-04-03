@@ -4,7 +4,7 @@ package bb;
  * bb_box.java — JVM Byrd Box Runtime
  *
  * Direct port of bb_box.h / bb_*.c to Java.
- * Every box is a bb_box instance with two entry points: alpha() and beta().
+ * Every box is a bb_box instance with two entry points: α() and β().
  * Return null  → ω fired (failure).
  * Return Spec  → γ fired (success, value = matched substring).
  *
@@ -18,8 +18,8 @@ package bb;
 public abstract class bb_box {
 
     /* ── Entry port constants (mirrors bb_box.h α=0, β=1) ─────────────── */
-    public static final int ALPHA = 0;
-    public static final int BETA  = 1;
+    public static final int Α = 0;
+    public static final int Β = 1;
 
     /* ── Spec — substring of subject (mirrors spec_t) ───────────────────── */
     public static final class Spec {
@@ -42,11 +42,11 @@ public abstract class bb_box {
     protected bb_box(MatchState ms) { this.ms = ms; }
 
     /* The two entry ports every subclass must implement */
-    public abstract Spec alpha();   /* α — fresh entry      */
-    public abstract Spec beta();    /* β — backtrack re-entry */
+    public abstract Spec α();   /* α — fresh entry      */
+    public abstract Spec β();   /* β — backtrack re-entry */
 
     /** Convenience: dispatch by entry constant */
     public final Spec call(int entry) {
-        return entry == ALPHA ? alpha() : beta();
+        return entry == Α ? α() : β();
     }
 }

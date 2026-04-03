@@ -159,7 +159,7 @@ class PatternBuilder {
                     case "ABORT":   return new bb_abort(ms);
                     default:
                         // Pattern-valued variable: dereference at match time via bb_dvar
-                        // bb_dvar looks up the variable each time alpha() is called.
+                        // bb_dvar looks up the variable each time α() is called.
                         // We pass a supplier lambda as the resolver.
                         final String varName = e.sval;
                         return new bb_dvar(ms, varName, varResolver);
@@ -216,7 +216,7 @@ class PatternBuilder {
 
             // ── Captures ─────────────────────────────────────────────────────
             case E_CAPT_IMMED_ASGN: {
-                // $var — immediate assign on every gamma
+                // $var — immediate assign on every γ
                 String varName = captureVarName(e);
                 bb_box child   = e.children.size() > 0 ? build(e.children.get(0)) : new bb_eps(ms);
                 bb.bb_capture.VarSetter vs = (n, v) -> varSetter.set(n, v);

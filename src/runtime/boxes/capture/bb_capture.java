@@ -39,8 +39,8 @@ public class bb_capture extends bb_box {
         this.setter    = setter;
     }
 
-    @Override public Spec alpha() { return runChild(child.alpha()); }
-    @Override public Spec beta()  { return runChild(child.beta());  }
+    @Override public Spec α() { return runChild(child.α()); }
+    @Override public Spec β()  { return runChild(child.β());  }
 
     private Spec runChild(Spec cr) {
         if (cr == null) {

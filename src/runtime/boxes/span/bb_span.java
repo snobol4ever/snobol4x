@@ -15,7 +15,7 @@ public class bb_span extends bb_box {
 
     public bb_span(MatchState ms, String chars) { super(ms); this.chars=chars; }
 
-    @Override public Spec alpha() {
+    @Override public Spec α() {
         delta = 0;
         while (ms.delta + delta < ms.omega &&
                chars.indexOf(ms.sigma.charAt(ms.delta + delta)) >= 0) delta++;
@@ -25,5 +25,5 @@ public class bb_span extends bb_box {
         return r;
     }
 
-    @Override public Spec beta() { ms.delta -= delta; return null; }
+    @Override public Spec β() { ms.delta -= delta; return null; }
 }

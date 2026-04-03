@@ -8,6 +8,6 @@ public class bb_fail extends bb_box {
 
     public bb_fail(MatchState ms) { super(ms); }
 
-    @Override public Spec alpha() { return null; }
-    @Override public Spec beta()  { return null; }
+    @Override public Spec α() { return null; }
+    @Override public Spec β()  { return null; }
 }

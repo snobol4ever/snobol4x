@@ -30,25 +30,25 @@ public class bb_alt extends bb_box {
         this.n        = children.length;
     }
 
-    @Override public Spec alpha() {
+    @Override public Spec α() {
         // ALT_α
         position = ms.delta;
         current  = 1;
-        return tryAlpha();
+        return tryα();
     }
 
-    @Override public Spec beta() {
+    @Override public Spec β() {
         // ALT_β: retry same child with β
-        Spec cr = children[current - 1].beta();
+        Spec cr = children[current - 1].β();
         if (cr == null) return null;                                   // ALT_ω
         return cr;                                                     // child_β_γ → ALT_γ
     }
 
     /* child_α_ω loop: advance to next child */
-    private Spec tryAlpha() {
+    private Spec tryα() {
         while (current <= n) {
             ms.delta = position;
-            Spec cr  = children[current - 1].alpha();
+            Spec cr  = children[current - 1].α();
             if (cr != null) return cr;                                 // child_α_γ → ALT_γ
             current++;                                                 // child_α_ω
         }

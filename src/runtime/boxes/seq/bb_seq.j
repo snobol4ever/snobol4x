@@ -22,7 +22,7 @@
     return
 .end method
 
-.method public alpha()Lbb/bb_box$Spec;
+.method public α()Lbb/bb_box$Spec;
     .limit stack 6
     .limit locals 2
     ; matched_start = delta; matched_len = 0
@@ -34,10 +34,10 @@
     aload_0
     iconst_0
     putfield bb/bb_seq/matched_len I
-    ; lr = left.alpha()
+    ; lr = left.α()
     aload_0
     getfield bb/bb_seq/left Lbb/bb_box;
-    invokevirtual bb/bb_box/alpha()Lbb/bb_box$Spec;
+    invokevirtual bb/bb_box/α()Lbb/bb_box$Spec;
     astore_1
     aload_1
     ifnull seq_omega
@@ -58,13 +58,13 @@ seq_omega:
     areturn
 .end method
 
-.method public beta()Lbb/bb_box$Spec;
+.method public β()Lbb/bb_box$Spec;
     .limit stack 6
     .limit locals 2
-    ; rr = right.beta()
+    ; rr = right.β()
     aload_0
     getfield bb/bb_seq/right Lbb/bb_box;
-    invokevirtual bb/bb_box/beta()Lbb/bb_box$Spec;
+    invokevirtual bb/bb_box/β()Lbb/bb_box$Spec;
     astore_1
     aload_1
     ifnull seq_beta_right_omega
@@ -92,7 +92,7 @@ seq_beta_right_omega:
     .limit locals 2
     aload_0
     getfield bb/bb_seq/right Lbb/bb_box;
-    invokevirtual bb/bb_box/alpha()Lbb/bb_box$Spec;
+    invokevirtual bb/bb_box/α()Lbb/bb_box$Spec;
     astore_1
     aload_1
     ifnull rightAlpha_omega
@@ -120,7 +120,7 @@ rightAlpha_omega:
     .limit locals 2
     aload_0
     getfield bb/bb_seq/left Lbb/bb_box;
-    invokevirtual bb/bb_box/beta()Lbb/bb_box$Spec;
+    invokevirtual bb/bb_box/β()Lbb/bb_box$Spec;
     astore_1
     aload_1
     ifnull leftBeta_omega

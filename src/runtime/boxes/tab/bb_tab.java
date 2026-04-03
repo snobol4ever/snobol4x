@@ -18,7 +18,7 @@ public class bb_tab extends bb_box {
 
     private int val() { return dyn != null ? dyn.getAsInt() : n; }
 
-    @Override public Spec alpha() {
+    @Override public Spec α() {
         int v = val();
         if (ms.delta > v) return null;
         advance = v - ms.delta;
@@ -27,5 +27,5 @@ public class bb_tab extends bb_box {
         return r;
     }
 
-    @Override public Spec beta() { ms.delta -= advance; return null; }
+    @Override public Spec β() { ms.delta -= advance; return null; }
 }
