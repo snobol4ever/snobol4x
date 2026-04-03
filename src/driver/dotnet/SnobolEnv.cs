@@ -53,7 +53,7 @@ public sealed class SnobolVal
     {
         DType.String => Str,
         DType.Int    => Int.ToString(),
-        DType.Real   => Real.ToString(),
+        DType.Real   => Str,
         _            => ""
     };
 
@@ -85,21 +85,44 @@ public sealed class SnobolEnv
         _patVars.TryGetValue(name.ToUpperInvariant(), out var n) ? n : null;
 
     // ── Array store ───────────────────────────────────────────────────────────
-    // Arrays are indexed by a numeric handle stored in SnobolVal.Int.
-    private readonly List<SnobolVal?[]> _arrays = new();
+    // Handle encoding: arrays use tag 0x0000_0000, tables 0x1000_0000, data objs 0x2000_0000
+    private const long TAG_ARRAY = 0x0000_0000L;
+    private const long TAG_TABLE = 0x1000_0000L;
+    private const long TAG_DATA  = 0x2000_0000L;
+    private const long TAG_MASK  = 0x7000_0000L;
+    private const long IDX_MASK  = 0x0FFF_FFFFL;
 
-    public SnobolVal ArrayCreate(int size)
+    private readonly List<SnobolVal?[]>                          _arrays = new();
+    private readonly List<Dictionary<string, SnobolVal>>         _tables = new();
+
+    // ARRAY(n) — 1-indexed numeric array; ARRAY(n,v) with default
+    public SnobolVal ArrayCreate(SnobolVal[] args)
     {
-        _arrays.Add(new SnobolVal?[size]);
-        return SnobolVal.Of((long)(_arrays.Count - 1));   // handle
+        int size = args.Length >= 1 ? (int)args[0].ToInt() : 0;
+        if (size < 1) return SnobolVal.Fail;
+        var arr = new SnobolVal?[size];
+        if (args.Length >= 2)
+        {
+            var def = args[1];
+            for (int i = 0; i < arr.Length; i++) arr[i] = def;
+        }
+        _arrays.Add(arr);
+        return SnobolVal.Of(TAG_ARRAY | (long)(_arrays.Count - 1));
     }
 
-    public bool IsArray(SnobolVal v) => v.Type == DType.Int && v.Int >= 0 && v.Int < _arrays.Count;
+    public SnobolVal TableCreate()
+    {
+        _tables.Add(new Dictionary<string, SnobolVal>(StringComparer.Ordinal));
+        return SnobolVal.Of(TAG_TABLE | (long)(_tables.Count - 1));
+    }
+
+    public bool IsArray(SnobolVal v)  => v.Type == DType.Int && (v.Int & TAG_MASK) == TAG_ARRAY && (v.Int & IDX_MASK) < _arrays.Count && (v.Int & IDX_MASK) >= 0;
+    public bool IsTable(SnobolVal v)  => v.Type == DType.Int && (v.Int & TAG_MASK) == TAG_TABLE && (v.Int & IDX_MASK) < _tables.Count;
 
     public SnobolVal ArrayGet(SnobolVal handle, long idx)
     {
         if (!IsArray(handle)) return SnobolVal.Null;
-        var arr = _arrays[(int)handle.Int];
+        var arr = _arrays[(int)(handle.Int & IDX_MASK)];
         int i = (int)idx - 1;   // SNOBOL4 is 1-based
         if (i < 0 || i >= arr.Length) return SnobolVal.Null;
         return arr[i] ?? SnobolVal.Null;
@@ -108,9 +131,22 @@ public sealed class SnobolEnv
     public void ArraySet(SnobolVal handle, long idx, SnobolVal val)
     {
         if (!IsArray(handle)) return;
-        var arr = _arrays[(int)handle.Int];
+        var arr = _arrays[(int)(handle.Int & IDX_MASK)];
         int i = (int)idx - 1;
         if (i >= 0 && i < arr.Length) arr[i] = val;
+    }
+
+    public SnobolVal TableGet(SnobolVal handle, string key)
+    {
+        if (!IsTable(handle)) return SnobolVal.Null;
+        var tbl = _tables[(int)(handle.Int & IDX_MASK)];
+        return tbl.TryGetValue(key, out var v) ? v : SnobolVal.Null;
+    }
+
+    public void TableSet(SnobolVal handle, string key, SnobolVal val)
+    {
+        if (!IsTable(handle)) return;
+        _tables[(int)(handle.Int & IDX_MASK)][key] = val;
     }
 
     // ── Data type store ───────────────────────────────────────────────────────
@@ -148,18 +184,15 @@ public sealed class SnobolEnv
         for (int i = 0; i < fields.Length; i++)
             fields[i] = i < args.Length ? args[i] : SnobolVal.Null;
         _dataObjs.Add((typeName, fields));
-        // Encode: -(handle+1) so it's distinguishable from array handles (which are >= 0)
-        // Use a large negative offset to avoid collision with normal ints
-        long handle = -(long)(_dataObjs.Count);   // -1, -2, ...
-        return SnobolVal.Of(handle);
+        return SnobolVal.Of(TAG_DATA | (long)(_dataObjs.Count - 1));
     }
 
-    public bool IsDataObj(SnobolVal v) => v.Type == DType.Int && v.Int < 0 && (-v.Int - 1) < _dataObjs.Count;
+    public bool IsDataObj(SnobolVal v) => v.Type == DType.Int && (v.Int & TAG_MASK) == TAG_DATA && (v.Int & IDX_MASK) < _dataObjs.Count;
 
     public SnobolVal DataGetField(SnobolVal handle, string fieldName)
     {
         if (!IsDataObj(handle)) return SnobolVal.Null;
-        var (typeName, fields) = _dataObjs[(int)(-handle.Int - 1)];
+        var (typeName, fields) = _dataObjs[(int)(handle.Int & IDX_MASK)];
         if (!_dataTypes.TryGetValue(typeName, out var def)) return SnobolVal.Null;
         int fi = Array.IndexOf(def.Fields, fieldName);
         if (fi < 0) fi = Array.FindIndex(def.Fields, f => string.Equals(f, fieldName, StringComparison.OrdinalIgnoreCase));
@@ -169,7 +202,7 @@ public sealed class SnobolEnv
     public void DataSetField(SnobolVal handle, string fieldName, SnobolVal val)
     {
         if (!IsDataObj(handle)) return;
-        var (typeName, fields) = _dataObjs[(int)(-handle.Int - 1)];
+        var (typeName, fields) = _dataObjs[(int)(handle.Int & IDX_MASK)];
         if (!_dataTypes.TryGetValue(typeName, out var def)) return;
         int fi = Array.FindIndex(def.Fields, f => string.Equals(f, fieldName, StringComparison.OrdinalIgnoreCase));
         if (fi >= 0) fields[fi] = val;
@@ -240,12 +273,20 @@ public sealed class SnobolEnv
             "DATA"    => args.Length >= 1 ? DataBuiltin(args[0].ToString()) : SnobolVal.Fail,
             "IDENT"   => (args.Length >= 2 && args[0].ToString() == args[1].ToString()) ? SnobolVal.Null : SnobolVal.Fail,
             "DIFFER"  => (args.Length >= 2 && args[0].ToString() != args[1].ToString()) ? SnobolVal.Null : SnobolVal.Fail,
-            "LT"      => Cmp(args, (a,b) => a < b),
-            "LE"      => Cmp(args, (a,b) => a <= b),
-            "GT"      => Cmp(args, (a,b) => a > b),
-            "GE"      => Cmp(args, (a,b) => a >= b),
-            "EQ"      => Cmp(args, (a,b) => a == b),
-            "NE"      => Cmp(args, (a,b) => a != b),
+            // Numeric predicates — strict: both must be numeric, else Fail
+            "LT"      => NumCmp(args, (a,b) => a < b),
+            "LE"      => NumCmp(args, (a,b) => a <= b),
+            "GT"      => NumCmp(args, (a,b) => a > b),
+            "GE"      => NumCmp(args, (a,b) => a >= b),
+            "EQ"      => NumCmp(args, (a,b) => a == b),
+            "NE"      => NumCmp(args, (a,b) => a != b),
+            // Lexical string predicates — return first arg on success
+            "LLT"     => LexCmp(args, c => c <  0),
+            "LLE"     => LexCmp(args, c => c <= 0),
+            "LGT"     => LexCmp(args, c => c >  0),
+            "LGE"     => LexCmp(args, c => c >= 0),
+            "LEQ"     => LexCmp(args, c => c == 0),
+            "LNE"     => LexCmp(args, c => c != 0),
             "REMDR"   => args.Length >= 2 ? SnobolVal.Of(args[0].ToInt() % Math.Max(1, args[1].ToInt())) : SnobolVal.Fail,
             "ABS"     => args.Length >= 1 ? SnobolVal.Of(Math.Abs(args[0].ToInt())) : SnobolVal.Fail,
             "MAX"     => args.Length >= 2 ? SnobolVal.Of(Math.Max(args[0].ToInt(), args[1].ToInt())) : SnobolVal.Fail,
@@ -257,14 +298,31 @@ public sealed class SnobolEnv
             "UCASE"   => args.Length >= 1 ? SnobolVal.Of(args[0].ToString().ToUpperInvariant()) : SnobolVal.Null,
             "LOWER"   => args.Length >= 1 ? SnobolVal.Of(args[0].ToString().ToLowerInvariant()) : SnobolVal.Null,
             "LCASE"   => args.Length >= 1 ? SnobolVal.Of(args[0].ToString().ToLowerInvariant()) : SnobolVal.Null,
-            "ARRAY"   => args.Length >= 1 ? this.ArrayCreate((int)args[0].ToInt()) : SnobolVal.Fail,
-            "TABLE"   => SnobolVal.Null,  // stub
-            "PROTOTYPE" => args.Length >= 1 ? SnobolVal.Of(args[0].Type.ToString().ToUpperInvariant()) : SnobolVal.Fail,
-            "DATATYPE" => args.Length >= 1 ? SnobolVal.Of(args[0].Type.ToString().ToUpperInvariant()) : SnobolVal.Fail,
-            "TYPE"    => args.Length >= 1 ? SnobolVal.Of(args[0].Type.ToString().ToUpperInvariant()) : SnobolVal.Fail,
+            "ARRAY"   => args.Length >= 1 ? this.ArrayCreate(args) : SnobolVal.Fail,
+            "TABLE"   => this.TableCreate(),
+            "PROTOTYPE" => args.Length >= 1 ? DataType(args[0]) : SnobolVal.Fail,
+            "DATATYPE"  => args.Length >= 1 ? DataType(args[0]) : SnobolVal.Fail,
+            "TYPE"      => args.Length >= 1 ? DataType(args[0]) : SnobolVal.Fail,
             "APPLY"   => SnobolVal.Fail,  // stub
             "EVAL"    => SnobolVal.Fail,  // stub — M-NET-INTERP-B03
             _         => SnobolVal.Fail
+        };
+    }
+
+    // DATATYPE: returns the SNOBOL4 type name — DATA objects use their type name, not "INT"
+    private SnobolVal DataType(SnobolVal v)
+    {
+        if (v.IsNull) return SnobolVal.Of("STRING");
+        if (v.IsFail) return SnobolVal.Fail;
+        if (IsTable(v)) return SnobolVal.Of("TABLE");
+        if (IsArray(v)) return SnobolVal.Of("ARRAY");
+        if (IsDataObj(v)) return SnobolVal.Of(_dataObjs[(int)v.Int].TypeName.ToUpperInvariant());
+        return v.Type switch
+        {
+            DType.Int    => SnobolVal.Of("INTEGER"),
+            DType.Real   => SnobolVal.Of("REAL"),
+            DType.String => SnobolVal.Of("STRING"),
+            _            => SnobolVal.Of("STRING")
         };
     }
 
@@ -325,22 +383,41 @@ public sealed class SnobolEnv
         var type = args[1].ToString().ToUpperInvariant();
         return type switch
         {
-            "INTEGER" => long.TryParse(val.ToString(), out var iv) ? SnobolVal.Of(iv) : SnobolVal.Fail,
-            "REAL"    => double.TryParse(val.ToString(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var rv) ? SnobolVal.Of(rv) : SnobolVal.Fail,
+            "INTEGER" => val.Type == DType.Real
+                ? SnobolVal.Of((long)val.Real)
+                : long.TryParse(val.ToString(), out var iv) ? SnobolVal.Of(iv) : SnobolVal.Fail,
+            "REAL"    => val.Type == DType.Real
+                ? val
+                : double.TryParse(val.ToString(), System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out var rv) ? SnobolVal.Of(rv) : SnobolVal.Fail,
             "STRING"  => SnobolVal.Of(val.ToString()),
             _         => SnobolVal.Fail
         };
     }
 
-    private static SnobolVal Cmp(SnobolVal[] args, Func<double,double,bool> pred)
+    // Numeric comparison — both args must be numeric (Int or Real), else Fail
+    private static SnobolVal NumCmp(SnobolVal[] args, Func<double,double,bool> pred)
     {
         if (args.Length < 2) return SnobolVal.Fail;
-        double a, b;
-        if (args[0].Type == DType.Int && args[1].Type == DType.Int)
-        { a = args[0].Int; b = args[1].Int; }
-        else
-        { a = args[0].Type == DType.String ? 0 : (double)args[0].ToInt();
-          b = args[1].Type == DType.String ? 0 : (double)args[1].ToInt(); }
-        return pred(a, b) ? args[0] : SnobolVal.Fail;
+        var a = args[0]; var b = args[1];
+        bool aNum = a.Type == DType.Int || a.Type == DType.Real;
+        bool bNum = b.Type == DType.Int || b.Type == DType.Real;
+        // Coerce string if it looks numeric
+        if (!aNum && double.TryParse(a.ToString(), System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out _)) aNum = true;
+        if (!bNum && double.TryParse(b.ToString(), System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out _)) bNum = true;
+        if (!aNum || !bNum) return SnobolVal.Fail;
+        double av = a.Type == DType.Real ? a.Real : (double)a.ToInt();
+        double bv = b.Type == DType.Real ? b.Real : (double)b.ToInt();
+        return pred(av, bv) ? args[0] : SnobolVal.Fail;
+    }
+
+    // Lexical comparison — compare as strings, return first arg on success
+    private static SnobolVal LexCmp(SnobolVal[] args, Func<int,bool> pred)
+    {
+        if (args.Length < 2) return SnobolVal.Fail;
+        int cmp = string.Compare(args[0].ToString(), args[1].ToString(), StringComparison.Ordinal);
+        return pred(cmp) ? args[0] : SnobolVal.Fail;
     }
 }

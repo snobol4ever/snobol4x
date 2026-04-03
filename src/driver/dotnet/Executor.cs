@@ -142,19 +142,26 @@ public sealed class Executor
                 if (_env.IsDataObj(objVal))
                 { _env.DataSetField(objVal, fieldName, replVal); return true; }
             }
-            // Array element assignment: A<idx> = val
+            // Array/Table element assignment: A<idx> = val
             if (stmt.Subject?.Kind == IrKind.E_IDX && stmt.Subject.Children.Length >= 2)
             {
                 var baseNode = stmt.Subject.Children[0];
                 var idxVal   = EvalNode(stmt.Subject.Children[1]);
+
+                SnobolVal container;
                 if (baseNode.Kind == IrKind.E_VAR)
-                {
-                    var arr = _env.Get(baseNode.SVal!);
-                    if (_env.IsArray(arr))
-                    { _env.ArraySet(arr, idxVal.ToInt(), replVal); return true; }
-                    if (_env.IsDataObj(arr))
-                    { _env.DataSetField(arr, idxVal.ToString(), replVal); return true; }
-                }
+                    container = _env.Get(baseNode.SVal!);
+                else if (baseNode.Kind == IrKind.E_INDIRECT)
+                    container = _env.Get(EvalNode(baseNode.Children[0]).ToString());
+                else
+                    container = EvalNode(baseNode);
+
+                if (_env.IsArray(container))
+                { _env.ArraySet(container, idxVal.ToInt(), replVal); return true; }
+                if (_env.IsTable(container))
+                { _env.TableSet(container, idxVal.ToString(), replVal); return true; }
+                if (_env.IsDataObj(container))
+                { _env.DataSetField(container, idxVal.ToString(), replVal); return true; }
             }
             return false;
         }
@@ -396,14 +403,28 @@ public sealed class Executor
         if (n.Children.Length < 2) return SnobolVal.Null;
         var baseNode = n.Children[0];
         var idxVal   = EvalNode(n.Children[1]);
+
+        // Resolve base — may be a direct var, indirect ($var), or a handle
+        SnobolVal baseVal;
+        string?   baseName = null;
         if (baseNode.Kind == IrKind.E_VAR)
         {
-            var arr = _env.Get(baseNode.SVal!);
-            if (_env.IsArray(arr))
-                return _env.ArrayGet(arr, idxVal.ToInt());
-            if (_env.IsDataObj(arr))
-                return _env.DataGetField(arr, idxVal.ToString());
+            baseName = baseNode.SVal!;
+            baseVal  = _env.Get(baseName);
         }
+        else if (baseNode.Kind == IrKind.E_INDIRECT)
+        {
+            baseName = EvalNode(baseNode.Children[0]).ToString();
+            baseVal  = _env.Get(baseName);
+        }
+        else
+        {
+            baseVal = EvalNode(baseNode);
+        }
+
+        if (_env.IsArray(baseVal))   return _env.ArrayGet(baseVal, idxVal.ToInt());
+        if (_env.IsTable(baseVal))   return _env.TableGet(baseVal, idxVal.ToString());
+        if (_env.IsDataObj(baseVal)) return _env.DataGetField(baseVal, idxVal.ToString());
         return SnobolVal.Null;
     }
 
