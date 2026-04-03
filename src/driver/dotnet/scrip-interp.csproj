@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>scrip-interp</AssemblyName>
+    <RootNamespace>ScripInterp</RootNamespace>
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Reuse all 27 Byrd boxes + executor + factory + MatchState/IByrdBox -->
+    <ProjectReference Include="../../runtime/boxes/shared/bb_boxes.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Pidgin parser combinator — no Roslyn, no code-gen -->
+    <PackageReference Include="Pidgin" Version="3.3.0" />
+  </ItemGroup>
+</Project>

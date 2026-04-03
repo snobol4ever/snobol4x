@@ -6,4 +6,31 @@
     <RootNamespace>Snobol4.Runtime.Boxes</RootNamespace>
     <AssemblyName>Snobol4.Runtime.Boxes</AssemblyName>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- bb_factory.cs depends on snobol4dotnet Pattern types — excluded here -->
+    <Compile Remove="bb_factory.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="../alt/bb_alt.cs" />
+    <Compile Include="../any/bb_any.cs" />
+    <Compile Include="../arb/bb_arb.cs" />
+    <Compile Include="../arbno/bb_arbno.cs" />
+    <Compile Include="../atp/bb_atp.cs" />
+    <Compile Include="../bal/bb_bal.cs" />
+    <Compile Include="../brk/bb_brk.cs" />
+    <Compile Include="../capture/bb_capture.cs" />
+    <Compile Include="../dvar/bb_dvar.cs" />
+    <Compile Include="../eps/bb_eps.cs" />
+    <Compile Include="../interr/bb_interr.cs" />
+    <Compile Include="../len/bb_len.cs" />
+    <Compile Include="../lit/bb_lit.cs" />
+    <Compile Include="../not/bb_not.cs" />
+    <Compile Include="../pos/bb_pos.cs" />
+    <Compile Include="../rem/bb_rem.cs" />
+    <Compile Include="../seq/bb_seq.cs" />
+    <Compile Include="../span/bb_span.cs" />
+    <Compile Include="../tab/bb_tab.cs" />
+  </ItemGroup>
 </Project>

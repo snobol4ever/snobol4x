@@ -1,0 +1,8 @@
+/tmp/scrip-interp-bin/scrip-interp
+/tmp/scrip-interp-bin/scrip-interp.dll
+/tmp/scrip-interp-bin/scrip-interp.deps.json
+/tmp/scrip-interp-bin/scrip-interp.runtimeconfig.json
+/tmp/scrip-interp-bin/scrip-interp.pdb
+/tmp/scrip-interp-bin/Pidgin.dll
+/tmp/scrip-interp-bin/Snobol4.Runtime.Boxes.dll
+/tmp/scrip-interp-bin/Snobol4.Runtime.Boxes.pdb

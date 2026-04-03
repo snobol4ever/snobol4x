@@ -1,0 +1,128 @@
+{
+  "version": 3,
+  "targets": {
+    "net8.0": {
+      "Pidgin/3.3.0": {
+        "type": "package",
+        "compile": {
+          "lib/net5.0/Pidgin.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/net5.0/Pidgin.dll": {
+            "related": ".xml"
+          }
+        }
+      },
+      "Snobol4.Runtime.Boxes/1.0.0": {
+        "type": "project",
+        "framework": ".NETCoreApp,Version=v8.0",
+        "compile": {
+          "bin/placeholder/Snobol4.Runtime.Boxes.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/Snobol4.Runtime.Boxes.dll": {}
+        }
+      }
+    }
+  },
+  "libraries": {
+    "Pidgin/3.3.0": {
+      "sha512": "2rvIoIogQG1+vqvXCuz1xiAVljaiacG/wCz/TNpN74TzWw+9iSCjhBLf7kVg24sBi6tArRdrcklHq49ovW2NLA==",
+      "type": "package",
+      "path": "pidgin/3.3.0",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "README.md",
+        "lib/net5.0/Pidgin.dll",
+        "lib/net5.0/Pidgin.xml",
+        "pidgin.3.3.0.nupkg.sha512",
+        "pidgin.nuspec"
+      ]
+    },
+    "Snobol4.Runtime.Boxes/1.0.0": {
+      "type": "project",
+      "path": "../../runtime/boxes/shared/bb_boxes.csproj",
+      "msbuildProject": "../../runtime/boxes/shared/bb_boxes.csproj"
+    }
+  },
+  "projectFileDependencyGroups": {
+    "net8.0": [
+      "Pidgin >= 3.3.0",
+      "Snobol4.Runtime.Boxes >= 1.0.0"
+    ]
+  },
+  "packageFolders": {
+    "/root/.nuget/packages/": {}
+  },
+  "project": {
+    "version": "1.0.0",
+    "restore": {
+      "projectUniqueName": "/home/claude/one4all/src/driver/dotnet/scrip-interp.csproj",
+      "projectName": "scrip-interp",
+      "projectPath": "/home/claude/one4all/src/driver/dotnet/scrip-interp.csproj",
+      "packagesPath": "/root/.nuget/packages/",
+      "outputPath": "/home/claude/one4all/src/driver/dotnet/obj/",
+      "projectStyle": "PackageReference",
+      "configFilePaths": [
+        "/root/.nuget/NuGet/NuGet.Config"
+      ],
+      "originalTargetFrameworks": [
+        "net8.0"
+      ],
+      "sources": {
+        "https://api.nuget.org/v3/index.json": {}
+      },
+      "frameworks": {
+        "net8.0": {
+          "targetAlias": "net8.0",
+          "projectReferences": {
+            "/home/claude/one4all/src/runtime/boxes/shared/bb_boxes.csproj": {
+              "projectPath": "/home/claude/one4all/src/runtime/boxes/shared/bb_boxes.csproj"
+            }
+          }
+        }
+      },
+      "warningProperties": {
+        "warnAsError": [
+          "NU1605"
+        ]
+      },
+      "restoreAuditProperties": {
+        "enableAudit": "true",
+        "auditLevel": "low",
+        "auditMode": "direct"
+      }
+    },
+    "frameworks": {
+      "net8.0": {
+        "targetAlias": "net8.0",
+        "dependencies": {
+          "Pidgin": {
+            "target": "Package",
+            "version": "[3.3.0, )"
+          }
+        },
+        "imports": [
+          "net461",
+          "net462",
+          "net47",
+          "net471",
+          "net472",
+          "net48",
+          "net481"
+        ],
+        "assetTargetFallback": true,
+        "warn": true,
+        "frameworkReferences": {
+          "Microsoft.NETCore.App": {
+            "privateAssets": "all"
+          }
+        },
+        "runtimeIdentifierGraphPath": "/usr/local/dotnet8/sdk/8.0.419/PortableRuntimeIdentifierGraph.json"
+      }
+    }
+  }
+}
