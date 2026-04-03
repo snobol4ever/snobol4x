@@ -97,6 +97,9 @@ public class Lexer {
         }
     }
 
+    /** Inject a pre-built token directly into the queue (used by Parser for body re-parsing). */
+    public void injectToken(Token t) { queue.add(t); }
+
     /** Tokenise a body substring directly (used internally for goto-field re-parsing). */
     public void openBodyString(String src, int lineno) {
         tokeniseBody(src, 0, src.length(), lineno);
