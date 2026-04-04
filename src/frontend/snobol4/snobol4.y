@@ -59,6 +59,7 @@ opt_pattern: expr3                                                              
            | /* empty */                                                                           { $$=NULL; }
            ;
 opt_repl   : T_ASSIGNMENT expr0                                                                   { $$=$2; }
+           | T_ASSIGNMENT                                                                          { EXPR_t*e=expr_new(E_QLIT);e->sval=strdup("");$$=e; }
            | /* empty */                                                                           { $$=NULL; }
            ;
 
