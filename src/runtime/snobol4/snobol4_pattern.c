@@ -1387,7 +1387,15 @@ DESCR_t EVAL_fn(DESCR_t expr) {
     if (expr.v == DT_E) {
         extern DESCR_t eval_node(void *e);
         if (!expr.ptr) return FAILDESCR;
-        return eval_node(expr.ptr);
+        DESCR_t _res = eval_node(expr.ptr);
+        if (IS_FAIL_fn(_res)) return FAILDESCR;
+        return _res;
+    }
+    if (expr.v == DT_P) {
+        /* DT_P: pattern from *func(). Run against empty subject via hook.
+         * If function fails at match time, EVAL fails. */
+        if (g_eval_pat_hook) return g_eval_pat_hook(expr);
+        return expr;  /* no hook — treat as success (fallback) */
     }
     if (expr.v != DT_S && expr.v != DT_SNUL) return expr;
     const char *s = VARVAL_fn(expr);

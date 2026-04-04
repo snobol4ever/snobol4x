@@ -175,11 +175,21 @@ static DESCR_t  interp_eval(EXPR_t *e);      /* forward */
 static DESCR_t  interp_eval_pat(EXPR_t *e);  /* forward — pattern context */
 static DESCR_t *interp_eval_ref(EXPR_t *e);  /* forward — lvalue → DESCR_t* (SIL NAME ptr) */
 
-/* NAME_DEREF: if d is DT_N (SIL NAME = interior pointer), dereference to value.
- * Used wherever a DT_N might arrive in a value context (arg to builtins, etc.) */
+/* NAME_DEREF: dereference a DT_N — handles both NAMEPTR (.ptr) and NAMEVAL (.s). */
 static inline DESCR_t NAME_DEREF(DESCR_t d) {
-    if (d.v == DT_N && d.ptr) return *(DESCR_t*)d.ptr;
+    if (d.v == DT_N) {
+        if (d.ptr) return *(DESCR_t*)d.ptr;
+        if (d.s)   return NV_GET_fn(d.s);
+    }
     return d;
+}
+/* NAME_SET: write val through a DT_N lvalue — returns 1 on success. */
+static inline int NAME_SET(DESCR_t nd, DESCR_t val) {
+    if (nd.v == DT_N) {
+        if (nd.ptr) { *(DESCR_t*)nd.ptr = val; return 1; }
+        if (nd.s)   { NV_SET_fn(nd.s, val);    return 1; }
+    }
+    return 0;
 }
 
 /* DYN-57: E_FNC names that always yield a pattern value.
@@ -347,9 +357,8 @@ static DESCR_t call_user_function(const char *fname, DESCR_t *args, int nargs)
                         if (call_depth == 0 && FNCEX_fn(subj_name)
                                 && FUNC_NPARAMS_fn(subj_name) == 0) {
                             DESCR_t fres = call_user_function(subj_name, NULL, 0);
-                            if (fres.v == DT_N && fres.ptr) {
-                                *(DESCR_t*)fres.ptr = repl_val; succeeded = 1;
-                            } else { NV_SET_fn(subj_name, repl_val); succeeded = 1; }
+                            if (NAME_SET(fres, repl_val)) { succeeded = 1; }
+                            else { NV_SET_fn(subj_name, repl_val); succeeded = 1; }
                         } else { NV_SET_fn(subj_name, repl_val); succeeded = 1; }
                     }
                 } else if (s->has_eq && s->subject && s->subject->kind == E_KEYWORD && s->subject->sval) {
@@ -400,10 +409,10 @@ static DESCR_t call_user_function(const char *fname, DESCR_t *args, int nargs)
                     /* NRETURN lvalue assign: ref_a() = val  (zero-arg fn call as lvalue)
                      * Call the function; if result is DT_N write through to named variable. */
                     DESCR_t fres = call_user_function(s->subject->sval, NULL, 0);
-                    if (fres.v == DT_N && fres.ptr) {
+                    if (fres.v == DT_N) {
                         DESCR_t rv = s->replacement ? interp_eval(s->replacement) : NULVCL;
                         if (IS_FAIL_fn(rv)) succeeded = 0;
-                        else { *(DESCR_t*)fres.ptr = rv; succeeded = 1; }
+                        else { succeeded = NAME_SET(fres, rv) ? 1 : 0; }
                     } else succeeded = 0;
                 } else if (s->has_eq && s->subject && s->subject->kind == E_INDIRECT) {
                     EXPR_t *ichild = s->subject->nchildren > 0 ? s->subject->children[0] : NULL;
@@ -459,15 +468,10 @@ static DESCR_t call_user_function(const char *fname, DESCR_t *args, int nargs)
                         /* NRETURN: the fn's return variable holds a DT_N (from .expr).
                          * If it already is a DT_N with a live ptr, pass it straight through.
                          * SIL: GOTL2→exit5 — return the NAME descriptor as-is. */
-                        DESCR_t nrv = NV_GET_fn(fr->fname);
-                        if (nrv.v == DT_N && nrv.ptr) {
-                            retval = nrv;   /* already a proper NAMEPTR — pass through */
-                        } else {
-                            /* Fallback: legacy string-name compat */
-                            const char *nname = VARVAL_fn(nrv);
-                            DESCR_t *cell = nname && *nname ? NV_PTR_fn(nname) : NULL;
-                            retval = cell ? NAMEPTR(cell) : FAILDESCR;
-                        }
+                        /* NRETURN: return the DT_N descriptor as-is.
+                         * Caller (E_FNC) applies NAME_DEREF which handles both
+                         * NAMEPTR (.ptr interior pointer) and NAMEVAL (.s name string). */
+                        retval = NV_GET_fn(fr->fname);
                         goto fn_done;
                     }
                     STMT_t *dest = label_lookup(target);
@@ -542,16 +546,19 @@ static DESCR_t interp_eval(EXPR_t *e)
     }
 
     case E_NAME: {
-        /* .X — dot operator: return NAME descriptor (DT_N) pointing to X's live cell.
-         * SIL: SETVC XPTR,N stamps the type onto the interior pointer.
-         * interp_eval_ref() computes &cell for E_VAR, E_IDX, nested E_NAME, etc. */
+        /* .X — dot operator: return NAME descriptor (DT_N).
+         * For E_VAR/E_FNC/E_KEYWORD children, return NAMEVAL (name-string form,
+         * GC-stable). NAMEPTR (interior pointer) is unsafe: Boehm conservative
+         * scanner may not recognise &e->val as keeping NV_t alive → GC collects
+         * the entry → pointer stale → VARVAL_fn returns "". NAMEVAL avoids this.
+         * NAMEPTR kept only for E_IDX (array/table cells whose parent is live). */
         if (e->nchildren < 1) return FAILDESCR;
-        DESCR_t *cell = interp_eval_ref(e->children[0]);
-        if (cell) return NAMEPTR(cell);
-        /* Fallback for non-addressable: return name string (legacy) */
         EXPR_t *child = e->children[0];
-        if (child->kind == E_VAR || child->kind == E_FNC || child->kind == E_KEYWORD)
-            if (child->sval) return STRVAL((char *)child->sval);
+        if ((child->kind == E_VAR || child->kind == E_FNC || child->kind == E_KEYWORD)
+                && child->sval)
+            return NAMEVAL(child->sval);
+        DESCR_t *cell = interp_eval_ref(child);
+        if (cell) return NAMEPTR(cell);
         return FAILDESCR;
     }
 
@@ -836,7 +843,7 @@ static DESCR_t interp_eval(EXPR_t *e)
             if (body) {
                 /* User-defined function — call interpreter directly, never via APPLY_fn */
                 DESCR_t r = call_user_function(e->sval, args, nargs);
-                if (r.v == DT_N && r.ptr) return *(DESCR_t*)r.ptr;  /* NRETURN deref */
+                if (r.v == DT_N) return NAME_DEREF(r);  /* NRETURN deref — ptr and .s */
                 return r;
             }
         }
@@ -1438,6 +1445,15 @@ static void execute_program(Program *prog)
  * main
  * ══════════════════════════════════════════════════════════════════════════ */
 
+static DESCR_t _eval_pat_impl_fn(DESCR_t pat) {
+    /* Run DT_P pattern against empty subject — used by EVAL_fn for *func() patterns.
+     * If function fails at match time, EVAL fails. */
+    extern int exec_stmt(const char *, DESCR_t *, DESCR_t, DESCR_t *, int);
+    DESCR_t subj = STRVAL("");
+    int ok = exec_stmt("", &subj, pat, NULL, 0);
+    return ok ? NULVCL : FAILDESCR;
+}
+
 int main(int argc, char **argv)
 {
     if (argc < 2) {
@@ -1501,11 +1517,15 @@ int main(int argc, char **argv)
     stmt_init();
     g_prog = prog;
 
-    /* Wire user-function dispatch hook so pattern engine deferred calls
-     * (T_FUNC/XATP nodes from *func() in patterns) can invoke SNOBOL4
-     * user-defined functions at match time. */
+    /* Wire user-function dispatch hook */
     extern DESCR_t (*g_user_call_hook)(const char *, DESCR_t *, int);
     g_user_call_hook = call_user_function;
+
+    /* Wire DT_P eval hook: EVAL(*func(args)) runs pattern against empty subject */
+    {
+        extern DESCR_t (*g_eval_pat_hook)(DESCR_t pat);
+        g_eval_pat_hook = _eval_pat_impl_fn;
+    }
 
     execute_program(prog);
     return 0;

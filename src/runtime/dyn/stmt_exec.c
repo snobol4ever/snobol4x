@@ -131,7 +131,9 @@ extern spec_t bb_arbno(void *zeta, int entry);
 /* ── Complex boxes — defined below (need bb_node_t / bb_build / DESCR_t) ─ */
 /* bb_capture, bb_atp, bb_deferred_var remain here until MILESTONE-BOX-UNIFY */
 /* deferred_var_t needs bb_node_t which is defined later in this file */
-typedef struct { const char *name; bb_box_fn child_fn; void *child_state; size_t child_size; } deferred_var_t;
+typedef struct { const char *name; bb_box_fn child_fn; void *child_state; size_t child_size; int in_progress; } deferred_var_t;
+static int g_dvar_depth = 0;  /* global recursion depth — caps mutual recursion */
+#define DVAR_MAX_DEPTH 64
 /* bb_deferred_var() defined after bb_build (needs bb_node_t) */
 static spec_t bb_deferred_var(void *zeta, int entry);
 
@@ -914,6 +916,11 @@ static spec_t bb_deferred_var(void *zeta, int entry)
     spec_t          DVAR;
 
     DVAR_α:         {
+                        /* Recursion guards: per-node in_progress + global depth cap */
+                        if (ζ->in_progress || g_dvar_depth >= DVAR_MAX_DEPTH)
+                                                              goto DVAR_ω;
+                        ζ->in_progress = 1; g_dvar_depth++;
+
                         /* Re-resolve on every α: live NV lookup */
                         DESCR_t val = NV_GET_fn(ζ->name);
                         bb_node_t child;
@@ -963,8 +970,9 @@ static spec_t bb_deferred_var(void *zeta, int entry)
                                 && ζ->child_fn != (bb_box_fn)bb_lit)
                             memset(ζ->child_state, 0, ζ->child_size);
                     }
-                    if (!ζ->child_fn)                         goto DVAR_ω;
+                    if (!ζ->child_fn) { ζ->in_progress=0; g_dvar_depth--; goto DVAR_ω; }
                     DVAR = ζ->child_fn(ζ->child_state, α);
+                    ζ->in_progress = 0; g_dvar_depth--;
                     if (spec_is_empty(DVAR))                  goto DVAR_ω;
                                                               goto DVAR_γ;
 

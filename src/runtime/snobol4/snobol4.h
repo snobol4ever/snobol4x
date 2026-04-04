@@ -415,6 +415,8 @@ int  match_and_replace(DESCR_t *subject, DESCR_t pat, DESCR_t replacement);
 DESCR_t array_create(DESCR_t spec);            /* ARRAY('lo:hi') */
 DESCR_t subscript_get(DESCR_t arr, DESCR_t idx);
 DESCR_t *NV_PTR_fn(const char *name);       /* find-or-create NV cell, return &val */
+const char *NV_name_from_ptr(const DESCR_t *ptr); /* reverse-lookup &val -> name */
+extern DESCR_t (*g_eval_pat_hook)(DESCR_t pat);   /* EVAL_fn hook for DT_P patterns */
 DESCR_t *array_ptr(ARBLK_t *a, int i);      /* interior pointer to array cell (NULL=OOB) */
 DESCR_t *table_ptr(TBBLK_t *tbl, DESCR_t key_d); /* find-or-create table cell ptr */
 

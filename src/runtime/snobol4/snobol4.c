@@ -1153,6 +1153,14 @@ char *VARVAL_fn(DESCR_t v) {
             return GC_strdup("ARRAY");
         case DT_T:
             return GC_strdup("TABLE");
+        case DT_N:
+            if (v.s) return GC_strdup(v.s);
+            if (v.ptr) {
+                const char *nm = NV_name_from_ptr((const DESCR_t *)v.ptr);
+                if (nm) return GC_strdup(nm);
+                return VARVAL_fn(*(DESCR_t *)v.ptr);
+            }
+            return GC_strdup("");
         default:
             return GC_strdup("");
     }
@@ -1667,6 +1675,16 @@ DESCR_t *NV_PTR_fn(const char *name) {
     return &e->val;
 }
 
+/* NV_name_from_ptr — reverse-lookup: given &e->val pointer, return variable name.
+ * Used by VARVAL_fn(DT_N) to recover name from a NAMEPTR descriptor. */
+const char *NV_name_from_ptr(const DESCR_t *ptr) {
+    if (!ptr) return NULL;
+    for (int i = 0; i < VAR_BUCKETS; i++)
+        for (NV_t *e = _var_buckets[i]; e; e = e->next)
+            if (&e->val == ptr) return e->name;
+    return NULL;
+}
+
 /* Sync all registered C statics FROM the hash table.
  * Call this after all NV_REG_fn() calls (in main) so that
  * vars pre-initialized by SNO_INIT_fn() propagate to their statics. */
@@ -2021,6 +2039,7 @@ void register_fn_alias(const char *newname, const char *oldname) {
 
 /* Hook for interpreter to supply user-function dispatch to the pattern engine. */
 DESCR_t (*g_user_call_hook)(const char *name, DESCR_t *args, int nargs) = NULL;
+DESCR_t (*g_eval_pat_hook)(DESCR_t pat) = NULL;
 
 DESCR_t APPLY_fn(const char *name, DESCR_t *args, int nargs) {
     _func_init();
