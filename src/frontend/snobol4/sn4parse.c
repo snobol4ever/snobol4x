@@ -230,7 +230,7 @@ syntab_t LBLTB = { "LBLTB", {
      2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
      1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 2, 3, 3, 3, 3,
      3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 3, 3, 3, 3,
+     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 3, 3, 3, 1,  /* 0x5F '_' → 1 (alphanumeric, SNOBOL4+) */
      3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
      1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 3, 3, 3, 3,
      1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
@@ -944,18 +944,18 @@ static int BINOP(void) {
         }
     }
 
-    /* br == ST_STOP: blank was found and consumed */
-    /* IBLKTB via FORJRN sets BRTYPE from STYPE */
-    /* Check BRTYPE: if NBTYP, a non-blank field break stopped IBLKTB early */
-    if (BRTYPE == NBTYP) {
-        /* AEQLC BRTYPE,NBTYP,RTN2 — fail */
-        TEXTSP = saved_text;
-        return 0;
-    }
-
-    /* BRTYPE is a field-break delimiter (EQTYP, CLNTYP, EOSTYP, etc.) */
-    if (BRTYPE == EOSTYP || BRTYPE == CLNTYP || BRTYPE == EQTYP ||
-        BRTYPE == RPTYP  || BRTYPE == CMATYP  || BRTYPE == RBTYP) {
+    /* br == ST_STOP: blank was found and consumed.
+     * IBLKTB chains to FRWDTB which sets STYPE:
+     *   NBTYP  = stopped before a real token (e.g. '+', '*') — proceed to BIOPTB.
+     *   EOSTYP/CLNTYP/EQTYP/RPTYP/CMATYP/RBTYP = field delimiter → no operator.
+     * SIL AEQLC BRTYPE,NBTYP,RTN2 only fires on the BINOP1 (no-blank) path, NOT here.
+     * On the blank-found path, NBTYP is the normal/expected result — the operator char
+     * is sitting right there in TEXTSP. We must fall through to BIOPTB. */
+    int stype_after_blank = STYPE;  /* what IBLKTB→FRWDTB found after the blank */
+    if (stype_after_blank == EOSTYP || stype_after_blank == CLNTYP ||
+        stype_after_blank == EQTYP  || stype_after_blank == RPTYP  ||
+        stype_after_blank == CMATYP || stype_after_blank == RBTYP) {
+        /* Field delimiter after blank → end of expression */
         TEXTSP = saved_text;
         return 0;
     }
@@ -1201,9 +1201,13 @@ static NODE *ELEMNT(void) {
         break;
     }
 
-    case NSTTYP: {  /* ELENST: parenthesized expression */
+    case NSTTYP: {  /* ELENST: parenthesized expression — SIL v311.sil:2003 */
+        /* '(' was AC_STOP consumed by ELEMTB. TEXTSP points at inner content.
+         * EXPR() parses inside; ')' hit via FRWDTB (AC_STOP) consumed automatically.
+         * Call FORWRD() to advance past residual and set BRTYPE=RPTYP for caller. */
         atom = EXPR();
-        /* BRTYPE should be RPTYP after EXPR returns */
+        FORWRD();
+        BRTYPE = RPTYP;
         break;
     }
 
@@ -1271,19 +1275,37 @@ static NODE *expr_prec(int min_prec) {
 }
 
 static NODE *expr_prec_continue(NODE *left, int min_prec) {
+    /* CATFN juxtaposition precedence = 10 (highest — tighter than any explicit op).
+     * SIL BINCON path: blank found, no explicit operator char → CONCL concatenation.
+     * We use a flat n-ary CAT node: accumulate all juxtaposed elements into one. */
+#define CATFN_PREC 10
     for (;;) {
         spec_t saved = TEXTSP;
         int op = BINOP();
         if (!op) { TEXTSP = saved; break; }     /* no operator → done */
+
+        if (op == CATFN) {
+            /* Juxtaposition — CATFN_PREC=10, left-associative (collect into flat CAT) */
+            if (CATFN_PREC < min_prec) { TEXTSP = saved; break; }
+            NODE *right = expr_prec(CATFN_PREC + 1);
+            if (!right) { TEXTSP = saved; break; }
+            /* Flatten: if left is already a CAT node, append; else create new CAT */
+            if (left->stype == CATFN) {
+                node_add(left, right);
+            } else {
+                NODE *cat = node_new(CATFN, "CAT", -1);
+                node_add(cat, left);
+                node_add(cat, right);
+                left = cat;
+            }
+            continue;
+        }
 
         int prec  = op_prec(op);
         if (prec < min_prec) { TEXTSP = saved; break; }
 
         int next_min = op_right_assoc(op) ? prec : prec + 1;
         NODE *right = expr_prec(next_min);
-
-        /* Juxtaposition (blank-separated): BIOPTB returns 0 above.
-         * Handled separately as CATFN below in CMPILE context. */
 
         NODE *binop = node_new(op, fn_name(op), -1);
         node_add(binop, left);
@@ -1355,9 +1377,9 @@ static STMT *CMPILE(void) {
     /* CMPILA: RCALL ,FORBLK — get to next character */
     FORBLK();
 
-    /* Check for END statement */
-    if (XSP.len == 0 && BRTYPE == EOSTYP) {
-        /* blank body */
+    /* BRTYPE==0 means ST_EOS on empty body (bare label line or blank line).
+     * Treat same as EOSTYP — no body to parse. */
+    if (BRTYPE == 0 || BRTYPE == EOSTYP) {
         return s;
     }
 
@@ -1426,8 +1448,7 @@ CMPGO: {
         /* Unconditional: :( label ) */
         NODE *lbl = EXPR();
         s->go_u = lbl ? strdup(lbl->text ? lbl->text : "") : NULL;
-        /* consume closing ) or > */
-        FORBLK();
+        FORWRD();   /* consume closing ) → BRTYPE=RPTYP */
         return s;
     }
 
@@ -1435,14 +1456,20 @@ CMPGO: {
         /* Success: :S( label ) */
         NODE *lbl = EXPR();
         s->go_s = lbl ? strdup(lbl->text ? lbl->text : "") : NULL;
-        FORBLK();
-        /* may have :F after */
-        if (BRTYPE != EOSTYP && BRTYPE != 0) {
-            stream(&XSP, &TEXTSP, &GOTOTB);
-            if (STYPE == FGOTYP || STYPE == FTOTYP) {
+        FORWRD();   /* consume closing ) → TEXTSP now at F, :F, or EOS */
+        /* SNOBOL4 allows :S(x)F(y) or :S(x):F(y) — skip optional ':' */
+        if (BRTYPE != EOSTYP && BRTYPE != 0 && TEXTSP.len > 0) {
+            spec_t saved2 = TEXTSP;
+            if (TEXTSP.ptr[0] == ':') { /* skip optional colon */
+                TEXTSP.ptr++; TEXTSP.len--;
+            }
+            stream_ret_t gr = stream(&XSP, &TEXTSP, &GOTOTB);
+            if (gr != ST_ERROR && (STYPE == FGOTYP || STYPE == FTOTYP)) {
                 NODE *fl = EXPR();
                 s->go_f = fl ? strdup(fl->text ? fl->text : "") : NULL;
-                FORBLK();
+                FORWRD();
+            } else {
+                TEXTSP = saved2;  /* not a goto — restore */
             }
         }
         return s;
@@ -1452,13 +1479,19 @@ CMPGO: {
         /* Failure: :F( label ) */
         NODE *lbl = EXPR();
         s->go_f = lbl ? strdup(lbl->text ? lbl->text : "") : NULL;
-        FORBLK();
-        if (BRTYPE != EOSTYP && BRTYPE != 0) {
-            stream(&XSP, &TEXTSP, &GOTOTB);
-            if (STYPE == SGOTYP || STYPE == STOTYP) {
+        FORWRD();   /* consume closing ) */
+        if (BRTYPE != EOSTYP && BRTYPE != 0 && TEXTSP.len > 0) {
+            spec_t saved2 = TEXTSP;
+            if (TEXTSP.ptr[0] == ':') {
+                TEXTSP.ptr++; TEXTSP.len--;
+            }
+            stream_ret_t gr = stream(&XSP, &TEXTSP, &GOTOTB);
+            if (gr != ST_ERROR && (STYPE == SGOTYP || STYPE == STOTYP)) {
                 NODE *sl = EXPR();
                 s->go_s = sl ? strdup(sl->text ? sl->text : "") : NULL;
-                FORBLK();
+                FORWRD();
+            } else {
+                TEXTSP = saved2;
             }
         }
         return s;
