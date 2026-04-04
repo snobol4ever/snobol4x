@@ -175,19 +175,22 @@ static DESCR_t  interp_eval(EXPR_t *e);      /* forward */
 static DESCR_t  interp_eval_pat(EXPR_t *e);  /* forward — pattern context */
 static DESCR_t *interp_eval_ref(EXPR_t *e);  /* forward — lvalue → DESCR_t* (SIL NAME ptr) */
 
-/* NAME_DEREF: dereference a DT_N — handles both NAMEPTR (.ptr) and NAMEVAL (.s). */
+/* NAME_DEREF: dereference a DT_N.
+ * slen=1 -> NAMEPTR (interior ptr, dereference directly).
+ * slen=0 -> NAMEVAL (name string, look up in NV store). */
 static inline DESCR_t NAME_DEREF(DESCR_t d) {
     if (d.v == DT_N) {
-        if (d.ptr) return *(DESCR_t*)d.ptr;
-        if (d.s)   return NV_GET_fn(d.s);
+        if (d.slen) return *(DESCR_t*)d.ptr;   /* NAMEPTR: interior pointer */
+        if (d.s)    return NV_GET_fn(d.s);      /* NAMEVAL: name string */
     }
     return d;
 }
-/* NAME_SET: write val through a DT_N lvalue — returns 1 on success. */
+/* NAME_SET: write val through a DT_N lvalue.
+ * slen=1 -> NAMEPTR; slen=0 -> NAMEVAL. */
 static inline int NAME_SET(DESCR_t nd, DESCR_t val) {
     if (nd.v == DT_N) {
-        if (nd.ptr) { *(DESCR_t*)nd.ptr = val; return 1; }
-        if (nd.s)   { NV_SET_fn(nd.s, val);    return 1; }
+        if (nd.slen) { *(DESCR_t*)nd.ptr = val; return 1; }  /* NAMEPTR */
+        if (nd.s)    { NV_SET_fn(nd.s, val);    return 1; }  /* NAMEVAL */
     }
     return 0;
 }
@@ -465,12 +468,9 @@ static DESCR_t call_user_function(const char *fname, DESCR_t *args, int nargs)
                         goto fn_done;
                     }
                     if (strcasecmp(target, "NRETURN") == 0) {
-                        /* NRETURN: the fn's return variable holds a DT_N (from .expr).
-                         * If it already is a DT_N with a live ptr, pass it straight through.
-                         * SIL: GOTL2→exit5 — return the NAME descriptor as-is. */
-                        /* NRETURN: return the DT_N descriptor as-is.
-                         * Caller (E_FNC) applies NAME_DEREF which handles both
-                         * NAMEPTR (.ptr interior pointer) and NAMEVAL (.s name string). */
+                        /* NRETURN: return DT_N from fn return var as-is;
+                         * caller (E_FNC) applies NAME_DEREF (slen discriminates
+                         * NAMEPTR from NAMEVAL). */
                         retval = NV_GET_fn(fr->fname);
                         goto fn_done;
                     }
@@ -843,7 +843,7 @@ static DESCR_t interp_eval(EXPR_t *e)
             if (body) {
                 /* User-defined function — call interpreter directly, never via APPLY_fn */
                 DESCR_t r = call_user_function(e->sval, args, nargs);
-                if (r.v == DT_N) return NAME_DEREF(r);  /* NRETURN deref — ptr and .s */
+                if (r.v == DT_N) return NAME_DEREF(r);  /* NRETURN: slen discriminates NAMEPTR/NAMEVAL */
                 return r;
             }
         }
@@ -1406,9 +1406,9 @@ static void execute_program(Program *prog)
             DESCR_t rv = s->replacement ? interp_eval(s->replacement) : NULVCL;
             if (!IS_FAIL_fn(rv)) {
                 DESCR_t fres = call_user_function(s->subject->sval, NULL, 0);
-                if (fres.v == DT_N && fres.ptr) {
-                    *(DESCR_t*)fres.ptr = rv; succeeded = 1;
-                } else { succeeded = 0; }
+                /* Use NAME_SET: slen discriminates NAMEPTR (interior ptr) from NAMEVAL (name string) */
+                if (NAME_SET(fres, rv)) { succeeded = 1; }
+                else { succeeded = 0; }
             } else succeeded = 0;
 
         /* ── expression-only (side effects, e.g. bare function call) ─ */
@@ -1452,6 +1452,27 @@ static DESCR_t _eval_pat_impl_fn(DESCR_t pat) {
     DESCR_t subj = STRVAL("");
     int ok = exec_stmt("", &subj, pat, NULL, 0);
     return ok ? NULVCL : FAILDESCR;
+}
+
+/* _usercall_hook: calls user functions via call_user_function;
+ * for pure builtins (FNCEX_fn && no body label) uses APPLY_fn directly
+ * so FAILDESCR propagates correctly (DYN-74: fixes *ident(1,2) in EVAL). */
+static DESCR_t _usercall_hook(const char *name, DESCR_t *args, int nargs) {
+    /* Check for a body label (user-defined function) */
+    const char *_entry = FUNC_ENTRY_fn(name);
+    STMT_t *_body = _entry ? label_lookup(_entry) : NULL;
+    if (!_body) _body = label_lookup(name);
+    if (!_body) {
+        char _uf[128]; size_t _fl = strlen(name);
+        if (_fl >= sizeof(_uf)) _fl = sizeof(_uf) - 1;
+        for (size_t _i = 0; _i <= _fl; _i++)
+            _uf[_i] = (char)toupper((unsigned char)name[_i]);
+        _body = label_lookup(_uf);
+    }
+    /* Pure builtin (no body) AND registered as builtin: use APPLY_fn for correct failure */
+    if (!_body && FNCEX_fn(name)) return APPLY_fn(name, args, nargs);
+    /* User-defined (has body) OR unknown: call_user_function handles both */
+    return call_user_function(name, args, nargs);
 }
 
 int main(int argc, char **argv)
@@ -1517,9 +1538,9 @@ int main(int argc, char **argv)
     stmt_init();
     g_prog = prog;
 
-    /* Wire user-function dispatch hook */
+    /* Wire user-function dispatch hook (wrapper defined above main) */
     extern DESCR_t (*g_user_call_hook)(const char *, DESCR_t *, int);
-    g_user_call_hook = call_user_function;
+    g_user_call_hook = _usercall_hook;
 
     /* Wire DT_P eval hook: EVAL(*func(args)) runs pattern against empty subject */
     {

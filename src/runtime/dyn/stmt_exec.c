@@ -404,8 +404,10 @@ static spec_t bb_usercall(void *zeta, int entry)
                     goto UC_β;
 
     UC_α:  ζ->done = 1;
-           if (g_user_call_hook && ζ->name)
-               g_user_call_hook(ζ->name, ζ->args, ζ->nargs);
+           if (g_user_call_hook && ζ->name) {
+               DESCR_t _uc_r = g_user_call_hook(ζ->name, ζ->args, ζ->nargs);
+               if (IS_FAIL_fn(_uc_r)) goto UC_β;  /* func failed: fail the box (DYN-74) */
+           }
            UC = spec(Σ + Δ, 0);           goto UC_γ;
     UC_β:                                  goto UC_ω;
 

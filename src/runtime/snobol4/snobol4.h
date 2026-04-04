@@ -87,9 +87,9 @@ static inline size_t descr_slen(DESCR_t d) {
  * Read:  if (d.v==DT_N) return *d.ptr;
  * Write: if (d.v==DT_N) *d.ptr = val;
  * Mirrors SIL ARYA10/ASSCR/FIELD: SETVC XPTR,N keeps interior pointer as value. */
-#define NAMEPTR(dp_) ((DESCR_t){ .v = DT_N, .ptr = (void*)(dp_) })
+#define NAMEPTR(dp_) ((DESCR_t){ .v = DT_N, .slen = 1, .ptr = (void*)(dp_) })  /* interior ptr: slen=1 */
 /* Legacy string-name compat — do not use for new code */
-#define NAMEVAL(s_)  ((DESCR_t){ .v = DT_N,    .s = (char *)(s_) })  /* NRETURN lvalue ref */
+#define NAMEVAL(s_)  ((DESCR_t){ .v = DT_N, .slen = 0, .s = (char *)(s_) })  /* name string: slen=0 */
 #define STYPE(v_)    ((v_).v)
 
 static inline int IS_FAIL_fn(DESCR_t v) { return v.v == DT_FAIL; }

@@ -500,9 +500,13 @@ static void *deferred_call_fn(void *userdata) {
         APPLY_fn("Reduce", reduce_args, 2);
         return (void *)1; /* succeed */
     }
-    /* All other calls: fire and succeed (side-effect only) */
-    APPLY_fn(d->name, d->args, d->nargs);
-    return (void *)1;
+    /* All other calls: fire and propagate failure if function fails.
+     * Engine sentinel: NULL or (void*)-1 = fail, anything else = succeed.
+     * engine.c T_FUNC checks r==(void*)(intptr_t)-1 for failure. */
+    {
+        DESCR_t _r = APPLY_fn(d->name, d->args, d->nargs);
+        return IS_FAIL_fn(_r) ? (void *)(intptr_t)-1 : (void *)1;
+    }
 }
 
 static Pattern *make_func(PatternList *pl, const char *name, DESCR_t *args, int nargs) {
