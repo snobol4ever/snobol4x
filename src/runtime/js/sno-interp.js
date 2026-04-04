@@ -95,8 +95,8 @@ function expr_dval(kind, dval)   { const e=expr_new(kind); e.dval=dval; return e
 function expr_unary(kind, child) { const e=expr_new(kind); e.children=[child]; return e; }
 function expr_binary(kind, l, r) { const e=expr_new(kind); e.children=[l,r]; return e; }
 function stmt_new()              { return { label:null, subject:null, pattern:null,
-                                            replacement:null, has_eq:false, go:null,
-                                            is_end:false, lineno:0, next:null }; }
+                                            replacement:null, has_eq:false, guard_assign:false,
+                                            go:null, is_end:false, lineno:0, next:null }; }
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * Token kind constants
@@ -491,8 +491,20 @@ class Parser {
     const uk=MAP[t.kind];
     if(!uk) return this._e15();
     this.lx.next();
-    const op=this._e14(); if(!op){this._err('expected operand after unary operator');return expr_new(E_NUL);}
-    return expr_unary(uk, op);
+    const op=this._e14();
+    if(!op){this._err('expected operand after unary operator');return expr_new(E_NUL);}
+    let e=expr_unary(uk, op);
+    /* For $ and .: if inner parse consumed subscripts (e.g. $.a<2> parsed inner as
+     * E_IDX(E_NAME(a),2) giving E_INDIRECT(E_IDX(NAME(a),2)) = $(a<2>)), hoist them:
+     * E_INDIRECT(E_IDX(base,idx...)) -> E_IDX(E_INDIRECT(base), idx...) so $.a<2>=($a)<2>. */
+    if((uk===E_INDIRECT||uk===E_NAME) && e.children[0]&&e.children[0].kind===E_IDX) {
+      const inner=e.children[0];                    /* E_IDX(base, idxs...) */
+      const hoisted=expr_unary(uk, inner.children[0]); /* E_INDIRECT(base) */
+      const rehoisted=expr_new(E_IDX);
+      rehoisted.children=[hoisted,...inner.children.slice(1)];
+      e=rehoisted;
+    }
+    return e;
   }
 
   /* ── expr13 — ~ binary ──────────────────────────────────────────────── */
@@ -744,19 +756,20 @@ class Parser {
         this.lx.next(); s.has_eq=true; this.skip_ws();
         if(!this._at_end()) {
           const rhs=this._expr();
-          /* S = P R form: if rhs is a multi-child SEQ/CAT and subject exists,
-           * the last child is the replacement and prior children are the pattern.
-           * Only split when the first child is a function call (pattern predicate like eq/ne/gt)
-           * AND the whole RHS is not itself a pure pattern value (e.g. PAT = POS(0) LEN(4) . X).
-           * When the entire rhs is a pattern, it's a value assignment — no split. */
+          /* S = P R form: "subj = guard(args) expr" where guard is a comparison/predicate
+           * function (ne/eq/lt/differ/ident/…) that succeeds/fails and returns its first arg.
+           * The guard is ONLY children[0]; the replacement is children[1..] as a SEQ.
+           * Only split when children[0] is E_FNC and the whole RHS is not a pure pattern.
+           * Works for 2-child (guard + repl) and 3+-child (guard + concat-repl) cases. */
           if(s.subject && rhs && (rhs.kind===E_SEQ||rhs.kind===E_CAT) && rhs.children.length>=2
              && rhs.children[0].kind===E_FNC && !this._is_pat(rhs)) {
             const kids=rhs.children;
-            const patKids=kids.slice(0,-1);
-            const replKid=kids[kids.length-1];
-            if(patKids.length===1){ s.pattern=patKids[0]; }
-            else { const p=expr_new(rhs.kind); p.children=patKids; s.pattern=p; }
+            s.pattern=kids[0];                        /* guard only — never lump more */
+            let replKid;
+            if(kids.length===2){ replKid=kids[1]; }
+            else { const r=expr_new(E_SEQ); r.children=kids.slice(1); replKid=r; }
             s.replacement=replKid;
+            s.guard_assign=true;                      /* assign to subject, don't splice */
             if(!this._is_pat(s.replacement)) this._fixup_val(s.replacement);
           } else {
             s.replacement=rhs;
@@ -1336,19 +1349,40 @@ function _exec_from(start) {
 
     /* Pattern match */
     if(ok&&s.pattern) {
-      const pat=_build_pat(s.pattern);
-      if(_is_fail(pat)){ok=false;}
-      else {
-        const subj_str=subj_name?_str(_vars[subj_name]??''):_str(subj_val);
-        const anchor=!!_vars['&ANCHOR'];
-        const res=anchor?sno_match(subj_str,pat):sno_search(subj_str,pat);
-        if(!res){ok=false;}
-        else if(s.has_eq) {
-          let repl=null;
-          if(s.replacement){repl=interp_eval(s.replacement);if(_is_fail(repl))ok=false;}
-          if(ok) {
-            const ns=subj_str.slice(0,res.start)+_str(repl??'')+subj_str.slice(res.end);
-            if(subj_name) _vars[subj_name]=ns;
+      if(s.guard_assign) {
+        /* S=PR guard-assignment: "subj = guard(args) repl-expr"
+         * Guard is a predicate (ne/differ/eq/…): evaluate it; if fails → stmt fails.
+         * On success: assign replacement to subject (never splice into subject string). */
+        const pat=_build_pat(s.pattern);
+        if(_is_fail(pat)){ok=false;}
+        else {
+          const subj_str=_str(_vars[subj_name]??subj_val??'');
+          const gres=sno_match('',pat)||sno_search(subj_str,pat);
+          if(!gres){ok=false;}
+          else if(s.has_eq) {
+            let repl=s.replacement?(_expr_is_pat(s.replacement)?_build_pat(s.replacement):interp_eval(s.replacement)):null;
+            if(_is_fail(repl)){ok=false;}
+            else {
+              if(subj_name) _vars[subj_name]=repl;
+              else if(s.subject) _assign(s.subject,repl);
+            }
+          }
+        }
+      } else {
+        const pat=_build_pat(s.pattern);
+        if(_is_fail(pat)){ok=false;}
+        else {
+          const subj_str=subj_name?_str(_vars[subj_name]??''):_str(subj_val);
+          const anchor=!!_vars['&ANCHOR'];
+          const res=anchor?sno_match(subj_str,pat):sno_search(subj_str,pat);
+          if(!res){ok=false;}
+          else if(s.has_eq) {
+            let repl=null;
+            if(s.replacement){repl=interp_eval(s.replacement);if(_is_fail(repl))ok=false;}
+            if(ok) {
+              const ns=subj_str.slice(0,res.start)+_str(repl??'')+subj_str.slice(res.end);
+              if(subj_name) _vars[subj_name]=ns;
+            }
           }
         }
       }
