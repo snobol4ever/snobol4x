@@ -101,7 +101,7 @@ expr3      : expr3 T_ALTERNATION expr4                                          
 expr4      : expr4 T_CONCAT expr5                                                                           { if($1->kind==E_SEQ){expr_add_child($1,$3);$$=$1;}else{EXPR_t*s=expr_new(E_SEQ);expr_add_child(s,$1);expr_add_child(s,$3);$$=s;} }
            | expr5                                                                                 { $$=$1; }
            ;
-expr5      : expr5 T_AT_SIGN    expr6                                                             { $$=expr_binary(E_CAPT_CURSOR,     $1,$3); }
+expr5      : expr5 T_AT_SIGN    expr6                                                             { $$=expr_binary(E_OPSYN,           $1,$3); }
            | expr6                                                                                 { $$=$1; }
            ;
 expr6      : expr6 T_ADDITION   expr7                                                             { $$=expr_binary(E_ADD,             $1,$3); }

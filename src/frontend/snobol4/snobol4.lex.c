@@ -1,5 +1,6 @@
+#line 2 "snobol4.lex.c"
 
-#line 3 "lex.yy.c"
+#line 4 "snobol4.lex.c"
 
 #define  YY_INT_ALIGNED short int
 
@@ -723,9 +724,9 @@ static Token mktok(int k, const char *sv, long iv, double dv) {
     return t;
 }
 
-#line 727 "lex.yy.c"
+#line 728 "snobol4.lex.c"
 
-#line 729 "lex.yy.c"
+#line 730 "snobol4.lex.c"
 
 #define INITIAL 0
 #define LABEL 1
@@ -1003,7 +1004,7 @@ YY_DECL
 #line 71 "snobol4.l"
     /* ---- INITIAL: col-1 dispatch ---- */
 
-#line 1007 "lex.yy.c"
+#line 1008 "snobol4.lex.c"
 
 	while ( /*CONSTCOND*/1 )		/* loops until end-of-file is reached */
 		{

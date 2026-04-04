@@ -1461,7 +1461,7 @@ yyreduce:
 
   case 35: /* expr5: expr5 T_AT_SIGN expr6  */
 #line 104 "snobol4.y"
-                                                                                                  { (yyval.expr)=expr_binary(E_CAPT_CURSOR,     (yyvsp[-2].expr),(yyvsp[0].expr)); }
+                                                                                                  { (yyval.expr)=expr_binary(E_OPSYN,           (yyvsp[-2].expr),(yyvsp[0].expr)); }
 #line 1466 "snobol4.tab.c"
     break;
 
