@@ -500,9 +500,12 @@ static void *deferred_call_fn(void *userdata) {
         APPLY_fn("Reduce", reduce_args, 2);
         return (void *)1; /* succeed */
     }
-    /* All other calls: fire and succeed (side-effect only) */
-    APPLY_fn(d->name, d->args, d->nargs);
-    return (void *)1;
+    /* All other calls: fire and propagate failure if function fails.
+     * SNOBOL4 *func() in pattern context: if func returns failure, the
+     * pattern node fails (engine takes failure branch). SIL §7.4.
+     * Mock engine protocol: return (void*)-1 to signal failure. */
+    DESCR_t r = APPLY_fn(d->name, d->args, d->nargs);
+    return IS_FAIL_fn(r) ? (void *)(intptr_t)-1 : (void *)1;
 }
 
 static Pattern *make_func(PatternList *pl, const char *name, DESCR_t *args, int nargs) {

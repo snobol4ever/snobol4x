@@ -465,13 +465,21 @@ static DESCR_t call_user_function(const char *fname, DESCR_t *args, int nargs)
                         goto fn_done;
                     }
                     if (strcasecmp(target, "NRETURN") == 0) {
-                        /* NRETURN: the fn's return variable holds a DT_N (from .expr).
-                         * If it already is a DT_N with a live ptr, pass it straight through.
-                         * SIL: GOTL2→exit5 — return the NAME descriptor as-is. */
-                        /* NRETURN: return the DT_N descriptor as-is.
-                         * Caller (E_FNC) applies NAME_DEREF which handles both
-                         * NAMEPTR (.ptr interior pointer) and NAMEVAL (.s name string). */
-                        retval = NV_GET_fn(fr->fname);
+                        /* NRETURN (Option D, DYN-73): fn's return var holds DT_S name
+                         * (set via e.g. "ref_a = .a" which now stores DT_S("a")).
+                         * Convert to NAMEPTR so caller's NAME_DEREF does *cell correctly
+                         * and lvalue write-through (ref_a() = 26) works via interp_eval_ref.
+                         * If already DT_N NAMEPTR (array/table cell), pass straight through. */
+                        DESCR_t nrv = NV_GET_fn(fr->fname);
+                        if (nrv.v == DT_S && nrv.s && *nrv.s) {
+                            /* DT_S "varname" — wrap as NAMEPTR to live NV cell */
+                            DESCR_t *cell = NV_PTR_fn(nrv.s);
+                            retval = cell ? NAMEPTR(cell) : FAILDESCR;
+                        } else if (nrv.v == DT_N && nrv.ptr) {
+                            retval = nrv;  /* already NAMEPTR (e.g. .stk[i]) */
+                        } else {
+                            retval = FAILDESCR;
+                        }
                         goto fn_done;
                     }
                     STMT_t *dest = label_lookup(target);
@@ -546,17 +554,19 @@ static DESCR_t interp_eval(EXPR_t *e)
     }
 
     case E_NAME: {
-        /* .X — dot operator: return NAME descriptor (DT_N).
-         * For E_VAR/E_FNC/E_KEYWORD children, return NAMEVAL (name-string form,
-         * GC-stable). NAMEPTR (interior pointer) is unsafe: Boehm conservative
-         * scanner may not recognise &e->val as keeping NV_t alive → GC collects
-         * the entry → pointer stale → VARVAL_fn returns "". NAMEVAL avoids this.
-         * NAMEPTR kept only for E_IDX (array/table cells whose parent is live). */
+        /* .X — dot operator: return a name reference.
+         * Option D (DYN-73): for simple E_VAR/E_FNC/E_KEYWORD, return DT_S string
+         * containing the name. This avoids the NAMEVAL/NAMEPTR union confusion:
+         * NAMEVAL sets .s = name but .ptr aliases .s, so NAME_DEREF's ptr-check
+         * fires and dereferences the string as a DESCR_t* (UB/garbage).
+         * DT_S "name" is safe: VARVAL_fn(DT_S) → returns the string → callers
+         * (OPSYN/APPLY) use it correctly. NRETURN write-through uses interp_eval_ref
+         * path directly (not E_NAME value). NAMEPTR kept for E_IDX array/table cells. */
         if (e->nchildren < 1) return FAILDESCR;
         EXPR_t *child = e->children[0];
         if ((child->kind == E_VAR || child->kind == E_FNC || child->kind == E_KEYWORD)
                 && child->sval)
-            return NAMEVAL(child->sval);
+            return STRVAL((char *)child->sval);
         DESCR_t *cell = interp_eval_ref(child);
         if (cell) return NAMEPTR(cell);
         return FAILDESCR;
@@ -1206,6 +1216,49 @@ static DESCR_t interp_eval_pat(EXPR_t *e)
             return interp_eval(e);
         }
         return NULVCL;
+    case E_ALT: {
+        /* alt in pattern context: each branch must be evaluated in pat context */
+        if (e->nchildren == 0) return pat_epsilon();
+        DESCR_t acc = interp_eval_pat(e->children[0]);
+        for (int i = 1; i < e->nchildren; i++)
+            acc = pat_alt(acc, interp_eval_pat(e->children[i]));
+        return acc;
+    }
+    case E_CAPT_IMMED_ASGN: {
+        /* pat $ target in pat context — mirrors interp_eval's E_CAPT_IMMED_ASGN
+         * but evaluates the pattern child in pat context */
+        if (e->nchildren < 2) return NULVCL;
+        DESCR_t pat = interp_eval_pat(e->children[0]);
+        EXPR_t *tgt = e->children[1];
+        if (tgt->kind == E_DEFER && tgt->nchildren == 1
+                && tgt->children[0]->kind == E_FNC && tgt->children[0]->sval) {
+            EXPR_t *fnc = tgt->children[0];
+            int na = fnc->nchildren;
+            DESCR_t *av = na > 0 ? GC_malloc(na * sizeof(DESCR_t)) : NULL;
+            for (int i = 0; i < na; i++) av[i] = interp_eval(fnc->children[i]);
+            DESCR_t name_d = call_user_function(fnc->sval, av, na);
+            if (name_d.v == DT_N && name_d.ptr)
+                return pat_assign_imm(pat, name_d);
+        }
+        const char *nm = tgt->sval;
+        return nm ? pat_assign_imm(pat, STRVAL((char *)nm)) : pat;
+    }
+    case E_CAPT_COND_ASGN: {
+        /* pat . target in pat context */
+        if (e->nchildren < 2) return NULVCL;
+        DESCR_t pat = interp_eval_pat(e->children[0]);
+        EXPR_t *tgt = e->children[1];
+        if (tgt->kind == E_DEFER && tgt->nchildren == 1
+                && tgt->children[0]->kind == E_FNC && tgt->children[0]->sval) {
+            EXPR_t *fnc = tgt->children[0];
+            int na = fnc->nchildren;
+            DESCR_t *av = na > 0 ? GC_malloc(na * sizeof(DESCR_t)) : NULL;
+            for (int i = 0; i < na; i++) av[i] = interp_eval(fnc->children[i]);
+            return pat_assign_callcap(pat, fnc->sval, av, na);
+        }
+        const char *nm = tgt->sval;
+        return nm ? pat_assign_cond(pat, STRVAL((char *)nm)) : pat;
+    }
     case E_DEFER:
         /* *expr in pattern context — two sub-cases:
          *
@@ -1235,6 +1288,12 @@ static DESCR_t interp_eval_pat(EXPR_t *e)
             if (r.v == DT_N && r.ptr) r = *(DESCR_t*)r.ptr;
             return r;
         }
+
+    case E_FNC:
+        /* Function call in pattern context — call it and return result as-is.
+         * E.g. factor/term/expr grammar rules appear as E_FNC children of E_ALT.
+         * The function may return DT_P (a pattern) or DT_S (string literal pattern). */
+        return interp_eval(e);
 
     default:
         return interp_eval(e);
