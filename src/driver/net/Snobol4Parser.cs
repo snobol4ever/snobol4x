@@ -37,6 +37,17 @@ public static class Snobol4Parser
             {
                 var rest = trimmed[8..].Trim().Trim('\'', '"');
                 var inclPath = baseDir != null ? Path.Combine(baseDir, rest) : rest;
+                // Walk up parent dirs if not found at baseDir
+                if (!File.Exists(inclPath) && baseDir != null)
+                {
+                    var dir = new DirectoryInfo(baseDir);
+                    while (dir.Parent != null)
+                    {
+                        dir = dir.Parent;
+                        var candidate = Path.Combine(dir.FullName, rest);
+                        if (File.Exists(candidate)) { inclPath = candidate; break; }
+                    }
+                }
                 if (File.Exists(inclPath))
                 {
                     var inclDir = Path.GetDirectoryName(Path.GetFullPath(inclPath)) ?? baseDir ?? ".";
@@ -105,13 +116,20 @@ public static class Snobol4Parser
             if (line.Length == 0) continue;
             char col1 = line[0];
             if (col1 == '*') continue;
-            if (col1 == '+' || col1 == '-')
+            if (col1 == '+' || (col1 == '-' && !line.TrimStart().StartsWith("-include", StringComparison.OrdinalIgnoreCase)))
             {
                 if (hasCurrent) curBody.Append(line.Length > 1 ? line[1..] : "");
                 continue;
             }
             Flush();
             hasCurrent = true;
+            // -include directive at col 1: treat as no-label body line
+            if (line.TrimStart().StartsWith("-include", StringComparison.OrdinalIgnoreCase))
+            {
+                curLabel = null;
+                curBody.Append(line);
+                continue;
+            }
             if (col1 != ' ' && col1 != '\t')
             {
                 int end = 0;

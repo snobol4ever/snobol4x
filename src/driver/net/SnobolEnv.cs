@@ -578,14 +578,14 @@ public sealed class SnobolEnv
         if (!aNum || !bNum) return DESCR.Fail;
         double av = a.Type == DType.Real ? a.Real : (double)a.ToInt();
         double bv = b.Type == DType.Real ? b.Real : (double)b.ToInt();
-        return pred(av, bv) ? args[0] : DESCR.Fail;
+        return pred(av, bv) ? DESCR.Of("") : DESCR.Fail;
     }
 
-    // Lexical comparison — compare as strings, return first arg on success
+    // Lexical comparison — compare as strings, return null string on success (SNOBOL4 spec)
     private static DESCR LexCmp(DESCR[] args, Func<int,bool> pred)
     {
         if (args.Length < 2) return DESCR.Fail;
         int cmp = string.Compare(args[0].ToString(), args[1].ToString(), StringComparison.Ordinal);
-        return pred(cmp) ? args[0] : DESCR.Fail;
+        return pred(cmp) ? DESCR.Of("") : DESCR.Fail;
     }
 }
