@@ -1188,11 +1188,22 @@ static void execute_program(Program *prog)
                 }
             }
 
+        /* ── NRETURN lvalue assign: fn() = expr  (zero-arg fn call as lvalue) ── */
+        } else if (s->has_eq && s->subject &&
+                   s->subject->kind == E_FNC && s->subject->sval &&
+                   s->subject->nchildren == 0) {
+            DESCR_t rv = s->replacement ? interp_eval(s->replacement) : NULVCL;
+            if (!IS_FAIL_fn(rv)) {
+                DESCR_t fres = call_user_function(s->subject->sval, NULL, 0);
+                if (fres.v == DT_N && fres.s && *fres.s) {
+                    NV_SET_fn(fres.s, rv); succeeded = 1;
+                } else { succeeded = 0; }
+            } else succeeded = 0;
+
         /* ── expression-only (side effects, e.g. bare function call) ─ */
         } else if (s->subject && !s->pattern && !s->has_eq) {
             if (IS_FAIL_fn(subj_val)) succeeded = 0;
         }
-
         /* ── goto resolution ───────────────────────────────────────── */
         const char *target = NULL;
         if (s->go) {
