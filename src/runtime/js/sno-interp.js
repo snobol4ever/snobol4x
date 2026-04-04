@@ -177,7 +177,10 @@ class Lexer {
 
   /* Inject included file text at current position */
   _inject(fname) {
-    const dirs = [path.dirname(path.resolve(this.filename)), '.'];
+    const extra = (process.env.SNO_LIB || '').split(':').filter(Boolean);
+    /* Also add parent of each SNO_LIB dir so relative paths like 'lib/x.sno' resolve */
+    const extraParents = extra.map(d => path.dirname(d));
+    const dirs = [path.dirname(path.resolve(this.filename)), '.', ...extra, ...extraParents];
     for (const d of dirs) {
       const full = path.join(d, fname);
       if (fs.existsSync(full)) {
@@ -808,6 +811,8 @@ function label_lookup(name) { return name?label_table[name.toUpperCase()]||null:
 
 /* Function registry */
 const func_table = Object.create(null);
+/* Operator override table: maps op-char → {fn:string, arity:1|2} */
+const opsyn_table = Object.create(null);
 function define_fn(spec, entry) {
   const m=spec.match(/^(\w+)\(([^)]*)\)(.*)?$/); if(!m) return;
   const fname=m[1].toUpperCase();
@@ -875,14 +880,22 @@ function interp_eval(e) {
     case E_FNC:   { const _r=_call(e.sval, e.children); return (_r&&_r.__nameref)?(_vars[_r.__nameref]??null):_r; }
     case E_IDX: {
       const base=interp_eval(e.children[0]); if(_is_fail(base)) return _FAIL;
-      const idx=interp_eval(e.children[1]);  if(_is_fail(idx))  return _FAIL;
+      const idxs=e.children.slice(1).map(c=>{const v=interp_eval(c);return v;});
+      if(idxs.some(_is_fail)) return _FAIL;
       if(base && base.__sno_array) {
-        const n=_num(idx); const d=base.__dims[0];
-        if(n<d.lo||n>d.hi) return _FAIL;
-        return base[n]??base.__defval;
+        if(idxs.length===1) {
+          const n=_num(idxs[0]); const d=base.__dims[0];
+          if(n<d.lo||n>d.hi) return _FAIL;
+          return base[n]??base.__defval;
+        }
+        /* multi-dim: compute flat key string with bounds check */
+        const nums=idxs.map(v=>_num(v));
+        for(let i=0;i<nums.length;i++){const d=base.__dims[i]||base.__dims[0];if(nums[i]<d.lo||nums[i]>d.hi)return _FAIL;}
+        const key=nums.join(',');
+        return base[key]??base.__defval;
       }
-      if(base instanceof Map) return base.get(_str(idx))??null;
-      if(Array.isArray(base)) return base[_num(idx)-1]??null;
+      if(base instanceof Map) return base.get(_str(idxs[0]))??null;
+      if(Array.isArray(base)) return base[_num(idxs[0])-1]??null;
       return null;
     }
     case E_SCAN: {
@@ -893,9 +906,30 @@ function interp_eval(e) {
     }
     case E_CAPT_COND_ASGN:
     case E_CAPT_IMMED_ASGN: return interp_eval(e.children[0]);
+    case E_CAPT_CURSOR: {
+      /* binary @ → check if OPSYN'd */
+      if(e.children[1]!==undefined && opsyn_table['@'] && opsyn_table['@'].arity===2) {
+        const a=interp_eval(e.children[0]), b=interp_eval(e.children[1]);
+        if(_is_fail(a)||_is_fail(b)) return _FAIL;
+        const fn=opsyn_table['@'].fn;
+        const ea=expr_new(E_NUL); ea._val=a;
+        const eb=expr_new(E_NUL); eb._val=b;
+        return _call(fn,[ea,eb]);
+      }
+      return interp_eval(e.children[0]);  /* @V in expr ctx: eval V */
+    }
     case E_NAME:            return e.children[0]?.sval||null;
     case E_INTERROGATE:     { const v=interp_eval(e.children[0]); return _is_fail(v)?_FAIL:null; }
-    case E_ALT:             return _build_pat(e);  /* pattern stored as value */
+    case E_ALT: {
+      /* unary | → check if OPSYN'd as unary op */
+      if(e.children.length===1 && opsyn_table['|'] && opsyn_table['|'].arity===1) {
+        const a=interp_eval(e.children[0]); if(_is_fail(a)) return _FAIL;
+        const fn=opsyn_table['|'].fn;
+        const ea=expr_new(E_NUL); ea._val=a;
+        return _call(fn,[ea]);
+      }
+      return _build_pat(e);  /* pattern stored as value */
+    }
     default:
       process.stderr.write(`sno-interp: unhandled expr ${e.kind}\n`);
       return _FAIL;
@@ -909,17 +943,33 @@ function _assign(lhs, val) {
   if(lhs.kind===E_KEYWORD) { _vars['&'+lhs.sval.toUpperCase()]=val; return; }
   if(lhs.kind===E_INDIRECT){ const n=_str(interp_eval(lhs.children[0])); _vars[n]=val; return; }
   if(lhs.kind===E_IDX) {
-    const base=interp_eval(lhs.children[0]); const idx=interp_eval(lhs.children[1]);
-    if(base && base.__sno_array) { const n=_num(idx); const d=base.__dims[0]; if(n>=d.lo&&n<=d.hi) base[n]=val; return; }
-    if(base instanceof Map)  { base.set(_str(idx),val); return; }
-    if(Array.isArray(base))  { base[_num(idx)-1]=val; return; }
+    const base=interp_eval(lhs.children[0]);
+    const idxs=lhs.children.slice(1).map(c=>interp_eval(c));
+    if(base && base.__sno_array) {
+      if(idxs.length===1) { const n=_num(idxs[0]); const d=base.__dims[0]; if(n>=d.lo&&n<=d.hi) base[n]=val; return; }
+      const key=idxs.map(v=>_num(v)).join(','); base[key]=val; return;
+    }
+    if(base instanceof Map)  { base.set(_str(idxs[0]),val); return; }
+    if(Array.isArray(base))  { base[_num(idxs[0])-1]=val; return; }
   }
   if(lhs.kind===E_FNC) {
+    const fn=lhs.sval.toUpperCase();
+    /* ITEM(arr, i1, ...) = val */
+    if(fn==='ITEM') {
+      const base=interp_eval(lhs.children[0]);
+      const idxs=lhs.children.slice(1).map(c=>interp_eval(c));
+      if(base && base.__sno_array) {
+        if(idxs.length===1) { const n=_num(idxs[0]); const d=base.__dims[0]; if(n>=d.lo&&n<=d.hi) base[n]=val; return; }
+        const key=idxs.map(v=>_num(v)).join(','); base[key]=val; return;
+      }
+      if(base instanceof Map) { base.set(_str(idxs[0]),val); return; }
+      return;
+    }
     /* First check if this is a user fn returning a nameref (NRETURN) */
     const _r=_call(lhs.sval, lhs.children);
     if(_r && _r.__nameref) { _vars[_r.__nameref]=val; return; }
     /* DATA field setter: field(obj) = val */
-    const fn=lhs.sval.toUpperCase(); const fd=func_table[fn];
+    const fd=func_table[fn];
     if(fd&&fd.__data_field&&lhs.children.length>0) {
       const obj=interp_eval(lhs.children[0]); if(obj&&typeof obj==='object') obj[fd.field]=val;
     }
@@ -1077,15 +1127,27 @@ function _call(fname, arg_exprs) {
                         return tbl;
                       }
                       return _FAIL; }
-    case 'IDENT':   return _str(args[0]??'')===_str(args[1]??'')?args[0]:_FAIL;
-    case 'DIFFER':  return _str(args[0]??'')!==_str(args[1]??'')?args[0]:_FAIL;
-    case 'LT': { const a=_num(args[0]??0),b=_num(args[1]??0); return a< b?args[1]:_FAIL; }
-    case 'LE': { const a=_num(args[0]??0),b=_num(args[1]??0); return a<=b?args[1]:_FAIL; }
-    case 'GT': { const a=_num(args[0]??0),b=_num(args[1]??0); return a> b?args[1]:_FAIL; }
-    case 'GE': { const a=_num(args[0]??0),b=_num(args[1]??0); return a>=b?args[1]:_FAIL; }
-    case 'EQ': { const a=_num(args[0]??0),b=_num(args[1]??0); return a===b?args[1]:_FAIL; }
-    case 'NE': { const a=_num(args[0]??0),b=_num(args[1]??0); return a!==b?args[1]:_FAIL; }
+    case 'IDENT':   { if(_is_fail(args[0])||_is_fail(args[1])) return _FAIL;
+                      return _str(args[0]??'')===_str(args[1]??'')?'':_FAIL; }
+    case 'DIFFER':  { if(_is_fail(args[0])||_is_fail(args[1])) return _FAIL;
+                      return _str(args[0]??'')!==_str(args[1]??'')?'':_FAIL; }
+    case 'LT': { const a=_num(args[0]??0),b=_num(args[1]??0); return a< b?args[0]:_FAIL; }
+    case 'LE': { const a=_num(args[0]??0),b=_num(args[1]??0); return a<=b?args[0]:_FAIL; }
+    case 'GT': { const a=_num(args[0]??0),b=_num(args[1]??0); return a> b?args[0]:_FAIL; }
+    case 'GE': { const a=_num(args[0]??0),b=_num(args[1]??0); return a>=b?args[0]:_FAIL; }
+    case 'EQ': { const a=_num(args[0]??0),b=_num(args[1]??0); return a===b?args[0]:_FAIL; }
+    case 'NE': { const a=_num(args[0]??0),b=_num(args[1]??0); return a!==b?args[0]:_FAIL; }
     case 'DEFINE':  { const spec=_str(args[0]??''),entry=args[1]?_str(args[1]):null; define_fn(spec,entry); return null; }
+    case 'ITEM': {
+      /* ITEM(arr, i1, i2, ...) — programmatic subscript, equivalent to arr<i1,i2,...> */
+      const base=args[0]; const idxs=args.slice(1);
+      if(base && base.__sno_array) {
+        if(idxs.length===1) { const n=_num(idxs[0]); const d=base.__dims[0]; if(n<d.lo||n>d.hi) return _FAIL; return base[n]??base.__defval; }
+        const key=idxs.map(v=>_num(v)).join(','); return base[key]??base.__defval;
+      }
+      if(base instanceof Map) return base.get(_str(idxs[0]))??null;
+      return _FAIL;
+    }
     case 'ARRAY': {
       /* Parse spec: '5' → 1-based [1..5]; '2:8' → [2..8]; '3,4' → 3×4 multi-dim */
       const spec = _str(args[0]??'1');
@@ -1164,11 +1226,19 @@ function _call(fname, arg_exprs) {
     case 'LEQ': return _str(args[0]??'') === _str(args[1]??'') ? args[0] : _FAIL;
     case 'LNE': return _str(args[0]??'') !== _str(args[1]??'') ? args[0] : _FAIL;
     case 'OPSYN': {
-      /* OPSYN(.dest, 'src') — alias dest → src's func_table entry */
-      const dest=(_str(args[0]??'')).toUpperCase();
-      const src =(_str(args[1]??'')).toUpperCase();
-      if(dest && src && func_table[src]) func_table[dest]=func_table[src];
-      return null;  /* OPSYN returns null on success (oracle: snobol4_pattern.c opsyn()) */
+      /* opsyn('sym'|.sym, .func, arity) — bind operator or function to another */
+      const dest=(_str(args[0]??'')); const src=(_str(args[1]??'')).toUpperCase();
+      const arity=args[2]!==undefined?_num(args[2]):2;
+      if(dest && /^\W/.test(dest)) {
+        /* operator override — dest starts with non-word char */
+        opsyn_table[dest]={fn:src, arity};
+      } else {
+        /* function alias */
+        const dk=dest.toUpperCase();
+        if(src && func_table[src]) func_table[dk]=func_table[src];
+        else func_table[dk]={__alias:src};
+      }
+      return null;
     }
     case 'SETEXIT': case 'STOPTR': case 'TRACE': case 'SPITBOL': return null;
     case 'INPUT':   {
@@ -1182,12 +1252,14 @@ function _call(fname, arg_exprs) {
   }
 
   /* User-defined function */
-  const fd=func_table[fn];
+  let fd=func_table[fn];
   if (!fd) {
     process.stderr.write(`sno-interp: undefined function ${fn}\n`);
     return _FAIL;
   }
   /* DATA constructor */
+  /* Follow alias chain (OPSYN function alias) */
+  if (fd.__alias) { fd=func_table[fd.__alias]; if(!fd){process.stderr.write(`sno-interp: undefined function ${fn}\n`);return _FAIL;} }
   if (fd.__data_ctor) {
     const obj = Object.create(null);
     obj.__datatype = fn;  /* already uppercased */
