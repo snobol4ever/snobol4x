@@ -2187,6 +2187,7 @@ static char *resolve_include_path(const char *base_path, const char *incname) {
  * FORWRD calls forrun() on EOS to load continuations transparently.
  */
 static void cmpile_file_internal(FILE *f, const char *base_path, compile_state_t *st) {
+    g_error     = 0;   /* reset per-file: prior parse errors must not poison next call */
     g_io_file   = f;
     g_io_path   = base_path;
     g_io_lineno = 0;

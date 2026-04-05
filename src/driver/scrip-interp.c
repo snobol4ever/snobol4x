@@ -1586,8 +1586,29 @@ static Program *cmpile_lower(CMPILE_t *cl)
         STMT_t *st = GC_malloc(sizeof *st);
         memset(st, 0, sizeof *st);
 
-        st->label       = s->label       ? GC_strdup(s->label)       : NULL;
-        st->subject     = s->subject     ? cmpnd_to_expr(s->subject)     : NULL;
+        /* ── label + subject wiring ─────────────────────────────────────
+         * CMPILE LBLTB always puts the column-1 identifier into s->label
+         * and leaves s->subject NULL.  In SNOBOL4, a column-1 label IS a
+         * valid variable name: "OUTPUT = 'x'" has label="OUTPUT", subj=NULL,
+         * and the assignment target is the variable OUTPUT.
+         * STMT_t needs BOTH: label kept for goto resolution AND a synthesised
+         * E_VAR subject so the execution loop can find subj_name.
+         * Rule: if s->subject is NULL and s->label is set and there is a body
+         * (replacement, pattern, or has_eq), synthesise subject from label.
+         * Bare label lines (no body) and END: subject stays NULL. */
+        st->label = s->label ? GC_strdup(s->label) : NULL;
+        if (s->subject) {
+            st->subject = cmpnd_to_expr(s->subject);
+        } else if (s->label && !s->is_end
+                   && (s->replacement || s->pattern || s->has_eq)) {
+            EXPR_t *sv = GC_malloc(sizeof *sv);
+            memset(sv, 0, sizeof *sv);
+            sv->kind = E_VAR;
+            sv->sval = GC_strdup(s->label);
+            st->subject = sv;
+        } else {
+            st->subject = NULL;
+        }
         st->pattern     = s->pattern     ? cmpnd_to_expr(s->pattern)     : NULL;
         st->replacement = s->replacement ? cmpnd_to_expr(s->replacement) : NULL;
         st->has_eq      = s->has_eq;

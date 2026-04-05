@@ -1429,8 +1429,35 @@ EXPR_t *cmpnd_to_expr(CMPND_t *n) {
         /* References */
         case VARTYP: e->kind = E_VAR;     e->sval = n->text ? strdup(n->text) : NULL; break;
         case FNCTYP: e->kind = E_FNC;     e->sval = n->text ? strdup(n->text) : NULL; break;
-        case ARYTYP: e->kind = E_IDX;     e->sval = n->text ? strdup(n->text) : NULL; break;
-        case KEYFN:  e->kind = E_KEYWORD; e->sval = n->text ? strdup(n->text) : NULL; break;
+        case ARYTYP:
+            /* CMPILE ARYTYP: text = array/table name, children = subscript exprs.
+             * E_IDX expects children[0]=base, children[1..]=subscripts.
+             * Prepend a synthetic E_VAR node for the base name. */
+            e->kind = E_IDX;
+            e->sval = n->text ? strdup(n->text) : NULL;
+            {
+                int nc = n->nchildren;
+                e->children = calloc((size_t)(nc + 1), sizeof(EXPR_t *));
+                e->nchildren = nc + 1;
+                EXPR_t *base_var = calloc(1, sizeof *base_var);
+                base_var->kind = E_VAR;
+                base_var->sval = n->text ? strdup(n->text) : NULL;
+                e->children[0] = base_var;
+                for (int i = 0; i < nc; i++)
+                    e->children[i + 1] = cmpnd_to_expr(n->children[i]);
+            }
+            return e;
+        case KEYFN:
+            /* CMPILE emits KEYFN node as: stype=KEYFN, text="UOP_KEY",
+             * child[0] = VARTYP node with the keyword name (e.g. "STNO").
+             * E_KEYWORD needs the keyword name, not the operator label. */
+            e->kind = E_KEYWORD;
+            if (n->nchildren > 0 && n->children[0] && n->children[0]->text)
+                e->sval = strdup(n->children[0]->text);
+            else
+                e->sval = n->text ? strdup(n->text) : NULL;
+            /* child already consumed — don't re-recurse it below */
+            return e;
         /* Concatenation */
         case CATFN:  e->kind = E_CAT;     break;
         /* Binary arithmetic */
