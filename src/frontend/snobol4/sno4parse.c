@@ -1442,12 +1442,15 @@ static NODE *ELEMNT(void) {
             atom = node_new(SELTYP, "SELECT", -1);
             node_add(atom, first);
             while (BRTYPE == CMATYP && !g_error) {
-                /* TEXTSP is positioned AT ',' (FRWDTB ACT_STOP does not consume it).
-                 * Manually skip the comma, then FORWRD to next token. */
-                if (TEXTSP.len > 0 && *TEXTSP.ptr == ',') {
-                    TEXTSP.ptr++; TEXTSP.len--;
-                }
-                FORWRD();  /* position at next expression */
+                /* TEXTSP points to the space-before-comma (BINOP restored saved_text
+                 * which was before the blank IBLKTB consumed).
+                 * FRWDTB ACT_STOP DOES consume the stopping char (cp++; len--).
+                 * First FORWRD: skips space, stops ON ',' and consumes it.
+                 *   TEXTSP is now at the space before the next alternative.
+                 * Second FORWRD: skips that space, STOPSH at the token.
+                 * Mirrors CSNOBOL4: BINOP1 restores; two FORWRDs bridge the gap. */
+                FORWRD();  /* consume the comma; TEXTSP at " <next-expr>" */
+                FORWRD();  /* skip space; TEXTSP at <next-expr> token */
                 node_add(atom, EXPR());
             }
         } else {
