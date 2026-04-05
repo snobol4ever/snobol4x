@@ -35,3 +35,4 @@ test-results/invariants_*.csv
 out/rt_cache/bins/
 out/rt_cache/libsnocone_rt.so
 out/rt_cache/snocone_rt_combined.o
+scrip-interp
