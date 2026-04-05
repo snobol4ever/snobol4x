@@ -1408,6 +1408,12 @@ static NODE *ELEMNT(void) {
                 }
                 NODE *sub = EXPR();
                 node_add(atom, sub);
+                /* P2D: A[J=J+1] — CSNOBOL4 ELEARG loop re-enters EXPR after EQTYP.
+                 * IBLKTB consumed '='; TEXTSP is at ' J+1>...'.
+                 * SIL UNOP calls FORWRD before UNOPTB (v311.sil:2507), so ELEMNT always
+                 * receives a non-space TEXTSP. Mirror that: FORWRD() here skips the space,
+                 * then continue → EXPR() → ELEMNT sees 'J' directly. */
+                if (BRTYPE == EQTYP) { FORWRD(); FORWRD(); continue; }
                 FORWRD();  /* get delimiter: CMATYP or RBTYP */
                 if (BRTYPE == RBTYP) break;
                 if (BRTYPE == CMATYP) {
@@ -1536,6 +1542,8 @@ static NODE *expr_prec_continue(NODE *left, int min_prec) {
                 }
                 NODE *sub = EXPR();
                 node_add(idx, sub);
+                /* P2D: IBLKTB consumed '='; FORWRD skips space so ELEMNT sees 'J' not space. */
+                if (BRTYPE == EQTYP) { FORWRD(); FORWRD(); continue; }
                 FORWRD();  /* get delimiter: CMATYP or RBTYP */
                 if (BRTYPE == RBTYP) break;
                 if (BRTYPE == CMATYP) {
@@ -1697,6 +1705,8 @@ static STMT *CMPILE(void) {
                 }
                 NODE *sub = EXPR();
                 node_add(idx, sub);
+                /* P2D: IBLKTB consumed '='; FORWRD skips space so ELEMNT sees 'J' not space. */
+                if (BRTYPE == EQTYP) { FORWRD(); FORWRD(); continue; }
                 FORWRD();
                 if (BRTYPE == RBTYP) break;
                 if (BRTYPE == CMATYP) { FORWRD(); continue; }
