@@ -69,7 +69,13 @@ typedef enum { ST_STOP, ST_EOS, ST_ERROR } stream_ret_t;
 
 typedef struct { const char *ptr; int len; } spec_t; /* SIL SPEC: (pointer, length) pair */
 
+static int g_trace_stream = 0;  /* set to 1 to emit STREAM trace */
+
 static stream_ret_t stream(spec_t *sp1, spec_t *sp2, syntab_t *tp) {
+    const char *tab_name  = tp->name;
+    const char *input_ptr = sp2->ptr;
+    int         input_len = sp2->len;
+
     unsigned char *cp = (unsigned char *)sp2->ptr;
     int len = sp2->len;
     stream_ret_t ret;
@@ -98,6 +104,15 @@ done:
     /* sp2 = remainder */
     if (ret != ST_EOS) sp2->ptr += sp1->len;
     sp2->len = len;
+    if (g_trace_stream) {
+        char ibuf[32]; int ilen = input_len < 20 ? input_len : 20;
+        memcpy(ibuf, input_ptr, ilen); ibuf[ilen] = 0;
+        /* replace non-printable with '.' */
+        for (int i=0;i<ilen;i++) if ((unsigned char)ibuf[i]<32||ibuf[i]==127) ibuf[i]='.';
+        const char *retname = ret==ST_STOP?"STOP":ret==ST_EOS?"EOS":"ERROR";
+        fprintf(stderr, "STREAM %-10s [%-20s] -> ret=%-5s stype=%d\n",
+                tab_name, ibuf, retname, put);
+    }
     return ret;
 }
 
@@ -899,6 +914,7 @@ static void sil_error(const char *fmt, ...) {
 static void FORWRD(void) {
     stream_ret_t r = stream(&XSP, &TEXTSP, &FRWDTB); /* scan to next delimiter */
     if (r == ST_ERROR) { sil_error("FORWRD: scan error"); return; }
+    if (r == ST_EOS)   { BRTYPE = EOSTYP; return; }
     BRTYPE = STYPE;  /* STYPE = EQTYP/CLNTYP/EOSTYP/NBTYP/RPTYP etc. */
 }
 
@@ -909,7 +925,7 @@ static void FORWRD(void) {
  * that condition is the BINOP1 / no-blank path in BINOP(). */
 static void FORBLK(void) {
     stream_ret_t r = stream(&XSP, &TEXTSP, &IBLKTB); /* skip blank, classify delimiter */
-    if (r == ST_ERROR) { sil_error("FORBLK: scan error"); return; }
+    if (r == ST_ERROR || r == ST_EOS) { BRTYPE = EOSTYP; return; }
     BRTYPE = STYPE;  /* FORJRN: "MOVD BRTYPE,STYPE" (v311.sil:2217) */
 }
 
@@ -1448,6 +1464,8 @@ static STMT *CMPILE(void) {
 CMPFRM:  /* SUBJECT = REPLACEMENT */
     s->has_eq = 1;
     FORBLK();
+    if (BRTYPE == EOSTYP) return s;   /* null replacement: X = */
+    if (BRTYPE == CLNTYP) goto CMPGO;
     s->replacement = EXPR();
     if (g_error) return s;
     FORBLK();
@@ -1457,6 +1475,8 @@ CMPFRM:  /* SUBJECT = REPLACEMENT */
 CMPASP:  /* SUBJECT PATTERN = REPLACEMENT (= consumed; FORBLK skips space) */
     s->has_eq = 1;
     FORBLK();
+    if (BRTYPE == EOSTYP) return s;   /* null replacement: X PAT = */
+    if (BRTYPE == CLNTYP) goto CMPGO;
     s->replacement = EXPR();
     if (g_error) return s;
     FORBLK();
@@ -1574,56 +1594,91 @@ static void print_stmt(STMT *s, int idx) {
 
 int main(int argc, char **argv) {
     init_tables();
+    g_trace_stream = (getenv("SNO_TRACE") != NULL);
 
     FILE *f = argc > 1 ? fopen(argv[1], "r") : stdin;
     if (!f) { perror(argv[1]); return 1; }
 
-    char line[4096];
+    char  rawline[4096];
+    static char linebuf[65536];
+    int  linebuf_len = 0;
     int  lineno = 0;
+    int  stmt_lineno = 0;
     int  stmt_idx = 0;
     STMT *head = NULL, *tail = NULL;
 
-    while (fgets(line, sizeof line, f)) {
+    while (fgets(rawline, sizeof rawline, f)) {
         lineno++;
-        /* strip \r\n */
-        int len = strlen(line);
-        while (len > 0 && (line[len-1]=='\n'||line[len-1]=='\r')) line[--len]='\0';
+        int len = strlen(rawline);
+        while (len > 0 && (rawline[len-1]=='\n'||rawline[len-1]=='\r')) rawline[--len]='\0';
         if (len == 0) continue;
 
         /* CARDTB: determine card type */
-        spec_t card = { line, len };
+        spec_t card = { rawline, len };
         spec_t tok;
         stream(&tok, &card, &CARDTB);
         int ctype = STYPE;
 
-        if (ctype == CMTTYP || ctype == CTLTYP) continue; /* skip */
+        if (ctype == CMTTYP || ctype == CTLTYP) continue;
+
         if (ctype == CNTTYP) {
-            /* continuation: append to TEXTSP of current statement */
-            /* For now, treat as separate (TODO: join with previous) */
+            /* Continuation: skip leading whitespace and the '+', append rest */
+            const char *p = rawline;
+            while (*p == ' ' || *p == '\t') p++;
+            if (*p == '+') p++;
+            int contlen = len - (int)(p - rawline);
+            if (linebuf_len + contlen < (int)sizeof(linebuf) - 1) {
+                memcpy(linebuf + linebuf_len, p, contlen);
+                linebuf_len += contlen;
+            }
             continue;
         }
 
-        /* NEWTYP: new statement */
-        g_error = 0;
-        TEXTSP.ptr = line;
-        TEXTSP.len = len;
-        STYPE  = 0;
-        BRTYPE = 0;
+        /* NEWTYP: flush any pending accumulated logical line */
+        if (linebuf_len > 0) {
+            g_error = 0;
+            TEXTSP.ptr = linebuf; TEXTSP.len = linebuf_len;
+            STYPE = 0; BRTYPE = 0;
+            STMT *s = CMPILE();
+            linebuf_len = 0;
+            if (s) {
+                s->next = NULL;
+                if (!head) head = s; else tail->next = s;
+                tail = s;
+                if (g_error)
+                    fprintf(stderr, "line %d: %s\n  src: %.*s\n",
+                            stmt_lineno, g_errmsg, (int)strlen(linebuf), linebuf);
+                print_stmt(s, ++stmt_idx);
+                if (s->is_end) goto done;
+            }
+        }
 
-        STMT *s = CMPILE();
-        if (!s) continue;
-
-        s->next = NULL;
-        if (!head) head = s;
-        else        tail->next = s;
-        tail = s;
-
-        if (g_error)
-            fprintf(stderr, "line %d: %s\n  src: %s\n", lineno, g_errmsg, line);
-
-        print_stmt(s, ++stmt_idx);
-        if (s->is_end) break;
+        /* Start accumulating new logical line */
+        stmt_lineno = lineno;
+        if (len < (int)sizeof(linebuf) - 1) {
+            memcpy(linebuf, rawline, len);
+            linebuf_len = len;
+        }
     }
+
+    /* Flush final logical line */
+    if (linebuf_len > 0) {
+        g_error = 0;
+        TEXTSP.ptr = linebuf; TEXTSP.len = linebuf_len;
+        STYPE = 0; BRTYPE = 0;
+        STMT *s = CMPILE();
+        linebuf_len = 0;
+        if (s) {
+            s->next = NULL;
+            if (!head) head = s; else tail->next = s;
+            tail = s;
+            if (g_error)
+                fprintf(stderr, "line %d: %s\n  src: %.*s\n",
+                        stmt_lineno, g_errmsg, (int)strlen(linebuf), linebuf);
+            print_stmt(s, ++stmt_idx);
+        }
+    }
+done:
 
     if (f != stdin) fclose(f);
     printf("=== %d statements ===\n", stmt_idx);
