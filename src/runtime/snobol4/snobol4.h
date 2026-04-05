@@ -116,6 +116,8 @@ DESCR_t ARGVAL_fn(DESCR_t d);       /* SIL ARGVAL — evaluate one argument    *
 DESCR_t VARVAL_d_fn(DESCR_t d);     /* SIL VARVAL — coerce to STRING         */
 DESCR_t INTVAL_fn(DESCR_t d);       /* SIL INTVAL — coerce to INTEGER        */
 DESCR_t PATVAL_fn(DESCR_t d);       /* SIL PATVAL — coerce to PATTERN        */
+DESCR_t VARVUP_fn(DESCR_t d);       /* SIL VARVUP — coerce to uppercase STR  */
+extern int64_t kw_case;             /* &CASE keyword (0=fold, non-0=sensitive)*/
 
 /* Convert any value to integer (0 on failure) */
 int64_t to_int(DESCR_t v);

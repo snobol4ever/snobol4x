@@ -122,6 +122,7 @@ int64_t kw_maxlngth = 524288;
 int64_t kw_anchor   = 0;
 int64_t kw_trim     = 1;
 int64_t kw_stlimit  = -1;
+int64_t kw_case     = 0;   /* &CASE: 0=fold to upper (default), non-0=sensitive */
 
 char ucase[27]    = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 char lcase[27]    = "abcdefghijklmnopqrstuvwxyz";
