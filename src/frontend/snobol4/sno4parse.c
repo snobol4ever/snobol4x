@@ -1558,6 +1558,7 @@ static NODE *expr_prec_continue(NODE *left, int min_prec) {
         if (prec < min_prec) { TEXTSP = saved; break; }
 
         int next_min = op_right_assoc(op) ? prec : prec + 1;
+        FORWRD();  /* skip whitespace after operator before RHS — mirrors CSNOBOL4 IBLKTB call */
         NODE *right = expr_prec(next_min);
 
         NODE *binop = node_new(op, fn_name(op), -1);
@@ -1744,7 +1745,7 @@ CMPGO: {
 
     if (gotype == SGOTYP || gotype == STOTYP) {
         /* Success: :S(label) or :S<label> */
-        if (gotype == STOTYP) FORWRD();  /* skip whitespace after '<' */
+        FORWRD();  /* skip whitespace after '(' or '<' to reach label expr */
         NODE *lbl = EXPR();
         s->go_s = lbl ? strdup(lbl->text ? lbl->text : "") : NULL;
         FORWRD();   /* consume closing ) or > → TEXTSP now at F, :F, or EOS */
@@ -1769,7 +1770,7 @@ CMPGO: {
 
     if (gotype == FGOTYP || gotype == FTOTYP) {
         /* Failure: :F(label) or :F<label> */
-        if (gotype == FTOTYP) FORWRD();  /* skip whitespace after '<' */
+        FORWRD();  /* skip whitespace after '(' or '<' to reach label expr */
         NODE *lbl = EXPR();
         s->go_f = lbl ? strdup(lbl->text ? lbl->text : "") : NULL;
         FORWRD();   /* consume closing ) or > */
