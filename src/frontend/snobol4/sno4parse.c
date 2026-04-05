@@ -136,6 +136,7 @@ done:
 #define FNCTYP  5   /* function call: IDENT(                    (equ.h) */
 #define FLITYP  6   /* floating-point literal: digits.digits    (equ.h) */
 #define ARYTYP  7   /* array/table subscript: IDENT<            (equ.h) */
+#define SELTYP  50  /* P2B: alternative evaluation (e1,e2,en)   (SPITBOL ext) */
 
 /* FRWDTB / FORBLK result codes — inter-field delimiter type */
 #define NBTYP   1   /* non-blank: a real token starts here      (equ.h) — "non-blank" */
@@ -1188,6 +1189,7 @@ static const char *stype_name(int st) {
         "ARYTYP=7/RBTYP=7",                      /* 7: array-ref | ) or > closing bracket */
     };
     if (st >= 0 && st <= 7) return names[st];
+    if (st == SELTYP) return "SELECT";
     { static char buf[20]; snprintf(buf,20,"ST(%d)",st); return buf; }
 }
 
@@ -1430,9 +1432,27 @@ static NODE *ELEMNT(void) {
     case NSTTYP: {  /* ELENST: parenthesized expression — SIL v311.sil:2003 */
         /* '(' was ACT_STOP consumed by ELEMTB. TEXTSP points at inner content.
          * Skip any leading whitespace before the expression (e.g. "( SPAN(...) )").
-         * EXPR() parses inside; FORWRD() then positions past ')' for caller. */
+         * P2B: if comma follows first expr, build SELECT node for alt-eval.
+         *   (e1, e2, ..., en) — evaluate left to right until one succeeds.
+         * SPITBOL manual §AppC p275: "selection or alternative construction". */
         FORWRD();  /* skip space/tab after '(' to position at first token */
-        atom = EXPR();
+        NODE *first = EXPR();
+        if (BRTYPE == CMATYP && !g_error) {
+            /* Alternative evaluation — collect all alternatives */
+            atom = node_new(SELTYP, "SELECT", -1);
+            node_add(atom, first);
+            while (BRTYPE == CMATYP && !g_error) {
+                /* TEXTSP is positioned AT ',' (FRWDTB ACT_STOP does not consume it).
+                 * Manually skip the comma, then FORWRD to next token. */
+                if (TEXTSP.len > 0 && *TEXTSP.ptr == ',') {
+                    TEXTSP.ptr++; TEXTSP.len--;
+                }
+                FORWRD();  /* position at next expression */
+                node_add(atom, EXPR());
+            }
+        } else {
+            atom = first;
+        }
         FORWRD();
         BRTYPE = RPTYP;
         break;
