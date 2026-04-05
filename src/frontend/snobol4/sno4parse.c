@@ -596,6 +596,10 @@ static acts_t NBLKTB_actions[] = {
     {0, ACT_ERROR, NULL},
     {0, ACT_STOPSH, NULL},
 };
+
+
+
+
 syntab_t NBLKTB = { "NBLKTB", {
      2,  2,  2,  2,  2,  2,  2,  2,  2,  1,  2,  2,  2,  2,  2,  2,
      2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,
@@ -1149,6 +1153,11 @@ static NODE *ELEMNT(void) {
         else              { node_add(unary_tail, unode); unary_tail = unode; }
     }
 
+    /* After unary prefix operators, skip any whitespace before the operand.
+     * UNOPTB→NBLKTB leaves TEXTSP pointing AT the space (ACT_STOPSH).
+     * FORWRD skips transparent chars and stops short before the token. */
+    if (unary_chain) FORWRD();
+
     /* --- STREAM XSP,TEXTSP,ELEMTB — classify element --- */
     stream_ret_t r = stream(&XSP, &TEXTSP, &ELEMTB);
     if (r == ST_ERROR) {
@@ -1219,23 +1228,51 @@ static NODE *ELEMNT(void) {
         atom = node_new(final, p, len);
 
         if (final == FNCTYP) {   /* ELEFNC: function call */
-            /* SIL ELEMN2: RCALL EXELND,EXPR; FORWRD to get delimiter */
+            /* SIL ELEMN2: RCALL EXELND,EXPR; FORWRD to get delimiter.
+             * After FNCTYP STOPSH, TEXTSP points at first char after '('.
+             * CS trace: FRWDTB[firstarg] ELEMTB FRWDTB[,] FRWDTB[nextarg] ELEMTB ...
+             * First FORWRD positions past '(' (or space) to first arg token.
+             * After comma (CMATYP), a second FORWRD skips space to next arg. */
+            FORWRD();  /* position past '(' to first arg (or to ')' for zero-arg) */
+            /* After opening '(', TEXTSP may have a leading space — skip it. */
+            while (BRTYPE == NBTYP) { /* NBTYP=1: stopped short before non-blank */; break; }
             while (!g_error) {
+                if (BRTYPE == RPTYP) break;  /* ')': end of arg list (zero-arg or after last) */
+                if (BRTYPE == CMATYP) {
+                    /* empty arg: F(,x) or F(x,,y) — push NULL, advance past comma */
+                    node_add(atom, node_new(0, "NULL", -1));
+                    FORWRD();  /* skip space to next arg or next comma */
+                    continue;
+                }
                 NODE *arg = EXPR();
                 node_add(atom, arg);
-                FORWRD();  /* FORWRD via FRWDTB sets BRTYPE to actual delimiter */
+                FORWRD();  /* get delimiter after arg: CMATYP or RPTYP */
                 if (BRTYPE == RPTYP) break;
-                if (BRTYPE == CMATYP) continue;
+                if (BRTYPE == CMATYP) {
+                    FORWRD();  /* skip space after comma to position at next arg */
+                    continue;
+                }
                 sil_error("ELEMNT: expected ) or , in arg list, got BRTYPE=%d", BRTYPE);
                 break;
             }
         } else if (final == ARYTYP) {  /* ELEARY: array subscript */
+            /* Mirror ELEFNC: FORWRD past '<', handle space-after-comma */
+            FORWRD();  /* position past '<' to first subscript */
             while (!g_error) {
+                if (BRTYPE == RBTYP) break;  /* empty subscript: A<> */
+                if (BRTYPE == CMATYP) {
+                    node_add(atom, node_new(0, "NULL", -1));  /* empty slot */
+                    FORWRD();
+                    continue;
+                }
                 NODE *sub = EXPR();
                 node_add(atom, sub);
-                FORWRD();
+                FORWRD();  /* get delimiter: CMATYP or RBTYP */
                 if (BRTYPE == RBTYP) break;
-                if (BRTYPE == CMATYP) continue;
+                if (BRTYPE == CMATYP) {
+                    FORWRD();  /* skip space after comma */
+                    continue;
+                }
                 sil_error("ELEMNT: expected > or , in subscript, got BRTYPE=%d", BRTYPE);
                 break;
             }
@@ -1245,8 +1282,9 @@ static NODE *ELEMNT(void) {
 
     case NSTTYP: {  /* ELENST: parenthesized expression — SIL v311.sil:2003 */
         /* '(' was ACT_STOP consumed by ELEMTB. TEXTSP points at inner content.
-         * EXPR() parses inside; ')' hit via FRWDTB (ACT_STOP) consumed automatically.
-         * Call FORWRD() to advance past residual and set BRTYPE=RPTYP for caller. */
+         * Skip any leading whitespace before the expression (e.g. "( SPAN(...) )").
+         * EXPR() parses inside; FORWRD() then positions past ')' for caller. */
+        FORWRD();  /* skip space/tab after '(' to position at first token */
         atom = EXPR();
         FORWRD();
         BRTYPE = RPTYP;
@@ -1428,6 +1466,11 @@ static STMT *CMPILE(void) {
     /* If first char after blank was a colon → goto field only */
     if (BRTYPE == CLNTYP) goto CMPGO;
 
+    /* If '=' immediately (no subject, no leading blank): null-subject assignment.
+     * Handles unindented "VAR = value" where LBLTB consumed VAR as label and
+     * FORBLK found '=' directly. Route to CMPFRM with no subject. */
+    if (BRTYPE == EQTYP) goto CMPFRM;
+
     /* If non-blank (NBTYP) → subject field */
     /* CMPSUB: RCALL SUBJND,ELEMNT */
     if (BRTYPE != EOSTYP) {
@@ -1463,8 +1506,8 @@ static STMT *CMPILE(void) {
 
 CMPFRM:  /* SUBJECT = REPLACEMENT */
     s->has_eq = 1;
-    FORBLK();
-    if (BRTYPE == EOSTYP) return s;   /* null replacement: X = */
+    FORWRD();  /* '=' already consumed; position to replacement value (no mandatory blank) */
+    if (BRTYPE == EOSTYP || BRTYPE == 0) return s;   /* null replacement: X = */
     if (BRTYPE == CLNTYP) goto CMPGO;
     s->replacement = EXPR();
     if (g_error) return s;
@@ -1472,10 +1515,10 @@ CMPFRM:  /* SUBJECT = REPLACEMENT */
     if (BRTYPE == CLNTYP) goto CMPGO;
     return s;
 
-CMPASP:  /* SUBJECT PATTERN = REPLACEMENT (= consumed; FORBLK skips space) */
+CMPASP:  /* SUBJECT PATTERN = REPLACEMENT (= consumed; position to replacement) */
     s->has_eq = 1;
-    FORBLK();
-    if (BRTYPE == EOSTYP) return s;   /* null replacement: X PAT = */
+    FORWRD();  /* '=' consumed; use FORWRD not FORBLK — no mandatory blank required */
+    if (BRTYPE == EOSTYP || BRTYPE == 0) return s;   /* null replacement: X PAT = */
     if (BRTYPE == CLNTYP) goto CMPGO;
     s->replacement = EXPR();
     if (g_error) return s;
