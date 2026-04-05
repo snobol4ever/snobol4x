@@ -126,36 +126,36 @@ static void test_231(void) {
 
     /* integer */
     n = lex_str_tokens("42", toks, 16);
-    EXPECT_EQ_INT("int kind", toks[0].kind, T_INT);
+    EXPECT_EQ_INT("int kind", toks[0].kind, ILITYP);
     EXPECT_EQ_INT("int val",  (int)toks[0].ival, 42);
 
-    /* negative integer (unary minus handled by parser; lexer gives T_INT) */
+    /* negative integer (unary minus handled by parser; lexer gives ILITYP) */
     n = lex_str_tokens("0", toks, 16);
-    EXPECT_EQ_INT("zero kind", toks[0].kind, T_INT);
+    EXPECT_EQ_INT("zero kind", toks[0].kind, ILITYP);
     EXPECT_EQ_INT("zero val",  (int)toks[0].ival, 0);
 
     /* real — decimal */
     n = lex_str_tokens("3.14", toks, 16);
-    EXPECT_EQ_INT("real kind", toks[0].kind, T_REAL);
+    EXPECT_EQ_INT("real kind", toks[0].kind, FLITYP);
     EXPECT_EQ_DOUBLE("real val", toks[0].dval, 3.14);
 
     /* leading dot: .5 is NOT a real in SNOBOL4 — ELEMTB has no dot entry.
      * SPITBOL rejects .5 as syntax error (missing operand).
      * . is the naming operator; .5 = unary-dot applied to integer 5.
-     * Lexer correctly emits T_DOT then T_INT(5). */
+     * Lexer correctly emits T_DOT then ILITYP(5). */
     n = lex_str_tokens(".5", toks, 16);
     EXPECT_EQ_INT("leading-dot is T_DOT", toks[0].kind, T_DOT);
-    EXPECT_EQ_INT("leading-dot next is T_INT", toks[1].kind, T_INT);
-    EXPECT_EQ_INT("leading-dot T_INT val",  (int)toks[1].ival, 5);
+    EXPECT_EQ_INT("leading-dot next is ILITYP", toks[1].kind, ILITYP);
+    EXPECT_EQ_INT("leading-dot ILITYP val",  (int)toks[1].ival, 5);
 
     /* real — exponent */
     n = lex_str_tokens("1E3", toks, 16);
-    EXPECT_EQ_INT("exp kind",  toks[0].kind, T_REAL);
+    EXPECT_EQ_INT("exp kind",  toks[0].kind, FLITYP);
     EXPECT_EQ_DOUBLE("exp val", toks[0].dval, 1000.0);
 
     /* real — negative exponent */
     n = lex_str_tokens("2.5E-1", toks, 16);
-    EXPECT_EQ_INT("negexp kind", toks[0].kind, T_REAL);
+    EXPECT_EQ_INT("negexp kind", toks[0].kind, FLITYP);
     EXPECT_EQ_DOUBLE("negexp val", toks[0].dval, 0.25);
 
     (void)n;
@@ -169,24 +169,24 @@ static void test_232(void) {
 
     /* single-quote string */
     n = lex_str_tokens("'hello'", toks, 16);
-    EXPECT_EQ_INT("sq kind",  toks[0].kind, T_STR);
+    EXPECT_EQ_INT("sq kind",  toks[0].kind, QLITYP);
     EXPECT_EQ_STR("sq val",   toks[0].sval, "hello");
 
     /* double-quote string */
     n = lex_str_tokens("\"world\"", toks, 16);
-    EXPECT_EQ_INT("dq kind",  toks[0].kind, T_STR);
+    EXPECT_EQ_INT("dq kind",  toks[0].kind, QLITYP);
     EXPECT_EQ_STR("dq val",   toks[0].sval, "world");
 
     /* empty string */
     n = lex_str_tokens("''", toks, 16);
-    EXPECT_EQ_INT("empty kind", toks[0].kind, T_STR);
+    EXPECT_EQ_INT("empty kind", toks[0].kind, QLITYP);
     EXPECT_EQ_STR("empty val",  toks[0].sval, "");
 
     /* 'it''s' is TWO tokens: 'it' then identifier s then 'empty'
      * Doubled-quote escape is NOT valid SNOBOL4 (SQLITB: FOR(SQUOTE) STOP).
      * SPITBOL rejects it as a syntax error. First token is just 'it'. */
     n = lex_str_tokens("'it''s'", toks, 16);
-    EXPECT_EQ_INT("no-escape kind", toks[0].kind, T_STR);
+    EXPECT_EQ_INT("no-escape kind", toks[0].kind, QLITYP);
     EXPECT_EQ_STR("no-escape val",  toks[0].sval, "it");
 
     (void)n;
@@ -240,7 +240,7 @@ static void test_233(void) {
     Token toks[32];
     int n = lex_str_tokens(", ( ) [ ] < >", toks, 32);
     TokKind want[] = {
-        T_COMMA, T_LPAREN, T_RPAREN,
+        CMATYP, T_LPAREN, T_RPAREN,
         T_LBRACKET, T_RBRACKET,
         T_LANGLE, T_RANGLE
     };
@@ -275,7 +275,7 @@ static void test_ident(void) {
     Token toks[8];
 
     int n = lex_str_tokens("OUTPUT", toks, 8);
-    EXPECT_EQ_INT("ident kind", toks[0].kind, T_IDENT);
+    EXPECT_EQ_INT("ident kind", toks[0].kind, VARTYP);
     EXPECT_EQ_STR("ident sval", toks[0].sval, "OUTPUT");
 
     /* END keyword in body → T_END */
