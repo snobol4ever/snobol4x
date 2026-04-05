@@ -190,11 +190,42 @@ DESCR_t pat_epsilon(void) {
     return spat_val(spat_new(XEPS));
 }
 
+/* Forward declaration — eval_node is defined in eval_code.c (separate TU) */
+extern DESCR_t eval_node(EXPR_t *e);
+
 /* pat_to_patnd: coerce a DESCR_t to a PATND_t*, handling string literals.
- * Returns NULL if the value cannot be represented as a pattern. */
+ * Returns NULL if the value cannot be represented as a pattern.
+ *
+ * DT_E split:
+ *   E_FNC child  → *func()  side-effect pattern: build XATP via pat_user_call.
+ *                  The function fires at MATCH_fn time (T_FUNC node), NOT now.
+ *   anything else → PATVAL_fn: thaw the expression to a pattern value.
+ */
 static PATND_t *pat_to_patnd(DESCR_t v) {
     if (v.v == DT_E) {
-        /* EXPRESSION: thaw via PATVAL_fn which calls EVAL_fn → eval_node */
+        EXPR_t *frozen = (EXPR_t *)v.ptr;
+        if (frozen && frozen->kind == E_FNC) {
+            /* *func(args...) — side-effect call deferred to match time via XATP */
+            int nargs = frozen->nchildren;
+            DESCR_t *args = NULL;
+            if (nargs > 0) {
+                args = (DESCR_t *)alloca((size_t)nargs * sizeof(DESCR_t));
+                for (int i = 0; i < nargs; i++)
+                    args[i] = eval_node(frozen->children[i]);
+            }
+            const char *fname = frozen->sval ? frozen->sval : "";
+            DESCR_t pv = pat_user_call(fname, args, nargs);
+            return spat_of(pv);
+        }
+        if (frozen && frozen->kind == E_VAR && frozen->sval) {
+            /* *varname — deferred variable reference, resolved at match time via XVAR.
+             * This is the recursive grammar case: factor = ... *factor ...
+             * The variable may not exist yet at construction time. */
+            DESCR_t name_d = STRVAL(frozen->sval);
+            DESCR_t pv = var_as_pattern(name_d);
+            return spat_of(pv);
+        }
+        /* Other frozen expression: thaw via PATVAL_fn → pattern value */
         v = PATVAL_fn(v);
         if (v.v == DT_FAIL) return NULL;
     }
@@ -926,6 +957,11 @@ static void apply_captures(MatchCtx *ctx) {
 static Pattern *var_resolve_callback(const char *name, void *userdata) {
     MatchCtx *ctx = (MatchCtx *)userdata;
     DESCR_t v = NV_GET_fn(name);
+    /* DT_E: variable holds a frozen EXPRESSION — thaw to pattern value.
+     * This is the *factor / *term / *expr deferred-variable case in
+     * recursive-descent parsers built from patterns (SIL EXPVAL path). */
+    if (v.v == DT_E)
+        v = PATVAL_fn(v);
     if (v.v != DT_P) {
         /* not a pattern — return epsilon */
         Pattern *ep = pattern_alloc(&ctx->pl);
@@ -1504,9 +1540,6 @@ EXPR_t *cmpnd_to_expr(CMPND_t *n) {
     }
     return e;
 }
-
-/* eval_node lives in eval_code.c (separate TU) */
-extern DESCR_t eval_node(EXPR_t *e);
 
 /* eval_via_cmpile — parse expression string via CMPILE, lower to EXPR_t,
  * evaluate via eval_node().  Used by EVAL() for string-valued arguments.

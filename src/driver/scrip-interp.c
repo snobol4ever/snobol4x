@@ -659,16 +659,31 @@ static DESCR_t interp_eval(EXPR_t *e)
          * DYN-68: mixed-mode: if the accumulated value is DT_P (pattern),
          * switch to pat_cat so that pattern-building expressions like
          * "icase = icase (upr(c) | lwr(c))" work correctly in value context.
-         * SNOBOL4 rule: concatenation of pattern with anything yields pattern. */
+         * SNOBOL4 rule: concatenation of pattern with anything yields pattern.
+         * RT-112: once we detect a pattern operand, re-evaluate ALL remaining
+         * children via interp_eval_pat so *var/*func become XDSAR/XATP nodes
+         * rather than frozen DT_E (which pat_cat cannot handle). */
         DESCR_t acc = interp_eval(e->children[0]);
         if (IS_FAIL_fn(acc)) return FAILDESCR;
+        int in_pat_mode = IS_PAT(acc);
         for (int i = 1; i < e->nchildren; i++) {
-            DESCR_t nxt = interp_eval(e->children[i]);
+            DESCR_t nxt;
+            if (in_pat_mode) {
+                nxt = interp_eval_pat(e->children[i]);
+            } else {
+                nxt = interp_eval(e->children[i]);
+            }
             if (IS_FAIL_fn(nxt)) return FAILDESCR;
-            if (IS_PAT(acc) || IS_PAT(nxt))
-                acc = pat_cat(acc, nxt);   /* pattern concat if either side is DT_P */
-            else
-                acc = CONCAT_fn(acc, nxt); /* string concat otherwise */
+            if (in_pat_mode || IS_PAT(nxt)) {
+                if (!in_pat_mode) {
+                    /* First pattern seen mid-concat: re-eval this child in pat ctx */
+                    nxt = interp_eval_pat(e->children[i]);
+                    in_pat_mode = 1;
+                }
+                acc = pat_cat(acc, nxt);
+            } else {
+                acc = CONCAT_fn(acc, nxt);
+            }
             if (IS_FAIL_fn(acc)) return FAILDESCR;
         }
         return acc;
