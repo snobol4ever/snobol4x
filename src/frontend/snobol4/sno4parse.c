@@ -839,7 +839,7 @@ syntab_t GOTOTB = { "GOTOTB", {
 /* Wire up forward-declared goto targets in action tables.
  * These cannot be static initialisers because C does not allow forward references
  * to syntab_t objects in struct literals.  Called once from main() before parsing. */
-static void init_tables(void) {
+void init_tables(void) {
     ELEMTB_actions[0].go  = &INTGTB;
     ELEMTB_actions[1].go  = &VARTB;
     ELEMTB_actions[2].go  = &SQLITB;
@@ -1213,7 +1213,7 @@ static const char *stype_name(int st) {
  * ELEARY  = array subscript handler
  * ========================================================================= */
 
-static NODE *EXPR(void);  /* forward */
+NODE *EXPR(void);  /* forward */
 static NODE *EXPR1(void); /* forward */
 static NODE *expr_prec_continue(NODE *left, int min_prec); /* forward */
 
@@ -1494,7 +1494,7 @@ static NODE *ELEMNT(void) {
 
 static NODE *expr_prec(int min_prec);
 
-static NODE *EXPR(void) {
+NODE *EXPR(void) {
     if (g_error) return NULL;
     /* EXPR: RCALL EXELND,ELEMNT,,(RTN1,EXPNUL) */
     spec_t saved = TEXTSP;
@@ -2255,7 +2255,7 @@ static void compile_file(FILE *f, const char *base_path, compile_state_t *st) {
 }
 
 
-int main(int argc, char **argv) {
+int sno4parse_main(int argc, char **argv) {
     init_tables();
     g_trace_stream = (getenv("SNO_TRACE") != NULL);
 

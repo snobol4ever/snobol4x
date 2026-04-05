@@ -19,6 +19,8 @@
 #include <ctype.h>
 #include "snobol4.h"
 #include "../engine.h"
+#include "../../frontend/snobol4/scrip_cc.h"
+#include "../../frontend/snobol4/sno4parse.c"
 
 /* =========================================================================
  * PATND_t — lazy pattern node
@@ -1394,6 +1396,66 @@ static DESCR_t _ev_expr(SnoEvalCtx *e) {
     return left;
 }
 
+/* node_to_expr — convert sno4parse NODE* to EXPR_t* for eval_node().
+ * Shape is identical; only names differ. */
+
+static EXPR_t *node_to_expr(NODE *n) {
+    if (!n || n->stype == 0) return NULL;
+    EXPR_t *e = calloc(1, sizeof *e);
+    switch (n->stype) {
+        case QLITYP: e->kind = E_QLIT;    e->sval = n->text ? strdup(n->text) : NULL; break;
+        case ILITYP: e->kind = E_ILIT;    e->ival = (long)n->ival; break;
+        case FLITYP: e->kind = E_FLIT;    e->dval = n->fval; break;
+        case VARTYP: e->kind = E_VAR;     e->sval = n->text ? strdup(n->text) : NULL; break;
+        case FNCTYP: e->kind = E_FNC;     e->sval = n->text ? strdup(n->text) : NULL; break;
+        case ARYTYP: e->kind = E_IDX;     e->sval = n->text ? strdup(n->text) : NULL; break;
+        case CATFN:  e->kind = E_SEQ;     break;
+        case ADDFN:  e->kind = E_ADD;     break;
+        case SUBFN:  e->kind = E_SUB;     break;
+        case MPYFN:  e->kind = E_MUL;     break;
+        case DIVFN:  e->kind = E_DIV;     break;
+        case EXPFN:  e->kind = E_POW;     break;
+        case ORFN:   e->kind = E_ALT;     break;
+        case NAMFN:  e->kind = E_CAPT_COND_ASGN;  break;
+        case DOLFN:  e->kind = E_CAPT_IMMED_ASGN; break;
+        case MNSFN:  e->kind = E_MNS;     break;
+        case DOTFN:  e->kind = E_NAME;    break;
+        case INDFN:  e->kind = E_INDIRECT; break;
+        case STRFN:  e->kind = E_DEFER;   break;
+        case KEYFN:  e->kind = E_KEYWORD; e->sval = n->text ? strdup(n->text) : NULL; break;
+        case PLSFN:  e->kind = E_ADD;     break; /* unary + → pass through */
+        default:     e->kind = E_VAR;     e->sval = n->text ? strdup(n->text) : NULL; break;
+    }
+    if (n->nchildren > 0) {
+        e->children = calloc(n->nchildren, sizeof(EXPR_t*));
+        e->nchildren = n->nchildren;
+        for (int i = 0; i < n->nchildren; i++)
+            e->children[i] = node_to_expr(n->children[i]);
+    }
+    return e;
+}
+
+static DESCR_t eval_via_sno4parse(const char *s) {
+    extern DESCR_t eval_node(void *e);
+    init_tables();
+    /* Set up TEXTSP and call EXPR() — mirrors SIL CONVEX path exactly */
+    extern spec_t TEXTSP;
+    extern spec_t XSP;
+    extern int BRTYPE, STYPE, g_error;
+    extern void FORWRD(void);
+    g_error = 0;
+    TEXTSP.ptr = s; TEXTSP.len = (int)strlen(s);
+    XSP.ptr = s; XSP.len = 0;
+    BRTYPE = 0; STYPE = 0;
+    FORWRD();
+    if (g_error) return FAILDESCR;
+    NODE *n = EXPR();
+    if (!n || g_error) return FAILDESCR;
+    EXPR_t *e = node_to_expr(n);
+    if (!e) return FAILDESCR;
+    return eval_node(e);
+}
+
 DESCR_t EVAL_fn(DESCR_t expr) {
     /* DT_E: frozen EXPR_t* — thaw by calling eval_node directly */
     if (expr.v == DT_E) {
@@ -1422,9 +1484,8 @@ DESCR_t EVAL_fn(DESCR_t expr) {
         inner[sl - 2] = '\0';
         return STRVAL(inner);
     }
-    /* Try full dynamic evaluator first (arithmetic, variables, builtins) */
-    extern DESCR_t eval_expr(const char *src);
-    DESCR_t full = eval_expr(s);
+    /* Use sno4parse EXPR() — direct SIL CONVEX path, handles "x + 4" correctly */
+    DESCR_t full = eval_via_sno4parse(s);
     if (!IS_FAIL_fn(full)) return full;
     /* Fallback: old _ev_expr for pattern-context strings */
     SnoEvalCtx ctx = { s, 0 };
