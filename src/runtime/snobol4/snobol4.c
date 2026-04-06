@@ -374,6 +374,8 @@ static DESCR_t _APPLY_(DESCR_t *a, int n) {
     return APPLY_fn(fname, a + 1, n - 1);
 }
 static DESCR_t _ARG_(DESCR_t *a, int n);    /* defined after FNCBLK_t */
+static DESCR_t _DEFINE_(DESCR_t *a, int n); /* defined after FNCBLK_t */
+static DESCR_t _FIELD_(DESCR_t *a, int n);  /* defined after FNCBLK_t */
 static DESCR_t _LOCAL_(DESCR_t *a, int n);  /* defined after FNCBLK_t */
 static DESCR_t _LPAD_(DESCR_t *a, int n) {
     if (n < 2) return n > 0 ? a[0] : NULVCL;
@@ -1198,6 +1200,8 @@ void SNO_INIT_fn(void) {
     register_fn("COPY",    _COPY_,    1, 1);
     register_fn("EVAL",  _EVAL_,  1, 1);
     register_fn("CODE",  _CODE_,  1, 1);
+    register_fn("DEFINE", _DEFINE_, 1, 2);   /* DEFINE(proto[,label]) -- runtime function definition */
+    register_fn("FIELD",  _FIELD_,  2, 2);   /* FIELD(fname,n) -- nth field name of DATA type */
     register_fn("OPSYN", _OPSYN_, 2, 3);
     register_fn("ARG",   _ARG_,   2, 2);
     register_fn("LOCAL", _LOCAL_, 2, 2);
@@ -2564,6 +2568,54 @@ static DESCR_t _LOCAL_(DESCR_t *a, int n) {
             size_t len = strlen(lname);
             char *up = GC_malloc(len + 1);
             for (size_t i = 0; i <= len; i++) up[i] = (char)toupper((unsigned char)lname[i]);
+            return STRVAL(up);
+        }
+    }
+    return FAILDESCR;
+}
+
+/* _DEFINE_(proto, label) -- SNOBOL4 callable DEFINE(P,E)
+ * SIL DEFINE proc (v311.sil:4244):
+ *   arg1: prototype string e.g. "fact(n)local1"
+ *   arg2: entry label string (optional; defaults to function name)
+ * Parses proto, registers user-defined function so APPLY_fn dispatches
+ * via g_user_call_hook at the named label.  Returns null on success,
+ * FAIL if proto is missing or malformed (zero-length name). */
+static DESCR_t _DEFINE_(DESCR_t *a, int n) {
+    if (n < 1) return FAILDESCR;
+    const char *proto = VARVAL_fn(a[0]);
+    if (!proto || !*proto) return FAILDESCR;
+    const char *entry = (n >= 2) ? VARVAL_fn(a[1]) : NULL;
+    /* entry="" means use function name as label (SIL default) */
+    if (entry && !*entry) entry = NULL;
+    /* Register with fn=NULL so APPLY_fn routes to g_user_call_hook */
+    if (entry)
+        DEFINE_fn_entry(proto, NULL, entry);
+    else
+        DEFINE_fn(proto, NULL);
+    return NULVCL;
+}
+
+/* _FIELD_(fname, n) -- SNOBOL4 callable FIELD(F,N)
+ * SIL FIELDS proc (v311.sil:6353):  returns the name of the Nth field
+ * of a DATA()-defined datatype whose constructor is fname.
+ * Fields are the parameter names from the DATA() prototype.
+ * Fails if fname unknown, not a DATA type, or n out of range. */
+static DESCR_t _FIELD_(DESCR_t *a, int n) {
+    if (n < 2) return FAILDESCR;
+    const char *fname = VARVAL_fn(a[0]);
+    if (!fname) return FAILDESCR;
+    int64_t idx = to_int(a[1]);
+    _func_init();
+    unsigned h = _func_hash(fname);
+    for (FNCBLK_t *e = _func_buckets[h]; e; e = e->next) {
+        if (strcasecmp(e->name, fname) == 0) {
+            /* Fields = params of the DATA prototype */
+            if (idx < 1 || idx > (int64_t)e->nparams) return FAILDESCR;
+            const char *fname2 = e->params[idx - 1];
+            size_t len = strlen(fname2);
+            char *up = GC_malloc(len + 1);
+            for (size_t i = 0; i <= len; i++) up[i] = (char)toupper((unsigned char)fname2[i]);
             return STRVAL(up);
         }
     }

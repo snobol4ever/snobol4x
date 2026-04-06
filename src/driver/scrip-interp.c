@@ -1311,9 +1311,8 @@ static DESCR_t interp_eval_pat(EXPR_t *e)
                 if (!IS_FAIL_fn(_fr)) return _fr;
             }
             DESCR_t _v = interp_eval(e);
-            /* If variable holds DT_E (EXPRESSION), thaw it via PATVAL_fn
-             * which calls EVAL_fn → eval_node → pattern or value result. */
-            if (_v.v == DT_E) return PATVAL_fn(_v);
+            /* PATVAL coerce: DT_I/DT_R → literal; DT_E → thaw; DT_P/DT_S → pass. */
+            if (_v.v == DT_E || _v.v == DT_I || _v.v == DT_R) return PATVAL_fn(_v);
             return _v;
         }
         return NULVCL;
