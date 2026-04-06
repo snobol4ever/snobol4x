@@ -304,42 +304,44 @@ static DESCR_t _NAME_(DESCR_t *a, int n) {
     return STRVAL(GC_strdup(s ? s : ""));
 }
 
-/* Lexical string comparators — return first arg on success, FAILDESCR on failure */
+/* Lexical string comparators — SIL RETNUL (null) on success, FAILDESCR on failure.
+ * SIL: RCALL XPTR,VARVAL then LEXCMP -> RETNUL on success (like IDENT/DIFFER).
+ * Returns null string, NOT the first argument. VDIFFER is the sole exception. */
 static DESCR_t _LGT_(DESCR_t *a, int n) {
     if (n < 2) return FAILDESCR;
     const char *x = VARVAL_fn(a[0]); const char *y = VARVAL_fn(a[1]);
     if (!x) x = ""; if (!y) y = "";
-    return strcmp(x, y) > 0 ? a[0] : FAILDESCR;
+    return strcmp(x, y) > 0 ? NULVCL : FAILDESCR;
 }
 static DESCR_t _LLT_(DESCR_t *a, int n) {
     if (n < 2) return FAILDESCR;
     const char *x = VARVAL_fn(a[0]); const char *y = VARVAL_fn(a[1]);
     if (!x) x = ""; if (!y) y = "";
-    return strcmp(x, y) < 0 ? a[0] : FAILDESCR;
+    return strcmp(x, y) < 0 ? NULVCL : FAILDESCR;
 }
 static DESCR_t _LGE_(DESCR_t *a, int n) {
     if (n < 2) return FAILDESCR;
     const char *x = VARVAL_fn(a[0]); const char *y = VARVAL_fn(a[1]);
     if (!x) x = ""; if (!y) y = "";
-    return strcmp(x, y) >= 0 ? a[0] : FAILDESCR;
+    return strcmp(x, y) >= 0 ? NULVCL : FAILDESCR;
 }
 static DESCR_t _LLE_(DESCR_t *a, int n) {
     if (n < 2) return FAILDESCR;
     const char *x = VARVAL_fn(a[0]); const char *y = VARVAL_fn(a[1]);
     if (!x) x = ""; if (!y) y = "";
-    return strcmp(x, y) <= 0 ? a[0] : FAILDESCR;
+    return strcmp(x, y) <= 0 ? NULVCL : FAILDESCR;
 }
 static DESCR_t _LEQ_(DESCR_t *a, int n) {
     if (n < 2) return FAILDESCR;
     const char *x = VARVAL_fn(a[0]); const char *y = VARVAL_fn(a[1]);
     if (!x) x = ""; if (!y) y = "";
-    return strcmp(x, y) == 0 ? a[0] : FAILDESCR;
+    return strcmp(x, y) == 0 ? NULVCL : FAILDESCR;
 }
 static DESCR_t _LNE_(DESCR_t *a, int n) {
     if (n < 2) return FAILDESCR;
     const char *x = VARVAL_fn(a[0]); const char *y = VARVAL_fn(a[1]);
     if (!x) x = ""; if (!y) y = "";
-    return strcmp(x, y) != 0 ? a[0] : FAILDESCR;
+    return strcmp(x, y) != 0 ? NULVCL : FAILDESCR;
 }
 static DESCR_t _HOST_(DESCR_t *a, int n) {
     /* HOST(0) = command args string, HOST(1) = PID, HOST(3) = argc */
@@ -2725,7 +2727,8 @@ DESCR_t SIZE_fn(DESCR_t s) {
 DESCR_t DUPL_fn(DESCR_t s, DESCR_t n) {
     const char *STRVAL_fn = VARVAL_fn(s);
     int64_t times   = to_int(n);
-    if (times <= 0 || !STRVAL_fn || !*STRVAL_fn) return STRVAL(GC_strdup(""));
+    if (times < 0) return FAILDESCR;        /* SIL: negative N -> FAIL */
+    if (times == 0 || !STRVAL_fn || !*STRVAL_fn) return STRVAL(GC_strdup(""));
     size_t slen = strlen(STRVAL_fn);
     char *r = GC_malloc(slen * (size_t)times + 1);
     r[0] = '\0';
@@ -2773,7 +2776,7 @@ DESCR_t SUBSTR_fn(DESCR_t s, DESCR_t i, DESCR_t n) {
     /* P3C: work in code points, convert to byte offsets */
     size_t blen     = strlen(STRVAL_fn);
     size_t ncpts    = utf8_strlen(STRVAL_fn);
-    if (start < 1) start = 1;
+    if (start < 1) return FAILDESCR; /* SIL ACOMPC YPTR,1,,,FAIL: pos must be >=1 */
     if ((size_t)start > ncpts + 1) return STRVAL(GC_strdup(""));
     if (len_ < 0) len_ = 0;
     if ((size_t)(start - 1 + len_) > ncpts) len_ = (int64_t)(ncpts - (size_t)start + 1);
@@ -2836,6 +2839,8 @@ DESCR_t REVERS_fn(DESCR_t s) {
 
 DESCR_t BCHAR_fn(DESCR_t n) {
     int64_t code = to_int(n);
+    /* SIL: negative -> LENERR, >= 256 -> INTR30 (fatal); we return FAILDESCR */
+    if (code < 0 || code >= 256) return FAILDESCR;
     char *buf = GC_malloc_atomic(2);
     buf[0] = (char)(code & 0xFF);
     buf[1] = '\0';
