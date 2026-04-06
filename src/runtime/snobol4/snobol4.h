@@ -249,6 +249,7 @@ DESCR_t  NV_GET_fn(const char *name);
 void    NV_SET_fn(const char *name, DESCR_t val);
 void    NV_REG_fn(const char *name, DESCR_t *ptr);
 void    NV_SYNC_fn(void);
+void    NV_CLEAR_fn(void);      /* reset all non-keyword NV vars to null */
 DESCR_t  INDR_GET_fn(const char *name);  /* $name */
 void    INDR_SET_fn(const char *name, DESCR_t val);
 
@@ -527,6 +528,9 @@ DESCR_t opsyn(DESCR_t newname, DESCR_t oldname, DESCR_t type);
 /* 2-arg convenience — type defaults to NULVCL */
 static inline DESCR_t opsyn2(DESCR_t a, DESCR_t b) { return opsyn(a, b, NULVCL); }
 DESCR_t sort_fn(DESCR_t arr);
+DESCR_t rsort_fn(DESCR_t arr);
+void    sno_set_label_exists_hook(int (*fn)(const char *));
+const char *setexit_label_get(void);
 
 /* TABLE_VAL macro */
 #define TABLE_VAL(tbl_) ((DESCR_t){ .v = DT_T, .tbl = (tbl_) })

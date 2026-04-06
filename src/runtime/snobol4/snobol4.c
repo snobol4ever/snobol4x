@@ -669,6 +669,79 @@ static DESCR_t _b_field_next(DESCR_t *a, int n) {
     return FIELD_GET_fn(a[0], "next");
 }
 
+
+/* ── DATE() — returns current date as "MM/DD/YYYY HH:MM:SS" (SIL DATFN) ── */
+#include <time.h>
+static DESCR_t _DATE_(DESCR_t *a, int n) {
+    (void)a; (void)n;
+    time_t t = time(NULL);
+    struct tm *tm = localtime(&t);
+    char buf[32];
+    strftime(buf, sizeof buf, "%m/%d/%Y %H:%M:%S", tm);
+    return STRVAL(GC_strdup(buf));
+}
+
+/* ── TIME() — returns elapsed CPU milliseconds as integer (SIL TIMFN) ── */
+static DESCR_t _TIME_(DESCR_t *a, int n) {
+    (void)a; (void)n;
+    int64_t ms = (int64_t)clock() * 1000 / CLOCKS_PER_SEC;
+    return INTVAL(ms);
+}
+
+/* ── RSORT(T[,C]) — like SORT but reversed; reuse sort_fn + reverse ── */
+extern DESCR_t rsort_fn(DESCR_t t);  /* defined in snobol4_pattern.c */
+static DESCR_t _RSORT_(DESCR_t *a, int n) { return rsort_fn(n>0?a[0]:NULVCL); }
+
+/* ── CLEAR() — reset all non-keyword NV variables to null (SIL CLEAFN) ── */
+static DESCR_t _CLEAR_(DESCR_t *a, int n) {
+    (void)a; (void)n;
+    NV_CLEAR_fn();
+    return NULVCL;
+}
+
+/* ── SETEXIT(label) — register error-exit label (SIL SETXFN) ── */
+static char _setexit_label[256];
+static DESCR_t _SETEXIT_(DESCR_t *a, int n) {
+    if (n < 1 || a[0].v == DT_FAIL) {
+        _setexit_label[0] = '\0';
+        return NULVCL;
+    }
+    const char *lbl = VARVAL_fn(a[0]);
+    if (lbl) strncpy(_setexit_label, lbl, sizeof(_setexit_label)-1);
+    return NULVCL;
+}
+const char *setexit_label_get(void) {
+    return _setexit_label[0] ? _setexit_label : NULL;
+}
+
+/* ── FUNCTION(name) — predicate: succeeds iff name is a defined function ── */
+static DESCR_t _FUNCTION_(DESCR_t *a, int n) {
+    if (n < 1) return FAILDESCR;
+    const char *name = VARVAL_fn(a[0]);
+    if (!name || !*name) return FAILDESCR;
+    return FNCEX_fn(name) ? STRVAL(GC_strdup(name)) : FAILDESCR;
+}
+
+/* ── LABEL(name) — predicate: succeeds iff name is a defined label ──
+ * We expose a hook; scrip-interp wires label_lookup into it.            */
+static int (*_label_exists_hook)(const char *) = NULL;
+void sno_set_label_exists_hook(int (*fn)(const char *)) { _label_exists_hook = fn; }
+static DESCR_t _LABEL_(DESCR_t *a, int n) {
+    if (n < 1) return FAILDESCR;
+    const char *name = VARVAL_fn(a[0]);
+    if (!name || !*name) return FAILDESCR;
+    if (_label_exists_hook && _label_exists_hook(name))
+        return STRVAL(GC_strdup(name));
+    return FAILDESCR;
+}
+
+/* ── COLLECT([n]) — force GC, return approximate free bytes (SIL COLEFN) ── */
+static DESCR_t _COLLECT_(DESCR_t *a, int n) {
+    (void)a; (void)n;
+    GC_gcollect();
+    return INTVAL((int64_t)GC_get_free_bytes());
+}
+
 /* DUMP builtin — dump all variables to stderr (implementation after var table) */
 static void var_dump(void);
 static DESCR_t _DUMP_(DESCR_t *a, int n) {
@@ -1143,6 +1216,14 @@ void SNO_INIT_fn(void) {
     register_fn("DUMP",     _DUMP_,        0, 1);
     register_fn("TRACE",    _TRACE_,       1, 4);
     register_fn("STOPTR",   _STOPTR_,      1, 2);
+    register_fn("DATE",     _DATE_,        0, 0);
+    register_fn("TIME",     _TIME_,        0, 0);
+    register_fn("RSORT",    _RSORT_,       1, 1);
+    register_fn("CLEAR",    _CLEAR_,       0, 0);
+    register_fn("SETEXIT",  _SETEXIT_,     0, 1);
+    register_fn("FUNCTION", _FUNCTION_,    1, 1);
+    register_fn("LABEL",    _LABEL_,       1, 1);
+    register_fn("COLLECT",  _COLLECT_,     0, 1);
     /* Pattern builtins callable via APPLY_fn (when inside arglist parens) */
     register_fn("SPAN",    _PAT_SPAN_,    1, 1);
     register_fn("BREAK",   _PAT_BREAK_,   1, 1);
@@ -1988,6 +2069,18 @@ const char *NV_name_from_ptr(const DESCR_t *ptr) {
 /* Sync all registered C statics FROM the hash table.
  * Call this after all NV_REG_fn() calls (in main) so that
  * vars pre-initialized by SNO_INIT_fn() propagate to their statics. */
+
+/* NV_CLEAR_fn — CLEAR(): reset all ordinary (non-keyword) variables to null.
+ * Walks the NV hash table; keywords (&STLIMIT etc.) are stored separately
+ * and are intentionally left untouched. */
+void NV_CLEAR_fn(void) {
+    _var_init();
+    for (int _i = 0; _i < VAR_BUCKETS; _i++) {
+        for (NV_t *_e = _var_buckets[_i]; _e; _e = _e->next)
+            _e->val = NULVCL;
+    }
+}
+
 void NV_SYNC_fn(void) {
     for (int _ri = 0; _ri < _var_reg_n; _ri++) {
         DESCR_t v = NV_GET_fn(_var_reg[_ri].name);

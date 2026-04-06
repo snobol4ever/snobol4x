@@ -1703,3 +1703,20 @@ DESCR_t compile_to_expression(const char *src) {
     d.s    = NULL;
     return d;
 }
+
+/* rsort_fn — RSORT(table) -> 2D array[1..n,1..2] in reverse key order */
+DESCR_t rsort_fn(DESCR_t arr) {
+    DESCR_t sorted = sort_fn(arr);
+    if (sorted.v != DT_A || !sorted.arr) return sorted;
+    ARBLK_t *a = sorted.arr;
+    int n = a->hi - a->lo + 1;
+    /* Reverse the row order in-place (2 cols per row) */
+    for (int lo = 0, hi = n - 1; lo < hi; lo++, hi--) {
+        DESCR_t tmp0 = a->data[lo*2+0], tmp1 = a->data[lo*2+1];
+        a->data[lo*2+0] = a->data[hi*2+0];
+        a->data[lo*2+1] = a->data[hi*2+1];
+        a->data[hi*2+0] = tmp0;
+        a->data[hi*2+1] = tmp1;
+    }
+    return sorted;
+}

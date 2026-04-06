@@ -289,7 +289,14 @@ static DESCR_t call_user_function(const char *fname, DESCR_t *args, int nargs)
     NV_SET_fn(retname, NULVCL);                            /* clear return slot */
     for (int i = 0; i < np; i++) {
         snames[1+i] = pnames[i];
-        svals[1+i]  = NV_GET_fn(pnames[i]);
+        /* If this param name aliases retname (e.g. DEFINE('f(f)')), the NV cell
+         * is shared.  Record the pre-call global (already in svals[0]), then
+         * write the arg.  The body writes retname= to set return value — same
+         * NV cell as the param, which is correct SIL behaviour. */
+        if (strcasecmp(pnames[i], retname) == 0)
+            svals[1+i] = svals[0];          /* dedup: same original global */
+        else
+            svals[1+i] = NV_GET_fn(pnames[i]);
         NV_SET_fn(pnames[i], (i < nargs) ? args[i] : NULVCL);
     }
     for (int i = 0; i < nl; i++) {
@@ -887,15 +894,25 @@ static DESCR_t interp_eval(EXPR_t *e)
     case E_FNC: {
         if (!e->sval || !*e->sval) return FAILDESCR;
 
-        /* DEFINE('spec') — register user function; returns NULVCL (succeeds) */
+        /* DEFINE('spec'[,'entry']) — register user function.
+         * SIL DEFIFN returns the function name string on success (DIFFER-able).
+         * Extract name = everything before '(' or ',' in spec. */
         if (strcasecmp(e->sval, "DEFINE") == 0) {
             const char *spec = define_spec_from_expr(e);
             if (spec && *spec) {
                 const char *entry = define_entry_from_expr(e);
                 if (entry) DEFINE_fn_entry(spec, NULL, entry);
                 else       DEFINE_fn(spec, NULL);
+                /* Return function name: chars before '(' or ',' */
+                char namebuf[256];
+                size_t ni = 0;
+                for (; ni < sizeof(namebuf)-1 && spec[ni]
+                       && spec[ni] != '(' && spec[ni] != ','; ni++)
+                    namebuf[ni] = spec[ni];
+                namebuf[ni] = '\0';
+                return STRVAL(GC_strdup(namebuf));
             }
-            return NULVCL;
+            return FAILDESCR;   /* malformed spec → FAIL per SIL */
         }
 
         int nargs = e->nchildren;
@@ -1595,6 +1612,12 @@ static DESCR_t _eval_pat_impl_fn(DESCR_t pat) {
     return ok ? NULVCL : FAILDESCR;
 }
 
+
+/* label_exists — called by LABEL() builtin via sno_set_label_exists_hook */
+static int _label_exists_fn(const char *name) {
+    return label_lookup(name) != NULL;
+}
+
 /* _usercall_hook: calls user functions via call_user_function;
  * for pure builtins (FNCEX_fn && no body label) uses APPLY_fn directly
  * so FAILDESCR propagates correctly (DYN-74: fixes *ident(1,2) in EVAL). */
@@ -1868,6 +1891,12 @@ int main(int argc, char **argv)
     /* Wire user-function dispatch hook (wrapper defined above main) */
     extern DESCR_t (*g_user_call_hook)(const char *, DESCR_t *, int);
     g_user_call_hook = _usercall_hook;
+
+    /* Wire LABEL() predicate hook */
+    {
+        extern void sno_set_label_exists_hook(int (*fn)(const char *));
+        sno_set_label_exists_hook(_label_exists_fn);
+    }
 
     /* Wire DT_P eval hook: EVAL(*func(args)) runs pattern against empty subject */
     {
