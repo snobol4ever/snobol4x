@@ -1450,16 +1450,16 @@ EXPR_t *cmpnd_to_expr(CMPND_t *n) {
 
     /* Implicit concatenation: VARTYP root with >1 child */
     if (n->stype == VARTYP && n->nchildren > 0) {
-        EXPR_t *e = calloc(1, sizeof *e);
+        EXPR_t *e = GC_MALLOC(sizeof *e);
         e->kind = E_CAT;
-        e->children = calloc(n->nchildren, sizeof(EXPR_t*));
+        e->children = GC_MALLOC(n->nchildren * sizeof(EXPR_t*));
         e->nchildren = n->nchildren;
         for (int i = 0; i < n->nchildren; i++)
             e->children[i] = cmpnd_to_expr(n->children[i]);
         return e;
     }
 
-    EXPR_t *e = calloc(1, sizeof *e);
+    EXPR_t *e = GC_MALLOC(sizeof *e);
 
     /* Map SIL stype → EKind using named constants */
     switch (n->stype) {
@@ -1478,9 +1478,9 @@ EXPR_t *cmpnd_to_expr(CMPND_t *n) {
             e->sval = n->text ? strdup(n->text) : NULL;
             {
                 int nc = n->nchildren;
-                e->children = calloc((size_t)(nc + 1), sizeof(EXPR_t *));
+                e->children = GC_MALLOC((size_t)(nc + 1) * sizeof(EXPR_t *));
                 e->nchildren = nc + 1;
-                EXPR_t *base_var = calloc(1, sizeof *base_var);
+                EXPR_t *base_var = GC_MALLOC(sizeof *base_var);
                 base_var->kind = E_VAR;
                 base_var->sval = n->text ? strdup(n->text) : NULL;
                 e->children[0] = base_var;
@@ -1534,7 +1534,7 @@ EXPR_t *cmpnd_to_expr(CMPND_t *n) {
 
     /* Recurse into children */
     if (n->nchildren > 0) {
-        e->children = calloc(n->nchildren, sizeof(EXPR_t*));
+        e->children = GC_MALLOC(n->nchildren * sizeof(EXPR_t*));
         e->nchildren = n->nchildren;
         for (int i = 0; i < n->nchildren; i++)
             e->children[i] = cmpnd_to_expr(n->children[i]);
