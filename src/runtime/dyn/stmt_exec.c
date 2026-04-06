@@ -1219,7 +1219,18 @@ int exec_stmt(const char  *subj_name,
     /* ── Phase 2: build pattern ─────────────────────────────────────── */
     bb_node_t root;
     if (pat.v == DT_P && pat.p) {
-        root = bb_build((PATND_t *)pat.p);
+        int bin_done = 0;
+        if (getenv("SNO_BINARY_BOXES")) {
+            bb_box_fn bfn = bb_build_binary((PATND_t *)pat.p);
+            if (bfn) {
+                root.fn  = bfn;
+                root.ζ   = NULL;
+                bin_done = 1;
+            }
+        }
+        if (!bin_done) {
+            root = bb_build((PATND_t *)pat.p);
+        }
     } else if (pat.v == DT_S && pat.s) {
         int bin_done = 0;
         if (getenv("SNO_BINARY_BOXES")) {
