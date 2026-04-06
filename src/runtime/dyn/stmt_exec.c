@@ -211,6 +211,23 @@ static spec_t bb_capture(void *zeta, int entry)
                                                               return spec_empty;
 }
 
+/* M-DYN-B7: expose bb_capture and capture_t constructor for bb_build_bin.c */
+spec_t bb_capture_exported(void *zeta, int entry) { return bb_capture(zeta, entry); }
+
+capture_t *bb_capture_new(bb_box_fn child_fn, void *child_state,
+                          const char *varname, DESCR_t *var_ptr, int immediate)
+{
+    capture_t *ζ = calloc(1, sizeof(capture_t));
+    if (!ζ) return NULL;
+    ζ->fn        = child_fn;
+    ζ->state     = child_state;
+    ζ->varname   = varname;
+    ζ->var_ptr   = var_ptr;
+    ζ->immediate = immediate;
+    return ζ;
+}
+
+
 /* ══════════════════════════════════════════════════════════════════════════
  * Phase 2: bb_build_from_patnd — walk PATND_t tree, return root bb_box_fn
  * ══════════════════════════════════════════════════════════════════════════ */

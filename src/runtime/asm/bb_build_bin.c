@@ -144,6 +144,25 @@ extern int memcmp(const void *, const void *, size_t);
 extern spec_t bb_seq(void *zeta, int entry);
 extern spec_t bb_tab(void *zeta, int entry);
 extern spec_t bb_rtab(void *zeta, int entry);
+
+/* M-DYN-B7: capture box — bb_capture is static in stmt_exec.c;
+ * exposed via bb_capture_exported() thin wrapper + bb_capture_new() ctor. */
+extern spec_t bb_capture_exported(void *zeta, int entry);
+
+/* Mirror of capture_t from stmt_exec.c — must stay in sync. */
+typedef struct {
+    bb_box_fn    fn;
+    void        *state;
+    const char  *varname;
+    void        *var_ptr;
+    int          immediate;
+    spec_t       pending;
+    int          has_pending;
+    int          registered;
+} capture_t_bin;
+extern capture_t_bin *bb_capture_new(bb_box_fn child_fn, void *child_state,
+                                     const char *varname, void *var_ptr, int immediate);
+
 static bb_box_fn bb_build_binary_node(PATND_t *p);
 
 bb_box_fn bb_lit_emit_binary(const char *lit, int len)
@@ -565,6 +584,88 @@ extern spec_t bb_seq(void *zeta, int entry);
 extern spec_t bb_len(void *zeta, int entry);
 
 /*
+ * bb_nme_emit_binary(PATND_t *p) — M-DYN-B7
+ * bb_fnme_emit_binary(PATND_t *p) — M-DYN-B7
+ *
+ * XNME (pat . var) and XFNME (pat $ var) wrap a child pattern in a
+ * capture_t. The child is built recursively; if it can't go binary the
+ * whole node falls back.
+ *
+ * Strategy: same trampoline as TAB/LEN —
+ *   alloc heap capture_t_bin via bb_capture_new(),
+ *   emit 22-byte trampoline: mov rdi,imm64(z); mov rax,imm64(bb_capture_exported); jmp rax
+ */
+static bb_box_fn bb_nme_emit_binary(PATND_t *p)
+{
+    /* Recursively build child */
+    bb_box_fn child_fn = (p->nchildren > 0)
+                         ? bb_build_binary_node(p->children[0])
+                         : bb_build_binary_node(NULL);  /* eps */
+    if (!child_fn) return NULL;
+
+    const char *varname = (p->var.v == DT_S && p->var.s) ? p->var.s : NULL;
+    void       *var_ptr = (p->var.v == DT_N && p->var.ptr)
+                          ? (void *)p->var.ptr : NULL;
+
+    capture_t_bin *z = bb_capture_new(child_fn, NULL, varname, var_ptr, 0 /*immediate=0*/);
+    if (!z) return NULL;
+
+#define NME_TRAM_SIZE 32
+    bb_buf_t tbuf = bb_alloc(NME_TRAM_SIZE);
+    if (!tbuf) { free(z); return NULL; }
+    bb_emit_mode = EMIT_BINARY;
+    bb_emit_begin(tbuf, NME_TRAM_SIZE);
+
+    /* mov rdi, imm64(z) */
+    bb_emit_byte(0x48); bb_emit_byte(0xBF);
+    bb_emit_u64((uint64_t)(uintptr_t)z);
+    /* mov rax, imm64(bb_capture_exported) */
+    bb_emit_byte(0x48); bb_emit_byte(0xB8);
+    bb_emit_u64((uint64_t)(uintptr_t)bb_capture_exported);
+    /* jmp rax */
+    bb_emit_byte(0xFF); bb_emit_byte(0xE0);
+
+    int nb = bb_emit_end();
+    if (nb <= 0 || nb > NME_TRAM_SIZE) { bb_free(tbuf, NME_TRAM_SIZE); free(z); return NULL; }
+    bb_seal(tbuf, (size_t)nb);
+    return (bb_box_fn)tbuf;
+#undef NME_TRAM_SIZE
+}
+
+static bb_box_fn bb_fnme_emit_binary(PATND_t *p)
+{
+    bb_box_fn child_fn = (p->nchildren > 0)
+                         ? bb_build_binary_node(p->children[0])
+                         : bb_build_binary_node(NULL);
+    if (!child_fn) return NULL;
+
+    const char *varname = (p->var.v == DT_S && p->var.s) ? p->var.s : NULL;
+    void       *var_ptr = (p->var.v == DT_N && p->var.ptr)
+                          ? (void *)p->var.ptr : NULL;
+
+    capture_t_bin *z = bb_capture_new(child_fn, NULL, varname, var_ptr, 1 /*immediate=1*/);
+    if (!z) return NULL;
+
+#define FNME_TRAM_SIZE 32
+    bb_buf_t tbuf = bb_alloc(FNME_TRAM_SIZE);
+    if (!tbuf) { free(z); return NULL; }
+    bb_emit_mode = EMIT_BINARY;
+    bb_emit_begin(tbuf, FNME_TRAM_SIZE);
+
+    bb_emit_byte(0x48); bb_emit_byte(0xBF);
+    bb_emit_u64((uint64_t)(uintptr_t)z);
+    bb_emit_byte(0x48); bb_emit_byte(0xB8);
+    bb_emit_u64((uint64_t)(uintptr_t)bb_capture_exported);
+    bb_emit_byte(0xFF); bb_emit_byte(0xE0);
+
+    int nb = bb_emit_end();
+    if (nb <= 0 || nb > FNME_TRAM_SIZE) { bb_free(tbuf, FNME_TRAM_SIZE); free(z); return NULL; }
+    bb_seal(tbuf, (size_t)nb);
+    return (bb_box_fn)tbuf;
+#undef FNME_TRAM_SIZE
+}
+
+/*
  * bb_len_emit_binary(int n) — M-DYN-B5
  *
  * LEN(n) needs a runtime-mutable `bspan` field (UTF-8 byte span of last
@@ -715,6 +816,14 @@ static bb_box_fn bb_build_binary_node(PATND_t *p)
     /* ── M-DYN-B5: LEN(n) — trampoline to heap len_t + bb_len ─────── */
     case XLNTH:
         return bb_len_emit_binary((int)p->num);
+
+    /* ── M-DYN-B7: XNME — pat . var  conditional capture ─────────── */
+    case XNME:
+        return bb_nme_emit_binary(p);
+
+    /* ── M-DYN-B7: XFNME — pat $ var  immediate capture ──────────── */
+    case XFNME:
+        return bb_fnme_emit_binary(p);
 
     /* ── M-DYN-B3: XCAT — recursive hybrid seq ──────────────────────
      * Build left and right children as binary; wire into heap seq_t;
