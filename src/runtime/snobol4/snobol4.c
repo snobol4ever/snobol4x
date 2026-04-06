@@ -18,6 +18,7 @@
 #include <fcntl.h>
 #include <inttypes.h>
 #include <unistd.h>
+#include <time.h>
 
 /* ============================================================
  * COMM — monitor telemetry (sync-step 5-way monitor)
@@ -243,6 +244,31 @@ static DESCR_t _DIFFER_(DESCR_t *a, int n) {
     DESCR_t y = (n > 1) ? a[1] : NULVCL;
     return differ(x, y) ? NULVCL : FAILDESCR;
 }
+static DESCR_t _VDIFFER_(DESCR_t *a, int n) {
+    /* VDIFFER(X,Y) — SIL DEQL: descriptor equality, not string equality.
+     * DT_I/DT_R: compare by value. DT_S/DT_P/other: compare by pointer.
+     * Unset (DT_SNUL) equals null string. Returns a[0] on differ, FAIL on equal. */
+    if (n < 2) return (n == 1) ? a[0] : FAILDESCR;
+    DESCR_t x = a[0], y = a[1];
+    /* Normalise SNUL -> empty DT_S for comparison */
+    if (x.v == DT_SNUL) { x.v = DT_S; x.s = ""; }
+    if (y.v == DT_SNUL) { y.v = DT_S; y.s = ""; }
+    int equal;
+    if (x.v != y.v) {
+        equal = 0;
+    } else {
+        switch (x.v) {
+            case DT_I: equal = (x.i == y.i); break;
+            case DT_R: equal = (x.r == y.r); break;
+            case DT_S: { /* DEQL on strings: byte-value equality (oracle interns) */
+                           const char *xs = x.s ? x.s : "";
+                           const char *ys = y.s ? y.s : "";
+                           equal = (strcmp(xs, ys) == 0); break; }
+            default:   equal = (x.s == y.s); break;  /* ptr equality for P/A/T/C/N/E */
+        }
+    }
+    return equal ? FAILDESCR : a[0];
+}
 /* Lexical string comparators — return first arg on success, FAILDESCR on failure */
 static DESCR_t _LGT_(DESCR_t *a, int n) {
     if (n < 2) return FAILDESCR;
@@ -422,6 +448,27 @@ static DESCR_t _CODE_(DESCR_t *a, int n)  { return code(n>0?VARVAL_fn(a[0]):"");
 static DESCR_t _OPSYN_(DESCR_t *a, int n) {
     return opsyn(n>0?a[0]:NULVCL,n>1?a[1]:NULVCL,n>2?a[2]:NULVCL); }
 static DESCR_t _SORT_(DESCR_t *a, int n)  { return sort_fn(n>0?a[0]:NULVCL); }
+/* DATE() — "MM/DD/YYYY HH:MM:SS"  (matches csnobol4 format) */
+static DESCR_t _DATE_(DESCR_t *a, int n) {
+    (void)a; (void)n;
+    time_t t = time(NULL);
+    struct tm *tm = localtime(&t);
+    char *buf = GC_malloc(20);
+    strftime(buf, 20, "%m/%d/%Y %H:%M:%S", tm);
+    return STRVAL(buf);
+}
+
+/* TIME() — milliseconds since program start, returned as REAL */
+static int64_t _g_start_ms = -1;
+static DESCR_t _TIME_(DESCR_t *a, int n) {
+    (void)a; (void)n;
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    int64_t now_ms = (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+    if (_g_start_ms < 0) _g_start_ms = now_ms;
+    return REALVAL((double)(now_ms - _g_start_ms));
+}
+
 static DESCR_t _INPUT_(DESCR_t *a, int n);   /* defined near input_read below */
 static DESCR_t _OUTPUT_(DESCR_t *a, int n);  /* defined near input_read below */
 
@@ -998,6 +1045,9 @@ void SNO_INIT_fn(void) {
     alphabet[256] = '\0';
     /* Register as NV keyword — pointer identity used by SIZE for correct length */
     NV_SET_fn("ALPHABET", BSTRVAL(alphabet, 256));
+    /* Seed TIME() epoch */
+    { struct timespec _ts; clock_gettime(CLOCK_MONOTONIC, &_ts);
+      _g_start_ms = (int64_t)_ts.tv_sec * 1000 + _ts.tv_nsec / 1000000; }
     /* Enable monitor — prefer named FIFO (MONITOR_READY_PIPE env var) over stderr.
      * MONITOR_READY_PIPE=/path/to/fifo  → open FIFO, write trace events there (no stderr pollution)
      * MONITOR=1 (legacy)          → write trace events to stderr (fd 2)
@@ -1038,6 +1088,7 @@ void SNO_INIT_fn(void) {
     /* Sprint 23: string predicates and host interface */
     register_fn("IDENT",    _IDENT_,    0, 2);
     register_fn("DIFFER",   _DIFFER_,   0, 2);
+    register_fn("VDIFFER",  _VDIFFER_,  0, 2);
     register_fn("LGT",      _LGT_,      2, 2);
     register_fn("LLT",      _LLT_,      2, 2);
     register_fn("LGE",      _LGE_,      2, 2);
@@ -1086,6 +1137,8 @@ void SNO_INIT_fn(void) {
     register_fn("c",        _b_tree_c,      1, 1);
 
 
+    register_fn("DATE",     _DATE_,        0, 0);
+    register_fn("TIME",     _TIME_,        0, 0);
     register_fn("DUMP",     _DUMP_,        0, 1);
     register_fn("TRACE",    _TRACE_,       1, 4);
     register_fn("STOPTR",   _STOPTR_,      1, 2);
