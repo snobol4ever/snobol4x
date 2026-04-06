@@ -1483,7 +1483,9 @@ static void execute_program(Program *prog)
             if (IS_FAIL_fn(repl_val)) {
                 succeeded = 0;
             } else {
+                g_kw_ctx = 1;             /* signal Error 7 guard in NV_SET_fn */
                 NV_SET_fn(s->subject->sval, repl_val);
+                g_kw_ctx = 0;
                 succeeded = 1;
             }
 

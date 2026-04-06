@@ -1222,7 +1222,9 @@ DESCR_t subscript_get(DESCR_t arr, DESCR_t idx) {
             return array_get(children.arr, i);
         return FAILDESCR;
     }
-    return FAILDESCR;  /* P002: unknown container type = fail */
+    /* SIL NONARY → ERRTYP,3 → FTLTST: subscript on non-array/non-table is soft error */
+    sno_runtime_error(3, NULL);
+    return FAILDESCR;
 }
 
 /* subscript_set — arr[idx] = val */
@@ -1235,6 +1237,8 @@ void subscript_set(DESCR_t arr, DESCR_t idx, DESCR_t val) {
         table_set(arr.tbl, VARVAL_fn(idx), val);
         return;
     }
+    /* SIL NONARY → ERRTYP,3 → FTLTST */
+    sno_runtime_error(3, NULL);
 }
 
 /* subscript_get2 / subscript_set2 — 2D */

@@ -417,6 +417,7 @@ extern char    kw_rtntype[16]; /* &RTNTYPE  - RETURN/FRETURN/NRETURN */
  */
 #include <setjmp.h>
 void sno_runtime_error(int code, const char *msg);
+extern int g_kw_ctx;  /* set to 1 when NV_SET_fn called from &KW = context */
 extern jmp_buf g_sno_err_jmp;
 extern int     g_sno_err_active;
 extern int     g_sno_err_stmt;

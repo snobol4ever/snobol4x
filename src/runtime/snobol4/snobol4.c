@@ -1343,6 +1343,7 @@ char *VARVAL_fn(DESCR_t v) {
 jmp_buf g_sno_err_jmp;
 int     g_sno_err_active = 0;
 int     g_sno_err_stmt   = 0;
+int     g_kw_ctx         = 0;  /* set 1 during &KW = write; Error 7 guard */
 
 /* Canonical error message table — v311.sil lines 12195-12233 */
 static const char *sno_err_msgs[40] = {
@@ -1895,7 +1896,34 @@ void NV_SET_fn(const char *name, DESCR_t val) {
     if (strcasecmp(name, "FTRACE")   == 0) { kw_ftrace   = (val.v==DT_I)?val.i:(int64_t)to_real(val); return; }
     if (strcasecmp(name, "ERRLIMIT") == 0) { kw_errlimit = (val.v==DT_I)?val.i:(int64_t)to_real(val); return; }
     if (strcasecmp(name, "CODE")     == 0) { kw_code     = (val.v==DT_I)?val.i:(int64_t)to_real(val); return; }
-    /* &FNCLEVEL and &RTNTYPE: interpreter-controlled, user writes silently ignored */
+    /* &FNCLEVEL, &RTNTYPE, read-only/protected keywords: writes silently ignored
+     * (interpreter-controlled; SIL KVLIST items are protected at a higher level) */
+
+    /* SIL: writing to an unknown & name → ERRTYP,7 (Unknown keyword).
+     * We detect keyword context by checking if the name matches any known keyword.
+     * NV_SET_fn is called with the bare name (no '&') from E_KEYWORD nodes.
+     * Non-keyword variables are set via NV_SET_fn too, so we must only fire
+     * Error 7 when the caller is in keyword context — signalled by g_kw_ctx. */
+    if (g_kw_ctx) {
+        /* name came from &name write — verify it is a known keyword */
+        static const char *known_kw[] = {
+            "STLIMIT","ANCHOR","TRIM","FULLSCAN","CASE","MAXLNGTH",
+            "FTRACE","ERRLIMIT","CODE","FNCLEVEL","RTNTYPE",
+            "ALPHABET","UCASE","LCASE","DIGITS","PI","PARM",
+            "STEXEC","STCOUNT","STNO","DUMP","ABEND",
+            "TRACE","GTRACE","FATALLIMIT","ERRLIMIT","ERRTYPE","ERRTEXT",
+            "INPUT","OUTPUT","TERMINAL","PUNCHAR",
+            NULL
+        };
+        int found = 0;
+        for (int _ki = 0; known_kw[_ki]; _ki++)
+            if (strcasecmp(name, known_kw[_ki]) == 0) { found = 1; break; }
+        if (!found) {
+            sno_runtime_error(7, NULL);
+            return;
+        }
+    }
+
     unsigned h = _var_hash(name);
     for (NV_t *e = _var_buckets[h]; e; e = e->next) {
         if (strcmp(e->name, name) == 0) {
