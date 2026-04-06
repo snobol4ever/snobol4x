@@ -1287,14 +1287,27 @@ int exec_stmt(const char  *subj_name,
     if (pat.v == DT_P && pat.p) {
         int bin_done = 0;
         if (getenv("SNO_BINARY_BOXES")) {
-            bb_box_fn bfn = bb_build_binary((PATND_t *)pat.p);
-            if (bfn) {
-                root.fn  = bfn;
-                root.ζ   = NULL;
+            /* M-DYN-B13: cache binary blobs keyed on PATND_t* — prevents
+             * pool exhaustion on loop-heavy programs (1M+ iterations). */
+            PATND_t *pp = (PATND_t *)pat.p;
+            cache_slot_t *bslot = cache_find(pp);
+            if (bslot && bslot->key == pp && bslot->template.fn) {
+                root     = bslot->template;  /* reuse blob fn; ζ=NULL */
                 bin_done = 1;
                 g_bin_hits++;
+                g_cache_hits++;
             } else {
-                g_bin_misses++;
+                bb_box_fn bfn = bb_build_binary(pp);
+                if (bfn) {
+                    root.fn     = bfn;
+                    root.ζ      = NULL;
+                    root.ζ_size = 0;
+                    bin_done    = 1;
+                    g_bin_hits++;
+                    cache_insert(pp, root);
+                } else {
+                    g_bin_misses++;
+                }
             }
         }
         if (!bin_done) {
