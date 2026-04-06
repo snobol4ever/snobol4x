@@ -1258,6 +1258,11 @@ char *VARVAL_fn(DESCR_t v) {
                 return VARVAL_fn(*(DESCR_t *)v.ptr);
             }
             return GC_strdup("");
+        case DT_K:
+            /* SIL VARVAL: keyword → dereference value, then stringify.
+             * e.g. OUTPUT = &RTNTYPE, string concat with &TRIM, etc. */
+            if (v.s) return VARVAL_fn(NV_GET_fn(v.s));
+            return GC_strdup("");
         default:
             return GC_strdup("");
     }
