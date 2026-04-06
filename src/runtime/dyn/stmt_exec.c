@@ -78,7 +78,8 @@ extern DESCR_t (*g_user_call_hook)(const char *name, DESCR_t *args, int nargs);
  * Instead we redeclare bb_box.h's types manually here. */
 #include "../snobol4/snobol4.h"
 #include "../snobol4/sil_macros.h"   /* SIL macro translations — RT + SM axes */
-#include "../asm/bb_build_bin.h"     /* bb_lit_emit_binary — M-DYN-B1 */
+#include "../asm/bb_build_bin.h"
+#include "../asm/bb_flat.h"     /* bb_lit_emit_binary — M-DYN-B1 */
 
 /* In the full-runtime build, include bb_box.h after snobol4.h.
  * bb_box.h now uses spec_t (not spec_t) so no collision with engine. */
@@ -1292,12 +1293,15 @@ int exec_stmt(const char  *subj_name,
             PATND_t *pp = (PATND_t *)pat.p;
             cache_slot_t *bslot = cache_find(pp);
             if (bslot && bslot->key == pp && bslot->template.fn) {
-                root     = bslot->template;  /* reuse blob fn; ζ=NULL */
+                root     = bslot->template;  /* reuse cached flat/binary fn */
                 bin_done = 1;
                 g_bin_hits++;
                 g_cache_hits++;
             } else {
-                bb_box_fn bfn = bb_build_binary(pp);
+                /* M-DYN-FLAT: try flat-glob first (whole invariant tree in one buffer) */
+                bb_box_fn bfn = bb_build_flat(pp);
+                if (!bfn)
+                    bfn = bb_build_binary(pp);  /* fallback: per-node trampolines */
                 if (bfn) {
                     root.fn     = bfn;
                     root.ζ      = NULL;

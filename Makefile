@@ -34,6 +34,7 @@ scrip:
 	$(CC) $(CRT)   -c $(RT)/asm/bb_pool.c                    -o $(OBJ)/bb_pool.o
 	$(CC) $(CRT)   -c $(RT)/asm/bb_emit.c                    -o $(OBJ)/bb_emit.o
 	$(CC) $(CRT)   -c $(RT)/asm/bb_build_bin.c               -o $(OBJ)/bb_build_bin.o
+	$(CC) $(CRT)   -c $(RT)/asm/bb_flat.c                    -o $(OBJ)/bb_flat.o
 	$(CC) $(CRT)   -c $(RT)/asm/x86_stubs_interp.c           -o $(OBJ)/x86_stubs_interp.o
 	$(CC) $(CRT)   -c $(RT)/engine/engine.c                  -o $(OBJ)/engine.o
 	@for f in $$(find $(RT)/boxes -name 'bb_*.c' | grep -v 'bb_dvar\|bb_capture'); do \
