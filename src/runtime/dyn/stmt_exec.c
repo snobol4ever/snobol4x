@@ -560,6 +560,24 @@ static spec_t bb_callcap(void *zeta, int entry)
            return spec_empty;
 }
 
+/* M-DYN-B10: expose bb_callcap + ctor for bb_build_bin.c trampolines */
+spec_t bb_callcap_exported(void *zeta, int entry) { return bb_callcap(zeta, entry); }
+
+callcap_t *bb_callcap_new(bb_box_fn child_fn, void *child_state,
+                           const char *fnc_name, DESCR_t *fnc_args,
+                           int fnc_nargs, int immediate)
+{
+    callcap_t *ζ = calloc(1, sizeof(callcap_t));
+    if (!ζ) return NULL;
+    ζ->child_fn    = child_fn;
+    ζ->child_state = child_state;
+    ζ->fnc_name    = fnc_name;
+    ζ->fnc_args    = fnc_args;
+    ζ->fnc_nargs   = fnc_nargs;
+    ζ->immediate   = immediate;
+    return ζ;
+}
+
 /* DYN-79: remove stale (has_pending=0) events from the event queue.
  * Live events (has_pending=1) are always kept, even if the same owner
  * fired multiple times (e.g. *Push() capturing "1" then "2"). */
@@ -1142,6 +1160,17 @@ static spec_t bb_deferred_var(void *zeta, int entry)
 
     DVAR_γ:                                                   return DVAR;
     DVAR_ω:                                                   return spec_empty;
+}
+
+/* M-DYN-B10: expose bb_deferred_var + ctor for bb_build_bin.c trampolines */
+spec_t bb_deferred_var_exported(void *zeta, int entry) { return bb_deferred_var(zeta, entry); }
+
+deferred_var_t *bb_dvar_bin_new(const char *name)
+{
+    deferred_var_t *ζ = calloc(1, sizeof(deferred_var_t));
+    if (!ζ) return NULL;
+    ζ->name = name;
+    return ζ;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════

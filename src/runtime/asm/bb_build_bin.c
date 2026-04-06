@@ -163,6 +163,42 @@ typedef struct {
 extern capture_t_bin *bb_capture_new(bb_box_fn child_fn, void *child_state,
                                      const char *varname, void *var_ptr, int immediate);
 
+/* M-DYN-B10: exported shims for static box functions in stmt_exec.c */
+extern spec_t bb_callcap_exported(void *zeta, int entry);
+extern spec_t bb_deferred_var_exported(void *zeta, int entry);
+
+/* Mirror of callcap_t fields needed by bb_callcap_new — only the ctor fields.
+ * The full struct in stmt_exec.c has extra fields (pending, resolved_ptr, etc.)
+ * all of which are zeroed by calloc — correct default. */
+typedef struct {
+    bb_box_fn    child_fn;
+    void        *child_state;
+    const char  *fnc_name;
+    void        *fnc_args;    /* DESCR_t* — opaque to bb_build_bin.c */
+    int          fnc_nargs;
+    int          immediate;
+    /* remaining fields (pending, has_pending, registered, last_gen,
+       resolved_ptr) are zeroed by calloc — correct initial state */
+} callcap_t_bin;
+extern void *bb_callcap_new(bb_box_fn child_fn, void *child_state,
+                             const char *fnc_name, void *fnc_args,
+                             int fnc_nargs, int immediate);
+
+/* Mirror of deferred_var_t from stmt_exec.c */
+typedef struct {
+    const char *name;
+    bb_box_fn   child_fn;
+    void       *child_state;
+    size_t      child_size;
+    int         in_progress;
+} deferred_var_t_bin;
+extern void *bb_dvar_bin_new(const char *name);
+
+/* bb_arbno, bb_fail, bb_atp are in separate .c files — directly linkable */
+extern spec_t bb_arbno(void *zeta, int entry);
+extern spec_t bb_fail(void *zeta, int entry);
+extern spec_t bb_atp(void *zeta, int entry);
+
 static bb_box_fn bb_build_binary_node(PATND_t *p);
 
 bb_box_fn bb_lit_emit_binary(const char *lit, int len)
@@ -974,6 +1010,238 @@ static bb_box_fn bb_rtab_emit_binary(int n)
 #undef RTAB_TRAM_SIZE
 }
 
+/* ── M-DYN-B10: XFAIL — always-fail box ────────────────────────────────────
+ * bb_fail ignores its ζ entirely; we still allocate a tiny dummy so the
+ * trampoline has a non-NULL ζ to bake (keeps the trampoline pattern uniform).
+ * Trampoline: mov rdi, imm64(dummy) / mov rax, imm64(bb_fail) / jmp rax
+ */
+static bb_box_fn bb_fail_emit_binary(void)
+{
+#define FAIL_TRAM_SIZE 32
+    /* tiny heap dummy — bb_fail ignores it, but we need a stable address */
+    int *dummy = calloc(1, sizeof(int));
+    if (!dummy) return NULL;
+
+    bb_buf_t tbuf = bb_alloc(FAIL_TRAM_SIZE);
+    if (!tbuf) { free(dummy); return NULL; }
+    bb_emit_mode = EMIT_BINARY;
+    bb_emit_begin(tbuf, FAIL_TRAM_SIZE);
+
+    /* mov rdi, imm64(dummy) */
+    bb_emit_byte(0x48); bb_emit_byte(0xBF);
+    bb_emit_u64((uint64_t)(uintptr_t)dummy);
+    /* mov rax, imm64(bb_fail) */
+    bb_emit_byte(0x48); bb_emit_byte(0xB8);
+    bb_emit_u64((uint64_t)(uintptr_t)bb_fail);
+    /* jmp rax */
+    bb_emit_byte(0xFF); bb_emit_byte(0xE0);
+
+    int nb = bb_emit_end();
+    if (nb <= 0 || nb > FAIL_TRAM_SIZE) { bb_free(tbuf, FAIL_TRAM_SIZE); free(dummy); return NULL; }
+    bb_seal(tbuf, (size_t)nb);
+    return (bb_box_fn)tbuf;
+#undef FAIL_TRAM_SIZE
+}
+
+/* ── M-DYN-B10: XFNCE — FENCE box (succeed once; β cuts) ──────────────────
+ * Same trampoline pattern as XFAIL.
+ * fence_t = { int fired; }  (bb_box.h line 127)
+ */
+typedef struct { int fired; } fence_t_bin;
+extern spec_t bb_fence(void *zeta, int entry);
+
+static bb_box_fn bb_fence_emit_binary(void)
+{
+#define FENCE_TRAM_SIZE 32
+    fence_t_bin *z = calloc(1, sizeof(fence_t_bin));
+    if (!z) return NULL;
+
+    bb_buf_t tbuf = bb_alloc(FENCE_TRAM_SIZE);
+    if (!tbuf) { free(z); return NULL; }
+    bb_emit_mode = EMIT_BINARY;
+    bb_emit_begin(tbuf, FENCE_TRAM_SIZE);
+
+    /* mov rdi, imm64(z) */
+    bb_emit_byte(0x48); bb_emit_byte(0xBF);
+    bb_emit_u64((uint64_t)(uintptr_t)z);
+    /* mov rax, imm64(bb_fence) */
+    bb_emit_byte(0x48); bb_emit_byte(0xB8);
+    bb_emit_u64((uint64_t)(uintptr_t)bb_fence);
+    /* jmp rax */
+    bb_emit_byte(0xFF); bb_emit_byte(0xE0);
+
+    int nb = bb_emit_end();
+    if (nb <= 0 || nb > FENCE_TRAM_SIZE) { bb_free(tbuf, FENCE_TRAM_SIZE); free(z); return NULL; }
+    bb_seal(tbuf, (size_t)nb);
+    return (bb_box_fn)tbuf;
+#undef FENCE_TRAM_SIZE
+}
+
+/* ── M-DYN-B10: XATP — @var cursor-position capture ────────────────────────
+ * bb_atp(ζ, entry): on α writes Δ as DT_I into ζ->varname, succeeds epsilon;
+ * on β fails unconditionally (no backtrack).
+ * atp_t = { int done; const char *varname; }  (from bb_atp.c / bb_box.h line 129)
+ * Trampoline bakes heap atp_t* as rdi, tail-calls bb_atp.
+ */
+typedef struct { int done; const char *varname; } atp_t_bin;
+
+static bb_box_fn bb_atp_emit_binary(const char *varname)
+{
+#define ATP_TRAM_SIZE 32
+    atp_t_bin *z = calloc(1, sizeof(atp_t_bin));
+    if (!z) return NULL;
+    z->varname = varname;
+
+    bb_buf_t tbuf = bb_alloc(ATP_TRAM_SIZE);
+    if (!tbuf) { free(z); return NULL; }
+    bb_emit_mode = EMIT_BINARY;
+    bb_emit_begin(tbuf, ATP_TRAM_SIZE);
+
+    /* mov rdi, imm64(z) */
+    bb_emit_byte(0x48); bb_emit_byte(0xBF);
+    bb_emit_u64((uint64_t)(uintptr_t)z);
+    /* mov rax, imm64(bb_atp) */
+    bb_emit_byte(0x48); bb_emit_byte(0xB8);
+    bb_emit_u64((uint64_t)(uintptr_t)bb_atp);
+    /* jmp rax */
+    bb_emit_byte(0xFF); bb_emit_byte(0xE0);
+
+    int nb = bb_emit_end();
+    if (nb <= 0 || nb > ATP_TRAM_SIZE) { bb_free(tbuf, ATP_TRAM_SIZE); free(z); return NULL; }
+    bb_seal(tbuf, (size_t)nb);
+    return (bb_box_fn)tbuf;
+#undef ATP_TRAM_SIZE
+}
+
+/* ── M-DYN-B10: XDSAR — *var deferred variable reference ───────────────────
+ * bb_deferred_var_exported(ζ, entry): re-resolves variable on every α,
+ * rebuilds child box from live value, delegates to child.
+ * deferred_var_t = { name, child_fn, child_state, child_size, in_progress }
+ * Trampoline bakes heap deferred_var_t_bin* as rdi.
+ */
+static bb_box_fn bb_dsar_emit_binary(const char *name)
+{
+#define DSAR_TRAM_SIZE 32
+    deferred_var_t_bin *z = calloc(1, sizeof(deferred_var_t_bin));
+    if (!z) return NULL;
+    z->name = name;
+
+    bb_buf_t tbuf = bb_alloc(DSAR_TRAM_SIZE);
+    if (!tbuf) { free(z); return NULL; }
+    bb_emit_mode = EMIT_BINARY;
+    bb_emit_begin(tbuf, DSAR_TRAM_SIZE);
+
+    /* mov rdi, imm64(z) */
+    bb_emit_byte(0x48); bb_emit_byte(0xBF);
+    bb_emit_u64((uint64_t)(uintptr_t)z);
+    /* mov rax, imm64(bb_deferred_var_exported) */
+    bb_emit_byte(0x48); bb_emit_byte(0xB8);
+    bb_emit_u64((uint64_t)(uintptr_t)bb_deferred_var_exported);
+    /* jmp rax */
+    bb_emit_byte(0xFF); bb_emit_byte(0xE0);
+
+    int nb = bb_emit_end();
+    if (nb <= 0 || nb > DSAR_TRAM_SIZE) { bb_free(tbuf, DSAR_TRAM_SIZE); free(z); return NULL; }
+    bb_seal(tbuf, (size_t)nb);
+    return (bb_box_fn)tbuf;
+#undef DSAR_TRAM_SIZE
+}
+
+/* ── M-DYN-B10: XARBN — ARBNO(body) zero-or-more greedy ────────────────────
+ * bb_arbno(ζ, entry): greedy match loop with zero-advance guard; β unwinds.
+ * arbno_t = { bb_box_fn fn; void *state; int depth; arbno_frame_t stack[64]; }
+ * We build the body child recursively in binary, wire into heap arbno_t.
+ * Trampoline bakes heap arbno_t* as rdi, tail-calls bb_arbno.
+ *
+ * arbno_t mirror (must stay in sync with bb_arbno.c):
+ */
+#define ARBNO_STACK_MAX_BIN 64
+typedef struct { void *σ; size_t δ; } spec_t_bin;   /* matches spec_t layout */
+typedef struct { spec_t_bin matched; int start; } arbno_frame_t_bin;
+typedef struct {
+    bb_box_fn        fn;
+    void            *state;
+    int              depth;
+    arbno_frame_t_bin stack[ARBNO_STACK_MAX_BIN];
+} arbno_t_bin;
+
+static bb_box_fn bb_arbn_emit_binary(PATND_t *p)
+{
+#define ARBN_TRAM_SIZE 32
+    /* Build body child in binary — fall back to C if unsupported */
+    PATND_t *body_p = (p->nchildren > 0) ? p->children[0] : NULL;
+    bb_box_fn body_fn = bb_build_binary_node(body_p);
+    if (!body_fn) return NULL;   /* child unsupported → C fallback */
+
+    arbno_t_bin *z = calloc(1, sizeof(arbno_t_bin));
+    if (!z) return NULL;
+    z->fn    = body_fn;
+    z->state = NULL;   /* binary body carries no separate ζ */
+
+    bb_buf_t tbuf = bb_alloc(ARBN_TRAM_SIZE);
+    if (!tbuf) { free(z); return NULL; }
+    bb_emit_mode = EMIT_BINARY;
+    bb_emit_begin(tbuf, ARBN_TRAM_SIZE);
+
+    /* mov rdi, imm64(z) */
+    bb_emit_byte(0x48); bb_emit_byte(0xBF);
+    bb_emit_u64((uint64_t)(uintptr_t)z);
+    /* mov rax, imm64(bb_arbno) */
+    bb_emit_byte(0x48); bb_emit_byte(0xB8);
+    bb_emit_u64((uint64_t)(uintptr_t)bb_arbno);
+    /* jmp rax */
+    bb_emit_byte(0xFF); bb_emit_byte(0xE0);
+
+    int nb = bb_emit_end();
+    if (nb <= 0 || nb > ARBN_TRAM_SIZE) { bb_free(tbuf, ARBN_TRAM_SIZE); free(z); return NULL; }
+    bb_seal(tbuf, (size_t)nb);
+    return (bb_box_fn)tbuf;
+#undef ARBN_TRAM_SIZE
+}
+
+/* ── M-DYN-B10: XCALLCAP — pat . *func() deferred-function capture ─────────
+ * bb_callcap_exported(ζ, entry): registers in g_callcap_list on α, delegates
+ * to child, queues a cc_event on γ. Side effects are handled by the C box
+ * exactly as the C path does — we only change how the ζ is constructed.
+ *
+ * Child is built recursively in binary. If child fails → C fallback.
+ * The callcap_t struct in stmt_exec.c has many fields; bb_callcap_new()
+ * (the exported ctor) zeros them all via calloc inside — correct defaults.
+ */
+static bb_box_fn bb_callcap_emit_binary(PATND_t *p)
+{
+#define CALLCAP_TRAM_SIZE 32
+    /* Build child in binary */
+    PATND_t *child_p = (p->nchildren > 0) ? p->children[0] : NULL;
+    bb_box_fn child_fn = bb_build_binary_node(child_p);
+    if (!child_fn) return NULL;
+
+    void *z = bb_callcap_new(child_fn, NULL,
+                              p->STRVAL_fn, (void *)p->args,
+                              p->nargs, 0 /* immediate=0: . not $ */);
+    if (!z) return NULL;
+
+    bb_buf_t tbuf = bb_alloc(CALLCAP_TRAM_SIZE);
+    if (!tbuf) { free(z); return NULL; }
+    bb_emit_mode = EMIT_BINARY;
+    bb_emit_begin(tbuf, CALLCAP_TRAM_SIZE);
+
+    /* mov rdi, imm64(z) */
+    bb_emit_byte(0x48); bb_emit_byte(0xBF);
+    bb_emit_u64((uint64_t)(uintptr_t)z);
+    /* mov rax, imm64(bb_callcap_exported) */
+    bb_emit_byte(0x48); bb_emit_byte(0xB8);
+    bb_emit_u64((uint64_t)(uintptr_t)bb_callcap_exported);
+    /* jmp rax */
+    bb_emit_byte(0xFF); bb_emit_byte(0xE0);
+
+    int nb = bb_emit_end();
+    if (nb <= 0 || nb > CALLCAP_TRAM_SIZE) { bb_free(tbuf, CALLCAP_TRAM_SIZE); free(z); return NULL; }
+    bb_seal(tbuf, (size_t)nb);
+    return (bb_box_fn)tbuf;
+#undef CALLCAP_TRAM_SIZE
+}
+
 static bb_box_fn bb_build_binary_node(PATND_t *p)
 {
     if (!p) {
@@ -1118,6 +1386,42 @@ static bb_box_fn bb_build_binary_node(PATND_t *p)
         /* right_fn is now a self-contained trampoline for the whole tree */
         return right_fn;
     }
+
+    /* ── M-DYN-B10: XFAIL — FAIL primitive, always ω ───────────────────── */
+    case XFAIL:
+        return bb_fail_emit_binary();
+
+    /* ── M-DYN-B10: XFNCE — FENCE (succeed once; β cuts) ───────────────── */
+    case XFNCE:
+        return bb_fence_emit_binary();
+
+    /* ── M-DYN-B10: XATP — @var cursor-position capture ────────────────── */
+    case XATP: {
+        /* Only handle the @var cursor-capture form (STRVAL_fn=="@").
+         * The deferred-usercall form falls back to C path. */
+        if (p->STRVAL_fn && strcmp(p->STRVAL_fn, "@") == 0) {
+            const char *varname = (p->nargs >= 1 && p->args &&
+                                   p->args[0].v == DT_S)
+                                  ? p->args[0].s : "";
+            return bb_atp_emit_binary(varname);
+        }
+        return NULL;   /* deferred usercall — C path */
+    }
+
+    /* ── M-DYN-B10: XDSAR — *var deferred variable reference ───────────── */
+    case XDSAR: {
+        const char *name = p->STRVAL_fn;
+        if (!name || !*name) return NULL;
+        return bb_dsar_emit_binary(name);
+    }
+
+    /* ── M-DYN-B10: XARBN — ARBNO(body) zero-or-more ───────────────────── */
+    case XARBN:
+        return bb_arbn_emit_binary(p);
+
+    /* ── M-DYN-B10: XCALLCAP — pat . *func() deferred capture ──────────── */
+    case XCALLCAP:
+        return bb_callcap_emit_binary(p);
 
     default:
         /* Not yet implemented in binary path — signal fallback to C bb_build */

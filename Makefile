@@ -36,7 +36,7 @@ scrip-interp:
 	$(CC) $(CRT)   -c $(RT)/asm/bb_build_bin.c               -o $(OBJ)/bb_build_bin.o
 	$(CC) $(CRT)   -c $(RT)/asm/x86_stubs_interp.c           -o $(OBJ)/x86_stubs_interp.o
 	$(CC) $(CRT)   -c $(RT)/engine/engine.c                  -o $(OBJ)/engine.o
-	@for f in $$(find $(RT)/boxes -name 'bb_*.c' | grep -v 'bb_dvar\|bb_atp\|bb_capture'); do \
+	@for f in $$(find $(RT)/boxes -name 'bb_*.c' | grep -v 'bb_dvar\|bb_capture'); do \
 	    b=$$(basename $$f .c); \
 	    $(CC) $(CBASE) -c $$f -o $(OBJ)/$$b.o; \
 	done
