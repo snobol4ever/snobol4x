@@ -27,7 +27,7 @@
 
 extern DESCR_t XPTR, YPTR, ZPTR, WPTR, TPTR;        /* pointer scratch   */
 extern DESCR_t XCL,  YCL,  ZCL,  WCL,  TCL;        /* count/value scratch */
-extern DESCR_t TMVAL, SCL, AXPTR;                    /* misc scratch       */
+extern DESCR_t TMVAL, SCL, AXPTR, DTCL;              /* misc scratch       */
 extern DESCR_t XSPPTR, YSPPTR;                       /* spec-ptr scratch   */
 
 /* ── Scratch SPECs ───────────────────────────────────────────────────── */
@@ -123,6 +123,23 @@ extern DESCR_t OUTBLK;    /* pointer to OUTPUT block                      */
 extern DESCR_t ERRBLK;    /* pointer to PUNCH (stderr) block [PLB8]       */
 extern DESCR_t SIZLMT;    /* limit on size of data object = SIZLIM        */
 extern DESCR_t SNODSZS;   /* small pattern node = NODESZ                  */
+extern DESCR_t SNODSZ;    /* small pattern node size (NODESZ, type P)     */
+extern DESCR_t ARBACK;    /* ARBAK pattern (ARB backup node)               */
+/* Pattern function descriptor constants */
+extern DESCR_t ANYCCL;    /* ANY function descriptor  (FNC)               */
+extern DESCR_t NNYCCL;    /* NOTANY function descriptor (FNC)             */
+extern DESCR_t SPNCCL;    /* SPAN function descriptor (FNC)               */
+extern DESCR_t LNTHCL;    /* LEN function descriptor  (FNC)               */
+extern DESCR_t POSICL;    /* POS function descriptor  (FNC)               */
+extern DESCR_t RPSICL;    /* RPOS function descriptor (FNC)               */
+extern DESCR_t RTBCL;     /* RTAB function descriptor (FNC)               */
+extern DESCR_t TBCL;      /* TAB function descriptor  (FNC)               */
+/* Size scratch globals */
+extern DESCR_t XSIZ;      /* size scratch X                               */
+extern DESCR_t YSIZ;      /* size scratch Y                               */
+extern DESCR_t TSIZ;      /* size scratch T                               */
+extern DESCR_t ZSIZ;      /* size scratch Z                               */
+extern DESCR_t TVAL;      /* value scratch T                              */
 extern DESCR_t STARSZ;    /* EXPRESSION pattern size = 11*DESCR           */
 extern DESCR_t ZEROCL;    /* constant zero                                */
 extern DESCR_t TRSKELS;   /* trace skeleton pointer                       */

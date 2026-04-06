@@ -25,9 +25,7 @@
 extern SIL_result XYARGS_fn(void);   /* v311.sil §8 XYARGS — eval X and Y args */
 extern SIL_result ARGVAL_fn(void);   /* v311.sil §8 ARGVAL — eval one arg      */
 
-/* ── File-static scratch (DTCL: data type pair descriptor) ──────────── */
-/* v311.sil line 10815: DTCL DESCR 0,0,0 — used only inside ARITH */
-static DESCR_t DTCL;
+/* DTCL: data type pair descriptor — declared in sil_data.h */
 
 /* ── Math error flag (mirrors snobol4-2.3.3 volatile math_error) ─────── */
 static volatile int math_error_flag;
