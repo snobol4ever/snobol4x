@@ -63,6 +63,7 @@ typedef enum {
     SM_PAT_ABORT,
     SM_PAT_FAIL,
     SM_PAT_SUCCEED,
+    SM_PAT_EPS,         /* push epsilon pattern onto pat-stack */
     SM_PAT_ALT,
     SM_PAT_CAT,
     SM_PAT_DEREF,

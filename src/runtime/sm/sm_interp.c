@@ -46,6 +46,7 @@ extern DESCR_t pat_alt(DESCR_t left, DESCR_t right);
 extern DESCR_t pat_ref(const char *name);         /* deferred *var ref */
 extern DESCR_t pat_assign_imm(DESCR_t child, DESCR_t var);
 extern DESCR_t pat_assign_cond(DESCR_t child, DESCR_t var);
+extern DESCR_t pat_at_cursor(const char *varname);  
 
 /* exec_stmt from stmt_exec.c */
 extern int exec_stmt(const char *subj_name, DESCR_t *subj_var,
@@ -347,6 +348,7 @@ int sm_interp_run(SM_Program *prog, SM_State *st)
         case SM_PAT_REM:     pat_push(pat_rem());     break;
         case SM_PAT_FAIL:    pat_push(pat_fail());    break;
         case SM_PAT_SUCCEED: pat_push(pat_succeed()); break;
+        case SM_PAT_EPS:     pat_push(pat_epsilon()); break;
         case SM_PAT_FENCE:   pat_push(pat_fence());   break;
         case SM_PAT_ABORT:   pat_push(pat_abort());   break;
         case SM_PAT_BAL:     pat_push(pat_bal());     break;
@@ -390,8 +392,10 @@ int sm_interp_run(SM_Program *prog, SM_State *st)
             int kind = (int)ins->a[1].i;
             if (kind == 1)
                 pat_push(pat_assign_imm(child, var));
+            else if (kind == 2)
+                pat_push(pat_cat(child, pat_at_cursor(vname)));  /* cursor: seq child then @var */
             else
-                pat_push(pat_assign_cond(child, var));  /* 0=cond, 2=cursor both use cond for now */
+                pat_push(pat_assign_cond(child, var));
             break;
         }
 

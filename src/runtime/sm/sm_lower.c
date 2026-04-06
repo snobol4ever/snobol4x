@@ -258,10 +258,24 @@ static void lower_pat_expr(SM_Program *p, LabelTable *lt, const EXPR_t *e)
         }
         return;
     case E_CAPT_CURSOR:
-        lower_pat_expr(p, lt, e->nchildren > 0 ? e->children[0] : NULL);
-        if (e->nchildren > 1 && e->children[1]) {
-            int idx = sm_emit_s(p, SM_PAT_CAPTURE, e->children[1]->sval);
-            p->instrs[idx].a[1].i = 2;  /* cursor (@V) */
+        /* Two forms from the parser:
+         *   unary @var  → nchildren=1, children[0] = var-name node (ATFN)
+         *   binary X@V  → nchildren=2, children[0] = sub-pat, children[1] = var-name
+         * For unary @var there is no sub-pattern — emit epsilon implicitly
+         * (pat_pop in SM_PAT_CAPTURE will get pat_epsilon via pat_cat). */
+        if (e->nchildren == 1) {
+            /* unary @var: no sub-pattern child — child[0] IS the variable name */
+            const char *vname = (e->children[0] && e->children[0]->sval)
+                                 ? e->children[0]->sval : "";
+            sm_emit(p, SM_PAT_EPS);          /* push epsilon as sub-pattern */
+            int idx = sm_emit_s(p, SM_PAT_CAPTURE, vname);
+            p->instrs[idx].a[1].i = 2;      /* cursor */
+        } else {
+            lower_pat_expr(p, lt, e->nchildren > 0 ? e->children[0] : NULL);
+            if (e->nchildren > 1 && e->children[1]) {
+                int idx = sm_emit_s(p, SM_PAT_CAPTURE, e->children[1]->sval);
+                p->instrs[idx].a[1].i = 2;  /* cursor (@V) */
+            }
         }
         return;
 
