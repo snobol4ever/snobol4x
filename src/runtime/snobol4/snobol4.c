@@ -555,12 +555,17 @@ static DESCR_t _COPY_(DESCR_t *a, int n) {
     if (n < 1) return FAILDESCR;
     DESCR_t v = a[0];
     if (IS_ARR(v)) {
+        /* ARRAY: allocate new block, memcpy contents (shallow copy) */
+        if (!v.arr) return v;
         int sz = v.arr->hi - v.arr->lo + 1;
         ARBLK_t *copy = array_new(v.arr->lo, v.arr->hi);
         for (int i = 0; i < sz; i++) copy->data[i] = v.arr->data[i];
         return ARRAY_VAL(copy);
     }
-    return FAILDESCR;
+    /* SIL COPY proc: STRING/INTEGER/REAL/NAME/KEYWORD/EXPRESSION/TABLE all
+     * branch to INTR1 (return argument unchanged — identity copy).
+     * Only ARRAY (and user-defined DATA types) allocate a new block. */
+    return v;
 }
 
 /* Sprint 23: counter stack and tree field accessors as callable DESCR_t functions */
