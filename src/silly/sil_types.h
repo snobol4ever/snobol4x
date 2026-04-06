@@ -287,6 +287,26 @@ typedef enum {
 /* DESCR copy — mirrors SIL MOVD */
 #define MOVD(dst, src)   ((dst) = (src))
 
+/* ── SIL arithmetic / field macros (32-bit silly subsystem) ─────────── */
+/* These mirror the SIL macro set but operate on DESCR_t with int32_t.  */
+
+#define INCRA(d, n)      (D_A(d) += (int32_t)(n))
+#define DECRA(d, n)      (D_A(d) -= (int32_t)(n))
+#define SETAC(d, n)      (D_A(d)  = (int32_t)(n))
+#define SETVC(d, n)      (D_V(d)  = (int32_t)(n))
+#define SETAV(dst, src)  (D_A(dst) = D_A(src))
+#define SETVA(dst, src)  (D_A(dst) = D_V(src))
+#define MOVV(dst, src)   (D_V(dst) = D_V(src))
+#define MOVA(dst, src)   (D_A(dst) = D_A(src))
+#define TESTF(d, flag)   (D_F(d) & (uint8_t)(flag))
+#define AEQLC(d, n)      (D_A(d) == (int32_t)(n))
+#define ACOMPC(d, n)     (D_A(d) - (int32_t)(n))
+#define ACOMP(a, b)      (D_A(a) - D_A(b))
+#define VEQLC(d, n)      (D_V(d) == (int32_t)(n))
+#define SUM(dst, a, b)   (D_A(dst) = D_A(a) + D_A(b))
+#define SUBTRT(dst,a,b)  (D_A(dst) = D_A(a) - D_A(b))
+#define DEQL(a, b)       (D_A(a)==D_A(b) && D_V(a)==D_V(b))
+
 /* Null / zero DESCR */
 #define ZEROD  ((DESCR_t){.a={.i=0}, .f=0, .v=0})
 

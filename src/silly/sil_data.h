@@ -34,6 +34,7 @@ extern DESCR_t XSPPTR, YSPPTR;                       /* spec-ptr scratch   */
 
 extern SPEC_t XSP,  YSP,  ZSP,  WSP,  TSP;
 extern SPEC_t TXSP, TEXTSP, NEXTSP, HEADSP, LNBFSP;
+extern SPEC_t TAILSP, VSP;                           /* M8: scan tail/work */
 extern SPEC_t SPECR1, SPECR2;                        /* conversion scratch */
 extern SPEC_t DPSP;                                  /* DTREP output spec  */
 
@@ -140,6 +141,8 @@ extern DESCR_t YSIZ;      /* size scratch Y                               */
 extern DESCR_t TSIZ;      /* size scratch T                               */
 extern DESCR_t ZSIZ;      /* size scratch Z                               */
 extern DESCR_t TVAL;      /* value scratch T                              */
+extern DESCR_t NVAL;      /* value scratch N (used in scan/argval)        */
+extern DESCR_t VVAL;      /* value scratch V (used in scan/naming)        */
 extern DESCR_t STARSZ;    /* EXPRESSION pattern size = 11*DESCR           */
 extern DESCR_t ZEROCL;    /* constant zero                                */
 extern DESCR_t TRSKELS;   /* trace skeleton pointer                       */
@@ -337,6 +340,25 @@ extern DESCR_t SUCCCL; extern DESCR_t ABORCL;  extern DESCR_t CONTCL;
 extern DESCR_t SCNTCL; extern DESCR_t FRETCL;  extern DESCR_t ENDPTR;
 extern DESCR_t EXTPTR; extern DESCR_t NRETCL;  extern DESCR_t RETCL;
 extern DESCR_t EFFCL;
+
+/* ── M8: sil_scan globals ─────────────────────────────────────────────── */
+/* Function-code DESCRs used by PATBRA dispatch (missing from earlier M) */
+extern DESCR_t SCFLCL;   /* scan failure function code                    */
+extern DESCR_t SUCFCL;   /* SUCCEED failure function code                 */
+extern DESCR_t FNMECL;   /* NME backup function code                      */
+extern DESCR_t UNSCCL;   /* unscanning flag (0/1)                         */
+/* Stream/character-class tables [PLB59] */
+extern DESCR_t TBLBCS;   /* last BREAK arg (cached for table reuse)       */
+extern DESCR_t TBLSCS;   /* last SPAN  arg (cached for table reuse)       */
+extern DESCR_t BRKTB;    /* BREAK/BREAKX stream table                     */
+extern DESCR_t SPANTB;   /* SPAN stream table                             */
+extern DESCR_t STOPSH;   /* stream-table stop sentinel                    */
+extern DESCR_t CONTIN;   /* stream-table continue sentinel                */
+/* Return-type pointers (from v311.sil §21 common code) */
+extern DESCR_t RTYPTR;   /* RTYPTR — return to caller success exit        */
+extern DESCR_t RTZPTR;   /* RTZPTR — return to caller with ZPTR           */
+/* Name-list sizing constants — NAMLSZ and SPDR are in sil_types.h */
+extern int32_t NMOVER;   /* current end of name list block (byte count)   */
 
 /* ── TRCBLK — trace function skeleton ───────────────────────────────── */
 
