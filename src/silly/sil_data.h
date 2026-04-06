@@ -363,6 +363,8 @@ extern int32_t NMOVER;   /* current end of name list block (byte count)   */
 /* ── M10: sil_asgn globals ───────────────────────────────────────────── */
 extern DESCR_t KNATL;    /* unprotected keyword attribute list head       */
 extern DESCR_t KVATL;    /* protected keyword attribute list head         */
+extern DESCR_t FNCPL;    /* function pair list head                       */
+extern DESCR_t UNDFCL;   /* undefined-function sentinel descriptor        */
 extern SPEC_t  REALSP;   /* scratch SPEC for REAL→STRING conversion       */
 extern DESCR_t ZSPPTR;   /* pointer-to-ZSP scratch (mirrors XSPPTR)      */
 
