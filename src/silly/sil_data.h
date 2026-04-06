@@ -419,6 +419,13 @@ extern DESCR_t ISPPTR;   /* pointer-to-IOSP scratch                      */
 #define UNITO   2        /* default output unit number                   */
 
 /* ── M18a/b/c/d: sil_compiler globals ───────────────────────────────── */
+/* M18b: sil_forwrd */
+extern DESCR_t INCSTK;   /* INCLUDE file stack pointer                   */
+extern SPEC_t  LNOSP;    /* left  listing number specifier               */
+extern SPEC_t  RNOSP;    /* right listing number specifier               */
+extern SPEC_t  BLNSP;    /* blank specifier                              */
+extern DESCR_t LNBFSP_d; /* line buffer (DESCR form) for STREAD          */
+/* TEXTSP NEXTSP LNBFSP already in sil_data.h as SPEC_t */
 /* Tree node field offsets — already #define'd in sil_types.h:
  *   FATHER=DESCR  LSON=2*DESCR  RSIB=3*DESCR  CODE=4*DESCR            */
 extern DESCR_t BOSCL;    /* offset of beginning of current statement     */
