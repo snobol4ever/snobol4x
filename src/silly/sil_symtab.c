@@ -123,57 +123,6 @@ int32_t AUGATL_fn(int32_t list_off, DESCR_t type_d, DESCR_t val_d)
     return new_off;   /* A5RTN: return new list */
 }
 
-/* ── CODSKP_fn ───────────────────────────────────────────────────────── */
-/*
- * v311.sil CODSKP (line 1116).
- * Uses a small local stack to handle the recursive FNC case without
- * actual C recursion — mirrors the SIL PUSH/POP pattern exactly.
- */
-
-#define CODSKP_STACK  64
-
-void CODSKP_fn(int32_t n)
-{
-    int32_t stk[CODSKP_STACK];
-    int     top = 0;
-
-    int32_t ycl = n;
-
-    while (1) {
-        /* CODCNT: INCRA OCICL,DESCR */
-        D_A(OCICL) += DESCR;
-
-        /* GETD XCL,OCBSCL,OCICL */
-        DESCR_t xcl = *((DESCR_t *)A2P(D_A(OCBSCL) + D_A(OCICL)));
-
-        /* TESTF XCL,FNC */
-        if (!(D_F(xcl) & FNC)) {
-            /* CODECR: DECRA YCL,1; check for end */
-            ycl -= 1;
-            if (ycl > 0) continue;        /* more to skip */
-            if (ycl == 0) {
-                /* RTN1 */
-                if (top == 0) return;
-                ycl = stk[--top];
-                /* fall through to CODECR after return */
-                ycl -= 1;
-                if (ycl > 0) continue;
-                if (ycl == 0 && top == 0) return;
-            } else {
-                /* INTR10: internal error */
-                extern void sil_error(int);
-                sil_error(17);
-                return;
-            }
-        } else {
-            /* CODFNC: FNC — push YCL, recurse on argument count */
-            if (top < CODSKP_STACK) stk[top++] = ycl;
-            ycl = (int32_t)xcl.v;   /* SETAV YCL,XCL — argument count */
-            /* loop back to CODCNT with new count */
-        }
-    }
-}
-
 /* ── DTREP_fn ────────────────────────────────────────────────────────── */
 /*
  * v311.sil DTREP (line 1135).
