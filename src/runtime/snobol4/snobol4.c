@@ -99,12 +99,8 @@ static void mon_send(const char *kind, const char *name, const char *value) {
 void comm_stno(int n) {
     ++kw_stcount;
     g_sno_err_stmt = n;          /* keep error reporter in sync with current stmt */
-    if (kw_stlimit >= 0 && kw_stcount > kw_stlimit) {
-        fprintf(stderr, "\n** &STLIMIT exceeded at statement %d"
-                        " (&STCOUNT=%lld &STLIMIT=%lld)\n",
-                n, (long long)kw_stcount, (long long)kw_stlimit);
-        exit(1);
-    }
+    if (kw_stlimit >= 0 && kw_stcount > kw_stlimit)
+        sno_runtime_error(22, NULL);   /* SIL EXEX → ERRTYP,22 → terminal exit */
 }
 
 void comm_var(const char *name, DESCR_t val) {

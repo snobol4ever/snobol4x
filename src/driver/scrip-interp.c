@@ -243,6 +243,7 @@ static DESCR_t call_user_function(const char *fname, DESCR_t *args, int nargs)
     /* ── Gather param and local names via source-case accessors ── */
     int np = FUNC_NPARAMS_fn(fname);
     int nl = FUNC_NLOCALS_fn(fname);
+
     char *pnames[64]; if (np > 64) np = 64;
     char *lnames[64]; if (nl > 64) nl = 64;
     for (int i = 0; i < np; i++) {
