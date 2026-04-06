@@ -449,27 +449,6 @@ static DESCR_t _CODE_(DESCR_t *a, int n)  { return code(n>0?VARVAL_fn(a[0]):"");
 static DESCR_t _OPSYN_(DESCR_t *a, int n) {
     return opsyn(n>0?a[0]:NULVCL,n>1?a[1]:NULVCL,n>2?a[2]:NULVCL); }
 static DESCR_t _SORT_(DESCR_t *a, int n)  { return sort_fn(n>0?a[0]:NULVCL); }
-/* DATE() — "MM/DD/YYYY HH:MM:SS"  (matches csnobol4 format) */
-static DESCR_t _DATE_(DESCR_t *a, int n) {
-    (void)a; (void)n;
-    time_t t = time(NULL);
-    struct tm *tm = localtime(&t);
-    char *buf = GC_malloc(20);
-    strftime(buf, 20, "%m/%d/%Y %H:%M:%S", tm);
-    return STRVAL(buf);
-}
-
-/* TIME() — milliseconds since program start, returned as REAL */
-static int64_t _g_start_ms = -1;
-static DESCR_t _TIME_(DESCR_t *a, int n) {
-    (void)a; (void)n;
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    int64_t now_ms = (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
-    if (_g_start_ms < 0) _g_start_ms = now_ms;
-    return REALVAL((double)(now_ms - _g_start_ms));
-}
-
 static DESCR_t _INPUT_(DESCR_t *a, int n);   /* defined near input_read below */
 static DESCR_t _OUTPUT_(DESCR_t *a, int n);  /* defined near input_read below */
 
@@ -515,6 +494,9 @@ static DESCR_t _TABLE_(DESCR_t *a, int n) {
     return TABLE_VAL(table_new_args(init, inc));
 }
 
+/* Forward decl — defined later in the user-defined DATA type section */
+static DATBLK_t *_udef_lookup(const char *name);
+
 /* CONVERT(val, type) — matches csnobol4 CNVRT SIL procedure */
 static DESCR_t _CONVERT_(DESCR_t *a, int n) {
     if (n < 2) return FAILDESCR;
@@ -524,6 +506,10 @@ static DESCR_t _CONVERT_(DESCR_t *a, int n) {
 
     /* Idem conversions and basic coercions */
     if (strcasecmp(type, "STRING")  == 0) {
+        /* SIL CNVRTS: for user-defined data types, DTREP returns the type name.
+         * CONVERT(myPoint,"STRING") → "POINT"  (not FAIL, not NULVCL). */
+        if (IS_DATA(val) && val.u && val.u->type)
+            return STRVAL(GC_strdup(val.u->type->name));
         const char *s = VARVAL_fn(val);
         return s ? STRVAL(GC_strdup(s)) : NULVCL;
     }
@@ -608,16 +594,40 @@ static DESCR_t _CONVERT_(DESCR_t *a, int n) {
             char *end = NULL;
             long long iv = strtoll(s, &end, 10);
             while (*end == ' ') end++;
-            if (*end == ' ') return INTVAL((int64_t)iv);
+            if (*end == '\0') return INTVAL((int64_t)iv);
             /* Try real */
             double rv = strtod(s, &end);
             while (*end == ' ') end++;
-            if (*end == ' ') return REALVAL(rv);
+            if (*end == '\0') return REALVAL(rv);
         }
         return FAILDESCR;
     }
-    /* Unknown type name — FAIL (SIL also fails for unrecognised types) */
-    return FAILDESCR;
+    /* SIL CNVRT tail — user-defined data type names (DTATL lookup, [PLB32]):
+     *
+     *   VEQL  ZPTR,XPTR,,RTZPTR   — obj.type == target_type → idem, return val
+     *   VEQLC XPTR,S,FAIL,CNVRTS  — target_type is STRING → CNVRTS (stringify)
+     *                              — else FAIL
+     *
+     * CNVRTS: for user-defined types DTREP returns the type name string.
+     * So CONVERT(myPoint,"STRING") → "POINT" (the type name).
+     *
+     * _udef_lookup is defined later; forward-declared at top of DATA section. */
+    {
+        DATBLK_t *tgt_type = _udef_lookup(type);
+        if (tgt_type) {
+            /* Found a user-defined type with this name */
+            if (IS_DATA(val) && val.u && val.u->type == tgt_type) {
+                /* Idem conversion — SIL VEQL ZPTR,XPTR,,RTZPTR */
+                return val;
+            }
+            /* Cross-type: SIL has no coercion between user types → FAIL */
+            return FAILDESCR;
+        }
+        /* Type name not in user-defined table and not a built-in type.
+         * SIL VEQLC XPTR,S path: if target is "STRING" we already handled it
+         * above. Any other unknown name → FAIL. */
+        return FAILDESCR;
+    }
 }
 
 /* COPY(array_or_table) — shallow copy */
@@ -703,6 +713,7 @@ static DESCR_t _DATE_(DESCR_t *a, int n) {
     return STRVAL(GC_strdup(buf));
 }
 
+static int64_t _g_start_ms = -1;
 /* ── TIME() — returns elapsed CPU milliseconds as integer (SIL TIMFN) ── */
 static DESCR_t _TIME_(DESCR_t *a, int n) {
     (void)a; (void)n;
@@ -796,9 +807,6 @@ static DESCR_t _STOPTR_(DESCR_t *a, int n) {
     trace_unregister(varname);
     return STRVAL(GC_strdup(varname));
 }
-
-/* Forward declarations needed by _DATA_ trampolines */
-static DATBLK_t *_udef_lookup(const char *name);
 
 /* ---- DT_DATA() builtin ----
  * DT_DATA('typename(field1,field2,...)') — define a user-defined datatype.
