@@ -38,7 +38,7 @@ static inline char *sp_ptr(const SPEC_t *sp)
  * APDSP — append specifier STR to buffer specifier BASE
  * v311.sil APDSP macro → lib/str.c apdsp()
  * ════════════════════════════════════════════════════════════════════════ */
-void apdsp_fn(SPEC_t *base, const SPEC_t *str)
+void APDSP_fn(SPEC_t *base, const SPEC_t *str)
 {
     int32_t len = str->l;
     if (len <= 0) return;
@@ -58,7 +58,7 @@ void apdsp_fn(SPEC_t *base, const SPEC_t *str)
  * REMSP — remove leading match from specifier
  * v311.sil X_REMSP(A,B,C): A = B advanced past C.l bytes
  * ════════════════════════════════════════════════════════════════════════ */
-void remsp_fn(SPEC_t *dst, const SPEC_t *src, const SPEC_t *match)
+void REMSP_fn(SPEC_t *dst, const SPEC_t *src, const SPEC_t *match)
 {
     /* copy all fields from src first (handles dst == src alias) */
     SPEC_t tmp = *src;
@@ -71,7 +71,7 @@ void remsp_fn(SPEC_t *dst, const SPEC_t *src, const SPEC_t *match)
  * TRIMSP — trim trailing blanks
  * v311.sil TRIMSP → lib/str.c trimsp()
  * ════════════════════════════════════════════════════════════════════════ */
-void trimsp_fn(SPEC_t *dst, const SPEC_t *src)
+void TRIMSP_fn(SPEC_t *dst, const SPEC_t *src)
 {
     int32_t len = src->l;
     const char *cp = sp_ptr(src) + len - 1;
@@ -85,7 +85,7 @@ void trimsp_fn(SPEC_t *dst, const SPEC_t *src)
  * v311.sil LEXCMP → lib/lexcmp.c lexcmp()
  * Returns < 0 / 0 / > 0.
  * ════════════════════════════════════════════════════════════════════════ */
-int lexcmp_fn(const SPEC_t *a, const SPEC_t *b)
+int LEXCMP_fn(const SPEC_t *a, const SPEC_t *b)
 {
     int32_t i = a->l, j = b->l;
     const char *x = sp_ptr(a), *y = sp_ptr(b);
@@ -101,7 +101,7 @@ int lexcmp_fn(const SPEC_t *a, const SPEC_t *b)
  * v311.sil SPCINT → lib/c99/spcint.c spcint()
  * Adaption: we use int32_t (not int64_t); always strip leading whitespace.
  * ════════════════════════════════════════════════════════════════════════ */
-SilResult spcint_fn(DESCR_t *dp, const SPEC_t *sp)
+SilResult SPCINT_fn(DESCR_t *dp, const SPEC_t *sp)
 {
     char buf[32];
     size_t len = (size_t)sp->l;
@@ -133,7 +133,7 @@ SilResult spcint_fn(DESCR_t *dp, const SPEC_t *sp)
  * v311.sil SPREAL → lib/generic/spreal.c spreal()
  * Adaption: result stored as float (real_t = float), not double.
  * ════════════════════════════════════════════════════════════════════════ */
-SilResult spreal_fn(DESCR_t *dp, const SPEC_t *sp)
+SilResult SPREAL_fn(DESCR_t *dp, const SPEC_t *sp)
 {
     /* sentinel-terminate trick from lib/generic/spreal.c */
 #define SPREAL_TC  '|'
@@ -172,7 +172,7 @@ SilResult spreal_fn(DESCR_t *dp, const SPEC_t *sp)
  * v311.sil REALST → lib/realst.c realst()
  * sp->a is a raw pointer cast to int32_t — NOT an arena offset.
  * ════════════════════════════════════════════════════════════════════════ */
-void realst_fn(SPEC_t *sp, const DESCR_t *dp)
+void REALST_fn(SPEC_t *sp, const DESCR_t *dp)
 {
     static char strbuf[64];
     char *bp;
@@ -197,7 +197,7 @@ void realst_fn(SPEC_t *sp, const DESCR_t *dp)
  * v311.sil INTSPC → lib/c99/intspc.c intspc()
  * sp->a is a raw pointer cast to int32_t — NOT an arena offset.
  * ════════════════════════════════════════════════════════════════════════ */
-void intspc_fn(SPEC_t *sp, const DESCR_t *dp)
+void INTSPC_fn(SPEC_t *sp, const DESCR_t *dp)
 {
     static char strbuf[32];
 
@@ -215,7 +215,7 @@ void intspc_fn(SPEC_t *sp, const DESCR_t *dp)
  * LOCSP — build specifier from a STRING block DESCR_t
  * v311.sil X_LOCSP(A, B) — macros.h
  * ════════════════════════════════════════════════════════════════════════ */
-void locsp_fn(SPEC_t *sp, const DESCR_t *dp)
+void LOCSP_fn(SPEC_t *sp, const DESCR_t *dp)
 {
     if (dp->a.i == 0) {
         sp->l = 0;
@@ -234,7 +234,7 @@ void locsp_fn(SPEC_t *sp, const DESCR_t *dp)
 /* ════════════════════════════════════════════════════════════════════════
  * SUBSP — substring specifier
  * ════════════════════════════════════════════════════════════════════════ */
-void subsp_fn(SPEC_t *dst, const SPEC_t *src, int32_t off, int32_t len)
+void SUBSP_fn(SPEC_t *dst, const SPEC_t *src, int32_t off, int32_t len)
 {
     *dst   = *src;
     dst->o = src->o + off;

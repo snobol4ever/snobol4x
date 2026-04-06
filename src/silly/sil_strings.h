@@ -37,7 +37,7 @@
  * current end to hold str's bytes (caller's responsibility).
  * No-op if str->l == 0.
  */
-void apdsp_fn(SPEC_t *base, const SPEC_t *str);
+void APDSP_fn(SPEC_t *base, const SPEC_t *str);
 
 /* ── REMSP — remove leading match (specifier slice) ─────────────────── */
 /*
@@ -48,7 +48,7 @@ void apdsp_fn(SPEC_t *base, const SPEC_t *str);
  * A may alias B; C must not alias A.
  * No bounds check — caller ensures C.l <= B.l.
  */
-void remsp_fn(SPEC_t *dst, const SPEC_t *src, const SPEC_t *match);
+void REMSP_fn(SPEC_t *dst, const SPEC_t *src, const SPEC_t *match);
 
 /* ── TRIMSP — trim trailing blanks (spaces) ──────────────────────────── */
 /*
@@ -57,7 +57,7 @@ void remsp_fn(SPEC_t *dst, const SPEC_t *src, const SPEC_t *match);
  * A may alias B.
  * Result: dst->l reduced; all other fields copied from src.
  */
-void trimsp_fn(SPEC_t *dst, const SPEC_t *src);
+void TRIMSP_fn(SPEC_t *dst, const SPEC_t *src);
 
 /* ── LEXCMP — lexicographic compare ─────────────────────────────────── */
 /*
@@ -68,7 +68,7 @@ void trimsp_fn(SPEC_t *dst, const SPEC_t *src);
  *   > 0  if a > b
  * Shorter string is less if it is a prefix of the longer.
  */
-int lexcmp_fn(const SPEC_t *a, const SPEC_t *b);
+int LEXCMP_fn(const SPEC_t *a, const SPEC_t *b);
 
 /* ── SPCINT — parse integer from specifier ───────────────────────────── */
 /*
@@ -79,7 +79,7 @@ int lexcmp_fn(const SPEC_t *a, const SPEC_t *b);
  * Strips leading whitespace when SPITBOL mode is active (not wired
  * here — pass pre-stripped specifier if needed; we always strip).
  */
-SilResult spcint_fn(DESCR_t *dp, const SPEC_t *sp);
+SilResult SPCINT_fn(DESCR_t *dp, const SPEC_t *sp);
 
 /* ── SPREAL — parse real from specifier ─────────────────────────────── */
 /*
@@ -87,7 +87,7 @@ SilResult spcint_fn(DESCR_t *dp, const SPEC_t *sp);
  * Returns OK  (1) and sets dp->{a.f=val, f=0, v=R} on success.
  * Returns FAIL(0) on parse failure.
  */
-SilResult spreal_fn(DESCR_t *dp, const SPEC_t *sp);
+SilResult SPREAL_fn(DESCR_t *dp, const SPEC_t *sp);
 
 /* ── REALST — format real to specifier (points into static buffer) ───── */
 /*
@@ -100,7 +100,7 @@ SilResult spreal_fn(DESCR_t *dp, const SPEC_t *sp);
  * offset) — the static buffer lives in .bss, not the arena.  Callers
  * must consume the specifier before the next REALST/INTSPC call.
  */
-void realst_fn(SPEC_t *sp, const DESCR_t *dp);
+void REALST_fn(SPEC_t *sp, const DESCR_t *dp);
 
 /* ── INTSPC — format integer to specifier (points into static buffer) ── */
 /*
@@ -108,7 +108,7 @@ void realst_fn(SPEC_t *sp, const DESCR_t *dp);
  * setting sp to point at a static 32-byte buffer.
  * Same static-buffer lifetime caveat as REALST.
  */
-void intspc_fn(SPEC_t *sp, const DESCR_t *dp);
+void INTSPC_fn(SPEC_t *sp, const DESCR_t *dp);
 
 /* ── LOCSP — build specifier from a STRING block DESCR_t ─────────────── */
 /*
@@ -124,7 +124,7 @@ void intspc_fn(SPEC_t *sp, const DESCR_t *dp);
  * B is a DESCR_t whose A field is an arena offset to a STRING title.
  * B may be zero (null variable) — produces zero-length specifier.
  */
-void locsp_fn(SPEC_t *sp, const DESCR_t *dp);
+void LOCSP_fn(SPEC_t *sp, const DESCR_t *dp);
 
 /* ── SUBSP — substring specifier ─────────────────────────────────────── */
 /*
@@ -136,6 +136,6 @@ void locsp_fn(SPEC_t *sp, const DESCR_t *dp);
  *   dst->l = len;
  * No bounds check — caller must ensure off+len <= src->l.
  */
-void subsp_fn(SPEC_t *dst, const SPEC_t *src, int32_t off, int32_t len);
+void SUBSP_fn(SPEC_t *dst, const SPEC_t *src, int32_t off, int32_t len);
 
 #endif /* SIL_STRINGS_H */
