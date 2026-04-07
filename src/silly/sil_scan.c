@@ -633,7 +633,9 @@ abns1:
         if (!AEQLC(FULLCL, 0)) {
             sp_putlg(&VSP, MAXLEN);
             if (sp_lcomp_lt(VSP, TXSP)) GOTO_SALT;
-            sp_addlg_c(&VSP, 1);
+            /* CHKVAL MAXLEN,ZEROCL,XSP,,ANYC4,ANYC4 — skip ADDLG if cur >= MAXLEN */
+            if (TXSP.l < D_A(MAXLEN))
+                sp_addlg_c(&VSP, 1);
         }
         sp_remsp(&YSP, VSP, TXSP);
         if (scl == 1 || scl == 3) {
@@ -893,7 +895,7 @@ static void do_BRKXF(void)
     }
     { int32_t cur = TXSP.l;
       if (cur + nval > D_A(MAXLEN)) GOTO_SALT; }
-    GETDC_BLK(XCL, PDLPTR, 0);
+    GETDC_BLK(XCL, PDLPTR, DESCR); /* GETDC XCL,PDLPTR,DESCR — cursor lock */
     sp_addlg_c(&TXSP, 1);
     do_BRKX();
     return;
@@ -945,7 +947,7 @@ chr2:
     }
 starp:
     {
-        int32_t nval = !AEQLC(FULLCL, 0) ? 0 : D_A(YCL);
+        int32_t nval = AEQLC(FULLCL, 0) ? 0 : D_A(YCL); /* AEQLC FULLCL,0,,STARP1: OFF->0, ON->YCL */
         nval = D_A(MAXLEN) - nval;
         if (nval <= 0) GOTO_TSALT;
         int32_t lv = lvalue_scalar(D_A(YPTR));
@@ -979,7 +981,7 @@ static void do_DSAR(void)
         GOTO_SALF;
     }
     {
-        int32_t nval = !AEQLC(FULLCL, 0) ? 0 : D_A(YCL);
+        int32_t nval = AEQLC(FULLCL, 0) ? 0 : D_A(YCL); /* AEQLC FULLCL,0,,STARP1: OFF->0, ON->YCL */
         nval = D_A(MAXLEN) - nval;
         opush(MAXLEN); opush(PATBCL); opush(PATICL); opush(XCL); opush(YCL);
         { DESCR_t mv; SETAC(mv, nval); MOVD(MAXLEN, mv); }
@@ -1146,19 +1148,17 @@ static void do_SUCF(void)
 /* SCON — advance head by 1, retry pattern */
 static void do_SCON(void)
 {
-    if (!AEQLC(FULLCL, 0)) {
-        if (AEQLC(LENFCL, 0)) GOTO_FAIL;
-    }
+    if (AEQLC(FULLCL, 0)) GOTO_FAIL;  /* AEQLC FULLCL,0,FAIL — fullscan OFF → fail */
+    if (AEQLC(LENFCL, 0)) GOTO_FAIL;  /* AEQLC LENFCL,0,FAIL */
     TMVAL = opop(); /* YSIZ */
-    YPTR = opop(); /* YPTR */
+    YPTR  = opop(); /* YPTR */
     DECRA(TMVAL, 1);
-    if (D_A(TMVAL) <= 0) {
-        if (D_A(TMVAL) < 0) scan_error(SCAN_ERR_ILLEGAL_TYPE);
-        GOTO_FAIL;
-    }
+    if (D_A(TMVAL) < 0)  scan_error(SCAN_ERR_ILLEGAL_TYPE); /* ACOMPC YSIZ,0,,FAIL,INTR13 */
+    if (D_A(TMVAL) == 0) GOTO_FAIL;
     sp_addlg_c(&TXSP, 1);
     opush(YPTR); opush(TMVAL);
     sp_copy(&HEADSP, TXSP);
+    SETAC(LENFCL, 1); /* SETAC LENFCL,1 before pdl_push3 */
     { DESCR_t cv; sp_getlg(&cv, TXSP); pdl_push3(SCONCL, cv, LENFCL); }
     do_SCIN1A();
 }
