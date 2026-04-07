@@ -42,13 +42,13 @@ extern Sil_result INVOKE_fn(void);
 extern Sil_result PUTIN_fn(DESCR_t zptr, DESCR_t wptr);
 extern void       PUTOUT_fn(DESCR_t yptr, DESCR_t val);
 extern Sil_result TRPHND_fn(DESCR_t atptr);
-extern Sil_result maknod_fn(DESCR_t *out, int32_t blk_off,
-                             int32_t len, int32_t alt,
-                             int32_t fn_idx, int32_t arg_off);
-extern void       cpypat_fn(int32_t dst_off, int32_t src_off,
-                             int32_t link_val, int32_t dst_base,
-                             int32_t src_base, int32_t count);
-extern int32_t    lvalue_fn(int32_t pat_off);
+extern void       maknod_scalar(DESCR_t *out, int32_t blk_off,
+                                int32_t len_val, int32_t alt_val,
+                                int32_t fn_idx, int32_t arg_off);
+extern int32_t    lvalue_scalar(int32_t pat_off);
+extern void       cpypat_scalar(int32_t dst_off, int32_t src_off,
+                                int32_t link_val, int32_t dst_base,
+                                int32_t src_base, int32_t count);
 extern int32_t    getbal_fn(SPEC_t *sp, int32_t maxlen);
 extern int32_t    stream_fn(SPEC_t *res, const SPEC_t *src,
                              const DESCR_t *table);
@@ -312,7 +312,7 @@ Sil_result SCNR_fn(void)
     Scan_ctx *prev = scan_ctx_g;
     scan_ctx_g = &ctx;
     D_A(MAXLEN) = XSP.l; /* GETLG MAXLEN,XSP */
-    DESCR_t YSIZ_l; SETAC(YSIZ_l, lvalue_fn(D_A(YPTR))); /* LVALUE YSIZ,YPTR  — min match length of pattern */
+    DESCR_t YSIZ_l; SETAC(YSIZ_l, lvalue_scalar(D_A(YPTR))); /* LVALUE YSIZ,YPTR  — min match length of pattern */
     if (!AEQLC(FULLCL, 0)) { /* AEQLC FULLCL,0,SCNR1 — if fullscan off, check min vs max */
         if (D_A(YSIZ_l) > D_A(MAXLEN)) { scan_ctx_g = prev; return FAIL; }
     }
@@ -354,40 +354,43 @@ scan_ok:
         goto scan_fail;
     }
     scan_ctx_g = prev; return OK;
-scan_alt: /* SALT1 then SALT2 */
-    { DESCR_t tmp; GETDC_BLK(tmp, PDLPTR, 2*DESCR); MOVD(LENFCL, tmp); }
-    goto scan_backtrack; /* fall through to common alt/alf handler */
-scan_alf: /* SALF1: SETAC LENFCL,0 */
+scan_alt: /* SALT1: GETDC LENFCL,PDLPTR,3*DESCR — read lenfcl from PDL, then SALT2 */
+    GETDC_BLK(LENFCL, PDLPTR, 2*DESCR);
+    goto scan_backtrack; /* SALT2 */
+scan_alf: /* SALF1: SETAC LENFCL,0; then SALT2 */
     SETAC(LENFCL, 0);
-scan_backtrack:
+scan_backtrack: /* SALT2 */
     {
         DESCR_t XCL2, YCL2;
         GETDC_BLK(XCL2, PDLPTR, 0);
         GETDC_BLK(YCL2, PDLPTR, DESCR);
         DECRA(PDLPTR, 3*DESCR);
         MOVD(PATICL, XCL2);
-        if (!AEQLC(PATICL, 0)) {
-            sp_putlg(&TXSP, YCL2);
+        if (!AEQLC(PATICL, 0)) { /* AEQLC PATICL,0,,SALT3 — non-zero: resume OR link */
+            sp_putlg(&TXSP, YCL2); /* PUTLG TXSP,YCL — restore cursor */
             MOVD(XCL, XCL2); MOVD(YCL, YCL2);
             if (setjmp(ctx.fail_jmp)) goto scan_fail; /* reinstate setjmps */
             if (setjmp(ctx.scok_jmp)) goto scan_ok;
             if (setjmp(ctx.salt_jmp)) goto scan_alt;
             if (setjmp(ctx.salf_jmp)) goto scan_alf;
-            if (TESTF(PATICL, FNC)) {
-                int32_t idx = D_A(PATICL); /* function code stored directly in PATICL.a */
-                if ((uint32_t)idx < SCAN_DISPATCH_SZ) scan_dispatch[idx]();
+            if (TESTF(PATICL, FNC)) { /* TESTF PATICL,FNC,SCIN3 */
+                do_SCIN2(); /* SCIN3 re-enters dispatch from PATICL directly */
             } else {
                 DESCR_t PTBRCL; GETDC_BLK(PTBRCL, PATICL, 0);
                 int32_t idx = D_A(PTBRCL);
                 if ((uint32_t)idx < SCAN_DISPATCH_SZ) scan_dispatch[idx]();
+                do_SCIN2();
             }
-            do_SCIN2();
             goto scan_fail;
         }
-        if (AEQLC(LENFCL, 0)) /* SALT3: AEQLC LENFCL,0,SALT1 */
-            { SETAC(LENFCL, 0); goto scan_alf; }
-        else
-            goto scan_alf;
+        /* SALT3: PATICL==0 — no OR link; check lenfcl */
+        if (AEQLC(LENFCL, 0)) { /* AEQLC LENFCL,0,SALT1 — re-read lenfcl from PDL */
+            GETDC_BLK(LENFCL, PDLPTR, 2*DESCR); /* SALT1 */
+            goto scan_backtrack; /* SALT2 again */
+        }
+        /* else SALF1: SETAC LENFCL,0 then SALT2 */
+        SETAC(LENFCL, 0);
+        goto scan_backtrack;
     }
 scan_fail:
     scan_ctx_g = prev;
@@ -429,10 +432,10 @@ Sil_result SCAN_fn(void)
     sp_setfrom_descr(&XSP, XPTR); /* Pattern case: run SCNR */
     if (SCNR_fn() == FAIL) return FAIL;
     if (NMD_fn() == FAIL) return FAIL;
-    if (sp_lcomp_lt(TXSP, HEADSP)) /* Compute matched substring (SCANV1/SCANV2) */
-        sp_remsp(&XSP, HEADSP, TXSP);
+    if (sp_lcomp_lt(TXSP, HEADSP) || TXSP.l == HEADSP.l) /* LCOMP TXSP,HEADSP,SCANV1,SCANV1 */
+        sp_remsp(&XSP, TXSP, HEADSP);  /* SCANV1: REMSP XSP,TXSP,HEADSP */
     else
-        sp_remsp(&XSP, TXSP, HEADSP);
+        sp_remsp(&XSP, HEADSP, TXSP);  /* SCANV2: REMSP XSP,HEADSP,TXSP */
     { /* RCALL YPTR,GENVAR,XSPPTR,RTYPTR */
         int32_t off = GENVAR_fn(&XSP);
         if (!off) return FAIL;
@@ -523,14 +526,14 @@ sjsrp:
             int32_t hlen = HEADSP.l;
             int32_t blk1 = BLOCK_fn(D_A(LNODSZ), P);
             if (!blk1) return FAIL;
-            maknod_fn(&XPTR, blk1, hlen, 0, SCAN_IDX_CHR, hoff);
+            maknod_scalar(&XPTR, blk1, hlen, 0, SCAN_IDX_CHR, hoff);
             int32_t toff = GENVAR_fn(&TAILSP);
             if (!toff) return FAIL;
             D_A(YPTR) = toff; D_V(YPTR) = S;
             int32_t tlen = TAILSP.l;
             int32_t blk2 = BLOCK_fn(D_A(LNODSZ), P);
             if (!blk2) return FAIL;
-            maknod_fn(&YPTR, blk2, tlen, 0, SCAN_IDX_CHR, toff);
+            maknod_scalar(&YPTR, blk2, tlen, 0, SCAN_IDX_CHR, toff);
             int32_t xsz = x_bksize(D_A(XPTR));
             int32_t ysz = x_bksize(D_A(YPTR));
             int32_t zsz = x_bksize(D_A(ZPTR));
@@ -538,11 +541,11 @@ sjsrp:
             int32_t pblk = BLOCK_fn(tot, P);
             if (!pblk) return FAIL;
             SETAC(TPTR, pblk);
-            int32_t lv_z = lvalue_fn(D_A(ZPTR));
-            int32_t lv_y = lvalue_fn(D_A(YPTR));
-            cpypat_fn(pblk, D_A(XPTR), lv_z, 0, 0, xsz);
-            cpypat_fn(pblk, D_A(ZPTR), lv_y, xsz, 0, zsz);
-            cpypat_fn(pblk, D_A(YPTR), 0, xsz+zsz, 0, ysz);
+            int32_t lv_z = lvalue_scalar(D_A(ZPTR));
+            int32_t lv_y = lvalue_scalar(D_A(YPTR));
+            cpypat_scalar(pblk, D_A(XPTR), lv_z, 0, 0, xsz);
+            cpypat_scalar(pblk, D_A(ZPTR), lv_y, xsz, 0, zsz);
+            cpypat_scalar(pblk, D_A(YPTR), 0, xsz+zsz, 0, ysz);
             SETAC(ZPTR, pblk); D_V(ZPTR) = P;
             goto sjsrv1;
         }
@@ -945,7 +948,7 @@ starp:
         int32_t nval = !AEQLC(FULLCL, 0) ? 0 : D_A(YCL);
         nval = D_A(MAXLEN) - nval;
         if (nval <= 0) GOTO_TSALT;
-        int32_t lv = lvalue_fn(D_A(YPTR));
+        int32_t lv = lvalue_scalar(D_A(YPTR));
         if (lv > nval) GOTO_TSALT;
         { DESCR_t _cur; sp_getlg(&_cur, TXSP); pdl_push3(SCFLCL, _cur, LENFCL); }
         opush(MAXLEN); opush(PATBCL); opush(PATICL); opush(XCL); opush(YCL);

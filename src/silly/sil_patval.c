@@ -383,3 +383,53 @@ Sil_result OR_fn(void)
     linkor_fn(&ZPTR, &XSIZ);
     return OK;
 }
+
+/* ── Scalar-ABI wrappers for sil_scan.c ─────────────────────────────────
+ * sil_scan.c was written against raw int32_t offset args (old SIL ABI).
+ * These thin wrappers bridge between the two conventions.
+ * Exported (non-static); declared in sil_patval.h.
+ */
+
+/* maknod_scalar — allocate one pattern node into *out_descr.
+ *   blk_off : arena offset of block base (BLOCK_fn result)
+ *   len_val : length field (integer value, stored in d3 slot)
+ *   alt_val : alternate/link field (integer value, d4 slot)
+ *   fn_idx  : function-index integer (d5 slot — e.g. SCAN_IDX_CHR)
+ *   arg_off : argument arena offset (d6 slot)
+ */
+void maknod_scalar(DESCR_t *out, int32_t blk_off,
+                   int32_t len_val, int32_t alt_val,
+                   int32_t fn_idx, int32_t arg_off)
+{
+    DESCR_t d2 = ZEROCL; d2.a.i = blk_off;
+    DESCR_t d3 = ZEROCL; d3.a.i = len_val;
+    DESCR_t d4 = ZEROCL; d4.a.i = alt_val;
+    DESCR_t d5 = ZEROCL; d5.a.i = fn_idx;
+    DESCR_t d6 = ZEROCL; d6.a.i = arg_off;
+    maknod_fn(out, &d2, &d3, &d4, &d5, &d6);
+}
+
+/* lvalue_scalar — return minimum match length for pattern at pat_off. */
+int32_t lvalue_scalar(int32_t pat_off)
+{
+    DESCR_t d1 = ZEROCL;
+    DESCR_t d2 = ZEROCL; d2.a.i = pat_off;
+    lvalue_fn(&d1, &d2);
+    return d1.a.i;
+}
+
+/* cpypat_scalar — copy count pattern nodes from src_off+src_base into
+ *   dst_off+dst_base, applying link fixup of link_val.
+ */
+void cpypat_scalar(int32_t dst_off, int32_t src_off,
+                   int32_t link_val, int32_t dst_base,
+                   int32_t src_base, int32_t count)
+{
+    DESCR_t d1 = ZEROCL; d1.a.i = dst_off;
+    DESCR_t d2 = ZEROCL; d2.a.i = src_off;
+    DESCR_t d3 = ZEROCL; d3.a.i = link_val;
+    DESCR_t d4 = ZEROCL; d4.a.i = dst_base;
+    DESCR_t d5 = ZEROCL; d5.a.i = src_base;
+    DESCR_t d6 = ZEROCL; d6.a.i = count;
+    cpypat_fn(&d1, &d2, &d3, &d4, &d5, &d6);
+}
