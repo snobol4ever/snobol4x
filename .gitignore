@@ -61,3 +61,4 @@ test/monitor/*.so
 test/sprint_asm/*/null
 src/runtime/snobol4/smoke_gaps
 src/runtime/snobol4/test_runtime
+boxes.jar

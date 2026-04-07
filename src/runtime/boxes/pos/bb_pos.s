@@ -1,35 +1,34 @@
-; bb_pos.s    _XPOSI      assert cursor == n (zero-width)
-; ABI: rdi=ζ (pos_t*), esi=entry; r10/r11=scratch
+; bb_pos.s   _XPOSI      assert cursor == n (zero-width)
+; spec_t  bb_pos(void *zeta, int entry)
+;   rdi = zeta (pos_t*)    esi = entry
 ; pos_t: { int n @0 }
-; .data: Δ_ptr, Σ_ptr
 
 section .note.GNU-stack noalloc noexec nowrite progbits
+
+extern Σ, Δ, Ω
 
 section .text
 global bb_pos
 
 bb_pos:
-        mov     r10, rdi               ; r10 = ζ
+        push    rbx
+        mov     rbx, rdi                ; rbx = ζ (pos_t*)
         cmp     esi, 0
         je      POS_α
-        jmp     POS_ω
-POS_α:
-        mov     r11, [rel pos_Δ_ptr]
-        mov     eax, dword [r11]        ; eax = Δ
-        cmp     eax, dword [r10]        ; Δ == ζ->n ?
+        jmp     POS_β
+POS_α:  mov     eax, dword [rel Δ]      ; Δ
+        cmp     eax, dword [rbx+0]      ; Δ != ζ->n ?
         jne     POS_ω
-        mov     r11, [rel pos_Σ_ptr]
-        mov     rax, [r11]              ; rax = Σ
-        mov     r11, [rel pos_Δ_ptr]
-        movsxd  rcx, dword [r11]
-        add     rax, rcx               ; σ = Σ+Δ
-        xor     edx, edx
+        ; POS = spec(Σ+Δ, 0)
+        mov     rax, qword [rel Σ]
+        movsxd  rcx, dword [rel Δ]
+        add     rax, rcx                ; σ = Σ+Δ
+        xor     edx, edx                ; δ = 0
+        jmp     POS_γ
+POS_β:                                  jmp     POS_ω
+POS_γ:  pop     rbx
         ret
-POS_ω:
-        xor     eax, eax
+POS_ω:  xor     eax, eax
         xor     edx, edx
+        pop     rbx
         ret
-
-section .data
-pos_Δ_ptr: dq 0
-pos_Σ_ptr: dq 0

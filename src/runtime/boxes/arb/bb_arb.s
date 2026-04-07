@@ -1,55 +1,49 @@
-; bb_arb.s    _XFARB      ARB — match 0..n chars lazily; β extends by 1
-; arb_t: { int count @0; int start @4 }   both mutable
-; .data: Δ_ptr, Ω_ptr, Σ_ptr
+; bb_arb.s   _XFARB      match 0..n chars lazily; β extends by 1
+; spec_t  bb_arb(void *zeta, int entry)
+;   rdi = zeta (arb_t*)    esi = entry
+; arb_t: { int count @0; int start @4 }
 
 section .note.GNU-stack noalloc noexec nowrite progbits
+
+extern Σ, Δ, Ω
 
 section .text
 global bb_arb
 
 bb_arb:
-        mov     r10, rdi               ; r10 = ζ (arb_t*)
+        push    rbx
+        mov     rbx, rdi                ; rbx = ζ (arb_t*)
         cmp     esi, 0
         je      ARB_α
         jmp     ARB_β
-ARB_α:
-        mov     dword [r10], 0          ; ζ->count = 0
-        mov     r11, [rel arb_Δ_ptr]
-        mov     eax, dword [r11]
-        mov     dword [r10+4], eax      ; ζ->start = Δ
-        mov     r11, [rel arb_Σ_ptr]
-        mov     rax, [r11]
-        mov     r11, [rel arb_Δ_ptr]
-        movsxd  rcx, dword [r11]
-        add     rax, rcx               ; σ = Σ+Δ
-        xor     edx, edx               ; δ = 0
-        ret
-ARB_β:
-        mov     eax, dword [r10]
-        inc     eax
-        mov     dword [r10], eax        ; ζ->count++
-        mov     ecx, dword [r10+4]      ; ζ->start
-        add     ecx, eax               ; start + count
-        mov     r11, [rel arb_Ω_ptr]
-        cmp     ecx, dword [r11]        ; > Ω ?
+ARB_α:  ; ζ->count=0; ζ->start=Δ; ARB=spec(Σ+Δ,0)
+        mov     dword [rbx+0], 0        ; ζ->count = 0
+        mov     eax, dword [rel Δ]
+        mov     dword [rbx+4], eax      ; ζ->start = Δ
+        mov     rax, qword [rel Σ]
+        movsxd  rcx, dword [rel Δ]
+        add     rax, rcx                ; σ = Σ+Δ
+        xor     edx, edx                ; δ = 0
+        jmp     ARB_γ
+ARB_β:  ; ζ->count++
+        add     dword [rbx+0], 1
+        ; if (ζ->start + ζ->count > Ω) goto ω
+        mov     eax, dword [rbx+4]      ; ζ->start
+        add     eax, dword [rbx+0]      ; + ζ->count
+        cmp     eax, dword [rel Ω]
         jg      ARB_ω
-        mov     r11, [rel arb_Δ_ptr]
-        mov     ecx, dword [r10+4]
-        mov     dword [r11], ecx        ; Δ = start
-        mov     r11, [rel arb_Σ_ptr]
-        mov     rax, [r11]
-        movsxd  rcx, ecx
-        add     rax, rcx               ; σ = Σ+start
-        mov     edx, dword [r10]        ; δ = count
-        mov     r11, [rel arb_Δ_ptr]
-        add     dword [r11], edx        ; Δ += count
+        ; Δ = ζ->start;  ARB = spec(Σ+Δ, ζ->count);  Δ += ζ->count
+        mov     eax, dword [rbx+4]
+        mov     dword [rel Δ], eax      ; Δ = ζ->start
+        mov     rax, qword [rel Σ]
+        movsxd  rcx, dword [rbx+4]
+        add     rax, rcx                ; σ = Σ+ζ->start
+        mov     edx, dword [rbx+0]      ; δ = ζ->count
+        add     dword [rel Δ], edx      ; Δ += ζ->count
+        jmp     ARB_γ
+ARB_γ:  pop     rbx
         ret
-ARB_ω:
-        xor     eax, eax
+ARB_ω:  xor     eax, eax
         xor     edx, edx
+        pop     rbx
         ret
-
-section .data
-arb_Δ_ptr: dq 0
-arb_Ω_ptr: dq 0
-arb_Σ_ptr: dq 0

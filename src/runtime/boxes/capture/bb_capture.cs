@@ -33,9 +33,9 @@ public sealed class bb_capture : IByrdBox
     public Spec α(MatchState ms) => TryChild(ms, α: true);
     public Spec β(MatchState ms)  => TryChild(ms, α: false);
 
-    private Spec TryChild(MatchState ms, bool α)
+    private Spec TryChild(MatchState ms, bool alpha)
     {
-        var cr = α ? _child.α(ms) : _child.β(ms);
+        var cr = alpha ? _child.α(ms) : _child.β(ms);
         if (cr.IsFail)
         {
             HasPending = false;

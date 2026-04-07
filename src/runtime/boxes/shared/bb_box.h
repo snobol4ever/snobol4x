@@ -109,7 +109,7 @@ typedef spec_t (*bb_box_fn)(void *zeta, int entry);
  * allocates these; the box functions cast zeta to the appropriate type.
  * Named with _t suffix; the .s files use field offsets matching these layouts. */
 typedef struct { const char *lit; int len; }          lit_t;
-typedef struct { int n; int bspan; }                   len_t;  /* bspan: P3C UTF-8 byte span of last match */
+typedef struct { int n; }                              len_t;
 typedef struct { const char *chars; int δ; }          span_t;
 typedef struct { const char *chars; }                  any_t;
 typedef struct { const char *chars; }                  notany_t;

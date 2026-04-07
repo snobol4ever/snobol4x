@@ -1,61 +1,49 @@
-; bb_any.s    _XANYC      match one char if in charset
-; any_t: { const char *chars @0 }   chars = immutable ptr, kept in ζ
-; .data: Δ_ptr, Ω_ptr, Σ_ptr, strchr_ptr
-; α: Δ>=Ω → ω; !strchr(ζ->chars,Σ[Δ]) → ω; σ=Σ+Δ,δ=1,Δ++
-; β: Δ--; ω
+; bb_any.s   _XANYC      match one char if in set
+; spec_t  bb_any(void *zeta, int entry)
+;   rdi = zeta (any_t*)    esi = entry
+; any_t: { const char *chars @0 }
 
 section .note.GNU-stack noalloc noexec nowrite progbits
+
+extern Σ, Δ, Ω
+extern strchr
 
 section .text
 global bb_any
 
 bb_any:
-        mov     r10, rdi               ; r10 = ζ (any_t*)
+        push    rbx
+        push    r12
+        mov     rbx, rdi                ; rbx = ζ (any_t*)
         cmp     esi, 0
         je      ANY_α
         jmp     ANY_β
-ANY_α:
-        mov     r11, [rel any_Ω_ptr]
-        mov     r11, [r11]              ; r11 = &Ω ... wait: Ω is int global
-        ; correct: load ptr-to-int, then deref
-        mov     r11, [rel any_Δ_ptr]
-        mov     eax, dword [r11]        ; eax = Δ
-        mov     r11, [rel any_Ω_ptr]
-        cmp     eax, dword [r11]        ; Δ >= Ω ?
+ANY_α:  ; if (Δ>=Ω || !strchr(ζ->chars, Σ[Δ])) goto ω
+        mov     eax, dword [rel Δ]
+        cmp     eax, dword [rel Ω]
         jge     ANY_ω
-        mov     r11, [rel any_Σ_ptr]
-        mov     r11, [r11]              ; r11 = Σ (ptr)
-        mov     r11, [rel any_Σ_ptr]
-        ; reload cleanly:
-        mov     rax, [rel any_Σ_ptr]
-        mov     rax, [rax]              ; rax = Σ
-        mov     r11, [rel any_Δ_ptr]
-        movsxd  rcx, dword [r11]
-        movzx   edi, byte [rax+rcx]     ; edi = Σ[Δ]  (char arg)
-        mov     rsi, [r10]              ; rsi = ζ->chars
-        xchg    rdi, rsi               ; rdi=chars, rsi=char (strchr ABI: (chars,c))
-        call    qword [rel any_strchr_ptr]
+        ; load Σ[Δ]
+        mov     r12, qword [rel Σ]
+        movsxd  rcx, dword [rel Δ]
+        movzx   esi, byte [r12+rcx]     ; Σ[Δ]
+        mov     rdi, qword [rbx+0]      ; ζ->chars
+        call    strchr
         test    rax, rax
         jz      ANY_ω
-        mov     rax, [rel any_Σ_ptr]
-        mov     rax, [rax]
-        mov     r11, [rel any_Δ_ptr]
-        movsxd  rcx, dword [r11]
-        add     rax, rcx               ; σ = Σ+Δ
-        mov     edx, 1                 ; δ = 1
-        add     dword [r11], 1          ; Δ++
-        ret
-ANY_β:
-        mov     r11, [rel any_Δ_ptr]
-        sub     dword [r11], 1          ; Δ--
+        ; ANY = spec(Σ+Δ, 1);  Δ++
+        mov     rax, r12
+        movsxd  rcx, dword [rel Δ]
+        add     rax, rcx                ; σ = Σ+Δ
+        mov     edx, 1                  ; δ = 1
+        add     dword [rel Δ], 1        ; Δ++
+        jmp     ANY_γ
+ANY_β:  sub     dword [rel Δ], 1        ; Δ--
         jmp     ANY_ω
-ANY_ω:
-        xor     eax, eax
-        xor     edx, edx
+ANY_γ:  pop     r12
+        pop     rbx
         ret
-
-section .data
-any_Δ_ptr:      dq 0
-any_Ω_ptr:      dq 0
-any_Σ_ptr:      dq 0
-any_strchr_ptr: dq 0
+ANY_ω:  xor     eax, eax
+        xor     edx, edx
+        pop     r12
+        pop     rbx
+        ret

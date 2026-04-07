@@ -78,8 +78,8 @@ extern DESCR_t (*g_user_call_hook)(const char *name, DESCR_t *args, int nargs);
  * Instead we redeclare bb_box.h's types manually here. */
 #include "../snobol4/snobol4.h"
 #include "../snobol4/sil_macros.h"   /* SIL macro translations — RT + SM axes */
-#include "../asm/bb_build_bin.h"
-#include "../asm/bb_flat.h"     /* bb_lit_emit_binary — M-DYN-B1 */
+#include "../x86/bb_build_bin.h"
+#include "../x86/bb_flat.h"     /* bb_lit_emit_binary — M-DYN-B1 */
 
 /* In the full-runtime build, include bb_box.h after snobol4.h.
  * bb_box.h now uses spec_t (not spec_t) so no collision with engine. */

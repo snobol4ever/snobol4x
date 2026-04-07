@@ -64,8 +64,8 @@ extern void ir_print_node_nl(const EXPR_t *e, FILE *f);
 /* pat_at_cursor not exposed in snobol4.h — forward-declare here */
 extern DESCR_t pat_at_cursor(const char *varname);
 
-/* ── stmt_init (from snobol4_stmt_rt.c) ──────────────────────────────── */
-extern void stmt_init(void);
+/* stmt_init — stubbed: SM/IR paths init via SNO_INIT_fn() in snobol4.c */
+static void stmt_init(void) {}
 
 /* ── eval_code.c ─────────────────────────────────────────────────────── */
 extern DESCR_t      eval_expr(const char *src);
