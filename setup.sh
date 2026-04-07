@@ -112,8 +112,8 @@ else
     ok "scrip-cc built"
 fi
 [ -x "$SNOBOL4X/scrip-cc" ] || fail "scrip-cc not found after build"
-# scrip-cc_jvm symlink (snobol4-jvm script expects /home/claude/scrip-cc_jvm)
-[ -e /home/claude/scrip-cc_jvm ] || ln -sf "$SNOBOL4X/scrip-cc" /home/claude/scrip-cc_jvm
+# scrip-cc_jvm symlink (snobol4-jvm script expects scrip-cc_jvm in $HOME)
+[ -e "$HOME/scrip-cc_jvm" ] || ln -sf "$SNOBOL4X/scrip-cc" "$HOME/scrip-cc_jvm"
 ok "scrip-cc ready"
 
 # ── 5. Java / Jasmin ─────────────────────────────────────────────────────────
