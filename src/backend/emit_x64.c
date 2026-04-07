@@ -8673,7 +8673,7 @@ void icn_emit_expr(EXPR_t *n,
  */
 
 #define _POSIX_C_SOURCE 200809L
-#include "emit_x64_snocone.h"
+#include "emit_x64.h"
 #include "snocone_lex.h"
 #include "snocone_parse.h"
 #include "scrip_cc.h"

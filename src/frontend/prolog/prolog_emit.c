@@ -78,7 +78,7 @@ static void emit_c_string(const char *s) {
 
 /* Use the same 3-column pretty-printer as the C backend */
 #define PRETTY_OUT pl_out
-#include "emit_pretty.h"
+#include "../../backend/emit_c.h"
 
 /* =========================================================================
  * Label buffer size

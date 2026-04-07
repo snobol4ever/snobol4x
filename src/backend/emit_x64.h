@@ -1,12 +1,11 @@
 /*
- * emit_x64_snocone.h — Snocone → STMT_t/EXPR_t IR lowering  (SC-1)
+ * emit_x64.h — x64 backend public interface
  *
- * Public entry point for the Snocone x64 lowering pass.
- * Replaces snocone_cf.h / snocone_cf_compile().
+ * Public entry point for the x64/Snocone lowering pass.
  */
 
-#ifndef EMIT_X64_SNOCONE_H
-#define EMIT_X64_SNOCONE_H
+#ifndef EMIT_X64_H
+#define EMIT_X64_H
 
 #include "scrip_cc.h"   /* Program, STMT_t, EXPR_t */
 
@@ -26,4 +25,4 @@
  */
 Program *emit_x64_snocone_compile(const char *source, const char *filename);
 
-#endif /* EMIT_X64_SNOCONE_H */
+#endif /* EMIT_X64_H */

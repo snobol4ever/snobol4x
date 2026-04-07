@@ -74,4 +74,34 @@ typedef enum { TY_STR = 0, TY_INT = 1, TY_FLOAT = 2 } WasmTy;
  * Returns the WasmTy of the emitted value. */
 WasmTy emit_wasm_expr(const EXPR_t *e);
 
+/* ── Icon × WASM emitter (formerly emit_wasm_icon.h) ─────────────────────── */
+/*
+ * emit_wasm_icon.h — public interface for Icon × WASM emitter
+ *
+ * Called from emit_wasm.c when it encounters an ICN_* node.
+ * All other frontends (SNOBOL4, Prolog) are unaffected.
+ */
+#include "icon_ast.h"
+#include <stdio.h>
+
+/* Set the output file handle (called before any emit function). */
+void emit_wasm_icon_set_out(FILE *f);
+
+/* Emit WAT (global …) declarations for all per-node value globals.
+ * Call once, before the (func …) section. */
+void emit_wasm_icon_globals(FILE *out);
+void emit_wasm_icon_str_globals(FILE *out);   /* M-IW-A02: string literal (off,len) globals */
+
+/* Dispatch: emit WAT for one ICN_* node and its sub-tree.
+ * Returns 1 if handled, 0 if unknown kind. */
+int emit_wasm_icon_node(const EXPR_t *n, FILE *out);
+
+/* True if kind is an ICN_* node handled by this emitter. */
+int is_icon_node(int kind);
+
+/* Top-level file emitter — called from main.c for -icn -wasm (M-IW-A01).
+ * Emits a complete .wat module for an array of ICN_PROC nodes. */
+void emit_wasm_icon_file(EXPR_t **procs, int count, FILE *out,
+                          const char *filename);
+
 #endif /* EMIT_WASM_H */

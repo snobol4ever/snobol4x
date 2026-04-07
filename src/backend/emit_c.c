@@ -26,7 +26,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include <ctype.h>
-#include "emit_cnode.h"
+#include "emit_c.h"
 
 /* -----------------------------------------------------------------------
  * Output
@@ -42,7 +42,7 @@ static void C(const char *fmt, ...) {
 
 /* Three-column pretty printer */
 #define PRETTY_OUT out
-#include "emit_pretty.h"
+/* emit_pretty.h now in emit_c.h */
 
 /* -----------------------------------------------------------------------
  * UID counter — single counter shared across both pattern and stmt emit
@@ -4827,7 +4827,7 @@ void c_emit(Program *prog, FILE *f) {
 /* emit_cnode.c — CNODE_t IR build + measure + print phases */
 
 #include "scrip_cc.h"
-#include "emit_cnode.h"
+/* emit_cnode.h now in emit_c.h */
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
