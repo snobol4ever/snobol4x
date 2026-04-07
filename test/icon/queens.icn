@@ -1,0 +1,51 @@
+# queens.icn — N-Queens via recursive backtracking
+# Icon idiom: every-driven search, global constraint arrays
+# Shows: recursive generators, every with if, global state, string mutation
+
+global n, placed, rows, up, down, qcount
+
+procedure safe(c, r)
+    if rows[r]     ~= 0 then fail;
+    if up[n+r-c]   ~= 0 then fail;
+    if down[r+c-1] ~= 0 then fail;
+    return;
+end
+
+procedure show()
+    local sep, line, col;
+    qcount +:= 1;
+    sep := repl("-", 4*n+1);
+    write("solution ", qcount, ":");
+    every col := 1 to n do {
+        write("  ", sep);
+        line := repl("|   ", n) || "|";
+        line[4*(placed[col]-1)+3] := "Q";
+        write("  ", line);
+    };
+    write("  ", sep);
+end
+
+procedure try_col(c)
+    local r;
+    if c > n then { show(); return; };
+    every r := 1 to n do {
+        if safe(c, r) then {
+            placed[c] := r;
+            rows[r] := 1; up[n+r-c] := 1; down[r+c-1] := 1;
+            try_col(c + 1);
+            rows[r] := 0; up[n+r-c] := 0; down[r+c-1] := 0;
+        };
+    };
+end
+
+procedure main(args)
+    n := integer(args[1]) | 6;
+    placed := list(n, 0);
+    rows   := list(n, 0);
+    up     := list(2*n-1, 0);
+    down   := list(2*n-1, 0);
+    qcount := 0;
+    write(n, "-Queens:");
+    try_col(1);
+    write(qcount, " solutions total.");
+end

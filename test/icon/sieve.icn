@@ -1,0 +1,18 @@
+# SCRIP DEMO6 -- Sieve of Eratosthenes, primes to 50 (Icon section)
+# Idiom: list subscript marks composites; every drives two passes
+procedure main()
+    limit := 50;
+    sieve := list(limit, 1);
+    sieve[1] := 0;
+    every i := 2 to limit do
+        if sieve[i] = 1 then
+            every j := i * i to limit by i do
+                sieve[j] := 0;
+    out := "";
+    every i := 2 to limit do
+        if sieve[i] = 1 then {
+            if *out > 0 then out ||:= " ";
+            out ||:= i;
+        };
+    write(out);
+end

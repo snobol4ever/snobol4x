@@ -1,0 +1,129 @@
+# coverage_x64_gaps.icn — exercises ICN kinds missing from emit_x64_icon.c
+# Covers: BANG BREAK CASE COMPLEMENT CSET_DIFF CSET_INTER CSET_UNION
+#         FIELD IDENTICAL INITIAL LIMIT MAKELIST NEXT NONNULL POS POW RANDOM
+#         RECORD REPEAT SECTION SECTION_MINUS SECTION_PLUS SEQ_EXPR
+#         SGE SGT SLE SLT SNE SIZE SUBSCRIPT SWAP
+# GLOBAL and PROC are structural (top-level); covered by declaration.
+
+global gcount
+
+record point(x, y)
+
+procedure main()
+    initial gcount := 0;
+
+    # ICN_BANG
+    lst := [10, 20, 30];
+    every write(!lst);
+
+    # ICN_BREAK
+    every i := 1 to 5 do {
+        if i = 3 then break;
+        write(i)
+    };
+
+    # ICN_CASE
+    x := 2;
+    case x of {
+        1: write("one")
+        2: write("two")
+        default: write("other")
+    };
+
+    # ICN_COMPLEMENT
+    digits := '0123456789';
+    write(*~digits);
+
+    # ICN_CSET_UNION / CSET_INTER / CSET_DIFF
+    a := 'abc';
+    b := 'bcd';
+    write(*(a ++ b));
+    write(*(a ** b));
+    write(*(a -- b));
+
+    # ICN_FIELD
+    p := point(3, 4);
+    write(p.x);
+
+    # ICN_IDENTICAL
+    s1 := "hello";
+    s2 := s1;
+    if s1 === s2 then write("same");
+
+    # ICN_LIMIT
+    every write((1 to 10) \ 3);
+
+    # ICN_MAKELIST
+    ml := [1, 2, 3];
+    write(*ml);
+
+    # ICN_NEXT
+    every i := 1 to 5 do {
+        if i = 3 then next;
+        write(i)
+    };
+
+    # ICN_NONNULL
+    v := "hello";
+    if \v then write("nonnull");
+
+    # ICN_POS (unary +)
+    write(+42);
+
+    # ICN_POW
+    write(2 ^ 10);
+
+    # ICN_RANDOM
+    lst2 := [1, 2, 3, 4, 5];
+    write(type(?lst2));
+
+    # ICN_RECORD (construction)
+    p2 := point(5, 6);
+    write(p2.x + p2.y);
+
+    # ICN_REPEAT
+    i := 0;
+    repeat {
+        i +:= 1;
+        if i >= 3 then break
+    };
+    write(i);
+
+    # ICN_SECTION
+    s := "hello";
+    write(s[2:4]);
+
+    # ICN_SECTION_PLUS
+    write(s[2+:2]);
+
+    # ICN_SECTION_MINUS
+    write(s[4-:2]);
+
+    # ICN_SEQ_EXPR (semicolon expr sequence)
+    result := (write("side"); 42);
+    write(result);
+
+    # ICN_SGT SLT SGE SLE SEQ SNE
+    if "abc" << "abd" then write("slt");
+    if "abd" >> "abc" then write("sgt");
+    if "abc" <<= "abc" then write("sle");
+    if "abc" >>= "abc" then write("sge");
+    if "abc" == "abc" then write("seq");
+    if "abc" ~== "xyz" then write("sne");
+
+    # ICN_SIZE
+    write(*"hello");
+
+    # ICN_SUBSCRIPT
+    lst3 := [10, 20, 30];
+    write(lst3[2]);
+
+    # ICN_SWAP
+    a2 := 1;
+    b2 := 2;
+    a2 :=: b2;
+    write(a2);
+
+    gcount +:= 1;
+    write(gcount)
+end
