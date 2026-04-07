@@ -40,6 +40,7 @@
 #include <sys/stat.h>
 #include <ctype.h>
 #include <setjmp.h>
+#include <time.h>
 #include <gc.h>
 
 /* ── frontend ─────────────────────────────────────────────────────────── */
@@ -137,6 +138,10 @@ static int        call_depth = 0;
 
 /* The program being interpreted (set in main before execute_program) */
 static Program *g_prog = NULL;
+
+/* ── Diagnostic flags (set in main, read by execute_program / sm_interp) ── */
+int g_opt_trace   = 0;  /* --trace:   print STMT N on each statement */
+int g_opt_dump_bb = 0;  /* --dump-bb: print PATND tree before each match */
 
 /* ── Extract DEFINE spec string from E_FNC("DEFINE",...) subject node ── */
 static const char *define_spec_from_expr(EXPR_t *subj)
@@ -1422,6 +1427,10 @@ static void execute_program(Program *prog)
         if (s->is_end) break;
         comm_stno(++stno);
 
+        /* ── --trace: print statement number to stderr ─────────────── */
+        if (g_opt_trace)
+            fprintf(stderr, "TRACE stmt %d\n", stno);
+
         /* Catch runtime errors (longjmp from sno_runtime_error).
          * On error: take :F branch if present, else advance to next stmt. */
         if (setjmp(g_sno_err_jmp) != 0) {
@@ -1459,6 +1468,9 @@ static void execute_program(Program *prog)
         if (s->pattern) {
             /* Build pattern descriptor via interp_eval then exec_stmt */
             DESCR_t pat_d = interp_eval(s->pattern);
+            /* ── --dump-bb: print PATND tree before match ─────────── */
+            if (g_opt_dump_bb && pat_d.v == DT_P && pat_d.p)
+                patnd_print((PATND_t *)pat_d.p, stderr);
             if (IS_FAIL_fn(pat_d)) {
                 succeeded = 0;
             } else {
@@ -1830,7 +1842,6 @@ int main(int argc, char **argv)
     (void)bb_driver; (void)bb_live;
     (void)target_x64; (void)target_jvm; (void)target_net;
     (void)target_js; (void)target_c; (void)target_wasm;
-    (void)dump_sm; (void)dump_bb; (void)opt_trace; (void)opt_bench;
 
     if (argi >= argc) {
         fprintf(stderr,
@@ -1946,8 +1957,13 @@ int main(int argc, char **argv)
         }
         cmpile_add_include(".");
     }
+    struct timespec _t0, _t1, _t2, _t3;
+    if (opt_bench) clock_gettime(CLOCK_MONOTONIC, &_t0);
+
     CMPILE_t *cl = cmpile_file(f, input_path);
     fclose(f);
+
+    if (opt_bench) clock_gettime(CLOCK_MONOTONIC, &_t1);
 
     if (dump_parse || dump_parse_flat) {
         int oneline = dump_parse_flat ? 1 : 0;
@@ -1987,6 +2003,8 @@ int main(int argc, char **argv)
     Program *prog = cmpile_lower(cl);
     cmpile_free(cl);
 
+    if (opt_bench) clock_gettime(CLOCK_MONOTONIC, &_t2);
+
     if (!prog || !prog->head) {
         fprintf(stderr, "scrip: parse failed for '%s'\n", input_path);
         return 1;
@@ -2021,6 +2039,21 @@ int main(int argc, char **argv)
         g_eval_pat_hook = _eval_pat_impl_fn;
     }
 
+    /* ── Set diagnostic globals ─────────────────────────────────────── */
+    g_opt_trace   = opt_trace;
+    g_opt_dump_bb = dump_bb;
+
+    /* ── --dump-sm with --ir-run: lower-only, no execution ─────────── */
+    if (dump_sm && !mode_sm_run) {
+        label_table_build(prog);
+        prescan_defines(prog);
+        SM_Program *sm0 = sm_lower(prog);
+        if (!sm0) { fprintf(stderr, "scrip: sm_lower failed\n"); return 1; }
+        sm_prog_print(sm0, stdout);
+        sm_prog_free(sm0);
+        return 0;
+    }
+
     if (mode_sm_run) {
         /* --sm-run: SM-LOWER path — IR → SM_Program → sm_interp_run.
          * Must mirror execute_program setup: build label table and register
@@ -2033,6 +2066,12 @@ int main(int argc, char **argv)
         if (!sm) {
             fprintf(stderr, "scrip: sm_lower failed\n");
             return 1;
+        }
+        /* ── --dump-sm: print SM_Program and exit ───────────────────── */
+        if (dump_sm) {
+            sm_prog_print(sm, stdout);
+            sm_prog_free(sm);
+            return 0;
         }
         SM_State st;
         sm_state_init(&st);
@@ -2062,6 +2101,14 @@ int main(int argc, char **argv)
         sm_prog_free(sm);
     } else {
         execute_program(prog);
+    }
+    if (opt_bench) {
+        clock_gettime(CLOCK_MONOTONIC, &_t3);
+        double parse_ms = (_t1.tv_sec - _t0.tv_sec)*1e3 + (_t1.tv_nsec - _t0.tv_nsec)/1e6;
+        double lower_ms = (_t2.tv_sec - _t1.tv_sec)*1e3 + (_t2.tv_nsec - _t1.tv_nsec)/1e6;
+        double exec_ms  = (_t3.tv_sec - _t2.tv_sec)*1e3 + (_t3.tv_nsec - _t2.tv_nsec)/1e6;
+        fprintf(stderr, "BENCH parse=%.2fms lower=%.2fms exec=%.2fms total=%.2fms\n",
+                parse_ms, lower_ms, exec_ms, parse_ms + lower_ms + exec_ms);
     }
     if (getenv("SNO_BINARY_BOXES")) {
         extern void bin_audit_print(void);

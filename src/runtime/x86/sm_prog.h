@@ -14,6 +14,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <stdio.h>
 
 /* ── Opcode enumeration ─────────────────────────────────────────────── */
 
@@ -146,6 +147,7 @@ int sm_label(SM_Program *p);
 
 /* Patch a jump target: set a[0].i of instr at `jump_idx` to `target_label` */
 void sm_patch_jump(SM_Program *p, int jump_idx, int target_label);
+void sm_prog_print(const SM_Program *p, FILE *out);
 
 /* Opcode name for diagnostics */
 const char *sm_opcode_name(sm_opcode_t op);

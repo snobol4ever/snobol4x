@@ -99,24 +99,94 @@ void sm_patch_jump(SM_Program *p, int jump_idx, int target_label)
 
 static const char *opnames[SM_OPCODE_COUNT] = {
     "SM_LABEL","SM_JUMP","SM_JUMP_S","SM_JUMP_F","SM_HALT",
+    "SM_STNO",
     "SM_PUSH_LIT_S","SM_PUSH_LIT_I","SM_PUSH_LIT_F","SM_PUSH_NULL",
     "SM_PUSH_VAR","SM_STORE_VAR","SM_POP",
-    "SM_ADD","SM_SUB","SM_MUL","SM_DIV","SM_EXP","SM_CONCAT","SM_NEG",
+    "SM_ADD","SM_SUB","SM_MUL","SM_DIV","SM_EXP","SM_CONCAT","SM_COERCE_NUM","SM_NEG",
     "SM_PAT_LIT","SM_PAT_ANY","SM_PAT_NOTANY","SM_PAT_SPAN","SM_PAT_BREAK",
     "SM_PAT_LEN","SM_PAT_POS","SM_PAT_RPOS","SM_PAT_TAB","SM_PAT_RTAB",
     "SM_PAT_ARB","SM_PAT_REM","SM_PAT_BAL","SM_PAT_FENCE","SM_PAT_ABORT",
     "SM_PAT_FAIL","SM_PAT_SUCCEED","SM_PAT_EPS","SM_PAT_ALT","SM_PAT_CAT",
     "SM_PAT_DEREF","SM_PAT_CAPTURE",
     "SM_EXEC_STMT",
-    "SM_CALL","SM_RETURN","SM_FRETURN","SM_DEFINE",
+    "SM_CALL","SM_RETURN","SM_FRETURN","SM_NRETURN","SM_DEFINE",
     "SM_JUMP_INDIR","SM_SELBRA",
     "SM_STATE_PUSH","SM_STATE_POP",
     "SM_INCR","SM_DECR","SM_LCOMP","SM_RCOMP","SM_TRIM","SM_ACOMP",
     "SM_SPCINT","SM_SPREAL",
+    "SM_PAT_BOXVAL",
 };
 
 const char *sm_opcode_name(sm_opcode_t op)
 {
     if (op >= 0 && op < SM_OPCODE_COUNT) return opnames[op];
     return "SM_UNKNOWN";
+}
+
+/* ── sm_prog_print — --dump-sm diagnostic ──────────────────────────────── */
+#include <stdio.h>
+
+void sm_prog_print(const SM_Program *p, FILE *out)
+{
+    if (!p) { fprintf(out, "(null SM_Program)\n"); return; }
+    fprintf(out, "; SM_Program  count=%d\n", p->count);
+    for (int i = 0; i < p->count; i++) {
+        const SM_Instr *in = &p->instrs[i];
+        const char *name = sm_opcode_name(in->op);
+        fprintf(out, "%4d  %-20s", i, name);
+        /* Print operands heuristically based on opcode */
+        switch (in->op) {
+            /* string operands */
+            case SM_PUSH_LIT_S:
+            case SM_PAT_LIT:
+            case SM_PAT_ANY: case SM_PAT_NOTANY:
+            case SM_PAT_SPAN: case SM_PAT_BREAK:
+                fprintf(out, " s=\"%s\"", in->a[0].s ? in->a[0].s : "");
+                break;
+            /* int operand */
+            case SM_PUSH_LIT_I:
+            case SM_PAT_LEN: case SM_PAT_POS: case SM_PAT_RPOS:
+            case SM_PAT_TAB: case SM_PAT_RTAB:
+            case SM_INCR: case SM_DECR:
+            case SM_LCOMP: case SM_RCOMP: case SM_TRIM:
+                fprintf(out, " i=%lld", (long long)in->a[0].i);
+                break;
+            /* float operand */
+            case SM_PUSH_LIT_F:
+                fprintf(out, " f=%g", in->a[0].f);
+                break;
+            /* jump targets */
+            case SM_JUMP:
+            case SM_JUMP_S:
+            case SM_JUMP_F:
+                fprintf(out, " -> %lld", (long long)in->a[0].i);
+                break;
+            case SM_JUMP_INDIR:
+                fprintf(out, " -> %lld", (long long)in->a[0].i);
+                break;
+            /* string + int */
+            case SM_PUSH_VAR: case SM_STORE_VAR:
+            case SM_PAT_CAPTURE: case SM_PAT_DEREF:
+                if (in->a[0].s) fprintf(out, " s=\"%s\"", in->a[0].s);
+                break;
+            case SM_CALL:
+                fprintf(out, " s=\"%s\" nargs=%lld",
+                    in->a[0].s ? in->a[0].s : "?",
+                    (long long)in->a[1].i);
+                break;
+            case SM_DEFINE:
+                fprintf(out, " s=\"%s\"", in->a[0].s ? in->a[0].s : "?");
+                break;
+            case SM_EXEC_STMT:
+                if (in->a[0].i) fprintf(out, " has_repl=%lld", (long long)in->a[1].i);
+                if (in->a[0].s) fprintf(out, " subj=\"%s\"", in->a[0].s);
+                break;
+            case SM_STNO:
+                fprintf(out, " stmt=%lld", (long long)in->a[0].i);
+                break;
+            default:
+                break;
+        }
+        fprintf(out, "\n");
+    }
 }

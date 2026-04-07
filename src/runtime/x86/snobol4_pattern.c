@@ -1726,3 +1726,61 @@ DESCR_t rsort_fn(DESCR_t arr) {
     }
     return sorted;
 }
+
+/* ── patnd_print — --dump-bb diagnostic ──────────────────────────────────
+ * Recursive pretty-printer for PATND_t trees. Indent is 2 spaces per level.
+ * Writes to 'out'; suitable for stderr or stdout. */
+#include <stdio.h>
+
+static const char *xkind_name(XKIND_t k) {
+    switch (k) {
+        case XCHR:     return "CHR";
+        case XSPNC:    return "SPAN";
+        case XBRKC:    return "BREAK";
+        case XANYC:    return "ANY";
+        case XNNYC:    return "NOTANY";
+        case XLNTH:    return "LEN";
+        case XPOSI:    return "POS";
+        case XRPSI:    return "RPOS";
+        case XTB:      return "TAB";
+        case XRTB:     return "RTAB";
+        case XFARB:    return "ARB";
+        case XARBN:    return "ARBNO";
+        case XSTAR:    return "REM";
+        case XFNCE:    return "FENCE";
+        case XFAIL:    return "FAIL";
+        case XABRT:    return "ABORT";
+        case XSUCF:    return "SUCCEED";
+        case XBAL:     return "BAL";
+        case XEPS:     return "EPS";
+        case XCAT:     return "CAT";
+        case XOR:      return "ALT";
+        case XDSAR:    return "DEREF";
+        case XFNME:    return "CAP_IMM";
+        case XNME:     return "CAP_COND";
+        case XCALLCAP: return "CALLCAP";
+        case XVAR:     return "VAR";
+        case XATP:     return "USERPAT";
+        case XBRKX:    return "BREAKX";
+        default:       return "?";
+    }
+}
+
+static void patnd_print_r(const PATND_t *p, FILE *out, int depth) {
+    if (!p) { fprintf(out, "%*s(null)\n", depth*2, ""); return; }
+    fprintf(out, "%*s(%s", depth*2, "", xkind_name(p->kind));
+    if (p->STRVAL_fn) fprintf(out, " \"%s\"", p->STRVAL_fn);
+    if (p->num)       fprintf(out, " %lld", (long long)p->num);
+    if (p->nchildren == 0) {
+        fprintf(out, ")\n");
+    } else {
+        fprintf(out, "\n");
+        for (int i = 0; i < p->nchildren; i++)
+            patnd_print_r(p->children[i], out, depth + 1);
+        fprintf(out, "%*s)\n", depth*2, "");
+    }
+}
+
+void patnd_print(const PATND_t *p, FILE *out) {
+    patnd_print_r(p, out, 0);
+}

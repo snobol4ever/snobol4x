@@ -62,4 +62,7 @@ struct _PATND_t {
 /* Convenience: single-child access for XARBN/XFNCE/XFNME/XNME */
 #define PATND_CHILD0(p)  ((p)->children ? (p)->children[0] : NULL)
 
+#include <stdio.h>
+void patnd_print(const PATND_t *p, FILE *out);  /* diagnostic: --dump-bb */
+
 #endif /* PATND_H */
