@@ -51,9 +51,9 @@ RUNTIME_NET  := $(RT)/net
 
 # ── Primary targets ───────────────────────────────────────────────────────────
 
-all: scrip scrip-cc
+all: scrip
 
-# ── scrip (interpreter + hybrid + gen driver) ─────────────────────────────────
+# ── scrip — unified driver (all modes, all frontends) ────────────────────────
 
 scrip:
 	@mkdir -p $(OBJ)

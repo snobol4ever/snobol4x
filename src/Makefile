@@ -44,7 +44,7 @@ BACKEND_X64 = \
 
 
 DRIVER = \
-    driver/main.c
+    driver/scrip.c
 
 BACKEND_JVM = \
     backend/emit_jvm.c \

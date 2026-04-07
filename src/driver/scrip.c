@@ -1,18 +1,30 @@
 /*
- * scrip-interp.c — SNOBOL4 tree-walk interpreter (M-INTERP-A01)
+ * scrip.c — unified SCRIP driver
  *
- * Reuses the existing frontend (lex + parse → Program* IR) and the
- * dynamic runtime (exec_stmt, eval_code.c) to execute SNOBOL4
- * programs without emitting any assembly or bytecode.
+ * One binary, all modes. Frontend inferred from file extension.
  *
  * Usage:
- *   scrip-interp <file.sno>
+ *   scrip [mode] [bb] [target] [debug] <file>
  *
- * Exit: 0 on normal END, 1 on error.
+ * Execution modes (default: --run-ir):
+ *   --run-ir         interpret via IR tree-walk
+ *   --run-sm         interpret SM_Program via dispatch loop
+ *   --run-sm-interp  SM + Byrd Boxes through broker/driver
+ *   --run-sm-gen     SM + Byrd Boxes live-wired in exec memory
+ *   --emit-sm        emit SM_Program to file (no execution)
+ *
+ * Byrd Box wiring (default: --bb-driver):
+ *   --bb-driver      boxes through broker/driver
+ *   --bb-jit         boxes live-wired in exec memory (implied by --run-sm-gen)
+ *
+ * Emit targets (with --emit-sm, default: --x64):
+ *   --x64  --jvm  --net  --js  --c  --wasm
+ *
+ * Frontend inferred from extension:
+ *   .sno=SNOBOL4  .icn=Icon  .pl=Prolog  .sc=Snocone  .reb=Rebus  .scrip=SCRIP
  *
  * AUTHORS: Lon Jones Cherryholmes · Claude Sonnet 4.6
- * DATE:    2026-04-02
- * SPRINT:  DYN-24  M-INTERP-A01
+ * SPRINT:  M-SCRIP-U0
  */
 
 #include <stdio.h>
@@ -1736,31 +1748,106 @@ static void ir_dump_program(Program *prog, FILE *f) {
 int main(int argc, char **argv)
 {
     /* ── flag parsing ─────────────────────────────────────────────────── */
-    int dump_parse      = 0;   /* --dump-parse      : pretty S-expression dump */
-    int dump_parse_flat = 0;   /* --dump-parse-flat : one-liner per stmt       */
-    int dump_ir_cmpile  = 0;   /* --dump-ir-cmpile  : IR sexp via CMPILE path  */
-    int dump_ir_bison   = 0;   /* --dump-ir-bison   : IR sexp via Bison path   */
-    int mode_gen        = 1;   /* --gen (default): in-memory generative mode   */
-    int mode_interp     = 0;   /* --interp: interpretive mode (correctness ref) */
-    int mode_hybrid     = 0;   /* --hybrid: SM-LOWER + SM dispatch (M-SCRIP-U3) */
+
+    /* Execution modes — mutually exclusive (default: --run-ir) */
+    int mode_run_ir        = 0;  /* --run-ir        : interpret via IR tree-walk */
+    int mode_run_sm        = 0;  /* --run-sm        : interpret SM_Program via dispatch loop */
+    int mode_run_sm_interp = 0;  /* --run-sm-interp : SM + boxes through broker/driver */
+    int mode_run_sm_gen    = 0;  /* --run-sm-gen    : SM + boxes live-wired in exec memory */
+    int mode_emit_sm       = 0;  /* --emit-sm       : emit SM_Program to file, no execution */
+
+    /* Byrd Box wiring — independent switch (default: --bb-driver) */
+    int bb_driver          = 0;  /* --bb-driver : boxes through broker/driver */
+    int bb_jit             = 0;  /* --bb-jit    : boxes live-wired in exec memory */
+
+    /* Emit targets (meaningful with --emit-sm, default: --x64) */
+    int target_x64         = 0;  /* --x64  */
+    int target_jvm         = 0;  /* --jvm  */
+    int target_net         = 0;  /* --net  */
+    int target_js          = 0;  /* --js   */
+    int target_c           = 0;  /* --c    */
+    int target_wasm        = 0;  /* --wasm */
+
+    /* Debug / dump flags */
+    int dump_parse         = 0;  /* --dump-parse      */
+    int dump_parse_flat    = 0;  /* --dump-parse-flat */
+    int dump_ir_cmpile     = 0;  /* --dump-ir-cmpile  */
+    int dump_ir_bison      = 0;  /* --dump-ir-bison   */
+
     int argi = 1;
     while (argi < argc && argv[argi][0] == '-' && argv[argi][1] == '-') {
-        if      (strcmp(argv[argi], "--dump-parse")      == 0) { dump_parse      = 1; argi++; }
+        /* execution modes */
+        if      (strcmp(argv[argi], "--run-ir")        == 0) { mode_run_ir        = 1; argi++; }
+        else if (strcmp(argv[argi], "--run-sm")        == 0) { mode_run_sm        = 1; argi++; }
+        else if (strcmp(argv[argi], "--run-sm-interp") == 0) { mode_run_sm_interp = 1; argi++; }
+        else if (strcmp(argv[argi], "--run-sm-gen")    == 0) { mode_run_sm_gen    = 1; argi++; }
+        else if (strcmp(argv[argi], "--emit-sm")       == 0) { mode_emit_sm       = 1; argi++; }
+        /* BB wiring */
+        else if (strcmp(argv[argi], "--bb-driver")     == 0) { bb_driver          = 1; argi++; }
+        else if (strcmp(argv[argi], "--bb-jit")        == 0) { bb_jit             = 1; argi++; }
+        /* emit targets */
+        else if (strcmp(argv[argi], "--x64")           == 0) { target_x64         = 1; argi++; }
+        else if (strcmp(argv[argi], "--jvm")           == 0) { target_jvm         = 1; argi++; }
+        else if (strcmp(argv[argi], "--net")           == 0) { target_net         = 1; argi++; }
+        else if (strcmp(argv[argi], "--js")            == 0) { target_js          = 1; argi++; }
+        else if (strcmp(argv[argi], "--c")             == 0) { target_c           = 1; argi++; }
+        else if (strcmp(argv[argi], "--wasm")          == 0) { target_wasm        = 1; argi++; }
+        /* debug/dump */
+        else if (strcmp(argv[argi], "--dump-parse")      == 0) { dump_parse      = 1; argi++; }
         else if (strcmp(argv[argi], "--dump-parse-flat") == 0) { dump_parse_flat = 1; argi++; }
         else if (strcmp(argv[argi], "--dump-ir-cmpile")  == 0) { dump_ir_cmpile  = 1; argi++; }
         else if (strcmp(argv[argi], "--dump-ir-bison")   == 0) { dump_ir_bison   = 1; argi++; }
-        else if (strcmp(argv[argi], "--interp")          == 0) { mode_interp = 1; mode_gen = 0; mode_hybrid = 0; argi++; }
-        else if (strcmp(argv[argi], "--gen")             == 0) { mode_gen    = 1; mode_interp = 0; mode_hybrid = 0; argi++; }
-        else if (strcmp(argv[argi], "--hybrid")          == 0) { mode_hybrid = 1; mode_interp = 0; mode_gen = 0; argi++; }
         else break;
     }
-    /* M-SCRIP-U0: --gen stubs to --interp until M-SCRIP-U3 SM codegen is wired */
-    (void)mode_gen;  /* suppress unused-variable warning during stub phase */
-    (void)mode_hybrid; /* wired below at execute_program dispatch */
+
+    /* Default execution mode: --run-ir */
+    if (!mode_run_ir && !mode_run_sm && !mode_run_sm_interp &&
+        !mode_run_sm_gen && !mode_emit_sm)
+        mode_run_ir = 1;
+
+    /* --run-sm-gen implies --bb-jit */
+    if (mode_run_sm_gen) bb_jit = 1;
+
+    /* Default BB mode: --bb-driver unless --bb-jit explicitly set */
+    if (!bb_driver && !bb_jit) bb_driver = 1;
+
+    /* Default emit target: --x64 */
+    if (mode_emit_sm && !target_x64 && !target_jvm && !target_net &&
+        !target_js && !target_c && !target_wasm)
+        target_x64 = 1;
+
+    /* Suppress unused warnings for modes/targets not yet wired to codegen */
+    (void)mode_run_sm; (void)mode_run_sm_interp; (void)mode_run_sm_gen;
+    (void)mode_emit_sm;
+    (void)bb_driver; (void)bb_jit;
+    (void)target_x64; (void)target_jvm; (void)target_net;
+    (void)target_js; (void)target_c; (void)target_wasm;
+
     if (argi >= argc) {
-        fprintf(stderr, "usage: scrip [--interp|--gen] [--dump-parse|--dump-parse-flat|--dump-ir-cmpile|--dump-ir-bison] <file.sno>\n");
-        fprintf(stderr, "  --interp  interpretive mode (correctness reference)\n");
-        fprintf(stderr, "  --gen     in-memory generative mode (default; stubs to --interp until M-SCRIP-U3)\n");
+        fprintf(stderr,
+            "usage: scrip [mode] [bb] [target] [debug] <file>\n"
+            "\n"
+            "Execution modes (default: --run-ir):\n"
+            "  --run-ir         interpret via IR tree-walk\n"
+            "  --run-sm         interpret SM_Program via dispatch loop\n"
+            "  --run-sm-interp  SM + Byrd Boxes through broker/driver\n"
+            "  --run-sm-gen     SM + Byrd Boxes live-wired in exec memory\n"
+            "  --emit-sm        emit SM_Program to file (no execution)\n"
+            "\n"
+            "Byrd Box wiring (default: --bb-driver):\n"
+            "  --bb-driver      boxes run through broker/driver\n"
+            "  --bb-jit         boxes live-wired in exec memory\n"
+            "                   (implied by --run-sm-gen)\n"
+            "\n"
+            "Emit targets (with --emit-sm, default: --x64):\n"
+            "  --x64  --jvm  --net  --js  --c  --wasm\n"
+            "\n"
+            "Debug/dump:\n"
+            "  --dump-parse  --dump-parse-flat  --dump-ir-cmpile  --dump-ir-bison\n"
+            "\n"
+            "Frontend inferred from file extension:\n"
+            "  .sno=SNOBOL4  .icn=Icon  .pl=Prolog  .sc=Snocone  .reb=Rebus  .scrip=SCRIP\n"
+        );
         return 1;
     }
     const char *input_path = argv[argi];
@@ -1806,7 +1893,7 @@ int main(int argc, char **argv)
 
     FILE *f = fopen(input_path, "r");
     if (!f) {
-        fprintf(stderr, "scrip-interp: cannot open '%s'\n", input_path);
+        fprintf(stderr, "scrip: cannot open '%s'\n", input_path);
         return 1;
     }
 
@@ -1874,7 +1961,7 @@ int main(int argc, char **argv)
         cmpile_free(cl);
         FILE *f2 = fopen(input_path, "r");
         if (!f2) {
-            fprintf(stderr, "scrip-interp: cannot re-open '%s' for bison dump\n", input_path);
+            fprintf(stderr, "scrip: cannot re-open '%s' for bison dump\n", input_path);
             return 1;
         }
         Program *bprog = sno_parse(f2, input_path);
@@ -1887,7 +1974,7 @@ int main(int argc, char **argv)
     cmpile_free(cl);
 
     if (!prog || !prog->head) {
-        fprintf(stderr, "scrip-interp: parse failed for '%s'\n", input_path);
+        fprintf(stderr, "scrip: parse failed for '%s'\n", input_path);
         return 1;
     }
 
@@ -1920,8 +2007,8 @@ int main(int argc, char **argv)
         g_eval_pat_hook = _eval_pat_impl_fn;
     }
 
-    if (mode_hybrid) {
-        /* M-SCRIP-U3: SM-LOWER path — IR → SM_Program → sm_interp_run.
+    if (mode_run_sm) {
+        /* --run-sm: SM-LOWER path — IR → SM_Program → sm_interp_run.
          * Must mirror execute_program setup: build label table and register
          * DEFINE'd functions so call_user_function can find bodies via
          * g_user_call_hook → _usercall_hook → label_lookup. */
