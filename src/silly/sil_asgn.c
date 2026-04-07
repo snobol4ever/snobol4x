@@ -86,8 +86,9 @@ RESULT_t ASGN_fn(void)
         if (VEQLC(XPTR, K)) { /* ASGNV: VEQLC XPTR,K,,ASGNIC */
             opush_asgn(XPTR); /* ASGNIC: keyword subject — get integer value */
             if (INTVAL_fn() == FAIL) { optop_asgn--; return FAIL; }
+            MOVD(YPTR, XPTR); /* save INTVAL result; oracle: RCALL YPTR,INTVAL */
             XPTR = opop_asgn();
-            goto asgnvv; /* YPTR now holds int value; fall into ASGNVV */
+            goto asgnvv;
         }
         INCRA(OCICL, DESCR); /* INCRA OCICL,DESCR; GETD YPTR */
         GETD_B(YPTR, OCBSCL, OCICL);
@@ -105,16 +106,21 @@ RESULT_t ASGN_fn(void)
         } else {
             opush_asgn(XPTR); /* ASGNCV: value side is function — evaluate */
             if (INVOKE_fn() == FAIL) {
-                XPTR = opop_asgn(); return FAIL;
+                /* ASGNVP: fail → POP XPTR; BRANCH ASGNVN → ASGNV1 */
+                XPTR = opop_asgn();
+                GETDC_B(YPTR, YPTR, DESCR);
+            } else {
+                /* ASGNVCJ: success → POP XPTR; BRANCH ASGNVV (skip GETDC) */
+                MOVD(YPTR, XPTR); /* oracle: RCALL YPTR,INVOKE — result in YPTR */
+                XPTR = opop_asgn();
             }
-            XPTR = opop_asgn(); /* ASGNVP: POP XPTR; BRANCH ASGNVN → ASGNV1 */
-            GETDC_B(YPTR, YPTR, DESCR); /* treat as ASGNV1 */
         }
     } else {
         if (INVOKE_fn() == FAIL) return FAIL; /* ASGNC: subject side is function — evaluate */
         if (VEQLC(XPTR, K)) { /* ASGNV: now XPTR holds evaluated subject; get object side */
             opush_asgn(XPTR);
             if (INTVAL_fn() == FAIL) { optop_asgn--; return FAIL; }
+            MOVD(YPTR, XPTR); /* save INTVAL result */
             XPTR = opop_asgn();
             goto asgnvv;
         }
@@ -124,9 +130,15 @@ RESULT_t ASGN_fn(void)
             GETDC_B(YPTR, YPTR, DESCR);
         } else {
             opush_asgn(XPTR);
-            if (INVOKE_fn() == FAIL) { XPTR = opop_asgn(); return FAIL; }
-            XPTR = opop_asgn();
-            GETDC_B(YPTR, YPTR, DESCR);
+            if (INVOKE_fn() == FAIL) {
+                /* ASGNVP: fail → POP XPTR; GETDC YPTR (ASGNV1) */
+                XPTR = opop_asgn();
+                GETDC_B(YPTR, YPTR, DESCR);
+            } else {
+                /* ASGNVCJ: success → result is YPTR, POP XPTR, goto asgnvv */
+                MOVD(YPTR, XPTR);
+                XPTR = opop_asgn();
+            }
         }
     }
 asgnvv:
@@ -178,7 +190,8 @@ RESULT_t CONCAT_fn(void)
             int32_t blk = BLOCK_fn(D_A(STARSZ), P);
             if (!blk) return FAIL;
             memcpy(A2P(blk), A2P(D_A(STRPAT)), (size_t)(D_A(STARSZ)));
-            PUTDC_B(XPTR, 4*DESCR, XPTR);
+            DESCR_t blk_d; SETAC(blk_d, blk);
+            PUTDC_B(blk_d, 4*DESCR, XPTR); /* oracle: PUTDC TPTR,4*DESCR,XPTR */
             SETAC(XPTR, blk); SETVC(XPTR, P);
         }
         break;
@@ -203,7 +216,8 @@ RESULT_t CONCAT_fn(void)
             int32_t blk = BLOCK_fn(D_A(STARSZ), P);
             if (!blk) return FAIL;
             memcpy(A2P(blk), A2P(D_A(STRPAT)), (size_t)(D_A(STARSZ)));
-            PUTDC_B(YPTR, 4*DESCR, YPTR);
+            DESCR_t blk_d; SETAC(blk_d, blk);
+            PUTDC_B(blk_d, 4*DESCR, YPTR); /* oracle: PUTDC TPTR,4*DESCR,YPTR */
             SETAC(YPTR, blk); SETVC(YPTR, P);
         }
         break;
