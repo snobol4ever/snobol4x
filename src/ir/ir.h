@@ -18,9 +18,9 @@
  *
  * Name heritage: E_ prefix = Expression node. Names derived from SIL
  * v311.sil xxxTYP token type codes (CSNOBOL4 2.3.3) where applicable.
- * See doc/ARCH-sil-heritage.md for full lineage.
- * See doc/IR_AUDIT.md for node-by-node Byrd box wiring notes.
- * See doc/SIL_NAMES_AUDIT.md for broader naming law.
+ * See archive/doc/ARCH-sil-heritage.md for full lineage.
+ * See archive/doc/IR_AUDIT.md for node-by-node Byrd box wiring notes.
+ * See archive/doc/SIL_NAMES_AUDIT.md for broader naming law.
  *
  * DO NOT add new node kinds here without Lon's explicit approval.
  * Protocol: evidence from emitter code that a distinct node is needed,

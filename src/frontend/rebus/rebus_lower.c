@@ -7,7 +7,7 @@
  * Walks RProgram* (from rebus_parse()) and produces Program*
  * (STMT_t list with EXPR_t nodes using EKind values).
  *
- * Architecture per doc/IR_LOWER_REBUS.md:
+ * Architecture per archive/doc/IR_LOWER_REBUS.md:
  *   - P-component (pattern) → SNOBOL4 EKind pool
  *   - L-component (control) → Icon EKind pool / label+goto STMT_t chains
  *
