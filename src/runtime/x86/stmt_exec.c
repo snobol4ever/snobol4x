@@ -240,14 +240,10 @@ capture_t *bb_capture_new(bb_box_fn child_fn, void *child_state,
  *
  * We return through a small wrapper struct to keep the API clean.
  */
-typedef struct {
-    bb_box_fn  fn;
-    void      *ζ;
-    size_t     ζ_size;     /* sizeof(*ζ) — stored at calloc site for safe memset */
-} bb_node_t;
+/* bb_node_t is defined in bb_box.h */
 
 /* forward declaration for recursion */
-static bb_node_t bb_build(PATND_t *p);
+bb_node_t bb_build(PATND_t *p);
 
 /* forward decls for capture registry (defined after exec_stmt) */
 static void flush_pending_captures(void);
@@ -626,7 +622,7 @@ static void flush_pending_callcaps(void) {
 
 /* ══════════════════════════════════════════════════════════════════════════ */
 
-static bb_node_t bb_build(PATND_t *p)
+bb_node_t bb_build(PATND_t *p)
 {
     bb_node_t n = { NULL, NULL };
     if (!p) {

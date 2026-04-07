@@ -104,6 +104,13 @@ static inline void *bb_enter(void **ζζ, size_t size) {
  */
 typedef spec_t (*bb_box_fn)(void *zeta, int entry);
 
+/* bb_node_t — a built box instance (fn + allocated state) */
+typedef struct {
+    bb_box_fn  fn;
+    void      *ζ;
+    size_t     ζ_size;
+} bb_node_t;
+
 /* ── box state typedefs — ONE definition, used by bb_*.c, stmt_exec.c, bb_*.s ─
  * Each box's private state struct lives here.  bb_build() in stmt_exec.c
  * allocates these; the box functions cast zeta to the appropriate type.
@@ -127,6 +134,11 @@ typedef struct { int n; int advance; }                rtab_t;
 typedef struct { int fired; }                          fence_t;
 typedef struct { int dummy; }                          abort_t;
 typedef struct { int done; const char *varname; }     atp_t;
-/* deferred_var_t needs bb_node_t (defined in stmt_exec.c) — declared there */
+/* deferred_var_t needs bb_node_t — defined above */
+
+/* bb_build: construct a live box node from a pattern tree node.
+ * Defined in stmt_exec.c; declared here so bb_boxes.c can call it. */
+struct _PATND_t;  /* forward declaration */
+bb_node_t bb_build(struct _PATND_t *p);
 
 #endif /* BB_BOX_H */

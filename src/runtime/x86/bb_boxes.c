@@ -480,9 +480,6 @@ spec_t bb_capture(void *zeta, int entry)
     CAP_ω:          ζ->has_pending=0;                                           return spec_empty;
 }
 
-capture_t *bb_capture_new(bb_box_fn fn, void *state, const char *varname, int immediate)
-{ capture_t *ζ=calloc(1,sizeof(capture_t)); ζ->fn=fn; ζ->state=state; ζ->varname=varname; ζ->immediate=immediate; return ζ; }
-
 /* ───── atp ───── */
 /* _XATP     ATP         @var — write cursor Δ as DT_I into varname; no backtrack */
 
