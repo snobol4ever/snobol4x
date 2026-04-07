@@ -33,7 +33,13 @@ extern Sil_result CONVE_fn(void);    /* §19 — convert to EXPRESSION type  */
  * Returns OK on success, FAIL on overflow/nan.                          */
 static Sil_result rlint(DESCR_t *dp)
 {
-    dp->a.i = (int32_t)dp->a.f;
+    /* RLINT macro: convert REAL to INTEGER, fail on overflow (INTR1).
+     * Oracle: CLR_MATH_ERROR; cast; if MATH_ERROR → INTR1.
+     * We check bounds explicitly — (float)(int32_t) round-trips safely
+     * only if value is within [-2^31, 2^31-1].                        */
+    float f = dp->a.f;
+    if (f >= 2147483648.0f || f < -2147483648.0f) return FAIL;  /* INTR1 */
+    dp->a.i = (int32_t)f;
     dp->f   = 0;
     dp->v   = I;
     return OK;
@@ -334,14 +340,14 @@ varv1:
     }
 
 varv2:
-    if (XPTR.v == S) return OK;
-    if (XPTR.v == I) {
+    if (XPTR.v == S) return OK;                          /* VEQLC S → RTXNAM */
+    if (XPTR.v == I) {                                   /* VEQLC I → GENVIX */
         int32_t off = GNVARI_fn(XPTR.a.i);
         if (off == 0) return FAIL;
         XPTR.a.i = off; XPTR.f = 0; XPTR.v = S;
         return OK;
     }
-    return FAIL;   /* INTR1 for other types */
+    return FAIL;   /* INTR1 — all other types (including R) are errors */
 }
 
 /* ════════════════════════════════════════════════════════════════════════
@@ -439,12 +445,12 @@ next_arg:
         }
     }
 
-    if (pass == 0) {
-        /* first arg done → save in XPTR, fetch second */
-        XPTR = YPTR;
-        pass = 1;
-        goto next_arg;
+    if (pass != 0) {
+        /* second arg done — XPTR=first, YPTR=second, RTN2 */
+        return OK;
     }
-    /* second arg in YPTR, first in XPTR — done */
-    return OK;
+    /* first arg done → save in XPTR, fetch second */
+    XPTR = YPTR;
+    pass = 1;
+    goto next_arg;
 }
