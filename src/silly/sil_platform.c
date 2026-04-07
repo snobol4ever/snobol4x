@@ -553,6 +553,7 @@ DESCR_t TRCSP_d = {.a={.i=0},.f=0,.v=0};
 SPEC_t  TRACSP  = {0};
 SPEC_t  TRSTSP  = {0};
 SPEC_t  TRLVSP  = {0};
+SPEC_t  TRCLSP  = {0};   /* ' call of ' — oracle v311.sil line 10926 */
 DESCR_t TRCBLK2[6];   /* working copy */
 
 /* DEFCL / FUNTCL */

@@ -499,6 +499,7 @@ extern SPEC_t  TRACSP;   /* value-trace output buffer specifier          */
 extern SPEC_t  COLSP;    /* ":" specifier                                */
 extern SPEC_t  TRSTSP;   /* " Trace at statement " specifier            */
 extern SPEC_t  TRLVSP;   /* " Level " specifier                          */
+extern SPEC_t  TRCLSP;   /* " call of " specifier (v311.sil line 10926)  */
 extern SPEC_t  LPRNSP;   /* "(" specifier                                */
 extern SPEC_t  RPRNSP;   /* ")" specifier                                */
 extern SPEC_t  ETIMSP;   /* " at " time-message specifier                */
