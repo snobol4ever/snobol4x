@@ -113,8 +113,10 @@ RESULT_t ARRAY_fn(void)
         DESCR_t pair; SETAC(pair, D_A(lo_d2)); D_V(pair) = D_A(ct_d2);
         PUTDC_B(ZPTR, (3 + i) * DESCR, pair);
     }
-    for (int i = 0; i < total_elems; i++) { /* Fill element cells with initial value TPTR */
-        PUTDC_B(ZPTR, (2 + ndim + i) * DESCR, TPTR);
+    for (int i = 0; i < total_elems; i++) { /* Fill element cells with initial value TPTR
+                                              * Oracle: XPTR walks from blk+(2+ndim)*DESCR, writing at XPTR+DESCR
+                                              * → elements land at slots 3+ndim .. 2+ndim+total */
+        PUTDC_B(ZPTR, (3 + ndim + i) * DESCR, TPTR);
     }
     MOVD(XPTR, ZPTR); return OK;
 }
@@ -181,36 +183,33 @@ RESULT_t ITEM_fn(void)
         while (D_A(XCL) < ndim) { /* Push zeros for omitted */
             ar_push(ZEROCL); INCRA(XCL, 1);
         }
-        int32_t offset = 0; /* Compute linear offset  Dim pairs at offsets (2+i)*DESCR, pair: A=lo, V=count */
-        for (int i = 0; i < ndim; i++) {
+        /* Compute linear offset matching oracle ARYAD1/ARYA11 loop.
+         * Oracle pushes indices dim0..dimN-1 (first = dim 0 on top).
+         * ARYA11 pops in that order, computing:
+         *   offset = 0
+         *   for each dim (0..N-1): k = idx - lo; offset = offset * extent + k
+         * Indices were pushed last-first into ar_stk, so pop order = dim N-1 first.
+         * We reverse: collect into temp array, then Horner forward. */
+        int32_t idx_arr[16]; /* max 16 dimensions */
+        for (int i = ndim - 1; i >= 0; i--) {
             DESCR_t pair; GETDC_B(pair, YCL, (3 + i) * DESCR);
             int32_t lo = D_A(pair), count = D_V(pair);
             DESCR_t idx = ar_pop();
             int32_t k = D_A(idx) - lo;
             if (k < 0 || k >= count) return FAIL;
-            ar_push(idx); /* put back for now */  /* compute: offset = offset * count + k (but in reverse pop order)  Actually we popped in reverse; rebuild correctly  We'll multiply in a second pass: */
-            (void)lo; (void)count; (void)k; (void)offset;
+            idx_arr[i] = k;
         }
-        { /* Simple 1D fast path; ND: compute properly */
-            int32_t linear = 0;
-            for (int i = ndim - 1; i >= 0; i--) {
-                DESCR_t pair; GETDC_B(pair, YCL, (3 + i) * DESCR);
-                int32_t lo = D_A(pair), count = D_V(pair);
-                DESCR_t idx = ar_pop();
-                int32_t k = D_A(idx) - lo;
-                if (k < 0 || k >= count) return FAIL;
-                if (i == ndim - 1) {
-                    linear = k;
-                } else {
-                    DESCR_t next_pair; GETDC_B(next_pair, YCL, (3 + i + 1) * DESCR);
-                    linear = k * D_V(next_pair) + linear;
-                }
-            }
-            int32_t elem_off = (2 + ndim + linear) * DESCR; /* Element at offset (2+ndim+linear)*DESCR */
-            SETAC(XPTR, D_A(YCL) + elem_off);
-            SETVC(XPTR, N); /* NAME — interior pointer */
-            return OK;
+        int32_t linear = 0;
+        for (int i = 0; i < ndim; i++) {
+            DESCR_t pair; GETDC_B(pair, YCL, (3 + i) * DESCR);
+            int32_t count = D_V(pair);
+            linear = linear * count + idx_arr[i];
         }
+        /* Oracle: element slots start at 3+ndim (PUTDC XPTR,DESCR with XPTR at blk+(2+ndim)*DESCR) */
+        int32_t elem_off = (3 + ndim + linear) * DESCR;
+        SETAC(XPTR, D_A(YCL) + elem_off);
+        SETVC(XPTR, N); /* NAME — interior pointer */
+        return OK;
     }
     if (VEQLC(YCL, T)) {
         if (D_A(XCL) != 1) return FAIL; /* ARGNER */                                               /* Table reference */
