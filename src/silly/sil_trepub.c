@@ -46,7 +46,7 @@
     (*(int32_t*)((char*)A2P(D_A(d)) + (off)) == (int32_t)(val))
 
 /* ── TREPUB ──────────────────────────────────────────────────────────── */
-Sil_result TREPUB_fn(DESCR_t node)
+RESULT_t TREPUB_fn(DESCR_t node)
 {
     MOVD(YPTR, node);
 trepu1:

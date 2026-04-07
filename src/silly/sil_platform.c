@@ -1001,7 +1001,7 @@ static struct sil_syntab *lookup_tbl(const DESCR_t *d)
 
 /*====================================================================================================================*/
 /* Rewrite STREAM_fn to use lookup_tbl instead of A2P directly */
-Sil_result STREAM_fn(SPEC_t *sp1, SPEC_t *sp2, DESCR_t *tbl_descr, int *stype_out)
+RESULT_t STREAM_fn(SPEC_t *sp1, SPEC_t *sp2, DESCR_t *tbl_descr, int *stype_out)
 {
     struct sil_syntab *tp = lookup_tbl(tbl_descr);
     const unsigned char *cp = (const unsigned char *)A2P(sp2->a) + sp2->o;
@@ -1101,7 +1101,7 @@ void XCALL_IO_OPENI(DESCR_t u, SPEC_t *sp)  { (void)u; (void)sp; }
 void XCALL_IO_OPENO(DESCR_t u, SPEC_t *sp)  { (void)u; (void)sp; }
 void XCALL_IO_SEEK(DESCR_t u, DESCR_t n)    { (void)u; (void)n; }
 void XCALL_IO_PAD(SPEC_t *sp, int32_t w)    { (void)sp; (void)w; }
-Sil_result XCALL_IO_FILE(DESCR_t u, SPEC_t *sp) { (void)u; sp->l=0; return FAIL; }
+RESULT_t XCALL_IO_FILE(DESCR_t u, SPEC_t *sp) { (void)u; sp->l=0; return FAIL; }
 void XCALL_BKSPCE(DESCR_t u)  { (void)u; }
 void XCALL_ENFILE(DESCR_t u)  { (void)u; }
 void XCALL_REWIND(DESCR_t u)  { (void)u; }
@@ -1109,7 +1109,7 @@ void XCALL_LINK(DESCR_t u, SPEC_t *sp)      { (void)u; (void)sp; }
 void XCALL_UNLOAD(DESCR_t u)  { (void)u; }
 void XCALL_RELSTRING(DESCR_t d) { (void)d; }
 /* XCALL_XINCLD: open an include file — stub returns FAIL (not yet implemented) */
-Sil_result XCALL_XINCLD(DESCR_t unit, SPEC_t *fname) { (void)unit; (void)fname; return FAIL; }
+RESULT_t XCALL_XINCLD(DESCR_t unit, SPEC_t *fname) { (void)unit; (void)fname; return FAIL; }
 void XCALL_XRAISP(SPEC_t *sp)
 {
     unsigned char *p = (unsigned char *)A2P(sp->a) + sp->o;
@@ -1165,7 +1165,7 @@ void XCALL_DATE(SPEC_t *sp)
 
 /*====================================================================================================================*/
 /* STREAD_fn / STPRNT_fn — I/O primitives */
-Sil_result STREAD_fn(SPEC_t *dst, DESCR_t unit)
+RESULT_t STREAD_fn(SPEC_t *dst, DESCR_t unit)
 {
     (void)unit;
     static char linebuf[4096]; /* Read a line from stdin into arena */
@@ -1291,7 +1291,7 @@ DESCR_t ISPPTR = {{.i=0}, 0, 0};
 /* These match the exact extern declarations in the callers.              */
 
 /* maknod_fn — allocate an IR node */
-Sil_result maknod_fn(DESCR_t *out, int32_t blk_off, int32_t tag, int32_t extra)
+RESULT_t maknod_fn(DESCR_t *out, int32_t blk_off, int32_t tag, int32_t extra)
 {
     (void)extra;
     int32_t off = D_A(FRSGPT);
@@ -1352,7 +1352,7 @@ int32_t stream_fn(SPEC_t *res, const SPEC_t *src, const DESCR_t *table)
 {
     SPEC_t s = *src;
     int stype = 0;
-    Sil_result rc = STREAM_fn(res, &s, (DESCR_t *)table, &stype);
+    RESULT_t rc = STREAM_fn(res, &s, (DESCR_t *)table, &stype);
     return (rc == OK) ? stype : 0;
 }
 
@@ -1403,7 +1403,7 @@ DESCR_t CONTIN = {{.i=(int_t)AC_CONTIN}, 0, 0};
 DESCR_t STOPSH = {{.i=(int_t)AC_STOPSH}, 0, 0};
 
 /* DTREP_fn2/3 — format a DESCR as type-name string (stub) */
-Sil_result DTREP_fn2(DESCR_t *out, DESCR_t obj)
+RESULT_t DTREP_fn2(DESCR_t *out, DESCR_t obj)
 {
     (void)obj;
     static char buf[] = "?";
@@ -1412,7 +1412,7 @@ Sil_result DTREP_fn2(DESCR_t *out, DESCR_t obj)
 }
 
 /*====================================================================================================================*/
-Sil_result DTREP_fn3(DESCR_t *out, DESCR_t obj)
+RESULT_t DTREP_fn3(DESCR_t *out, DESCR_t obj)
 {
     (void)obj;
     static char buf[] = "?";
@@ -1422,7 +1422,7 @@ Sil_result DTREP_fn3(DESCR_t *out, DESCR_t obj)
 
 /*====================================================================================================================*/
 /* LOAD2_fn — dynamic load stub */
-Sil_result LOAD2_fn(void) { return FAIL; }
+RESULT_t LOAD2_fn(void) { return FAIL; }
 
 /* PSTACK_fn */
 void PSTACK_fn(DESCR_t *pos) { (void)pos; }
@@ -1439,10 +1439,10 @@ void PAD_fn(int32_t dir, SPEC_t *out, SPEC_t *subj, SPEC_t *pad)
 
 /*====================================================================================================================*/
 /* KEYT_fn */
-Sil_result KEYT_fn(void) { return FAIL; }
+RESULT_t KEYT_fn(void) { return FAIL; }
 
 /* ARGINT_fn */
-Sil_result ARGINT_fn(DESCR_t fn, DESCR_t n) { (void)fn; (void)n; return FAIL; }
+RESULT_t ARGINT_fn(DESCR_t fn, DESCR_t n) { (void)fn; (void)n; return FAIL; }
 
 /* SHORTN_fn */
 void SHORTN_fn(SPEC_t *sp, int32_t n) { if (sp->l > n) sp->l = n; }

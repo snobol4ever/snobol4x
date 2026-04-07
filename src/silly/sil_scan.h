@@ -38,15 +38,15 @@
 
 /* SCAN  — Pattern matching (subject = pattern, no replacement)          */
 /* v311.sil SCAN line 3327                                               */
-Sil_result SCAN_fn(void);
+RESULT_t SCAN_fn(void);
 
 /* SJSR  — Pattern matching with replacement                             */
 /* v311.sil SJSR line 3376                                               */
-Sil_result SJSR_fn(void);
+RESULT_t SJSR_fn(void);
 
 /* SCNR  — Basic scanning procedure (inner engine, called by SCAN/SJSR) */
 /* v311.sil SCNR line 3441                                               */
-Sil_result SCNR_fn(void);
+RESULT_t SCNR_fn(void);
 
 /* ── Scan context — scanner state shared across sub-procedures ────────
  *

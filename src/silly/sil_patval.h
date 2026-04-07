@@ -33,22 +33,22 @@
 
 #include "sil_types.h"
 
-Sil_result ANY_fn(void);    /* ANY(S)    — match any char in set S   */
-Sil_result BREAKX_fn(void); /* BREAKX(S) — break on set S [PLB31]   */
-Sil_result BREAK_fn(void);  /* BREAK(S)  — break on set S           */
-Sil_result NOTANY_fn(void); /* NOTANY(S) — match char not in S      */
-Sil_result SPAN_fn(void);   /* SPAN(S)   — span chars in S          */
+RESULT_t ANY_fn(void);    /* ANY(S)    — match any char in set S   */
+RESULT_t BREAKX_fn(void); /* BREAKX(S) — break on set S [PLB31]   */
+RESULT_t BREAK_fn(void);  /* BREAK(S)  — break on set S           */
+RESULT_t NOTANY_fn(void); /* NOTANY(S) — match char not in S      */
+RESULT_t SPAN_fn(void);   /* SPAN(S)   — span chars in S          */
 
-Sil_result LEN_fn(void);    /* LEN(N)    — match exactly N chars    */
-Sil_result POS_fn(void);    /* POS(N)    — assert cursor at N       */
-Sil_result RPOS_fn(void);   /* RPOS(N)   — assert cursor N from end */
-Sil_result RTAB_fn(void);   /* RTAB(N)   — tab to N from end        */
-Sil_result TAB_fn(void);    /* TAB(N)    — tab to position N        */
+RESULT_t LEN_fn(void);    /* LEN(N)    — match exactly N chars    */
+RESULT_t POS_fn(void);    /* POS(N)    — assert cursor at N       */
+RESULT_t RPOS_fn(void);   /* RPOS(N)   — assert cursor N from end */
+RESULT_t RTAB_fn(void);   /* RTAB(N)   — tab to N from end        */
+RESULT_t TAB_fn(void);    /* TAB(N)    — tab to position N        */
 
-Sil_result ARBNO_fn(void);  /* ARBNO(P)  — zero-or-more P           */
-Sil_result ATOP_fn(void);   /* @X        — cursor capture           */
-Sil_result NAM_fn(void);    /* X . Y     — conditional assignment   */
-Sil_result DOL_fn(void);    /* X $ Y     — immediate assignment     */
-Sil_result OR_fn(void);     /* X | Y     — alternation              */
+RESULT_t ARBNO_fn(void);  /* ARBNO(P)  — zero-or-more P           */
+RESULT_t ATOP_fn(void);   /* @X        — cursor capture           */
+RESULT_t NAM_fn(void);    /* X . Y     — conditional assignment   */
+RESULT_t DOL_fn(void);    /* X $ Y     — immediate assignment     */
+RESULT_t OR_fn(void);     /* X | Y     — alternation              */
 
 #endif /* SIL_PATVAL_H */

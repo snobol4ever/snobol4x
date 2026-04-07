@@ -79,7 +79,7 @@ int LEXCMP_fn(const SPEC_t *a, const SPEC_t *b);
  * Strips leading whitespace when SPITBOL mode is active (not wired
  * here — pass pre-stripped specifier if needed; we always strip).
  */
-Sil_result SPCINT_fn(DESCR_t *dp, const SPEC_t *sp);
+RESULT_t SPCINT_fn(DESCR_t *dp, const SPEC_t *sp);
 
 /* ── SPREAL — parse real from specifier ─────────────────────────────── */
 /*
@@ -87,7 +87,7 @@ Sil_result SPCINT_fn(DESCR_t *dp, const SPEC_t *sp);
  * Returns OK  (1) and sets dp->{a.f=val, f=0, v=R} on success.
  * Returns FAIL(0) on parse failure.
  */
-Sil_result SPREAL_fn(DESCR_t *dp, const SPEC_t *sp);
+RESULT_t SPREAL_fn(DESCR_t *dp, const SPEC_t *sp);
 
 /* ── REALST — format real to specifier (points into static buffer) ───── */
 /*

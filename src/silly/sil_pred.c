@@ -24,11 +24,11 @@
 #include "sil_symtab.h"
 
 /* External stubs */
-extern Sil_result XYARGS_fn(void);
+extern RESULT_t XYARGS_fn(void);
 /* CODSKP_fn declared in sil_symtab.h as void(int32_t) */
 extern void       PAD_fn(int32_t dir, SPEC_t *out, SPEC_t *subj, SPEC_t *pad);
 
-static Sil_result rpad_common(void);  /* forward */
+static RESULT_t rpad_common(void);  /* forward */
 
 /* ATTRIB: offset of label field in string block (v311.sil: EQU 2*DESCR) */
 #define ATTRIB  (2 * DESCR)
@@ -54,7 +54,7 @@ static inline void   pred_push(DESCR_t d) { pred_stk[pred_top++] = d; }
 static inline DESCR_t pred_pop(void)       { return pred_stk[--pred_top]; }
 
 /* ── DIFFER(X,Y) ─────────────────────────────────────────────────────── */
-Sil_result DIFFER_fn(void)
+RESULT_t DIFFER_fn(void)
 {
     if (XYARGS_fn() == FAIL) return FAIL;
     if (deql(XPTR, YPTR)) { MOVD(XPTR, NULVCL); return OK; } /* DEQL XPTR,YPTR,RETNUL,FAIL — equal→null, differ→FAIL */
@@ -63,7 +63,7 @@ Sil_result DIFFER_fn(void)
 
 /*====================================================================================================================*/
 /* ── FUNCTN(X) ───────────────────────────────────────────────────────── */
-Sil_result FUNCTN_fn(void)
+RESULT_t FUNCTN_fn(void)
 {
     if (VARVUP_fn() == FAIL) return FAIL;
     {
@@ -79,7 +79,7 @@ Sil_result FUNCTN_fn(void)
 
 /*====================================================================================================================*/
 /* ── IDENT(X,Y) ──────────────────────────────────────────────────────── */
-Sil_result IDENT_fn(void)
+RESULT_t IDENT_fn(void)
 {
     if (XYARGS_fn() == FAIL) return FAIL;
     if (deql(XPTR, YPTR)) return FAIL; /* DEQL XPTR,YPTR,FAIL,RETNUL — equal→FAIL, differ→null */
@@ -88,7 +88,7 @@ Sil_result IDENT_fn(void)
 
 /*====================================================================================================================*/
 /* ── LABEL(X) ────────────────────────────────────────────────────────── */
-Sil_result LABEL_fn(void)
+RESULT_t LABEL_fn(void)
 {
     if (VARVUP_fn() == FAIL) return FAIL;
     if (AEQLC(XPTR, 0)) return FAIL;
@@ -99,7 +99,7 @@ Sil_result LABEL_fn(void)
 
 /*====================================================================================================================*/
 /* ── LABELC(X) ───────────────────────────────────────────────────────── */
-Sil_result LABELC_fn(void)
+RESULT_t LABELC_fn(void)
 {
     if (VARVUP_fn() == FAIL) return FAIL;
     if (AEQLC(XPTR, 0)) return FAIL;
@@ -123,7 +123,7 @@ static int lex_eval2(void)
 
 /*====================================================================================================================*/
 /* ── LEQ(X,Y) — lexicographic equal ─────────────────────────────────── */
-Sil_result LEQ_fn(void)
+RESULT_t LEQ_fn(void)
 {
     if (lex_eval2() == -2) return FAIL;
     if (deql(XPTR, YPTR)) return FAIL;
@@ -132,7 +132,7 @@ Sil_result LEQ_fn(void)
 
 /*====================================================================================================================*/
 /* ── LNE(X,Y) — lexicographic not-equal ─────────────────────────────── */
-Sil_result LNE_fn(void)
+RESULT_t LNE_fn(void)
 {
     if (lex_eval2() == -2) return FAIL;
     if (deql(XPTR, YPTR)) { MOVD(XPTR, NULVCL); return OK; }
@@ -155,7 +155,7 @@ static int lex_compare(void)
 
 /*====================================================================================================================*/
 /* ── LGE(X,Y) — X >= Y ──────────────────────────────────────────────── */
-Sil_result LGE_fn(void)
+RESULT_t LGE_fn(void)
 {
     int c = lex_compare();
     if (c == -999) return FAIL;
@@ -165,7 +165,7 @@ Sil_result LGE_fn(void)
 
 /*====================================================================================================================*/
 /* ── LGT(X,Y) — X > Y ───────────────────────────────────────────────── */
-Sil_result LGT_fn(void)
+RESULT_t LGT_fn(void)
 {
     int c = lex_compare();
     if (c == -999) return FAIL;
@@ -175,7 +175,7 @@ Sil_result LGT_fn(void)
 
 /*====================================================================================================================*/
 /* ── LLE(X,Y) — X <= Y ──────────────────────────────────────────────── */
-Sil_result LLE_fn(void)
+RESULT_t LLE_fn(void)
 {
     int c = lex_compare();
     if (c == -999) return FAIL;
@@ -185,7 +185,7 @@ Sil_result LLE_fn(void)
 
 /*====================================================================================================================*/
 /* ── LLT(X,Y) — X < Y ───────────────────────────────────────────────── */
-Sil_result LLT_fn(void)
+RESULT_t LLT_fn(void)
 {
     int c = lex_compare();
     if (c == -999) return FAIL;
@@ -195,10 +195,10 @@ Sil_result LLT_fn(void)
 
 /*====================================================================================================================*/
 /* ── NEG — \X (unary negation: succeed if argument fails) ───────────── */
-Sil_result NEG_fn(void)
+RESULT_t NEG_fn(void)
 {
     DESCR_t save_base = OCBSCL, save_idx = OCICL;
-    Sil_result rc = ARGVAL_fn(); /* RCALL ,ARGVAL,,(,FAIL) — fail on success */
+    RESULT_t rc = ARGVAL_fn(); /* RCALL ,ARGVAL,,(,FAIL) — fail on success */
     MOVD(OCBSCL, save_base);
     MOVD(OCICL, save_idx);
     if (rc == OK) return FAIL; /* argument succeeded → NEG fails */
@@ -209,9 +209,9 @@ Sil_result NEG_fn(void)
 
 /*====================================================================================================================*/
 /* ── QUES — ?X (interrogation: succeed/fail as argument does) ────────── */
-Sil_result QUES_fn(void)
+RESULT_t QUES_fn(void)
 {
-    Sil_result rc = ARGVAL_fn();
+    RESULT_t rc = ARGVAL_fn();
     if (rc == FAIL) return FAIL;
     MOVD(XPTR, NULVCL);
     return OK;
@@ -219,7 +219,7 @@ Sil_result QUES_fn(void)
 
 /*====================================================================================================================*/
 /* ── CHAR(N) ─────────────────────────────────────────────────────────── */
-Sil_result CHAR_fn(void)
+RESULT_t CHAR_fn(void)
 {
     if (INTVAL_fn() == FAIL) return FAIL;
     MOVD(XCL, XPTR); /* INTVAL result → XCL */
@@ -246,10 +246,10 @@ Sil_result CHAR_fn(void)
 
 /*====================================================================================================================*/
 /* ── LPAD(S,N,C) / RPAD(S,N,C) ──────────────────────────────────────── */
-Sil_result LPAD_fn(void) { SETAC(SCL, 0); return rpad_common(); }
-Sil_result RPAD_fn(void) { SETAC(SCL, 1); return rpad_common(); }
+RESULT_t LPAD_fn(void) { SETAC(SCL, 0); return rpad_common(); }
+RESULT_t RPAD_fn(void) { SETAC(SCL, 1); return rpad_common(); }
 
-static Sil_result rpad_common(void)
+static RESULT_t rpad_common(void)
 {
     pred_push(SCL);
     if (VARVAL_fn() == FAIL) { pred_top--; return FAIL; } /* Get string arg */

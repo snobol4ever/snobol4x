@@ -37,11 +37,11 @@
 /* ── External stubs: runtime functions not yet implemented ───────────── */
 /* These are declared here so sil_scan.c compiles (-c); they will be     */
 /* resolved at link time when their milestone is complete.               */
-extern Sil_result NMD_fn(void);
-extern Sil_result INVOKE_fn(void);
-extern Sil_result PUTIN_fn(DESCR_t zptr, DESCR_t wptr);
+extern RESULT_t NMD_fn(void);
+extern RESULT_t INVOKE_fn(void);
+extern RESULT_t PUTIN_fn(DESCR_t zptr, DESCR_t wptr);
 extern void       PUTOUT_fn(DESCR_t yptr, DESCR_t val);
-extern Sil_result TRPHND_fn(DESCR_t atptr);
+extern RESULT_t TRPHND_fn(DESCR_t atptr);
 extern void       maknod_scalar(DESCR_t *out, int32_t blk_off,
                                 int32_t len_val, int32_t alt_val,
                                 int32_t fn_idx, int32_t arg_off);
@@ -306,7 +306,7 @@ static void do_SCIN1A(void)
 
 /*====================================================================================================================*/
 /* ── SCNR — inner scanning engine ───────────────────────────────────── */
-Sil_result SCNR_fn(void)
+RESULT_t SCNR_fn(void)
 {
     Scan_ctx ctx;
     Scan_ctx *prev = scan_ctx_g;
@@ -399,7 +399,7 @@ scan_fail:
 
 /*====================================================================================================================*/
 /* ── SCAN — top-level pattern match (no replacement) ────────────────── */
-Sil_result SCAN_fn(void)
+RESULT_t SCAN_fn(void)
 {
     if (ARGVAL_fn() == FAIL) return FAIL; /* RCALL XPTR,ARGVAL,,FAIL */
     opush(XPTR);
@@ -446,7 +446,7 @@ Sil_result SCAN_fn(void)
 
 /*====================================================================================================================*/
 /* ── SJSR — pattern match with replacement ───────────────────────────── */
-Sil_result SJSR_fn(void)
+RESULT_t SJSR_fn(void)
 {
     INCRA(OCICL, DESCR); /* INCRA OCICL,DESCR; GETD WPTR,OCBSCL,OCICL */
     GETD_BLK(WPTR, OCBSCL, OCICL);

@@ -22,16 +22,16 @@
 #include "sil_argval.h"
 
 /* ── Forward declarations — later milestones ────────────────────────── */
-extern Sil_result INVOKE_fn(void);   /* §7 — dispatch function call      */
-extern Sil_result PUTIN_fn(void);    /* §15 — perform input association   */
-extern Sil_result CONVE_fn(void);    /* §19 — convert to EXPRESSION type  */
+extern RESULT_t INVOKE_fn(void);   /* §7 — dispatch function call      */
+extern RESULT_t PUTIN_fn(void);    /* §15 — perform input association   */
+extern RESULT_t CONVE_fn(void);    /* §19 — convert to EXPRESSION type  */
 
 /* ── Internal helpers ────────────────────────────────────────────────── */
 
 /* Inline RLINT: truncate real DESCR to integer in-place.
  * v311.sil RLINT macro / snobol4.c L_INTRI.
  * Returns OK on success, FAIL on overflow/nan.                          */
-static Sil_result rlint(DESCR_t *dp)
+static RESULT_t rlint(DESCR_t *dp)
 {
     /* RLINT macro: convert REAL to INTEGER, fail on overflow (INTR1).
      * Oracle: CLR_MATH_ERROR; cast; if MATH_ERROR → INTR1.
@@ -77,7 +77,7 @@ static int check_input_assoc(const DESCR_t *dp)
  * ARGVAL_fn — evaluate one argument from object code stream
  * v311.sil ARGVAL (line 2679)
  * ════════════════════════════════════════════════════════════════════════ */
-Sil_result ARGVAL_fn(void)
+RESULT_t ARGVAL_fn(void)
 {
     XPTR = oc_fetch();
     if (D_F(XPTR) & FNC) {
@@ -105,7 +105,7 @@ argv1:
  * v311.sil EXPVAL (line 2699)
  * Saves/restores full interpreter state around sub-evaluation.
  * ════════════════════════════════════════════════════════════════════════ */
-Sil_result EXPVAL_fn(void)
+RESULT_t EXPVAL_fn(void)
 {
     DESCR_t sv_ocbscl = OCBSCL, sv_ocicl = OCICL; /* save interpreter state — mirrors SIL PUSH list */
     DESCR_t sv_patbcl = PATBCL, sv_paticl = PATICL;
@@ -117,7 +117,7 @@ Sil_result EXPVAL_fn(void)
     SPEC_t sv_headsp = HEADSP, sv_tsp = TSP;
     SPEC_t sv_txsp = TXSP, sv_xsp = XSP;
     int scl_entry = SCL.a.i; /* save entry indicator */
-    Sil_result rc;
+    RESULT_t rc;
     OCBSCL = XPTR; /* set up new code base from XPTR */
     OCICL.a.i = DESCR;
     PDLHED = PDLPTR;
@@ -199,7 +199,7 @@ Sil_result EXPVAL_fn(void)
  * EXPEVL_fn — expression value context (SCL=0 entry to EXPVAL)
  * v311.sil EXPEVL (line 2757)
  * ════════════════════════════════════════════════════════════════════════ */
-Sil_result EXPEVL_fn(void)
+RESULT_t EXPEVL_fn(void)
 {
     SCL.a.i = 0;
     return EXPVAL_fn();
@@ -210,7 +210,7 @@ Sil_result EXPEVL_fn(void)
  * INTVAL_fn — evaluate argument, coerce to INTEGER
  * v311.sil INTVAL (line 2739)
  * ════════════════════════════════════════════════════════════════════════ */
-Sil_result INTVAL_fn(void)
+RESULT_t INTVAL_fn(void)
 {
     XPTR = oc_fetch();
     if (D_F(XPTR) & FNC) {
@@ -243,7 +243,7 @@ intv2:
  * PATVAL_fn — evaluate argument, coerce to PATTERN
  * v311.sil PATVAL (line 2797)
  * ════════════════════════════════════════════════════════════════════════ */
-Sil_result PATVAL_fn(void)
+RESULT_t PATVAL_fn(void)
 {
     XPTR = oc_fetch();
     if (D_F(XPTR) & FNC) {
@@ -294,7 +294,7 @@ patv3:
  * VARVAL_fn — evaluate argument, coerce to STRING
  * v311.sil VARVAL (line 2861)
  * ════════════════════════════════════════════════════════════════════════ */
-Sil_result VARVAL_fn(void)
+RESULT_t VARVAL_fn(void)
 {
     XPTR = oc_fetch();
     if (D_F(XPTR) & FNC) {
@@ -330,7 +330,7 @@ varv2:
  * VARVUP_fn — VARVAL with case-folding
  * v311.sil VARVUP (line 2900) [PLB28][PLB29]
  * ════════════════════════════════════════════════════════════════════════ */
-Sil_result VARVUP_fn(void)
+RESULT_t VARVUP_fn(void)
 {
     if (VARVAL_fn() == FAIL) return FAIL;
     if (CASECL.a.i == 0) return OK; /* case-sensitive: no fold */
@@ -342,7 +342,7 @@ Sil_result VARVUP_fn(void)
  * VPXPTR_fn — case-fold XPTR string to upper-case variable
  * v311.sil VPXPTR (line 2909) [PLB29]
  * ════════════════════════════════════════════════════════════════════════ */
-Sil_result VPXPTR_fn(void)
+RESULT_t VPXPTR_fn(void)
 {
     LOCSP_fn(&SPECR1, &XPTR);
     if (SPECR1.l == 0) return OK; /* null string: return unchanged */
@@ -372,7 +372,7 @@ Sil_result VPXPTR_fn(void)
  * XYARGS_fn — evaluate argument pair
  * v311.sil XYARGS (line 2916)
  * ════════════════════════════════════════════════════════════════════════ */
-Sil_result XYARGS_fn(void)
+RESULT_t XYARGS_fn(void)
 {
     int pass = 0; /* SCL: 0=first arg, 1=second arg */
 next_arg:

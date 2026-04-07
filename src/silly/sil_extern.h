@@ -15,8 +15,8 @@
 
 #include "sil_types.h"
 
-Sil_result LOAD_fn(void);    /* LOAD(P,L) — load external function        */
-Sil_result UNLOAD_fn(void);  /* UNLOAD(F) — unload external function      */
-Sil_result LNKFNC_fn(void);  /* invoke loaded external function           */
+RESULT_t LOAD_fn(void);    /* LOAD(P,L) — load external function        */
+RESULT_t UNLOAD_fn(void);  /* UNLOAD(F) — unload external function      */
+RESULT_t LNKFNC_fn(void);  /* invoke loaded external function           */
 
 #endif /* SIL_EXTERN_H */

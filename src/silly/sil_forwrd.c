@@ -23,7 +23,7 @@
 /* Platform / table stubs */
 /* STREAM_fn: scan TEXTSP using table tbl, set STYPE, advance TEXTSP.
  * Returns OK if a break was found, FAIL on end-of-input (calls err_fn). */
-extern Sil_result STREAM_fn(SPEC_t *res, SPEC_t *src,
+extern RESULT_t STREAM_fn(SPEC_t *res, SPEC_t *src,
                               DESCR_t *tbl, int *stype_out);
 extern DESCR_t FRWDTB;    /* forward scan table (skip to nonblank)        */
 extern DESCR_t IBLKTB;    /* initial blank table (skip blanks)            */
@@ -32,15 +32,15 @@ extern DESCR_t LBLTB;     /* label scan table                             */
 extern DESCR_t LBLXTB;    /* control-card command scan table              */
 extern DESCR_t ELEMTB;    /* element scan table (for CTLADV/CASE)         */
 extern DESCR_t INTGTB;    /* integer scan table (for PLUSOPS/LINE)        */
-extern Sil_result STREAD_fn(SPEC_t *sp, DESCR_t unit); /* platform read  */
+extern RESULT_t STREAD_fn(SPEC_t *sp, DESCR_t unit); /* platform read  */
 extern void       STPRNT_fn(int32_t key, DESCR_t blk, SPEC_t *sp);
 extern void       XCALL_XRAISP(SPEC_t *sp);  /* uppercase in place       */
 extern void       XCALL_IO_PAD(SPEC_t *sp, int32_t width);
-extern Sil_result XCALL_IO_FILE(DESCR_t unit, SPEC_t *fname_out);
+extern RESULT_t XCALL_IO_FILE(DESCR_t unit, SPEC_t *fname_out);
 extern void       XCALL_OUTPUT_ERR(void);     /* compiler error output    */
-extern Sil_result XCALL_XINCLD(DESCR_t unit, SPEC_t *fname); /* include  */
+extern RESULT_t XCALL_XINCLD(DESCR_t unit, SPEC_t *fname); /* include  */
 extern int32_t    GENVAR_fn(const SPEC_t *sp);
-extern Sil_result SPCINT_fn(DESCR_t *dst, const SPEC_t *sp);
+extern RESULT_t SPCINT_fn(DESCR_t *dst, const SPEC_t *sp);
 
 #define GETDC_B(dst, base_d, off_i) \
     memcpy(&(dst), (char*)A2P(D_A(base_d)) + (off_i), sizeof(DESCR_t))
@@ -61,7 +61,7 @@ static inline int sp_lexcmp(SPEC_t a, SPEC_t b)
 
 /*====================================================================================================================*/
 static inline void SETLC_sp(SPEC_t *sp, int32_t n) { sp->l = n; }
-static Sil_result forrun(void);  /* forward */
+static RESULT_t forrun(void);  /* forward */
 
 /* ── CODSKP — skip n items in object code ────────────────────────────── */
 /*
@@ -93,12 +93,12 @@ void CODSKP_fn(int32_t n)
  *   On break: set BRTYPE from STYPE, return OK.
  *   On run-out: read next card (FORRUN), then retry.
  */
-Sil_result FORWRD_fn(void)
+RESULT_t FORWRD_fn(void)
 {
     SPEC_t xsp;
     int stype;
     while (1) {
-        Sil_result rc = STREAM_fn(&xsp, &TEXTSP, &FRWDTB, &stype);
+        RESULT_t rc = STREAM_fn(&xsp, &TEXTSP, &FRWDTB, &stype);
         if (rc == OK) {
             SETAC(BRTYPE, stype);
             return OK; /* FORJRN */
@@ -115,12 +115,12 @@ Sil_result FORWRD_fn(void)
  *   STREAM XSP,TEXTSP,IBLKTB,RTN1,FORRUN,FORJRN
  *   Reads blanks from TEXTSP until nonblank found.
  */
-Sil_result FORBLK_fn(void)
+RESULT_t FORBLK_fn(void)
 {
     SPEC_t xsp;
     int stype;
     while (1) {
-        Sil_result rc = STREAM_fn(&xsp, &TEXTSP, &IBLKTB, &stype);
+        RESULT_t rc = STREAM_fn(&xsp, &TEXTSP, &IBLKTB, &stype);
         if (rc == OK) {
             SETAC(BRTYPE, stype);
             return OK;
@@ -132,7 +132,7 @@ Sil_result FORBLK_fn(void)
 
 /*====================================================================================================================*/
 /* forrun — internal: read a new card, handle listing, set BRTYPE=EOS on EOF */
-static Sil_result forrun(void)
+static RESULT_t forrun(void)
 {
     if (AEQLC(UNIT, 0)) { /* Check for input stream */
         MOVD(BRTYPE, EOSCL);
@@ -142,7 +142,7 @@ static Sil_result forrun(void)
         STPRNT_fn(D_A(IOKEY), OUTBLK, &LNBFSP);
     }
     TEXTSP = NEXTSP; /* SETSP TEXTSP,NEXTSP — switch to next-line buffer */
-    Sil_result rc = STREAD_fn(&TEXTSP, UNIT); /* Read new card */
+    RESULT_t rc = STREAD_fn(&TEXTSP, UNIT); /* Read new card */
     if (rc == FAIL) {
         return FILCHK_fn(); /* EOF: try FILCHK */
     }
@@ -165,7 +165,7 @@ static Sil_result forrun(void)
  *   Control  (STYPE=CTLTYP=3) → parse and execute control command.
  *   Continue (STYPE=CNTTYP=4) → delete leading '-', update listing.
  */
-Sil_result NEWCRD_fn(void)
+RESULT_t NEWCRD_fn(void)
 {
     int32_t stype = D_A(STYPE);
     if (stype == CMTTYP) {
@@ -233,7 +233,7 @@ Sil_result NEWCRD_fn(void)
         }
         if (LEXCMP_fn(&xsp, &INCLSP_sp) == 0 ||
             LEXCMP_fn(&xsp, &COPYSP_sp) == 0) {
-            Sil_result ictmp = CTLADV_fn(&xsp); /* INCLUDE / COPY filename */
+            RESULT_t ictmp = CTLADV_fn(&xsp); /* INCLUDE / COPY filename */
             if (ictmp == FAIL) { SETAC(ERRTYP, 29); return FAIL; }
             if (XCALL_XINCLD(UNIT, &xsp) == FAIL) { SETAC(ERRTYP, 30); return FAIL; }
             TRIMSP_fn(&xsp, &xsp);
@@ -266,7 +266,7 @@ Sil_result NEWCRD_fn(void)
             if (st2 != ILITYP) goto comp12;
             if (SPCINT_fn(&LNNOCL, &xsp) == FAIL) goto comp12;
             DECRA(LNNOCL, 1);
-            Sil_result ltmp = CTLADV_fn(&xsp);
+            RESULT_t ltmp = CTLADV_fn(&xsp);
             if (ltmp != FAIL) {
                 int32_t fvar2 = GENVAR_fn(&xsp);
                 if (fvar2) { SETAC(FILENM, fvar2); SETVC(FILENM, S); }
@@ -310,7 +310,7 @@ Sil_result NEWCRD_fn(void)
  *   SHORTN XSP,1              — remove trailing quote
  *   RTN3                      — OK, result in XSP
  */
-Sil_result CTLADV_fn(SPEC_t *out)
+RESULT_t CTLADV_fn(SPEC_t *out)
 {
     SPEC_t xsp; int st2;
     if (STREAM_fn(&xsp, &TEXTSP, &FRWDTB, &st2) == FAIL) return FAIL; /* RTN1 */
@@ -332,7 +332,7 @@ Sil_result CTLADV_fn(SPEC_t *out)
  *   If INCSTK != 0: pop include stack, restore LNNOCL/FILENM, RTN2.
  *   Else: query I/O system for next file; RTN1 if none.
  */
-Sil_result FILCHK_fn(void)
+RESULT_t FILCHK_fn(void)
 {
     if (!AEQLC(INCSTK, 0)) {
         GETDC_B(LNNOCL, INCSTK, 2*DESCR); /* Pop include stack */

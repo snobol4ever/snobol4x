@@ -22,8 +22,8 @@
 #include "sil_arith.h"
 
 /* ── Forward declarations for §8 functions (M6) ─────────────────────── */
-extern Sil_result XYARGS_fn(void);   /* v311.sil §8 XYARGS — eval X and Y args */
-extern Sil_result ARGVAL_fn(void);   /* v311.sil §8 ARGVAL — eval one arg      */
+extern RESULT_t XYARGS_fn(void);   /* v311.sil §8 XYARGS — eval X and Y args */
+extern RESULT_t ARGVAL_fn(void);   /* v311.sil §8 ARGVAL — eval one arg      */
 
 /* DTCL: data type pair descriptor — declared in sil_data.h */
 
@@ -38,11 +38,11 @@ static volatile int math_error_flag;
  * For now they abort; the error subsystem (M22+) will replace these.  */
 #include <stdio.h>
 #include <stdlib.h>
-static Sil_result aerror(void) {
+static RESULT_t aerror(void) {
     fprintf(stderr, "sil_arith: arithmetic error (overflow/div-zero)\n");
     exit(2);
 }
-static Sil_result intr1(void) {
+static RESULT_t intr1(void) {
     fprintf(stderr, "sil_arith: illegal data type\n");
     exit(1);
 }
@@ -101,7 +101,7 @@ static int exreal(DESCR_t *res, const DESCR_t *x, const DESCR_t *y)
  *   Dispatch on DTCL to type-coercion block
  *   Then dispatch on SCL to actual operation
  * ════════════════════════════════════════════════════════════════════════ */
-static Sil_result ARITH_fn(void)
+static RESULT_t ARITH_fn(void)
 {
     if (XYARGS_fn() == FAIL) return FAIL; /* ── evaluate arguments (§8 XYARGS) ── */
     DTCL.a.i = XPTR.v; /* ── build type-pair ── */
@@ -230,24 +230,24 @@ do_rr: /* ── REAL × REAL operations ── */
 
 /*====================================================================================================================*/
 /* ── Entry point shims: set SCL, call ARITH_fn ───────────────────────── */
-Sil_result ADD_fn(void)   { SCL.a.i = 1;  return ARITH_fn(); }
-Sil_result DIV_fn(void)   { SCL.a.i = 2;  return ARITH_fn(); }
-Sil_result EXPOP_fn(void) { SCL.a.i = 3;  return ARITH_fn(); }
-Sil_result MPY_fn(void)   { SCL.a.i = 4;  return ARITH_fn(); }
-Sil_result SUB_fn(void)   { SCL.a.i = 5;  return ARITH_fn(); }
-Sil_result EQ_fn(void)    { SCL.a.i = 6;  return ARITH_fn(); }
-Sil_result GE_fn(void)    { SCL.a.i = 7;  return ARITH_fn(); }
-Sil_result GT_fn(void)    { SCL.a.i = 8;  return ARITH_fn(); }
-Sil_result LE_fn(void)    { SCL.a.i = 9;  return ARITH_fn(); }
-Sil_result LT_fn(void)    { SCL.a.i = 10; return ARITH_fn(); }
-Sil_result NE_fn(void)    { SCL.a.i = 11; return ARITH_fn(); }
-Sil_result REMDR_fn(void) { SCL.a.i = 12; return ARITH_fn(); }
+RESULT_t ADD_fn(void)   { SCL.a.i = 1;  return ARITH_fn(); }
+RESULT_t DIV_fn(void)   { SCL.a.i = 2;  return ARITH_fn(); }
+RESULT_t EXPOP_fn(void) { SCL.a.i = 3;  return ARITH_fn(); }
+RESULT_t MPY_fn(void)   { SCL.a.i = 4;  return ARITH_fn(); }
+RESULT_t SUB_fn(void)   { SCL.a.i = 5;  return ARITH_fn(); }
+RESULT_t EQ_fn(void)    { SCL.a.i = 6;  return ARITH_fn(); }
+RESULT_t GE_fn(void)    { SCL.a.i = 7;  return ARITH_fn(); }
+RESULT_t GT_fn(void)    { SCL.a.i = 8;  return ARITH_fn(); }
+RESULT_t LE_fn(void)    { SCL.a.i = 9;  return ARITH_fn(); }
+RESULT_t LT_fn(void)    { SCL.a.i = 10; return ARITH_fn(); }
+RESULT_t NE_fn(void)    { SCL.a.i = 11; return ARITH_fn(); }
+RESULT_t REMDR_fn(void) { SCL.a.i = 12; return ARITH_fn(); }
 
 /* ════════════════════════════════════════════════════════════════════════
  * INTGER_fn — INTEGER(X) conversion function
  * v311.sil INTGER (line ~3050)
  * ════════════════════════════════════════════════════════════════════════ */
-Sil_result INTGER_fn(void)
+RESULT_t INTGER_fn(void)
 {
     if (ARGVAL_fn() == FAIL) return FAIL;
     if (XPTR.v == I) return OK;
@@ -261,7 +261,7 @@ Sil_result INTGER_fn(void)
  * MNS_fn — unary negation (-X)
  * v311.sil MNS (line ~3068)
  * ════════════════════════════════════════════════════════════════════════ */
-Sil_result MNS_fn(void)
+RESULT_t MNS_fn(void)
 {
     if (ARGVAL_fn() == FAIL) return FAIL;
     if (XPTR.v == I) {
@@ -295,7 +295,7 @@ Sil_result MNS_fn(void)
  * PLS_fn — unary plus (+X)
  * v311.sil PLS (line ~3091)
  * ════════════════════════════════════════════════════════════════════════ */
-Sil_result PLS_fn(void)
+RESULT_t PLS_fn(void)
 {
     if (ARGVAL_fn() == FAIL) return FAIL;
     ZPTR = XPTR; /* ARGVAL leaves result in XPTR per §8 convention;

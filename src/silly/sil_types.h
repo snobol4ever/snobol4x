@@ -246,7 +246,7 @@ typedef struct __attribute__((packed)) {
 #define XFNCE    35   /* FENCE                                              */
 #define XSUCF    36   /* SUCCEED                                            */
 
-/* ── Sil_result — return code for SIL procedure translation ───────────── */
+/* ── RESULT_t — return code for SIL procedure translation ───────────── */
 /*
  * SIL procedures return via RRTURN with an exit number (1, 2, 3...).
  * In C each translates to a typed return. Most procedures have two
@@ -259,7 +259,7 @@ typedef enum {
     OK      = 1,  /* SIL success exit — :S branch taken, result valid     */
     NRETURN = 5,  /* NRETURN — function returned by name (goto ATOP1 etc) */
     VRETURN = 6   /* RETURN  — function returned by value (GOTL path)     */
-} Sil_result;
+} RESULT_t;
 
 /* ── Convenience macros for DESCR_t access ───────────────────────────── */
 

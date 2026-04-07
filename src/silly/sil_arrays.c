@@ -20,11 +20,11 @@
 #include "sil_symtab.h"
 
 /* External stubs — use signatures from headers where already declared */
-extern Sil_result INVOKE_fn(void);
-extern Sil_result INTVAL_fn(void);
+extern RESULT_t INVOKE_fn(void);
+extern RESULT_t INTVAL_fn(void);
 /* VARVUP_fn, GENVUP_fn, FINDEX_fn declared in sil_argval.h / sil_arena.h / sil_symtab.h */
 extern void       PSTACK_fn(DESCR_t *pos);
-extern Sil_result MULT_fn(DESCR_t *out, DESCR_t a, DESCR_t b);
+extern RESULT_t MULT_fn(DESCR_t *out, DESCR_t a, DESCR_t b);
 extern void       VPXPTR_fn2(void);
 
 #define GETDC_B(dst, base_d, off_i) \
@@ -49,7 +49,7 @@ static inline void    ar_push(DESCR_t d) { ar_stk[ar_top++] = d; }
 static inline DESCR_t ar_pop(void)        { return ar_stk[--ar_top]; }
 
 /* ── ARRAY(P,V) ──────────────────────────────────────────────────────── */
-Sil_result ARRAY_fn(void)
+RESULT_t ARRAY_fn(void)
 {
     if (VARVAL_fn() == FAIL) return FAIL; /* Get prototype string */
     ar_push(XPTR);
@@ -121,7 +121,7 @@ Sil_result ARRAY_fn(void)
 
 /*====================================================================================================================*/
 /* ── ASSOC / ASSOCE — TABLE(N,M) ────────────────────────────────────── */
-Sil_result ASSOCE_fn(DESCR_t size, DESCR_t ext)
+RESULT_t ASSOCE_fn(DESCR_t size, DESCR_t ext)
 {
     int32_t blk = BLOCK_fn(D_A(size), T); /* Allocate table extent block of size bytes, type T */
     if (!blk) return FAIL;
@@ -139,7 +139,7 @@ Sil_result ASSOCE_fn(DESCR_t size, DESCR_t ext)
 }
 
 /*====================================================================================================================*/
-Sil_result ASSOC_fn(void)
+RESULT_t ASSOC_fn(void)
 {
     if (INTVAL_fn() == FAIL) return FAIL; /* Get N (table size) */
     ar_push(XPTR);
@@ -156,7 +156,7 @@ Sil_result ASSOC_fn(void)
 
 /*====================================================================================================================*/
 /* ── ITEM — array/table reference ────────────────────────────────────── */
-Sil_result ITEM_fn(void)
+RESULT_t ITEM_fn(void)
 {
     SETAV(XCL, INCL);
     DECRA(XCL, 1); /* skip referenced object */
@@ -249,7 +249,7 @@ Sil_result ITEM_fn(void)
 
 /*====================================================================================================================*/
 /* ── PROTO(A) — PROTOTYPE ────────────────────────────────────────────── */
-Sil_result PROTO_fn(void)
+RESULT_t PROTO_fn(void)
 {
     if (ARGVAL_fn() == FAIL) return FAIL;
     if (!VEQLC(XPTR, A)) return FAIL;
@@ -259,7 +259,7 @@ Sil_result PROTO_fn(void)
 
 /*====================================================================================================================*/
 /* ── FREEZE(T) ───────────────────────────────────────────────────────── */
-Sil_result FREEZE_fn(void)
+RESULT_t FREEZE_fn(void)
 {
     if (ARGVAL_fn() == FAIL) return FAIL;
     if (!VEQLC(XPTR, T)) return FAIL;
@@ -271,7 +271,7 @@ Sil_result FREEZE_fn(void)
 
 /*====================================================================================================================*/
 /* ── THAW(T) ─────────────────────────────────────────────────────────── */
-Sil_result THAW_fn(void)
+RESULT_t THAW_fn(void)
 {
     if (ARGVAL_fn() == FAIL) return FAIL;
     if (!VEQLC(XPTR, T)) return FAIL;
@@ -284,10 +284,10 @@ Sil_result THAW_fn(void)
 /* ── DATDEF — DATA(P) ────────────────────────────────────────────────── */
 /* Complex: requires STREAM/VARATB, AUGATL, FINDEX, PSTACK.
  * Stubbed until those infrastructure pieces are in place. */
-Sil_result DATDEF_fn(void) { return FAIL; }
+RESULT_t DATDEF_fn(void) { return FAIL; }
 
 /* ── DEFDAT — create defined data object ─────────────────────────────── */
-Sil_result DEFDAT_fn(void)
+RESULT_t DEFDAT_fn(void)
 {
     SETAV(XCL, INCL);
     DESCR_t WCL_d; MOVD(WCL_d, XCL);
@@ -330,7 +330,7 @@ Sil_result DEFDAT_fn(void)
 
 /*====================================================================================================================*/
 /* ── FIELD — field accessor ──────────────────────────────────────────── */
-Sil_result FIELD_fn(void)
+RESULT_t FIELD_fn(void)
 {
     ar_push(INCL);
     if (ARGVAL_fn() == FAIL) { ar_top--; return FAIL; }
@@ -357,5 +357,5 @@ Sil_result FIELD_fn(void)
 /* ── RSORT / SORT — stubs ────────────────────────────────────────────── */
 /* Shell-sort requires A4PTR..A7PTR, LPTR, NANCHK, RCOMP, INTRL etc.
  * Stubbed until M19+ infrastructure is in place.                        */
-Sil_result RSORT_fn(void) { return FAIL; }
-Sil_result SORT_fn(void)  { return FAIL; }
+RESULT_t RSORT_fn(void) { return FAIL; }
+RESULT_t SORT_fn(void)  { return FAIL; }

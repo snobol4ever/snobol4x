@@ -18,16 +18,16 @@
 #include "sil_symtab.h"
 
 /* External stubs — use signatures from headers where declared */
-extern Sil_result INVOKE_fn(void);
-extern Sil_result INTVAL_fn(void);
-extern Sil_result XYARGS_fn(void);
+extern RESULT_t INVOKE_fn(void);
+extern RESULT_t INTVAL_fn(void);
+extern RESULT_t XYARGS_fn(void);
 /* GC_fn declared in sil_arena.h as int32_t(int32_t) */
 /* FINDEX_fn declared in sil_symtab.h as int32_t(DESCR_t*) */
 /* DTREP_fn declared in sil_symtab.h as SPEC_t*(DESCR_t*) */
 extern void       CODSKP_fn(int32_t n);  /* declared in sil_symtab.h */
-extern Sil_result EXPR_fn(void);
-extern Sil_result CMPILE_fn(void);
-extern Sil_result TREPUB_fn(DESCR_t node);
+extern RESULT_t EXPR_fn(void);
+extern RESULT_t CMPILE_fn(void);
+extern RESULT_t TREPUB_fn(DESCR_t node);
 extern void       XCALL_DATE(SPEC_t *sp, DESCR_t arg);
 extern void       XCALL_MSTIME(DESCR_t *out);
 extern void       XCALL_SBREAL(DESCR_t *out, DESCR_t a, DESCR_t b);
@@ -35,7 +35,7 @@ extern void       XCALL_RPLACE(SPEC_t *dst, SPEC_t *tbl, SPEC_t *rep);
 extern void       XCALL_REVERSE(SPEC_t *dst, SPEC_t *src);
 extern void       XCALL_XSUBSTR(SPEC_t *dst, SPEC_t *src, int32_t off);
 extern void       STPRNT_fn(int32_t key, void *blk, SPEC_t *sp);
-extern Sil_result ICNVTA_fn(DESCR_t tbl);
+extern RESULT_t ICNVTA_fn(DESCR_t tbl);
 
 #define GETDC_B(dst, base_d, off_i) \
     memcpy(&(dst), (char*)A2P(D_A(base_d)) + (off_i), sizeof(DESCR_t))
@@ -65,7 +65,7 @@ static inline void    fn_push(DESCR_t d) { fn_stk[fn_top++] = d; }
 static inline DESCR_t fn_pop(void)        { return fn_stk[--fn_top]; }
 
 /* GENVRZ: RCALL ZPTR,GENVAR,ZSPPTR,RTZPTR — intern ZSP into ZPTR then return */
-static Sil_result genvrz(void)
+static RESULT_t genvrz(void)
 {
     SPEC_t zsp; LOCSP_fn(&zsp, &ZPTR);
     int32_t off = GENVAR_fn(&zsp);
@@ -76,7 +76,7 @@ static Sil_result genvrz(void)
 
 /*====================================================================================================================*/
 /* GENVSZ: RCALL ZPTR,GNVARS,XCL,RTZPTR — intern TSP of length XCL */
-static Sil_result genvsz(SPEC_t *tsp)
+static RESULT_t genvsz(SPEC_t *tsp)
 {
     int32_t off = GNVARS_fn((const char*)A2P(tsp->a) + tsp->o, D_A(XCL));
     if (!off) return FAIL;
@@ -86,7 +86,7 @@ static Sil_result genvsz(SPEC_t *tsp)
 
 /*====================================================================================================================*/
 /* ── SIZE(S) ─────────────────────────────────────────────────────────── */
-Sil_result SIZE_fn(void)
+RESULT_t SIZE_fn(void)
 {
     if (VARVAL_fn() == FAIL) return FAIL;
     LOCSP_fn(&XSP, &XPTR);
@@ -96,7 +96,7 @@ Sil_result SIZE_fn(void)
 
 /*====================================================================================================================*/
 /* ── TRIM(S) ─────────────────────────────────────────────────────────── */
-Sil_result TRIM_fn(void)
+RESULT_t TRIM_fn(void)
 {
     if (VARVAL_fn() == FAIL) return FAIL;
     LOCSP_fn(&ZSP, &XPTR);
@@ -106,7 +106,7 @@ Sil_result TRIM_fn(void)
 
 /*====================================================================================================================*/
 /* ── VDIFFR(X,Y) ─────────────────────────────────────────────────────── */
-Sil_result VDIFFR_fn(void)
+RESULT_t VDIFFR_fn(void)
 {
     if (XYARGS_fn() == FAIL) return FAIL;
     if (deql(XPTR, YPTR)) return FAIL;
@@ -115,7 +115,7 @@ Sil_result VDIFFR_fn(void)
 
 /*====================================================================================================================*/
 /* ── DUPL(S,N) ───────────────────────────────────────────────────────── */
-Sil_result DUPL_fn(void)
+RESULT_t DUPL_fn(void)
 {
     if (VARVAL_fn() == FAIL) return FAIL;
     fn_push(XPTR);
@@ -144,7 +144,7 @@ Sil_result DUPL_fn(void)
 
 /*====================================================================================================================*/
 /* ── REVERS(S) ───────────────────────────────────────────────────────── */
-Sil_result REVERS_fn(void)
+RESULT_t REVERS_fn(void)
 {
     if (VARVAL_fn() == FAIL) return FAIL;
     LOCSP_fn(&XSP, &XPTR);
@@ -161,7 +161,7 @@ Sil_result REVERS_fn(void)
 
 /*====================================================================================================================*/
 /* ── REPLACE(S1,S2,S3) ───────────────────────────────────────────────── */
-Sil_result RPLACE_fn(void)
+RESULT_t RPLACE_fn(void)
 {
     if (VARVAL_fn() == FAIL) return FAIL;
     fn_push(XPTR);
@@ -188,7 +188,7 @@ Sil_result RPLACE_fn(void)
 
 /*====================================================================================================================*/
 /* ── SUBSTR(S,P,L) ───────────────────────────────────────────────────── */
-Sil_result SUBSTR_fn(void)
+RESULT_t SUBSTR_fn(void)
 {
     if (VARVAL_fn() == FAIL) return FAIL;
     fn_push(XPTR);
@@ -217,7 +217,7 @@ Sil_result SUBSTR_fn(void)
 
 /*====================================================================================================================*/
 /* ── DATE() ──────────────────────────────────────────────────────────── */
-Sil_result DATE_fn(void)
+RESULT_t DATE_fn(void)
 {
     if (ARGVAL_fn() == FAIL) return FAIL;
     XCALL_DATE(&ZSP, XPTR);
@@ -226,7 +226,7 @@ Sil_result DATE_fn(void)
 
 /*====================================================================================================================*/
 /* ── DT(X) — DATATYPE(X) ─────────────────────────────────────────────── */
-Sil_result DT_fn(void)
+RESULT_t DT_fn(void)
 {
     if (ARGVAL_fn() == FAIL) return FAIL;
     MOVD(A2PTR, XPTR);
@@ -245,7 +245,7 @@ Sil_result DT_fn(void)
 
 /*====================================================================================================================*/
 /* ── TIME() ──────────────────────────────────────────────────────────── */
-Sil_result TIME_fn(void)
+RESULT_t TIME_fn(void)
 {
     if (ARGVAL_fn() == FAIL) return FAIL;
     XCALL_MSTIME(&ZPTR);
@@ -256,7 +256,7 @@ Sil_result TIME_fn(void)
 
 /*====================================================================================================================*/
 /* ── COLLECT(N) ──────────────────────────────────────────────────────── */
-Sil_result COLECT_fn(void)
+RESULT_t COLECT_fn(void)
 {
     if (INTVAL_fn() == FAIL) return FAIL;
     if (ACOMPC(XPTR, 0) <= 0) { SETAC(ERRTYP, 14); return FAIL; }
@@ -267,7 +267,7 @@ Sil_result COLECT_fn(void)
 
 /*====================================================================================================================*/
 /* ── COPY(X) ─────────────────────────────────────────────────────────── */
-Sil_result COPY_fn(void)
+RESULT_t COPY_fn(void)
 {
     if (ARGVAL_fn() == FAIL) return FAIL;
     switch (D_V(XPTR)) { /* types that cannot be copied */
@@ -286,7 +286,7 @@ Sil_result COPY_fn(void)
 
 /*====================================================================================================================*/
 /* ── CLEAR() ─────────────────────────────────────────────────────────── */
-Sil_result CLEAR_fn(void)
+RESULT_t CLEAR_fn(void)
 {
     if (ARGVAL_fn() == FAIL) return FAIL;
     SETAC(DMPPTR, D_A(OBLIST_arr[0]) - DESCR); /* OBLIST-DESCR */    /* Walk every bin in OBLIST, null every variable */
@@ -306,12 +306,12 @@ Sil_result CLEAR_fn(void)
 
 /*====================================================================================================================*/
 /* ── CMA — (e1,e2,...,en) selection ─────────────────────────────────── */
-Sil_result CMA_fn(void)
+RESULT_t CMA_fn(void)
 {
     SETAV(ZCL, INCL); /* number of arguments */
     while (D_A(ZCL) > 0) {
         fn_push(ZCL); fn_push(OCBSCL); fn_push(OCICL);
-        Sil_result rc = ARGVAL_fn();
+        RESULT_t rc = ARGVAL_fn();
         MOVD(OCICL, fn_pop());
         MOVD(OCBSCL, fn_pop());
         MOVD(ZCL, fn_pop());
@@ -327,7 +327,7 @@ Sil_result CMA_fn(void)
 
 /*====================================================================================================================*/
 /* ── APPLY(F,A1,...,AN) ───────────────────────────────────────────────── */
-Sil_result APPLY_fn(void)
+RESULT_t APPLY_fn(void)
 {
     SETAV(XCL, INCL);
     DECRA(XCL, 1);
@@ -350,28 +350,28 @@ Sil_result APPLY_fn(void)
  * These require detailed knowledge of function definition block layout
  * (DEFFNC block, MULTC, GETSIZ for defined vs external).
  * Stubbed: return FAIL until the interpreter's INVOKE path is in place. */
-Sil_result ARG_fn(void)    { return FAIL; }
-Sil_result LOCAL_fn(void)  { return FAIL; }
-Sil_result FIELDS_fn(void) { return FAIL; }
+RESULT_t ARG_fn(void)    { return FAIL; }
+RESULT_t LOCAL_fn(void)  { return FAIL; }
+RESULT_t FIELDS_fn(void) { return FAIL; }
 
 /* ── DMP(N) / DUMP() — stub ──────────────────────────────────────────
  * Full implementation needs STPRNT, DTREP, formatted I/O.
  * Returns null (no-op) for now. */
-Sil_result DMP_fn(void)
+RESULT_t DMP_fn(void)
 {
     if (INTVAL_fn() == FAIL) return FAIL;
     if (AEQLC(XPTR, 0)) { MOVD(XPTR, NULVCL); return OK; }
     MOVD(XPTR, NULVCL); return OK; /* stub: no actual dump */
 }
 /*====================================================================================================================*/
-Sil_result DUMP_fn(void) { MOVD(XPTR, NULVCL); return OK; }
+RESULT_t DUMP_fn(void) { MOVD(XPTR, NULVCL); return OK; }
 
 /* ── CONVERT(X,T) / CODE(S) — stubs ─────────────────────────────────
  * Require compiler re-entry (CMPILE, EXPR, TREPUB) and type-conversion
  * infrastructure. Stubbed until M19 (interpreter/compiler). */
-Sil_result CNVRT_fn(void) { return FAIL; }
-Sil_result CODER_fn(void) { return FAIL; }
+RESULT_t CNVRT_fn(void) { return FAIL; }
+RESULT_t CODER_fn(void) { return FAIL; }
 
 /* ── OPSYN(F1,F2,N) — stub ───────────────────────────────────────────
  * Requires operator-table streams (BIOPTB, UNOPTB etc.) not yet built. */
-Sil_result OPSYN_fn(void) { return FAIL; }
+RESULT_t OPSYN_fn(void) { return FAIL; }

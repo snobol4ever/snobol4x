@@ -34,10 +34,10 @@ extern void       XCALL_SBREAL(DESCR_t *out, DESCR_t a, DESCR_t b);
 extern void       XCALL_io_flushall(void);
 extern void       XCALL_XECOMP(void);
 extern void       XCALL_OUTPUT_fmt(DESCR_t unit, const char *fmt, ...);
-extern Sil_result XCALL_IO_FILE(DESCR_t unit, SPEC_t *fname_out);
-extern Sil_result XCALL_GETPARM(SPEC_t *out);
+extern RESULT_t XCALL_IO_FILE(DESCR_t unit, SPEC_t *fname_out);
+extern RESULT_t XCALL_GETPARM(SPEC_t *out);
 extern void       XCALL_FREEPARM(SPEC_t *sp);
-extern Sil_result XCALL_GETPMPROTO(SPEC_t *out, int32_t idx);
+extern RESULT_t XCALL_GETPMPROTO(SPEC_t *out, int32_t idx);
 extern void       XCALL_ZERBLK(DESCR_t *region, DESCR_t count);
 extern void       STPRNT_fn(int32_t key, DESCR_t blk, SPEC_t *sp);
 extern DESCR_t    PUNCH;
@@ -46,9 +46,9 @@ extern DESCR_t    CARDTB;
 extern DESCR_t    IBLKTB;
 extern DESCR_t    LBLTB;
 
-extern Sil_result LOAD2_fn(void);   /* LOAD internal entry */
-extern Sil_result STREAD_fn(SPEC_t *sp, DESCR_t unit);
-extern Sil_result STREAM_fn(SPEC_t *res, SPEC_t *src,
+extern RESULT_t LOAD2_fn(void);   /* LOAD internal entry */
+extern RESULT_t STREAD_fn(SPEC_t *sp, DESCR_t unit);
+extern RESULT_t STREAM_fn(SPEC_t *res, SPEC_t *src,
                               DESCR_t *tbl, int *stype_out);
 static int32_t genvar_from_descr(DESCR_t d);
 
@@ -162,7 +162,7 @@ static void compile_loop(void)
         if (STREAM_fn(&xsp, &TEXTSP, &CARDTB, &stype) == FAIL) continue; /* XLATNX: classify card */
         SETAC(STYPE, stype);
         NEWCRD_fn();
-        Sil_result rc = CMPILE_fn(); /* Compile one statement */
+        RESULT_t rc = CMPILE_fn(); /* Compile one statement */
         if (rc == FAIL) {
             INCRA(CMOFCL, DESCR); /* END statement reached */
             PUTD_B(CMBSCL, CMOFCL, ENDCL);
@@ -197,7 +197,7 @@ xlaend:
         XCALL_SBREAL(&TIMECL, et, TIMECL);
     }
     SETAC(CNSLCL, 1);
-    Sil_result irc = INTERP_fn(); /* Run the interpreter */
+    RESULT_t irc = INTERP_fn(); /* Run the interpreter */
     if ((int)irc != 0 && (int)irc != 5 && (int)irc != 6) MAIN1_fn();
     END_fn();
 }

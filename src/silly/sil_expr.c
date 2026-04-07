@@ -28,7 +28,7 @@
 /* Stream tables (§24 — extern stubs) */
 extern DESCR_t BIOPTB;   /* binary operator table                        */
 extern DESCR_t UNOPTB;   /* unary operator table                         */
-extern Sil_result STREAM_fn(SPEC_t *res, SPEC_t *src,
+extern RESULT_t STREAM_fn(SPEC_t *res, SPEC_t *src,
                               DESCR_t *tbl, int *stype_out);
 
 /* Tree node field offsets */
@@ -50,9 +50,9 @@ static inline int deql(DESCR_t a, DESCR_t b)
     { return D_A(a)==D_A(b) && D_V(a)==D_V(b); }
 
 /* Forward declarations */
-static Sil_result expr_continue(DESCR_t *out);
-static Sil_result expr7(DESCR_t *out);
-static Sil_result elearg(DESCR_t fn_code);
+static RESULT_t expr_continue(DESCR_t *out);
+static RESULT_t expr7(DESCR_t *out);
+static RESULT_t elearg(DESCR_t fn_code);
 
 /* ── Tree helpers ────────────────────────────────────────────────────── */
 
@@ -86,7 +86,7 @@ void INSERT_fn(DESCR_t node, DESCR_t above)
 
 /*====================================================================================================================*/
 /* alloc_node: allocate CNDSIZ block for one tree node */
-static Sil_result alloc_node(DESCR_t *out)
+static RESULT_t alloc_node(DESCR_t *out)
 {
     int32_t blk = BLOCK_fn(D_A(CNDSIZ), B);
     if (!blk) return FAIL;
@@ -97,7 +97,7 @@ static Sil_result alloc_node(DESCR_t *out)
 
 /*====================================================================================================================*/
 /* ── NULNOD — build LIT(null-string) node ───────────────────────────── */
-Sil_result NULNOD_fn(DESCR_t *out)
+RESULT_t NULNOD_fn(DESCR_t *out)
 {
     if (alloc_node(&EXPRND) == FAIL) return FAIL;
     PUTDC_B(EXPRND, T_CODE, LITCL);
@@ -116,7 +116,7 @@ Sil_result NULNOD_fn(DESCR_t *out)
  *   (ELEXND), then loop reading EXPR args separated by commas.
  *   Sets ELEMND to last arg node; BRTYPE on exit.
  */
-static Sil_result elearg(DESCR_t fn_code)
+static RESULT_t elearg(DESCR_t fn_code)
 {
     DESCR_t fn_node;
     if (alloc_node(&fn_node) == FAIL) return FAIL;
@@ -136,11 +136,11 @@ static Sil_result elearg(DESCR_t fn_code)
 
 /*====================================================================================================================*/
 /* ── ELEMNT — compile one element ────────────────────────────────────── */
-Sil_result ELEMNT_fn(DESCR_t *out)
+RESULT_t ELEMNT_fn(DESCR_t *out)
 {
     if (UNOP_fn(&ELEMND) == FAIL) return FAIL; /* RTN2 on error */                     /* Get tree of unary operators */
     SPEC_t xsp; int stype; /* Break element from TEXTSP */
-    Sil_result rc = STREAM_fn(&xsp, &TEXTSP, &ELEMTB, &stype);
+    RESULT_t rc = STREAM_fn(&xsp, &TEXTSP, &ELEMTB, &stype);
     SETAC(STYPE, stype);
     if (rc == FAIL) {
         if (stype == 0) { SETAC(EMSGCL, (intptr_t)ILCHAR); return FAIL; } /* ELEILI / ELEICH */
@@ -299,7 +299,7 @@ elem_exit:
 
 /*====================================================================================================================*/
 /* ── EXPR — compile a full expression ───────────────────────────────── */
-Sil_result EXPR_fn(DESCR_t *out)
+RESULT_t EXPR_fn(DESCR_t *out)
 {
     if (ELEMNT_fn(&EXELND) == FAIL) {
         return NULNOD_fn(out); /* EXPNUL: return null node */
@@ -310,7 +310,7 @@ Sil_result EXPR_fn(DESCR_t *out)
 
 /*====================================================================================================================*/
 /* ── EXPR1 — continuation entry (called with saved EXPRND) ──────────── */
-Sil_result EXPR1_fn(DESCR_t *out)
+RESULT_t EXPR1_fn(DESCR_t *out)
 {
     DESCR_t saved = EXPRND;
     if (ELEMNT_fn(&EXELND) == FAIL) {
@@ -329,7 +329,7 @@ do_expr7:
 }
 
 /*====================================================================================================================*/
-static Sil_result expr_continue(DESCR_t *out)
+static RESULT_t expr_continue(DESCR_t *out)
 {
     while (1) {
         DESCR_t op; /* EXPR2: get binary operator */
@@ -396,7 +396,7 @@ expr11:
 }
 
 /*====================================================================================================================*/
-static Sil_result expr7(DESCR_t *out)
+static RESULT_t expr7(DESCR_t *out)
 {
     if (AEQLC(EXPRND, 0)) { /* EXPR7: assemble result */
         ADDSIB_fn(EXPRND, EXELND); /* EXPR10: add as sibling */
@@ -412,7 +412,7 @@ static Sil_result expr7(DESCR_t *out)
 
 /*====================================================================================================================*/
 /* ── BINOP — binary operator analysis ───────────────────────────────── */
-Sil_result BINOP_fn(DESCR_t *out)
+RESULT_t BINOP_fn(DESCR_t *out)
 {
     if (FORBLK_fn() == FAIL) return FAIL; /* BINOP: STREAM BIOPTB */
     SPEC_t xsp; int stype;
@@ -422,7 +422,7 @@ Sil_result BINOP_fn(DESCR_t *out)
         return OK;
     }
     if (AEQLC(BRTYPE, NBTYP)) return FAIL; /* RTN2 — no operator */
-    Sil_result rc = STREAM_fn(&xsp, &TEXTSP, &BIOPTB, &stype);
+    RESULT_t rc = STREAM_fn(&xsp, &TEXTSP, &BIOPTB, &stype);
     if (rc == FAIL) {
         *out = CONCL; /* BINCON: concatenation */
         return OK;
@@ -433,14 +433,14 @@ Sil_result BINOP_fn(DESCR_t *out)
 
 /*====================================================================================================================*/
 /* ── UNOP — unary operator analysis ─────────────────────────────────── */
-Sil_result UNOP_fn(DESCR_t *out)
+RESULT_t UNOP_fn(DESCR_t *out)
 {
     if (FORWRD_fn() == FAIL) return FAIL; /* UNOP: FORWRD then STREAM UNOPTB */
     SETAC(*out, 0);
     if (!AEQLC(BRTYPE, NBTYP)) return OK; /* RTN1 — no unary ops */
     SPEC_t xsp; int stype;
     while (1) {
-        Sil_result rc = STREAM_fn(&xsp, &TEXTSP, &UNOPTB, &stype);
+        RESULT_t rc = STREAM_fn(&xsp, &TEXTSP, &UNOPTB, &stype);
         if (rc == FAIL) break; /* RTXNAM — return current tree */
         DESCR_t yptr;
         if (alloc_node(&yptr) == FAIL) return FAIL;

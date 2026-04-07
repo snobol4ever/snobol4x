@@ -23,6 +23,6 @@
 /* NMD_fn — commit all name-list captures since NHEDCL to NAMICL.
  * v311.sil NMD line 6055.
  * Returns OK always (failures are non-fatal, matching SIL RTN2 exit). */
-Sil_result NMD_fn(void);
+RESULT_t NMD_fn(void);
 
 #endif /* SIL_NMD_H */

@@ -24,17 +24,17 @@
 #include "sil_asgn.h"   /* IND_fn */
 
 /* Platform I/O stubs — resolved by sil_platform.c */
-extern Sil_result XCALL_IO_OPENI(DESCR_t unit, SPEC_t *fname,
+extern RESULT_t XCALL_IO_OPENI(DESCR_t unit, SPEC_t *fname,
                                   SPEC_t *opts, DESCR_t *recl_out);
-extern Sil_result XCALL_IO_OPENO(DESCR_t unit, SPEC_t *fname, SPEC_t *fmt);
-extern Sil_result XCALL_IO_SEEK(DESCR_t unit, DESCR_t off, DESCR_t whence);
-extern Sil_result STREAD_fn(SPEC_t *sp, DESCR_t unit);   /* reads into sp */
+extern RESULT_t XCALL_IO_OPENO(DESCR_t unit, SPEC_t *fname, SPEC_t *fmt);
+extern RESULT_t XCALL_IO_SEEK(DESCR_t unit, DESCR_t off, DESCR_t whence);
+extern RESULT_t STREAD_fn(SPEC_t *sp, DESCR_t unit);   /* reads into sp */
 extern void       STPRNT_fn(int32_t key, DESCR_t blk, SPEC_t *sp);
 extern void       XCALL_BKSPCE(DESCR_t unit);
 extern void       XCALL_ENFILE(DESCR_t unit);
 extern void       XCALL_REWIND(DESCR_t unit);
 /* AUGATL_fn declared in sil_symtab.h as int32_t(int32_t, DESCR_t, DESCR_t) */
-extern Sil_result DTREP_fn2(DESCR_t *out, DESCR_t obj);
+extern RESULT_t DTREP_fn2(DESCR_t *out, DESCR_t obj);
 
 #define GETDC_B(dst, base_d, off_i) \
     memcpy(&(dst), (char*)A2P(D_A(base_d)) + (off_i), sizeof(DESCR_t))
@@ -47,7 +47,7 @@ static inline void    io_push(DESCR_t d) { io_stk[io_top++] = d; }
 static inline DESCR_t io_pop(void)        { return io_stk[--io_top]; }
 
 /* ── READ — INPUT(V,U,O,N) ───────────────────────────────────────────── */
-Sil_result READ_fn(void)
+RESULT_t READ_fn(void)
 {
     if (IND_fn() == FAIL) return FAIL; /* IND — get variable */
     io_push(XPTR);
@@ -87,7 +87,7 @@ Sil_result READ_fn(void)
 
 /*====================================================================================================================*/
 /* ── PRINT — OUTPUT(V,U,O,N) ─────────────────────────────────────────── */
-Sil_result PRINT_fn(void)
+RESULT_t PRINT_fn(void)
 {
     if (IND_fn() == FAIL) return FAIL;
     io_push(XPTR);
@@ -124,7 +124,7 @@ Sil_result PRINT_fn(void)
 
 /*====================================================================================================================*/
 /* ── BKSPCE / ENDFL / REWIND / SET ──────────────────────────────────── */
-static Sil_result ioop(int32_t op)
+static RESULT_t ioop(int32_t op)
 {
     io_push(SCL);
     if (INTVAL_fn() == FAIL) { io_top--; return FAIL; }
@@ -148,13 +148,13 @@ static Sil_result ioop(int32_t op)
 }
 
 /*====================================================================================================================*/
-Sil_result BKSPCE_fn(void) { return ioop(1); }
-Sil_result ENDFL_fn(void)  { return ioop(2); }
-Sil_result REWIND_fn(void) { return ioop(3); }
-Sil_result SET_fn(void)    { return ioop(4); }
+RESULT_t BKSPCE_fn(void) { return ioop(1); }
+RESULT_t ENDFL_fn(void)  { return ioop(2); }
+RESULT_t REWIND_fn(void) { return ioop(3); }
+RESULT_t SET_fn(void)    { return ioop(4); }
 
 /* ── DETACH(V) ───────────────────────────────────────────────────────── */
-Sil_result DETACH_fn(void)
+RESULT_t DETACH_fn(void)
 {
     if (IND_fn() == FAIL) return FAIL;
     int32_t ai = locapv_fn(D_A(INATL), &XPTR); /* Clear input association */
@@ -174,7 +174,7 @@ Sil_result DETACH_fn(void)
 
 /*====================================================================================================================*/
 /* ── PUTIN — internal input procedure ───────────────────────────────── */
-Sil_result PUTIN_fn(DESCR_t blk, DESCR_t var)
+RESULT_t PUTIN_fn(DESCR_t blk, DESCR_t var)
 {
     MOVD(IO1PTR, blk); MOVD(IO2PTR, var);
     GETDC_B(IO3PTR, IO1PTR, DESCR); /* unit */

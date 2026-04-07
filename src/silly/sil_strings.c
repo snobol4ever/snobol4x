@@ -103,7 +103,7 @@ int LEXCMP_fn(const SPEC_t *a, const SPEC_t *b)
  * v311.sil SPCINT → lib/c99/spcint.c spcint()
  * Adaption: we use int32_t (not int64_t); always strip leading whitespace.
  * ════════════════════════════════════════════════════════════════════════ */
-Sil_result SPCINT_fn(DESCR_t *dp, const SPEC_t *sp)
+RESULT_t SPCINT_fn(DESCR_t *dp, const SPEC_t *sp)
 {
     char buf[32];
     size_t len = (size_t)sp->l;
@@ -131,7 +131,7 @@ Sil_result SPCINT_fn(DESCR_t *dp, const SPEC_t *sp)
  * v311.sil SPREAL → lib/generic/spreal.c spreal()
  * Adaption: result stored as float (real_t = float), not double.
  * ════════════════════════════════════════════════════════════════════════ */
-Sil_result SPREAL_fn(DESCR_t *dp, const SPEC_t *sp)
+RESULT_t SPREAL_fn(DESCR_t *dp, const SPEC_t *sp)
 {
 #define SPREAL_TC '|'                                           /* sentinel-terminate trick from lib/generic/spreal.c */
     char buf[66];

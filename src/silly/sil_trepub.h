@@ -20,7 +20,7 @@
 /* TREPUB — publish code tree rooted at node on operand stack.
  * v311.sil TREPUB line 2466.
  * Walks LSON → RSIB → FATHER chain, emitting CODE field of each node. */
-Sil_result TREPUB_fn(DESCR_t node);
+RESULT_t TREPUB_fn(DESCR_t node);
 
 /* ADDSON — add node 'son' as left son of 'parent'.
  * v311.sil ADDSON (inline macro in compiler). */

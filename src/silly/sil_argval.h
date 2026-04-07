@@ -25,7 +25,7 @@
  *   GENVAR_fn  (§5)   — intern specifier as string variable
  *   BLOCK_fn   (§5)   — allocate block
  *
- * Return convention: Sil_result (FAIL=0, OK=1).
+ * Return convention: RESULT_t (FAIL=0, OK=1).
  * Result descriptor lives in XPTR (or ZPTR for EXPVAL exit 3).
  *
  * Authors: Lon Jones Cherryholmes · Claude Sonnet 4.6
@@ -47,7 +47,7 @@
  *   Dereference name → value in XPTR.
  *   Returns OK (result in XPTR) or FAIL.
  */
-Sil_result ARGVAL_fn(void);
+RESULT_t ARGVAL_fn(void);
 
 /* ── EXPVAL — evaluate unevaluated expression ────────────────────────── */
 /*
@@ -60,13 +60,13 @@ Sil_result ARGVAL_fn(void);
  *   Exit 2 (RTXNAM): result in XPTR, returns OK.
  *   Exit 3 (RTZPTR): result in ZPTR, returns OK (caller checks ZPTR).
  */
-Sil_result EXPVAL_fn(void);
+RESULT_t EXPVAL_fn(void);
 
 /* ── EXPEVL — expression value context entry for EXPVAL ─────────────── */
 /*
  * v311.sil EXPEVL (line 2757): EXPVAL with SCL=0 (expression context).
  */
-Sil_result EXPEVL_fn(void);
+RESULT_t EXPEVL_fn(void);
 
 /* ── INTVAL — evaluate argument, coerce to INTEGER ───────────────────── */
 /*
@@ -76,7 +76,7 @@ Sil_result EXPEVL_fn(void);
  *   REAL → RLINT directly.
  *   Returns OK (result in XPTR, type I) or FAIL.
  */
-Sil_result INTVAL_fn(void);
+RESULT_t INTVAL_fn(void);
 
 /* ── PATVAL — evaluate argument, coerce to PATTERN ──────────────────── */
 /*
@@ -88,7 +88,7 @@ Sil_result INTVAL_fn(void);
  *   EXPRESSION: wrap in STARPT pattern node.
  *   Returns OK (result in XPTR, type P or S) or FAIL.
  */
-Sil_result PATVAL_fn(void);
+RESULT_t PATVAL_fn(void);
 
 /* ── VARVAL — evaluate argument, coerce to STRING ────────────────────── */
 /*
@@ -98,7 +98,7 @@ Sil_result PATVAL_fn(void);
  *   Other non-STRING types → INTR1 (illegal data type).
  *   Returns OK (result in XPTR, type S) or FAIL.
  */
-Sil_result VARVAL_fn(void);
+RESULT_t VARVAL_fn(void);
 
 /* ── VARVUP — VARVAL with case-folding ───────────────────────────────── */
 /*
@@ -106,7 +106,7 @@ Sil_result VARVAL_fn(void);
  *   Calls VARVAL, then if &CASE!=0 folds to upper-case via VPXPTR.
  *   Returns OK (result in XPTR) or FAIL.
  */
-Sil_result VARVUP_fn(void);
+RESULT_t VARVUP_fn(void);
 
 /* ── VPXPTR — case-fold XPTR string to upper-case ────────────────────── */
 /*
@@ -115,7 +115,7 @@ Sil_result VARVUP_fn(void);
  *   interns the upper-case version via GNVARS, stores back in XPTR.
  *   Returns OK (result in XPTR) always (null string returns unchanged).
  */
-Sil_result VPXPTR_fn(void);
+RESULT_t VPXPTR_fn(void);
 
 /* ── XYARGS — evaluate argument pair ────────────────────────────────── */
 /*
@@ -124,6 +124,6 @@ Sil_result VPXPTR_fn(void);
  *   First result → XPTR, second → YPTR.
  *   Returns OK or FAIL.
  */
-Sil_result XYARGS_fn(void);
+RESULT_t XYARGS_fn(void);
 
 #endif /* SIL_ARGVAL_H */

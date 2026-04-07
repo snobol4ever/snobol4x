@@ -30,16 +30,16 @@
 #include "sil_symtab.h"
 
 /* M18d stubs */
-extern Sil_result ELEMNT_fn(DESCR_t *out);
-extern Sil_result EXPR_fn(DESCR_t *out);
-extern Sil_result EXPR1_fn(DESCR_t *out);
+extern RESULT_t ELEMNT_fn(DESCR_t *out);
+extern RESULT_t EXPR_fn(DESCR_t *out);
+extern RESULT_t EXPR1_fn(DESCR_t *out);
 
 /* Stream tables (§24 data — stubs until translated) */
 extern DESCR_t LBLTB;    /* label scan table                             */
 extern DESCR_t GOTOTB;   /* goto field scan table                        */
 
 /* STREAM stub */
-extern Sil_result STREAM_fn(SPEC_t *res, SPEC_t *src,
+extern RESULT_t STREAM_fn(SPEC_t *res, SPEC_t *src,
                               DESCR_t *tbl, int *stype_out);
 
 /* Error output */
@@ -73,14 +73,14 @@ static void cerr(const char *msg)
 
 /*====================================================================================================================*/
 /* ── CMPILE — compile one statement ─────────────────────────────────── */
-Sil_result CMPILE_fn(void)
+RESULT_t CMPILE_fn(void)
 {
     SETAC(BRTYPE, 0);
     MOVD(BOSCL, CMOFCL);
     if (!AEQLC(HIDECL, 0)) INCRA(CSTNCL, 1); /* AEQLC HIDECL,0,CMPIL0 — increment statement number unless hidden */
     { /* CMPIL0: scan label field */
         SPEC_t xsp; int stype;
-        Sil_result rc = STREAM_fn(&xsp, &TEXTSP, &LBLTB, &stype);
+        RESULT_t rc = STREAM_fn(&xsp, &TEXTSP, &LBLTB, &stype);
         if (rc == FAIL) { cerr(EMSG1); goto stmt_done; }
         SETAC(STYPE, stype);
         if (xsp.l > 0) {

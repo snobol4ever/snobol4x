@@ -22,11 +22,11 @@
 #include "sil_symtab.h"
 
 /* Platform stubs */
-extern Sil_result XCALL_LOAD(DESCR_t *entry_out, SPEC_t *fn_sp, SPEC_t *lib_sp);
+extern RESULT_t XCALL_LOAD(DESCR_t *entry_out, SPEC_t *fn_sp, SPEC_t *lib_sp);
 extern void       XCALL_UNLOAD(SPEC_t *fn_sp);
-extern Sil_result XCALL_LINK(DESCR_t *result, DESCR_t *arg_base,
+extern RESULT_t XCALL_LINK(DESCR_t *result, DESCR_t *arg_base,
                               int32_t nargs, DESCR_t entry);
-extern Sil_result XCALL_RELSTRING(DESCR_t str);
+extern RESULT_t XCALL_RELSTRING(DESCR_t str);
 
 #define GETDC_B(dst, base_d, off_i) \
     memcpy(&(dst), (char*)A2P(D_A(base_d)) + (off_i), sizeof(DESCR_t))
@@ -51,10 +51,10 @@ static inline DESCR_t ext_pop(void)        { return ext_stk[--ext_top]; }
  * Requires STREAM/VARATB for prototype parsing — stubbed until M15+
  * infrastructure (STREAM) is available.
  */
-Sil_result LOAD_fn(void) { return FAIL; }
+RESULT_t LOAD_fn(void) { return FAIL; }
 
 /* ── UNLOAD(F) ───────────────────────────────────────────────────────── */
-Sil_result UNLOAD_fn(void)
+RESULT_t UNLOAD_fn(void)
 {
     if (VARVUP_fn() == FAIL) return FAIL;
     int32_t zcl_off = FINDEX_fn(&XPTR); /* FINDEX — get function descriptor */
@@ -75,7 +75,7 @@ Sil_result UNLOAD_fn(void)
  *   REAL→INTEGER  (LNKRI), INTEGER→REAL   (LNKIR)
  *   STRING→REAL   (LNKVR), REAL→STRING    (LNKRV)
  */
-Sil_result LNKFNC_fn(void)
+RESULT_t LNKFNC_fn(void)
 {
     SETAV(XCL, INCL); /* actual arg count       */
     MOVD(YCL, INCL); /* save function desc     */
