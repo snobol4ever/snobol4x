@@ -259,7 +259,7 @@ RESULT_t TIME_fn(void)
 RESULT_t COLECT_fn(void)
 {
     if (INTVAL_fn() == FAIL) return FAIL;
-    if (ACOMPC(XPTR, 0) <= 0) { SETAC(ERRTYP, 14); return FAIL; }
+    if (ACOMPC(XPTR, 0) < 0) { SETAC(ERRTYP, 14); return FAIL; } /* ACOMPC XPTR,0,,,LENERR — <0 only */
     if (GC_fn(D_A(XPTR)) < 0) return FAIL;
     SETVC(ZPTR, I);
     MOVD(XPTR, ZPTR); return OK;
@@ -341,6 +341,7 @@ RESULT_t APPLY_fn(void)
     GETDC_B(INCL, XPTR, DESCR);
     D_V(INCL) = D_A(XCL); /* SETVA INCL,XCL — insert actual arg count */
     if (INVOKE_fn() == FAIL) return FAIL;
+    MOVD(ZPTR, XPTR); /* oracle: RCALL ZPTR,INVOKE — result returned via RTZPTR */
     MOVD(XPTR, ZPTR);
     return OK;
 }
