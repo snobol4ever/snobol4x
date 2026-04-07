@@ -107,7 +107,7 @@ int         Ω = 0;
  * (used by bb_build below; the dyn/ box files are the canonical forms)
  * ══════════════════════════════════════════════════════════════════════════ */
 
-/* ── Simple boxes — defined in runtime/boxes/bb_*.c (canonical) ────────── */
+/* ── Simple boxes — defined in runtime/boxes/bb_boxes.c (consolidated) ────────── */
 /* Types shared with bb_*.c via bb_box.h — do NOT redefine here.           */
 extern spec_t bb_lit(void *zeta, int entry);
 extern spec_t bb_len(void *zeta, int entry);
