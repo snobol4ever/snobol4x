@@ -4,24 +4,31 @@
  * One binary, all modes. Frontend inferred from file extension.
  *
  * Usage:
- *   scrip [mode] [bb] [target] [debug] <file>
+ *   scrip [mode] [bb] [target] [options] <file> [-- program-args...]
  *
- * Execution modes (default: --run-ir):
- *   --run-ir         interpret via IR tree-walk
- *   --run-sm         interpret SM_Program via dispatch loop
- *   --run-sm-interp  SM + Byrd Boxes through broker/driver
- *   --run-sm-gen     SM + Byrd Boxes live-wired in exec memory
- *   --emit-sm        emit SM_Program to file (no execution)
+ * Execution modes (default: --sm-run):
+ *   --ir-run         interpret via IR tree-walk (correctness reference)
+ *   --sm-run         interpret SM_Program via dispatch loop  [DEFAULT]
+ *   --jit-run        lower SM_Program to x86 bytes -> mmap slab -> jump in
+ *   --jit-emit       lower SM_Program -> emit to file (target selects format)
  *
- * Byrd Box wiring (default: --bb-driver):
- *   --bb-driver      boxes through broker/driver
- *   --bb-jit         boxes live-wired in exec memory (implied by --run-sm-gen)
+ * Byrd Box pattern mode (default: --bb-driver):
+ *   --bb-driver      pattern matching via driver/broker
+ *   --bb-live        pattern matching live-wired in exec memory
+ *                    (only meaningful with --jit-run or --jit-emit)
  *
- * Emit targets (with --emit-sm, default: --x64):
- *   --x64  --jvm  --net  --js  --c  --wasm
+ * Target (for --jit-emit or --jit-run, default: --x64):
+ *   --x64  --jvm  --net  --js  --wasm
+ *
+ * Diagnostic options:
+ *   --dump-ir        print IR after frontend
+ *   --dump-sm        print SM_Program after lowering
+ *   --dump-bb        print BB-GRAPH for each statement
+ *   --trace          MONITOR trace output (for two-way diff vs SPITBOL)
+ *   --bench          print wall-clock time after execution
  *
  * Frontend inferred from extension:
- *   .sno=SNOBOL4  .icn=Icon  .pl=Prolog  .sc=Snocone  .reb=Rebus  .scrip=SCRIP
+ *   .sno=SNOBOL4  .icn=Icon  .pl=Prolog  .sc=Snocone  .reb=Rebus  .spt=SPITBOL
  *
  * AUTHORS: Lon Jones Cherryholmes · Claude Sonnet 4.6
  * SPRINT:  M-SCRIP-U0
@@ -1718,7 +1725,7 @@ Program *cmpile_lower(CMPILE_t *cl)
 
 /* ── ir_print_stmt — print one STMT_t as IR sexp for comparison sweep ──────
  * Emits: (STMT [:lbl L] [:subj EXPR] [:pat EXPR] [:repl EXPR] [:go*])
- * Used by --dump-ir-cmpile and --dump-ir-bison.
+ * Used by --dump-ir and --dump-ir-bison.
  * ir_print_node() is from src/ir/ir_print.c — linked via Makefile.
  * ----------------------------------------------------------------------- */
 static void ir_print_stmt(STMT_t *st, FILE *f) {
@@ -1749,104 +1756,112 @@ int main(int argc, char **argv)
 {
     /* ── flag parsing ─────────────────────────────────────────────────── */
 
-    /* Execution modes — mutually exclusive (default: --run-ir) */
-    int mode_run_ir        = 0;  /* --run-ir        : interpret via IR tree-walk */
-    int mode_run_sm        = 0;  /* --run-sm        : interpret SM_Program via dispatch loop */
-    int mode_run_sm_interp = 0;  /* --run-sm-interp : SM + boxes through broker/driver */
-    int mode_run_sm_gen    = 0;  /* --run-sm-gen    : SM + boxes live-wired in exec memory */
-    int mode_emit_sm       = 0;  /* --emit-sm       : emit SM_Program to file, no execution */
+    /* Execution modes — mutually exclusive (default: --sm-run) */
+    int mode_ir_run        = 0;  /* --ir-run   : interpret via IR tree-walk (correctness ref) */
+    int mode_sm_run        = 0;  /* --sm-run   : interpret SM_Program via dispatch loop [DEFAULT] */
+    int mode_jit_run       = 0;  /* --jit-run  : SM_Program -> x86 bytes -> mmap slab -> jump in */
+    int mode_jit_emit      = 0;  /* --jit-emit : SM_Program -> emit to file (target selects format) */
 
-    /* Byrd Box wiring — independent switch (default: --bb-driver) */
-    int bb_driver          = 0;  /* --bb-driver : boxes through broker/driver */
-    int bb_jit             = 0;  /* --bb-jit    : boxes live-wired in exec memory */
+    /* Byrd Box pattern mode — independent switch (default: --bb-driver) */
+    int bb_driver          = 0;  /* --bb-driver : pattern matching via driver/broker */
+    int bb_live            = 0;  /* --bb-live   : live-wired in exec memory */
 
-    /* Emit targets (meaningful with --emit-sm, default: --x64) */
+    /* Emit targets (meaningful with --jit-emit, default: --x64) */
     int target_x64         = 0;  /* --x64  */
     int target_jvm         = 0;  /* --jvm  */
     int target_net         = 0;  /* --net  */
     int target_js          = 0;  /* --js   */
-    int target_c           = 0;  /* --c    */
     int target_wasm        = 0;  /* --wasm */
 
-    /* Debug / dump flags */
+    /* Diagnostic options */
     int dump_parse         = 0;  /* --dump-parse      */
     int dump_parse_flat    = 0;  /* --dump-parse-flat */
-    int dump_ir_cmpile     = 0;  /* --dump-ir-cmpile  */
-    int dump_ir_bison      = 0;  /* --dump-ir-bison   */
+    int dump_ir            = 0;  /* --dump-ir   : print IR after frontend */
+    int dump_ir_bison      = 0;  /* --dump-ir-bison : IR via old Bison/Flex parser */
+    int dump_sm            = 0;  /* --dump-sm   : print SM_Program after lowering */
+    int dump_bb            = 0;  /* --dump-bb   : print BB-GRAPH per statement */
+    int opt_trace          = 0;  /* --trace     : MONITOR trace output */
+    int opt_bench          = 0;  /* --bench     : print wall-clock time after execution */
 
     int argi = 1;
     while (argi < argc && argv[argi][0] == '-' && argv[argi][1] == '-') {
         /* execution modes */
-        if      (strcmp(argv[argi], "--run-ir")        == 0) { mode_run_ir        = 1; argi++; }
-        else if (strcmp(argv[argi], "--run-sm")        == 0) { mode_run_sm        = 1; argi++; }
-        else if (strcmp(argv[argi], "--run-sm-interp") == 0) { mode_run_sm_interp = 1; argi++; }
-        else if (strcmp(argv[argi], "--run-sm-gen")    == 0) { mode_run_sm_gen    = 1; argi++; }
-        else if (strcmp(argv[argi], "--emit-sm")       == 0) { mode_emit_sm       = 1; argi++; }
-        /* BB wiring */
+        if      (strcmp(argv[argi], "--ir-run")        == 0) { mode_ir_run        = 1; argi++; }
+        else if (strcmp(argv[argi], "--sm-run")        == 0) { mode_sm_run        = 1; argi++; }
+        else if (strcmp(argv[argi], "--jit-run")       == 0) { mode_jit_run       = 1; argi++; }
+        else if (strcmp(argv[argi], "--jit-emit")      == 0) { mode_jit_emit      = 1; argi++; }
+        /* BB pattern mode */
         else if (strcmp(argv[argi], "--bb-driver")     == 0) { bb_driver          = 1; argi++; }
-        else if (strcmp(argv[argi], "--bb-jit")        == 0) { bb_jit             = 1; argi++; }
+        else if (strcmp(argv[argi], "--bb-live")       == 0) { bb_live            = 1; argi++; }
         /* emit targets */
         else if (strcmp(argv[argi], "--x64")           == 0) { target_x64         = 1; argi++; }
         else if (strcmp(argv[argi], "--jvm")           == 0) { target_jvm         = 1; argi++; }
         else if (strcmp(argv[argi], "--net")           == 0) { target_net         = 1; argi++; }
         else if (strcmp(argv[argi], "--js")            == 0) { target_js          = 1; argi++; }
-        else if (strcmp(argv[argi], "--c")             == 0) { target_c           = 1; argi++; }
         else if (strcmp(argv[argi], "--wasm")          == 0) { target_wasm        = 1; argi++; }
-        /* debug/dump */
+        /* diagnostic */
         else if (strcmp(argv[argi], "--dump-parse")      == 0) { dump_parse      = 1; argi++; }
         else if (strcmp(argv[argi], "--dump-parse-flat") == 0) { dump_parse_flat = 1; argi++; }
-        else if (strcmp(argv[argi], "--dump-ir-cmpile")  == 0) { dump_ir_cmpile  = 1; argi++; }
+        else if (strcmp(argv[argi], "--dump-ir")         == 0) { dump_ir         = 1; argi++; }
         else if (strcmp(argv[argi], "--dump-ir-bison")   == 0) { dump_ir_bison   = 1; argi++; }
+        else if (strcmp(argv[argi], "--dump-sm")         == 0) { dump_sm         = 1; argi++; }
+        else if (strcmp(argv[argi], "--dump-bb")         == 0) { dump_bb         = 1; argi++; }
+        else if (strcmp(argv[argi], "--trace")           == 0) { opt_trace       = 1; argi++; }
+        else if (strcmp(argv[argi], "--bench")           == 0) { opt_bench       = 1; argi++; }
         else break;
     }
 
-    /* Default execution mode: --run-ir */
-    if (!mode_run_ir && !mode_run_sm && !mode_run_sm_interp &&
-        !mode_run_sm_gen && !mode_emit_sm)
-        mode_run_ir = 1;
+    /* Default execution mode: --sm-run */
+    if (!mode_ir_run && !mode_sm_run && !mode_jit_run && !mode_jit_emit)
+        mode_sm_run = 1;
 
-    /* --run-sm-gen implies --bb-jit */
-    if (mode_run_sm_gen) bb_jit = 1;
+    /* --jit-run implies --bb-live */
+    if (mode_jit_run) bb_live = 1;
 
-    /* Default BB mode: --bb-driver unless --bb-jit explicitly set */
-    if (!bb_driver && !bb_jit) bb_driver = 1;
+    /* Default BB mode: --bb-driver unless --bb-live explicitly set */
+    if (!bb_driver && !bb_live) bb_driver = 1;
 
     /* Default emit target: --x64 */
-    if (mode_emit_sm && !target_x64 && !target_jvm && !target_net &&
-        !target_js && !target_c && !target_wasm)
+    if (mode_jit_emit && !target_x64 && !target_jvm && !target_net &&
+        !target_js && !target_wasm)
         target_x64 = 1;
 
     /* Suppress unused warnings for modes/targets not yet wired to codegen */
-    (void)mode_run_sm; (void)mode_run_sm_interp; (void)mode_run_sm_gen;
-    (void)mode_emit_sm;
-    (void)bb_driver; (void)bb_jit;
+    (void)mode_jit_run; (void)mode_jit_emit;
+    (void)bb_driver; (void)bb_live;
     (void)target_x64; (void)target_jvm; (void)target_net;
-    (void)target_js; (void)target_c; (void)target_wasm;
+    (void)target_js; (void)target_wasm;
+    (void)dump_sm; (void)dump_bb; (void)opt_trace; (void)opt_bench;
 
     if (argi >= argc) {
         fprintf(stderr,
-            "usage: scrip [mode] [bb] [target] [debug] <file>\n"
+            "usage: scrip [mode] [bb] [target] [options] <file> [-- program-args...]\n"
             "\n"
-            "Execution modes (default: --run-ir):\n"
-            "  --run-ir         interpret via IR tree-walk\n"
-            "  --run-sm         interpret SM_Program via dispatch loop\n"
-            "  --run-sm-interp  SM + Byrd Boxes through broker/driver\n"
-            "  --run-sm-gen     SM + Byrd Boxes live-wired in exec memory\n"
-            "  --emit-sm        emit SM_Program to file (no execution)\n"
+            "Execution modes (default: --sm-run):\n"
+            "  --ir-run         interpret via IR tree-walk (correctness reference)\n"
+            "  --sm-run         interpret SM_Program via dispatch loop  [DEFAULT]\n"
+            "  --jit-run        SM_Program -> x86 bytes -> mmap slab -> jump in\n"
+            "  --jit-emit       SM_Program -> emit to file (target selects format)\n"
             "\n"
-            "Byrd Box wiring (default: --bb-driver):\n"
-            "  --bb-driver      boxes run through broker/driver\n"
-            "  --bb-jit         boxes live-wired in exec memory\n"
-            "                   (implied by --run-sm-gen)\n"
+            "Byrd Box pattern mode (default: --bb-driver):\n"
+            "  --bb-driver      pattern matching via driver/broker\n"
+            "  --bb-live        live-wired in exec memory (--jit-run/--jit-emit only)\n"
             "\n"
-            "Emit targets (with --emit-sm, default: --x64):\n"
-            "  --x64  --jvm  --net  --js  --c  --wasm\n"
+            "Target (default: --x64):\n"
+            "  --x64  --jvm  --net  --js  --wasm\n"
             "\n"
-            "Debug/dump:\n"
-            "  --dump-parse  --dump-parse-flat  --dump-ir-cmpile  --dump-ir-bison\n"
+            "Diagnostic options:\n"
+            "  --dump-ir        print IR after frontend\n"
+            "  --dump-sm        print SM_Program after lowering\n"
+            "  --dump-bb        print BB-GRAPH for each statement\n"
+            "  --trace          MONITOR trace output (diff vs SPITBOL)\n"
+            "  --bench          print wall-clock time after execution\n"
+            "  --dump-parse     dump CMPILE parse tree\n"
+            "  --dump-parse-flat  dump CMPILE parse tree (one line)\n"
+            "  --dump-ir-bison  dump IR via old Bison/Flex parser\n"
             "\n"
             "Frontend inferred from file extension:\n"
-            "  .sno=SNOBOL4  .icn=Icon  .pl=Prolog  .sc=Snocone  .reb=Rebus  .scrip=SCRIP\n"
+            "  .sno=SNOBOL4  .spt=SPITBOL  .icn=Icon  .pl=Prolog  .sc=Snocone  .reb=Rebus\n"
         );
         return 1;
     }
@@ -1944,10 +1959,10 @@ int main(int argc, char **argv)
         return 0;
     }
 
-    /* ── --dump-ir-cmpile : CMPILE → cmpile_lower → IR sexp ─────────────
+    /* ── --dump-ir : CMPILE → cmpile_lower → IR sexp ───────────────────
      * Produces the same STMT_t/EXPR_t Program* the live execution path uses.
      * Output is one (STMT ...) line per statement — suitable for diff. */
-    if (dump_ir_cmpile) {
+    if (dump_ir) {
         Program *cprog = cmpile_lower(cl);
         cmpile_free(cl);
         ir_dump_program(cprog, stdout);
@@ -2007,8 +2022,8 @@ int main(int argc, char **argv)
         g_eval_pat_hook = _eval_pat_impl_fn;
     }
 
-    if (mode_run_sm) {
-        /* --run-sm: SM-LOWER path — IR → SM_Program → sm_interp_run.
+    if (mode_sm_run) {
+        /* --sm-run: SM-LOWER path — IR → SM_Program → sm_interp_run.
          * Must mirror execute_program setup: build label table and register
          * DEFINE'd functions so call_user_function can find bodies via
          * g_user_call_hook → _usercall_hook → label_lookup. */

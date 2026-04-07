@@ -80,7 +80,7 @@ OBJS = $(SRCS:.c=.o)
 
 .PHONY: all clean
 
-BIN    = ../scrip-cc
+BIN    = ../scrip
 
 all: $(BIN)
 
