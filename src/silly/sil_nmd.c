@@ -107,7 +107,7 @@ nmd4:
                 PUTOUT_fn(zptr, VVAL);
             }
         }
-        if (!ACOMPC(TRAPCL, 0)) { /* NMD3: ACOMPC TRAPCL,0,,NMD2,NMD2 — check &TRACE */
+        if (ACOMPC(TRAPCL, 0) <= 0) { /* NMD3: ACOMPC TRAPCL,0,,NMD2,NMD2 — skip trace if <=0 */
             int32_t assoc = locapt_fn(D_A(TVALL), &TVAL);
             if (assoc) {
                 DESCR_t save_TCL = TCL, save_NAMICL = NAMICL, /* PUSH (TCL,NAMICL,NHEDCL); trace; POP */

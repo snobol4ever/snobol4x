@@ -257,6 +257,7 @@ typedef struct __attribute__((packed)) {
 typedef enum {
     FAIL    = 0,  /* SIL failure exit — :F branch taken, no result        */
     OK      = 1,  /* SIL success exit — :S branch taken, result valid     */
+    NEMO    = 3,  /* NEMO exit — "not existing as method" (INVOKE case 3) */
     NRETURN = 5,  /* NRETURN — function returned by name (goto ATOP1 etc) */
     VRETURN = 6   /* RETURN  — function returned by value (GOTL path)     */
 } RESULT_t;

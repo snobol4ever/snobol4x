@@ -574,7 +574,7 @@ sjsrv1:
                 PUTOUT_fn(YPTR, ZPTR);
             }
         }
-        if (!ACOMPC(TRAPCL, 0)) {
+        if (ACOMPC(TRAPCL, 0) <= 0) {
             int32_t assoc = locapt_fn(D_A(TVALL), &WPTR);
             if (assoc) {
                 SETAC(ATPTR, assoc);
@@ -849,7 +849,7 @@ atp1:
             PUTOUT_fn(assoc, nv);
         }
     }
-    if (!ACOMPC(TRAPCL, 0)) { /* AEQLC TRAPCL,0,,TSCOK */
+    if (ACOMPC(TRAPCL, 0) <= 0) { /* AEQLC TRAPCL,0,,TSCOK */
         int32_t a = locapt_fn(D_A(TVALL), &XPTR);
         if (a) { SETAC(ATPTR, a); TRPHND_fn(ATPTR); }
     }
@@ -1130,7 +1130,7 @@ enmi3:
         int32_t a = locapv_fn(D_A(OUTATL), &YPTR);
         if (a) { DESCR_t zd; GETDC_BLK(zd, YPTR, DESCR); PUTOUT_fn(zd, VVAL); }
     }
-    if (!ACOMPC(TRAPCL, 0)) {
+    if (ACOMPC(TRAPCL, 0) <= 0) {
         int32_t a = locapt_fn(D_A(TVALL), &YPTR);
         if (a) { SETAC(ATPTR, a); TRPHND_fn(ATPTR); }
     }

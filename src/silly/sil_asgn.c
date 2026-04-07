@@ -104,19 +104,31 @@ RESULT_t ASGN_fn(void)
             }
             GETDC_B(YPTR, YPTR, DESCR); /* ASGNV1: GETDC YPTR,YPTR,DESCR */
         } else {
-            opush_asgn(XPTR); /* ASGNCV: value side is function — evaluate */
-            if (INVOKE_fn() == FAIL) {
-                /* ASGNVP: fail → POP XPTR; BRANCH ASGNVN → ASGNV1 */
-                XPTR = opop_asgn();
-                GETDC_B(YPTR, YPTR, DESCR);
-            } else {
-                /* ASGNVCJ: success → POP XPTR; BRANCH ASGNVV (skip GETDC) */
-                MOVD(YPTR, XPTR); /* oracle: RCALL YPTR,INVOKE — result in YPTR */
-                XPTR = opop_asgn();
+            opush_asgn(XPTR); /* ASGNCV: PUSH XPTR; RCALL YPTR,INVOKE,(YPTR),(FAIL,ASGNVP) */
+            RESULT_t rci = INVOKE_fn();
+            if (rci == FAIL) {
+                optop_asgn--; /* discard saved XPTR */
+                return FAIL;  /* case1: INVOKE failed → BRANCH(FAIL) */
             }
+            /* case2: success → ASGNVP: POP XPTR; BRANCH ASGNVN */
+            XPTR = opop_asgn();           /* ASGNVP: POP XPTR (restore subject) */
+            /* ASGNVN: check &INPUT, else ASGNV1: GETDC YPTR,YPTR,DESCR */
+            if (!AEQLC(INSW, 0)) {
+                int32_t ia = locapv_fn(D_A(INATL), &YPTR);
+                if (ia) {
+                    DESCR_t zptr; SETAC(zptr, ia);
+                    GETDC_B(zptr, YPTR, DESCR);
+                    RESULT_t pr = PUTIN_fn(zptr, YPTR);
+                    if (pr == OK) goto asgnvv;
+                }
+            }
+            GETDC_B(YPTR, YPTR, DESCR); /* ASGNV1: get value */
         }
     } else {
-        if (INVOKE_fn() == FAIL) return FAIL; /* ASGNC: subject side is function — evaluate */
+        /* ASGNC: subject side is function — INVOKE(XPTR),(FAIL,ASGNV,NEMO) */
+        RESULT_t rc = INVOKE_fn();
+        if (rc == FAIL) return FAIL;
+        if (rc == NEMO) return NEMO;
         if (VEQLC(XPTR, K)) { /* ASGNV: now XPTR holds evaluated subject; get object side */
             opush_asgn(XPTR);
             if (INTVAL_fn() == FAIL) { optop_asgn--; return FAIL; }
@@ -129,16 +141,24 @@ RESULT_t ASGN_fn(void)
         if (!TESTF(YPTR, FNC)) {
             GETDC_B(YPTR, YPTR, DESCR);
         } else {
-            opush_asgn(XPTR);
-            if (INVOKE_fn() == FAIL) {
-                /* ASGNVP: fail → POP XPTR; GETDC YPTR (ASGNV1) */
-                XPTR = opop_asgn();
-                GETDC_B(YPTR, YPTR, DESCR);
-            } else {
-                /* ASGNVCJ: success → result is YPTR, POP XPTR, goto asgnvv */
-                MOVD(YPTR, XPTR);
-                XPTR = opop_asgn();
+            opush_asgn(XPTR); /* ASGNCV: PUSH XPTR; RCALL YPTR,INVOKE,(YPTR),(FAIL,ASGNVP) */
+            RESULT_t rci2 = INVOKE_fn();
+            if (rci2 == FAIL) {
+                optop_asgn--;
+                return FAIL;
             }
+            /* success → ASGNVP: POP XPTR; ASGNVN; ASGNV1 */
+            XPTR = opop_asgn();
+            if (!AEQLC(INSW, 0)) {
+                int32_t ia = locapv_fn(D_A(INATL), &YPTR);
+                if (ia) {
+                    DESCR_t zptr; SETAC(zptr, ia);
+                    GETDC_B(zptr, YPTR, DESCR);
+                    RESULT_t pr = PUTIN_fn(zptr, YPTR);
+                    if (pr == OK) goto asgnvv;
+                }
+            }
+            GETDC_B(YPTR, YPTR, DESCR);
         }
     }
 asgnvv:
@@ -151,7 +171,7 @@ asgnvv:
             PUTOUT_fn(zptr, YPTR);
         }
     }
-    if (!ACOMPC(TRAPCL, 0)) { /* ASGN1: &TRACE check [PLB32] */
+    if (ACOMPC(TRAPCL, 0) <= 0) { /* ASGN1: ACOMPC TRAPCL,0,,RTYPTR — skip trace if <=0 [PLB32] */
         int32_t assoc = locapt_fn(D_A(TVALL), &XPTR);
         if (assoc) {
             DESCR_t save_yptr = YPTR;
@@ -310,7 +330,10 @@ RESULT_t KEYWRD_fn(void)
         int32_t assoc = locapv_fn(D_A(KNATL), &XPTR);
         if (assoc) {
             SETAC(XPTR, assoc);
-            SETVC(XPTR, K); /* KEYWORD data type */
+            /* BLOCKS variant: GETDC YPTR,XPTR,DESCR — check value type
+             * If integer: KEYN1 → set K; else set N (any value, return by name) */
+            DESCR_t yptr; GETDC_B(yptr, XPTR, DESCR);
+            SETVC(XPTR, (D_V(yptr) == I) ? K : N);
             return OK; /* RTXNAM */
         }
     }
@@ -340,10 +363,14 @@ RESULT_t NAME_fn(void)
 {
     INCRA(OCICL, DESCR); /* INCRA OCICL,DESCR; GETD ZPTR,OCBSCL,OCICL */
     GETD_B(ZPTR, OCBSCL, OCICL);
-    if (!TESTF(ZPTR, FNC)) { /* TESTF ZPTR,FNC,RTZPTR — if plain variable: return by name */
+    if (!TESTF(ZPTR, FNC)) { /* TESTF ZPTR,FNC,RTZPTR — plain variable: return by name */
         MOVD(XPTR, ZPTR); return OK;
     }
-    if (INVOKE_fn() == FAIL) return FAIL; /* function: evaluate to get name */
+    /* INVOKE(ZPTR): case1=FAIL, case2=RTZPTR (success), case3=NEMO */
+    RESULT_t rc = INVOKE_fn();
+    if (rc == FAIL) return FAIL;
+    if (rc == NEMO) return NEMO;
+    /* success: result already in ZPTR */
     MOVD(XPTR, ZPTR); return OK;
 }
 

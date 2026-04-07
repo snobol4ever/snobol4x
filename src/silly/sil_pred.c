@@ -72,7 +72,7 @@ RESULT_t FUNCTN_fn(void)
         SETAC(XPTR, assoc);
         GETDC_B(XPTR, XPTR, DESCR); /* get function descriptor */
         GETDC_B(XPTR, XPTR, 0); /* get link descriptor     */
-        if (deql(XPTR, UNDFCL)) return FAIL; /* AEQL XPTR,UNDFCL,RETNUL,FAIL — equal→FAIL (undefined), else RETNUL */
+        if (D_A(XPTR) == D_A(UNDFCL)) return FAIL; /* AEQL XPTR,UNDFCL,RETNUL,FAIL — A-field only; equal→FAIL (undefined) */
         MOVD(XPTR, NULVCL); return OK;
     }
 }
