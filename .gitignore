@@ -51,3 +51,13 @@ src/runtime/wasm/*.wasm
 /scrip
 /scrip-cc
 /scrip-interp
+
+# Compiled binaries and build output
+src/driver/net/bin/
+src/driver/net/obj/
+out/rt_cache/*.a
+icon-asm
+test/monitor/*.so
+test/sprint_asm/*/null
+src/runtime/snobol4/smoke_gaps
+src/runtime/snobol4/test_runtime
