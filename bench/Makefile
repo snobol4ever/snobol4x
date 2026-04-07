@@ -8,9 +8,9 @@ PCRE2  = $(shell pcre2-config --libs8)
 
 .PHONY: all run re pda clean
 
-all: bench_re bench_pda
+all: re_bench pda_bench
 
-bench_re: bench_re_vs_tiny.c
+re_bench: bench_re_vs_tiny.c
 	$(CC) $(CFLAGS) -o $@ $< $(PCRE2)
 
 pda/anbn_renamed.c: pda/anbn.y
@@ -21,22 +21,22 @@ pda/dyck_renamed.c: pda/dyck.y
 	bison -d -o pda/dyck.tab.c pda/dyck.y
 	python3 rename_bison.py pda/dyck.tab.c dyck pda/dyck_renamed.c
 
-bench_pda: pda/bench_pda.c pda/anbn_renamed.c pda/dyck_renamed.c
+pda_bench: pda/bench_pda.c pda/anbn_renamed.c pda/dyck_renamed.c
 	$(CC) $(CFLAGS) -o $@ $^ -Ipda
 
 run: re pda
 
-re: bench_re
+re: re_bench
 	@echo ""
 	@echo "=== RE Benchmark: SNOBOL4-tiny vs PCRE2 JIT ==="
-	./bench_re
+	./re_bench
 
-pda: bench_pda
+pda: pda_bench
 	@echo ""
 	@echo "=== PDA Benchmark: SNOBOL4-tiny vs Bison LALR(1) ==="
-	./bench_pda
+	./pda_bench
 
 clean:
-	rm -f bench_re bench_pda
+	rm -f re_bench pda_bench
 	rm -f pda/anbn.tab.c pda/anbn.tab.h pda/anbn_renamed.c
 	rm -f pda/dyck.tab.c pda/dyck.tab.h pda/dyck_renamed.c
