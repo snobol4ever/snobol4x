@@ -43,11 +43,11 @@ fi
 # Build shared runtime objects once into WORK
 WORK=$(mktemp -d); trap "rm -rf $WORK" EXIT
 
-gcc -O0 -g -c "$RT/asm/snobol4_stmt_rt.c"       -I"$RT/snobol4" -I"$RT" -I"$TINY/src/frontend/snobol4" -w -o "$WORK/stmt_rt.o"
-gcc -O0 -g -c "$RT/snobol4/snobol4.c"            -I"$RT/snobol4" -I"$RT" -I"$TINY/src/frontend/snobol4" -w -o "$WORK/snobol4.o"
-gcc -O0 -g -c "$RT/mock/mock_includes.c"          -I"$RT/snobol4" -I"$RT" -I"$TINY/src/frontend/snobol4" -w -o "$WORK/mock_includes.o"
-gcc -O0 -g -c "$RT/snobol4/snobol4_pattern.c"    -I"$RT/snobol4" -I"$RT" -I"$TINY/src/frontend/snobol4" -w -o "$WORK/snobol4_pattern.o"
-gcc -O0 -g -c "$RT/engine/engine.c"               -I"$RT/snobol4" -I"$RT" -I"$TINY/src/frontend/snobol4" -w -o "$WORK/engine.o"
+gcc -O0 -g -c "$RT/x86/snobol4_stmt_rt.c"       -I"$RT/x86" -I"$RT" -I"$TINY/src/frontend/snobol4" -w -o "$WORK/stmt_rt.o"
+gcc -O0 -g -c "$RT/x86/snobol4.c"            -I"$RT/x86" -I"$RT" -I"$TINY/src/frontend/snobol4" -w -o "$WORK/snobol4.o"
+gcc -O0 -g -c "$RT/mock/mock_includes.c"          -I"$RT/x86" -I"$RT" -I"$TINY/src/frontend/snobol4" -w -o "$WORK/mock_includes.o"
+gcc -O0 -g -c "$RT/x86/snobol4_pattern.c"    -I"$RT/x86" -I"$RT" -I"$TINY/src/frontend/snobol4" -w -o "$WORK/snobol4_pattern.o"
+gcc -O0 -g -c "$RT/x86/engine.c"               -I"$RT/x86" -I"$RT" -I"$TINY/src/frontend/snobol4" -w -o "$WORK/engine.o"
 
 LINK_OBJS="$WORK/stmt_rt.o $WORK/snobol4.o $WORK/mock_includes.o $WORK/snobol4_pattern.o $WORK/engine.o"
 
@@ -82,7 +82,7 @@ run_test() {
     fi
 
     # nasm
-    if ! nasm -f elf64 -I"$RT/asm/" "$s_file" -o "$o_file" 2>"$WORK/${base}.nasm_err"; then
+    if ! nasm -f elf64 -I"$RT/x86/" "$s_file" -o "$o_file" 2>"$WORK/${base}.nasm_err"; then
         echo -e "${RED}FAIL${RESET} $base  [nasm error]"
         head -5 "$WORK/${base}.nasm_err"
         FAIL=$((FAIL+1))

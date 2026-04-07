@@ -4952,3 +4952,18344 @@ void jvm_emit(Program *prog_in, FILE *fp, const char *filename) {
     for (int i = 0; i < nvar; i++) { free(vars[i]); vars[i] = NULL; }
     nvar = 0;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * Icon × JVM emitter — formerly emit_jvm_icon.c
+ * ═══════════════════════════════════════════════════════════════════════════ */
+/*
+ * icon_emit_jvm.c — Tiny-ICON Byrd Box → JVM Jasmin emitter (Sprint IJ-1)
+ *
+ * Consumes the same EXPR_t* AST as icon_emit.c.
+ * Emits Jasmin assembler (.j) text assembled by jasmin.jar into .class files.
+ *
+ * Pipeline:
+ *   scrip-cc -jvm foo.icn -o foo.j
+ *   java -jar jasmin.jar foo.j -d outdir/
+ *   java -cp outdir/ FooClass
+ *
+ * Oracles:
+ *   icon_emit.c        — Byrd-box wiring logic per ICN node (49KB, authoritative)
+ *   emit_byrd_jvm.c    — Jasmin output format, helpers (187KB, copy verbatim where useful)
+ *   jcon-master/tran/  — JCON gen_bc.icn / irgen.icn — blueprint
+ *
+ * Design:
+ *   icon_emit_jvm.c = icon_emit.c logic + Jasmin output format
+ *   Where icon_emit.c emits:  E(em, "    jmp  %s\n", lbl)
+ *   We emit:                  J("    goto %s\n", lbl)
+ *
+ * Value representation:
+ *   Icon integers → JVM long (lload/lstore, local slots N and N+1)
+ *   Success/failure → static byte field icn_failed (0=ok, 1=failed)
+ *   Suspend state  → static byte icn_suspended + int icn_suspend_id
+ *   Return value   → static long icn_retval
+ *
+ * Label conventions (parallel to ASM):
+ *   α icn_N_α   β icn_N_β   γ (inherited Ports.γ)   ω (inherited Ports.ω)
+ *   Node γ:  (inherited, passed as string)
+ *   Node ω:  (inherited, passed as string)
+ *   Extra:   icn_N_code, icn_N_init, icn_N_lstore, etc.
+ *
+ * Local variable slots:
+ *   Each local/param occupies 2 JVM slots (long is wide).
+ *   slot_base(i) = 2*i
+ *
+ * Suspend/resume encoding:
+ *   Each ICN_SUSPEND site gets a unique integer ID (1-based).
+ *   icn_suspend_id static int field records which site suspended.
+ *   Generator proc β entry does tableswitch on icn_suspend_id.
+ *
+ * Sprint IJ-1 scope: ICN_INT, ICN_VAR, ICN_ASSIGN, ICN_ADD/SUB/MUL/DIV/MOD,
+ *   ICN_LT/LE/GT/GE/EQ/NE, ICN_TO, ICN_EVERY, ICN_CALL(write), ICN_IF,
+ *   ICN_PROC, ICN_RETURN, ICN_FAIL, ICN_SUSPEND, ICN_ALT, ICN_WHILE
+ */
+
+#define _POSIX_C_SOURCE 200809L
+#include "icon_ast.h"
+#include "icon_lex.h"
+#include "icon_emit.h"
+#include "scrip_cc.h"          /* ImportEntry — for cross-class IMPORT dispatch */
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdarg.h>
+#include <ctype.h>
+
+/* =========================================================================
+ * Output helpers
+ * ======================================================================= */
+static FILE *out;
+
+static void J(const char *fmt, ...) {
+    va_list ap; va_start(ap, fmt); vfprintf(out, fmt, ap); va_end(ap);
+}
+static void JI(const char *instr, const char *ops) {
+    if (ops && ops[0]) J("    %s %s\n", instr, ops);
+    else                J("    %s\n",   instr);
+}
+static void JL(const char *label) {
+    J("%s:\n", label);
+}
+static void JGoto(const char *lbl) {
+    J("    goto %s\n", lbl);
+}
+/* JBarrier: no-op — dead-code suppression is handled by j_suppress in J(). */
+static void JBarrier(void) { }
+static void JC(const char *comment) {
+    J(";  %s\n", comment);
+}
+
+/* =========================================================================
+ * Forward-emit buffer
+ *
+ * Problem: backward-emit puts child subtrees inline before the parent's
+ * entry goto.  Two live paths converge on a label with different JVM
+ * operand-stack types → VerifyError (live-code stack-merge).
+ *
+ * Fix: redirect J() to a memory buffer during child emission, then:
+ *   1. Emit  goto child_α   directly to out  (parent entry — first in bytecode)
+ *   2. Flush buffer         to out           (child subtree — after the goto)
+ *
+ * Each child_α label then has exactly one predecessor (the goto), so the
+ * verifier sees a single clean stack type at every label.
+ *
+ * API:
+ *   buf_open()    — redirect J() to a fresh memory stream; returns token.
+ *   buf_flush()   — restore out, write buffered bytes, free buffer.
+ *   buf_discard() — restore out without writing (error paths).
+ * ======================================================================= */
+typedef struct { FILE *saved_jout; char *buf; size_t bufsz; FILE *mem; } EmitBuf;
+
+static EmitBuf buf_open(void) {
+    EmitBuf b;
+    b.saved_jout = out;
+    b.buf = NULL; b.bufsz = 0;
+    b.mem = open_memstream(&b.buf, &b.bufsz);
+    out = b.mem;
+    return b;
+}
+
+static void buf_flush(EmitBuf *b) {
+    fflush(b->mem); fclose(b->mem);
+    out = b->saved_jout;
+    if (b->buf && b->bufsz > 0) fwrite(b->buf, 1, b->bufsz, out);
+    free(b->buf); b->buf = NULL;
+}
+
+static void buf_discard(EmitBuf *b) {
+    fflush(b->mem); fclose(b->mem);
+    out = b->saved_jout;
+    free(b->buf); b->buf = NULL;
+}
+
+/* Emit  goto entry_lbl  to real out, then flush the buffered child code.
+ * Use this after emit_jvm_icon_expr() has populated entry_lbl (oα). */
+static void buf_flush_entry(EmitBuf *b, const char *entry_lbl) {
+    fflush(b->mem); fclose(b->mem);
+    out = b->saved_jout;
+    J("    goto %s\n", entry_lbl);          /* parent entry goto — FIRST */
+    if (b->buf && b->bufsz > 0)
+        fwrite(b->buf, 1, b->bufsz, out);  /* child subtree — AFTER */
+    free(b->buf); b->buf = NULL;
+}
+
+/* =========================================================================
+ * Class name
+ * ======================================================================= */
+static char classname[256];
+
+/* =========================================================================
+ * Import table — populated by emit_jvm_icon_file from icn_prescan_imports()
+ * ======================================================================= */
+static ImportEntry *imports = NULL;
+
+/* Return the ImportEntry for a given local call name, or NULL if not imported.
+ * Icon source writes: $import family_prolog.QUERY_COUNT
+ * then calls:         QUERY_COUNT(...)
+ * We match on ie->method (uppercased exported name). */
+static ImportEntry *find_import(const char *name) {
+    for (ImportEntry *ie = imports; ie; ie = ie->next) {
+        if (ie->method && strcasecmp(ie->method, name) == 0) return ie;
+    }
+    return NULL;
+}
+
+void set_classname(const char *filename) {
+    const char *base = strrchr(filename, '/');
+    base = base ? base+1 : filename;
+    int i = 0;
+    for (const char *p = base; *p && *p != '.' && i < 254; p++, i++) {
+        classname[i] = isalnum((unsigned char)*p) ? *p : '_';
+    }
+    if (i == 0) { strcpy(classname, "IconProg"); return; }
+    /* ABI §5: no language prefix, lowercase classnames — do NOT capitalize */
+    classname[i] = '\0';
+}
+
+/* Build "ClassName/methodSig" into a static buffer for JI() calls */
+static const char *classname_buf(const char *sig) {
+    static char buf[512];
+    snprintf(buf, sizeof buf, "%s/%s", classname, sig);
+    return buf;
+}
+
+/* Build "ClassName/fieldName descriptor" for getstatic/putstatic */
+static const char *classname_buf_fld(const char *fld, const char *desc) {
+    static char buf2[512];
+    snprintf(buf2, sizeof buf2, "%s/%s %s", classname, fld, desc);
+    return buf2;
+}
+
+/* =========================================================================
+ * Node ID counter and label generation
+ * ======================================================================= */
+static int uid = 0;
+static int need_cset_builtins = 0;  /* set when ICN_COMPLEMENT/CSET_* emitted */
+static int need_random_builtin = 0; /* set when ICN_RANDOM emitted */
+
+static int next_uid(void) { return uid++; }
+
+static void lbl_α  (int id, char *b, size_t s) { snprintf(b,s,"icn_%d_α",   id); }
+static void lbl_β  (int id, char *b, size_t s) { snprintf(b,s,"icn_%d_β",   id); }
+static void lbl_code(int id, char *b, size_t s) { snprintf(b,s,"icn_%d_code",id); }
+
+/* =========================================================================
+ * IcnPorts — inherited success/fail labels (same struct as icon_emit.h)
+ * ======================================================================= */
+typedef struct { char γ[64]; char ω[64]; } Ports;
+
+/* =========================================================================
+ * User procedure registry (mirrors icon_emit.c)
+ * ======================================================================= */
+#define MAX_USER_PROCS 64
+static char user_procs[MAX_USER_PROCS][64];
+static int  user_nparams[MAX_USER_PROCS];
+static int  user_is_gen[MAX_USER_PROCS];
+static int  user_returns_str[MAX_USER_PROCS];  /* 1 if proc returns String */
+static int  user_count = 0;
+
+static void register_proc(const char *name, int nparams, int is_gen) {
+    for (int i=0;i<user_count;i++) if(!strcmp(user_procs[i],name)) return;
+    if (user_count < MAX_USER_PROCS) {
+        strncpy(user_procs[user_count], name, 63);
+        user_nparams[user_count] = nparams;
+        user_is_gen[user_count]  = is_gen;
+        user_returns_str[user_count] = 0;  /* set later by pre-pass */
+        user_count++;
+    }
+}
+static void mark_proc_returns_str(const char *name) {
+    for (int i=0;i<user_count;i++)
+        if(!strcmp(user_procs[i],name)) { user_returns_str[i]=1; return; }
+}
+static int proc_returns_str(const char *name) {
+    for (int i=0;i<user_count;i++)
+        if(!strcmp(user_procs[i],name)) return user_returns_str[i];
+    return 0;
+}
+static int is_user_proc(const char *name) {
+    for (int i=0;i<user_count;i++) if(!strcmp(user_procs[i],name)) return 1;
+    return 0;
+}
+static int is_gen_proc(const char *name) {
+    for (int i=0;i<user_count;i++)
+        if(!strcmp(user_procs[i],name)) return user_is_gen[i];
+    return 0;
+}
+static int nparams_for(const char *name) {
+    for (int i=0;i<user_count;i++)
+        if(!strcmp(user_procs[i],name)) return user_nparams[i];
+    return 0;
+}
+/* -------------------------------------------------------------------------
+ * Record type registry
+ * Maps record type name → array of field names, nfields
+ * Used by ICN_CALL (constructor) and ICN_FIELD (getfield/putfield).
+ * ------------------------------------------------------------------------- */
+#define MAX_RECORD_TYPES 32
+#define MAX_RECORD_FIELDS 16
+static char rec_names[MAX_RECORD_TYPES][64];
+static char rec_fields[MAX_RECORD_TYPES][MAX_RECORD_FIELDS][64];
+static int  rec_nfields[MAX_RECORD_TYPES];
+static int  nrec = 0;
+
+static void register_record(const char *name, EXPR_t *rn) {
+    for (int i = 0; i < nrec; i++) if (!strcmp(rec_names[i], name)) return;
+    if (nrec >= MAX_RECORD_TYPES) return;
+    strncpy(rec_names[nrec], name, 63);
+    int nf = rn->nchildren < MAX_RECORD_FIELDS ? rn->nchildren : MAX_RECORD_FIELDS;
+    rec_nfields[nrec] = nf;
+    for (int i = 0; i < nf; i++)
+        strncpy(rec_fields[nrec][i], rn->children[i]->sval, 63);
+    nrec++;
+}
+static int is_record_type(const char *name) {
+    for (int i = 0; i < nrec; i++) if (!strcmp(rec_names[i], name)) return 1;
+    return 0;
+}
+static int record_nfields(const char *name) {
+    for (int i = 0; i < nrec; i++) if (!strcmp(rec_names[i], name)) return rec_nfields[i];
+    return 0;
+}
+/* Returns field name at index idx for named record type, or NULL */
+static const char *record_field(const char *name, int idx) {
+    for (int i = 0; i < nrec; i++)
+        if (!strcmp(rec_names[i], name)) {
+            if (idx < rec_nfields[i]) return rec_fields[i][idx];
+        }
+    return NULL;
+}
+
+static int has_suspend(EXPR_t *n) {
+    if (!n) return 0;
+    if (n->kind == E_SUSPEND) return 1;
+    for (int i=0;i<n->nchildren;i++)
+        if (has_suspend(n->children[i])) return 1;
+    return 0;
+}
+
+/* =========================================================================
+ * Per-procedure local variable table
+ * ======================================================================= */
+#define MAX_LOCALS 32
+typedef struct { char name[32]; int slot; } Local;
+static Local locals[MAX_LOCALS];
+static int     nlocals = 0;
+static int     nparams = 0;
+static int     nstrefs = 0; /* count of logical slots used for astore (String refs) */
+static int     nint_scratch = 0; /* count of int/ref scratch slots above long-pair region */
+/* Allocate a raw JVM slot for int/ref scratch — lives at 2*MAX_LOCALS + n,
+ * entirely above the slot_jvm() long-pair region, so istore/astore never
+ * alias lstore targets.  Returns the raw JVM slot index. */
+static int alloc_int_scratch(void) {
+    /* Start well above the long-pair ceiling (2*MAX_LOCALS + generous padding)
+     * so int/ref scratch slots never alias any slot_jvm(n) = 2*n target. */
+    return 2 * MAX_LOCALS + 20 + nint_scratch++;
+}
+static int     nref_scratch = 0; /* count of ref-typed scratch slots (astore targets) */
+/* Allocate a ref-typed scratch slot — above int-scratch region.
+ * Initialized with aconst_null/astore in prologue so verifier sees ref type. */
+static int alloc_ref_scratch(void) {
+    return 2 * MAX_LOCALS + 20 + 64 + nref_scratch++;
+}
+static char    ret_label[64]  = "";   /* label for return */
+static char    fail_label[64] = "";   /* label for proc fail */
+static char    sret_label[64] = "";   /* label for suspend-yield (frame kept) */
+/* Suspend sites in current procedure */
+static int     suspend_ids[64];
+static int     suspend_count = 0;
+static int     next_suspend_id = 1;
+
+/* =========================================================================
+ * Loop label stack — for break/next
+ * Each loop emitter pushes before emitting body, pops after.
+ * break  → loop_exit[top]    (= ports.ω of enclosing loop)
+ * next   → loop_next[top]    (= loop restart: top-of-body / cond label)
+ * ======================================================================= */
+#define LOOP_STACK_MAX 32
+static char loop_exit[LOOP_STACK_MAX][64];  /* ports.ω for break */
+static char loop_next[LOOP_STACK_MAX][64];  /* restart label for next */
+static int  loop_depth = 0;
+
+static void loop_push(const char *exit_lbl, const char *next_lbl) {
+    if (loop_depth < LOOP_STACK_MAX) {
+        strncpy(loop_exit[loop_depth], exit_lbl, 63);
+        strncpy(loop_next[loop_depth], next_lbl, 63);
+        loop_depth++;
+    }
+}
+static void loop_pop(void) {
+    if (loop_depth > 0) loop_depth--;
+}
+static const char *loop_break_target(void) {
+    if (loop_depth > 0) return loop_exit[loop_depth-1];
+    return "icn_main_done";  /* fallback: top-level fail */
+}
+static const char *loop_next_target(void) {
+    if (loop_depth > 0) return loop_next[loop_depth-1];
+    return "icn_main_done";
+}
+
+static void locals_reset(void) {
+    nlocals = 0; nparams = 0; nstrefs = 0; nint_scratch = 0; nref_scratch = 0;
+    suspend_count = 0;
+    loop_depth = 0;
+}
+static int locals_find(const char *name) {
+    for (int i=0;i<nlocals;i++)
+        if(!strcmp(locals[i].name,name)) return locals[i].slot;
+    return -1;
+}
+static int locals_add(const char *name) {
+    int slot = nlocals;
+    if (nlocals < MAX_LOCALS) {
+        strncpy(locals[nlocals].name, name, 31);
+        locals[nlocals++].slot = slot;
+    }
+    return slot;
+}
+static int locals_alloc_tmp(void) {
+    int slot = nlocals;
+    if (nlocals < MAX_LOCALS) {
+        locals[nlocals].name[0] = '\0';
+        locals[nlocals++].slot = slot;
+    }
+    return slot;
+}
+
+/* Each named local uses 2 JVM slots (long).
+ * JVM slot index = 2 * logical_slot */
+static int slot_jvm(int logical) { return 2 * logical; }
+
+/* Total JVM locals needed for .limit locals directive */
+static int jvm_locals_count(void) {
+    int top = 2 * MAX_LOCALS + 20 + 64 + nref_scratch;
+    return top + 4;
+}
+
+/* Current procedure name — used to namespace per-proc static var fields */
+static char cur_proc[64] = "";
+
+/* Static field name for a named local/param in current proc.
+ * JVM field names must not contain '&' (used in Icon keyword names like &subject).
+ * Sanitize by replacing '&' → "_kw_". */
+static void sanitize_name(const char *varname, char *safe, size_t safesz) {
+    size_t si = 0;
+    for (const char *p = varname; *p && si + 4 < safesz; p++) {
+        if (*p == '&') { safe[si++]='_'; safe[si++]='k'; safe[si++]='w'; safe[si++]='_'; }
+        else safe[si++] = *p;
+    }
+    safe[si] = '\0';
+}
+/* Build a sanitized icn_gvar_NAME into buf (size bufsz). */
+static void gvar_field(const char *varname, char *buf, size_t bufsz) {
+    char safe[128]; sanitize_name(varname, safe, sizeof safe);
+    snprintf(buf, bufsz, "icn_gvar_%s", safe);
+}
+static void var_field(const char *varname, char *out, size_t outsz) {
+    char safe[128]; sanitize_name(varname, safe, sizeof safe);
+    snprintf(out, outsz, "icn_pv_%s_%s", cur_proc, safe);
+}
+
+/* =========================================================================
+ * Static fields emitted at class level
+ * ======================================================================= */
+#define MAX_STATICS 512
+static char statics[MAX_STATICS][64];
+static char static_types[MAX_STATICS];  /* 'J'=long, 'I'=int */
+static int  nstatics = 0;
+
+/* Returns 1 if this J-typed static should be saved/restored across a call.
+ * Save: scratch intermediates (icn_N_*) and caller's own proc-locals (icn_pv_<cur>_*).
+ * Do NOT save: globals (icn_gvar_*), call-convention fields (icn_retval, icn_arg_*),
+ * control fields, or OTHER procs' persistent locals (icn_pv_<other>_*). */
+static int static_needs_callsave(int idx) {
+    if (static_types[idx] != 'J') return 0;
+    const char *n = statics[idx];
+    if (strncmp(n, "icn_gvar_",   9) == 0) return 0;
+    if (strncmp(n, "icn_arg_",    8) == 0) return 0;
+    if (strcmp (n, "icn_retval")     == 0) return 0;
+    if (strcmp (n, "icn_failed")     == 0) return 0;
+    if (strcmp (n, "icn_suspended")  == 0) return 0;
+    if (strcmp (n, "icn_suspend_id") == 0) return 0;
+    /* icn_pv_<proc>_* — only save caller's own proc locals, not other procs' */
+    if (strncmp(n, "icn_pv_", 7) == 0) {
+        char caller_prefix[80];
+        snprintf(caller_prefix, sizeof caller_prefix, "icn_pv_%s_", cur_proc);
+        if (strncmp(n, caller_prefix, strlen(caller_prefix)) != 0) return 0;
+    }
+    return 1;
+}
+
+static void declare_static_typed(const char *name, char type) {
+    for (int i=0;i<nstatics;i++) {
+        if(!strcmp(statics[i],name)) {
+            /* Allow upgrade to Object or String type if previously declared as J (long) */
+            if (type == 'O' && static_types[i] == 'J')
+                static_types[i] = 'O';
+            if (type == 'A' && static_types[i] == 'J')
+                static_types[i] = 'A';
+            /* Allow upgrade to record-list if previously declared as plain list */
+            if (type == 'R' && static_types[i] == 'L')
+                static_types[i] = 'R';
+            /* Don't overwrite 'S' (string-list) with 'L' (numeric-list) */
+            if (type == 'L' && static_types[i] == 'S')
+                return;  /* keep 'S' */
+            return;
+        }
+    }
+    if (nstatics < MAX_STATICS) {
+        strncpy(statics[nstatics], name, 63);
+        static_types[nstatics] = type;
+        nstatics++;
+    }
+}
+static void declare_static(const char *name) {
+    declare_static_typed(name, 'J');
+}
+static void declare_static_int(const char *name) {
+    declare_static_typed(name, 'I');
+}
+static void declare_static_str(const char *name) {
+    declare_static_typed(name, 'A');  /* 'A' = Ljava/lang/String; */
+}
+
+/* =========================================================================
+ * Table default-value field map.
+ * Maps table-variable field name → dflt Object static field name.
+ * Populated by the table(dflt) emitter; consumed by emit_jvm_icon_subscript.
+ * pending_tdflt: set by table() emitter so assign store can register map.
+ * ======================================================================= */
+#define MAX_TBL_DFLT 64
+static char tdflt_tbl[MAX_TBL_DFLT][80];   /* table var field name   */
+static char tdflt_fld[MAX_TBL_DFLT][80];   /* dflt Object field name */
+static int  tdflt_str[MAX_TBL_DFLT];        /* 1 if dflt is String    */
+static int  ntdflt = 0;
+static char pending_tdflt[80] = "";         /* set by table() emitter */
+static int  pending_tdflt_is_str = 0;       /* 1 if dflt is String    */
+
+static void register_tdflt(const char *tbl_field, const char *dflt_field, int is_str) {
+    for (int i = 0; i < ntdflt; i++)
+        if (!strcmp(tdflt_tbl[i], tbl_field)) {
+            strncpy(tdflt_fld[i], dflt_field, 79);
+            tdflt_str[i] = is_str;
+            return;
+        }
+    if (ntdflt < MAX_TBL_DFLT) {
+        strncpy(tdflt_tbl[ntdflt], tbl_field, 79);
+        strncpy(tdflt_fld[ntdflt], dflt_field, 79);
+        tdflt_str[ntdflt] = is_str;
+        ntdflt++;
+    }
+}
+
+/* Returns the dflt field for tbl_field, or NULL if not registered. */
+static const char *lookup_tdflt(const char *tbl_field) {
+    for (int i = 0; i < ntdflt; i++)
+        if (!strcmp(tdflt_tbl[i], tbl_field)) return tdflt_fld[i];
+    return NULL;
+}
+
+/* Returns 1 if the table's default value is String-typed. */
+static int tdflt_is_str(const char *tbl_field) {
+    for (int i = 0; i < ntdflt; i++)
+        if (!strcmp(tdflt_tbl[i], tbl_field)) return tdflt_str[i];
+    return 0;
+}
+
+/* =========================================================================
+ * Global variable name registry — separate from statics.
+ * Pass 0 registers names here WITHOUT pre-declaring a field type.
+ * Type is inferred naturally on first assignment (same as locals).
+ * is_global() tells var/assign emit to use icn_gvar_* fields.
+ * ======================================================================= */
+#define MAX_GLOBALS 64
+static char global_names[MAX_GLOBALS][64];
+static int  nglobals = 0;
+
+static void register_global(const char *name) {
+    for (int i = 0; i < nglobals; i++)
+        if (!strcmp(global_names[i], name)) return;
+    if (nglobals < MAX_GLOBALS)
+        strncpy(global_names[nglobals++], name, 63);
+}
+
+static int is_global(const char *name) {
+    for (int i = 0; i < nglobals; i++)
+        if (!strcmp(global_names[i], name)) return 1;
+    return 0;
+}
+
+/* String pool for rodata */
+#define MAX_STRINGS 256
+static char strings[MAX_STRINGS][512];
+static int  string_ids[MAX_STRINGS];
+static int  nstrings = 0;
+
+static int intern_string(const char *s) {
+    for (int i=0;i<nstrings;i++) if(!strcmp(strings[i],s)) return string_ids[i];
+    int id = nstrings;
+    if (nstrings < MAX_STRINGS) {
+        strncpy(strings[nstrings], s, 511);
+        string_ids[nstrings] = id;
+        nstrings++;
+    }
+    return id;
+}
+
+/* =========================================================================
+ * Forward declaration
+ * ======================================================================= */
+static void emit_jvm_icon_expr(EXPR_t *n, Ports ports,
+                         char *out_α, char *out_β);
+
+/* =========================================================================
+ * Emit helpers for static field load/store
+ * ======================================================================= */
+static void get_long(const char *fname) {
+    char buf[384]; snprintf(buf, sizeof buf, "%s/%s J", classname, fname);
+    JI("getstatic", buf);
+}
+static void put_long(const char *fname) {
+    char buf[384]; snprintf(buf, sizeof buf, "%s/%s J", classname, fname);
+    JI("putstatic", buf);
+}
+static void get_byte(const char *fname) {
+    char buf[384]; snprintf(buf, sizeof buf, "%s/%s B", classname, fname);
+    JI("getstatic", buf);
+}
+static void put_byte(const char *fname) {
+    char buf[384]; snprintf(buf, sizeof buf, "%s/%s B", classname, fname);
+    JI("putstatic", buf);
+}
+static void get_int_field(const char *fname) {
+    char buf[384]; snprintf(buf, sizeof buf, "%s/%s I", classname, fname);
+    JI("getstatic", buf);
+}
+static void put_int_field(const char *fname) {
+    char buf[384]; snprintf(buf, sizeof buf, "%s/%s I", classname, fname);
+    JI("putstatic", buf);
+}
+
+/* String-typed static field helpers */
+static void get_str_field(const char *fname) {
+    char buf[384]; snprintf(buf, sizeof buf, "%s/%s Ljava/lang/String;", classname, fname);
+    JI("getstatic", buf);
+}
+static void put_str_field(const char *fname) {
+    char buf[384]; snprintf(buf, sizeof buf, "%s/%s Ljava/lang/String;", classname, fname);
+    JI("putstatic", buf);
+}
+
+/* Double-typed (D) static field helpers — for ICN_POW, real to-by */
+static void declare_static_real(const char *name) {
+    declare_static_typed(name, 'D');
+}
+static void get_real_field(const char *fname) {
+    char buf[384]; snprintf(buf, sizeof buf, "%s/%s D", classname, fname);
+    JI("getstatic", buf);
+}
+static void put_real_field(const char *fname) {
+    char buf[384]; snprintf(buf, sizeof buf, "%s/%s D", classname, fname);
+    JI("putstatic", buf);
+}
+
+/* Forward declaration needed for expr_is_string */
+static int expr_is_string(EXPR_t *n);
+static int expr_is_list(EXPR_t *n);
+static int expr_is_strlist(EXPR_t *n);
+static int expr_is_table(EXPR_t *n);
+static int expr_is_record_list(EXPR_t *n);
+static int expr_is_obj(EXPR_t *n);  /* any 1-slot ref: String, list, table, record */
+/* Returns the type tag for a declared static field, or 0 if not found */
+static char field_type_tag(const char *name) {
+    for (int i = 0; i < nstatics; i++)
+        if (!strcmp(statics[i], name)) return static_types[i];
+    return 0;
+}
+
+static int expr_is_record(EXPR_t *n) {
+    if (!n) return 0;
+    if (n->kind == E_FNC && n->nchildren >= 1 && n->children[0]->kind == E_VAR)
+        return is_record_type(n->children[0]->sval);
+    /* !<record-list> yields a record Object */
+    if (n->kind == E_ITERATE && n->nchildren >= 1)
+        return expr_is_record_list(n->children[0]);
+    /* VAR whose static field is Object-typed (assigned from a record constructor) */
+    if (n->kind == E_VAR) {
+        char fld[128]; var_field(n->sval, fld, sizeof fld);
+        if (field_type_tag(fld) == 'O') return 1;
+        /* global var */
+        char gname[80]; snprintf(gname, sizeof gname, "icn_gvar_%s", n->sval);
+        if (field_type_tag(gname) == 'O') return 1;
+    }
+    return 0;
+}
+/* Returns 1 if the list expression contains Object (record) elements rather than
+ * boxed Longs.  True for:
+ *   - MAKELIST whose first element is a record constructor
+ *   - sortf(L, f) — always a record list
+ *   - sort(L)     — if L itself is a record list
+ *   - a VAR whose field tag is 'L' and whose backing MAKELIST had record elements
+ *     (detected by checking the static field icn_N_elem_0 type tag == 'O')
+ */
+static int expr_is_record_list(EXPR_t *n) {
+    if (!n) return 0;
+    /* Direct list literal: [rec(...), ...] */
+    if (n->kind == E_MAKELIST) {
+        if (n->nchildren > 0 && expr_is_record(n->children[0])) return 1;
+        return 0;
+    }
+    /* sortf always returns a record list */
+    if (n->kind == E_FNC && n->nchildren >= 1) {
+        EXPR_t *fn = n->children[0];
+        if (fn && fn->kind == E_VAR) {
+            if (strcmp(fn->sval, "sortf") == 0) return 1;
+            /* sort(L) — record list if L is a record list */
+            if (strcmp(fn->sval, "sort") == 0 && n->nchildren >= 2)
+                return expr_is_record_list(n->children[1]);
+        }
+    }
+    /* Assignment: propagate from rhs */
+    if (n->kind == E_ASSIGN && n->nchildren >= 2)
+        return expr_is_record_list(n->children[1]);
+    /* VAR: check if any elem field for this var is Object-typed.
+     * The makelist emitter stores elements in icn_N_elem_0 as Object fields;
+     * we can't recover N from just the var name, so fall back to checking
+     * whether the list static field has a sibling _elem_0 that is 'O'-typed.
+     * Simpler heuristic: check the static-field registry for any field named
+     * icn_*_elem_0 that is Object-typed — this is coarse but correct for the
+     * single-list-per-scope case common in tests.
+     * A precise approach: tag list fields at declare time. Use the coarse one for now. */
+    if (n->kind == E_VAR) {
+        /* Fast path: var tagged 'R' (record-list) at assign time */
+        char fld[128]; var_field(n->sval, fld, sizeof fld);
+        if (field_type_tag(fld) == 'R') return 1;
+        char gname[80]; snprintf(gname, sizeof gname, "icn_gvar_%s", n->sval);
+        if (field_type_tag(gname) == 'R') return 1;
+        /* Coarse fallback: any elem_0 Object in scope (single-list-per-scope) */
+        for (int i = 0; i < nstatics; i++) {
+            if (static_types[i] == 'O' &&
+                strstr(statics[i], "_elem_0") != NULL) return 1;
+        }
+    }
+    return 0;
+}
+/* Returns record type name if expr is a record constructor, else NULL */
+static const char *expr_record_type(EXPR_t *n) {
+    if (!n || n->kind != E_FNC || n->nchildren < 1) return NULL;
+    if (n->children[0]->kind != E_VAR) return NULL;
+    const char *nm = n->children[0]->sval;
+    return is_record_type(nm) ? nm : NULL;
+}
+
+/* Push 0 to icn_failed (success) */
+static void set_ok(void) {
+    JI("iconst_0", ""); put_byte("icn_failed");
+}
+/* Push 1 to icn_failed (failure) */
+static void set_fail(void) {
+    JI("iconst_1", ""); put_byte("icn_failed");
+}
+/* Test icn_failed — if nonzero jump to lbl */
+static void jmp_if_failed(const char *lbl) {
+    get_byte("icn_failed");
+    J("    ifne %s\n", lbl);
+}
+/* Test icn_failed — if zero jump to lbl */
+/* jmp_if_ok removed — was unused */
+
+/* =========================================================================
+ * ICN_INT
+ * α: push long literal, goto succeed
+ * β: goto fail (one-shot)
+ * ======================================================================= */
+static void emit_jvm_icon_int(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    int id = next_uid(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+    JC("INT"); JL(a);
+    J("    ldc2_w %ld\n", n->ival);
+    JGoto(ports.γ);
+    JL(b); JGoto(ports.ω);
+}
+
+/* =========================================================================
+ * ICN_REAL
+ * α: push double via ldc2_w, goto succeed
+ * β: goto fail (one-shot literal)
+ * Doubles are stored in 'D' static fields; write() uses println(D).
+ * ======================================================================= */
+static void declare_static_dbl(const char *name) {
+    declare_static_typed(name, 'D');
+}
+static void get_dbl(const char *fld) {
+    J("    getstatic %s/%s D\n", classname, fld);
+}
+static void put_dbl(const char *fld) {
+    J("    putstatic %s/%s D\n", classname, fld);
+}
+
+/* ArrayList-typed static field helpers ('L' type tag) */
+static void declare_static_list(const char *name) {
+    declare_static_typed(name, 'L');
+}
+/* 'S' = ArrayList of String elements */
+static void declare_static_strlist(const char *name) {
+    declare_static_typed(name, 'S');
+}
+/* Record-list helpers ('R' type tag — ArrayList of record Objects) */
+static void declare_static_reclist(const char *name) {
+    declare_static_typed(name, 'R');
+}
+static void get_list_field(const char *fname) {
+    char buf[384]; snprintf(buf, sizeof buf, "%s/%s Ljava/util/ArrayList;", classname, fname);
+    JI("getstatic", buf);
+}
+static void put_list_field(const char *fname) {
+    char buf[384]; snprintf(buf, sizeof buf, "%s/%s Ljava/util/ArrayList;", classname, fname);
+    JI("putstatic", buf);
+}
+/* Object-typed static field helpers ('O' type tag) — for boxed element temps */
+static void declare_static_obj(const char *name) {
+    declare_static_typed(name, 'O');
+}
+static void get_obj_field(const char *fname) {
+    char buf[384]; snprintf(buf, sizeof buf, "%s/%s Ljava/lang/Object;", classname, fname);
+    JI("getstatic", buf);
+}
+static void put_obj_field(const char *fname) {
+    char buf[384]; snprintf(buf, sizeof buf, "%s/%s Ljava/lang/Object;", classname, fname);
+    JI("putstatic", buf);
+}
+/* Object[]-typed static field helpers — for import arg arrays */
+static void declare_static_arr(const char *name) {
+    declare_static_typed(name, 'P');  /* 'P' = [Ljava/lang/Object; */
+}
+static void get_arr_field(const char *fname) {
+    char buf[384]; snprintf(buf, sizeof buf, "%s/%s [Ljava/lang/Object;", classname, fname);
+    JI("getstatic", buf);
+}
+static void put_arr_field(const char *fname) {
+    char buf[384]; snprintf(buf, sizeof buf, "%s/%s [Ljava/lang/Object;", classname, fname);
+    JI("putstatic", buf);
+}
+/* HashMap-typed static field helpers ('T' type tag) — Icon tables */
+static void declare_static_table(const char *name) {
+    declare_static_typed(name, 'T');
+}
+static void get_table_field(const char *fname) {
+    char buf[384]; snprintf(buf, sizeof buf, "%s/%s Ljava/util/HashMap;", classname, fname);
+    JI("getstatic", buf);
+}
+static void put_table_field(const char *fname) {
+    char buf[384]; snprintf(buf, sizeof buf, "%s/%s Ljava/util/HashMap;", classname, fname);
+    JI("putstatic", buf);
+}
+
+static void emit_jvm_icon_real(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    int id = next_uid(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+    JC("REAL"); JL(a);
+    /* Emit as double constant. Jasmin requires 'd' suffix for ldc2_w double literals
+     * (without it Jasmin treats the value as float and widens, losing precision). */
+    /* Ensure a decimal point is present so Jasmin treats it as double, not int.
+     * %g may produce "2" for 2.0; append ".0" if no decimal or exponent present. */
+    {
+        char dbuf[64];
+        snprintf(dbuf, sizeof dbuf, "%g", n->dval);
+        int has_dot = 0;
+        for (int ci = 0; dbuf[ci]; ci++)
+            if (dbuf[ci] == '.' || dbuf[ci] == 'e' || dbuf[ci] == 'E' || dbuf[ci] == 'n') { has_dot = 1; break; }
+        if (!has_dot) strncat(dbuf, ".0", sizeof dbuf - strlen(dbuf) - 1);
+        J("    ldc2_w %sd\n", dbuf);
+    }
+    JGoto(ports.γ);
+    JL(b); JGoto(ports.ω);
+}
+
+/* Returns 1 if this node produces a double (real) value */
+static int expr_is_real(EXPR_t *n) {
+    if (!n) return 0;
+    if (n->kind == E_FLIT) return 1;
+    /* ICN_NEG: real if child is real */
+    if (n->kind == E_MNS && n->nchildren >= 1)
+        return expr_is_real(n->children[0]);
+    /* ICN_POW always returns double (Math.pow returns D) */
+    if (n->kind == E_POW) return 1;
+    /* Binop is real if either operand is real */
+    if (n->kind == E_ADD || n->kind == E_SUB || n->kind == E_MUL ||
+        n->kind == E_DIV || n->kind == E_MOD) {
+        if (n->nchildren >= 2)
+            return expr_is_real(n->children[0]) || expr_is_real(n->children[1]);
+    }
+    /* Relops return the right-hand value on success: real if either operand is real */
+    if (n->kind == E_LT || n->kind == E_LE || n->kind == E_GT ||
+        n->kind == E_GE || n->kind == E_EQ || n->kind == E_NE) {
+        if (n->nchildren >= 2)
+            return expr_is_real(n->children[0]) || expr_is_real(n->children[1]);
+    }
+    /* ICN_ALT: real if first alternative is real (all alternatives must be same type) */
+    if (n->kind == E_ALTERNATE && n->nchildren >= 1)
+        return expr_is_real(n->children[0]);
+    /* real() builtin call always returns double */
+    if (n->kind == E_FNC && n->nchildren >= 1) {
+        EXPR_t *fn = n->children[0];
+        if (fn && fn->kind == E_VAR && strcmp(fn->sval, "real") == 0) return 1;
+        /* sqrt always returns double */
+        if (fn && fn->kind == E_VAR && strcmp(fn->sval, "sqrt") == 0) return 1;
+        /* abs/max/min are real if any arg is real */
+        if (fn && fn->kind == E_VAR) {
+            const char *fn_name = fn->sval;
+            if ((strcmp(fn_name,"abs")==0 || strcmp(fn_name,"max")==0 || strcmp(fn_name,"min")==0)
+                && n->nchildren >= 2) {
+                for (int ci = 1; ci < n->nchildren; ci++)
+                    if (expr_is_real(n->children[ci])) return 1;
+            }
+        }
+    }
+    /* ICN_TO_BY: real if any of start/end/step is real */
+    if (n->kind == E_TO_BY && n->nchildren >= 3)
+        return expr_is_real(n->children[0]) || expr_is_real(n->children[1])
+               || expr_is_real(n->children[2]);
+    /* ICN_TO: real if either bound is real */
+    if (n->kind == E_TO && n->nchildren >= 2)
+        return expr_is_real(n->children[0]) || expr_is_real(n->children[1]);
+    if (n->kind == E_VAR) {
+        char fld[128]; var_field(n->sval, fld, sizeof fld);
+        for (int i = 0; i < nstatics; i++)
+            if (!strcmp(statics[i], fld) && static_types[i] == 'D') return 1;
+        char gname[80]; snprintf(gname, sizeof gname, "icn_gvar_%s", n->sval);
+        for (int i = 0; i < nstatics; i++)
+            if (!strcmp(statics[i], gname) && static_types[i] == 'D') return 1;
+    }
+    return 0;
+}
+
+/* =========================================================================
+ * jasmin_ldc — emit a Jasmin ldc instruction with proper string escaping.
+ * Jasmin string literals require: \" for quote, \\ for backslash,
+ * \n \t \r for common control chars.
+ * ======================================================================= */
+static void jasmin_ldc(const char *s) {
+    J("    ldc \"");
+    for (const char *p = s; *p; p++) {
+        switch (*p) {
+            case '"':  J("\\\""); break;
+            case '\\': J("\\\\"); break;
+            case '\n': J("\\n");  break;
+            case '\r': J("\\r");  break;
+            case '\t': J("\\t");  break;
+            default:   J("%c", *p); break;
+        }
+    }
+    J("\"\n");
+}
+
+/* =========================================================================
+ * ICN_STR
+ * α: push String ref via ldc, goto succeed
+ * β: goto fail
+ * ======================================================================= */
+static void emit_jvm_icon_str(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    int id = next_uid(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+    (void)intern_string(n->sval);
+    JC("STR"); JL(a);
+    /* Push string — ldc with properly escaped string */
+    jasmin_ldc(n->sval);
+    JGoto(ports.γ);
+    JL(b); JGoto(ports.ω);
+}
+
+/* =========================================================================
+ * ICN_VAR
+ * α: load from local slot (or static field for globals), goto succeed
+ * β: goto fail (variables are one-shot)
+ *
+ * For long locals: lload slot_jvm(logical_slot)
+ * For globals: getstatic classname/icn_gvar_NAME J
+ * ======================================================================= */
+static void emit_jvm_icon_var(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    int id = next_uid(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+    JC("VAR"); JL(a);
+
+    /* &subject keyword — push current scan subject (String) */
+    if (strcmp(n->sval, "&subject") == 0) {
+        declare_static_str("icn_subject");
+        get_str_field("icn_subject");
+        JGoto(ports.γ);
+        JL(b); JGoto(ports.ω);
+        return;
+    }
+
+    /* &keyword cset constants — push as String literals */
+    if (strcmp(n->sval, "&letters") == 0) {
+        J("    ldc \"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz\"\n");
+        JGoto(ports.γ); JL(b); JGoto(ports.ω); return;
+    }
+    if (strcmp(n->sval, "&ucase") == 0) {
+        J("    ldc \"ABCDEFGHIJKLMNOPQRSTUVWXYZ\"\n");
+        JGoto(ports.γ); JL(b); JGoto(ports.ω); return;
+    }
+    if (strcmp(n->sval, "&lcase") == 0) {
+        J("    ldc \"abcdefghijklmnopqrstuvwxyz\"\n");
+        JGoto(ports.γ); JL(b); JGoto(ports.ω); return;
+    }
+    if (strcmp(n->sval, "&digits") == 0) {
+        J("    ldc \"0123456789\"\n");
+        JGoto(ports.γ); JL(b); JGoto(ports.ω); return;
+    }
+    if (strcmp(n->sval, "&ascii") == 0) {
+        /* first 128 chars */
+        J("    ldc \"\\u0000\\u0001\\u0002\\u0003\\u0004\\u0005\\u0006\\u0007\\u0008\\u0009\\u000a\\u000b\\u000c\\u000d\\u000e\\u000f\\u0010\\u0011\\u0012\\u0013\\u0014\\u0015\\u0016\\u0017\\u0018\\u0019\\u001a\\u001b\\u001c\\u001d\\u001e\\u001f !\\\"#$%%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\\\]^_`abcdefghijklmnopqrstuvwxyz{|}~\\u007f\"\n");
+        JGoto(ports.γ); JL(b); JGoto(ports.ω); return;
+    }
+    if (strcmp(n->sval, "&cset") == 0) {
+        J("    ldc \"\\u0000\\u0001\\u0002\\u0003\\u0004\\u0005\\u0006\\u0007\\u0008\\u0009\\u000a\\u000b\\u000c\\u000d\\u000e\\u000f\\u0010\\u0011\\u0012\\u0013\\u0014\\u0015\\u0016\\u0017\\u0018\\u0019\\u001a\\u001b\\u001c\\u001d\\u001e\\u001f !\\\"#$%%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\\\]^_`abcdefghijklmnopqrstuvwxyz{|}~\\u007f\"\n");
+        JGoto(ports.γ); JL(b); JGoto(ports.ω); return;
+    }
+
+
+    /* &null keyword — push 0L (integer null), always succeeds */
+    if (strcmp(n->sval, "&null") == 0) {
+        JI("lconst_0", "");
+        JGoto(ports.γ); JL(b); JGoto(ports.ω); return;
+    }
+    int slot = locals_find(n->sval);
+    if (slot >= 0) {
+        /* Named local/param: use per-proc static field (suspend-safe) */
+        char fld[128]; var_field(n->sval, fld, sizeof fld);
+        /* Determine type: look up in statics table */
+        int is_str = 0, is_dbl = 0, is_list = 0, is_table = 0, is_obj = 0;
+        for (int i = 0; i < nstatics; i++) {
+            if (!strcmp(statics[i], fld) && static_types[i] == 'A') { is_str  = 1; break; }
+            if (!strcmp(statics[i], fld) && static_types[i] == 'D') { is_dbl  = 1; break; }
+            if (!strcmp(statics[i], fld) && (static_types[i] == 'L' || static_types[i] == 'R' || static_types[i] == 'S')) { is_list = 1; break; }
+            if (!strcmp(statics[i], fld) && static_types[i] == 'T') { is_table= 1; break; }
+            if (!strcmp(statics[i], fld) && static_types[i] == 'O') { is_obj  = 1; break; }
+        }
+        if (is_str) {
+            declare_static_str(fld);
+            get_str_field(fld);
+        } else if (is_list) {
+            declare_static_list(fld);
+            get_list_field(fld);
+        } else if (is_table) {
+            declare_static_table(fld);
+            get_table_field(fld);
+        } else if (is_dbl) {
+            declare_static_dbl(fld);
+            get_dbl(fld);
+        } else if (is_obj) {
+            /* Record variable — push 0L as placeholder; ICN_FIELD relay will reload Object */
+            declare_static_obj(fld);
+            JI("lconst_0","");
+        } else {
+            declare_static(fld);
+            get_long(fld);
+        }
+    } else {
+        char gname[80]; snprintf(gname, sizeof gname, "icn_gvar_%s", n->sval);
+        /* Check global type */
+        int is_str = 0, is_dbl = 0, is_list = 0, is_table = 0, is_obj = 0;
+        for (int i = 0; i < nstatics; i++) {
+            if (!strcmp(statics[i], gname) && static_types[i] == 'A') { is_str  = 1; break; }
+            if (!strcmp(statics[i], gname) && static_types[i] == 'D') { is_dbl  = 1; break; }
+            if (!strcmp(statics[i], gname) && (static_types[i] == 'L' || static_types[i] == 'R' || static_types[i] == 'S')) { is_list = 1; break; }
+            if (!strcmp(statics[i], gname) && static_types[i] == 'T') { is_table= 1; break; }
+            if (!strcmp(statics[i], gname) && static_types[i] == 'O') { is_obj  = 1; break; }
+        }
+        if (is_str)        { declare_static_str(gname);   get_str_field(gname); }
+        else if (is_list)  { declare_static_list(gname);  get_list_field(gname); }
+        else if (is_table) { declare_static_table(gname); get_table_field(gname); }
+        else if (is_dbl)   { declare_static_dbl(gname);   get_dbl(gname); }
+        else if (is_obj)   { declare_static_obj(gname);   JI("lconst_0",""); }
+        else              { declare_static(gname);      get_long(gname); }
+    }
+    JGoto(ports.γ);
+    JL(b); JGoto(ports.ω);
+}
+
+/* =========================================================================
+ * ICN_ASSIGN — E1 := E2
+ * Evaluate RHS, store into LHS variable slot
+ * ======================================================================= */
+static void emit_jvm_icon_assign(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    if (n->nchildren < 2) {
+        /* degenerate */
+        int id = next_uid(); char a[64], b[64];
+        lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+        strncpy(oα,a,63); strncpy(oβ,b,63);
+        JL(a); JGoto(ports.ω); JL(b); JGoto(ports.ω); return;
+    }
+
+    /* -----------------------------------------------------------------------
+     * EARLY EXIT: p.field := v   (record field assignment)
+     * Flow: eval v → relay → box → load record obj → putfield → v_long → γ
+     * --------------------------------------------------------------------- */
+    {
+        EXPR_t *lhs = n->children[0];
+        EXPR_t *rhs = n->children[1];
+        if (lhs && lhs->kind == E_FIELD && lhs->nchildren >= 2) {
+            EXPR_t *rec_expr  = lhs->children[0];
+            EXPR_t *field_var = lhs->children[1];
+            const char *fname  = field_var->sval;
+            /* Determine record type */
+            const char *rtype = NULL;
+            for (int ri = 0; ri < nrec && !rtype; ri++)
+                for (int fi = 0; fi < rec_nfields[ri]; fi++)
+                    if (!strcmp(rec_fields[ri][fi], fname)) { rtype = rec_names[ri]; break; }
+            if (rtype && rec_expr && rec_expr->kind == E_VAR) {
+                int sid = next_uid();
+                char a[64], b[64]; lbl_α(sid,a,sizeof a); lbl_β(sid,b,sizeof b);
+                strncpy(oα,a,63); strncpy(oβ,b,63);
+                char v_relay[64]; snprintf(v_relay, sizeof v_relay, "icn_%d_fa_vr", sid);
+                char val_long[80]; snprintf(val_long, sizeof val_long, "icn_%d_fa_vl", sid);
+                char val_obj[80];  snprintf(val_obj,  sizeof val_obj,  "icn_%d_fa_vo", sid);
+                declare_static(val_long);
+                declare_static_obj(val_obj);
+                Ports vp; strncpy(vp.γ, v_relay, 63); strncpy(vp.ω, ports.ω, 63);
+                char va[64], vb[64]; emit_jvm_icon_expr(rhs, vp, va, vb);
+                JL(a); JGoto(va);
+                JL(b); JGoto(vb);
+                JL(v_relay);
+                /* Save long value */
+                JI("dup2",""); put_long(val_long);
+                /* Box to Object */
+                JI("invokestatic","java/lang/Long/valueOf(J)Ljava/lang/Long;");
+                put_obj_field(val_obj);
+                /* Load record object */
+                char recfld[128];
+                int slot = locals_find(rec_expr->sval);
+                if (slot >= 0) var_field(rec_expr->sval, recfld, sizeof recfld);
+                else           snprintf(recfld, sizeof recfld, "icn_gvar_%s", rec_expr->sval);
+                J("    getstatic %s/%s Ljava/lang/Object;\n", classname, recfld);
+                J("    checkcast %s$%s\n", classname, rtype);
+                /* Load boxed value */
+                get_obj_field(val_obj);
+                /* putfield */
+                J("    putfield %s$%s/%s Ljava/lang/Object;\n", classname, rtype, fname);
+                /* result = original long value */
+                get_long(val_long);
+                JGoto(ports.γ);
+                return;
+            }
+        }
+    }
+
+    /* -----------------------------------------------------------------------
+     * EARLY EXIT: t[k] := v   (subscript-LHS table assignment)
+     * Handle this BEFORE any generic emit to avoid mid-relay stack confusion.
+     * Flow: eval v → v_relay → box+save; eval k → k_relay → str-convert+save;
+     *       load T; load k_str; load v_obj; HashMap.put; pop; load v_long → γ
+     * --------------------------------------------------------------------- */
+    {
+        EXPR_t *lhs = n->children[0];
+        EXPR_t *rhs = n->children[1];
+        if (lhs && lhs->kind == E_IDX && lhs->nchildren >= 2
+                && expr_is_table(lhs->children[0])) {
+            EXPR_t *tvar  = lhs->children[0];
+            EXPR_t *kexpr = lhs->children[1];
+            int sid = next_uid();
+            char a[64], b[64]; lbl_α(sid,a,sizeof a); lbl_β(sid,b,sizeof b);
+            strncpy(oα,a,63); strncpy(oβ,b,63);
+
+            char v_relay[64]; snprintf(v_relay, sizeof v_relay, "icn_%d_tsa_vr", sid);
+            char k_relay[64]; snprintf(k_relay, sizeof k_relay, "icn_%d_tsa_kr", sid);
+            char do_put[64];  snprintf(do_put,  sizeof do_put,  "icn_%d_tsa_put",sid);
+            char val_long_fld[80]; snprintf(val_long_fld, sizeof val_long_fld, "icn_%d_tsa_vl", sid);
+            char val_obj_fld[80];  snprintf(val_obj_fld,  sizeof val_obj_fld,  "icn_%d_tsa_vo", sid);
+            char k_str_fld[80];    snprintf(k_str_fld,    sizeof k_str_fld,    "icn_%d_tsa_ks", sid);
+            int val_is_str  = expr_is_string(rhs);
+            int val_is_list = !val_is_str && expr_is_list(rhs);
+            int val_is_tbl  = !val_is_str && !val_is_list && expr_is_table(rhs);
+            int val_is_ref  = val_is_str || val_is_list || val_is_tbl;
+            if (val_is_ref) declare_static_str(val_long_fld);  /* reuse as str field */
+            else            declare_static(val_long_fld);
+            declare_static_obj(val_obj_fld);
+            declare_static_str(k_str_fld);
+
+            /* Emit RHS v */
+            Ports vp; strncpy(vp.γ, v_relay, 63); strncpy(vp.ω, ports.ω, 63);
+            char va[64], vb[64]; emit_jvm_icon_expr(rhs, vp, va, vb);
+
+            /* Emit key k */
+            Ports kp; strncpy(kp.γ, k_relay, 63); strncpy(kp.ω, ports.ω, 63);
+            char ka[64], kb[64]; emit_jvm_icon_expr(kexpr, kp, ka, kb);
+
+            /* α/β entry points */
+            JL(a); JGoto(va);
+            JL(b); JGoto(ports.ω);
+
+            /* v_relay: RHS value on stack → save + box to obj */
+            JL(v_relay);
+            if (val_is_ref) {
+                /* String/list/table: dup (1 word), store as str field, box as-is */
+                JI("dup",""); put_str_field(val_long_fld);
+                JGoto(ka);
+            } else {
+                JI("dup2",""); put_long(val_long_fld);
+                JI("invokestatic", "java/lang/Long/valueOf(J)Ljava/lang/Long;");
+                put_obj_field(val_obj_fld);
+                JGoto(ka);
+            }
+
+            /* k_relay: key on stack → convert to String key */
+            JL(k_relay);
+            if (expr_is_string(kexpr)) {
+                /* String key already on stack — store directly */
+                put_str_field(k_str_fld);
+            } else {
+                /* Long key on stack — convert to string */
+                JI("invokestatic", "java/lang/Long/toString(J)Ljava/lang/String;");
+                put_str_field(k_str_fld);
+            }
+            JGoto(do_put);
+
+            /* do_put: load T, k_str, v_obj; call put; pop result */
+            JL(do_put);
+            {
+                char taf[128]; var_field(tvar->sval, taf, sizeof taf);
+                get_table_field(taf);
+            }
+            get_str_field(k_str_fld);
+            if (val_is_ref) {
+                /* val is already a String/ref — use directly as Object */
+                get_str_field(val_long_fld);
+            } else {
+                get_obj_field(val_obj_fld);
+            }
+            JI("invokevirtual",
+               "java/util/HashMap/put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
+            JI("pop","");
+            /* result = v */
+            if (val_is_ref) get_str_field(val_long_fld);
+            else            get_long(val_long_fld);
+            JGoto(ports.γ);
+            return;
+        }
+    }
+
+    int id = next_uid(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+    char store[64]; snprintf(store, sizeof store, "icn_%d_store", id);
+
+    Ports rp; strncpy(rp.γ, store, 63); strncpy(rp.ω, ports.ω, 63);
+    char ra[64], rb[64];
+    emit_jvm_icon_expr(n->children[1], rp, ra, rb);
+
+    JL(a); JGoto(ra);
+    JL(b); JGoto(rb);
+    JL(store);
+
+    EXPR_t *lhs = n->children[0];
+    EXPR_t *rhs = n->children[1];
+    int is_str  = expr_is_string(rhs);
+    int is_strlist = !is_str && expr_is_strlist(rhs);
+    int is_list = !is_str && !is_strlist && expr_is_list(rhs);
+    int is_tbl  = !is_str && !is_list && expr_is_table(rhs);
+    int is_dbl  = !is_str && !is_list && !is_tbl && expr_is_real(rhs);
+    int is_rec  = !is_str && !is_list && !is_tbl && !is_dbl && expr_is_record(rhs);
+    /* Bang of a record-list yields the Object directly on the stack (no 0L placeholder) */
+    int is_rec_direct = is_rec && rhs->kind == E_ITERATE && expr_is_record_list(rhs->children[0]);
+    int is_reclist = is_list && expr_is_record_list(rhs);
+
+    if (lhs && lhs->kind == E_VAR) {
+        int slot = locals_find(lhs->sval);
+        if (slot >= 0) {
+            char fld[128]; var_field(lhs->sval, fld, sizeof fld);
+            if (is_str)         { declare_static_str(fld);     put_str_field(fld); }
+            else if (is_strlist){ declare_static_strlist(fld); put_list_field(fld); }
+            else if (is_list) {
+                if (is_reclist) declare_static_reclist(fld);
+                else            declare_static_list(fld);
+                put_list_field(fld);
+            }
+            else if (is_tbl)  {
+                declare_static_table(fld); put_table_field(fld);
+                if (pending_tdflt[0]) {
+                    /* Copy dflt to var-based dflt field: {fld}_dflt */
+                    char vdflt[144]; snprintf(vdflt, sizeof vdflt, "%s_dflt", fld);
+                    declare_static_obj(vdflt);
+                    get_obj_field(pending_tdflt);
+                    put_obj_field(vdflt);
+                    register_tdflt(fld, vdflt, pending_tdflt_is_str);
+                    pending_tdflt[0] = '\0';
+                    pending_tdflt_is_str = 0;
+                }
+            }
+            else if (is_dbl)  { declare_static_dbl(fld);   put_dbl(fld); }
+            else if (is_rec)  {
+                declare_static_obj(fld);
+                if (is_rec_direct) {
+                    /* Object is already on the stack (bang of record-list) */
+                    put_obj_field(fld);
+                } else {
+                    /* Constructor: stack has 0L placeholder, record in icn_retval_obj */
+                    JI("pop2","");
+                    J("    getstatic %s/icn_retval_obj Ljava/lang/Object;\n", classname);
+                    put_obj_field(fld);
+                }
+                /* lconst_0 pushed by push-back section below */
+            }
+            else              { declare_static(fld);       put_long(fld); }
+        } else {
+            char gname[80]; snprintf(gname, sizeof gname, "icn_gvar_%s", lhs->sval);
+            if (is_str)         { declare_static_str(gname);     put_str_field(gname); }
+            else if (is_strlist){ declare_static_strlist(gname); put_list_field(gname); }
+            else if (is_list) {
+                if (is_reclist) declare_static_reclist(gname);
+                else            declare_static_list(gname);
+                put_list_field(gname);
+            }
+            else if (is_tbl)  {
+                declare_static_table(gname); put_table_field(gname);
+                if (pending_tdflt[0]) {
+                    char vdflt[144]; snprintf(vdflt, sizeof vdflt, "%s_dflt", gname);
+                    declare_static_obj(vdflt);
+                    get_obj_field(pending_tdflt);
+                    put_obj_field(vdflt);
+                    register_tdflt(gname, vdflt, pending_tdflt_is_str);
+                    pending_tdflt[0] = '\0';
+                    pending_tdflt_is_str = 0;
+                }
+            }
+            else if (is_dbl)  { declare_static_dbl(gname);   put_dbl(gname); }
+            else if (is_rec)  {
+                declare_static_obj(gname);
+                if (is_rec_direct) {
+                    put_obj_field(gname);
+                } else {
+                    JI("pop2","");
+                    J("    getstatic %s/icn_retval_obj Ljava/lang/Object;\n", classname);
+                    put_obj_field(gname);
+                }
+                /* lconst_0 pushed by push-back section below */
+            }
+            else              { declare_static(gname);       put_long(gname); }
+        }
+    } else if (lhs && lhs->kind == E_IDX) {
+        /* List/string subscript LHS — value stays on stack; handled in push-back block below */
+        (void)0;
+    } else {
+        /* discard — pop appropriate type */
+        if (is_str || is_strlist || is_list || is_tbl) JI("pop", "");
+        else                                           JI("pop2", "");
+    }
+    /* Push back value for expression result (Icon := returns the value) */
+    if (lhs && lhs->kind == E_VAR) {
+        int slot = locals_find(lhs->sval);
+        if (slot >= 0) {
+            char fld[128]; var_field(lhs->sval, fld, sizeof fld);
+            if (is_str)         get_str_field(fld);
+            else if (is_strlist)get_list_field(fld);
+            else if (is_list)   get_list_field(fld);
+            else if (is_tbl)    get_table_field(fld);
+            else if (is_dbl)    get_dbl(fld);
+            else if (is_rec)    JI("lconst_0","");
+            else                get_long(fld);
+        } else {
+            char gname[80]; snprintf(gname, sizeof gname, "icn_gvar_%s", lhs->sval);
+            if (is_str)         get_str_field(gname);
+            else if (is_strlist)get_list_field(gname);
+            else if (is_list)   get_list_field(gname);
+            else if (is_tbl)    get_table_field(gname);
+            else if (is_dbl)    get_dbl(gname);
+            else if (is_rec)    JI("lconst_0","");
+            else                get_long(gname);
+        }
+    } else if (lhs && lhs->kind == E_IDX && lhs->nchildren >= 2) {
+        /* List subscript assignment: a[i] := v
+         * RHS value is on stack (long or String).
+         * Need: load list, compute 0-based int index, box value, call ArrayList.set */
+        EXPR_t *lvar  = lhs->children[0];
+        EXPR_t *kidx  = lhs->children[1];
+        int lsid = next_uid();
+        char lsub_l[128], lsub_i[80], lsub_v[80], lsub_vi[80], lsub_do[80];
+        snprintf(lsub_l,  sizeof lsub_l,  "icn_%d_lsa_l",  lsid);
+        snprintf(lsub_i,  sizeof lsub_i,  "icn_%d_lsa_i",  lsid);
+        snprintf(lsub_v,  sizeof lsub_v,  "icn_%d_lsa_v",  lsid);
+        snprintf(lsub_vi, sizeof lsub_vi, "icn_%d_lsa_vi", lsid);
+        snprintf(lsub_do, sizeof lsub_do, "icn_%d_lsa_do", lsid);
+        /* Declare temp statics for list ref, index (int), value (long/str) */
+        declare_static_list(lsub_l);
+        declare_static(lsub_i);   /* stores 0-based int index as long */
+        if (is_str) declare_static_str(lsub_v);
+        else        declare_static(lsub_v);
+        /* RHS value already on stack — save it */
+        if (is_str) put_str_field(lsub_v);
+        else        put_long(lsub_v);
+        /* Load list from variable */
+        if (lvar->kind == E_VAR) {
+            int lslot = locals_find(lvar->sval);
+            if (lslot >= 0) {
+                char fld[128]; var_field(lvar->sval, fld, sizeof fld);
+                get_list_field(fld);
+            } else {
+                char gname[80]; snprintf(gname, sizeof gname, "icn_gvar_%s", lvar->sval);
+                get_list_field(gname);
+            }
+        } else {
+            /* Fallback: just push null and fail gracefully */
+            JI("aconst_null", "");
+        }
+        put_list_field(lsub_l);
+        /* Evaluate index — long on stack, convert to 0-based long, store */
+        {
+            char idx_relay[80]; snprintf(idx_relay, sizeof idx_relay, "icn_%d_lsa_ir", lsid);
+            Ports ip; strncpy(ip.γ, idx_relay, 63); strncpy(ip.ω, ports.ω, 63);
+            char ia[64], ib[64]; emit_jvm_icon_expr(kidx, ip, ia, ib);
+            JGoto(ia);           /* enter index expression */
+            JL(idx_relay);
+            /* Convert Icon 1-based long to 0-based long, store in lsub_i */
+            JI("lconst_1", ""); JI("lsub", "");
+            put_long(lsub_i);
+            JGoto(lsub_do);
+            JL(lsub_do);
+        }
+        /* Load list, load int index, load boxed value, call ArrayList.set */
+        get_list_field(lsub_l);
+        get_long(lsub_i); JI("l2i", "");   /* 0-based int index */
+        if (is_str) {
+            get_str_field(lsub_v);           /* String ref */
+        } else {
+            get_long(lsub_v);
+            JI("invokestatic", "java/lang/Long/valueOf(J)Ljava/lang/Long;");
+        }
+        JI("invokevirtual", "java/util/ArrayList/set(ILjava/lang/Object;)Ljava/lang/Object;");
+        JI("pop", "");   /* discard old value returned by set() */
+        /* Push result (Icon := returns assigned value) */
+        if (is_str) get_str_field(lsub_v);
+        else        get_long(lsub_v);
+    } else {
+        /* Unknown LHS form — discard value, push placeholder */
+        if (is_str || is_strlist || is_list || is_tbl) JI("aconst_null", "");
+        else if (is_dbl)                               JI("dconst_0", "");
+        else                                           JI("lconst_0", "");
+    }
+    JGoto(ports.γ);
+}
+
+/* =========================================================================
+ * ICN_RETURN
+ * Store value into icn_retval, set icn_failed=0, jump to ret label
+ * ======================================================================= */
+static void emit_jvm_icon_return(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    (void)ports;
+    int id = next_uid(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+
+    if (n->nchildren > 0) {
+        char after[64]; snprintf(after, sizeof after, "icn_%d_ret_store", id);
+        char on_fail[64]; snprintf(on_fail, sizeof on_fail, "icn_%d_ret_fail", id);
+        Ports vp; strncpy(vp.γ, after, 63); strncpy(vp.ω, on_fail, 63);
+        char va[64], vb[64];
+        emit_jvm_icon_expr(n->children[0], vp, va, vb);
+        JL(a); JGoto(va);
+        JL(b); JGoto(ret_label[0] ? ret_label : "icn_dead");
+        /* on_fail: expr failed — no value on stack, jump to ret label */
+        JL(on_fail);
+        set_fail();
+        JGoto(fail_label[0] ? fail_label : "icn_dead");
+        /* after: expr succeeded — long or String ref on stack */
+        JL(after);
+        if (expr_is_string(n->children[0])) {
+            put_str_field("icn_retval_str");
+            J("    lconst_0\n"); put_long("icn_retval"); /* clear long slot */
+        } else {
+            put_long("icn_retval");
+        }
+        set_ok();
+        JGoto(ret_label[0] ? ret_label : "icn_dead");
+    } else {
+        JL(a);
+        JI("lconst_0", ""); put_long("icn_retval");
+        set_ok();
+        JGoto(ret_label[0] ? ret_label : "icn_dead");
+        JL(b);
+        JGoto(ret_label[0] ? ret_label : "icn_dead");
+    }
+}
+
+/* =========================================================================
+ * ICN_FAIL
+ * ======================================================================= */
+static void emit_jvm_icon_fail_node(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    (void)n;
+    int id = next_uid(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+    JL(a);
+    set_fail();
+    JGoto(fail_label[0] ? fail_label : ports.ω);
+    JL(b); JGoto(ports.ω);
+}
+
+/* =========================================================================
+ * ICN_SUSPEND — co-routine yield (user-defined generator)
+ *
+ * Encoding: each suspend site gets unique int ID.
+ * α: evaluate E → store in icn_retval, set icn_suspended=1,
+ *    set icn_suspend_id=N, set icn_failed=0, goto sret_label (yield)
+ * β: indirect — the proc β entry does tableswitch → resume_here
+ * resume_here: run optional body, then loop back to E's β
+ * ======================================================================= */
+static void emit_jvm_icon_suspend(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    (void)ports;
+    int id = next_uid(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+
+    /* Assign a unique suspend ID for tableswitch */
+    int susp_id = next_suspend_id++;
+    if (suspend_count < 64) suspend_ids[suspend_count++] = id;  /* Bug2 fix: store node id, not susp_id */
+
+    char resume_here[64]; snprintf(resume_here, sizeof resume_here, "icn_%d_resume", id);
+    char after_val[64];   snprintf(after_val,   sizeof after_val,   "icn_%d_yield",  id);
+
+    EXPR_t *val_node  = (n->nchildren > 0) ? n->children[0] : NULL;
+    EXPR_t *body_node = (n->nchildren > 1) ? n->children[1] : NULL;
+
+    char va[64], vb[64];
+    if (val_node) {
+        Ports vp;
+        strncpy(vp.γ, after_val, 63);
+        strncpy(vp.ω, fail_label[0] ? fail_label : "icn_dead", 63);
+        emit_jvm_icon_expr(val_node, vp, va, vb);
+    } else {
+        snprintf(va, 80, "icn_%d_noval", id);
+        snprintf(vb, 80, "icn_%d_nvlb", id);
+        JL(va); JI("lconst_0",""); JGoto(after_val);
+        JL(vb); JGoto(fail_label[0] ? fail_label : "icn_dead");
+    }
+
+    /* α: enter value evaluation */
+    JL(a); JGoto(va);
+    /* β: resume via tableswitch in proc β — just a target label here */
+    JL(b); JGoto(resume_here);   /* proc β will dispatch here via tableswitch */
+
+    /* after_val: value (long) on JVM stack — yield to caller */
+    JL(after_val);
+    put_long("icn_retval");
+    set_ok();
+    /* Mark suspended with this site's ID */
+    JI("iconst_1",""); put_byte("icn_suspended");
+    J("    sipush %d\n", susp_id); put_int_field("icn_suspend_id");
+    /* Yield — jump to sret (bare return from method, frame reclaimed) */
+    JGoto(sret_label[0] ? sret_label : "icn_dead");
+
+    /* resume_here: execution resumes here after proc β dispatches */
+    if (body_node) {
+        /* Fix IJ-6 Bug2: body assignment leaves a long result on the JVM operand
+         * stack.  ports.γ is the while-loop top (icn_0_top), also reached from the
+         * relop with an EMPTY stack.  Entering it with a stale long gives:
+         *   "Inconsistent stack height 0 != 2"
+         * Route body γ and ω through a drain label: pop2 then loop back. */
+        char body_done[64]; snprintf(body_done, sizeof body_done, "icn_%d_bdone", id);
+        char ba[64], bb[64];
+        Ports bp;
+        strncpy(bp.γ, body_done, 63);
+        strncpy(bp.ω, ports.ω, 63);  /* body fail: empty stack → bypass drain, go to no-value loop-back */
+        emit_jvm_icon_expr(body_node, bp, ba, bb);
+        JL(body_done); JI("pop2", ""); JGoto(ports.ω);
+        JL(resume_here); JGoto(ba);
+    } else {
+        JL(resume_here); JGoto(ports.ω);
+    }
+}
+
+/* =========================================================================
+ * =========================================================================
+ * ICN_CASE — case E of { V1: R1  V2: R2 ... [default: RD] }
+ * children: [0]=dispatch, [1]=v1,[2]=r1, [3]=v2,[4]=r2, ..., [last]=default_result
+ * if (nc-1) is even → no default (odd clause pairs); if (nc-1) is odd → has default.
+ * Semantics: eval dispatch once; compare to each Vi in order; first match → eval Ri → γ;
+ * no match → eval default → γ (or fail → ω if no default).
+ * ======================================================================= */
+static void emit_jvm_icon_case(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    int id = next_uid(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+
+    if (n->nchildren < 1) { JL(a); JGoto(ports.ω); JL(b); JGoto(ports.ω); return; }
+
+    EXPR_t *disp = n->children[0];
+    int nc = n->nchildren;
+    /* nc-1 remaining children: pairs (val,res) + optional default */
+    int npairs = (nc - 1) / 2;
+    int has_default = ((nc - 1) % 2 == 1);
+
+    /* Dispatch value storage */
+    char disp_fld[80]; snprintf(disp_fld, sizeof disp_fld, "icn_%d_case_disp", id);
+    int disp_is_str = expr_is_string(disp);
+    int disp_is_dbl = !disp_is_str && expr_is_real(disp);
+    if (disp_is_str)      declare_static_str(disp_fld);
+    else if (disp_is_dbl) declare_static_real(disp_fld);
+    else                  declare_static(disp_fld);
+
+    /* Eval dispatch */
+    char disp_relay[64]; snprintf(disp_relay, sizeof disp_relay, "icn_%d_case_dr", id);
+    Ports dp; strncpy(dp.γ, disp_relay, 63); strncpy(dp.ω, ports.ω, 63);
+    char da[64], db[64]; emit_jvm_icon_expr(disp, dp, da, db);
+    JL(a); JGoto(da);
+    JL(b); JGoto(db);
+    JL(disp_relay);
+    if (disp_is_str)      put_str_field(disp_fld);
+    else if (disp_is_dbl) put_dbl(disp_fld);
+    else                  put_long(disp_fld);
+
+    /* For each clause: eval Vi, compare to dispatch, branch to Ri or next */
+    for (int ci = 0; ci < npairs; ci++) {
+        EXPR_t *vnode = n->children[1 + ci*2];
+        EXPR_t *rnode = n->children[2 + ci*2];
+        char vcmp[64];  snprintf(vcmp,  sizeof vcmp,  "icn_%d_cv%d",  id, ci);
+        char vmatch[64];snprintf(vmatch,sizeof vmatch,"icn_%d_cm%d",  id, ci);
+        char vnext[64]; snprintf(vnext, sizeof vnext, "icn_%d_cn%d",  id, ci);
+
+        /* Eval clause value */
+        char vrelay[64]; snprintf(vrelay, sizeof vrelay, "icn_%d_cvr%d", id, ci);
+        Ports vp; strncpy(vp.γ, vrelay, 63); strncpy(vp.ω, vnext, 63);
+        char va[64], vb[64]; emit_jvm_icon_expr(vnode, vp, va, vb);
+        JL(vcmp); JGoto(va);
+        JL(vrelay);
+        /* Compare: if disp_is_str: String.equals; else lcmp */
+        if (disp_is_str) {
+            /* stack: String (clause val) */
+            get_str_field(disp_fld);
+            JI("invokevirtual", "java/lang/String/equals(Ljava/lang/Object;)Z");
+            J("    ifne %s\n", vmatch);
+        } else {
+            /* stack: long (clause val); compare to stored disp */
+            get_long(disp_fld);
+            JI("lcmp", "");
+            J("    ifeq %s\n", vmatch);
+        }
+        JGoto(vnext);
+
+        /* Result branch: emit result expression first, then wire vmatch → ra */
+        {
+            char rrelay[64]; snprintf(rrelay, sizeof rrelay, "icn_%d_crr%d", id, ci);
+            Ports rp; strncpy(rp.γ, rrelay, 63); strncpy(rp.ω, ports.ω, 63);
+            char ra[64], rb[64]; emit_jvm_icon_expr(rnode, rp, ra, rb);
+            JL(vmatch); JGoto(ra);
+            JL(rrelay); JGoto(ports.γ);
+        }
+
+        JL(vnext);
+        /* Falls through to next clause vcmp, or exits on last clause */
+        if (ci == npairs - 1) {
+            if (has_default) {
+                /* Will jump to dstart after default expr is emitted below */
+                /* Store dstart name for use after the loop */
+                char dstart_tmp[64]; snprintf(dstart_tmp, sizeof dstart_tmp, "icn_%d_cdef", id);
+                JGoto(dstart_tmp);
+            } else {
+                JGoto(ports.ω);
+            }
+        }
+    }
+
+    /* Default or fail */
+    if (has_default) {
+        EXPR_t *dnode = n->children[nc-1];
+        char drelay[64]; snprintf(drelay, sizeof drelay, "icn_%d_cdefr", id);
+        char dstart[64]; snprintf(dstart, sizeof dstart, "icn_%d_cdef",  id);
+        Ports defp; strncpy(defp.γ, drelay, 63); strncpy(defp.ω, ports.ω, 63);
+        char dea[64], deb[64]; emit_jvm_icon_expr(dnode, defp, dea, deb);
+        JL(dstart); JGoto(dea);
+        JL(drelay); JGoto(ports.γ);
+    }
+}
+
+/* =========================================================================
+ * ICN_IF — if cond then E2 [else E3]
+ * ======================================================================= */
+static void emit_jvm_icon_if(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    int id = next_uid(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+
+    EXPR_t *cond  = n->children[0];
+    EXPR_t *thenb = (n->nchildren > 1) ? n->children[1] : NULL;
+    EXPR_t *elseb = (n->nchildren > 2) ? n->children[2] : NULL;
+
+    char cond_then[64]; snprintf(cond_then, sizeof cond_then, "icn_%d_then", id);
+    char cond_else[64]; snprintf(cond_else, sizeof cond_else, "icn_%d_else", id);
+
+    int then_is_str = thenb ? expr_is_string(thenb) : 0;
+    int else_is_str = elseb ? expr_is_string(elseb) : 0;
+
+    /* If both branches produce the same width, route them directly to ports.γ.
+     * If widths differ, drain each independently and push lconst_0 at join. */
+    int mixed = thenb && elseb && (then_is_str != else_is_str);
+    char then_drain[64]; snprintf(then_drain, sizeof then_drain, "icn_%d_tdrain", id);
+    char else_drain[64]; snprintf(else_drain, sizeof else_drain, "icn_%d_edrain", id);
+    char join[64];       snprintf(join,       sizeof join,       "icn_%d_join",   id);
+
+    char then_a[64]="", then_b[64]="", else_a[64]="";
+    if (thenb) {
+        Ports tp;
+        strncpy(tp.γ, mixed ? then_drain : ports.γ, 63);
+        strncpy(tp.ω, ports.ω, 63);
+        emit_jvm_icon_expr(thenb, tp, then_a, then_b);
+    } else { strncpy(then_a, ports.γ, 63); }
+
+    if (elseb) {
+        Ports ep;
+        strncpy(ep.γ, mixed ? else_drain : ports.γ, 63);
+        strncpy(ep.ω, ports.ω, 63);
+        char ea[64], eb[64];
+        emit_jvm_icon_expr(elseb, ep, ea, eb);
+        strncpy(else_a, ea, 63);
+    } else { strncpy(else_a, ports.ω, 63); }
+
+    Ports cp; strncpy(cp.γ,cond_then,63); strncpy(cp.ω,cond_else,63);
+    char ca[64], cb[64];
+    emit_jvm_icon_expr(cond, cp, ca, cb);
+
+    JL(cond_then);
+    if (expr_is_obj(cond)) JI("pop",""); else JI("pop2","");
+    JGoto(thenb ? then_a : ports.γ);
+
+    JL(cond_else);
+    JGoto(else_a);
+
+    if (mixed) {
+        JL(then_drain);
+        if (then_is_str) JI("pop",""); else JI("pop2","");
+        JGoto(join);
+        JL(else_drain);
+        if (else_is_str) JI("pop",""); else JI("pop2","");
+        JGoto(join);
+        JL(join); JI("lconst_0",""); JGoto(ports.γ);
+    }
+
+    JL(a); JGoto(ca);
+    JL(b); JGoto(cb);
+}
+
+/* =========================================================================
+ * ICN_CALL — write() built-in or user procedure
+ * ======================================================================= */
+static void emit_jvm_icon_call(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    if (n->nchildren < 1) { emit_jvm_icon_fail_node(NULL,ports,oα,oβ); return; }
+    EXPR_t *fn = n->children[0];
+    int nargs = n->nchildren - 1;
+    const char *fname = (fn->kind == E_VAR) ? fn->sval : "unknown";
+    int id = next_uid(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+
+    /* --- record constructor: RecordType(v1, v2, ...) --- */
+    if (is_record_type(fname)) {
+        int nf = record_nfields(fname);
+        /* Relay labels per arg */
+        char **relays = malloc((nargs+1) * sizeof(char*));
+        char **arg_flds = malloc(nargs * sizeof(char*));
+        for (int i = 0; i <= nargs; i++) {
+            relays[i] = malloc(64);
+            snprintf(relays[i], 64, "icn_%d_rc_r%d", id, i);
+        }
+        for (int i = 0; i < nargs; i++) {
+            arg_flds[i] = malloc(80);
+            snprintf(arg_flds[i], 80, "icn_%d_rc_a%d", id, i);
+            declare_static_obj(arg_flds[i]);
+        }
+        /* Static Object field to hold the new record object */
+        char rec_obj_fld[80]; snprintf(rec_obj_fld, sizeof rec_obj_fld, "icn_%d_rc_obj", id);
+        declare_static_obj(rec_obj_fld);
+
+        /* Emit each arg expression, chained through relays */
+        char (*arg_a)[64] = malloc(nargs * sizeof(*arg_a));
+        char (*arg_b)[64] = malloc(nargs * sizeof(*arg_b));
+        for (int i = 0; i < nargs; i++) {
+            const char *next_relay = (i+1 < nargs) ? relays[i+1] : relays[nargs];
+            Ports ap; strncpy(ap.γ, (i < nargs-1) ? relays[i+1] : relays[nargs], 63);
+            strncpy(ap.ω, ports.ω, 63);
+            /* override γ to relay through constructor assembly */
+            snprintf(ap.γ, 64, "icn_%d_rc_r%d", id, i+1);
+            emit_jvm_icon_expr(n->children[1+i], ap, arg_a[i], arg_b[i]);
+            (void)next_relay;
+        }
+
+        JL(a); if (nargs > 0) JGoto(arg_a[0]); else JGoto(relays[0]);
+        JL(b); JGoto(ports.ω);
+
+        /* build label — jumped to after all args boxed */
+        char build_lbl[64]; snprintf(build_lbl, sizeof build_lbl, "icn_%d_rc_build", id);
+
+        /* arg relay chain: box each arg into its Object static */
+        for (int i = 0; i < nargs; i++) {
+            JL(relays[i+1]);  /* relay[i+1] is γ of arg[i] */
+            JI("invokestatic","java/lang/Long/valueOf(J)Ljava/lang/Long;");
+            put_obj_field(arg_flds[i]);
+            if (i+1 < nargs) JGoto(arg_a[i+1]);
+            else              JGoto(build_lbl);  /* all args done → build */
+        }
+
+        /* Build the record object */
+        if (nargs == 0) JL(relays[0]);
+        JL(build_lbl);
+        J("    new %s$%s\n", classname, fname);
+        JI("dup","");
+        J("    invokespecial %s$%s/<init>()V\n", classname, fname);
+        /* putfield for each arg */
+        for (int i = 0; i < nargs && i < nf; i++) {
+            const char *fldname = record_field(fname, i);
+            if (!fldname) continue;
+            JI("dup","");
+            get_obj_field(arg_flds[i]);
+            J("    putfield %s$%s/%s Ljava/lang/Object;\n", classname, fname, fldname);
+        }
+        /* Store object reference into rec_obj_fld (as Object) */
+        put_obj_field(rec_obj_fld);
+        /* Also store into icn_retval_obj so ICN_ASSIGN can retrieve it */
+        get_obj_field(rec_obj_fld);
+        J("    putstatic %s/icn_retval_obj Ljava/lang/Object;\n", classname);
+
+        /* Result: push 0L as numeric placeholder, then γ */
+        JI("lconst_0","");
+        char done_lbl[64]; snprintf(done_lbl, sizeof done_lbl, "icn_%d_rc_done", id);
+        JGoto(ports.γ);
+
+        for (int i = 0; i <= nargs; i++) free(relays[i]);
+        for (int i = 0; i < nargs; i++) free(arg_flds[i]);
+        free(relays); free(arg_flds); free(arg_a); free(arg_b);
+        return;
+    }
+
+    /* --- built-in write --- */
+    if (strcmp(fname, "write") == 0) {
+        if (nargs == 0) {
+            JL(a);
+            JI("getstatic", "java/lang/System/out Ljava/io/PrintStream;");
+            JI("ldc", "\"\"");
+            JI("invokevirtual", "java/io/PrintStream/println(Ljava/lang/String;)V");
+            JGoto(ports.γ);
+            JL(b); JGoto(ports.ω);
+            return;
+        }
+        /* Multi-arg write: System.out.print() per arg, then println("").
+         * write() returns its last argument on γ; β → ports.ω.
+         *
+         * Stack-merge safety: emit all arg subtrees first (they reference waft
+         * labels as their γ).  Then emit a JGoto(entry) to jump OVER the relay
+         * blocks.  Each waft label then has exactly one predecessor (the goto
+         * from the arg's γ), so the verifier sees a clean single-type stack. */
+        char **ra  = malloc(nargs * sizeof(char*));
+        char **rb  = malloc(nargs * sizeof(char*));
+        char **aft = malloc(nargs * sizeof(char*));
+        for (int i = 0; i < nargs; i++) {
+            ra[i] = malloc(64); rb[i] = malloc(64); aft[i] = malloc(64);
+            snprintf(aft[i], 64, "icn_%d_waft_%d", id, i);
+        }
+        char entry[64]; snprintf(entry, sizeof entry, "icn_%d_wentry", id);
+
+        /* Emit each arg subtree; their γ fires into aft[i] */
+        for (int i = 0; i < nargs; i++) {
+            EXPR_t *arg = n->children[i+1];
+            Ports ap;
+            strncpy(ap.γ, aft[i], 63);
+            strncpy(ap.ω, ports.ω, 63);
+            emit_jvm_icon_expr(arg, ap, ra[i], rb[i]);
+        }
+
+        /* Entry/β trampolines, then jump over relay blocks */
+        JL(a); JGoto(ra[0]);
+        JL(b); JGoto(rb[0]);
+        JGoto(entry);   /* skip over relay blocks — each waft label gets single predecessor */
+
+        /* Relay blocks: one per arg */
+        for (int i = 0; i < nargs; i++) {
+            EXPR_t *arg = n->children[i+1];
+            int is_last = (i == nargs - 1);
+            JL(aft[i]);
+            if (expr_is_string(arg)) {
+                int scratch = alloc_ref_scratch();
+                J("    astore %d\n", scratch);
+                JI("getstatic", "java/lang/System/out Ljava/io/PrintStream;");
+                J("    aload %d\n", scratch);
+                JI("invokevirtual", "java/io/PrintStream/print(Ljava/lang/String;)V");
+                if (is_last) {
+                    JI("getstatic", "java/lang/System/out Ljava/io/PrintStream;");
+                    JI("ldc", "\"\"");
+                    JI("invokevirtual", "java/io/PrintStream/println(Ljava/lang/String;)V");
+                    J("    aload %d\n", scratch);
+                    JGoto(ports.γ);
+                } else {
+                    JGoto(ra[i+1]);
+                }
+            } else if (expr_is_real(arg)) {
+                int scratch = locals_alloc_tmp();
+                J("    dstore %d\n", slot_jvm(scratch));
+                JI("getstatic", "java/lang/System/out Ljava/io/PrintStream;");
+                J("    dload %d\n", slot_jvm(scratch));
+                JI("invokevirtual", "java/io/PrintStream/print(D)V");
+                if (is_last) {
+                    JI("getstatic", "java/lang/System/out Ljava/io/PrintStream;");
+                    JI("ldc", "\"\"");
+                    JI("invokevirtual", "java/io/PrintStream/println(Ljava/lang/String;)V");
+                    J("    dload %d\n", slot_jvm(scratch));
+                    JGoto(ports.γ);
+                } else {
+                    JGoto(ra[i+1]);
+                }
+            } else {
+                int scratch = locals_alloc_tmp();
+                J("    lstore %d\n", slot_jvm(scratch));
+                JI("getstatic", "java/lang/System/out Ljava/io/PrintStream;");
+                J("    lload %d\n", slot_jvm(scratch));
+                JI("invokevirtual", "java/io/PrintStream/print(J)V");
+                if (is_last) {
+                    JI("getstatic", "java/lang/System/out Ljava/io/PrintStream;");
+                    JI("ldc", "\"\"");
+                    JI("invokevirtual", "java/io/PrintStream/println(Ljava/lang/String;)V");
+                    J("    lload %d\n", slot_jvm(scratch));
+                    JGoto(ports.γ);
+                } else {
+                    JGoto(ra[i+1]);
+                }
+            }
+        }
+        JL(entry); JGoto(ra[0]);   /* real entry point — after relay blocks */
+        for (int i = 0; i < nargs; i++) { free(ra[i]); free(rb[i]); free(aft[i]); }
+        free(ra); free(rb); free(aft);
+        return;
+    }
+
+    /* --- built-in read() --- read one line from stdin; fail on EOF ---
+     * Returns a String value on γ, fails (→ ω) on EOF.
+     * Uses a static BufferedReader field icn_stdin_reader (Object slot).
+     * Lazy-initialised on first call via a static int flag icn_stdin_init.
+     * JVM: invokestatic icn_builtin_read_line()Ljava/lang/String; → null on EOF */
+    if (strcmp(fname, "read") == 0 && nargs == 0 && !is_user_proc(fname)) {
+        declare_static_obj("icn_stdin_reader");
+        declare_static_int("icn_stdin_init");
+        char init_lbl[64], call_lbl[64], null_lbl[64];
+        snprintf(init_lbl, sizeof init_lbl, "icn_%d_rd_init",  id);
+        snprintf(call_lbl, sizeof call_lbl, "icn_%d_rd_call",  id);
+        snprintf(null_lbl, sizeof null_lbl, "icn_%d_rd_null",  id);
+
+        /* α: lazily construct BufferedReader wrapping System.in */
+        JL(a);
+        get_int_field("icn_stdin_init");
+        J("    ifne %s\n", call_lbl);
+        /* First call: build reader */
+        JI("new", "java/io/BufferedReader");
+        JI("dup", "");
+        JI("new", "java/io/InputStreamReader");
+        JI("dup", "");
+        JI("getstatic", "java/lang/System/in Ljava/io/InputStream;");
+        JI("invokespecial", "java/io/InputStreamReader/<init>(Ljava/io/InputStream;)V");
+        JI("invokespecial", "java/io/BufferedReader/<init>(Ljava/io/Reader;)V");
+        /* store reader */
+        { char buf[384]; snprintf(buf,sizeof buf,"%s/icn_stdin_reader Ljava/lang/Object;",classname);
+          JI("putstatic", buf); }
+        JI("iconst_1", ""); put_int_field("icn_stdin_init");
+        JL(call_lbl);
+        /* load reader, cast, call readLine() */
+        { char buf[384]; snprintf(buf,sizeof buf,"%s/icn_stdin_reader Ljava/lang/Object;",classname);
+          JI("getstatic", buf); }
+        JI("checkcast", "java/io/BufferedReader");
+        JI("invokevirtual", "java/io/BufferedReader/readLine()Ljava/lang/String;");
+        /* null → EOF → ω */
+        JI("dup", "");
+        J("    ifnull %s\n", null_lbl);
+        JGoto(ports.γ);         /* String ref on stack */
+        JL(null_lbl);
+        JI("pop", "");          /* discard null */
+        JGoto(ports.ω);
+        JL(b); JGoto(ports.ω);
+        return;
+    }
+
+    /* --- built-in reads(n) --- read n bytes from stdin; fail on EOF ---
+     * Reads exactly n chars via BufferedReader.read(char[],0,n).
+     * Returns String on γ, fails on EOF / 0 bytes read. */
+    if (strcmp(fname, "reads") == 0 && nargs >= 1 && !is_user_proc(fname)) {
+        declare_static_obj("icn_stdin_reader");
+        declare_static_int("icn_stdin_init");
+        EXPR_t *arg = n->children[1];
+        char after[64], init_lbl[64], call_lbl[64], eof_lbl[64];
+        snprintf(after,    sizeof after,    "icn_%d_rds_after", id);
+        snprintf(init_lbl, sizeof init_lbl, "icn_%d_rds_init",  id);
+        snprintf(call_lbl, sizeof call_lbl, "icn_%d_rds_call",  id);
+        snprintf(eof_lbl,  sizeof eof_lbl,  "icn_%d_rds_eof",   id);
+        Ports ap; strncpy(ap.γ, after, 63); strncpy(ap.ω, ports.ω, 63);
+        char aa[64], ab[64]; emit_jvm_icon_expr(arg, ap, aa, ab);
+
+        JL(a); JGoto(aa);
+        JL(b); JGoto(ab);
+        JL(after);
+        /* arg (long) on stack → cast to int */
+        JI("l2i", "");
+        int n_slot = alloc_int_scratch();
+        J("    istore %d\n", n_slot);
+        /* lazy-init reader */
+        get_int_field("icn_stdin_init");
+        J("    ifne %s\n", call_lbl);
+        JI("new", "java/io/BufferedReader");
+        JI("dup", "");
+        JI("new", "java/io/InputStreamReader");
+        JI("dup", "");
+        JI("getstatic", "java/lang/System/in Ljava/io/InputStream;");
+        JI("invokespecial", "java/io/InputStreamReader/<init>(Ljava/io/InputStream;)V");
+        JI("invokespecial", "java/io/BufferedReader/<init>(Ljava/io/Reader;)V");
+        { char buf[384]; snprintf(buf,sizeof buf,"%s/icn_stdin_reader Ljava/lang/Object;",classname);
+          JI("putstatic", buf); }
+        JI("iconst_1", ""); put_int_field("icn_stdin_init");
+        JL(call_lbl);
+        /* allocate char[] of size n */
+        J("    iload %d\n", n_slot);
+        JI("newarray", "char");
+        int arr_slot = alloc_ref_scratch();
+        J("    astore %d\n", arr_slot);
+        /* load reader */
+        { char buf[384]; snprintf(buf,sizeof buf,"%s/icn_stdin_reader Ljava/lang/Object;",classname);
+          JI("getstatic", buf); }
+        JI("checkcast", "java/io/BufferedReader");
+        J("    aload %d\n", arr_slot);
+        JI("iconst_0", "");
+        J("    iload %d\n", n_slot);
+        JI("invokevirtual", "java/io/BufferedReader/read([CII)I");
+        /* result: -1 = EOF, 0 = nothing read → ω; else build String */
+        JI("dup", "");
+        J("    ifle %s\n", eof_lbl);
+        /* nread on stack */
+        int nread_slot = alloc_int_scratch();
+        J("    istore %d\n", nread_slot);
+        JI("new", "java/lang/String");
+        JI("dup", "");
+        J("    aload %d\n", arr_slot);
+        JI("iconst_0", "");
+        J("    iload %d\n", nread_slot);
+        JI("invokespecial", "java/lang/String/<init>([CII)V");
+        JGoto(ports.γ);
+        JL(eof_lbl);
+        JI("pop", "");
+        JGoto(ports.ω);
+        return;
+    }
+
+    /* --- built-in integer(x) --- convert real or string to long */
+    if (strcmp(fname, "integer") == 0 && nargs >= 1 && !is_user_proc(fname)) {
+        EXPR_t *arg = n->children[1];
+        char after[64]; snprintf(after, sizeof after, "icn_%d_int_after", id);
+        char fail_lbl[64]; snprintf(fail_lbl, sizeof fail_lbl, "icn_%d_int_fail", id);
+        Ports ap; strncpy(ap.γ, after, 63); strncpy(ap.ω, ports.ω, 63);
+        char aa[64], ab[64]; emit_jvm_icon_expr(arg, ap, aa, ab);
+        JL(a); JGoto(aa);
+        JL(b); JGoto(ab);
+        JL(after);
+        if (expr_is_real(arg)) {
+            JI("d2l", "");   /* double → long */
+        } else if (expr_is_string(arg)) {
+            /* String → icn_builtin_parse_long; sentinel → fail */
+            int scratch = alloc_ref_scratch();
+            J("    astore %d\n", scratch);
+            J("    aload %d\n",  scratch);
+            JI("invokestatic", classname_buf("icn_builtin_parse_long(Ljava/lang/String;)J"));
+            /* check sentinel Long.MIN_VALUE */
+            int tmp = locals_alloc_tmp();
+            J("    lstore %d\n", slot_jvm(tmp));
+            J("    lload %d\n",  slot_jvm(tmp));
+            JI("ldc2_w", "-9223372036854775808");
+            JI("lcmp", "");
+            J("    ifeq %s\n", fail_lbl);
+            J("    lload %d\n", slot_jvm(tmp));
+        }
+        /* else already long — no conversion needed */
+        JGoto(ports.γ);
+        JL(fail_lbl); JGoto(ports.ω);
+        return;
+    }
+
+    /* --- built-in real(x) --- convert long or string to double */
+    if (strcmp(fname, "real") == 0 && nargs >= 1 && !is_user_proc(fname)) {
+        EXPR_t *arg = n->children[1];
+        char after[64]; snprintf(after, sizeof after, "icn_%d_real_after", id);
+        Ports ap; strncpy(ap.γ, after, 63); strncpy(ap.ω, ports.ω, 63);
+        char aa[64], ab[64]; emit_jvm_icon_expr(arg, ap, aa, ab);
+        JL(a); JGoto(aa);
+        JL(b); JGoto(ab);
+        JL(after);
+        if (expr_is_string(arg)) {
+            int scratch = alloc_ref_scratch();
+            J("    astore %d\n", scratch);
+            J("    aload %d\n",  scratch);
+            JI("invokestatic", "java/lang/Double/parseDouble(Ljava/lang/String;)D");
+        } else if (!expr_is_real(arg)) {
+            JI("l2d", "");  /* long → double */
+        }
+        /* else already double — no conversion */
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* --- built-in string(x) --- convert numeric to String */
+    if (strcmp(fname, "string") == 0 && nargs >= 1 && !is_user_proc(fname)) {
+        EXPR_t *arg = n->children[1];
+        char after[64]; snprintf(after, sizeof after, "icn_%d_str_after", id);
+        Ports ap; strncpy(ap.γ, after, 63); strncpy(ap.ω, ports.ω, 63);
+        char aa[64], ab[64]; emit_jvm_icon_expr(arg, ap, aa, ab);
+        JL(a); JGoto(aa);
+        JL(b); JGoto(ab);
+        JL(after);
+        if (expr_is_string(arg)) {
+            /* already a String — no conversion */
+        } else if (expr_is_real(arg)) {
+            JI("invokestatic", "java/lang/Double/toString(D)Ljava/lang/String;");
+        } else {
+            JI("invokestatic", "java/lang/Long/toString(J)Ljava/lang/String;");
+        }
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* --- built-in any(cs) ---
+     * Only fires if 'any' is NOT a user-defined procedure in this file. */
+    if (strcmp(fname, "any") == 0 && nargs >= 1 && !is_user_proc(fname)) {
+        EXPR_t *csarg = n->children[1];
+        char after[64]; snprintf(after, sizeof after, "icn_%d_after", id);
+        char chk[64];   snprintf(chk,   sizeof chk,   "icn_%d_chk",  id);
+        Ports ap; strncpy(ap.γ, after, 63); strncpy(ap.ω, ports.ω, 63);
+        char arg_a[64], arg_b[64];
+        emit_jvm_icon_expr(csarg, ap, arg_a, arg_b);
+        JL(a); JGoto(arg_a);
+        JL(b); JGoto(arg_b);
+        JL(after);
+        JC("any: cs String on stack");
+        declare_static_str("icn_subject");
+        declare_static_int("icn_pos");
+        /* stack: cs_String */
+        get_str_field("icn_subject");
+        get_int_field("icn_pos");
+        /* invoke helper: icn_builtin_any(cs, subj, pos) → long newpos or -1 */
+        JI("invokestatic", classname_buf("icn_builtin_any(Ljava/lang/String;Ljava/lang/String;I)J"));
+        /* result: long on stack — lconst_m1 check */
+        J("    dup2\n");                         /* [res res] */
+        J("    lconst_1\n"); J("    lneg\n");    /* [res res -1L] */
+        J("    lcmp\n");                         /* [res cmp] */
+        J("    ifne %s\n", chk);                /* cmp!=0 → ok (not -1) */
+        J("    pop2\n");                         /* discard -1L result */
+        JGoto(ports.ω);
+        JL(chk);
+        JC("any ok: advance icn_pos, push newpos");
+        /* newpos is on stack as long = (icn_pos+2); update icn_pos = newpos-1 (0-based) */
+        J("    dup2\n");
+        J("    lconst_1\n"); J("    lsub\n");    /* newpos-1 = new 0-based pos */
+        J("    l2i\n");
+        put_int_field("icn_pos");             /* store updated pos */
+        /* newpos long remains on stack → ports.γ */
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* --- built-in many(cs) --- only if not user-defined */
+    if (strcmp(fname, "many") == 0 && nargs >= 1 && !is_user_proc(fname)) {
+        EXPR_t *csarg = n->children[1];
+        char after[64]; snprintf(after, sizeof after, "icn_%d_after", id);
+        char chk[64];   snprintf(chk,   sizeof chk,   "icn_%d_chk",  id);
+        Ports ap; strncpy(ap.γ, after, 63); strncpy(ap.ω, ports.ω, 63);
+        char arg_a[64], arg_b[64];
+        emit_jvm_icon_expr(csarg, ap, arg_a, arg_b);
+        JL(a); JGoto(arg_a);
+        JL(b); JGoto(arg_b);
+        JL(after);
+        JC("many: cs String on stack");
+        declare_static_str("icn_subject");
+        declare_static_int("icn_pos");
+        get_str_field("icn_subject");
+        get_int_field("icn_pos");
+        JI("invokestatic", classname_buf("icn_builtin_many(Ljava/lang/String;Ljava/lang/String;I)J"));
+        J("    dup2\n");
+        J("    lconst_1\n"); J("    lneg\n");
+        J("    lcmp\n");
+        J("    ifne %s\n", chk);
+        J("    pop2\n");
+        JGoto(ports.ω);
+        JL(chk);
+        JC("many ok: advance icn_pos");
+        J("    dup2\n");
+        J("    lconst_1\n"); J("    lsub\n");
+        J("    l2i\n");
+        put_int_field("icn_pos");
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* --- built-in upto(cs) --- only if not user-defined */
+    if (strcmp(fname, "upto") == 0 && nargs >= 1 && !is_user_proc(fname)) {
+        EXPR_t *csarg = n->children[1];
+        char after[64]; snprintf(after, sizeof after, "icn_%d_after", id);
+        char step[64];  snprintf(step,  sizeof step,  "icn_%d_step",  id);
+        char chk[64];   snprintf(chk,   sizeof chk,   "icn_%d_chk",  id);
+        /* Allocate a static String field to hold the cset across resume */
+        char cs_fld[64]; snprintf(cs_fld, sizeof cs_fld, "icn_upto_cs_%d", id);
+        declare_static_str(cs_fld);
+        Ports ap; strncpy(ap.γ, after, 63); strncpy(ap.ω, ports.ω, 63);
+        char arg_a[64], arg_b[64];
+        emit_jvm_icon_expr(csarg, ap, arg_a, arg_b);
+        /* α: evaluate cs, store, then enter step */
+        JL(a); JGoto(arg_a);
+        JL(after);
+        JC("upto α: save cs, enter step");
+        put_str_field(cs_fld);         /* consume cs String from stack */
+        JGoto(step);
+        /* β: cs already saved, re-enter step (pos already advanced) */
+        JL(b); JGoto(step);
+        /* step: scan forward until char in cs or end */
+        JL(step);
+        JC("upto step");
+        declare_static_str("icn_subject");
+        declare_static_int("icn_pos");
+        get_str_field(cs_fld);
+        get_str_field("icn_subject");
+        get_int_field("icn_pos");
+        JI("invokestatic", classname_buf("icn_builtin_upto_step(Ljava/lang/String;Ljava/lang/String;I)J"));
+        J("    dup2\n");
+        J("    lconst_1\n"); J("    lneg\n");
+        J("    lcmp\n");
+        J("    ifne %s\n", chk);
+        J("    pop2\n");
+        JGoto(ports.ω);
+        JL(chk);
+        JC("upto: yield 1-based pos (tab advances icn_pos)");
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* --- built-in find(s1, s2) --- generator: every occurrence of s1 in s2
+     * α: eval s1, eval s2, store both, reset pos=0, goto check
+     * β: advance pos (pos was 1-based result; next search starts at pos), goto check
+     * check: icn_builtin_find(s1,s2,pos) → -1L → ω; else store pos=result, push result → γ */
+    if (strcmp(fname, "find") == 0 && nargs >= 2 && !is_user_proc(fname)) {
+        EXPR_t *s1arg = n->children[1];
+        EXPR_t *s2arg = n->children[2];
+        char after1[64], after2[64], chk[64], ok[64];
+        snprintf(after1, sizeof after1, "icn_%d_fa1",  id);
+        snprintf(after2, sizeof after2, "icn_%d_fa2",  id);
+        snprintf(chk,    sizeof chk,    "icn_%d_fchk", id);
+        snprintf(ok,     sizeof ok,     "icn_%d_fok",  id);
+        char s1f[64], s2f[64], pf[64];
+        snprintf(s1f, sizeof s1f, "icn_find_s1_%d",  id);
+        snprintf(s2f, sizeof s2f, "icn_find_s2_%d",  id);
+        snprintf(pf,  sizeof pf,  "icn_find_pos_%d", id);
+        declare_static_str(s1f);
+        declare_static_str(s2f);
+        declare_static_int(pf);
+        Ports ap1; strncpy(ap1.γ, after1, 63); strncpy(ap1.ω, ports.ω, 63);
+        char a1[64], b1[64];
+        emit_jvm_icon_expr(s1arg, ap1, a1, b1);
+        Ports ap2; strncpy(ap2.γ, after2, 63); strncpy(ap2.ω, ports.ω, 63);
+        char a2[64], b2[64];
+        emit_jvm_icon_expr(s2arg, ap2, a2, b2);
+        /* α */
+        JL(a); JGoto(a1);
+        JL(after1); put_str_field(s1f); JGoto(a2);
+        JL(after2); put_str_field(s2f);
+        J("    iconst_0\n"); put_int_field(pf);
+        JGoto(chk);
+        /* β: last result was 1-based idx; next search from that same 0-based pos (idx itself) */
+        JL(b);
+        get_int_field(pf);            /* pf holds 1-based last result */
+        put_int_field(pf);            /* no change — s2.indexOf scans from pf (0-based=pf-1+1=pf) */
+        JGoto(chk);
+        /* check */
+        JL(chk);
+        get_str_field(s1f);
+        get_str_field(s2f);
+        get_int_field(pf);
+        JI("invokestatic", classname_buf("icn_builtin_find(Ljava/lang/String;Ljava/lang/String;I)J"));
+        J("    dup2\n    lconst_1\n    lneg\n    lcmp\n    ifne %s\n", ok);
+        J("    pop2\n"); JGoto(ports.ω);
+        JL(ok);
+        JC("find ok: store result as new pos, push result → γ");
+        J("    dup2\n    l2i\n"); put_int_field(pf);
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* --- built-in match(s) — one-shot: match s at current icn_pos
+     * Calls icn_builtin_match(s, subject, pos) → new 1-based pos or -1L.
+     * On success: advance icn_pos = result-1 (0-based), push result → γ. */
+    if (strcmp(fname, "match") == 0 && nargs >= 1 && !is_user_proc(fname)) {
+        EXPR_t *sarg = n->children[1];
+        char after[64], ok[64];
+        snprintf(after, sizeof after, "icn_%d_ma", id);
+        snprintf(ok,    sizeof ok,    "icn_%d_mo", id);
+        Ports ap; strncpy(ap.γ, after, 63); strncpy(ap.ω, ports.ω, 63);
+        char arg_a[64], arg_b[64];
+        emit_jvm_icon_expr(sarg, ap, arg_a, arg_b);
+        JL(a); JGoto(arg_a);
+        JL(b); JGoto(ports.ω);
+        JL(after);
+        JC("match: s String on stack");
+        declare_static_str("icn_subject");
+        declare_static_int("icn_pos");
+        get_str_field("icn_subject");
+        get_int_field("icn_pos");
+        JI("invokestatic", classname_buf("icn_builtin_match(Ljava/lang/String;Ljava/lang/String;I)J"));
+        J("    dup2\n    lconst_1\n    lneg\n    lcmp\n    ifne %s\n", ok);
+        J("    pop2\n"); JGoto(ports.ω);
+        JL(ok);
+        JC("match ok: icn_pos = result-1 (0-based), push result → γ");
+        J("    dup2\n    l2i\n    iconst_1\n    isub\n");
+        put_int_field("icn_pos");
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* --- built-in tab(n) — one-shot: substring from icn_pos to n-1 (0-based), returns String
+     * Calls icn_builtin_tab_str(n_int, subj, pos) → String or null on failure.
+     * On success: icn_pos = n-1, push String → γ. */
+    if (strcmp(fname, "tab") == 0 && nargs >= 1 && !is_user_proc(fname)) {
+        EXPR_t *narg = n->children[1];
+        char after[64], ok[64];
+        snprintf(after, sizeof after, "icn_%d_ta", id);
+        snprintf(ok,    sizeof ok,    "icn_%d_to", id);
+        Ports ap; strncpy(ap.γ, after, 63); strncpy(ap.ω, ports.ω, 63);
+        char arg_a[64], arg_b[64];
+        emit_jvm_icon_expr(narg, ap, arg_a, arg_b);
+        JL(a); JGoto(arg_a);
+        JL(b); JGoto(ports.ω);
+        JL(after);
+        JC("tab: n (long) on stack");
+        J("    l2i\n");   /* convert long n to int */
+        declare_static_str("icn_subject");
+        declare_static_int("icn_pos");
+        get_str_field("icn_subject");
+        get_int_field("icn_pos");
+        JI("invokestatic", classname_buf("icn_builtin_tab_str(ILjava/lang/String;I)Ljava/lang/String;"));
+        J("    dup\n    ifnonnull %s\n", ok);
+        J("    pop\n"); JGoto(ports.ω);
+        JL(ok);
+        JC("tab ok: advance icn_pos = n-1, push String → γ");
+        /* Helper already updated icn_pos — just push String */
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* --- built-in move(n) — one-shot: substring of length n from icn_pos, returns String
+     * Calls icn_builtin_move_str(n_int, subj, pos) → String or null on failure.
+     * On success: icn_pos = pos+n, push String → γ. */
+    if (strcmp(fname, "move") == 0 && nargs >= 1 && !is_user_proc(fname)) {
+        EXPR_t *narg = n->children[1];
+        char after[64], ok[64];
+        snprintf(after, sizeof after, "icn_%d_mva", id);
+        snprintf(ok,    sizeof ok,    "icn_%d_mvo", id);
+        Ports ap; strncpy(ap.γ, after, 63); strncpy(ap.ω, ports.ω, 63);
+        char arg_a[64], arg_b[64];
+        emit_jvm_icon_expr(narg, ap, arg_a, arg_b);
+        JL(a); JGoto(arg_a);
+        JL(b); JGoto(ports.ω);
+        JL(after);
+        JC("move: n (long) on stack");
+        J("    l2i\n");   /* convert long n to int */
+        declare_static_str("icn_subject");
+        declare_static_int("icn_pos");
+        get_str_field("icn_subject");
+        get_int_field("icn_pos");
+        JI("invokestatic", classname_buf("icn_builtin_move_str(ILjava/lang/String;I)Ljava/lang/String;"));
+        J("    dup\n    ifnonnull %s\n", ok);
+        J("    pop\n"); JGoto(ports.ω);
+        JL(ok);
+        JC("move ok: icn_pos advanced by helper, push String → γ");
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* === LIST BUILTINS ===
+     * push(L, v) — prepend v to front of list (index 0); returns L
+     * put(L, v)  — append v to back of list; returns L
+     * get(L)/pop(L) — remove+return first element; fail if empty
+     * pull(L)    — remove+return last element; fail if empty
+     * list(n, x) — create list of n copies of x
+     * All guarded: !is_user_proc(fname)
+     */
+
+    /* Helper: determine element unbox opcode from the list variable's elem type.
+     * We use a simple heuristic: if v arg is string → checkcast String (no unbox);
+     * if real → checkcast Double + doubleValue()D + d2l for long return;
+     * else → checkcast Long + longValue()J. */
+#define LIST_UNBOX_LONG(label_ok) \
+    do { \
+        J("    dup\n    ifnonnull %s\n", label_ok); \
+        J("    pop\n"); JGoto(ports.ω); \
+        JL(label_ok); \
+        JI("checkcast", "java/lang/Long"); \
+        JI("invokevirtual", "java/lang/Long/longValue()J"); \
+    } while(0)
+
+    if ((strcmp(fname, "push") == 0 || strcmp(fname, "put") == 0)
+            && nargs >= 2 && !is_user_proc(fname)) {
+        /* push(L, v): add v to front (index 0) of L; put(L,v): add to back */
+        int is_push = (strcmp(fname, "push") == 0);
+        EXPR_t *larg = n->children[1];   /* list */
+        EXPR_t *varg = n->children[2];   /* value */
+        char lrelay[64], vrelay[64];
+        snprintf(lrelay, sizeof lrelay, "icn_%d_lr", id);
+        snprintf(vrelay, sizeof vrelay, "icn_%d_vr", id);
+        /* elem temp field */
+        char elem_fld[80]; snprintf(elem_fld, sizeof elem_fld, "icn_%d_pushval", id);
+        declare_static_obj(elem_fld);
+        /* list temp field */
+        char list_fld[80]; snprintf(list_fld, sizeof list_fld, "icn_%d_pushlist", id);
+        declare_static_list(list_fld);
+
+        int is_str_v = expr_is_string(varg);
+        int is_dbl_v = !is_str_v && expr_is_real(varg);
+
+        Ports lp; strncpy(lp.γ, lrelay, 63); strncpy(lp.ω, ports.ω, 63);
+        char la[64], lb[64]; emit_jvm_icon_expr(larg, lp, la, lb);
+        Ports vp; strncpy(vp.γ, vrelay, 63); strncpy(vp.ω, ports.ω, 63);
+        char va[64], vb[64]; emit_jvm_icon_expr(varg, vp, va, vb);
+
+        JL(a); JGoto(la);
+        JL(b); JGoto(ports.ω);
+
+        /* lrelay: ArrayList ref on stack → store, eval v */
+        JL(lrelay);
+        put_list_field(list_fld);
+        JGoto(va);
+
+        /* vrelay: value on stack → box → store elem → call add */
+        JL(vrelay);
+        if (is_str_v) {
+            /* String — already Object */
+        } else if (is_dbl_v) {
+            JI("invokestatic", "java/lang/Double/valueOf(D)Ljava/lang/Double;");
+        } else {
+            JI("invokestatic", "java/lang/Long/valueOf(J)Ljava/lang/Long;");
+        }
+        put_obj_field(elem_fld);
+        get_list_field(list_fld);
+        if (is_push) {
+            JI("iconst_0", "");
+            get_obj_field(elem_fld);
+            JI("invokevirtual", "java/util/ArrayList/add(ILjava/lang/Object;)V");
+        } else {
+            get_obj_field(elem_fld);
+            JI("invokevirtual", "java/util/ArrayList/add(Ljava/lang/Object;)Z");
+            JI("pop", "");
+        }
+        /* return L (the list) */
+        get_list_field(list_fld);
+        JGoto(ports.γ);
+        return;
+    }
+
+    if ((strcmp(fname, "get") == 0 || strcmp(fname, "pop") == 0)
+            && nargs >= 1 && !is_user_proc(fname)) {
+        /* get(L)/pop(L): remove+return first element; fail if empty */
+        EXPR_t *larg = n->children[1];
+        char lrelay[64]; snprintf(lrelay, sizeof lrelay, "icn_%d_lr", id);
+        char list_fld[80]; snprintf(list_fld, sizeof list_fld, "icn_%d_glist", id);
+        char ok[64]; snprintf(ok, sizeof ok, "icn_%d_gok", id);
+        declare_static_list(list_fld);
+        Ports lp; strncpy(lp.γ, lrelay, 63); strncpy(lp.ω, ports.ω, 63);
+        char la[64], lb[64]; emit_jvm_icon_expr(larg, lp, la, lb);
+        JL(a); JGoto(la);
+        JL(b); JGoto(ports.ω);
+        JL(lrelay);
+        put_list_field(list_fld);
+        /* size check */
+        get_list_field(list_fld);
+        JI("invokevirtual", "java/util/ArrayList/size()I");
+        J("    ifeq %s\n", ports.ω);   /* empty → fail */
+        /* remove(0) → Object */
+        get_list_field(list_fld);
+        JI("iconst_0", "");
+        JI("invokevirtual", "java/util/ArrayList/remove(I)Ljava/lang/Object;");
+        /* unbox as long */
+        LIST_UNBOX_LONG(ok);
+        JGoto(ports.γ);
+        return;
+    }
+
+    if (strcmp(fname, "pull") == 0 && nargs >= 1 && !is_user_proc(fname)) {
+        /* pull(L): remove+return last element; fail if empty */
+        EXPR_t *larg = n->children[1];
+        char lrelay[64]; snprintf(lrelay, sizeof lrelay, "icn_%d_lr", id);
+        char list_fld[80]; snprintf(list_fld, sizeof list_fld, "icn_%d_plist", id);
+        char sz_tmp[80]; snprintf(sz_tmp, sizeof sz_tmp, "icn_%d_psz", id);
+        char ok[64]; snprintf(ok, sizeof ok, "icn_%d_pok", id);
+        declare_static_list(list_fld);
+        declare_static_int(sz_tmp);
+        Ports lp; strncpy(lp.γ, lrelay, 63); strncpy(lp.ω, ports.ω, 63);
+        char la[64], lb[64]; emit_jvm_icon_expr(larg, lp, la, lb);
+        JL(a); JGoto(la);
+        JL(b); JGoto(ports.ω);
+        JL(lrelay);
+        put_list_field(list_fld);
+        /* size check — use a pop-then-fail trampoline so stack is clean at ports.ω */
+        char pull_fail[64]; snprintf(pull_fail, sizeof pull_fail, "icn_%d_pfail", id);
+        get_list_field(list_fld);
+        JI("invokevirtual", "java/util/ArrayList/size()I");
+        J("    dup\n    ifeq %s\n", pull_fail); /* empty → pop + fail */
+        /* sz is on stack; compute sz-1 */
+        JI("iconst_1", "");
+        JI("isub", "");
+        put_int_field(sz_tmp);
+        /* remove(sz-1) → Object */
+        get_list_field(list_fld);
+        get_int_field(sz_tmp);
+        JI("invokevirtual", "java/util/ArrayList/remove(I)Ljava/lang/Object;");
+        /* unbox as long */
+        LIST_UNBOX_LONG(ok);
+        JGoto(ports.γ);
+        /* pull_fail: pop the dup'd size int, then fail */
+        JL(pull_fail); JI("pop", ""); JGoto(ports.ω);
+        return;
+    }
+
+    if (strcmp(fname, "list") == 0 && nargs >= 2 && !is_user_proc(fname)) {
+        /* list(n, x): create ArrayList of n copies of x */
+        EXPR_t *narg = n->children[1];
+        EXPR_t *xarg = n->children[2];
+        char nrelay[64], xrelay[64];
+        snprintf(nrelay, sizeof nrelay, "icn_%d_nlr", id);
+        snprintf(xrelay, sizeof xrelay, "icn_%d_xlr", id);
+        char n_fld[80];    snprintf(n_fld,    sizeof n_fld,    "icn_%d_ln", id);
+        char x_fld[80];    snprintf(x_fld,    sizeof x_fld,    "icn_%d_lx", id);
+        char list_fld[80]; snprintf(list_fld, sizeof list_fld, "icn_%d_ll", id);
+        char cnt_fld[80];  snprintf(cnt_fld,  sizeof cnt_fld,  "icn_%d_lc", id);
+        char loop[64];     snprintf(loop,     sizeof loop,     "icn_%d_llp", id);
+        char done[64];     snprintf(done,     sizeof done,     "icn_%d_lld", id);
+        declare_static(n_fld);       /* long: count */
+        declare_static_obj(x_fld);  /* Object: boxed value */
+        declare_static_list(list_fld);
+        declare_static_int(cnt_fld);
+
+        int is_str_x = expr_is_string(xarg);
+        int is_dbl_x = !is_str_x && expr_is_real(xarg);
+
+        Ports np2; strncpy(np2.γ, nrelay, 63); strncpy(np2.ω, ports.ω, 63);
+        char na[64], nb[64]; emit_jvm_icon_expr(narg, np2, na, nb);
+        Ports xp; strncpy(xp.γ, xrelay, 63); strncpy(xp.ω, ports.ω, 63);
+        char xa[64], xb[64]; emit_jvm_icon_expr(xarg, xp, xa, xb);
+
+        JL(a); JGoto(na);
+        JL(b); JGoto(ports.ω);
+
+        /* nrelay: n (long) on stack */
+        JL(nrelay);
+        put_long(n_fld);
+        JGoto(xa);
+
+        /* xrelay: x value on stack → box → store */
+        JL(xrelay);
+        if (is_str_x) {
+            /* String — no boxing */
+        } else if (is_dbl_x) {
+            JI("invokestatic", "java/lang/Double/valueOf(D)Ljava/lang/Double;");
+        } else {
+            JI("invokestatic", "java/lang/Long/valueOf(J)Ljava/lang/Long;");
+        }
+        put_obj_field(x_fld);
+        /* Build new ArrayList */
+        JI("new", "java/util/ArrayList");
+        JI("dup", "");
+        JI("invokespecial", "java/util/ArrayList/<init>()V");
+        put_list_field(list_fld);
+        /* n as int → counter */
+        get_long(n_fld);
+        JI("l2i", "");
+        put_int_field(cnt_fld);
+        /* loop: while cnt > 0: add x; cnt-- */
+        JL(loop);
+        get_int_field(cnt_fld);
+        J("    ifeq %s\n", done);
+        get_list_field(list_fld);
+        get_obj_field(x_fld);
+        JI("invokevirtual", "java/util/ArrayList/add(Ljava/lang/Object;)Z");
+        JI("pop", "");
+        get_int_field(cnt_fld);
+        JI("iconst_1", ""); JI("isub", "");
+        put_int_field(cnt_fld);
+        JGoto(loop);
+        JL(done);
+        get_list_field(list_fld);
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* === END LIST BUILTINS === */
+
+    /* === TABLE BUILTINS ===
+     * table(dflt)      — create new HashMap with default value dflt
+     * insert(T,k,v)    — T.put(k,v); returns T
+     * delete(T,k)      — T.remove(k); returns T
+     * member(T,k)      — succeeds (returning k) if k in T, else fails
+     * key(T)           — generator: yields each key in T
+     *
+     * Key representation: all keys stored as String (ldc / Long.toString).
+     * Default value stored in a parallel per-table Object static _dflt field.
+     * Table subscript t[k] handled in emit_jvm_icon_subscript (extended below).
+     */
+
+    if (strcmp(fname, "table") == 0 && nargs >= 1 && !is_user_proc(fname)) {
+        /* table(dflt): create new HashMap; store default in _dflt static */
+        EXPR_t *darg = n->children[1];
+        char drelay[64]; snprintf(drelay, sizeof drelay, "icn_%d_tdr", id);
+        char tbl_fld[80];  snprintf(tbl_fld,  sizeof tbl_fld,  "icn_%d_tbl",  id);
+        char dflt_fld[80]; snprintf(dflt_fld, sizeof dflt_fld, "icn_%d_tdflt", id);
+        declare_static_table(tbl_fld);
+        declare_static_obj(dflt_fld);
+
+        Ports dp; strncpy(dp.γ, drelay, 63); strncpy(dp.ω, ports.ω, 63);
+        char da[64], db[64]; emit_jvm_icon_expr(darg, dp, da, db);
+
+        JL(a); JGoto(da);
+        JL(b); JGoto(ports.ω);
+
+        /* drelay: default value on stack → box → store as Object default */
+        JL(drelay);
+        if (expr_is_string(darg)) {
+            /* String default: already a reference, store as-is */
+            put_obj_field(dflt_fld);
+        } else {
+            /* Long default: box it */
+            JI("invokestatic", "java/lang/Long/valueOf(J)Ljava/lang/Long;");
+            put_obj_field(dflt_fld);
+        }
+        /* create new HashMap */
+        JI("new", "java/util/HashMap");
+        JI("dup", "");
+        JI("invokespecial", "java/util/HashMap/<init>()V");
+        put_table_field(tbl_fld);
+        /* Record pending dflt so emit_jvm_icon_assign can register var→dflt map */
+        strncpy(pending_tdflt, dflt_fld, 79);
+        pending_tdflt_is_str = expr_is_string(darg);
+        get_table_field(tbl_fld);
+        JGoto(ports.γ);
+        return;
+    }
+
+    if (strcmp(fname, "insert") == 0 && nargs >= 3 && !is_user_proc(fname)) {
+        EXPR_t *targ = n->children[1];
+        EXPR_t *karg = n->children[2];
+        EXPR_t *varg = n->children[3];
+        char trelay[64], krelay[64], vrelay[64];
+        snprintf(trelay, sizeof trelay, "icn_%d_itr2", id);
+        snprintf(krelay, sizeof krelay, "icn_%d_ikr2", id);
+        snprintf(vrelay, sizeof vrelay, "icn_%d_ivr2", id);
+        char t_fld[80]; snprintf(t_fld, sizeof t_fld, "icn_%d_itbl2", id);
+        char k_fld[80]; snprintf(k_fld, sizeof k_fld, "icn_%d_ikey2", id);
+        char v_fld[80]; snprintf(v_fld, sizeof v_fld, "icn_%d_ival2", id);
+        declare_static_table(t_fld);
+        declare_static_str(k_fld);
+        declare_static_obj(v_fld);
+
+        Ports tp2; strncpy(tp2.γ, trelay, 63); strncpy(tp2.ω, ports.ω, 63);
+        char ta2[64], tb2[64]; emit_jvm_icon_expr(targ, tp2, ta2, tb2);
+        Ports kp2; strncpy(kp2.γ, krelay, 63); strncpy(kp2.ω, ports.ω, 63);
+        char ka2[64], kb2[64]; emit_jvm_icon_expr(karg, kp2, ka2, kb2);
+        Ports vp3; strncpy(vp3.γ, vrelay, 63); strncpy(vp3.ω, ports.ω, 63);
+        char va3[64], vb3[64]; emit_jvm_icon_expr(varg, vp3, va3, vb3);
+
+        JL(a); JGoto(ta2);
+        JL(b); JGoto(ports.ω);
+        JL(trelay); put_table_field(t_fld); JGoto(ka2);
+        JL(krelay);
+        JI("invokestatic", "java/lang/Long/toString(J)Ljava/lang/String;");
+        put_str_field(k_fld);
+        JGoto(va3);
+        JL(vrelay);
+        JI("invokestatic", "java/lang/Long/valueOf(J)Ljava/lang/Long;");
+        put_obj_field(v_fld);
+        get_table_field(t_fld);
+        get_str_field(k_fld);
+        get_obj_field(v_fld);
+        JI("invokevirtual", "java/util/HashMap/put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
+        JI("pop", "");
+        get_table_field(t_fld);
+        JGoto(ports.γ);
+        return;
+    }
+
+    if (strcmp(fname, "delete") == 0 && nargs >= 2 && !is_user_proc(fname)) {
+        /* delete(T, k): T.remove(key_str); return T */
+        EXPR_t *targ = n->children[1];
+        EXPR_t *karg = n->children[2];
+        char trelay[64], krelay[64];
+        snprintf(trelay, sizeof trelay, "icn_%d_dtr", id);
+        snprintf(krelay, sizeof krelay, "icn_%d_dkr", id);
+        char t_fld[80]; snprintf(t_fld, sizeof t_fld, "icn_%d_dtbl", id);
+        char k_fld[80]; snprintf(k_fld, sizeof k_fld, "icn_%d_dkey", id);
+        declare_static_table(t_fld);
+        declare_static_str(k_fld);
+
+        Ports tp3; strncpy(tp3.γ, trelay, 63); strncpy(tp3.ω, ports.ω, 63);
+        char ta3[64], tb3[64]; emit_jvm_icon_expr(targ, tp3, ta3, tb3);
+        Ports kp3; strncpy(kp3.γ, krelay, 63); strncpy(kp3.ω, ports.ω, 63);
+        char ka3[64], kb3[64]; emit_jvm_icon_expr(karg, kp3, ka3, kb3);
+
+        JL(a); JGoto(ta3);
+        JL(b); JGoto(ports.ω);
+        JL(trelay); put_table_field(t_fld); JGoto(ka3);
+        JL(krelay);
+        JI("invokestatic", "java/lang/Long/toString(J)Ljava/lang/String;");
+        put_str_field(k_fld);
+        get_table_field(t_fld);
+        get_str_field(k_fld);
+        JI("invokevirtual", "java/util/HashMap/remove(Ljava/lang/Object;)Ljava/lang/Object;");
+        JI("pop", "");
+        get_table_field(t_fld);
+        JGoto(ports.γ);
+        return;
+    }
+
+    if (strcmp(fname, "member") == 0 && nargs >= 2 && !is_user_proc(fname)) {
+        /* member(T, k): succeed returning k (long) if k is a key; else fail */
+        EXPR_t *targ = n->children[1];
+        EXPR_t *karg = n->children[2];
+        char trelay[64], krelay[64];
+        snprintf(trelay, sizeof trelay, "icn_%d_mtr", id);
+        snprintf(krelay, sizeof krelay, "icn_%d_mkr", id);
+        char t_fld[80]; snprintf(t_fld, sizeof t_fld, "icn_%d_mtbl", id);
+        char k_fld[80]; snprintf(k_fld, sizeof k_fld, "icn_%d_mkey", id);
+        char kv_fld[80]; snprintf(kv_fld, sizeof kv_fld, "icn_%d_mkeyv", id);
+        declare_static_table(t_fld);
+        declare_static_str(k_fld);
+        declare_static(kv_fld);  /* long: the key value */
+
+        Ports tp4; strncpy(tp4.γ, trelay, 63); strncpy(tp4.ω, ports.ω, 63);
+        char ta4[64], tb4[64]; emit_jvm_icon_expr(targ, tp4, ta4, tb4);
+        Ports kp4; strncpy(kp4.γ, krelay, 63); strncpy(kp4.ω, ports.ω, 63);
+        char ka4[64], kb4[64]; emit_jvm_icon_expr(karg, kp4, ka4, kb4);
+
+        JL(a); JGoto(ta4);
+        JL(b); JGoto(ports.ω);
+        JL(trelay); put_table_field(t_fld); JGoto(ka4);
+        JL(krelay);
+        JI("dup2", "");            /* dup long key value for later return */
+        put_long(kv_fld);      /* save key as long */
+        JI("invokestatic", "java/lang/Long/toString(J)Ljava/lang/String;");
+        put_str_field(k_fld);
+        get_table_field(t_fld);
+        get_str_field(k_fld);
+        JI("invokevirtual", "java/util/HashMap/containsKey(Ljava/lang/Object;)Z");
+        J("    ifeq %s\n", ports.ω);   /* false → fail */
+        get_long(kv_fld);            /* success: return the key as long */
+        JGoto(ports.γ);
+        return;
+    }
+
+    if (strcmp(fname, "key") == 0 && nargs >= 1 && !is_user_proc(fname)) {
+        /* key(T): generator — yields each key (as long) from T.
+         * Strategy: snapshot keySet().toArray() into Object[] static at start;
+         * use int index static to iterate. One-shot keys (no deletion during iteration).
+         */
+        EXPR_t *targ = n->children[1];
+        char trelay[64]; snprintf(trelay, sizeof trelay, "icn_%d_ktr", id);
+        char t_fld[80];   snprintf(t_fld,   sizeof t_fld,   "icn_%d_ktbl",  id);
+        char arr_fld[80]; snprintf(arr_fld,  sizeof arr_fld, "icn_%d_karr",  id);
+        char idx_fld[80];  snprintf(idx_fld,   sizeof idx_fld,  "icn_%d_kidx",  id);
+        char kinit_fld[80];snprintf(kinit_fld, sizeof kinit_fld,"icn_%d_kinit", id);
+        char check[64];    snprintf(check,     sizeof check,    "icn_%d_kchk",  id);
+        declare_static_table(t_fld);
+        declare_static_arr(arr_fld);   /* Object[] stored as Object ref */
+        declare_static_int(idx_fld);
+        declare_static_int(kinit_fld); /* 0=fresh, 1=already init'd */
+
+        Ports tp5; strncpy(tp5.γ, trelay, 63); strncpy(tp5.ω, ports.ω, 63);
+        char ta5[64], tb5[64]; emit_jvm_icon_expr(targ, tp5, ta5, tb5);
+
+        /* α: if already initialized, skip re-snapshot and jump straight to kchk */
+        JL(a);
+        get_int_field(kinit_fld);
+        JI("ifne", check);           /* kinit != 0 → already init'd, skip to check */
+        JGoto(ta5);
+        /* ktr: eval T result arrives here; snapshot keys and mark init'd */
+        JL(trelay);
+        put_table_field(t_fld);
+        /* T.keySet().toArray() → Object[] */
+        get_table_field(t_fld);
+        JI("invokevirtual", "java/util/HashMap/keySet()Ljava/util/Set;");
+        JI("invokeinterface", "java/util/Set/toArray()[Ljava/lang/Object; 1");
+        put_arr_field(arr_fld);
+        /* idx = 0 */
+        JI("iconst_0", "");
+        put_int_field(idx_fld);
+        /* mark initialized */
+        JI("iconst_1", "");
+        put_int_field(kinit_fld);
+        JGoto(check);
+
+        /* β: increment index, fall into check */
+        JL(b);
+        get_int_field(idx_fld);
+        JI("iconst_1", ""); JI("iadd", "");
+        put_int_field(idx_fld);
+
+        /* check: if idx >= arr.length → fail; else load arr[idx], parse long, → γ */
+        JL(check);
+        get_arr_field(arr_fld);
+        JI("checkcast", "[Ljava/lang/Object;");
+        JI("arraylength", "");
+        get_int_field(idx_fld);
+        JI("if_icmple", ports.ω);         /* arr.length <= idx → fail */
+        /* load arr[idx] as String key */
+        get_arr_field(arr_fld);
+        JI("checkcast", "[Ljava/lang/Object;");
+        get_int_field(idx_fld);
+        JI("aaload", "");
+        JI("checkcast", "java/lang/String");
+        JI("invokestatic", "java/lang/Long/parseLong(Ljava/lang/String;)J");
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* === END TABLE BUILTINS === */
+
+    /* === M-IJ-BUILTINS-STR === */
+
+    /* --- repl(s, n) --- repeat string s n times */
+    if (strcmp(fname, "repl") == 0 && nargs >= 2 && !is_user_proc(fname)) {
+        EXPR_t *sarg = n->children[1];
+        EXPR_t *narg = (nargs >= 2) ? n->children[2] : NULL;
+        char mid[64]; snprintf(mid, sizeof mid, "icn_%d_repl_mid", id);
+        char after[64]; snprintf(after, sizeof after, "icn_%d_repl_after", id);
+        Ports ap; strncpy(ap.γ, mid, 63); strncpy(ap.ω, ports.ω, 63);
+        char sa[64], sb[64]; emit_jvm_icon_expr(sarg, ap, sa, sb);
+        Ports bp; strncpy(bp.γ, after, 63); strncpy(bp.ω, ports.ω, 63);
+        char na[64], nb[64]; emit_jvm_icon_expr(narg, bp, na, nb);
+        JL(a); JGoto(sa);
+        JL(b); JGoto(sb);
+        JL(mid);
+        /* stack: String s */
+        int scratch_s = alloc_ref_scratch();
+        J("    astore %d\n", scratch_s);
+        JGoto(na);
+        JL(after);
+        /* stack: long n — convert to int */
+        JI("l2i", "");
+        int scratch_n = alloc_int_scratch();
+        J("    istore %d\n", scratch_n);
+        /* StringBuilder sb = new StringBuilder() */
+        JI("new", "java/lang/StringBuilder");
+        JI("dup", "");
+        JI("invokespecial", "java/lang/StringBuilder/<init>()V");
+        int scratch_sb = alloc_ref_scratch();
+        J("    astore %d\n", scratch_sb);
+        /* loop i=0; i<n; i++ */
+        char loop[64], done[64];
+        snprintf(loop, sizeof loop, "icn_%d_repl_loop", id);
+        snprintf(done, sizeof done, "icn_%d_repl_done", id);
+        int scratch_i = locals_alloc_tmp();
+        J("    iconst_0\n");
+        J("    istore %d\n", slot_jvm(scratch_i));
+        JL(loop);
+        J("    iload %d\n", slot_jvm(scratch_i));
+        J("    iload %d\n", scratch_n);
+        J("    if_icmpge %s\n", done);
+        J("    aload %d\n", scratch_sb);
+        J("    aload %d\n", scratch_s);
+        JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
+        JI("pop", "");
+        J("    iinc %d 1\n", slot_jvm(scratch_i));
+        JGoto(loop);
+        JL(done);
+        J("    aload %d\n", scratch_sb);
+        JI("invokevirtual", "java/lang/StringBuilder/toString()Ljava/lang/String;");
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* --- reverse(s) --- */
+    if (strcmp(fname, "reverse") == 0 && nargs >= 1 && !is_user_proc(fname)) {
+        EXPR_t *sarg = n->children[1];
+        char after[64]; snprintf(after, sizeof after, "icn_%d_rev_after", id);
+        Ports ap; strncpy(ap.γ, after, 63); strncpy(ap.ω, ports.ω, 63);
+        char sa[64], sb[64]; emit_jvm_icon_expr(sarg, ap, sa, sb);
+        JL(a); JGoto(sa);
+        JL(b); JGoto(sb);
+        JL(after);
+        /* stack: String — wrap in StringBuilder, reverse, toString */
+        JI("new", "java/lang/StringBuilder");
+        JI("dup_x1", "");
+        JI("swap", "");
+        JI("invokespecial", "java/lang/StringBuilder/<init>(Ljava/lang/String;)V");
+        JI("invokevirtual", "java/lang/StringBuilder/reverse()Ljava/lang/StringBuilder;");
+        JI("invokevirtual", "java/lang/StringBuilder/toString()Ljava/lang/String;");
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* --- left(s, n [, pad]) --- pad/truncate to width n, left-aligned */
+    if (strcmp(fname, "left") == 0 && nargs >= 1 && !is_user_proc(fname)) {
+        EXPR_t *sarg = n->children[1];
+        EXPR_t *narg = (nargs >= 2) ? n->children[2] : NULL;
+        /* pad arg optional — use space if absent */
+        char mid[64]; snprintf(mid, sizeof mid, "icn_%d_left_mid", id);
+        char after[64]; snprintf(after, sizeof after, "icn_%d_left_after", id);
+        /* Use a static String field for scratch_s — long-pair locals can't hold refs */
+        char sfld_left[64]; snprintf(sfld_left, sizeof sfld_left, "icn_%d_left_s", id);
+        declare_static_str(sfld_left);
+        /* &null coercions: left(&null,n) → left("",n); left(s,&null) → left(s,1) */
+        int sarg_is_null = (sarg && sarg->kind == E_VAR && strcmp(sarg->sval,"&null")==0);
+        int narg_is_null = (!narg || (narg->kind == E_VAR && strcmp(narg->sval,"&null")==0));
+        int scratch_n = alloc_int_scratch();
+        if (sarg_is_null && narg_is_null) {
+            /* both null: left("", 1) */
+            JL(a); JL(b);
+            JI("ldc", """"); put_str_field(sfld_left);
+            JI("iconst_1", ""); J("    istore %d\n", scratch_n);
+        } else if (sarg_is_null) {
+            /* string arg is null → "" */
+            Ports bp; strncpy(bp.γ, after, 63); strncpy(bp.ω, ports.ω, 63);
+            char na[64], nb[64]; emit_jvm_icon_expr(narg, bp, na, nb);
+            JL(a); JL(b);
+            JI("ldc", """"); put_str_field(sfld_left);
+            JGoto(na);
+            JL(after); JI("l2i",""); J("    istore %d\n", scratch_n);
+            get_str_field(sfld_left);
+            J("    iload %d\n", scratch_n);
+        } else if (narg_is_null) {
+            /* width arg is null → 1 */
+            Ports ap; strncpy(ap.γ, mid, 63); strncpy(ap.ω, ports.ω, 63);
+            char sa[64], sb[64]; emit_jvm_icon_expr(sarg, ap, sa, sb);
+            JL(a); JGoto(sa);
+            JL(b); JGoto(sb);
+            JL(mid);
+            if (!expr_is_string(sarg)) {
+                if (expr_is_real(sarg)) JI("invokestatic","java/lang/Double/toString(D)Ljava/lang/String;");
+                else JI("invokestatic","java/lang/Long/toString(J)Ljava/lang/String;");
+            }
+            put_str_field(sfld_left);
+            JI("iconst_1",""); J("    istore %d\n", scratch_n);
+            get_str_field(sfld_left);
+            J("    iload %d\n", scratch_n);
+        } else {
+            Ports ap; strncpy(ap.γ, mid, 63); strncpy(ap.ω, ports.ω, 63);
+            char sa[64], sb[64]; emit_jvm_icon_expr(sarg, ap, sa, sb);
+            Ports bp; strncpy(bp.γ, after, 63); strncpy(bp.ω, ports.ω, 63);
+            char na[64], nb[64]; emit_jvm_icon_expr(narg, bp, na, nb);
+            JL(a); JGoto(sa);
+            JL(b); JGoto(sb);
+            JL(mid);
+            /* coerce numeric sarg to String */
+            if (!expr_is_string(sarg)) {
+                if (expr_is_real(sarg)) JI("invokestatic","java/lang/Double/toString(D)Ljava/lang/String;");
+                else JI("invokestatic","java/lang/Long/toString(J)Ljava/lang/String;");
+            }
+            put_str_field(sfld_left);
+            JGoto(na);
+            JL(after); JI("l2i",""); J("    istore %d\n", scratch_n);
+            get_str_field(sfld_left);
+            J("    iload %d\n", scratch_n);
+        }
+        if (nargs >= 3) {
+            EXPR_t *parg = n->children[3];
+            if (parg->kind == E_VAR && strcmp(parg->sval,"&null")==0) {
+                JI("ldc", "\" \"");
+            } else {
+                /* Use static field for pad arg to avoid dead-JGoto VerifyError */
+                /* JGoto(ca) is LIVE: falls through from iload scratch_n above */
+                char mid2[64]; snprintf(mid2, sizeof mid2, "icn_%d_left_mid2", id);
+                Ports cp; strncpy(cp.γ, mid2, 63); strncpy(cp.ω, ports.ω, 63);
+                FILE *pad_save = out; FILE *pad_tmp = tmpfile(); out = pad_tmp;
+                char ca[64], cb[64]; emit_jvm_icon_expr(parg, cp, ca, cb);
+                long pad_sz = ftell(pad_tmp); rewind(pad_tmp);
+                char *pad_body = malloc(pad_sz + 1); fread(pad_body, 1, pad_sz, pad_tmp); pad_body[pad_sz] = '\0'; fclose(pad_tmp);
+                out = pad_save;
+                JGoto(ca); fputs(pad_body, out); free(pad_body); JL(mid2);
+            }
+            JI("invokestatic", classname_buf("icn_builtin_left(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;"));
+        } else {
+            JI("ldc", "\" \"");
+            JI("invokestatic", classname_buf("icn_builtin_left(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;"));
+        }
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* --- right(s, n [, pad]) --- pad/truncate to width n, right-aligned */
+    if (strcmp(fname, "right") == 0 && nargs >= 1 && !is_user_proc(fname)) {
+        EXPR_t *sarg = n->children[1];
+        EXPR_t *narg = (nargs >= 2) ? n->children[2] : NULL;
+        char mid[64]; snprintf(mid, sizeof mid, "icn_%d_right_mid", id);
+        char after[64]; snprintf(after, sizeof after, "icn_%d_right_after", id);
+        char sfld_right[64]; snprintf(sfld_right, sizeof sfld_right, "icn_%d_right_s", id);
+        declare_static_str(sfld_right);
+        int sarg_is_null = (sarg && sarg->kind == E_VAR && strcmp(sarg->sval,"&null")==0);
+        int narg_is_null = (!narg || (narg->kind == E_VAR && strcmp(narg->sval,"&null")==0));
+        int scratch_n = alloc_int_scratch();
+        if (sarg_is_null && narg_is_null) {
+            JL(a); JL(b);
+            JI("ldc", "\"\""); put_str_field(sfld_right);
+            JI("iconst_1", ""); J("    istore %d\n", scratch_n);
+        } else if (sarg_is_null) {
+            Ports bp; strncpy(bp.γ, after, 63); strncpy(bp.ω, ports.ω, 63);
+            char na[64], nb[64]; emit_jvm_icon_expr(narg, bp, na, nb);
+            JL(a); JL(b);
+            JI("ldc", "\"\""); put_str_field(sfld_right);
+            JGoto(na);
+            JL(after); JI("l2i",""); J("    istore %d\n", scratch_n);
+            get_str_field(sfld_right); J("    iload %d\n", scratch_n);
+        } else if (narg_is_null) {
+            Ports ap; strncpy(ap.γ, mid, 63); strncpy(ap.ω, ports.ω, 63);
+            char sa[64], sb[64]; emit_jvm_icon_expr(sarg, ap, sa, sb);
+            JL(a); JGoto(sa); JL(b); JGoto(sb);
+            JL(mid);
+            if (!expr_is_string(sarg)) {
+                if (expr_is_real(sarg)) JI("invokestatic","java/lang/Double/toString(D)Ljava/lang/String;");
+                else JI("invokestatic","java/lang/Long/toString(J)Ljava/lang/String;");
+            }
+            put_str_field(sfld_right);
+            JI("iconst_1",""); J("    istore %d\n", scratch_n);
+            get_str_field(sfld_right); J("    iload %d\n", scratch_n);
+        } else {
+            Ports ap; strncpy(ap.γ, mid, 63); strncpy(ap.ω, ports.ω, 63);
+            char sa[64], sb[64]; emit_jvm_icon_expr(sarg, ap, sa, sb);
+            Ports bp; strncpy(bp.γ, after, 63); strncpy(bp.ω, ports.ω, 63);
+            char na[64], nb[64]; emit_jvm_icon_expr(narg, bp, na, nb);
+            JL(a); JGoto(sa); JL(b); JGoto(sb);
+            JL(mid);
+            if (!expr_is_string(sarg)) {
+                if (expr_is_real(sarg)) JI("invokestatic","java/lang/Double/toString(D)Ljava/lang/String;");
+                else JI("invokestatic","java/lang/Long/toString(J)Ljava/lang/String;");
+            }
+            put_str_field(sfld_right); JGoto(na);
+            JL(after); JI("l2i",""); J("    istore %d\n", scratch_n);
+            get_str_field(sfld_right); J("    iload %d\n", scratch_n);
+        }
+        if (nargs >= 3) {
+            EXPR_t *parg = n->children[3];
+            if (parg->kind == E_VAR && strcmp(parg->sval,"&null")==0) {
+                JI("ldc", "\" \"");
+            } else {
+                char mid2[64]; snprintf(mid2, sizeof mid2, "icn_%d_right_mid2", id);
+                Ports cp; strncpy(cp.γ, mid2, 63); strncpy(cp.ω, ports.ω, 63);
+                FILE *pad_save = out; FILE *pad_tmp = tmpfile(); out = pad_tmp;
+                char ca[64], cb[64]; emit_jvm_icon_expr(parg, cp, ca, cb);
+                long pad_sz = ftell(pad_tmp); rewind(pad_tmp);
+                char *pad_body = malloc(pad_sz + 1); fread(pad_body, 1, pad_sz, pad_tmp); pad_body[pad_sz] = '\0'; fclose(pad_tmp);
+                out = pad_save;
+                JGoto(ca); fputs(pad_body, out); free(pad_body); JL(mid2);
+            }
+            JI("invokestatic", classname_buf("icn_builtin_right(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;"));
+        } else {
+            JI("ldc", "\" \"");
+            JI("invokestatic", classname_buf("icn_builtin_right(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;"));
+        }
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* --- center(s, n [, pad]) --- */
+    if (strcmp(fname, "center") == 0 && nargs >= 1 && !is_user_proc(fname)) {
+        EXPR_t *sarg = n->children[1];
+        EXPR_t *narg = (nargs >= 2) ? n->children[2] : NULL;
+        char mid[64]; snprintf(mid, sizeof mid, "icn_%d_ctr_mid", id);
+        char after[64]; snprintf(after, sizeof after, "icn_%d_ctr_after", id);
+        char sfld_ctr[64]; snprintf(sfld_ctr, sizeof sfld_ctr, "icn_%d_ctr_s", id);
+        declare_static_str(sfld_ctr);
+        int sarg_is_null = (sarg && sarg->kind == E_VAR && strcmp(sarg->sval,"&null")==0);
+        int narg_is_null = (!narg || (narg->kind == E_VAR && strcmp(narg->sval,"&null")==0));
+        int scratch_n = alloc_int_scratch();
+        if (sarg_is_null && narg_is_null) {
+            JL(a); JL(b);
+            JI("ldc", "\"\""); put_str_field(sfld_ctr);
+            JI("iconst_1", ""); J("    istore %d\n", scratch_n);
+        } else if (sarg_is_null) {
+            Ports bp; strncpy(bp.γ, after, 63); strncpy(bp.ω, ports.ω, 63);
+            char na[64], nb[64]; emit_jvm_icon_expr(narg, bp, na, nb);
+            JL(a); JL(b);
+            JI("ldc", "\"\""); put_str_field(sfld_ctr);
+            JGoto(na);
+            JL(after); JI("l2i",""); J("    istore %d\n", scratch_n);
+            get_str_field(sfld_ctr); J("    iload %d\n", scratch_n);
+        } else if (narg_is_null) {
+            Ports ap; strncpy(ap.γ, mid, 63); strncpy(ap.ω, ports.ω, 63);
+            char sa[64], sb[64]; emit_jvm_icon_expr(sarg, ap, sa, sb);
+            JL(a); JGoto(sa); JL(b); JGoto(sb);
+            JL(mid);
+            if (!expr_is_string(sarg)) {
+                if (expr_is_real(sarg)) JI("invokestatic","java/lang/Double/toString(D)Ljava/lang/String;");
+                else JI("invokestatic","java/lang/Long/toString(J)Ljava/lang/String;");
+            }
+            put_str_field(sfld_ctr);
+            JI("iconst_1",""); J("    istore %d\n", scratch_n);
+            get_str_field(sfld_ctr); J("    iload %d\n", scratch_n);
+        } else {
+            Ports ap; strncpy(ap.γ, mid, 63); strncpy(ap.ω, ports.ω, 63);
+            char sa[64], sb[64]; emit_jvm_icon_expr(sarg, ap, sa, sb);
+            Ports bp; strncpy(bp.γ, after, 63); strncpy(bp.ω, ports.ω, 63);
+            char na[64], nb[64]; emit_jvm_icon_expr(narg, bp, na, nb);
+            JL(a); JGoto(sa); JL(b); JGoto(sb);
+            JL(mid);
+            if (!expr_is_string(sarg)) {
+                if (expr_is_real(sarg)) JI("invokestatic","java/lang/Double/toString(D)Ljava/lang/String;");
+                else JI("invokestatic","java/lang/Long/toString(J)Ljava/lang/String;");
+            }
+            put_str_field(sfld_ctr); JGoto(na);
+            JL(after); JI("l2i",""); J("    istore %d\n", scratch_n);
+            get_str_field(sfld_ctr); J("    iload %d\n", scratch_n);
+        }
+        if (nargs >= 3) {
+            EXPR_t *parg = n->children[3];
+            if (parg->kind == E_VAR && strcmp(parg->sval,"&null")==0) {
+                JI("ldc", "\" \"");
+            } else {
+                char mid2[64]; snprintf(mid2, sizeof mid2, "icn_%d_ctr_mid2", id);
+                Ports cp; strncpy(cp.γ, mid2, 63); strncpy(cp.ω, ports.ω, 63);
+                FILE *pad_save = out; FILE *pad_tmp = tmpfile(); out = pad_tmp;
+                char ca[64], cb[64]; emit_jvm_icon_expr(parg, cp, ca, cb);
+                long pad_sz = ftell(pad_tmp); rewind(pad_tmp);
+                char *pad_body = malloc(pad_sz + 1); fread(pad_body, 1, pad_sz, pad_tmp); pad_body[pad_sz] = '\0'; fclose(pad_tmp);
+                out = pad_save;
+                JGoto(ca); fputs(pad_body, out); free(pad_body); JL(mid2);
+            }
+            JI("invokestatic", classname_buf("icn_builtin_center(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;"));
+        } else {
+            JI("ldc", "\" \"");
+            JI("invokestatic", classname_buf("icn_builtin_center(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;"));
+        }
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* --- trim(s [, cs]) --- remove trailing chars in cs (default whitespace) */
+    if (strcmp(fname, "trim") == 0 && nargs >= 1 && !is_user_proc(fname)) {
+        EXPR_t *sarg = n->children[1];
+        char after[64]; snprintf(after, sizeof after, "icn_%d_trim_after", id);
+        if (nargs >= 2) {
+            char mid[64]; snprintf(mid, sizeof mid, "icn_%d_trim_mid", id);
+            Ports ap; strncpy(ap.γ, mid, 63); strncpy(ap.ω, ports.ω, 63);
+            char sa[64], sb[64]; emit_jvm_icon_expr(sarg, ap, sa, sb);
+            Ports bp; strncpy(bp.γ, after, 63); strncpy(bp.ω, ports.ω, 63);
+            char ca[64], cb[64]; emit_jvm_icon_expr(n->children[2], bp, ca, cb);
+            JL(a); JGoto(sa);
+            JL(b); JGoto(sb);
+            JL(mid);
+            int scratch_s = alloc_ref_scratch();
+            J("    astore %d\n", scratch_s);
+            JGoto(ca);
+            JL(after);
+            J("    aload %d\n", scratch_s);
+            JI("swap", "");  /* stack: cs, s → s, cs */
+            JI("invokestatic", classname_buf("icn_builtin_trim(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"));
+        } else {
+            Ports ap; strncpy(ap.γ, after, 63); strncpy(ap.ω, ports.ω, 63);
+            char sa[64], sb[64]; emit_jvm_icon_expr(sarg, ap, sa, sb);
+            JL(a); JGoto(sa);
+            JL(b); JGoto(sb);
+            JL(after);
+            JI("ldc", "\" \\t\\n\\r\"");
+            JI("invokestatic", classname_buf("icn_builtin_trim(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"));
+        }
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* --- map(s) --- 1-arg form: lowercase s using default &ucase/&lcase tables */
+    if (strcmp(fname, "map") == 0 && nargs == 1 && !is_user_proc(fname)) {
+        EXPR_t *sarg = n->children[1];
+        char after[64]; snprintf(after, sizeof after, "icn_%d_map1_after", id);
+        Ports ap; strncpy(ap.γ, after, 63); strncpy(ap.ω, ports.ω, 63);
+        char sa[64], sb[64]; emit_jvm_icon_expr(sarg, ap, sa, sb);
+        JL(a); JGoto(sa);
+        JL(b); JGoto(sb);
+        JL(after);
+        /* stack: String s — call map(s, &ucase, &lcase) */
+        JI("ldc", "\"ABCDEFGHIJKLMNOPQRSTUVWXYZ\"");
+        JI("ldc", "\"abcdefghijklmnopqrstuvwxyz\"");
+        JI("invokestatic", classname_buf("icn_builtin_map(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"));
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* --- map(s, src, dst) --- translate chars in s: src[i]→dst[i] */
+    if (strcmp(fname, "map") == 0 && nargs >= 3 && !is_user_proc(fname)) {
+        EXPR_t *sarg   = n->children[1];
+        EXPR_t *srcarg = n->children[2];
+        EXPR_t *dstarg = n->children[3];
+        char mid1[64]; snprintf(mid1, sizeof mid1, "icn_%d_map_mid1", id);
+        char mid2[64]; snprintf(mid2, sizeof mid2, "icn_%d_map_mid2", id);
+        char after[64]; snprintf(after, sizeof after, "icn_%d_map_after", id);
+        Ports ap; strncpy(ap.γ, mid1, 63); strncpy(ap.ω, ports.ω, 63);
+        char sa[64], sb[64]; emit_jvm_icon_expr(sarg, ap, sa, sb);
+        Ports bp; strncpy(bp.γ, mid2, 63); strncpy(bp.ω, ports.ω, 63);
+        char srca[64], srcb[64]; emit_jvm_icon_expr(srcarg, bp, srca, srcb);
+        Ports cp; strncpy(cp.γ, after, 63); strncpy(cp.ω, ports.ω, 63);
+        char dsta[64], dstb[64]; emit_jvm_icon_expr(dstarg, cp, dsta, dstb);
+        JL(a); JGoto(sa);
+        JL(b); JGoto(sb);
+        JL(mid1);
+        int scratch_s = alloc_ref_scratch();
+        J("    astore %d\n", scratch_s);
+        JGoto(srca);
+        JL(mid2);
+        int scratch_src = alloc_ref_scratch();
+        J("    astore %d\n", scratch_src);
+        JGoto(dsta);
+        JL(after);
+        /* stack: dst String */
+        int scratch_dst = alloc_ref_scratch();
+        J("    astore %d\n", scratch_dst);
+        J("    aload %d\n", scratch_s);
+        J("    aload %d\n", scratch_src);
+        J("    aload %d\n", scratch_dst);
+        JI("invokestatic", classname_buf("icn_builtin_map(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"));
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* --- char(i) --- integer → single-char String */
+    if (strcmp(fname, "char") == 0 && nargs >= 1 && !is_user_proc(fname)) {
+        EXPR_t *iarg = n->children[1];
+        char after[64]; snprintf(after, sizeof after, "icn_%d_char_after", id);
+        Ports ap; strncpy(ap.γ, after, 63); strncpy(ap.ω, ports.ω, 63);
+        char ia[64], ib[64]; emit_jvm_icon_expr(iarg, ap, ia, ib);
+        JL(a); JGoto(ia);
+        JL(b); JGoto(ib);
+        JL(after);
+        /* stack: long → int → char → String.valueOf(char) */
+        JI("l2i", "");
+        JI("i2c", "");
+        JI("invokestatic", "java/lang/String/valueOf(C)Ljava/lang/String;");
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* --- ord(s) --- first char of string → long */
+    if (strcmp(fname, "ord") == 0 && nargs >= 1 && !is_user_proc(fname)) {
+        EXPR_t *sarg = n->children[1];
+        char after[64]; snprintf(after, sizeof after, "icn_%d_ord_after", id);
+        Ports ap; strncpy(ap.γ, after, 63); strncpy(ap.ω, ports.ω, 63);
+        char sa[64], sb[64]; emit_jvm_icon_expr(sarg, ap, sa, sb);
+        JL(a); JGoto(sa);
+        JL(b); JGoto(sb);
+        JL(after);
+        /* stack: String → charAt(0) → int → long */
+        JI("iconst_0", "");
+        JI("invokevirtual", "java/lang/String/charAt(I)C");
+        JI("i2l", "");
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* === M-IJ-BUILTINS-TYPE === */
+
+    /* --- type(x) --- returns "integer", "real", or "string" (compile-time constant) */
+    if (strcmp(fname, "type") == 0 && nargs >= 1 && !is_user_proc(fname)) {
+        EXPR_t *arg = n->children[1];
+        char after[64]; snprintf(after, sizeof after, "icn_%d_type_after", id);
+        Ports ap; strncpy(ap.γ, after, 63); strncpy(ap.ω, ports.ω, 63);
+        char aa[64], ab[64]; emit_jvm_icon_expr(arg, ap, aa, ab);
+        JL(a); JGoto(aa);
+        JL(b); JGoto(ab);
+        JL(after);
+        /* pop the evaluated value (size-aware), then push compile-time type name */
+        if (expr_is_string(arg)) {
+            JI("pop", "");
+            JI("ldc", "\"string\"");
+        } else if (expr_is_real(arg)) {
+            JI("pop2", "");
+            JI("ldc", "\"real\"");
+        } else {
+            JI("pop2", "");
+            JI("ldc", "\"integer\"");
+        }
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* --- copy(x) --- shallow copy; strings/integers/reals are immutable → identity */
+    if (strcmp(fname, "copy") == 0 && nargs >= 1 && !is_user_proc(fname)) {
+        EXPR_t *arg = n->children[1];
+        char after[64]; snprintf(after, sizeof after, "icn_%d_copy_after", id);
+        Ports ap; strncpy(ap.γ, after, 63); strncpy(ap.ω, ports.ω, 63);
+        char aa[64], ab[64]; emit_jvm_icon_expr(arg, ap, aa, ab);
+        JL(a); JGoto(aa);
+        JL(b); JGoto(ab);
+        JL(after);
+        /* value already on stack — identity copy for immutable types */
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* --- image(x) --- string representation of any value */
+    if (strcmp(fname, "image") == 0 && nargs >= 1 && !is_user_proc(fname)) {
+        EXPR_t *arg = n->children[1];
+        char after[64]; snprintf(after, sizeof after, "icn_%d_image_after", id);
+        Ports ap; strncpy(ap.γ, after, 63); strncpy(ap.ω, ports.ω, 63);
+        char aa[64], ab[64]; emit_jvm_icon_expr(arg, ap, aa, ab);
+        JL(a); JGoto(aa);
+        JL(b); JGoto(ab);
+        JL(after);
+        if (expr_is_string(arg)) {
+            /* already a String — no-op */
+        } else if (expr_is_real(arg)) {
+            JI("invokestatic", "java/lang/Double/toString(D)Ljava/lang/String;");
+        } else {
+            JI("invokestatic", "java/lang/Long/toString(J)Ljava/lang/String;");
+        }
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* --- numeric(x) --- convert string to integer; fail if not numeric */
+    if (strcmp(fname, "numeric") == 0 && nargs >= 1 && !is_user_proc(fname)) {
+        EXPR_t *arg = n->children[1];
+        char after[64]; snprintf(after, sizeof after, "icn_%d_num_after", id);
+        Ports ap; strncpy(ap.γ, after, 63); strncpy(ap.ω, ports.ω, 63);
+        char aa[64], ab[64]; emit_jvm_icon_expr(arg, ap, aa, ab);
+        JL(a); JGoto(aa);
+        JL(b); JGoto(ab);
+        JL(after);
+        if (expr_is_string(arg)) {
+            /* call icn_builtin_numeric(String) → long; Long.MIN_VALUE sentinel = fail */
+            JI("invokestatic", classname_buf("icn_builtin_numeric(Ljava/lang/String;)J"));
+            J("    dup2\n");
+            J("    ldc2_w -9223372036854775808\n");
+            J("    lcmp\n");
+            char ok[64]; snprintf(ok, sizeof ok, "icn_%d_num_ok", id);
+            J("    ifne %s\n", ok);
+            J("    pop2\n");
+            JGoto(ports.ω);
+            JL(ok);
+        }
+        /* else already numeric — pass through */
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* === M-IJ-BUILTINS-MISC === */
+
+    /* --- abs(x) --- absolute value; works for integer (long) and real (double) */
+    if (strcmp(fname, "abs") == 0 && nargs >= 1 && !is_user_proc(fname)) {
+        EXPR_t *arg = n->children[1];
+        char after[64]; snprintf(after, sizeof after, "icn_%d_abs_after", id);
+        Ports ap; strncpy(ap.γ, after, 63); strncpy(ap.ω, ports.ω, 63);
+        char aa[64], ab[64]; emit_jvm_icon_expr(arg, ap, aa, ab);
+        JL(a); JGoto(aa);
+        JL(b); JGoto(ab);
+        JL(after);
+        if (expr_is_real(arg)) {
+            JI("invokestatic", "java/lang/Math/abs(D)D");
+        } else {
+            JI("invokestatic", "java/lang/Math/abs(J)J");
+        }
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* --- max(x, y, ...) --- maximum of 2+ args */
+    if (strcmp(fname, "max") == 0 && nargs >= 2 && !is_user_proc(fname)) {
+        int use_real = 0;
+        for (int i = 0; i < nargs; i++) use_real |= expr_is_real(n->children[1+i]);
+        char tmp_fld[64]; snprintf(tmp_fld, sizeof tmp_fld, "icn_%d_max_tmp", id);
+        if (use_real) declare_static_dbl(tmp_fld);
+        else          declare_static(tmp_fld);
+        char (*arg_a)[64] = malloc(nargs * sizeof(*arg_a));
+        char (*arg_b)[64] = malloc(nargs * sizeof(*arg_b));
+        char (*relay)[64] = malloc((nargs+1) * sizeof(*relay));
+        for (int i = 0; i <= nargs; i++) snprintf(relay[i], 64, "icn_%d_max_r%d", id, i);
+        for (int i = 0; i < nargs; i++) {
+            Ports pi; strncpy(pi.γ, relay[i+1], 63); strncpy(pi.ω, ports.ω, 63);
+            emit_jvm_icon_expr(n->children[1+i], pi, arg_a[i], arg_b[i]);
+        }
+        JL(a); JGoto(arg_a[0]);
+        JL(b); JGoto(arg_b[0]);
+        JL(relay[1]); /* arg0 TOS — store as running max */
+        if (use_real) put_dbl(tmp_fld); else put_long(tmp_fld);
+        for (int i = 1; i < nargs; i++) {
+            JGoto(arg_a[i]);
+            JL(relay[i+1]); /* arg_i TOS; load tmp below it, call Math.max(tmp, arg_i) */
+            if (use_real) { get_dbl(tmp_fld); JI("invokestatic","java/lang/Math/max(DD)D"); put_dbl(tmp_fld); }
+            else          { get_long(tmp_fld); JI("invokestatic","java/lang/Math/max(JJ)J"); put_long(tmp_fld); }
+        }
+        if (use_real) get_dbl(tmp_fld); else get_long(tmp_fld);
+        free(arg_a); free(arg_b); free(relay);
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* --- min(x, y, ...) --- minimum of 2+ args */
+    if (strcmp(fname, "min") == 0 && nargs >= 2 && !is_user_proc(fname)) {
+        int use_real = 0;
+        for (int i = 0; i < nargs; i++) use_real |= expr_is_real(n->children[1+i]);
+        char tmp_fld[64]; snprintf(tmp_fld, sizeof tmp_fld, "icn_%d_min_tmp", id);
+        if (use_real) declare_static_dbl(tmp_fld);
+        else          declare_static(tmp_fld);
+        char (*arg_a)[64] = malloc(nargs * sizeof(*arg_a));
+        char (*arg_b)[64] = malloc(nargs * sizeof(*arg_b));
+        char (*relay)[64] = malloc((nargs+1) * sizeof(*relay));
+        for (int i = 0; i <= nargs; i++) snprintf(relay[i], 64, "icn_%d_min_r%d", id, i);
+        for (int i = 0; i < nargs; i++) {
+            Ports pi; strncpy(pi.γ, relay[i+1], 63); strncpy(pi.ω, ports.ω, 63);
+            emit_jvm_icon_expr(n->children[1+i], pi, arg_a[i], arg_b[i]);
+        }
+        JL(a); JGoto(arg_a[0]);
+        JL(b); JGoto(arg_b[0]);
+        JL(relay[1]);
+        if (use_real) put_dbl(tmp_fld); else put_long(tmp_fld);
+        for (int i = 1; i < nargs; i++) {
+            JGoto(arg_a[i]);
+            JL(relay[i+1]);
+            if (use_real) { get_dbl(tmp_fld); JI("invokestatic","java/lang/Math/min(DD)D"); put_dbl(tmp_fld); }
+            else          { get_long(tmp_fld); JI("invokestatic","java/lang/Math/min(JJ)J"); put_long(tmp_fld); }
+        }
+        if (use_real) get_dbl(tmp_fld); else get_long(tmp_fld);
+        free(arg_a); free(arg_b); free(relay);
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* --- sqrt(x) --- square root; result is real */
+    if (strcmp(fname, "sqrt") == 0 && nargs >= 1 && !is_user_proc(fname)) {
+        EXPR_t *arg = n->children[1];
+        char after[64]; snprintf(after, sizeof after, "icn_%d_sqrt_after", id);
+        Ports ap; strncpy(ap.γ, after, 63); strncpy(ap.ω, ports.ω, 63);
+        char aa[64], ab[64]; emit_jvm_icon_expr(arg, ap, aa, ab);
+        JL(a); JGoto(aa);
+        JL(b); JGoto(ab);
+        JL(after);
+        if (!expr_is_real(arg)) JI("l2d", "");  /* promote integer to double */
+        JI("invokestatic", "java/lang/Math/sqrt(D)D");
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* --- seq(i [,j]) --- infinite generator: i, i+j, i+2j, ...
+     * α (start): evaluate args, store start+step, push start value → γ
+     * β (resume): cur += step, push cur → γ
+     * seq never fails on its own (infinite); limit operator controls termination */
+    if (strcmp(fname, "seq") == 0 && nargs >= 1 && !is_user_proc(fname)) {
+        EXPR_t *startarg = n->children[1];
+        char cur_fld[64];  snprintf(cur_fld,  sizeof cur_fld,  "icn_%d_seq_cur",  id);
+        char step_fld[64]; snprintf(step_fld, sizeof step_fld, "icn_%d_seq_step", id);
+        declare_static(cur_fld);
+        declare_static(step_fld);
+
+        char after_s[64]; snprintf(after_s, sizeof after_s, "icn_%d_seq_as", id);
+        char after_t[64]; snprintf(after_t, sizeof after_t, "icn_%d_seq_at", id);
+        char produce[64]; snprintf(produce, sizeof produce, "icn_%d_seq_prod", id);
+
+        Ports sp; strncpy(sp.γ, after_s, 63); strncpy(sp.ω, ports.ω, 63);
+        char sa[64], sb[64]; emit_jvm_icon_expr(startarg, sp, sa, sb);
+
+        /* α: evaluate start (and step if present), init cur, produce first value */
+        JL(a); JGoto(sa);
+        JL(b);  /* β: resume — increment cur, produce */
+        get_long(cur_fld);
+        get_long(step_fld);
+        J("    ladd\n");
+        put_long(cur_fld);
+        JGoto(produce);
+
+        JL(after_s);  /* start arg evaluated, long on stack */
+        put_long(cur_fld);
+        if (nargs >= 2) {
+            Ports tp; strncpy(tp.γ, after_t, 63); strncpy(tp.ω, ports.ω, 63);
+            char ta[64], tb[64]; emit_jvm_icon_expr(n->children[2], tp, ta, tb);
+            JGoto(ta);
+            JL(after_t);
+            put_long(step_fld);
+        } else {
+            J("    lconst_1\n");
+            put_long(step_fld);
+        }
+        JL(produce);
+        get_long(cur_fld);
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* === M-IJ-SORT === */
+
+    /* sort(L) — sort list of longs ascending, return new ArrayList.
+     * One-shot: α evals L, stores, calls icn_builtin_sort, result list → γ.
+     * β → ω. */
+    if (strcmp(fname, "sort") == 0 && nargs >= 1 && !is_user_proc(fname)) {
+        char list_fld[80]; snprintf(list_fld, sizeof list_fld, "icn_%d_sort_list", id);
+        char relay[64];    snprintf(relay,    sizeof relay,    "icn_%d_sort_rel",  id);
+        declare_static_list(list_fld);
+
+        Ports ep; strncpy(ep.γ, relay, 63); strncpy(ep.ω, ports.ω, 63);
+        char ea[64], eb[64]; emit_jvm_icon_expr(n->children[1], ep, ea, eb);
+
+        JL(a); JGoto(ea);
+        JL(b); JGoto(ports.ω);
+
+        JL(relay);
+        put_list_field(list_fld);
+        get_list_field(list_fld);
+        JI("invokestatic", classname_buf("icn_builtin_sort(Ljava/util/ArrayList;)Ljava/util/ArrayList;"));
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* sortf(L, field) — sort list of records by 1-based field index, return new ArrayList.
+     * One-shot: α evals L then field index, calls icn_builtin_sortf, result → γ.
+     * β → ω. */
+    if (strcmp(fname, "sortf") == 0 && nargs >= 2 && !is_user_proc(fname)) {
+        char list_fld[80];  snprintf(list_fld,  sizeof list_fld,  "icn_%d_sortf_list", id);
+        char field_fld[80]; snprintf(field_fld, sizeof field_fld, "icn_%d_sortf_fld",  id);
+        char relay_l[64];   snprintf(relay_l,   sizeof relay_l,   "icn_%d_sortf_rl",   id);
+        char relay_f[64];   snprintf(relay_f,   sizeof relay_f,   "icn_%d_sortf_rf",   id);
+        declare_static_list(list_fld);
+        declare_static(field_fld);
+
+        Ports ep; strncpy(ep.γ, relay_l, 63); strncpy(ep.ω, ports.ω, 63);
+        char ea[64], eb[64]; emit_jvm_icon_expr(n->children[1], ep, ea, eb);
+
+        Ports fp; strncpy(fp.γ, relay_f, 63); strncpy(fp.ω, ports.ω, 63);
+        char fa[64], fb[64]; emit_jvm_icon_expr(n->children[2], fp, fa, fb);
+
+        JL(a); JGoto(ea);
+        JL(b); JGoto(ports.ω);
+
+        JL(relay_l);
+        put_list_field(list_fld);
+        JGoto(fa);
+
+        JL(relay_f);
+        put_long(field_fld);
+
+        get_list_field(list_fld);
+        get_long(field_fld);
+        J("    l2i\n");
+        JI("invokestatic", classname_buf("icn_builtin_sortf(Ljava/util/ArrayList;I)Ljava/util/ArrayList;"));
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* === END M-IJ-SORT === */
+
+    /* === END M-IJ-BUILTINS-MISC === */
+
+    /* === END M-IJ-BUILTINS-TYPE === */
+
+    /* === END M-IJ-BUILTINS-STR === */
+
+    /* --- cross-class IMPORT call (M-SCRIP-DEMO) ---
+     * Emits invokestatic Assembly/METHOD([Object;Runnable;Runnable;)V
+     * per ARCH-scrip-abi.md ss3.1. Args packed into Object[] via static scratch. */
+    {
+        ImportEntry *ie = find_import(fname);
+        if (ie) {
+            JL(a); JL(b);
+
+            if (nargs == 0) {
+                JI("aconst_null", "");
+            } else {
+                char arr_fld[80]; snprintf(arr_fld, sizeof arr_fld, "icn_imp_arr_%d", id);
+                declare_static_arr(arr_fld);
+                J("    ldc %d\n", nargs);
+                JI("anewarray", "java/lang/Object");
+                put_arr_field(arr_fld);
+
+                char start_lbl[64]; snprintf(start_lbl, sizeof start_lbl, "icn_%d_imp_s0", id);
+                JGoto(start_lbl); JBarrier();
+
+                for (int i = 0; i < nargs; i++) {
+                    /* Use a relay label INSIDE the expr stream as γ so that
+                     * done_lbl is only reachable via an unconditional goto (depth 0).
+                     * sv_fld stores the value; done_lbl loads it back at depth 0. */
+                    char relay_lbl[64]; snprintf(relay_lbl, sizeof relay_lbl, "icn_%d_imp_r%d", id, i);
+                    char done_lbl[64];  snprintf(done_lbl,  sizeof done_lbl,  "icn_%d_imp_d%d", id, i);
+                    char sv_fld[80];    snprintf(sv_fld,    sizeof sv_fld,    "icn_imp_sv_%d_%d", id, i);
+                    declare_static_obj(sv_fld);
+
+                    Ports ap;
+                    strncpy(ap.γ, relay_lbl, 63);
+                    strncpy(ap.ω, ports.ω, 63);
+                    char aa[64], ab[64];
+                    emit_jvm_icon_expr(n->children[i + 1], ap, aa, ab);
+
+                    /* relay_lbl: value on stack at depth 1 — store to sv_fld, goto done */
+                    JL(relay_lbl);
+                    if (expr_is_string(n->children[i + 1])) {
+                        put_obj_field(sv_fld);
+                    } else {
+                        JI("invokestatic", "java/lang/Long/valueOf(J)Ljava/lang/Long;");
+                        put_obj_field(sv_fld);
+                    }
+                    JGoto(done_lbl); JBarrier();
+
+                    if (i == 0) { JL(start_lbl); }
+                    JGoto(aa); JBarrier();
+
+                    /* done_lbl: depth 0 — load array, index, value, aastore */
+                    JL(done_lbl);
+                    get_arr_field(arr_fld);
+                    J("    ldc %d\n", i);
+                    get_obj_field(sv_fld);
+                    JI("aastore", "");
+
+                    if (i + 1 == nargs) {
+                        char pack_lbl[64]; snprintf(pack_lbl, sizeof pack_lbl, "icn_%d_imp_pack", id);
+                        JL(pack_lbl);
+                        get_arr_field(arr_fld);
+                    }
+                }
+            }
+
+            JI("aconst_null", "");
+            JI("aconst_null", "");
+            {
+                char sig[512];
+                snprintf(sig, sizeof sig,
+                    "%s/%s([Ljava/lang/Object;Ljava/lang/Runnable;Ljava/lang/Runnable;)V",
+                    ie->name, ie->method);
+                JI("invokestatic", sig);
+            }
+            J("    getstatic ByrdBoxLinkage/RESULT Ljava/util/concurrent/atomic/AtomicReference;\n");
+            JI("invokevirtual", "java/util/concurrent/atomic/AtomicReference/get()Ljava/lang/Object;");
+            J("    putstatic %s/icn_retval_obj Ljava/lang/Object;\n", classname);
+            /* Push String result on stack — expr_is_string returns 1 for imports
+             * so callers expect a String reference, not a long. */
+            J("    getstatic %s/icn_retval_obj Ljava/lang/Object;\n", classname);
+            JI("checkcast", "java/lang/String");
+            JGoto(ports.γ); JBarrier();
+            return;
+        }
+    }
+
+    if (is_user_proc(fname)) {
+        int is_gen = is_gen_proc(fname);
+        int np = nparams_for(fname);
+        char do_call[64]; snprintf(do_call, sizeof do_call, "icn_%d_docall", id);
+
+        /* Evaluate args left-to-right, store into static arg slots */
+        /* We use static fields icn_arg_0, icn_arg_1, ... for simplicity */
+        char prev_succ[64]; strncpy(prev_succ, do_call, 63);
+        char (*arg_alphas)[64] = nargs > 0 ? malloc(nargs * 64) : NULL;
+        char (*arg_betas) [64] = nargs > 0 ? malloc(nargs * 64) : NULL;
+
+        for (int i = nargs-1; i >= 0; i--) {
+            char push_relay[64]; snprintf(push_relay, sizeof push_relay, "icn_%d_arg%d", id, i);
+            Ports ap; strncpy(ap.γ, push_relay, 63); strncpy(ap.ω, ports.ω, 63);
+            emit_jvm_icon_expr(n->children[i+1], ap, arg_alphas[i], arg_betas[i]);
+            char argfield[64];    snprintf(argfield,    sizeof argfield,    "icn_arg_%d",     i);
+            char argobjfield[64]; snprintf(argobjfield, sizeof argobjfield, "icn_arg_obj_%d", i);
+            int arg_is_rec  = expr_is_record(n->children[i+1]);
+            int arg_is_str  = !arg_is_rec && expr_is_string(n->children[i+1]);
+            int arg_is_dbl  = !arg_is_rec && !arg_is_str && expr_is_real(n->children[i+1]);
+            (void)arg_is_dbl;
+            char argstrfield[64]; snprintf(argstrfield, sizeof argstrfield, "icn_arg_str_%d", i);
+            JL(push_relay);
+            if (arg_is_rec) {
+                /* record arg: value is in icn_retval_obj; pop the lconst_0 placeholder,
+                 * then copy icn_retval_obj into icn_arg_obj_N and sentinel icn_arg_N */
+                JI("pop2", "");
+                declare_static_obj(argobjfield);
+                J("    getstatic %s/icn_retval_obj Ljava/lang/Object;\n", classname);
+                put_obj_field(argobjfield);
+                declare_static(argfield);
+                JI("lconst_0", ""); put_long(argfield);
+            } else if (arg_is_str) {
+                /* string arg: store in icn_arg_str_N */
+                declare_static_str(argstrfield);
+                put_str_field(argstrfield);
+                declare_static(argfield);
+                JI("lconst_0", ""); put_long(argfield); /* sentinel */
+            } else {
+                declare_static(argfield);
+                put_long(argfield);
+            }
+            JGoto(prev_succ);
+            strncpy(prev_succ, arg_alphas[i], 63);
+        }
+
+        JL(a);
+        if (nargs > 0) JGoto(prev_succ);
+        else           JGoto(do_call);
+
+        /* β: for generator procs, resume suspended frame; else re-pump last arg */
+        JL(b);
+        if (is_gen) {
+            char b_resume[64]; snprintf(b_resume, sizeof b_resume, "icn_%d_b_resume", id);
+            char b_fail[64];   snprintf(b_fail,   sizeof b_fail,   "icn_%d_b_fail",   id);
+            get_byte("icn_suspended");
+            J("    ifeq %s\n", b_fail);
+            /* Resume: clear suspend_id AFTER we're done — entry dispatch uses icn_suspend_id!=0 */
+            /* (icn_suspended stays set until proc itself clears on fresh call) */
+            /* Just invoke — proc entry dispatches via icn_suspend_id */
+            /* Save ALL long statics before re-entrant call */
+            {
+                int base = jvm_locals_count();
+                int k = 0;
+                for (int i = 0; i < nstatics; i++) {
+                    if (static_needs_callsave(i)) {
+                        get_long(statics[i]);
+                        J("    lstore %d\n", base + 2*k);
+                        k++;
+                    }
+                }
+            }
+            char sig[384]; snprintf(sig, sizeof sig, "%s/icn_%s()V", classname, fname);
+            JI("invokestatic", sig);
+            /* Restore all long statics after call */
+            {
+                int base = jvm_locals_count();
+                int k = 0;
+                for (int i = 0; i < nstatics; i++) {
+                    if (static_needs_callsave(i)) {
+                        J("    lload %d\n", base + 2*k);
+                        put_long(statics[i]);
+                        k++;
+                    }
+                }
+            }
+            /* Check result */
+            char after_resume[64]; snprintf(after_resume, sizeof after_resume, "icn_%d_after_resume", id);
+            jmp_if_failed(after_resume);
+            if (proc_returns_str(fname)) { get_str_field("icn_retval_str"); }
+            else                            { get_long("icn_retval"); }
+            JGoto(ports.γ);
+            JL(after_resume); JGoto(ports.ω);
+            JL(b_fail); JGoto(ports.ω);
+        } else {
+            /* Non-generator proc: β re-pumps the last arg (handles generator args).
+             * If no args, just fail. */
+            if (nargs > 0) JGoto(arg_betas[nargs-1]);
+            else           JGoto(ports.ω);
+        }
+
+        /* do_call: push args from static fields, invoke proc */
+        JL(do_call);
+        /* Load args into static arg fields — already done above.
+         * Proc pops from icn_arg_0..N-1. */
+
+        /* Save ALL long statics to JVM locals before the call (recursion safety).
+         * Excludes globals (icn_gvar_*), icn_retval, icn_arg_*, control fields.
+         * Save slots start at jvm_locals_count(); each long occupies 2 slots. */
+        {
+            int base = jvm_locals_count();
+            int k = 0;
+            for (int i = 0; i < nstatics; i++) {
+                if (static_needs_callsave(i)) {
+                    get_long(statics[i]);
+                    J("    lstore %d\n", base + 2*k);
+                    k++;
+                }
+            }
+        }
+        {
+            char sig[384]; snprintf(sig, sizeof sig, "%s/icn_%s()V", classname, fname);
+            JI("invokestatic", sig);
+        }
+        /* Restore long statics (excludes globals/retval/args) */
+        {
+            int base = jvm_locals_count();
+            int k = 0;
+            for (int i = 0; i < nstatics; i++) {
+                if (static_needs_callsave(i)) {
+                    J("    lload %d\n", base + 2*k);
+                    put_long(statics[i]);
+                    k++;
+                }
+            }
+        }
+        /* Check icn_failed */
+        char after_call[64]; snprintf(after_call, sizeof after_call, "icn_%d_after_call", id);
+        jmp_if_failed(after_call);
+        /* Check if suspended (generator yielded) or returned */
+        if (proc_returns_str(fname)) { get_str_field("icn_retval_str"); }
+        else                            { get_long("icn_retval"); }
+        JGoto(ports.γ);
+        JL(after_call); JGoto(ports.ω);
+
+        if (arg_alphas) free(arg_alphas);
+        if (arg_betas)  free(arg_betas);
+        (void)np;
+        return;
+    }
+
+    /* Unknown — fail */
+    JL(a); JGoto(ports.ω);
+    JL(b); JGoto(ports.ω);
+}
+
+/* =========================================================================
+ * ICN_ALT — E1 | E2 | ... | En  value alternation (n-ary flat)
+ *
+ * Naïve wiring (old, BUGGY for β-resume):
+ *   α → E1.α; E1.ω → E2.α; ... ; En.ω → node.ω
+ *   β → E1.β   ← always restarts from E1, loops infinitely in every
+ *
+ * Correct wiring — indirect-goto gate (JCON ir_a_Alt + JCON-ANALYSIS §'| value alternation'):
+ *   Per-site static int field icn_N_alt_gate tracks which Ei last succeeded.
+ *   α:    gate=0, goto E1.α
+ *   Ei.γ: gate=i (1-based), goto ports.γ     (MoveLabel + succeed)
+ *   Ei.ω: goto E(i+1).α  (En.ω → ports.ω)
+ *   β:    iload gate → tableswitch → E1.β / E2.β / ... / En.β
+ *
+ * This matches JCON irgen.icn ir_MoveLabel + ir_IndirectGoto (§4.5).
+ * ======================================================================= */
+static void emit_jvm_icon_alt(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    int id = next_uid(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+
+    int nc = n->nchildren;
+    char (*ca)[64] = malloc(nc*64);
+    char (*cb)[64] = malloc(nc*64);
+    /* Per-alternative γ relay labels: we intercept Ei.γ to set the gate */
+    char (*cg)[64] = malloc(nc*64);
+
+    /* Gate field name — unique per alt site */
+    char gate_fld[64]; snprintf(gate_fld, sizeof gate_fld, "icn_%d_alt_gate", id);
+    declare_static_int(gate_fld);
+
+    /* Emit children right-to-left so each child's α/β/γ/ω are known
+     * when we wire the chain. Each child's ports.γ → our relay cg[i],
+     * ports.ω → next child's α (or ports.ω for last child). */
+    for (int i = nc-1; i >= 0; i--) {
+        /* relay label: child[i] success lands here → set gate, goto ports.γ */
+        snprintf(cg[i], 64, "icn_%d_alt_g%d", id, i);
+        Ports ep;
+        strncpy(ep.γ, cg[i], 63);
+        strncpy(ep.ω, (i == nc-1) ? ports.ω : ca[i+1], 63);
+        emit_jvm_icon_expr(n->children[i], ep, ca[i], cb[i]);
+    }
+
+    /* Emit relay labels: cg[i] → pop child value, push lconst_0 sentinel,
+     * set gate, goto ports.γ with J on stack.
+     * Contract: ICN_ALT always delivers exactly one long (lconst_0) on the
+     * stack at ports.γ.  AND relay trampolines issue putstatic :J for ALT
+     * children — same as for any long-typed child. */
+    /* Determine if all alternatives have the same type for pass-through */
+    int alt_is_str = 1, alt_is_dbl = 1;
+    for (int i = 0; i < nc; i++) {
+        if (!expr_is_string(n->children[i])) alt_is_str = 0;
+        if (!expr_is_real(n->children[i]))   alt_is_dbl  = 0;
+    }
+    /* For uniform-typed ALT (all str, all dbl, or all long): pass value through.
+     * For mixed: discard and use lconst_0 sentinel (legacy behaviour). */
+    int alt_uniform = alt_is_str || alt_is_dbl || (!alt_is_str && !alt_is_dbl);
+    (void)alt_uniform;
+    /* alt_val_fld: temp static to hold the yielded value while we set gate */
+    char alt_val_fld[80]; snprintf(alt_val_fld, sizeof alt_val_fld, "icn_%d_alt_val", id);
+    if (!alt_is_str) {
+        if (alt_is_dbl) declare_static_real(alt_val_fld);
+        else            declare_static(alt_val_fld);
+    }
+
+    for (int i = 0; i < nc; i++) {
+        JL(cg[i]);
+        if (alt_is_str) {
+            /* String on stack — store to scratch astore, set gate, reload */
+            int scratch = alloc_ref_scratch();
+            J("    astore %d\n", scratch);
+            J("    sipush %d\n", i+1);
+            put_int_field(gate_fld);
+            J("    aload %d\n", scratch);
+        } else if (alt_is_dbl) {
+            /* Double on stack — store to temp dbl field, set gate, reload */
+            put_dbl(alt_val_fld);
+            J("    sipush %d\n", i+1);
+            put_int_field(gate_fld);
+            get_dbl(alt_val_fld);
+        } else {
+            /* Long (or mixed) — store to temp long field, set gate, reload */
+            if (expr_is_obj(n->children[i])) { JI("pop",""); JI("lconst_0",""); }
+            else if (expr_is_real(n->children[i])) {
+                JI("invokestatic","java/lang/Double/doubleToRawLongBits(D)J");
+            }
+            put_long(alt_val_fld);
+            J("    sipush %d\n", i+1);
+            put_int_field(gate_fld);
+            get_long(alt_val_fld);
+        }
+        JGoto(ports.γ);
+    }
+
+    /* α: gate=0 (mark "in α, no prior success"), goto E1.α */
+    JL(a);
+    JI("iconst_0",""); put_int_field(gate_fld);
+    JGoto(ca[0]);
+
+    /* β: indirect-goto via gate → tableswitch → each Ei.β
+     * gate values: 0 = never succeeded (shouldn't happen in bounded ctx, go to ω)
+     *              1..nc = Ei last succeeded → resume Ei.β                         */
+    JL(b);
+    get_int_field(gate_fld);
+    J("    tableswitch 1 %d\n", nc);
+    for (int i = 0; i < nc; i++) {
+        J("        %s\n", cb[i]);
+    }
+    J("        default: %s\n", ports.ω);
+
+    free(ca); free(cb); free(cg);
+}
+
+/* =========================================================================
+ * ICN_POW — E1 ^ E2  (exponentiation, always returns double)
+ * Wiring: standard funcs-set (§4.3): E1 then E2, compute, → γ.
+ * Both operands promoted to double. Result = Math.pow(D,D) → double.
+ * One-shot (β → ω) — pow is not a generator.
+ * ======================================================================= */
+static void emit_jvm_icon_pow(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    int id = next_uid(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+
+    char lrelay[64], rrelay[64], lstore[64], rstore[64];
+    snprintf(lrelay, sizeof lrelay, "icn_%d_pow_lr", id);
+    snprintf(rrelay, sizeof rrelay, "icn_%d_pow_rr", id);
+    snprintf(lstore, sizeof lstore, "icn_%d_pow_lv", id);
+    snprintf(rstore, sizeof rstore, "icn_%d_pow_rv", id);
+    declare_static_real(lstore);  /* D: left operand value */
+    declare_static_real(rstore);  /* D: right operand value */
+
+    EXPR_t *lchild = (n->nchildren > 0) ? n->children[0] : NULL;
+    EXPR_t *rchild = (n->nchildren > 1) ? n->children[1] : NULL;
+
+    Ports rp; strncpy(rp.γ, rrelay, 63); strncpy(rp.ω, ports.ω, 63);
+    Ports lp; strncpy(lp.γ, lrelay, 63); strncpy(lp.ω, ports.ω, 63);
+
+    char ra[64], rb[64]; emit_jvm_icon_expr(rchild, rp, ra, rb);
+    char la[64], lb[64]; emit_jvm_icon_expr(lchild, lp, la, lb);
+
+    JC("POW -- E1 ^ E2 via Math.pow(D,D)");
+
+    /* α: eval left */
+    JL(a); JGoto(la);
+
+    /* left γ: promote to double, store, eval right */
+    JL(lrelay);
+    if (!expr_is_real(lchild)) { JI("l2d",""); }  /* long → double */
+    put_real_field(lstore);
+    JGoto(ra);
+
+    /* right γ: promote, store, then load left, load right, call Math.pow */
+    JL(rrelay);
+    if (!expr_is_real(rchild)) { JI("l2d",""); }  /* long → double */
+    put_real_field(rstore);
+    /* Now load in order: left (base), right (exponent) */
+    get_real_field(lstore);
+    get_real_field(rstore);
+    JI("invokestatic","java/lang/Math/pow(DD)D");
+    /* Result is D on stack → γ */
+    JGoto(ports.γ);
+
+    /* β: one-shot → ω */
+    JL(b); JGoto(ports.ω);
+}
+
+ /* ==========================================================================
+ * Binary arithmetic — funcs-set wiring (Proebsting §4.3)
+ * JVM discipline: operand stack EMPTY at every label boundary.
+ * Values passed across labels go through static fields (lc, rc, bf).
+ * ========================================================================= */
+static void emit_jvm_icon_binop(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    int id = next_uid(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    char compute[64]; snprintf(compute, sizeof compute, "icn_%d_compute", id);
+    char lbfwd[64];   snprintf(lbfwd,   sizeof lbfwd,   "icn_%d_lb",     id);
+    char lstore[64];  snprintf(lstore,  sizeof lstore,  "icn_%d_lstore", id);
+    /* Determine if this is a double (real) operation */
+    int is_dbl = expr_is_real(n->children[0]) || expr_is_real(n->children[1]);
+    /* Use static fields for relay staging so relay labels are safe to reach on
+     * an empty stack (e.g. from ICN_EVERY β-tableswitch).  JVM lstore/lload
+     * require the verifier to see a long on the stack at every predecessor. */
+    char lc_field[80]; snprintf(lc_field, sizeof lc_field, "icn_%d_binop_lc", id);
+    char rc_field[80]; snprintf(rc_field, sizeof rc_field, "icn_%d_binop_rc", id);
+    char bf_field[80]; snprintf(bf_field, sizeof bf_field, "icn_%d_binop_bf", id);
+    if (is_dbl) { declare_static_dbl(lc_field); declare_static_dbl(rc_field); }
+    else        { declare_static(lc_field);      declare_static(rc_field);     }
+    declare_static_int(bf_field);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+
+    char right_relay[64]; snprintf(right_relay, sizeof right_relay, "icn_%d_rrelay", id);
+    char left_relay[64];  snprintf(left_relay,  sizeof left_relay,  "icn_%d_lrelay", id);
+
+    Ports rp; strncpy(rp.γ, right_relay, 63); strncpy(rp.ω, lbfwd, 63);
+    char ra[64], rb[64]; emit_jvm_icon_expr(n->children[1], rp, ra, rb);
+    Ports lp; strncpy(lp.γ, left_relay, 63); strncpy(lp.ω, ports.ω, 63);
+    char la[64], lb[64]; emit_jvm_icon_expr(n->children[0], lp, la, lb);
+
+    EXPR_t *lchild = n->children[0];
+    int left_is_value = (lchild->kind == E_VAR || lchild->kind == E_ILIT ||
+                         lchild->kind == E_FLIT ||
+                         lchild->kind == E_QLIT || lchild->kind == E_FNC);
+
+    /* left_relay: value on stack → promote if needed → store to lc_field */
+    JL(left_relay);
+    if (is_dbl && !expr_is_real(n->children[0])) JI("l2d", "");
+    if (is_dbl) put_dbl(lc_field); else put_long(lc_field);
+    JGoto(lstore);
+    /* right_relay: value on stack → promote if needed → store to rc_field */
+    JL(right_relay);
+    if (is_dbl && !expr_is_real(n->children[1])) JI("l2d", "");
+    if (is_dbl) put_dbl(rc_field); else put_long(rc_field);
+    JGoto(compute);
+
+    JL(lbfwd); JGoto(lb);
+    JL(a); JI("iconst_0",""); put_int_field(bf_field); JGoto(la);
+    JL(b);
+    if (left_is_value) { JI("iconst_1",""); put_int_field(bf_field); JGoto(la); }
+    else { JGoto(rb); }
+
+    JL(lstore);
+    get_int_field(bf_field);
+    J("    ifeq %s\n", ra);
+    JGoto(rb);
+
+    /* compute: lc_field=left, rc_field=right — stack empty */
+    JL(compute);
+    if (is_dbl) { get_dbl(lc_field); get_dbl(rc_field); }
+    else        { get_long(lc_field); get_long(rc_field); }
+    if (is_dbl) {
+        switch (n->kind) {
+            case E_ADD: JI("dadd",""); break;
+            case E_SUB: JI("dsub",""); break;
+            case E_MUL: JI("dmul",""); break;
+            case E_DIV: JI("ddiv",""); break;
+            case E_MOD: JI("drem",""); break;
+            default: break;
+        }
+    } else {
+        switch (n->kind) {
+            case E_ADD: JI("ladd",""); break;
+            case E_SUB: JI("lsub",""); break;
+            case E_MUL: JI("lmul",""); break;
+            case E_DIV: JI("ldiv",""); break;
+            case E_MOD: JI("lrem",""); break;
+            default: break;
+        }
+    }
+    JGoto(ports.γ);
+}
+
+
+/* =========================================================================
+ * Relational operators — goal-directed retry (Proebsting §4.3)
+ * JVM discipline: stack empty at all label boundaries.
+ * lc_field = left cache, rc_field = right staging.
+ * ======================================================================= */
+static void emit_jvm_icon_relop(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    int id = next_uid(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    char chk[64];    snprintf(chk,    sizeof chk,    "icn_%d_check",  id);
+    char lbfwd[64];  snprintf(lbfwd,  sizeof lbfwd,  "icn_%d_lb",     id);
+    char lstore[64]; snprintf(lstore, sizeof lstore, "icn_%d_lstore", id);
+
+    /* Determine operand type: string > double > long */
+    int is_str = expr_is_string(n->children[0]) || expr_is_string(n->children[1]);
+    int is_dbl = !is_str &&
+                 (expr_is_real(n->children[0]) || expr_is_real(n->children[1]));
+
+    /* Use static fields for relay staging (not JVM locals) so that relay labels
+     * are safe to reach on an empty stack — e.g. from an ICN_EVERY β-tableswitch
+     * branch that dispatches through the same label region.  JVM locals require
+     * the verifier to see a long on the stack at every predecessor; putstatic/
+     * getstatic do not, because the field is already live on all paths. */
+    char lc_field[80]; snprintf(lc_field, sizeof lc_field, "icn_%d_relop_lc", id);
+    char rc_field[80]; snprintf(rc_field, sizeof rc_field, "icn_%d_relop_rc", id);
+    if (is_str) { declare_static_str(lc_field); declare_static_str(rc_field); }
+    else if (is_dbl) { declare_static_dbl(lc_field); declare_static_dbl(rc_field); }
+    else        { declare_static(lc_field);      declare_static(rc_field);     }
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+
+    char right_relay[64]; snprintf(right_relay, sizeof right_relay, "icn_%d_rrelay", id);
+    char left_relay[64];  snprintf(left_relay,  sizeof left_relay,  "icn_%d_lrelay", id);
+
+    Ports rp; strncpy(rp.γ, right_relay, 63); strncpy(rp.ω, lbfwd, 63);
+    char ra[64], rb[64]; emit_jvm_icon_expr(n->children[1], rp, ra, rb);
+    Ports lp; strncpy(lp.γ, left_relay,  63); strncpy(lp.ω, ports.ω, 63);
+    char la[64], lb[64]; emit_jvm_icon_expr(n->children[0], lp, la, lb);
+
+    /* left_relay: value on stack → store to lc_field */
+    JL(left_relay);
+    if (is_str)      put_str_field(lc_field);
+    else if (is_dbl) { if (!expr_is_real(n->children[0])) JI("l2d","");
+                       put_dbl(lc_field); }
+    else             put_long(lc_field);
+    JGoto(lstore);
+    /* right_relay: value on stack → store to rc_field */
+    JL(right_relay);
+    if (is_str)      put_str_field(rc_field);
+    else if (is_dbl) { if (!expr_is_real(n->children[1])) JI("l2d","");
+                       put_dbl(rc_field); }
+    else             put_long(rc_field);
+    JGoto(chk);
+
+    JL(lbfwd); JGoto(lb);
+    JL(a); JGoto(la);
+    JL(b); JGoto(rb);
+
+    /* lstore: lc_field has left → go to right.α */
+    JL(lstore); JGoto(ra);
+
+    /* chk: lc_field=left, rc_field=right — stack empty */
+    JL(chk);
+    const char *jfail;
+    if (is_str) {
+        /* String comparison: lc.compareTo(rc) → int; 0=eq, <0=lt, >0=gt */
+        get_str_field(lc_field);
+        get_str_field(rc_field);
+        JI("invokevirtual", "java/lang/String/compareTo(Ljava/lang/String;)I");
+        switch (n->kind) {
+            case E_LT: jfail = "ifge"; break;
+            case E_LE: jfail = "ifgt"; break;
+            case E_GT: jfail = "ifle"; break;
+            case E_GE: jfail = "iflt"; break;
+            case E_EQ: jfail = "ifne"; break;
+            case E_NE: jfail = "ifeq"; break;
+            default:     jfail = "ifne"; break;
+        }
+        J("    %s %s\n", jfail, rb);
+        /* success: reload right as String result, convert to lconst_0 token */
+        get_str_field(rc_field);
+        JGoto(ports.γ);
+        return;
+    } else if (is_dbl) {
+        get_dbl(lc_field); get_dbl(rc_field);
+        /* dcmpl: pushes -1 if either NaN, or left < right; 0 if equal; 1 if left > right.
+         * Use dcmpl for </<= (NaN → -1 → treated as less, safe fail for > case).
+         * Use dcmpg for >/>= (NaN → +1 → treated as greater, safe fail for < case).
+         * For = and ~=, dcmpl works (NaN yields -1 or 1, never 0 → correct). */
+        switch (n->kind) {
+            case E_LT: JI("dcmpl",""); jfail = "ifge"; break;
+            case E_LE: JI("dcmpl",""); jfail = "ifgt"; break;
+            case E_GT: JI("dcmpg",""); jfail = "ifle"; break;
+            case E_GE: JI("dcmpg",""); jfail = "iflt"; break;
+            case E_EQ: JI("dcmpl",""); jfail = "ifne"; break;
+            case E_NE: JI("dcmpl",""); jfail = "ifeq"; break;
+            default:     JI("dcmpl",""); jfail = "ifne"; break;
+        }
+    } else {
+        get_long(lc_field); get_long(rc_field);
+        /* Integer path: lcmp leaves int on stack */
+        JI("lcmp","");
+        switch (n->kind) {
+            case E_LT: jfail = "ifge"; break;
+            case E_LE: jfail = "ifgt"; break;
+            case E_GT: jfail = "ifle"; break;
+            case E_GE: jfail = "iflt"; break;
+            case E_EQ: jfail = "ifne"; break;
+            case E_NE: jfail = "ifeq"; break;
+            default:     jfail = "ifne"; break;
+        }
+    }
+    J("    %s %s\n", jfail, rb);
+    /* success: reload right as result value */
+    if (is_dbl) get_dbl(rc_field); else get_long(rc_field);
+    JGoto(ports.γ);
+}
+
+/* =========================================================================
+ * ICN_TO — range generator inline counter (§4.4)
+ * ======================================================================= */
+static void emit_jvm_icon_to(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    int id = next_uid(); char a[64], b[64], code[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b); lbl_code(id,code,sizeof code);
+    char init[64]; snprintf(init,sizeof init,"icn_%d_init",id);
+    char e1bf[64]; snprintf(e1bf,sizeof e1bf,"icn_%d_e1b",id);
+    char e2bf[64]; snprintf(e2bf,sizeof e2bf,"icn_%d_e2b",id);
+    /* Static fields for all cross-label values */
+    char I_field[64];     snprintf(I_field,     sizeof I_field,     "icn_%d_I",     id);
+    char bound_field[64]; snprintf(bound_field, sizeof bound_field, "icn_%d_bound", id);
+    char e1cur_field[64]; snprintf(e1cur_field, sizeof e1cur_field, "icn_%d_e1cur", id);
+    char e2seen_field[64];snprintf(e2seen_field,sizeof e2seen_field,"icn_%d_e2seen",id);
+    /* Staging field: child exprs store their value here before jumping to init/code */
+    char e1val_field[64]; snprintf(e1val_field, sizeof e1val_field, "icn_%d_e1val", id);
+    char e2val_field[64]; snprintf(e2val_field, sizeof e2val_field, "icn_%d_e2val", id);
+    declare_static(I_field);
+    declare_static(bound_field);
+    declare_static(e1cur_field);
+    declare_static_int(e2seen_field);
+    declare_static(e1val_field);
+    declare_static(e2val_field);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+
+    /* Relay labels: drain stack before crossing to init */
+    char e1_relay[64]; snprintf(e1_relay, sizeof e1_relay, "icn_%d_e1relay", id);
+    char e2_relay[64]; snprintf(e2_relay, sizeof e2_relay, "icn_%d_e2relay", id);
+
+    Ports e2p; strncpy(e2p.γ, e2_relay, 63); strncpy(e2p.ω, e1bf, 63);
+    char e2a[64],e2b[64]; emit_jvm_icon_expr(n->children[1], e2p, e2a, e2b);
+    Ports e1p; strncpy(e1p.γ, e1_relay, 63); strncpy(e1p.ω, ports.ω, 63);
+    char e1a[64],e1b[64]; emit_jvm_icon_expr(n->children[0], e1p, e1a, e1b);
+
+    /* e1_relay: E1 long on stack → store to e1val, jump to e2a */
+    JL(e1_relay);
+    put_long(e1val_field);
+    JGoto(e2a);
+
+    /* e2_relay: E2 long on stack → store to e2val, jump to init */
+    JL(e2_relay);
+    put_long(e2val_field);
+    JGoto(init);
+
+    JL(e1bf);
+    JI("iconst_0",""); put_int_field(e2seen_field);
+    JGoto(e1b);
+    JL(e2bf); JGoto(e2b);
+
+    JL(a);
+    JI("iconst_0",""); put_int_field(e2seen_field);
+    JGoto(e1a);
+    /* β: increment I, loop to code — stack empty here */
+    JL(b);
+    get_long(I_field);
+    JI("lconst_1","");
+    JI("ladd","");
+    put_long(I_field);
+    JGoto(code);
+
+    /* init: E1 in e1val_field, E2 in e2val_field — stack empty */
+    JL(init);
+    get_long(e2val_field);
+    put_long(bound_field);
+    char init_e2adv[64]; snprintf(init_e2adv, sizeof init_e2adv, "icn_%d_init_e2adv", id);
+    get_int_field(e2seen_field);
+    J("    ifne %s\n", init_e2adv);
+    /* First time: read E1 value */
+    get_long(e1val_field);
+    put_long(e1cur_field);
+    get_long(e1cur_field);
+    put_long(I_field);
+    JI("iconst_1",""); put_int_field(e2seen_field);
+    JGoto(code);
+    JL(init_e2adv);
+    get_long(e1cur_field);
+    put_long(I_field);
+    JGoto(code);
+
+    /* code: I <= bound? — stack empty */
+    JL(code);
+    get_long(I_field);
+    get_long(bound_field);
+    JI("lcmp","");
+    J("    ifgt %s\n", e2bf);
+    /* Push I as the generated value — consumer must drain before next label */
+    get_long(I_field);
+    JGoto(ports.γ);
+}
+
+/* =========================================================================
+ * ICN_EVERY
+ * ======================================================================= */
+static void emit_jvm_icon_every(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    int id = next_uid(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    /* pump_gen: arrived with NO value on stack — kick generator β for next value */
+    char pump_gen[64]; snprintf(pump_gen, sizeof pump_gen, "icn_%d_pump", id);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+
+    EXPR_t *gen  = n->children[0];
+    EXPR_t *body = (n->nchildren > 1) ? n->children[1] : NULL;
+    char ga[64], gb[64];
+
+    if (body) {
+        /* gen_drain: generator yielded a value — pop it, then run body */
+        char gen_drain[64]; snprintf(gen_drain, sizeof gen_drain, "icn_%d_gdrain", id);
+        char body_drain[64];snprintf(body_drain,sizeof body_drain,"icn_%d_bdrain", id);
+        /* body.γ → drain body result, then pump gen again (no value on stack).
+         * body.ω → pump_gen (body failed/next: no value on stack, pump gen). */
+        Ports bp;
+        strncpy(bp.γ, body_drain, 63);
+        strncpy(bp.ω, pump_gen,   63);
+        char ba[64], bb[64];
+        loop_push(ports.ω, pump_gen);  /* break→exit every, next→pump_gen */
+        emit_jvm_icon_expr(body, bp, ba, bb);
+        loop_pop();
+        Ports gp; strncpy(gp.γ, gen_drain, 63); strncpy(gp.ω, ports.ω, 63);
+        emit_jvm_icon_expr(gen, gp, ga, gb);
+        /* gen_drain: pop generator value, start body */
+        JL(gen_drain); JI(expr_is_obj(gen) ? "pop" : "pop2",""); JGoto(ba);
+        /* body_drain: pop body result (success), then pump gen */
+        JL(body_drain);
+        if (expr_is_obj(body)) { JI("pop",""); } else { JI("pop2",""); }
+        /* fall through to pump_gen */
+    } else {
+        /* no body: generator success → drain gen value → pump */
+        char gen_drain[64]; snprintf(gen_drain, sizeof gen_drain, "icn_%d_gdrain", id);
+        Ports gp; strncpy(gp.γ, gen_drain, 63); strncpy(gp.ω, ports.ω, 63);
+        emit_jvm_icon_expr(gen, gp, ga, gb);
+        JL(gen_drain); JI(expr_is_obj(gen) ? "pop" : "pop2",""); /* fall through */
+    }
+    /* pump_gen: NO value on stack — kick generator β to produce next value */
+    JL(pump_gen); JGoto(gb);
+    JL(a); JGoto(ga);
+    JL(b); JGoto(ports.ω);
+}
+
+/* =========================================================================
+ * ICN_WHILE
+ * ======================================================================= */
+static void emit_jvm_icon_while(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    int id = next_uid(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+
+    EXPR_t *cond = n->children[0];
+    EXPR_t *body = (n->nchildren > 1) ? n->children[1] : NULL;
+
+    char cond_ok[64];  snprintf(cond_ok,  sizeof cond_ok,  "icn_%d_condok", id);
+    char loop_top[64]; snprintf(loop_top, sizeof loop_top, "icn_%d_top",    id);
+
+    Ports cp; strncpy(cp.γ,cond_ok,63); strncpy(cp.ω,ports.ω,63);
+    char ca[64], cb[64]; emit_jvm_icon_expr(cond, cp, ca, cb);
+
+    JL(cond_ok);
+    if (expr_is_obj(cond)) { JI("pop",""); } else { JI("pop2",""); }  /* discard condition value */
+    if (body) {
+        char ba[64], bb[64];
+        char body_start[64]; snprintf(body_start, sizeof body_start, "icn_%d_wbstart", id);
+        char body_drain[64]; snprintf(body_drain, sizeof body_drain, "icn_%d_wbdrain", id);
+        /* Jump explicitly to body start (avoid fall-through into mid-body code) */
+        JGoto(body_start);
+        loop_push(ports.ω, ca);   /* break→exit, next→re-eval cond */
+        /* ICN_SEQ_EXPR body: emit each child as an independent statement.
+         * A failing child (e.g. `if` with no else) must NOT abort remaining
+         * statements — it should fall through to the next child's α.
+         * Only the last child's ω goes to loop_top (re-check condition). */
+        if (body->kind == E_SEQ_EXPR && body->nchildren >= 2) {
+            int nc = body->nchildren;
+            char (*cca)[64] = malloc(nc * 64);
+            char (*ccb)[64] = malloc(nc * 64);
+            char (*relay_g)[64] = malloc(nc * 64);
+            char (*relay_f)[64] = malloc(nc * 64); /* failure relay: stmt fail → next α */
+            for (int i = 0; i < nc; i++) {
+                snprintf(relay_g[i], 64, "icn_%d_wb_rg_%d", id, i);
+                snprintf(relay_f[i], 64, "icn_%d_wb_rf_%d", id, i);
+                cca[i][0] = '\0'; ccb[i][0] = '\0';
+            }
+            /* Emit children: each stmt's γ → relay_g[i] (drain+next), ω → relay_f[i] (skip+next) */
+            for (int i = 0; i < nc; i++) {
+                Ports ep;
+                strncpy(ep.γ, (i == nc-1) ? body_drain : relay_g[i], 63);
+                strncpy(ep.ω, (i == nc-1) ? loop_top   : relay_f[i], 63);
+                emit_jvm_icon_expr(body->children[i], ep, cca[i], ccb[i]);
+            }
+            /* Jump over relay block */
+            JGoto(body_start);
+            /* γ relays: drain value, go to next stmt */
+            for (int i = 0; i < nc-1; i++) {
+                JL(relay_g[i]);
+                int is_ref = expr_is_obj(body->children[i]);
+                JI(is_ref ? "pop" : "pop2", "");
+                JGoto(cca[i+1]);
+            }
+            /* ω relays: stmt failed → skip to next stmt α (no value on stack) */
+            for (int i = 0; i < nc-1; i++) {
+                JL(relay_f[i]);
+                JGoto(cca[i+1]);
+            }
+            JL(body_start); JGoto(cca[0]);
+            strncpy(ba, cca[0], 63);
+            free(cca); free(ccb); free(relay_g); free(relay_f);
+        } else {
+            /* Single-statement body: body.γ → drain, body.ω → loop_top */
+            Ports bp; strncpy(bp.γ, body_drain, 63); strncpy(bp.ω, loop_top, 63);
+            emit_jvm_icon_expr(body, bp, ba, bb);
+            JL(body_start); JGoto(ba);
+        }
+        loop_pop();
+        /* drain body return value then loop */
+        JL(body_drain);
+        if (expr_is_obj(body)) { JI("pop",""); }
+        else if (expr_is_real(body)) { JI("pop2",""); }
+        else { JI("pop2",""); }
+        JL(loop_top); JGoto(ca);
+    } else {
+        JGoto(ca);
+    }
+    JL(a); JGoto(ca);
+    JL(b); JGoto(ports.ω);
+}
+
+static void emit_jvm_icon_until(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    /* until E do body end — loop while E FAILS; exit when E SUCCEEDS.
+     * Byrd-box dual of while: cond.γ → ports.ω (cond succeeded → stop)
+     *                         cond.ω → body.α  (cond failed → run body) */
+    int id = next_uid(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+
+    EXPR_t *cond = n->children[0];
+    EXPR_t *body = (n->nchildren > 1) ? n->children[1] : NULL;
+
+    char cond_ok[64];   snprintf(cond_ok,   sizeof cond_ok,   "icn_%d_condok",  id);
+    char cond_fail[64]; snprintf(cond_fail, sizeof cond_fail, "icn_%d_cfail",   id);
+    char loop_top[64];  snprintf(loop_top,  sizeof loop_top,  "icn_%d_top",     id);
+
+    /* cond.γ → cond_ok (discard value, then exit); cond.ω → cond_fail → body */
+    Ports cp; strncpy(cp.γ, cond_ok, 63); strncpy(cp.ω, cond_fail, 63);
+    char ca[64], cb[64]; emit_jvm_icon_expr(cond, cp, ca, cb);
+
+    /* cond succeeded → discard value, jump to ports.ω */
+    JL(cond_ok);
+    if (!expr_is_obj(cond)) { JI("pop2",""); } else { JI("pop",""); }
+    JGoto(ports.ω);
+
+    /* cond failed → run body */
+    JL(cond_fail);
+    if (body) {
+        char ba[64], bb[64];
+        char body_ok[64]; snprintf(body_ok, sizeof body_ok, "icn_%d_bok", id);
+        Ports bp; strncpy(bp.γ, body_ok, 63); strncpy(bp.ω, loop_top, 63);
+        loop_push(ports.ω, ca);   /* break→exit, next→re-eval cond */
+        emit_jvm_icon_expr(body, bp, ba, bb);
+        loop_pop();
+        JGoto(ba);
+        /* body succeeded: drain value, loop */
+        JL(body_ok);
+        if (!expr_is_obj(body)) { JI("pop2",""); } else { JI("pop",""); }
+        JL(loop_top); JGoto(ca);
+    } else {
+        JL(loop_top); JGoto(ca);
+    }
+    JL(a); JGoto(ca);
+    JL(b); JGoto(ports.ω);
+}
+
+static void emit_jvm_icon_repeat(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    /* repeat body end — run body forever; break exits via ports.ω.
+     * body.γ and body.ω both loop back to body.α. */
+    int id = next_uid(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+
+    EXPR_t *body = (n->nchildren > 0) ? n->children[0] : NULL;
+
+    char loop_top[64]; snprintf(loop_top, sizeof loop_top, "icn_%d_top", id);
+
+    if (body) {
+        char ba[64], bb[64];
+        char body_ok[64]; snprintf(body_ok, sizeof body_ok, "icn_%d_bok", id);
+        Ports bp; strncpy(bp.γ, body_ok, 63); strncpy(bp.ω, loop_top, 63);
+        loop_push(ports.ω, loop_top);  /* break→exit, next→loop_top */
+        emit_jvm_icon_expr(body, bp, ba, bb);
+        loop_pop();
+        JL(a); JL(loop_top); JGoto(ba);
+        /* body succeeded: drain value, loop again */
+        JL(body_ok);
+        if (!expr_is_obj(body)) { JI("pop2",""); } else { JI("pop",""); }
+        JGoto(loop_top);
+    } else {
+        JL(a); JL(loop_top); JGoto(loop_top);  /* infinite empty loop */
+    }
+    JL(b); JGoto(ports.ω);
+}
+
+/* =========================================================================
+ * String type predicate and concat emitter
+ * ======================================================================= */
+static int expr_is_string(EXPR_t *n) {
+    if (!n) return 0;
+    switch (n->kind) {
+        case E_QLIT:    return 1;
+        case E_CSET:   return 1;  /* cset literal is a String */
+        case E_CAT: return 1;
+        case E_LCONCAT:return 1;  /* Tiny-ICON: ||| treated as string concat */
+        case E_ITERATE:
+            /* !E yields single-char Strings for string operands,
+             * but longs for list operands */
+            if (n->nchildren >= 1) return expr_is_list(n->children[0]) ? 0 : 1;
+            return 1;
+        case E_AUGOP:  /* ||:= (TK_AUGCONCAT=36) yields String; arithmetic augops yield long */
+            if ((int)n->ival == TK_AUGCONCAT) return 1;
+            /* String comparison augops yield String (the rhs) */
+            if ((int)n->ival == TK_AUGSEQ || (int)n->ival == TK_AUGSLT ||
+                (int)n->ival == TK_AUGSLE || (int)n->ival == TK_AUGSGT ||
+                (int)n->ival == TK_AUGSGE || (int)n->ival == TK_AUGSNE) return 1;
+            return 0;
+        case E_FNC: {
+            if (n->nchildren >= 1) {
+                EXPR_t *fn = n->children[0];
+                if (fn && fn->kind == E_VAR) {
+                    const char *fn_name = fn->sval;
+                    /* write(args...) returns its last argument */
+                    if (strcmp(fn_name, "write") == 0 && n->nchildren >= 2)
+                        return expr_is_string(n->children[n->nchildren - 1]);
+                    /* tab/move return String substrings */
+                    if (strcmp(fn_name, "tab") == 0)    return 1;
+                    if (strcmp(fn_name, "move") == 0)   return 1;
+                    /* string() conversion returns String */
+                    if (strcmp(fn_name, "string") == 0) return 1;
+                    /* read()/reads() return String (or fail) */
+                    if (strcmp(fn_name, "read")  == 0) return 1;
+                    if (strcmp(fn_name, "reads") == 0) return 1;
+                    /* M-IJ-BUILTINS-STR: all return String */
+                    if (strcmp(fn_name, "repl")    == 0) return 1;
+                    if (strcmp(fn_name, "reverse") == 0) return 1;
+                    if (strcmp(fn_name, "left")    == 0) return 1;
+                    if (strcmp(fn_name, "right")   == 0) return 1;
+                    if (strcmp(fn_name, "center")  == 0) return 1;
+                    if (strcmp(fn_name, "trim")    == 0) return 1;
+                    if (strcmp(fn_name, "map")     == 0) return 1;
+                    if (strcmp(fn_name, "char")    == 0) return 1;
+                    /* M-IJ-BUILTINS-TYPE: string-returning */
+                    if (strcmp(fn_name, "type")    == 0) return 1;
+                    if (strcmp(fn_name, "image")   == 0) return 1;
+                    if (strcmp(fn_name, "copy")    == 0 && n->nchildren >= 2
+                        && expr_is_string(n->children[1])) return 1;
+                    /* ord() returns long — not listed here */
+                    /* match returns a long position, not a String */
+                    /* user-defined proc — check proc table */
+                    if (proc_returns_str(fn_name)) return 1;
+                    /* imported cross-class call — result is always String
+                     * (retrieved from ByrdBoxLinkage.RESULT cast to Object/String) */
+                    if (find_import(fn_name)) return 1;
+                }
+            }
+            return 0;
+        }
+        case E_ASSIGN: {
+            /* Assignment returns the RHS value */
+            if (n->nchildren >= 2) return expr_is_string(n->children[1]);
+            return 0;
+        }
+        case E_SCAN: {
+            /* E_SCAN covers =E pattern match and E?body scan.
+             * Both yield a substring — return 1 (string). */
+            return 1;
+        }
+        case E_IF: {
+            /* if/then/else: result type = then-branch type, BUT only if it matches
+             * the else-branch type (or there is no else). When branches differ in
+             * width (mixed: one String, one long), emit_jvm_icon_if drains both and pushes
+             * lconst_0 — so the result is a long (not a String). */
+            if (n->nchildren >= 3) {
+                int ts = expr_is_string(n->children[1]);
+                int es = expr_is_string(n->children[2]);
+                if (ts != es) return 0;  /* mixed: join pushes lconst_0 (long) */
+                return ts;
+            }
+            if (n->nchildren >= 2) return expr_is_string(n->children[1]);
+            return 0;
+        }
+        case E_CASE: {
+            /* case: result type = first result branch type (children[2] if exists) */
+            if (n->nchildren >= 3) return expr_is_string(n->children[2]);
+            return 0;
+        }
+        case E_ALTERNATE: {
+            /* ALT is string-typed if all alternatives are strings */
+            if (n->nchildren == 0) return 0;
+            for (int i = 0; i < n->nchildren; i++)
+                if (!expr_is_string(n->children[i])) return 0;
+            return 1;
+        }
+        case E_SEQ: {
+            /* AND chain result type = last child's type */
+            if (n->nchildren >= 1)
+                return expr_is_string(n->children[n->nchildren - 1]);
+            return 0;
+        }
+        case E_LIMIT: {
+            /* E \ N yields same type as E */
+            if (n->nchildren >= 1) return expr_is_string(n->children[0]);
+            return 0;
+        }
+        case E_SWAP: {
+            /* :=: returns new lhs value — same type as children */
+            if (n->nchildren >= 1) return expr_is_string(n->children[0]);
+            return 0;
+        }
+        case E_IDENTICAL: {
+            /* E1 === E2: result is lhs value pushed at γ.
+             * String if either operand is string. */
+            if (n->nchildren >= 2)
+                return expr_is_string(n->children[0]) ||
+                       expr_is_string(n->children[1]);
+            if (n->nchildren >= 1) return expr_is_string(n->children[0]);
+            return 0;
+        }
+        case E_LT: case E_LE: case E_GT: case E_GE: case E_EQ: case E_NE:
+            /* Numeric relops yield long; string relops yield the rc String value */
+            if (n->nchildren >= 2)
+                return expr_is_string(n->children[0]) ||
+                       expr_is_string(n->children[1]);
+            return 0;
+        case E_IDX:
+            /* t[k] on a table: String if table has String default, else long */
+            if (n->nchildren >= 1 && expr_is_table(n->children[0])) {
+                EXPR_t *tbl = n->children[0];
+                if (tbl->kind == E_VAR) {
+                    char tvfld[128];
+                    int slot = locals_find(tbl->sval);
+                    if (slot >= 0)
+                        var_field(tbl->sval, tvfld, sizeof tvfld);
+                    else
+                        snprintf(tvfld, sizeof tvfld, "icn_gvar_%s", tbl->sval);
+                    return tdflt_is_str(tvfld);
+                }
+                return 0;
+            }
+            /* List subscript: return type depends on list element type */
+            if (n->nchildren >= 1 && expr_is_strlist(n->children[0])) return 1;
+            if (n->nchildren >= 1 && expr_is_list(n->children[0]))    return 0;
+            return 1;  /* s[i] always yields a single-char String */
+        case E_SECTION:
+            return 1;  /* s[i:j] always yields a String */
+        case E_SECTION_PLUS: case E_SECTION_MINUS:
+            return 1;  /* s[i+:n] / s[i-:n] are also String sections */
+        /* E_SCAN case handled above (line ~4471) */
+        case E_NONNULL: {
+            /* \E: transparent passthrough — same type as child */
+            if (n->nchildren >= 1) return expr_is_string(n->children[0]);
+            return 0;
+        }
+        case E_SEQ_EXPR: {
+            /* Result type is that of the last child */
+            if (n->nchildren >= 1) return expr_is_string(n->children[n->nchildren-1]);
+            return 0;
+        }
+        case E_VAR: {
+            /* &subject keyword is always a String */
+            if (strcmp(n->sval, "&subject") == 0) return 1;
+            /* Check if var's static field is typed 'A' (String) */
+            char fld[128]; var_field(n->sval, fld, sizeof fld);
+            for (int i = 0; i < nstatics; i++)
+                if (!strcmp(statics[i], fld) && static_types[i] == 'A') return 1;
+            /* Also check global var */
+            char gname[80]; snprintf(gname, sizeof gname, "icn_gvar_%s", n->sval);
+            for (int i = 0; i < nstatics; i++)
+                if (!strcmp(statics[i], gname) && static_types[i] == 'A') return 1;
+            return 0;
+        }
+        default: return 0;
+    }
+}
+
+/* =========================================================================
+ * expr_is_obj — returns 1 if the expression produces a 1-slot JVM reference
+ * (String, ArrayList list/strlist, table, or record object).
+ * Used to decide pop vs pop2 in drains.
+ * ======================================================================= */
+static int expr_is_obj(EXPR_t *n) {
+    if (!n) return 0;
+    if (expr_is_string(n)) return 1;
+    if (expr_is_list(n))   return 1;
+    if (expr_is_table(n))  return 1;
+    if (expr_is_record(n)) return 1;
+    /* Built-in calls that return a list/table object */
+    if (n->kind == E_FNC && n->nchildren >= 1 && n->children[0]->kind == E_VAR) {
+        const char *fn = n->children[0]->sval;
+        if (strcmp(fn, "list")  == 0) return 1;
+        if (strcmp(fn, "table") == 0) return 1;
+        if (strcmp(fn, "copy")  == 0) return 1;
+        if (strcmp(fn, "sort")  == 0) return 1;
+        if (strcmp(fn, "sortf") == 0) return 1;
+        if (strcmp(fn, "put")   == 0) return 1;
+        if (strcmp(fn, "push")  == 0) return 1;
+        if (strcmp(fn, "pull")  == 0 && n->nchildren >= 2
+                && expr_is_list(n->children[1])) return 1;
+        if (strcmp(fn, "pop")   == 0 && n->nchildren >= 2
+                && expr_is_list(n->children[1])) return 1;
+        if (strcmp(fn, "key")   == 0) return 1;  /* key(T) returns a String */
+        if (strcmp(fn, "open")  == 0) return 1;  /* file object */
+    }
+    return 0;
+}
+
+/* =========================================================================
+ * List type predicate — returns 1 if node is known to produce an ArrayList
+ * ======================================================================= */
+static int expr_is_strlist(EXPR_t *n) {
+    if (!n) return 0;
+    if (n->kind == E_MAKELIST)
+        return (n->nchildren > 0 && expr_is_string(n->children[0]));
+    if (n->kind == E_VAR) {
+        char fld[128]; var_field(n->sval, fld, sizeof fld);
+        for (int i = 0; i < nstatics; i++)
+            if (!strcmp(statics[i], fld) && static_types[i] == 'S') return 1;
+        char gname[80]; snprintf(gname, sizeof gname, "icn_gvar_%s", n->sval);
+        for (int i = 0; i < nstatics; i++)
+            if (!strcmp(statics[i], gname) && static_types[i] == 'S') return 1;
+    }
+    return 0;
+}
+
+static int expr_is_list(EXPR_t *n) {
+    if (!n) return 0;
+    if (n->kind == E_MAKELIST) return 1;
+    if (n->kind == E_ASSIGN) {
+        /* Assignment returns the RHS value */
+        if (n->nchildren >= 2) return expr_is_list(n->children[1]);
+        return 0;
+    }
+    if (n->kind == E_FNC) {
+        /* push(L,v) and put(L,v) return the list; list(n,x) returns a new list */
+        if (n->nchildren >= 1) {
+            EXPR_t *fn = n->children[0];
+            if (fn && fn->kind == E_VAR) {
+                const char *fname = fn->sval;
+                if (strcmp(fname, "push") == 0 || strcmp(fname, "put") == 0 ||
+                    strcmp(fname, "list") == 0 ||
+                    strcmp(fname, "sort") == 0 || strcmp(fname, "sortf") == 0) return 1;
+            }
+        }
+        return 0;
+    }
+    if (n->kind == E_VAR) {
+        /* Check local/global var static type tag 'L'/'R'/'S' */
+        char fld[128]; var_field(n->sval, fld, sizeof fld);
+        for (int i = 0; i < nstatics; i++)
+            if (!strcmp(statics[i], fld) && (static_types[i] == 'L' || static_types[i] == 'R' || static_types[i] == 'S')) return 1;
+        char gname[80]; snprintf(gname, sizeof gname, "icn_gvar_%s", n->sval);
+        for (int i = 0; i < nstatics; i++)
+            if (!strcmp(statics[i], gname) && (static_types[i] == 'L' || static_types[i] == 'R' || static_types[i] == 'S')) return 1;
+    }
+    return 0;
+}
+
+static int expr_is_table(EXPR_t *n) {
+    if (!n) return 0;
+    if (n->kind == E_ASSIGN) {
+        if (n->nchildren >= 2) return expr_is_table(n->children[1]);
+        return 0;
+    }
+    if (n->kind == E_FNC) {
+        if (n->nchildren >= 1) {
+            EXPR_t *fn = n->children[0];
+            if (fn && fn->kind == E_VAR) {
+                const char *fname = fn->sval;
+                if (strcmp(fname, "table") == 0) return 1;
+                if (strcmp(fname, "insert") == 0) return 1;
+                if (strcmp(fname, "delete") == 0) return 1;
+            }
+        }
+        return 0;
+    }
+    if (n->kind == E_VAR) {
+        char fld[128]; var_field(n->sval, fld, sizeof fld);
+        for (int i = 0; i < nstatics; i++)
+            if (!strcmp(statics[i], fld) && static_types[i] == 'T') return 1;
+        char gname[80]; snprintf(gname, sizeof gname, "icn_gvar_%s", n->sval);
+        for (int i = 0; i < nstatics; i++)
+            if (!strcmp(statics[i], gname) && static_types[i] == 'T') return 1;
+    }
+    return 0;
+}
+
+/* ICN_CONCAT — E1 || E2  (string concatenation)
+ * Byrd-box wiring: same funcs-set pattern as binop (Proebsting §4.3).
+ * Left/right values are String refs stored in String-typed static fields.
+ * Compute: invokevirtual String.concat → result String ref on stack → ports.γ
+ *
+ * Stack discipline: EMPTY at every label. String refs passed via static fields.
+ */
+static void emit_jvm_icon_concat(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    int id = next_uid(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    char compute[64]; snprintf(compute, sizeof compute, "icn_%d_compute", id);
+    char lbfwd[64];   snprintf(lbfwd,   sizeof lbfwd,   "icn_%d_lb",     id);
+    char lstore[64];  snprintf(lstore,  sizeof lstore,  "icn_%d_lstore", id);
+    char lc_fld[64];  snprintf(lc_fld,  sizeof lc_fld,  "icn_%d_lc",     id);
+    char rc_fld[64];  snprintf(rc_fld,  sizeof rc_fld,  "icn_%d_rc",     id);
+    /* bf: track whether we are on fresh (0) or resume (1) path */
+    int bf_slot = alloc_int_scratch();
+    declare_static_str(lc_fld);
+    declare_static_str(rc_fld);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+
+    char right_relay[64]; snprintf(right_relay, sizeof right_relay, "icn_%d_rrelay", id);
+    char left_relay[64];  snprintf(left_relay,  sizeof left_relay,  "icn_%d_lrelay", id);
+
+    Ports rp; strncpy(rp.γ, right_relay, 63); strncpy(rp.ω, lbfwd, 63);
+    char ra[64], rb[64]; emit_jvm_icon_expr(n->children[1], rp, ra, rb);
+    Ports lp; strncpy(lp.γ, left_relay,  63); strncpy(lp.ω, ports.ω, 63);
+    char la[64], lb[64]; emit_jvm_icon_expr(n->children[0], lp, la, lb);
+
+    EXPR_t *lchild = n->children[0];
+    /* left_is_value: true only for one-shot string producers (literals, vars, one-shot calls).
+     * ICN_ALT is a generator — its β must be used to advance it, not restart from α. */
+    int left_is_value = expr_is_string(lchild) && lchild->kind != E_ALTERNATE;
+
+    /* left_relay: String ref on stack → astore into lc_fld → lstore */
+    JL(left_relay); put_str_field(lc_fld); JGoto(lstore);
+    /* right_relay: String ref on stack → astore into rc_fld → compute */
+    JL(right_relay); put_str_field(rc_fld); JGoto(compute);
+
+    JL(lbfwd); JGoto(lb);
+    JL(a); JI("iconst_0",""); J("    istore %d\n", bf_slot); JGoto(la);
+    JL(b);
+    if (left_is_value) { JI("iconst_1",""); J("    istore %d\n", bf_slot); JGoto(la); }
+    else { JGoto(rb); }
+
+    JL(lstore);
+    J("    iload %d\n", bf_slot);
+    J("    ifeq %s\n", ra);
+    JGoto(rb);
+
+    /* compute: lc_fld = left String, rc_fld = right String */
+    JL(compute);
+    get_str_field(lc_fld);
+    get_str_field(rc_fld);
+    JI("invokevirtual", "java/lang/String/concat(Ljava/lang/String;)Ljava/lang/String;");
+    JGoto(ports.γ);
+}
+
+/* =========================================================================
+ * ICN_SCAN — E ? body
+ *
+ * Byrd-box wiring (four-port, per JCON ir_a_Scan / JCON-ANALYSIS §E ? body):
+ *
+ *   α  → expr.α
+ *   expr.γ (new subject on stack as String):
+ *          save old icn_subject → old_subject_N
+ *          save old icn_pos    → old_pos_N
+ *          putstatic icn_subject  (consumes new String from stack)
+ *          iconst_0 → putstatic icn_pos
+ *          → body.α
+ *   expr.ω → ports.ω  (expr failed → whole scan fails)
+ *   body.γ → restore old_subject / old_pos → ports.γ
+ *   body.ω → restore old_subject / old_pos → expr.β
+ *             (expr is one-shot string → expr.β → ports.ω)
+ *   β      → restore old_subject / old_pos → body.β
+ *
+ * Save slots: per-scan static fields old_subject_N (String) and old_pos_N (I).
+ * ======================================================================= */
+static void emit_jvm_icon_scan(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    int id = next_uid(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+
+    /* Per-scan save-restore static fields */
+    char old_subj[64], old_pos[64];
+    snprintf(old_subj, sizeof old_subj, "icn_scan_oldsubj_%d", id);
+    snprintf(old_pos,  sizeof old_pos,  "icn_scan_oldpos_%d",  id);
+    declare_static_str(old_subj);
+    declare_static_int(old_pos);
+
+    /* Ensure global subject/pos fields are declared */
+    declare_static_str("icn_subject");
+    declare_static_int("icn_pos");
+
+    /* Child nodes */
+    EXPR_t *expr_node = (n->nchildren >= 1) ? n->children[0] : NULL;
+    EXPR_t *body_node = (n->nchildren >= 2) ? n->children[1] : NULL;
+
+    /* Label names for intermediate wiring */
+    char setup[64], body_fail_restore[64], body_ok_restore[64], beta_restore[64];
+    snprintf(setup,             sizeof setup,             "icn_%d_scan_setup",    id);
+    snprintf(body_fail_restore, sizeof body_fail_restore, "icn_%d_scan_bfail",    id);
+    snprintf(body_ok_restore,   sizeof body_ok_restore,   "icn_%d_scan_bok",      id);
+    snprintf(beta_restore,      sizeof beta_restore,       "icn_%d_scan_beta",     id);
+
+    /* Wire expr: success → setup, fail → ports.ω */
+    Ports ep;
+    strncpy(ep.γ, setup,    63);
+    strncpy(ep.ω, ports.ω,  63);
+    char ea[64], eb[64];
+    emit_jvm_icon_expr(expr_node, ep, ea, eb);
+
+    /* Wire body: success → body_ok_restore, fail → body_fail_restore */
+    Ports bp;
+    strncpy(bp.γ, body_ok_restore,   63);
+    strncpy(bp.ω, body_fail_restore,  63);
+    char ba[64], bb[64];
+    emit_jvm_icon_expr(body_node, bp, ba, bb);
+
+    /* α → expr.α */
+    JC("SCAN"); JL(a); JGoto(ea);
+
+    /* β → restore → body.β */
+    JL(b); JGoto(beta_restore);
+
+    /* setup: expr.γ — new subject String is on JVM stack
+     *   save old subject/pos, install new subject, reset pos, → body.α */
+    JL(setup);
+    JC("SCAN save+install");
+    /* Stack has new subject String — save it in a temp by storing first,
+     * then saving old subject, restoring new.  Use dup to keep on stack. */
+    /* Strategy: dup the new subject, put into icn_subject, then save old
+     * subject was already overwritten — so: save old first, then install.
+     * But old is in icn_subject already and new is on stack.  Use a temp
+     * approach: swap via old_subj slot. */
+    /* Correct sequence:
+     *   [stack: new_str]
+     *   getstatic icn_subject → save to old_subj  (pops nothing, pushes old)
+     *   putstatic old_subj                         (consumes old)
+     *   getstatic icn_pos → save to old_pos
+     *   putstatic old_pos
+     *   [stack: new_str still there from expr.γ]
+     *   putstatic icn_subject                      (consumes new_str)
+     *   iconst_0 → putstatic icn_pos
+     * PROBLEM: getstatic doesn't consume the new_str — but new_str is
+     * already on the stack when we arrive here.  We must save icn_subject
+     * BEFORE consuming new_str.  Use dup: */
+    /* Actually at expr.γ the String ref is on the JVM operand stack.
+     * We do NOT want to consume it yet.  So: */
+    /*   dup                        ; [new new]
+     *   → we don't need dup; instead: save old, then install new.
+     * The new_str is on stack.  getstatic pushes old on top:
+     *   [new old_subj]
+     * That's 2 items on stack.  We need to putstatic old_subj first,
+     * but that pops old_subj leaving [new].  Perfect: */
+    get_str_field("icn_subject");         /* push old subject */
+    put_str_field(old_subj);              /* save old subject; stack: [new_str] */
+    get_int_field("icn_pos");             /* push old pos */
+    put_int_field(old_pos);               /* save old pos;    stack: [new_str] */
+    put_str_field("icn_subject");         /* install new subject; stack: [] */
+    J("    iconst_0\n");
+    put_int_field("icn_pos");             /* reset pos to 0 */
+    JGoto(ba);                               /* → body.α */
+
+    /* body.γ — body succeeded: restore subject/pos, → ports.γ */
+    JL(body_ok_restore);
+    JC("SCAN restore (body ok)");
+    get_str_field(old_subj); put_str_field("icn_subject");
+    get_int_field(old_pos);  put_int_field("icn_pos");
+    JGoto(ports.γ);
+
+    /* body.ω — body failed: restore subject/pos, → expr.β (retry = fail) */
+    JL(body_fail_restore);
+    JC("SCAN restore (body fail)");
+    get_str_field(old_subj); put_str_field("icn_subject");
+    get_int_field(old_pos);  put_int_field("icn_pos");
+    JGoto(eb);   /* expr.β — one-shot string → expr.ω → ports.ω */
+
+    /* β: restore subject/pos, → body.β */
+    JL(beta_restore);
+    JC("SCAN restore (outer β)");
+    get_str_field(old_subj); put_str_field("icn_subject");
+    get_int_field(old_pos);  put_int_field("icn_pos");
+    JGoto(bb);   /* body.β */
+}
+
+/* Re-implement ICN_NOT cleanly with succeed trampoline */
+/* =========================================================================
+ * ICN_INITIAL — initial stmt
+ * Runs the child statement exactly once, on the first call to this procedure.
+ * Implementation: per-proc static boolean field icn_init_PROCNAME (I, default 0).
+ * α: load flag; if non-zero → skip (already ran) → ports.γ with lconst_0.
+ *    else: set flag=1, emit child stmt, → ports.γ.
+ * Always succeeds (initial block failure is ignored — Icon spec).
+ * β → ports.ω (one-shot; if called again after first, just succeeds silently).
+ * ======================================================================= */
+static void emit_jvm_icon_initial(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    int id = next_uid(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+
+    /* Per-proc init flag: icn_init_PROCNAME */
+    char flag_fld[80]; snprintf(flag_fld, sizeof flag_fld, "icn_init_%s", cur_proc);
+    declare_static_int(flag_fld);
+
+    char skip[64], run[64];
+    snprintf(skip, sizeof skip, "icn_%d_init_skip", id);
+    snprintf(run,  sizeof run,  "icn_%d_init_run",  id);
+
+    JL(a);
+    get_int_field(flag_fld);
+    J("    ifne %s\n", skip);        /* flag != 0 → already ran, skip */
+    /* First call: set flag, run body */
+    JI("iconst_1", ""); put_int_field(flag_fld);
+    if (n->nchildren >= 1 && n->children[0]) {
+        /* Wire body's γ to a drain label so we pop the body's result before
+         * pushing lconst_0.  Both the run-path (body succeeded) and the
+         * body-fail path (body.ω → run) converge at the drain label.
+         * This keeps stack height at ports.γ = 2 (one long slot) on all paths. */
+        char body_drain[64];
+        snprintf(body_drain, sizeof body_drain, "icn_%d_init_drain", id);
+        Ports cp;
+        strncpy(cp.γ, body_drain, 63);  /* body success → drain */
+        strncpy(cp.ω, run,        63);  /* body fail    → run (no value on stack) */
+        char ca[64], cb[64]; emit_jvm_icon_expr(n->children[0], cp, ca, cb);
+        JGoto(ca);
+        JL(body_drain);
+        /* Drain the value the body left on the stack */
+        int bstr = expr_is_string(n->children[0]);
+        int bdbl = !bstr && expr_is_real(n->children[0]);
+        if (bstr) JI("pop", ""); else (void)bdbl, JI("pop2", "");
+        /* Fall through to run */
+        JL(run);
+    }
+    JI("lconst_0", ""); JGoto(ports.γ);
+    JL(skip);
+    JI("lconst_0", ""); JGoto(ports.γ);
+    JL(b); JGoto(ports.ω);
+}
+
+static void emit_jvm_icon_not(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    int id = next_uid(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+    EXPR_t *child = (n->nchildren >= 1) ? n->children[0] : NULL;
+    char child_ok[64];  snprintf(child_ok,  sizeof child_ok,  "icn_%d_cok",  id);
+    char succeed[64];   snprintf(succeed,   sizeof succeed,   "icn_%d_succ", id);
+    Ports cp;
+    strncpy(cp.γ, child_ok, 63);  /* child success → not fails */
+    strncpy(cp.ω, succeed,  63);  /* child fail    → not succeeds */
+    char ca[64], cb[64];
+    emit_jvm_icon_expr(child, cp, ca, cb);
+    JC("NOT"); JL(a); JGoto(ca);
+    JL(b); JGoto(cb);
+    JL(child_ok);
+    if (expr_is_obj(child)) { JI("pop",""); } else { JI("pop2",""); }
+    JGoto(ports.ω);
+    JL(succeed);
+    JI("lconst_0","");   /* push dummy long 0 as result */
+    JGoto(ports.γ);
+}
+
+/* =========================================================================
+ * ICN_NONNULL — \E: succeed if E succeeds, produce E value unchanged.
+ * Semantics: transparent pass-through on success; fail on failure.
+ * α: emit child; child.γ → ports.γ (value already on stack); child.ω → ports.ω
+ * β: child.β (re-entry for generators)
+ * ======================================================================= */
+static void emit_jvm_icon_nonnull(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    int id = next_uid(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+    EXPR_t *child = (n->nchildren >= 1) ? n->children[0] : NULL;
+    Ports cp;
+    strncpy(cp.γ, ports.γ, 63);  /* child success → caller success (value intact) */
+    strncpy(cp.ω, ports.ω, 63);  /* child fail    → caller fail */
+    char ca[64], cb[64];
+    emit_jvm_icon_expr(child, cp, ca, cb);
+    JC("NONNULL"); JL(a); JGoto(ca);
+    JL(b); JGoto(cb);
+}
+
+/* =========================================================================
+ * ICN_NULL — /E: succeed if E fails, produce &null (0L).
+ * Semantics: inverted — succeeds iff E fails; result is &null.
+ * α: emit child; child.γ → drain value, goto ports.ω (E succeeded → /E fails)
+ *                child.ω → push lconst_0, goto ports.γ (E failed → /E succeeds)
+ * β: child.β
+ * ======================================================================= */
+static void emit_jvm_icon_null(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    int id = next_uid(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+    EXPR_t *child = (n->nchildren >= 1) ? n->children[0] : NULL;
+    char child_ok[64]; snprintf(child_ok, sizeof child_ok, "icn_%d_cok", id);
+    char succeed[64];  snprintf(succeed,  sizeof succeed,  "icn_%d_succ", id);
+    Ports cp;
+    strncpy(cp.γ, child_ok, 63);  /* child success → drain → /E fails */
+    strncpy(cp.ω, succeed,  63);  /* child fail    → /E succeeds */
+    char ca[64], cb[64];
+    emit_jvm_icon_expr(child, cp, ca, cb);
+    JC("NULL"); JL(a); JGoto(ca);
+    JL(b); JGoto(cb);
+    JL(child_ok);
+    /* drain child value off stack */
+    if (child && expr_is_obj(child)) { JI("pop",""); } else { JI("pop2",""); }
+    JGoto(ports.ω);  /* /E fails because E succeeded */
+    JL(succeed);
+    JI("lconst_0","");  /* &null */
+    JGoto(ports.γ);  /* /E succeeds */
+}
+
+/* =========================================================================
+ * ICN_RANDOM — ?E: random integer in 1..E via IcnRuntime.random(long)
+ * ======================================================================= */
+static void emit_jvm_icon_random(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    int id = next_uid(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+    EXPR_t *child = (n->nchildren >= 1) ? n->children[0] : NULL;
+    char after[64]; snprintf(after, sizeof after, "icn_%d_rand", id);
+    Ports cp; strncpy(cp.γ, after, 63); strncpy(cp.ω, ports.ω, 63);
+    char ca[64], cb[64]; emit_jvm_icon_expr(child, cp, ca, cb);
+    need_random_builtin = 1;
+    JL(a); JGoto(ca); JL(b); JGoto(cb);
+    JL(after);
+    JI("invokestatic", classname_buf("icn_builtin_random(J)J"));
+    JGoto(ports.γ);
+}
+
+/* =========================================================================
+ * ICN_NEG — unary minus: -E
+ * ======================================================================= */
+static void emit_jvm_icon_neg(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    int id = next_uid(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+    EXPR_t *child = (n->nchildren >= 1) ? n->children[0] : NULL;
+    char negate[64]; snprintf(negate, sizeof negate, "icn_%d_neg", id);
+    Ports cp; strncpy(cp.γ, negate, 63); strncpy(cp.ω, ports.ω, 63);
+    char ca[64], cb[64]; emit_jvm_icon_expr(child, cp, ca, cb);
+    JC("NEG"); JL(a); JGoto(ca); JL(b); JGoto(cb);
+    JL(negate);
+    if (expr_is_real(child)) JI("dneg",""); else JI("lneg","");
+    JGoto(ports.γ);
+}
+
+/* =========================================================================
+ * ICN_TO_BY — E1 to E2 by E3  (stepped range generator)
+ * step>0: yield i while i<=end; step<0: yield i while i>=end.
+ *
+ * Forward-only jump structure (no backward branches -> no StackMapTable):
+ *
+ *   a:     eval E1 -> I_f; eval E2 -> end_f; eval E3 -> step_f; goto check
+ *   b:     I_f += step_f; goto check
+ *   check: (reached by forward jumps from both a and b)
+ *          step>0: if I_f > end_f -> ports.w; else push I_f -> ports.g
+ *          step<0: if I_f < end_f -> ports.w; else push I_f -> ports.g
+ *          step=0: -> ports.w
+ * ======================================================================= */
+static void emit_jvm_icon_to_by(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    int id = next_uid(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+
+    EXPR_t *e1 = (n->nchildren > 0) ? n->children[0] : NULL;
+    EXPR_t *e2 = (n->nchildren > 1) ? n->children[1] : NULL;
+    EXPR_t *e3 = (n->nchildren > 2) ? n->children[2] : NULL;
+
+    /* Determine if any operand is real → use double fields throughout */
+    int is_dbl = expr_is_real(e1) || expr_is_real(e2) || expr_is_real(e3);
+
+    /* Static fields — D for real, J for integer */
+    char I_f[64], end_f[64], step_f[64];
+    snprintf(I_f,    sizeof I_f,    "icn_%d_toby_i",   id);
+    snprintf(end_f,  sizeof end_f,  "icn_%d_toby_end", id);
+    snprintf(step_f, sizeof step_f, "icn_%d_toby_stp", id);
+    if (is_dbl) {
+        declare_static_real(I_f);
+        declare_static_real(end_f);
+        declare_static_real(step_f);
+    } else {
+        declare_static(I_f);
+        declare_static(end_f);
+        declare_static(step_f);
+    }
+
+/* Helpers: get/put the counter field and push zero for comparison */
+#define TB_GET_I()    (is_dbl ? get_real_field(I_f)    : get_long(I_f))
+#define TB_PUT_I()    (is_dbl ? put_real_field(I_f)    : put_long(I_f))
+#define TB_GET_END()  (is_dbl ? get_real_field(end_f)  : get_long(end_f))
+#define TB_GET_STP()  (is_dbl ? get_real_field(step_f) : get_long(step_f))
+#define TB_PUT_END()  (is_dbl ? put_real_field(end_f)  : put_long(end_f))
+#define TB_PUT_STP()  (is_dbl ? put_real_field(step_f) : put_long(step_f))
+#define TB_ZERO()     (is_dbl ? JI("dconst_0","")         : JI("lconst_0",""))
+#define TB_ADD()      (is_dbl ? JI("dadd","")             : JI("ladd",""))
+#define TB_CMP()      (is_dbl ? JI("dcmpl","")            : JI("lcmp",""))
+#define TB_CMP_GT()   (is_dbl ? JI("dcmpg","")            : JI("lcmp",""))
+/* Promote operand to double if needed (only in dbl mode) */
+#define TB_PROMOTE(expr) if (is_dbl && !expr_is_real(expr)) { JI("l2d",""); }
+
+    /* Labels */
+    char r1[64], r2[64], r3[64], check[64], chkp[64], chkn[64];
+    snprintf(r1,    sizeof r1,    "icn_%d_tb_r1",    id);
+    snprintf(r2,    sizeof r2,    "icn_%d_tb_r2",    id);
+    snprintf(r3,    sizeof r3,    "icn_%d_tb_r3\n",  id);  /* trailing \n trick: unused */
+    snprintf(r3,    sizeof r3,    "icn_%d_tb_r3",    id);
+    snprintf(check, sizeof check, "icn_%d_tb_check", id);
+    snprintf(chkp,  sizeof chkp,  "icn_%d_tb_ckp",  id);
+    snprintf(chkn,  sizeof chkn,  "icn_%d_tb_ckn\n",id);
+    snprintf(chkn,  sizeof chkn,  "icn_%d_tb_ckn",  id);
+
+    Ports p1; strncpy(p1.γ,r1,63); strncpy(p1.ω,ports.ω,63);
+    Ports p2; strncpy(p2.γ,r2,63); strncpy(p2.ω,ports.ω,63);
+    Ports p3; strncpy(p3.γ,r3,63); strncpy(p3.ω,ports.ω,63);
+
+    char a1[64],b1[64],a2[64],b2[64],a3[64],b3[64];
+    emit_jvm_icon_expr(e1, p1, a1, b1);
+    emit_jvm_icon_expr(e2, p2, a2, b2);
+    emit_jvm_icon_expr(e3, p3, a3, b3);
+
+    JC("TO_BY -- forward-only, supports integer and real");
+
+    /* α: eval E1 → r1 */
+    JL(a);  JGoto(a1);
+    JL(r1); TB_PROMOTE(e1); TB_PUT_I();    JGoto(a2);
+    JL(r2); TB_PROMOTE(e2); TB_PUT_END();  JGoto(a3);
+    JL(r3); TB_PROMOTE(e3); TB_PUT_STP(); JGoto(check);
+
+    /* β: I += step, → check */
+    JL(b);
+    TB_GET_I(); TB_GET_STP(); TB_ADD(); TB_PUT_I();
+    JGoto(check);
+
+    /* check: forward-only — inspect step sign, then bounds check */
+    JL(check);
+    TB_GET_STP(); TB_ZERO(); TB_CMP();
+    J("    ifgt %s\n", chkp);
+    TB_GET_STP(); TB_ZERO(); TB_CMP();
+    J("    iflt %s\n", chkn);
+    JGoto(ports.ω);   /* step == 0 → always fail */
+
+    JL(chkp);   /* positive step: yield while I <= end */
+    TB_GET_I(); TB_GET_END(); TB_CMP_GT();
+    J("    ifgt %s\n", ports.ω);
+    TB_GET_I(); JGoto(ports.γ);
+
+    JL(chkn);   /* negative step: yield while I >= end */
+    TB_GET_I(); TB_GET_END(); TB_CMP();
+    J("    iflt %s\n", ports.ω);
+    TB_GET_I(); JGoto(ports.γ);
+
+#undef TB_GET_I
+#undef TB_PUT_I
+#undef TB_GET_END
+#undef TB_GET_STP
+#undef TB_PUT_END
+#undef TB_PUT_STP
+#undef TB_ZERO
+#undef TB_ADD
+#undef TB_CMP
+#undef TB_CMP_GT
+#undef TB_PROMOTE
+
+    (void)b1; (void)b2; (void)b3;
+}
+
+/* =========================================================================
+ * String relational ops: ICN_SEQ (==), ICN_SNE (~==), ICN_SLT (<<),
+ * ICN_SLE (<<=), ICN_SGT (>>), ICN_SGE (>>=)
+ * Use String.compareTo() and compare result to 0.
+ * Both operands are String refs on the stack.
+ * ======================================================================= */
+static void emit_jvm_icon_strrelop(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    int id = next_uid(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+    char lrelay[64], rrelay[64], chk[64], lstore_lbl[64];
+    snprintf(lrelay,    sizeof lrelay,    "icn_%d_lrelay", id);
+    snprintf(rrelay,    sizeof rrelay,    "icn_%d_rrelay", id);
+    snprintf(chk,       sizeof chk,       "icn_%d_chk",    id);
+    snprintf(lstore_lbl,sizeof lstore_lbl,"icn_%d_lstore", id);
+    EXPR_t *lhs = (n->nchildren > 0) ? n->children[0] : NULL;
+    EXPR_t *rhs = (n->nchildren > 1) ? n->children[1] : NULL;
+    Ports lp; strncpy(lp.γ, lrelay, 63); strncpy(lp.ω, ports.ω, 63);
+    Ports rp; strncpy(rp.γ, rrelay, 63); strncpy(rp.ω, ports.ω, 63);
+    char la[64], lb2[64], ra[64], rb2[64];
+    emit_jvm_icon_expr(lhs, lp, la, lb2);
+    emit_jvm_icon_expr(rhs, rp, ra, rb2);
+    /* Allocate String scratch AFTER child emits so slots land above all
+     * long-pair slots.  Use int scratch region (raw JVM slots above 2*MAX_LOCALS)
+     * so they never alias lstore/lload targets. */
+    int ls_jvm = alloc_int_scratch();
+    int rs_jvm = alloc_int_scratch();
+    nstrefs++;  /* track for zero-init — these get iconst_0/istore */
+    JC("STRRELOP"); JL(a); JGoto(la);
+    JL(b); JGoto(lb2);
+    JL(lrelay); J("    astore %d\n", ls_jvm); JGoto(lstore_lbl);
+    JL(lstore_lbl); JGoto(ra);
+    JL(rrelay); J("    astore %d\n", rs_jvm); JGoto(chk);
+    JL(chk);
+    J("    aload %d\n", ls_jvm);
+    J("    aload %d\n", rs_jvm);
+    JI("invokevirtual", "java/lang/String/compareTo(Ljava/lang/String;)I");
+    const char *jfail;
+    switch (n->kind) {
+        case E_LEQ: jfail = "ifne"; break;
+        case E_LNE: jfail = "ifeq"; break;
+        case E_LLT: jfail = "ifge"; break;
+        case E_LLE: jfail = "ifgt"; break;
+        case E_LGT: jfail = "ifle"; break;
+        case E_LGE: jfail = "iflt"; break;
+        default:      jfail = "ifne"; break;
+    }
+    J("    %s %s\n", jfail, rb2);
+    /* success: reload right String as result, convert to long (dummy 0) */
+    /* String relops return the right operand in Icon — but we need a long
+     * for consistent stack. Push 0L as dummy result. */
+    JI("lconst_0","");
+    JGoto(ports.γ);
+}
+
+/* =========================================================================
+ * ICN_BREAK — exit enclosing loop; optional value (ignored in our impl)
+ * break jumps directly to the enclosing loop's ports.ω (exit path).
+ * ======================================================================= */
+static void emit_jvm_icon_break(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    int id = next_uid(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+    const char *exit_lbl = loop_break_target();
+    JL(a); JGoto(exit_lbl);
+    JL(b); JGoto(exit_lbl);  /* β also exits — break is one-shot */
+    (void)ports; (void)n;
+}
+
+/* =========================================================================
+ * ICN_NEXT — restart enclosing loop body (skip rest of current iteration)
+ * next jumps to the loop's restart label (loop_top / cond re-eval).
+ * ======================================================================= */
+static void emit_jvm_icon_next(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    int id = next_uid(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+    const char *next_lbl = loop_next_target();
+    JL(a); JGoto(next_lbl);
+    JL(b); JGoto(next_lbl);
+    (void)ports; (void)n;
+}
+
+/* =========================================================================
+ * ICN_AUGOP — augmented assignment: lhs op:= rhs
+ *   Semantics: lhs := lhs op rhs  (lhs must be a variable)
+ *   node->ival encodes the augop token kind (TK_AUGPLUS etc.)
+ *   We: load lhs, eval rhs, apply op, store back, push result → ports.γ
+ * ======================================================================= */
+static void emit_jvm_icon_augop(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    if (n->nchildren < 2) {
+        int id = next_uid(); char a[64], b[64];
+        lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+        strncpy(oα,a,63); strncpy(oβ,b,63);
+        JL(a); JGoto(ports.ω); JL(b); JGoto(ports.ω); return;
+    }
+
+    int id = next_uid(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+
+    EXPR_t *lhs = n->children[0];
+    EXPR_t *rhs = n->children[1];
+    long aug_kind = n->ival;
+
+    /* Eval rhs; on rhs fail → ports.ω */
+    char rhs_ok[64]; snprintf(rhs_ok, sizeof rhs_ok, "icn_%d_rhsok", id);
+    Ports rp; strncpy(rp.γ, rhs_ok, 63); strncpy(rp.ω, ports.ω, 63);
+    char ra[64], rb[64]; emit_jvm_icon_expr(rhs, rp, ra, rb);
+
+    JL(a); JGoto(ra);
+    JL(b); JGoto(rb);
+
+    JL(rhs_ok);
+    /* rhs value is on stack — String ref for ||:=, long for arithmetic ops.
+     * Load lhs current value, apply op, store result back, push result. */
+    if (lhs && lhs->kind == E_VAR) {
+        char fld[128];
+        int is_local = (locals_find(lhs->sval) >= 0);
+        if (is_local) {
+            var_field(lhs->sval, fld, sizeof fld);
+        } else {
+            snprintf(fld, sizeof fld, "icn_gvar_%s", lhs->sval);
+        }
+
+        if ((int)aug_kind == TK_AUGCONCAT) {
+            /* TK_AUGCONCAT: String ||:= expr
+             * Stack at rhs_ok: String ref (rhs) OR long if rhs is numeric.
+             * Coerce numeric RHS to String via Long.toString before concat. */
+            char tmp_str_fld[128]; snprintf(tmp_str_fld, sizeof tmp_str_fld, "icn_%d_augtemp_s", id);
+            declare_static_str(tmp_str_fld);
+            declare_static_str(fld);             /* ensure lhs field is str-typed */
+            if (!expr_is_string(rhs)) {
+                JI("invokestatic", "java/lang/Long/toString(J)Ljava/lang/String;");
+            }
+            put_str_field(tmp_str_fld);          /* save rhs String */
+            get_str_field(fld);                  /* load current lhs String */
+            get_str_field(tmp_str_fld);          /* reload rhs String */
+            JI("invokevirtual", "java/lang/String/concat(Ljava/lang/String;)Ljava/lang/String;");
+            JI("dup","");                           /* one copy stays on stack for γ */
+            put_str_field(fld);                  /* store result back to lhs */
+            JGoto(ports.γ);
+        } else if ((int)aug_kind == TK_AUGEQ  || (int)aug_kind == TK_AUGLT ||
+                   (int)aug_kind == TK_AUGLE  || (int)aug_kind == TK_AUGGT ||
+                   (int)aug_kind == TK_AUGGE  || (int)aug_kind == TK_AUGNE) {
+            /* Numeric comparison augop: lhs op:= rhs
+             * Semantics: if lhs op rhs succeeds → lhs := rhs, return rhs; else fail.
+             * rhs (long) is on stack at rhs_ok. */
+            char tmp_fld[128]; snprintf(tmp_fld, sizeof tmp_fld, "icn_%d_augtemp", id);
+            declare_static(tmp_fld);
+            put_long(tmp_fld);              /* save rhs */
+            declare_static(fld);
+            get_long(fld);                  /* load lhs */
+            get_long(tmp_fld);              /* load rhs */
+            /* Compare lhs vs rhs: lcmp → int (-1,0,1) */
+            char pass_lbl[64], fail_lbl[64];
+            snprintf(pass_lbl, sizeof pass_lbl, "icn_%d_augcmp_pass", id);
+            snprintf(fail_lbl, sizeof fail_lbl, "icn_%d_augcmp_fail", id);
+            JI("lcmp", "");
+            switch ((int)aug_kind) {
+                case TK_AUGEQ: J("    ifeq %s\n", pass_lbl); break;
+                case TK_AUGLT: J("    iflt %s\n", pass_lbl); break;
+                case TK_AUGLE: J("    ifle %s\n", pass_lbl); break;
+                case TK_AUGGT: J("    ifgt %s\n", pass_lbl); break;
+                case TK_AUGGE: J("    ifge %s\n", pass_lbl); break;
+                case TK_AUGNE: J("    ifne %s\n", pass_lbl); break;
+                default:       J("    ifeq %s\n", pass_lbl); break;
+            }
+            JL(fail_lbl); JGoto(ports.ω);
+            JL(pass_lbl);
+            /* Comparison passed: assign rhs to lhs, return rhs */
+            get_long(tmp_fld);
+            JI("dup2", "");
+            put_long(fld);
+            JGoto(ports.γ);
+        } else if ((int)aug_kind == TK_AUGSEQ || (int)aug_kind == TK_AUGSLT ||
+                   (int)aug_kind == TK_AUGSLE || (int)aug_kind == TK_AUGSGT ||
+                   (int)aug_kind == TK_AUGSGE || (int)aug_kind == TK_AUGSNE) {
+            /* String comparison augop: lhs op:= rhs
+             * rhs (String) is on stack at rhs_ok. */
+            char tmp_str[128]; snprintf(tmp_str, sizeof tmp_str, "icn_%d_augstemp", id);
+            declare_static_str(tmp_str);
+            declare_static_str(fld);
+            put_str_field(tmp_str);              /* save rhs String */
+            char pass_lbl[64], fail_lbl[64];
+            snprintf(pass_lbl, sizeof pass_lbl, "icn_%d_augscmp_pass", id);
+            snprintf(fail_lbl, sizeof fail_lbl, "icn_%d_augscmp_fail", id);
+            /* Compare: lhs.compareTo(rhs) → int */
+            get_str_field(fld);
+            get_str_field(tmp_str);
+            JI("invokevirtual", "java/lang/String/compareTo(Ljava/lang/String;)I");
+            switch ((int)aug_kind) {
+                case TK_AUGSEQ:  J("    ifeq %s\n", pass_lbl); break;
+                case TK_AUGSLT:  J("    iflt %s\n", pass_lbl); break;
+                case TK_AUGSLE:  J("    ifle %s\n", pass_lbl); break;
+                case TK_AUGSGT:  J("    ifgt %s\n", pass_lbl); break;
+                case TK_AUGSGE:  J("    ifge %s\n", pass_lbl); break;
+                case TK_AUGSNE:  J("    ifne %s\n", pass_lbl); break;
+                default:         J("    ifeq %s\n", pass_lbl); break;
+            }
+            JL(fail_lbl); JGoto(ports.ω);
+            JL(pass_lbl);
+            /* Passed: assign rhs to lhs, return rhs String */
+            get_str_field(tmp_str);
+            JI("dup", "");
+            put_str_field(fld);
+            JGoto(ports.γ);
+        } else {
+            /* Arithmetic augop: rhs is long on stack. */
+            char tmp_fld[128]; snprintf(tmp_fld, sizeof tmp_fld, "icn_%d_augtemp", id);
+            declare_static(tmp_fld);
+            put_long(tmp_fld);              /* save rhs */
+
+            declare_static(fld);
+            get_long(fld);                  /* load current lhs value */
+            get_long(tmp_fld);              /* reload rhs */
+
+            /* Apply arithmetic op. */
+            switch ((int)aug_kind) {
+                case TK_AUGPLUS:  JI("ladd",""); break;
+                case TK_AUGMINUS: JI("lsub",""); break;
+                case TK_AUGSTAR:  JI("lmul",""); break;
+                case TK_AUGSLASH: JI("ldiv",""); break;
+                case TK_AUGMOD:   JI("lrem",""); break;
+                case TK_AUGPOW: {
+                    /* Stack: lhs(J), rhs(J).  Convert both to D for Math.pow → d2l.
+                     * Cannot use JVM 'swap' on 2-word doubles — use a static D field. */
+                    char pow_rhs[128];
+                    snprintf(pow_rhs, sizeof pow_rhs, "icn_%d_augpow_rhs", id);
+                    declare_static_real(pow_rhs);
+                    JI("l2d","");                    /* rhs J → D */
+                    put_real_field(pow_rhs);      /* store rhs D */
+                    JI("l2d","");                    /* lhs J → D */
+                    get_real_field(pow_rhs);      /* reload rhs D */
+                    JI("invokestatic","java/lang/Math/pow(DD)D");
+                    JI("d2l","");
+                    break;
+                }
+                default: JI("ladd",""); break;
+            }
+
+            /* dup result: one copy stored back to lhs, one stays on stack as expr result */
+            JI("dup2","");
+            put_long(fld);
+            JGoto(ports.γ);
+        }
+    } else {
+        /* Non-var lhs — just discard and push rhs as result (rare/error case) */
+        JGoto(ports.γ);
+    }
+}
+
+/* =========================================================================
+ * ICN_BANG — !E  string character generator
+ * Byrd-box: α evals E once into static str field, resets pos=0, then falls
+ * through to check.  check: if pos >= length → ω.  Else substring(pos,pos+1)
+ * on stack → γ; pos incremented before goto γ.  β → check (resume).
+ * Result type: String (single char).  expr_is_string returns 1 for BANG.
+ * ======================================================================= */
+static void emit_jvm_icon_bang(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    int id = next_uid();
+    char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+
+    EXPR_t *child = (n->nchildren > 0) ? n->children[0] : NULL;
+
+    /* --- LIST bang branch: !L iterates ArrayList by index --- */
+    if (child && expr_is_list(child)) {
+        char list_fld[80]; snprintf(list_fld, sizeof list_fld, "icn_%d_bang_list", id);
+        char idx_fld[80];  snprintf(idx_fld,  sizeof idx_fld,  "icn_%d_bang_idx",  id);
+        char store[64];    snprintf(store,    sizeof store,    "icn_%d_bang_st",   id);
+        char chk[64];      snprintf(chk,      sizeof chk,      "icn_%d_bang_chk",  id);
+        char ok[64];       snprintf(ok,       sizeof ok,       "icn_%d_bang_ok",   id);
+        declare_static_list(list_fld);
+        declare_static_int(idx_fld);
+
+        /* child γ → store relay; β → chk (resume, no re-eval) */
+        Ports ep; strncpy(ep.γ, store, 63); strncpy(ep.ω, ports.ω, 63);
+        char ea[64], eb[64]; emit_jvm_icon_expr(child, ep, ea, eb);
+
+        /* α: eval child list once */
+        JL(a); JGoto(ea);
+        /* β: resume — list already stored, just re-check */
+        JL(b); JGoto(chk);
+
+        /* store: ArrayList ref on stack → store list, reset idx=0, fall to chk */
+        JL(store);
+        put_list_field(list_fld);
+        JI("iconst_0", ""); put_int_field(idx_fld);
+        /* fall through to chk */
+
+        /* chk: stack empty, list in field */
+        JL(chk);
+        get_list_field(list_fld);
+        JI("invokevirtual", "java/util/ArrayList/size()I");
+        get_int_field(idx_fld);
+        J("    if_icmple %s\n", ports.ω); /* size <= idx → exhausted */
+        /* get(idx) → Object; unbox as Long for scalar lists, leave as Object for record lists */
+        get_list_field(list_fld);
+        get_int_field(idx_fld);
+        JI("invokevirtual", "java/util/ArrayList/get(I)Ljava/lang/Object;");
+        JL(ok);
+        if (!expr_is_record_list(child)) {
+            JI("checkcast", "java/lang/Long");
+            JI("invokevirtual", "java/lang/Long/longValue()J");
+        }
+        /* increment idx */
+        get_int_field(idx_fld);
+        JI("iconst_1", ""); JI("iadd", "");
+        put_int_field(idx_fld);
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* --- STRING bang branch (original) --- */
+
+    char str_fld[128]; snprintf(str_fld, sizeof str_fld, "icn_%d_bang_str", id);
+    char pos_fld[128]; snprintf(pos_fld, sizeof pos_fld, "icn_%d_bang_pos", id);
+    char check[64];    snprintf(check,   sizeof check,   "icn_%d_bang_chk", id);
+    char advance[64];  snprintf(advance, sizeof advance,  "icn_%d_bang_adv", id);
+
+    declare_static_str(str_fld);
+    declare_static_int(pos_fld);
+
+    /* child expr */
+    Ports ep; strncpy(ep.γ, advance, 63); strncpy(ep.ω, ports.ω, 63);
+    char ea[64], eb[64]; emit_jvm_icon_expr(n->children[0], ep, ea, eb);
+
+    /* α: eval child, store string, reset pos, goto check */
+    JL(a); JGoto(ea);
+    /* β: resume — just re-enter check without re-evaluating E */
+    JL(b); JGoto(check);
+
+    /* advance: child produced String on stack → store into str_fld, reset pos */
+    JL(advance);
+    put_str_field(str_fld);
+    JI("iconst_0",""); put_int_field(pos_fld);
+    /* fall through to check */
+
+    /* check: if pos >= length(str) → ω; else extract char, increment pos, → γ */
+    JL(check);
+    get_str_field(str_fld);
+    JI("invokevirtual","java/lang/String/length()I");
+    get_int_field(pos_fld);
+    /* stack: [length, pos] — if pos >= length → ω */
+    J("    if_icmple %s\n", ports.ω);  /* if length <= pos → ω  (i.e. pos >= length) */
+
+    /* extract substring(pos, pos+1) */
+    get_str_field(str_fld);
+    get_int_field(pos_fld);
+    get_int_field(pos_fld);
+    JI("iconst_1","");
+    JI("iadd","");
+    JI("invokevirtual","java/lang/String/substring(II)Ljava/lang/String;");
+    /* increment pos */
+    get_int_field(pos_fld);
+    JI("iconst_1","");
+    JI("iadd","");
+    put_int_field(pos_fld);
+    /* String result is on stack → γ */
+    JGoto(ports.γ);
+}
+
+/* =========================================================================
+ * ICN_SIZE — *E  string size operator
+ * One-shot: α evals child (must be String), calls String.length(), converts
+ * int→long via i2l, pushes long → ports.γ.  β → ports.ω (one-shot, no retry).
+ * ======================================================================= */
+static void emit_jvm_icon_size(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    int id = next_uid(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+    char relay[64]; snprintf(relay, sizeof relay, "icn_%d_relay", id);
+    EXPR_t *child = (n->nchildren > 0) ? n->children[0] : NULL;
+    Ports cp; strncpy(cp.γ, relay, 63); strncpy(cp.ω, ports.ω, 63);
+    char ca[64], cb[64]; emit_jvm_icon_expr(child, cp, ca, cb);
+    JL(a); JGoto(ca);
+    JL(b); JGoto(cb);
+    JL(relay);
+    if (child && expr_is_list(child)) {
+        /* ArrayList ref on stack → size()I → i2l → long */
+        JI("invokevirtual", "java/util/ArrayList/size()I");
+    } else {
+        /* String ref on stack */
+        JI("invokevirtual", "java/lang/String/length()I");
+    }
+    JI("i2l", "");         /* int → long for uniform numeric stack type */
+    JGoto(ports.γ);
+}
+
+/* =========================================================================
+ * ICN_MAKELIST — [e1, e2, ...] list constructor
+ * Builds a java.util.ArrayList.  Each child is evaluated one-shot:
+ *   - long values boxed via Long.valueOf(J)
+ *   - double values boxed via Double.valueOf(D)
+ *   - String refs left as-is (already Object)
+ * Result: ArrayList ref on stack at ports.γ.
+ * ======================================================================= */
+static void emit_jvm_icon_makelist(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    int id = next_uid(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+
+    char list_fld[80]; snprintf(list_fld, sizeof list_fld, "icn_%d_mklist", id);
+    int list_is_strlist = (n->nchildren > 0 && expr_is_string(n->children[0]));
+    if (list_is_strlist) declare_static_strlist(list_fld);
+    else                 declare_static_list(list_fld);
+
+    JL(a);
+    JI("new", "java/util/ArrayList");
+    JI("dup", "");
+    JI("invokespecial", "java/util/ArrayList/<init>()V");
+    put_list_field(list_fld);
+
+    for (int i = 0; i < n->nchildren; i++) {
+        char relay[64]; snprintf(relay, sizeof relay, "icn_%d_mke_%d", id, i);
+        char elem_fld[80]; snprintf(elem_fld, sizeof elem_fld, "icn_%d_elem_%d", id, i);
+        declare_static_obj(elem_fld);
+
+        Ports cp; strncpy(cp.γ, relay, 63); strncpy(cp.ω, ports.ω, 63);
+        char ca[64], cb[64]; emit_jvm_icon_expr(n->children[i], cp, ca, cb);
+        JGoto(ca);
+        JL(relay);
+        if (expr_is_string(n->children[i])) {
+            /* String is already Object — no boxing needed */
+        } else if (expr_is_real(n->children[i])) {
+            JI("invokestatic", "java/lang/Double/valueOf(D)Ljava/lang/Double;");
+        } else if (expr_is_record(n->children[i])) {
+            /* Constructor left 0L on stack; actual record is in icn_retval_obj */
+            JI("pop2", "");
+            J("    getstatic %s/icn_retval_obj Ljava/lang/Object;\n", classname);
+        } else {
+            JI("invokestatic", "java/lang/Long/valueOf(J)Ljava/lang/Long;");
+        }
+        put_obj_field(elem_fld);
+        get_list_field(list_fld);
+        get_obj_field(elem_fld);
+        JI("invokevirtual", "java/util/ArrayList/add(Ljava/lang/Object;)Z");
+        JI("pop", "");
+    }
+
+    get_list_field(list_fld);
+    JGoto(ports.γ);
+    JL(b); JGoto(ports.ω);
+}
+
+/* =========================================================================
+ * ICN_LIMIT — E \ N  (limitation operator, JCON-ANALYSIS §"E \ N")
+ *
+ * Semantics: yield at most N values from E.
+ *   - N is evaluated once (bounded) at α → stored in limit_max (long)
+ *   - counter starts 0 at α
+ *   - each time E yields: if counter >= max → exhaust (goto E.β → ports.ω)
+ *                          else counter++; propagate value → ports.γ
+ *   - β: if counter >= max → ports.ω; else counter++; → E.β
+ *
+ * Per-site static fields:
+ *   icn_N_limit_count  J  — how many values yielded so far (long)
+ *   icn_N_limit_max    J  — N value, evaluated once
+ *
+ * Children: [0]=E (the generator), [1]=N (the bound)
+ * ======================================================================= */
+/* =========================================================================
+ * ICN_FIELD — E.name  (record field access / lvalue)
+ *
+ * E.name is a one-shot expression: eval E (must succeed once), then
+ * getfield name from the resulting Object.  On resume → fail.
+ * Fields are stored as Object (boxed Long or String).
+ *
+ * Children: [0] = record expression, [1] = ICN_VAR with field name
+ *
+ * Read path (α):
+ *   eval E → relay → checkcast RecordType → getfield → unbox → γ
+ * β → ω (one-shot)
+ *
+ * Assignment (p.x := v) is handled in ICN_ASSIGN by detecting ICN_FIELD lhs.
+ * ======================================================================= */
+static void emit_jvm_icon_field(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    int id = next_uid(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+
+    if (n->nchildren < 2) { JL(a); JGoto(ports.ω); JL(b); JGoto(ports.ω); return; }
+
+    EXPR_t *rec_expr  = n->children[0];
+    EXPR_t *field_var = n->children[1];   /* ICN_VAR — field name */
+    const char *fname  = field_var->sval;
+
+    /* Determine record type from expression (must be a variable) */
+    const char *rtype = NULL;
+    if (rec_expr && rec_expr->kind == E_VAR) {
+        /* Walk record registry: find a type that has this field */
+        for (int ri = 0; ri < nrec; ri++) {
+            for (int fi = 0; fi < rec_nfields[ri]; fi++) {
+                if (!strcmp(rec_fields[ri][fi], fname)) {
+                    rtype = rec_names[ri]; break;
+                }
+            }
+            if (rtype) break;
+        }
+    }
+
+    char obj_fld[80]; snprintf(obj_fld, sizeof obj_fld, "icn_%d_fld_obj", id);
+    declare_static_obj(obj_fld);
+
+    char e_relay[64]; snprintf(e_relay, sizeof e_relay, "icn_%d_fld_er", id);
+    Ports ep; strncpy(ep.γ, e_relay, 63); strncpy(ep.ω, ports.ω, 63);
+    char ea[64], eb[64]; emit_jvm_icon_expr(rec_expr, ep, ea, eb);
+
+    JL(a); JGoto(ea);
+    JL(b); JGoto(ports.ω);
+
+    JL(e_relay);
+    /* Stack: long (Object reference stored as long via icn_retval pathway)
+     * Actually record objects are stored in Object statics — pop the long,
+     * reload from the Object static of the record variable. */
+    /* Pop the long placeholder off stack */
+    JI("pop2", "");
+    /* Load the record object from its static field */
+    if (rec_expr && rec_expr->kind == E_VAR) {
+        char vfld[128];
+        int slot = locals_find(rec_expr->sval);
+        if (slot >= 0) {
+            var_field(rec_expr->sval, vfld, sizeof vfld);
+        } else {
+            snprintf(vfld, sizeof vfld, "icn_gvar_%s", rec_expr->sval);
+        }
+        J("    getstatic %s/%s Ljava/lang/Object;\n", classname, vfld);
+    }
+    /* checkcast to record type and getfield */
+    if (rtype) {
+        J("    checkcast %s$%s\n", classname, rtype);
+        J("    getfield %s$%s/%s Ljava/lang/Object;\n", classname, rtype, fname);
+    } else {
+        /* fallback: just fail if we can't resolve type */
+        JI("pop", "");
+        JGoto(ports.ω);
+        JL(b); JGoto(ports.ω);
+        return;
+    }
+    /* Unbox: if Long → longValue, else treat as string → push 0L as placeholder */
+    J("    dup\n");
+    J("    instanceof java/lang/Long\n");
+    char is_long[64], not_long[64], done[64];
+    snprintf(is_long,  sizeof is_long,  "icn_%d_fld_il", id);
+    snprintf(not_long, sizeof not_long, "icn_%d_fld_nl", id);
+    snprintf(done,     sizeof done,     "icn_%d_fld_dn", id);
+    J("    ifne %s\n", is_long);
+    /* String path: store as string static, push 0 as numeric value, goto γ */
+    JL(not_long);
+    J("    checkcast java/lang/String\n");
+    put_str_field(obj_fld);   /* reuse obj_fld as str temporarily */
+    JI("lconst_0", "");
+    JGoto(ports.γ);
+    JL(is_long);
+    J("    checkcast java/lang/Long\n");
+    J("    invokevirtual java/lang/Long/longValue()J\n");
+    JGoto(ports.γ);
+}
+
+/* =========================================================================
+ * emit_jvm_icon_record_class — emit a Jasmin inner-class for a record type
+ *
+ * Emits a nested class  OuterClass$RecordName  with:
+ *   - One `public Object` field per record field
+ *   - A no-arg <init> that calls super
+ * ======================================================================= */
+static void emit_jvm_icon_record_class(const char *rec_name, int nfields,
+                                 const char (*fields)[64], FILE *out) {
+    FILE *save = out; out = out;
+    J("; --- record %s ---\n", rec_name);
+    J(".class public %s$%s\n", classname, rec_name);
+    J(".super java/lang/Object\n");
+    for (int i = 0; i < nfields; i++)
+        J(".field public %s Ljava/lang/Object;\n", fields[i]);
+    J("\n.method public <init>()V\n");
+    J("    .limit stack 1\n    .limit locals 1\n");
+    J("    aload_0\n");
+    J("    invokespecial java/lang/Object/<init>()V\n");
+    J("    return\n");
+    J(".end method\n\n");
+    out = save;
+}
+
+static void emit_jvm_icon_limit(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    int id = next_uid(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+
+    /* Per-site statics */
+    char cnt_fld[64], max_fld[64];
+    snprintf(cnt_fld, sizeof cnt_fld, "icn_%d_limit_count", id);
+    snprintf(max_fld, sizeof max_fld, "icn_%d_limit_max",   id);
+    declare_static(cnt_fld);   /* long */
+    declare_static(max_fld);   /* long */
+
+    EXPR_t *expr  = (n->nchildren > 0) ? n->children[0] : NULL;
+    EXPR_t *bound = (n->nchildren > 1) ? n->children[1] : NULL;
+
+    /* Relay labels */
+    char n_relay[64]; snprintf(n_relay, sizeof n_relay, "icn_%d_limit_nrelay", id);
+    char e_gamma[64]; snprintf(e_gamma, sizeof e_gamma, "icn_%d_limit_egamma", id);
+    char chk_ex[64];  snprintf(chk_ex,  sizeof chk_ex,  "icn_%d_limit_chkex",  id);
+
+    /* Emit N (bounded — one-shot, eval once) */
+    Ports np; strncpy(np.γ, n_relay, 63); strncpy(np.ω, ports.ω, 63);
+    char na[64], nb[64]; emit_jvm_icon_expr(bound, np, na, nb);
+
+    /* Emit E — γ → e_gamma (we intercept), ω → ports.ω */
+    Ports ep; strncpy(ep.γ, e_gamma, 63); strncpy(ep.ω, ports.ω, 63);
+    char ea[64], eb[64]; emit_jvm_icon_expr(expr, ep, ea, eb);
+
+    /* n_relay: N value (long) on stack → store max, reset count=0, goto E.α */
+    JL(n_relay);
+    put_long(max_fld);
+    JI("lconst_0", ""); put_long(cnt_fld);
+    JGoto(ea);
+
+    /* e_gamma: E yielded a value (long or String) on stack.
+     * Check counter: if count >= max → pop value, goto E.β (exhaust).
+     * Else: count++, propagate value to ports.γ.
+     * We must not disturb the value on the stack during the check, so we
+     * use a relay: store value in a temp static first, check, then reload. */
+    char val_fld[64]; snprintf(val_fld, sizeof val_fld, "icn_%d_limit_val", id);
+    int expr_is_str = expr_is_string(expr);
+    if (expr_is_str) {
+        declare_static_str(val_fld);
+    } else {
+        declare_static(val_fld);
+    }
+    JL(e_gamma);
+    /* store value */
+    if (expr_is_str) { put_str_field(val_fld); }
+    else             { put_long(val_fld); }
+
+    /* check: count >= max? */
+    JL(chk_ex);
+    get_long(cnt_fld);
+    get_long(max_fld);
+    JI("lcmp", "");
+    J("    ifge %s\n", eb);       /* count >= max → exhaust via E.β */
+
+    /* count++ */
+    get_long(cnt_fld);
+    JI("lconst_1", ""); JI("ladd", "");
+    put_long(cnt_fld);
+
+    /* reload value and succeed */
+    if (expr_is_str) { get_str_field(val_fld); }
+    else             { get_long(val_fld); }
+    JGoto(ports.γ);
+
+    /* α: eval N first (to get max), then will fall through to E.α via n_relay */
+    JL(a); JGoto(na);
+
+    /* β: check counter; if exhausted → ports.ω; else resume E.β
+     * Do NOT increment here — counter only increments when a value is actually
+     * yielded (in e_gamma path).  β just checks and re-drives the inner generator. */
+    JL(b);
+    get_long(cnt_fld);
+    get_long(max_fld);
+    JI("lcmp", "");
+    J("    ifge %s\n", ports.ω);  /* count >= max: already gave all allowed values */
+    JGoto(eb);
+}
+
+/* =========================================================================
+ * ICN_SUBSCRIPT — s[i]  (string character subscript, 1-based)
+ *
+ * Semantics: s[i] returns the single character at 1-based position i as a
+ * String.  Fails if i < 1 or i > length(s).
+ * Negative indices count from the end: s[-1] = last char.
+ *
+ * Implementation (one-shot — β → ω):
+ *   eval s → store in per-site static (String)
+ *   eval i → l2i → compute 0-based offset (handle negative)
+ *   bounds check: if offset < 0 || offset >= length → ω
+ *   substring(offset, offset+1) → γ (String)
+ *
+ * Children: [0]=string expr, [1]=index expr (long, 1-based)
+ * Result type: String (single character)
+ * ======================================================================= */
+static void emit_jvm_icon_subscript(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    int id = next_uid(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+
+    if (n->nchildren < 2) {
+        JL(a); JGoto(ports.ω); JL(b); JGoto(ports.ω); return;
+    }
+
+    EXPR_t *str_child = n->children[0];
+    EXPR_t *idx_child = n->children[1];
+
+    /* -----------------------------------------------------------------------
+     * TABLE SUBSCRIPT: t[k]
+     * If the LHS is a table variable, do HashMap.get(key_str).
+     * If key not present: return the table's default value.
+     * Default is stored in a parallel _dflt Object static.
+     * Assignment t[k] := v is handled by a separate path in ICN_ASSIGN (below).
+     * One-shot (β → ω).
+     * ----------------------------------------------------------------------- */
+    if (expr_is_table(str_child)) {
+        char t_fld[80];    snprintf(t_fld,    sizeof t_fld,    "icn_%d_ts_tbl",   id);
+        char k_fld[80];    snprintf(k_fld,    sizeof k_fld,    "icn_%d_ts_key",   id);
+        char kv_fld[80];   snprintf(kv_fld,   sizeof kv_fld,   "icn_%d_ts_kval",  id);
+        char trelay[64];   snprintf(trelay,   sizeof trelay,   "icn_%d_ts_tr",    id);
+        char krelay[64];   snprintf(krelay,   sizeof krelay,   "icn_%d_ts_kr",    id);
+        char got_val[64];  snprintf(got_val,  sizeof got_val,  "icn_%d_ts_got",   id);
+        declare_static_table(t_fld);
+        declare_static_str(k_fld);
+        declare_static(kv_fld);
+
+        Ports tp; strncpy(tp.γ, trelay, 63); strncpy(tp.ω, ports.ω, 63);
+        char ta[64], tb[64]; emit_jvm_icon_expr(str_child, tp, ta, tb);
+        Ports kp; strncpy(kp.γ, krelay, 63); strncpy(kp.ω, ports.ω, 63);
+        char ka[64], kb[64]; emit_jvm_icon_expr(idx_child, kp, ka, kb);
+
+        JL(a); JGoto(ta);
+        JL(b); JGoto(kb);  /* resume key generator (or idx expression) on β */
+
+        JL(trelay); put_table_field(t_fld); JGoto(ka);
+        JL(krelay);
+        if (expr_is_string(idx_child)) {
+            /* String key: dup (1 word), store directly, use as-is for lookup */
+            JI("dup",""); put_str_field(k_fld);
+            /* kv_fld unused for string keys — store 0 as placeholder */
+            JI("lconst_0",""); put_long(kv_fld);
+        } else {
+            /* Long key: dup2, save raw long, convert to String */
+            JI("dup2",""); put_long(kv_fld);
+            JI("invokestatic", "java/lang/Long/toString(J)Ljava/lang/String;");
+            put_str_field(k_fld);
+        }
+        /* HashMap.get(key) */
+        get_table_field(t_fld);
+        get_str_field(k_fld);
+        JI("invokevirtual", "java/util/HashMap/get(Ljava/lang/Object;)Ljava/lang/Object;");
+        /* if null: return default; else unbox (Long or String depending on table type) */
+        JI("dup", "");
+        J("    ifnonnull %s\n", got_val);
+        /* null branch: load {varfld}_dflt (pre-declared by pre-pass if table(x) was used) */
+        JI("pop", "");
+        if (str_child && str_child->kind == E_VAR) {
+            char tvfld[128];
+            int slot = locals_find(str_child->sval);
+            if (slot >= 0) {
+                var_field(str_child->sval, tvfld, sizeof tvfld);
+            } else {
+                snprintf(tvfld, sizeof tvfld, "icn_gvar_%s", str_child->sval);
+            }
+            char vdflt[144]; snprintf(vdflt, sizeof vdflt, "%s_dflt", tvfld);
+            int tbl_dflt_is_str = tdflt_is_str(tvfld);
+            /* Check if declared in statics (pre-pass registered it) */
+            int dflt_declared = 0;
+            for (int _di = 0; _di < nstatics; _di++) {
+                if (!strcmp(statics[_di], vdflt)) { dflt_declared = 1; break; }
+            }
+            if (dflt_declared) {
+                get_obj_field(vdflt);
+                if (tbl_dflt_is_str) {
+                    JI("checkcast", "java/lang/String");
+                    /* String at γ — leave on stack as reference */
+                } else {
+                    JI("checkcast", "java/lang/Long");
+                    JI("invokevirtual", "java/lang/Long/longValue()J");
+                }
+            } else {
+                if (tbl_dflt_is_str) {
+                    JI("ldc", """");  /* empty string default */
+                } else {
+                    JI("lconst_0", "");
+                }
+            }
+        } else {
+            JI("lconst_0", "");
+        }
+        JGoto(ports.γ);
+        JL(got_val);
+        /* ts_got branch: value from HashMap.get — cast to correct type */
+        if (str_child && str_child->kind == E_VAR) {
+            char tvfld2[128];
+            int slot2 = locals_find(str_child->sval);
+            if (slot2 >= 0) {
+                var_field(str_child->sval, tvfld2, sizeof tvfld2);
+            } else {
+                snprintf(tvfld2, sizeof tvfld2, "icn_gvar_%s", str_child->sval);
+            }
+            if (tdflt_is_str(tvfld2)) {
+                JI("checkcast", "java/lang/String");
+                /* String at γ */
+            } else {
+                JI("checkcast", "java/lang/Long");
+                JI("invokevirtual", "java/lang/Long/longValue()J");
+            }
+        } else {
+            JI("checkcast", "java/lang/Long");
+            JI("invokevirtual", "java/lang/Long/longValue()J");
+        }
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* -----------------------------------------------------------------------
+     * LIST SUBSCRIPT: L[i]  (ArrayList element access, 1-based)
+     * Semantics: L[i] returns the element at 1-based position i.
+     *   Negative indices count from end.  Fails if out of bounds.
+     *   Elements are boxed Objects: Long for numeric lists, String for string-lists.
+     * ----------------------------------------------------------------------- */
+    if (expr_is_list(str_child) || expr_is_strlist(str_child)) {
+        int is_slist = expr_is_strlist(str_child);
+        char l_fld[64], li_fld[64];
+        snprintf(l_fld,  sizeof l_fld,  "icn_%d_lsub_l", id);
+        snprintf(li_fld, sizeof li_fld, "icn_%d_lsub_i", id);
+        if (is_slist) declare_static_strlist(l_fld);
+        else          declare_static_list(l_fld);
+        declare_static_int(li_fld);
+
+        char l_relay[64], li_relay[64], l_check[64];
+        snprintf(l_relay,  sizeof l_relay,  "icn_%d_lsub_lr",  id);
+        snprintf(li_relay, sizeof li_relay, "icn_%d_lsub_ir",  id);
+        snprintf(l_check,  sizeof l_check,  "icn_%d_lsub_chk", id);
+        char pos_b[64], neg_b[64], zero_b[64];
+        snprintf(pos_b,  sizeof pos_b,  "icn_%d_lsub_pos", id);
+        snprintf(neg_b,  sizeof neg_b,  "icn_%d_lsub_neg", id);
+        snprintf(zero_b, sizeof zero_b, "icn_%d_lsub_z",   id);
+
+        /* Emit list child */
+        Ports lp; strncpy(lp.γ, l_relay, 63); strncpy(lp.ω, ports.ω, 63);
+        char la[64], lb[64]; emit_jvm_icon_expr(str_child, lp, la, lb);
+        /* Emit index child */
+        Ports lip; strncpy(lip.γ, li_relay, 63); strncpy(lip.ω, ports.ω, 63);
+        char lia[64], lib[64]; emit_jvm_icon_expr(idx_child, lip, lia, lib);
+
+        JL(a); JGoto(la);
+        JL(b); JGoto(lib);
+
+        /* l_relay: ArrayList ref on stack → store, eval index */
+        JL(l_relay); put_list_field(l_fld); JGoto(lia);
+
+        /* li_relay: long index on stack → convert to 0-based int */
+        JL(li_relay);
+        JI("l2i", "");
+        int idx_s = alloc_int_scratch();
+        J("    istore %d\n", idx_s);
+        J("    iload %d\n",  idx_s);
+        J("    ifgt %s\n", pos_b);
+        J("    iload %d\n",  idx_s);
+        J("    iflt %s\n", neg_b);
+        JL(zero_b); JGoto(ports.ω);   /* i == 0 → fail */
+
+        JL(pos_b);
+        J("    iload %d\n", idx_s); JI("iconst_1",""); JI("isub","");
+        put_int_field(li_fld); JGoto(l_check);
+
+        JL(neg_b);
+        get_list_field(l_fld);
+        JI("invokevirtual", "java/util/ArrayList/size()I");
+        J("    iload %d\n", idx_s); JI("iadd","");
+        put_int_field(li_fld); JGoto(l_check);
+
+        /* check: bounds, then get */
+        JL(l_check);
+        get_int_field(li_fld);
+        J("    iflt %s\n", ports.ω);
+        get_list_field(l_fld);
+        JI("invokevirtual", "java/util/ArrayList/size()I");
+        get_int_field(li_fld);
+        JI("if_icmple", ports.ω);
+        get_list_field(l_fld);
+        get_int_field(li_fld);
+        JI("invokevirtual", "java/util/ArrayList/get(I)Ljava/lang/Object;");
+        if (is_slist) {
+            JI("checkcast", "java/lang/String");
+        } else {
+            JI("checkcast", "java/lang/Long");
+            JI("invokevirtual", "java/lang/Long/longValue()J");
+        }
+        JGoto(ports.γ);
+        return;
+    }
+
+    /* Per-site statics for cross-label value passing */
+    char s_fld[64], i_fld[64];
+    snprintf(s_fld, sizeof s_fld, "icn_%d_sub_s", id);
+    snprintf(i_fld, sizeof i_fld, "icn_%d_sub_i", id);
+    declare_static_str(s_fld);
+    declare_static_int(i_fld);   /* 0-based int offset */
+
+    /* Relay labels */
+    char s_relay[64], i_relay[64], check[64];
+    snprintf(s_relay, sizeof s_relay, "icn_%d_sub_srelay", id);
+    snprintf(i_relay, sizeof i_relay, "icn_%d_sub_irelay", id);
+    snprintf(check,   sizeof check,   "icn_%d_sub_check",  id);
+
+    /* Emit index child (long) — fail→ω */
+    Ports ip; strncpy(ip.γ, i_relay, 63); strncpy(ip.ω, ports.ω, 63);
+    char ia[64], ib[64]; emit_jvm_icon_expr(idx_child, ip, ia, ib);
+
+    /* Emit string child — fail→ω */
+    Ports sp; strncpy(sp.γ, s_relay, 63); strncpy(sp.ω, ports.ω, 63);
+    char sa[64], sb[64]; emit_jvm_icon_expr(str_child, sp, sa, sb);
+
+    /* s_relay: String on stack → store, then eval index */
+    JL(s_relay);
+    put_str_field(s_fld);
+    JGoto(ia);
+
+    /* i_relay: long index on stack → convert to 0-based int, store, goto check */
+    JL(i_relay);
+    JI("l2i", "");                       /* long → int (1-based Icon index) */
+    /* Convert 1-based to 0-based, handling negative (count from end) */
+    /* if i > 0: offset = i - 1
+       if i < 0: offset = length + i   (e.g. s[-1] = length-1)
+       if i == 0: fail */
+    char pos_branch[64], neg_branch[64], zero_fail[64];
+    snprintf(pos_branch, sizeof pos_branch, "icn_%d_sub_pos", id);
+    snprintf(neg_branch, sizeof neg_branch, "icn_%d_sub_neg", id);
+    snprintf(zero_fail,  sizeof zero_fail,  "icn_%d_sub_z",   id);
+    /* Duplicate int on stack for the comparison (it's on stack once) */
+    int idx_slot = alloc_int_scratch();
+    J("    istore %d\n", idx_slot);
+    J("    iload %d\n",  idx_slot);
+    J("    ifgt %s\n", pos_branch);
+    J("    iload %d\n",  idx_slot);
+    J("    iflt %s\n", neg_branch);
+    /* i == 0 → fail */
+    JL(zero_fail); JGoto(ports.ω);
+
+    /* pos_branch: offset = i - 1 */
+    JL(pos_branch);
+    J("    iload %d\n", idx_slot);
+    JI("iconst_1", ""); JI("isub", "");
+    put_int_field(i_fld);
+    JGoto(check);
+
+    /* neg_branch: offset = length + i */
+    JL(neg_branch);
+    get_str_field(s_fld);
+    JI("invokevirtual", "java/lang/String/length()I");
+    J("    iload %d\n", idx_slot);
+    JI("iadd", "");
+    put_int_field(i_fld);
+    JGoto(check);
+
+    /* check: if offset < 0 || offset >= length → fail; else substring */
+    JL(check);
+    get_int_field(i_fld);
+    J("    iflt %s\n", ports.ω);          /* offset < 0 → fail */
+    get_str_field(s_fld);
+    JI("invokevirtual", "java/lang/String/length()I");
+    get_int_field(i_fld);
+    JI("if_icmple", ports.ω);             /* length <= offset → fail */
+    /* substring(offset, offset+1) */
+    get_str_field(s_fld);
+    get_int_field(i_fld);
+    get_int_field(i_fld);
+    JI("iconst_1", ""); JI("iadd", "");
+    JI("invokevirtual", "java/lang/String/substring(II)Ljava/lang/String;");
+    JGoto(ports.γ);
+
+    /* α: eval string first, then index */
+    JL(a); JGoto(sa);
+    /* β: retry index generator (allows every s[1 to N] to work).
+     * String child is one-shot and its value is cached in s_fld, so we
+     * just re-drive the index child's β to get the next index. */
+    JL(b); JGoto(ib);
+}
+
+
+/* =========================================================================
+ * ICN_SECTION — s[i:j]  (string section / substring)
+ * 3 children: str, lo, hi  (all 1-based Icon positions)
+ * JCON: ir_a_Sectionop — eval str → lo → hi, then call substring.
+ * Convention: 1-based lo/hi → 0-based lo-1 and hi-1 for Java substring.
+ * Positive i: offset = i-1.  Negative i: offset = length+i.  0 → fail.
+ * One-shot: β → ω.  Result is a String.
+ * ======================================================================= */
+static void emit_jvm_icon_section(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    int id = next_uid(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+
+    if (n->nchildren < 3) {
+        JL(a); JGoto(ports.ω); JL(b); JGoto(ports.ω); return;
+    }
+    EXPR_t *str_child = n->children[0];
+    EXPR_t *lo_child  = n->children[1];
+    EXPR_t *hi_child  = n->children[2];
+
+    /* Per-site statics */
+    char s_fld[64], lo_fld[64], hi_fld[64];
+    snprintf(s_fld,  sizeof s_fld,  "icn_%d_sec_s",  id);
+    snprintf(lo_fld, sizeof lo_fld, "icn_%d_sec_lo", id);
+    snprintf(hi_fld, sizeof hi_fld, "icn_%d_sec_hi", id);
+    declare_static_str(s_fld);
+    declare_static_int(lo_fld);
+    declare_static_int(hi_fld);
+
+    /* Relay labels */
+    char s_relay[64], lo_relay[64], hi_relay[64], compute[64];
+    snprintf(s_relay,  sizeof s_relay,  "icn_%d_sec_sr",  id);
+    snprintf(lo_relay, sizeof lo_relay, "icn_%d_sec_lor", id);
+    snprintf(hi_relay, sizeof hi_relay, "icn_%d_sec_hir", id);
+    snprintf(compute,  sizeof compute,  "icn_%d_sec_cmp", id);
+
+    /* Helper macro: convert 1-based Icon pos to 0-based Java index,
+       store into a field; fail on 0.  Uses an istore slot. */
+    /* Emit string child */
+    Ports sp; strncpy(sp.γ, s_relay, 63); strncpy(sp.ω, ports.ω, 63);
+    char sa[64], sb[64]; emit_jvm_icon_expr(str_child, sp, sa, sb);
+
+    /* Emit lo child */
+    Ports lp; strncpy(lp.γ, lo_relay, 63); strncpy(lp.ω, ports.ω, 63);
+    char la[64], lb[64]; emit_jvm_icon_expr(lo_child, lp, la, lb);
+
+    /* Emit hi child */
+    Ports hp; strncpy(hp.γ, hi_relay, 63); strncpy(hp.ω, ports.ω, 63);
+    char ha[64], hb[64]; emit_jvm_icon_expr(hi_child, hp, ha, hb);
+
+    /* Inline helper: convert long on stack to 0-based int, store in field.
+       Negative: length+i.  Zero: fail.  Positive: i-1. */
+    /* lo_relay: long lo on stack */
+    char lo_pos[64], lo_neg[64], lo_zero[64];
+    snprintf(lo_pos,  sizeof lo_pos,  "icn_%d_sec_lop", id);
+    snprintf(lo_neg,  sizeof lo_neg,  "icn_%d_sec_lon", id);
+    snprintf(lo_zero, sizeof lo_zero, "icn_%d_sec_loz", id);
+    int lo_slot = alloc_int_scratch();
+
+    JL(lo_relay);
+    JI("l2i", "");
+    J("    istore %d\n", lo_slot);
+    J("    iload %d\n",  lo_slot);
+    J("    ifgt %s\n", lo_pos);
+    J("    iload %d\n",  lo_slot);
+    J("    iflt %s\n", lo_neg);
+    JL(lo_zero); JGoto(ports.ω);          /* lo == 0 → fail */
+    JL(lo_pos);
+    J("    iload %d\n", lo_slot);
+    JI("iconst_1", ""); JI("isub", "");    /* lo - 1 */
+    put_int_field(lo_fld);
+    JGoto(ha);
+    JL(lo_neg);
+    get_str_field(s_fld);
+    JI("invokevirtual", "java/lang/String/length()I");
+    J("    iload %d\n", lo_slot);
+    JI("iadd", "");                        /* length + lo (lo is negative) */
+    put_int_field(lo_fld);
+    JGoto(ha);
+
+    /* hi_relay: long hi on stack */
+    char hi_pos[64], hi_neg[64], hi_zero[64];
+    snprintf(hi_pos,  sizeof hi_pos,  "icn_%d_sec_hip", id);
+    snprintf(hi_neg,  sizeof hi_neg,  "icn_%d_sec_hin", id);
+    snprintf(hi_zero, sizeof hi_zero, "icn_%d_sec_hiz", id);
+    int hi_slot = alloc_int_scratch();
+
+    JL(hi_relay);
+    JI("l2i", "");
+    J("    istore %d\n", hi_slot);
+    J("    iload %d\n",  hi_slot);
+    J("    ifgt %s\n", hi_pos);
+    J("    iload %d\n",  hi_slot);
+    J("    iflt %s\n", hi_neg);
+    JL(hi_zero); JGoto(ports.ω);          /* hi == 0 is valid: s[1:0] = "" but map to empty */
+    JL(hi_pos);
+    J("    iload %d\n", hi_slot);
+    JI("iconst_1", ""); JI("isub", "");    /* hi - 1 */
+    put_int_field(hi_fld);
+    JGoto(compute);
+    JL(hi_neg);
+    get_str_field(s_fld);
+    JI("invokevirtual", "java/lang/String/length()I");
+    J("    iload %d\n", hi_slot);
+    JI("iadd", "");
+    put_int_field(hi_fld);
+    JGoto(compute);
+
+    /* compute: bounds check then substring(lo_0based, hi_0based) */
+    JL(compute);
+    /* if lo > hi → empty string (valid in Icon: s[3:2] = "") */
+    /* if lo < 0 or hi < 0 → fail */
+    get_int_field(lo_fld);
+    J("    iflt %s\n", ports.ω);
+    get_int_field(hi_fld);
+    J("    iflt %s\n", ports.ω);
+    /* if lo > length → fail */
+    get_str_field(s_fld);
+    JI("invokevirtual", "java/lang/String/length()I");
+    get_int_field(lo_fld);
+    JI("if_icmplt", ports.ω);             /* length < lo → fail */
+    /* clamp hi to length */
+    int len_slot = alloc_int_scratch();
+    get_str_field(s_fld);
+    JI("invokevirtual", "java/lang/String/length()I");
+    J("    istore %d\n", len_slot);
+    get_int_field(hi_fld);
+    J("    iload %d\n", len_slot);
+    char hi_ok[64]; snprintf(hi_ok, sizeof hi_ok, "icn_%d_sec_hiok", id);
+    J("    if_icmple %s\n", hi_ok);
+    /* hi > length: clamp */
+    J("    iload %d\n", len_slot);
+    put_int_field(hi_fld);
+    JL(hi_ok);
+    /* substring(lo_0based, hi_0based) — Java substring end is exclusive,
+       Icon hi is already the exclusive end after our -1 conversion */
+    get_str_field(s_fld);
+    get_int_field(lo_fld);
+    get_int_field(hi_fld);
+    JI("invokevirtual", "java/lang/String/substring(II)Ljava/lang/String;");
+    JGoto(ports.γ);
+
+    /* α: eval str → lo → hi */
+    JL(a);  JGoto(sa);
+    JL(s_relay); put_str_field(s_fld); JGoto(la);
+    /* β: one-shot → ω */
+    JL(b);  JGoto(ports.ω);
+}
+
+/* =========================================================================
+ * ICN_SEQ_EXPR — (E1; E2; ... En)  expression sequence
+ * Semantics: evaluate E1..E(n-1), discard results, then E_n — its
+ * success/failure is the result of the whole expression.
+ * Wiring: identical to ICN_AND (ir_conjunction) — drain intermediates,
+ * last child's γ/ω flow to ports.γ/ω.  β → last child's β.
+ * ======================================================================= */
+static void emit_jvm_icon_seq_expr(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    int nc = n->nchildren;
+    if (nc == 0) { /* degenerate */
+        int id = next_uid(); char a[64], b[64];
+        lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+        strncpy(oα,a,63); strncpy(oβ,b,63);
+        JL(a); JI("lconst_0",""); JGoto(ports.γ);
+        JL(b); JGoto(ports.ω);
+        return;
+    }
+    if (nc == 1) {
+        emit_jvm_icon_expr(n->children[0], ports, oα, oβ);
+        return;
+    }
+    /* n >= 2: same relay-label pattern as ICN_AND, but with failure-relay
+     * for statement sequences: a failing non-last child (e.g. `if` without
+     * `else`) must NOT abort the sequence — it silently continues to the
+     * next child's α.  Only the LAST child's ω propagates to ports.ω. */
+    int cid = next_uid(); char ca2[64], cb2[64];
+    lbl_α(cid,ca2,sizeof ca2); lbl_β(cid,cb2,sizeof cb2);
+    strncpy(oα,ca2,63); strncpy(oβ,cb2,63);
+    char (*cca)[64] = malloc(nc * 64);
+    char (*ccb)[64] = malloc(nc * 64);
+    char (*relay_g)[64] = malloc(nc * 64);
+    char (*relay_f)[64] = malloc(nc * 64);
+    for (int i = 0; i < nc; i++) {
+        snprintf(relay_g[i], 64, "icn_%d_seq_rg_%d", cid, i);
+        snprintf(relay_f[i], 64, "icn_%d_seq_rf_%d", cid, i);
+        cca[i][0] = '\0'; ccb[i][0] = '\0';
+    }
+    for (int i = 0; i < nc; i++) {
+        Ports ep;
+        strncpy(ep.γ, (i == nc-1) ? ports.γ  : relay_g[i], 63);
+        strncpy(ep.ω, (i == nc-1) ? ports.ω  : relay_f[i], 63);
+        emit_jvm_icon_expr(n->children[i], ep, cca[i], ccb[i]);
+    }
+    /* relay trampolines: drain Ei.γ result, jump to E(i+1).α */
+    JGoto(ca2);
+    for (int i = 0; i < nc-1; i++) {
+        JL(relay_g[i]);
+        int child_is_str = expr_is_string(n->children[i]);
+        JI(child_is_str ? "pop" : "pop2", "");
+        JGoto(cca[i+1]);
+    }
+    /* failure relay: Ei fails (no-else if, etc.) → silently skip to E(i+1).α */
+    for (int i = 0; i < nc-1; i++) {
+        JL(relay_f[i]);
+        JGoto(cca[i+1]);
+    }
+    JL(ca2); JGoto(cca[0]);
+    JL(cb2); JGoto(ccb[nc-1]);
+    free(cca); free(ccb); free(relay_g); free(relay_f);
+}
+
+/* =========================================================================
+ * ICN_SWAP — E1 :=: E2  (swap values of two variables)
+ * Semantics: atomically exchange values of lhs and rhs variables.
+ * Returns the new value of E1 (Icon :=: returns lhs after swap).
+ * Implementation: read both, write both crossed, using per-site temp statics.
+ * Only handles VAR := VAR (the common case); other forms fall to UNIMPL.
+ * ======================================================================= */
+static void emit_jvm_icon_swap(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    int id = next_uid(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+
+    if (n->nchildren < 2 ||
+        !n->children[0] || n->children[0]->kind != E_VAR ||
+        !n->children[1] || n->children[1]->kind != E_VAR) {
+        /* Degenerate/unsupported form — fail */
+        JL(a); JGoto(ports.ω);
+        JL(b); JGoto(ports.ω);
+        return;
+    }
+
+    EXPR_t *lv = n->children[0];
+    EXPR_t *rv = n->children[1];
+
+    /* Determine field names for both sides */
+    char lfld[128], rfld[128];
+    int lslot = locals_find(lv->sval);
+    int rslot = locals_find(rv->sval);
+    if (lslot >= 0) var_field(lv->sval, lfld, sizeof lfld);
+    else            snprintf(lfld, sizeof lfld, "icn_gvar_%s", lv->sval);
+    if (rslot >= 0) var_field(rv->sval, rfld, sizeof rfld);
+    else            snprintf(rfld, sizeof rfld, "icn_gvar_%s", rv->sval);
+
+    /* Determine types from statics table — default long */
+    int l_str = 0, l_dbl = 0, r_str = 0, r_dbl = 0;
+    for (int i = 0; i < nstatics; i++) {
+        if (!strcmp(statics[i], lfld)) {
+            l_str = (static_types[i] == 'A');
+            l_dbl = (static_types[i] == 'D');
+        }
+        if (!strcmp(statics[i], rfld)) {
+            r_str = (static_types[i] == 'A');
+            r_dbl = (static_types[i] == 'D');
+        }
+    }
+    /* Treat both as same type (swap between mismatched types is unusual) */
+    int is_str = l_str || r_str;
+    int is_dbl = l_dbl || r_dbl;
+
+    /* Declare tmp fields for the swap */
+    char tmp1[64], tmp2[64];
+    snprintf(tmp1, sizeof tmp1, "icn_%d_swap_t1", id);
+    snprintf(tmp2, sizeof tmp2, "icn_%d_swap_t2", id);
+    if (is_str)      { declare_static_str(tmp1); declare_static_str(tmp2); }
+    else if (is_dbl) { declare_static_dbl(tmp1); declare_static_dbl(tmp2); }
+    else             { declare_static(tmp1);     declare_static(tmp2); }
+
+    JL(a);
+    /* Read both values into tmps */
+    if (is_str)      { get_str_field(lfld); put_str_field(tmp1);
+                       get_str_field(rfld); put_str_field(tmp2); }
+    else if (is_dbl) { get_dbl(lfld); put_dbl(tmp1);
+                       get_dbl(rfld); put_dbl(tmp2); }
+    else             { get_long(lfld); put_long(tmp1);
+                       get_long(rfld); put_long(tmp2); }
+    /* Write crossed */
+    if (is_str)      { get_str_field(tmp2); put_str_field(lfld);
+                       get_str_field(tmp1); put_str_field(rfld); }
+    else if (is_dbl) { get_dbl(tmp2); put_dbl(lfld);
+                       get_dbl(tmp1); put_dbl(rfld); }
+    else             { get_long(tmp2); put_long(lfld);
+                       get_long(tmp1); put_long(rfld); }
+    /* Return new value of lhs (tmp2 = old rhs = new lhs) */
+    if (is_str)      get_str_field(lfld);
+    else if (is_dbl) get_dbl(lfld);
+    else             get_long(lfld);
+    JGoto(ports.γ);
+    JL(b); JGoto(ports.ω);
+}
+
+/* =========================================================================
+ * ICN_IDENTICAL — E1 === E2  (same type and value)
+ * For our unboxed representation: longs compare ==, strings compare .equals()
+ * ======================================================================= */
+static void emit_jvm_icon_identical(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    int id = next_uid(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+
+    if (n->nchildren < 2) { JL(a); JGoto(ports.ω); JL(b); JGoto(ports.ω); return; }
+
+    char lrf[80], rrf[80];
+    snprintf(lrf, sizeof lrf, "icn_%d_id_lc", id);
+    snprintf(rrf, sizeof rrf, "icn_%d_id_rc", id);
+    int is_str = expr_is_string(n->children[0]) || expr_is_string(n->children[1]);
+    if (is_str) { declare_static_str(lrf); declare_static_str(rrf); }
+    else        { declare_static(lrf);     declare_static(rrf);     }
+
+    char rrelay[64], lrelay[64], chk[64];
+    snprintf(rrelay, sizeof rrelay, "icn_%d_id_rr", id);
+    snprintf(lrelay, sizeof lrelay, "icn_%d_id_lr", id);
+    snprintf(chk,    sizeof chk,    "icn_%d_id_chk", id);
+
+    Ports rp; strncpy(rp.γ, rrelay, 63); strncpy(rp.ω, ports.ω, 63);
+    char ra[64], rb[64]; emit_jvm_icon_expr(n->children[1], rp, ra, rb);
+    Ports lp; strncpy(lp.γ, lrelay, 63); strncpy(lp.ω, ports.ω, 63);
+    char la[64], lb[64]; emit_jvm_icon_expr(n->children[0], lp, la, lb);
+
+    JL(lrelay);
+    if (is_str) put_str_field(lrf); else put_long(lrf);
+    JL(rrelay);
+    if (is_str) put_str_field(rrf); else put_long(rrf);
+
+    JL(a); JGoto(la);
+    JL(chk);
+    if (is_str) {
+        get_str_field(lrf); get_str_field(rrf);
+        JI("invokevirtual", "java/lang/String/equals(Ljava/lang/Object;)Z");
+        JI("ifeq", ports.ω);
+        get_str_field(lrf);
+    } else {
+        get_long(lrf); get_long(rrf);
+        JI("lcmp", ""); JI("ifne", ports.ω);
+        get_long(lrf);
+    }
+    JGoto(ports.γ);
+    JL(b); JGoto(ports.ω);
+}
+
+/* =========================================================================
+ * ICN_MATCH — =E  (scan: succeed if subject starts with E, advance &pos)
+ * Implemented as a call to icn_rt_match(subject, pos, pattern)
+ * which returns new pos or -1 on failure.
+ * ======================================================================= */
+static void emit_jvm_icon_match(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    /* E_SCAN with 2 children = E ? body scan — delegate to scan emitter */
+    if (n->nchildren >= 2) { emit_jvm_icon_scan(n, ports, oα, oβ); return; }
+
+    int id = next_uid(); char a[64], b[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+
+    if (n->nchildren < 1) { JL(a); JGoto(ports.ω); JL(b); JGoto(ports.ω); return; }
+
+    /* Evaluate the pattern expression */
+    char pat_relay[64]; snprintf(pat_relay, sizeof pat_relay, "icn_%d_match_pr", id);
+    char pat_field[80]; snprintf(pat_field, sizeof pat_field, "icn_%d_match_pat", id);
+    declare_static_str(pat_field);
+
+    Ports pp; strncpy(pp.γ, pat_relay, 63); strncpy(pp.ω, ports.ω, 63);
+    char pa[64], pb[64]; emit_jvm_icon_expr(n->children[0], pp, pa, pb);
+
+    JL(pat_relay); put_str_field(pat_field);
+
+    JL(a); JGoto(pa);
+
+    /* Call: IjRT.match(&subject, &pos, pat) → new_pos or -1 */
+    char chk[64]; snprintf(chk, sizeof chk, "icn_%d_match_chk", id);
+    JL(chk);
+    JI("getstatic",  "IjRT/icn_subject Ljava/lang/String;");
+    JI("getstatic",  "IjRT/icn_pos J");
+    get_str_field(pat_field);
+    JI("invokestatic","IjRT/icn_rt_match(Ljava/lang/String;JLjava/lang/String;)J");
+    /* result: new pos (>=0) or -1 */
+    char result_fld[80]; snprintf(result_fld, sizeof result_fld, "icn_%d_match_res", id);
+    declare_static(result_fld);
+    put_long(result_fld);
+    get_long(result_fld);
+    JI("lconst_0",""); JI("lcmp",""); JI("iflt", ports.ω);
+    /* update &pos */
+    get_long(result_fld);
+    JI("putstatic", "IjRT/icn_pos J");
+    /* return matched substring */
+    JI("getstatic", "IjRT/icn_subject Ljava/lang/String;");
+    JI("getstatic", "IjRT/icn_pos J"); JI("l2i","");
+    get_long(result_fld); JI("l2i","");
+    JI("invokevirtual","java/lang/String/substring(II)Ljava/lang/String;");
+    JGoto(ports.γ);
+    JL(b); JGoto(ports.ω);
+}
+
+/* =========================================================================
+ * G3: ICN_COMPLEMENT — ~E: cset complement via icn_builtin_cset_complement
+ * G4–G6: ICN_CSET_UNION/DIFF/INTER — binary cset ops
+ * (M-G5-LOWER-ICON-FIX)
+ * ======================================================================= */
+static void emit_jvm_icon_cset_complement(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    need_cset_builtins = 1;
+    int id = next_uid(); char a[64], b[64], relay[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    snprintf(relay, sizeof relay, "icn_%d_csc_relay", id);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+    EXPR_t *child = n->nchildren > 0 ? n->children[0] : NULL;
+    Ports cp; strncpy(cp.γ,relay,63); strncpy(cp.ω,ports.ω,63);
+    char ca[64], cb[64]; emit_jvm_icon_expr(child, cp, ca, cb);
+    JL(a); JGoto(ca);
+    JL(b); JGoto(cb);
+    JL(relay);
+    /* child left String on stack */
+    JI("invokestatic", classname_buf("icn_builtin_cset_complement(Ljava/lang/String;)Ljava/lang/String;"));
+    JGoto(ports.γ);
+}
+
+static void emit_jvm_icon_cset_binop(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    need_cset_builtins = 1;
+    int id = next_uid(); char a[64], b[64], lstore[64], compute[64], lbfwd[64];
+    lbl_α(id,a,sizeof a); lbl_β(id,b,sizeof b);
+    snprintf(lstore,  sizeof lstore,  "icn_%d_cbo_ls",  id);
+    snprintf(compute, sizeof compute, "icn_%d_cbo_cmp", id);
+    snprintf(lbfwd,   sizeof lbfwd,   "icn_%d_cbo_lb",  id);
+    strncpy(oα,a,63); strncpy(oβ,b,63);
+    /* Use static fields to hold the two cset String refs between children */
+    char lf[80], rf[80];
+    snprintf(lf, sizeof lf, "icn_cbo%d_lcs", id);
+    snprintf(rf, sizeof rf, "icn_cbo%d_rcs", id);
+    declare_static_str(lf); declare_static_str(rf);
+    EXPR_t *rch = n->nchildren > 1 ? n->children[1] : NULL;
+    EXPR_t *lch = n->nchildren > 0 ? n->children[0] : NULL;
+    char ra[64], rb2[64];
+    Ports rp; strncpy(rp.γ,compute,63); strncpy(rp.ω,lbfwd,63);
+    emit_jvm_icon_expr(rch, rp, ra, rb2);
+    char la[64], lb2[64];
+    Ports lp; strncpy(lp.γ,lstore,63); strncpy(lp.ω,ports.ω,63);
+    emit_jvm_icon_expr(lch, lp, la, lb2);
+    JL(lbfwd); JGoto(lb2);
+    JL(a); JGoto(la);
+    JL(b); JGoto(rb2);
+    JL(lstore);
+    /* left String on stack — store to static field */
+    JI("putstatic", classname_buf_fld(lf, "Ljava/lang/String;"));
+    JGoto(ra);
+    JL(compute);
+    /* right String on stack — store, then load both and call */
+    JI("putstatic", classname_buf_fld(rf, "Ljava/lang/String;"));
+    JI("getstatic", classname_buf_fld(lf, "Ljava/lang/String;"));
+    JI("getstatic", classname_buf_fld(rf, "Ljava/lang/String;"));
+    const char *sig =
+        (n->kind == E_CSET_UNION) ?
+            "icn_builtin_cset_union(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;" :
+        (n->kind == E_CSET_DIFF)  ?
+            "icn_builtin_cset_diff(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"  :
+            "icn_builtin_cset_inter(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;";
+    JI("invokestatic", classname_buf(sig));
+    JGoto(ports.γ);
+}
+
+/* =========================================================================
+ * Dispatch
+ * ======================================================================= */
+static void emit_jvm_icon_expr(EXPR_t *n, Ports ports, char *oα, char *oβ) {
+    if (!n) { emit_jvm_icon_fail_node(NULL,ports,oα,oβ); return; }
+    switch (n->kind) {
+        case E_ILIT:     emit_jvm_icon_int      (n,ports,oα,oβ); break;
+        case E_FLIT:    emit_jvm_icon_real     (n,ports,oα,oβ); break;
+        case E_QLIT:     emit_jvm_icon_str      (n,ports,oα,oβ); break;
+        case E_CSET:    emit_jvm_icon_str      (n,ports,oα,oβ); break; /* cset = typed String */
+        case E_VAR:     emit_jvm_icon_var      (n,ports,oα,oβ); break;
+        case E_ASSIGN:  emit_jvm_icon_assign   (n,ports,oα,oβ); break;
+        case E_RETURN:  emit_jvm_icon_return   (n,ports,oα,oβ); break;
+        case E_SUSPEND: emit_jvm_icon_suspend  (n,ports,oα,oβ); break;
+        case E_FAIL:    emit_jvm_icon_fail_node(n,ports,oα,oβ); break;
+        case E_IF:      emit_jvm_icon_if       (n,ports,oα,oβ); break;
+        case E_CASE:    emit_jvm_icon_case     (n,ports,oα,oβ); break;
+        case E_ALTERNATE:     emit_jvm_icon_alt      (n,ports,oα,oβ); break;
+        case E_SEQ: {
+            /* n-ary conjunction: E1 & E2 & ... & En
+             * irgen.icn ir_conjunction: Ei.γ → E(i+1).α; Ei.ω → E(i-1).β; β → En.β
+             *
+             * Bug fix: must emit LEFT-TO-RIGHT so ccb[i-1] is known when wiring
+             * E[i].ω.  But Ei.γ needs to point to E(i+1).α which isn't known yet.
+             * Solution: pre-allocate a unique "relay" label for each child's γ,
+             * emit left-to-right using those relay labels as γ targets, then emit
+             * the relay → real-α trampolines after all children.
+             */
+            int nc = n->nchildren;
+            int cid = next_uid(); char ca2[64], cb2[64];
+            lbl_α(cid,ca2,sizeof ca2); lbl_β(cid,cb2,sizeof cb2);
+            strncpy(oα,ca2,63); strncpy(oβ,cb2,63);
+            char (*cca)[64] = malloc(nc * 64);
+            char (*ccb)[64] = malloc(nc * 64);
+            /* Pre-allocate relay labels for each γ port */
+            char (*relay_g)[64] = malloc(nc * 64);
+            for (int i = 0; i < nc; i++) {
+                snprintf(relay_g[i], 64, "icn_%d_and_rg_%d", cid, i);
+                cca[i][0] = '\0'; ccb[i][0] = '\0';
+            }
+            /* Emit children left-to-right */
+            for (int i = 0; i < nc; i++) {
+                Ports ep;
+                /* γ: last child → ports.γ; otherwise relay_g[i] (trampoline) */
+                strncpy(ep.γ, (i == nc-1) ? ports.γ : relay_g[i], 63);
+                /* ω: first child → ports.ω; otherwise ccb[i-1] (already populated) */
+                strncpy(ep.ω, (i == 0) ? ports.ω : ccb[i-1], 63);
+                emit_jvm_icon_expr(n->children[i], ep, cca[i], ccb[i]);
+            }
+            /* Emit relay trampolines: relay_g[i] → drain result to static field → cca[i+1]
+             * E[i].γ leaves a value on the JVM stack; E[i+1].α expects empty stack.
+             * Use putstatic (static field drain) instead of pop/pop2 so relay labels
+             * are safe to reach from any stack state (e.g. ICN_EVERY β-tableswitch).
+             *
+             * CRITICAL: jump over the relay block before emitting relay labels.
+             * The v45 type-inference verifier merges stack states at a label from ALL
+             * bytecode-adjacent predecessors — even through unconditional gotos.
+             * Adjacent relay labels with different types (J vs Ljava/lang/String) cause
+             * the verifier to infer Object at the second label → putstatic J fails with
+             * "Expecting to find long on stack".  By jumping to ca2 first, the relay
+             * labels are only reachable via their own explicit goto relay_g[i] calls,
+             * so the verifier sees a clean, single-predecessor stack at each label. */
+            JGoto(ca2);
+            for (int i = 0; i < nc-1; i++) {
+                char drain_fld[80];
+                snprintf(drain_fld, sizeof drain_fld, "icn_%d_and_drain_%d", cid, i);
+                int child_is_str  = expr_is_string(n->children[i]);
+                int child_is_list = !child_is_str && expr_is_list(n->children[i]);
+                int child_is_tbl  = !child_is_str && !child_is_list
+                                    && expr_is_table(n->children[i]);
+                int child_is_ref  = child_is_str || child_is_list || child_is_tbl;
+                int child_is_dbl  = !child_is_ref && expr_is_real(n->children[i]);
+                if (child_is_ref)      declare_static_str(drain_fld);
+                else if (child_is_dbl) declare_static_dbl(drain_fld);
+                else                   declare_static(drain_fld);
+                JL(relay_g[i]);
+                if (child_is_ref)      put_str_field(drain_fld);
+                else if (child_is_dbl) put_dbl(drain_fld);
+                else                   put_long(drain_fld);
+                JGoto(cca[i+1]);
+            }
+            JL(ca2); JGoto(cca[0]);
+            JL(cb2); JGoto(ccb[nc-1]);
+            free(cca); free(ccb); free(relay_g);
+            break;
+        }
+        case E_ADD: case E_SUB: case E_MUL: case E_DIV: case E_MOD:
+                          emit_jvm_icon_binop    (n,ports,oα,oβ); break;
+        case E_POW:     emit_jvm_icon_pow      (n,ports,oα,oβ); break;
+        case E_CAT:  emit_jvm_icon_concat   (n,ports,oα,oβ); break;
+        case E_LCONCAT: emit_jvm_icon_concat   (n,ports,oα,oβ); break; /* Tiny-ICON: ||| = || */
+        case E_SWAP:    emit_jvm_icon_swap      (n,ports,oα,oβ); break;
+        case E_IDENTICAL: emit_jvm_icon_identical(n,ports,oα,oβ); break;
+        case E_SCAN:   emit_jvm_icon_match     (n,ports,oα,oβ); break;
+        case E_SECTION_PLUS:
+        case E_SECTION_MINUS:
+            /* M+:N / M-:N — emit as plain section for now (stub) */
+            emit_jvm_icon_section(n,ports,oα,oβ); break;
+        case E_BANG_BINARY: emit_jvm_icon_call(n,ports,oα,oβ); break; /* stub */
+        /* G3–G6: cset operations (M-G5-LOWER-ICON-FIX) */
+        case E_CSET_COMPL: emit_jvm_icon_cset_complement(n,ports,oα,oβ); break;
+        case E_CSET_UNION: emit_jvm_icon_cset_binop(n,ports,oα,oβ); break;
+        case E_CSET_DIFF:  emit_jvm_icon_cset_binop(n,ports,oα,oβ); break;
+        case E_CSET_INTER: emit_jvm_icon_cset_binop(n,ports,oα,oβ); break;
+        case E_IDX: emit_jvm_icon_subscript(n,ports,oα,oβ); break;
+        case E_SECTION:   emit_jvm_icon_section  (n,ports,oα,oβ); break;
+        case E_MAKELIST:  emit_jvm_icon_makelist (n,ports,oα,oβ); break;
+        case E_SEQ_EXPR: emit_jvm_icon_seq_expr (n,ports,oα,oβ); break;
+        case E_LT: case E_LE: case E_GT: case E_GE: case E_EQ: case E_NE:
+                          emit_jvm_icon_relop    (n,ports,oα,oβ); break;
+        case E_TO:      emit_jvm_icon_to       (n,ports,oα,oβ); break;
+        case E_TO_BY:   emit_jvm_icon_to_by    (n,ports,oα,oβ); break;
+        case E_EVERY:   emit_jvm_icon_every    (n,ports,oα,oβ); break;
+        case E_WHILE:   emit_jvm_icon_while    (n,ports,oα,oβ); break;
+        case E_UNTIL:   emit_jvm_icon_until    (n,ports,oα,oβ); break;
+        case E_REPEAT:  emit_jvm_icon_repeat   (n,ports,oα,oβ); break;
+        case E_FNC:    emit_jvm_icon_call     (n,ports,oα,oβ); break;
+        case E_NOT:     emit_jvm_icon_not      (n,ports,oα,oβ); break;
+        case E_NONNULL: emit_jvm_icon_nonnull  (n,ports,oα,oβ); break;
+        case E_NULL:    emit_jvm_icon_null     (n,ports,oα,oβ); break;
+        case E_INITIAL: emit_jvm_icon_initial  (n,ports,oα,oβ); break;
+        case E_GLOBAL: {
+            /* local 'global x,y;' decl inside proc body — declare icn_gvar_* fields,
+               skip as a statement (no runtime effect beyond declaration). */
+            for (int ci = 0; ci < n->nchildren; ci++) {
+                EXPR_t *v = n->children[ci];
+                if (!v || v->kind != E_VAR) continue;
+                char gname[80]; snprintf(gname, sizeof gname, "icn_gvar_%s", v->sval);
+                /* Globals pre-tagged as 'A' (String) by pre-scan; declare accordingly */
+                int gtag = field_type_tag(gname);
+                if (gtag == 'A') declare_static_str(gname);
+                else             declare_static(gname);
+            }
+            int id2 = next_uid(); char a2[64], b2[64];
+            lbl_α(id2,a2,sizeof a2); lbl_β(id2,b2,sizeof b2);
+            strncpy(oα,a2,63); strncpy(oβ,b2,63);
+            JL(a2); JI("lconst_0",""); JGoto(ports.γ);
+            JL(b2); JGoto(ports.ω);
+            break;
+        }
+        case E_MNS:     emit_jvm_icon_neg      (n,ports,oα,oβ); break;
+        /* G1: ICN_POS — identity, emit child unchanged */
+        case E_PLS:     emit_jvm_icon_expr(n->children[0],ports,oα,oβ); break;
+        /* G2: ICN_RANDOM — ?E: random integer 1..E via IcnRuntime.random() */
+        case E_RANDOM:  emit_jvm_icon_random   (n,ports,oα,oβ); break;
+        /* G7: ICN_SCAN_AUGOP — stub-fail, unimplemented */
+        case E_SCAN_AUGOP: {
+            int id = next_uid(); char a2[64], b2[64];
+            lbl_α(id,a2,sizeof a2); lbl_β(id,b2,sizeof b2);
+            strncpy(oα,a2,63); strncpy(oβ,b2,63);
+            JL(a2); JGoto(ports.ω);
+            JL(b2); JGoto(ports.ω);
+            break;
+        }
+        case E_LOOP_BREAK:   emit_jvm_icon_break    (n,ports,oα,oβ); break;
+        case E_LOOP_NEXT:    emit_jvm_icon_next     (n,ports,oα,oβ); break;
+        case E_AUGOP:   emit_jvm_icon_augop    (n,ports,oα,oβ); break;
+        case E_ITERATE:    emit_jvm_icon_bang     (n,ports,oα,oβ); break;
+        case E_SIZE:    emit_jvm_icon_size     (n,ports,oα,oβ); break;
+        case E_LIMIT:   emit_jvm_icon_limit    (n,ports,oα,oβ); break;
+        case E_FIELD:   emit_jvm_icon_field    (n,ports,oα,oβ); break;
+        case E_LEQ: case E_LNE: case E_LLT:
+        case E_LLE: case E_LGT: case E_LGE:
+                          emit_jvm_icon_strrelop (n,ports,oα,oβ); break;
+        default: {
+            int id = next_uid(); char a2[64], b2[64];
+            lbl_α(id,a2,sizeof a2); lbl_β(id,b2,sizeof b2);
+            strncpy(oα,a2,63); strncpy(oβ,b2,63);
+            J(";  UNIMPL %d id=%d\n", n->kind, id);
+            JL(a2); JGoto(ports.ω);
+            JL(b2); JGoto(ports.ω);
+        }
+    }
+}
+
+/* =========================================================================
+ * Emit one procedure as a static method
+ * ======================================================================= */
+/* Pre-pass 3 (recursive): walk the entire AST and register VAR types for all
+ * ICN_ASSIGN nodes, regardless of nesting depth.  This ensures that variables
+ * assigned inside ICN_AND/ICN_ALT/ICN_WHILE sub-expressions are typed before
+ * any drain-type query fires during emission.  Must be called after the locals
+ * list is populated (so locals_find works) and before emit_jvm_icon_expr. */
+static void prepass_types(EXPR_t *n) {
+    if (!n) return;
+    if (n->kind == E_ASSIGN && n->nchildren >= 2) {
+        EXPR_t *lhs = n->children[0];
+        EXPR_t *rhs = n->children[1];
+        if (lhs && lhs->kind == E_VAR) {
+            int slot = locals_find(lhs->sval);
+            char fld[128];
+            if (slot >= 0) var_field(lhs->sval, fld, sizeof fld);
+            else           snprintf(fld, sizeof fld, "icn_gvar_%s", lhs->sval);
+            if (expr_is_string(rhs)) {
+                declare_static_str(fld);
+                /* dual-register under alternate name (local↔global) so loads
+                 * inside every-body / nested scopes find the 'A' type tag
+                 * regardless of which field name the emitter resolves. */
+                if (slot >= 0) {
+                    char gname2[80]; snprintf(gname2, sizeof gname2, "icn_gvar_%s", lhs->sval);
+                    declare_static_str(gname2);
+                } else {
+                    char fld2[128]; var_field(lhs->sval, fld2, sizeof fld2);
+                    declare_static_str(fld2);
+                }
+            } else if (expr_is_strlist(rhs)) {
+                declare_static_strlist(fld);
+                /* Also register under the alternate name so subscript emit finds it
+                 * regardless of whether locals sees the var as local or global. */
+                if (slot >= 0) {
+                    char gname2[80]; snprintf(gname2, sizeof gname2, "icn_gvar_%s", lhs->sval);
+                    declare_static_strlist(gname2);
+                } else {
+                    char fld2[128]; var_field(lhs->sval, fld2, sizeof fld2);
+                    declare_static_strlist(fld2);
+                }
+            } else if (expr_is_list(rhs)) {
+                if (expr_is_record_list(rhs))
+                    declare_static_reclist(fld);
+                else
+                    declare_static_list(fld);
+            } else if (expr_is_table(rhs)) {
+                declare_static_table(fld);
+                /* Register dflt type so tdflt_is_str works during emission */
+                if (rhs && rhs->kind == E_FNC && rhs->nchildren >= 2) {
+                    EXPR_t *fn = rhs->children[0];
+                    if (fn && fn->kind == E_VAR && strcmp(fn->sval, "table") == 0) {
+                        EXPR_t *darg = rhs->children[1];
+                        int dflt_is_str = expr_is_string(darg);
+                        char vdflt[144]; snprintf(vdflt, sizeof vdflt, "%s_dflt", fld);
+                        register_tdflt(fld, vdflt, dflt_is_str);
+                    }
+                }
+            } else if (expr_is_real(rhs)) {
+                declare_static_dbl(fld);
+            } else if (expr_is_record(rhs)) {
+                declare_static_obj(fld);
+                /* dual-register so both local and global field name resolve to 'O' */
+                if (slot >= 0) {
+                    char gname2[80]; snprintf(gname2, sizeof gname2, "icn_gvar_%s", lhs->sval);
+                    declare_static_obj(gname2);
+                } else {
+                    char fld2[128]; var_field(lhs->sval, fld2, sizeof fld2);
+                    declare_static_obj(fld2);
+                }
+            }
+            /* long-typed: declared on first use, no pre-declaration needed */
+        }
+    }
+    for (int i = 0; i < n->nchildren; i++)
+        prepass_types(n->children[i]);
+}
+
+static void emit_jvm_icon_proc(EXPR_t *proc, FILE *out_target) {
+    FILE *save = out;
+    /* Emit proc body to a temp buffer first (so we know locals count) */
+    FILE *tmp = tmpfile();
+    out = tmp;
+
+    const char *pname = proc->children[0]->sval;
+    int is_main = (strcmp(pname, "main") == 0);
+    int np = (int)proc->ival;
+    int is_gen = !is_main && is_gen_proc(pname);
+    int body_start = 1 + np;
+    int nstmts = proc->nchildren - body_start;
+
+    /* Setup local environment */
+    locals_reset();
+    strncpy(cur_proc, pname, 63);
+    char proc_done[64];
+    if (is_main) snprintf(proc_done, sizeof proc_done, "icn_main_done");
+    else         snprintf(proc_done, sizeof proc_done, "icn_%s_done", pname);
+    char proc_ret[64];  snprintf(proc_ret,  sizeof proc_ret,  "icn_%s_ret",  pname);
+    char proc_sret[64]; snprintf(proc_sret, sizeof proc_sret, "icn_%s_sret", pname);
+
+    strncpy(ret_label,  is_main ? "icn_main_done" : proc_ret,  63);
+    strncpy(fail_label, proc_done, 63);
+    strncpy(sret_label, is_main ? "icn_main_done" : proc_sret, 63);
+    next_suspend_id = 1;
+
+    /* Register params as locals 0..np-1 */
+    nparams = np;
+    for (int i = 0; i < np; i++) {
+        EXPR_t *pv = proc->children[1 + i];
+        if (pv && pv->kind == E_VAR) locals_add(pv->sval);
+    }
+    /* Scan for local declarations in body */
+    for (int si = 0; si < nstmts; si++) {
+        EXPR_t *s = proc->children[body_start + si];
+        if (s && s->kind == E_GLOBAL) {
+            for (int ci = 0; ci < s->nchildren; ci++) {
+                EXPR_t *v = s->children[ci];
+                /* Top-level globals (registered in global_names) must NOT
+                 * be added to locals — they live as icn_gvar_* static fields
+                 * shared across all procs.  Only proc-local var declarations
+                 * that somehow have ICN_GLOBAL kind should be added. */
+                if (v && v->kind == E_VAR && locals_find(v->sval) < 0
+                        && !is_global(v->sval))
+                    locals_add(v->sval);
+            }
+        }
+    }
+
+    /* Implicit locals: In Icon, any variable assigned in a procedure body that is
+     * not declared 'global' is local to that procedure.  Walk the body recursively
+     * and register every LHS VAR of an assignment as a local (if not already one
+     * and not a declared global).  This ensures i, j, result, etc. get
+     * icn_pv_<proc>_* fields instead of shared icn_gvar_* fields. */
+    {
+        #define IJ_IMPL_STACK 512
+        EXPR_t *impl_stack[IJ_IMPL_STACK]; int impl_top = 0;
+        for (int si = 0; si < nstmts; si++)
+            if (proc->children[body_start + si] && impl_top < IJ_IMPL_STACK)
+                impl_stack[impl_top++] = proc->children[body_start + si];
+        while (impl_top > 0) {
+            EXPR_t *cur = impl_stack[--impl_top];
+            if (!cur) continue;
+            /* Register LHS of assignment or augop as local */
+            if ((cur->kind == E_ASSIGN || cur->kind == E_AUGOP) &&
+                cur->nchildren >= 1 && cur->children[0] &&
+                cur->children[0]->kind == E_VAR) {
+                const char *vn = cur->children[0]->sval;
+                if (!is_global(vn) && locals_find(vn) < 0)
+                    locals_add(vn);
+            }
+            /* Push children */
+            for (int ci = 0; ci < cur->nchildren && impl_top < IJ_IMPL_STACK-1; ci++)
+                if (cur->children[ci]) impl_stack[impl_top++] = cur->children[ci];
+        }
+        #undef IJ_IMPL_STACK
+    }
+
+    /* Pre-pass (forward): register string-typed and double-typed variable fields.
+     * Walk assignments left-to-right: declare the LHS var's static field type
+     * before emit begins. */
+    for (int si = 0; si < nstmts; si++) {
+        EXPR_t *stmt = proc->children[body_start + si];
+        if (!stmt || stmt->kind != E_ASSIGN || stmt->nchildren < 2) continue;
+        EXPR_t *lhs = stmt->children[0];
+        EXPR_t *rhs = stmt->children[1];
+        if (!lhs || lhs->kind != E_VAR) continue;
+        int slot = locals_find(lhs->sval);
+        char fld[128];
+        if (slot >= 0) var_field(lhs->sval, fld, sizeof fld);
+        else           snprintf(fld, sizeof fld, "icn_gvar_%s", lhs->sval);
+        if (expr_is_string(rhs)) {
+            declare_static_str(fld);
+            /* dual-register under alternate name so every-body loads resolve correctly */
+            if (slot >= 0) {
+                char gname2[80]; snprintf(gname2, sizeof gname2, "icn_gvar_%s", lhs->sval);
+                declare_static_str(gname2);
+            } else {
+                char fld2[128]; var_field(lhs->sval, fld2, sizeof fld2);
+                declare_static_str(fld2);
+            }
+        } else if (expr_is_list(rhs)) {
+            if (expr_is_record_list(rhs))
+                declare_static_reclist(fld);
+            else
+                declare_static_list(fld);
+        } else if (expr_is_table(rhs)) {
+            declare_static_table(fld);
+            /* Check if rhs is table(dflt) — if so, pre-declare {fld}_dflt */
+            if (rhs->kind == E_FNC && rhs->nchildren >= 1) {
+                EXPR_t *fn = rhs->children[0];
+                if (fn && fn->kind == E_VAR &&
+                        strcmp(fn->sval, "table") == 0) {
+                    char vdflt[144]; snprintf(vdflt, sizeof vdflt, "%s_dflt", fld);
+                    declare_static_obj(vdflt);
+                }
+            }
+        } else if (expr_is_real(rhs)) {
+            declare_static_dbl(fld);
+        }
+        /* long-typed vars are declared on first use — no pre-declaration needed */
+    }
+    /* Pre-pass (augop): ||:= on a var marks it String even if := "" was not seen yet */
+    for (int si = 0; si < nstmts; si++) {
+        EXPR_t *stmt = proc->children[body_start + si];
+        if (!stmt) continue;
+        /* Recursive walk: find ICN_AUGOP with TK_AUGCONCAT anywhere in subtree */
+        #define IJ_AUGOP_STACK 256
+        EXPR_t *aug_stk[IJ_AUGOP_STACK]; int aug_top = 0;
+        aug_stk[aug_top++] = stmt;
+        while (aug_top > 0) {
+            EXPR_t *cur = aug_stk[--aug_top];
+            if (!cur) continue;
+            if (cur->kind == E_AUGOP && (int)cur->ival == (int)TK_AUGCONCAT &&
+                cur->nchildren >= 1 && cur->children[0] &&
+                cur->children[0]->kind == E_VAR) {
+                const char *vn = cur->children[0]->sval;
+                int slot = locals_find(vn);
+                char fld[128];
+                if (slot >= 0) var_field(vn, fld, sizeof fld);
+                else           snprintf(fld, sizeof fld, "icn_gvar_%s", vn);
+                declare_static_str(fld);
+            }
+            for (int ci = 0; ci < cur->nchildren && aug_top < IJ_AUGOP_STACK-1; ci++)
+                if (cur->children[ci]) aug_stk[aug_top++] = cur->children[ci];
+        }
+        #undef IJ_AUGOP_STACK
+    }
+
+    /* Pre-pass 2: scan ICN_EVERY generators for `v := !reclist` assigns.
+     * The every emitter emits body before gen, so the ICN_VAR for v in the body
+     * would be emitted before the assign tags v as 'O'. Pre-tag here. */
+    for (int si = 0; si < nstmts; si++) {
+        EXPR_t *stmt = proc->children[body_start + si];
+        if (!stmt || stmt->kind != E_EVERY || stmt->nchildren < 1) continue;
+        EXPR_t *gen = stmt->children[0];
+        if (!gen || gen->kind != E_ASSIGN || gen->nchildren < 2) continue;
+        EXPR_t *lhs = gen->children[0];
+        EXPR_t *rhs = gen->children[1];  /* should be ICN_BANG(!reclist) */
+        if (!lhs || lhs->kind != E_VAR) continue;
+        if (!rhs || rhs->kind != E_ITERATE || rhs->nchildren < 1) continue;
+        if (!expr_is_record_list(rhs->children[0])) continue;
+        /* lhs var is assigned a record from a record-list bang — tag as Object */
+        int slot = locals_find(lhs->sval);
+        char fld[128];
+        if (slot >= 0) var_field(lhs->sval, fld, sizeof fld);
+        else           snprintf(fld, sizeof fld, "icn_gvar_%s", lhs->sval);
+        declare_static_obj(fld);
+    }
+
+    /* Pre-pass 3: recursive walk — catches assigns nested inside AND/ALT/WHILE. */
+    for (int si = 0; si < nstmts; si++)
+        prepass_types(proc->children[body_start + si]);
+
+    /* Chain statements.
+     * Fix IJ-6 Bug3: every top-level statement (assignment etc.) leaves its result
+     * value (a long) on the JVM operand stack when it jumps to its γ port.  The γ
+     * port of statement[i] is the α port of statement[i+1], which is ALSO entered
+     * from other paths with an empty stack → "Inconsistent stack height 0 != 2".
+     * Solution: route each statement's γ through a private sdrain label that pops
+     * the result before forwarding to the real next_a. */
+    char **alphas = calloc(nstmts, sizeof(char*));
+    for (int i = 0; i < nstmts; i++) alphas[i] = malloc(64);
+    char next_a[64]; strncpy(next_a, proc_done, 63);
+
+    for (int i = nstmts-1; i >= 0; i--) {
+        EXPR_t *stmt = proc->children[body_start + i];
+        if (!stmt || stmt->kind == E_GLOBAL) { strncpy(alphas[i], next_a, 63); continue; }
+        /* ICN_EVERY / ICN_WHILE / ICN_UNTIL / ICN_REPEAT / ICN_SUSPEND never
+         * fire ports.γ with a value on the stack — they yield via sret (suspend)
+         * or exhaust via ω. Skip the drain to avoid VerifyError on empty stack. */
+        if (stmt->kind == E_EVERY || stmt->kind == E_WHILE ||
+            stmt->kind == E_UNTIL || stmt->kind == E_REPEAT ||
+            stmt->kind == E_SUSPEND) {
+            Ports sp; strncpy(sp.γ, next_a, 63); strncpy(sp.ω, next_a, 63);
+            char sa[64], sb[64]; emit_jvm_icon_expr(stmt, sp, sa, sb);
+            strncpy(alphas[i], sa, 63);
+            strncpy(next_a, sa, 63);
+            continue;
+        }
+        /* ICN_RETURN / ICN_SUSPEND / ICN_FAIL / ICN_BREAK / ICN_NEXT also never
+         * fire ports.γ with a value on the stack — they jump directly to ret/done labels.
+         * Skip drain to avoid dead pop2 VerifyError. */
+        if (stmt->kind == E_RETURN || stmt->kind == E_SUSPEND ||
+            stmt->kind == E_FAIL   || stmt->kind == E_LOOP_BREAK   ||
+            stmt->kind == E_LOOP_NEXT) {
+            Ports sp; strncpy(sp.γ, next_a, 63); strncpy(sp.ω, next_a, 63);
+            char sa[64], sb[64]; emit_jvm_icon_expr(stmt, sp, sa, sb);
+            strncpy(alphas[i], sa, 63);
+            strncpy(next_a, sa, 63);
+            continue;
+        }
+        /* ICN_IF where ALL branches are non-value (fail/return/break/next/suspend)
+         * never fires γ with a value — skip drain to avoid pop on empty stack. */
+        if (stmt->kind == E_IF) {
+            int all_branches_novalue = 1;
+            /* Check then-branch (children[1]) and else-branch (children[2] if present) */
+            for (int bi = 1; bi < stmt->nchildren && bi <= 2; bi++) {
+                EXPR_t *branch = stmt->children[bi];
+                if (!branch) continue;
+                IcnKind bk = branch->kind;
+                if (bk != E_FAIL && bk != E_RETURN && bk != E_SUSPEND &&
+                    bk != E_LOOP_BREAK && bk != E_LOOP_NEXT)
+                    all_branches_novalue = 0;
+            }
+            if (all_branches_novalue) {
+                Ports sp; strncpy(sp.γ, next_a, 63); strncpy(sp.ω, next_a, 63);
+                char sa[64], sb[64]; emit_jvm_icon_expr(stmt, sp, sa, sb);
+                strncpy(alphas[i], sa, 63);
+                strncpy(next_a, sa, 63);
+                continue;
+            }
+        }
+        /* Determine if statement produces a 1-slot ref (String or ArrayList) or 2-slot (long/double) */
+        int stmt_is_ref  = expr_is_obj(stmt);
+        /* Build a drain label for this statement's success port */
+        char sdrain[64]; snprintf(sdrain, sizeof sdrain, "icn_%s_s%d_sdrain", pname, i);
+        Ports sp; strncpy(sp.γ, sdrain, 63); strncpy(sp.ω, next_a, 63);
+        char sa[64], sb[64]; emit_jvm_icon_expr(stmt, sp, sa, sb);
+        /* Emit the drain: pop result (1-slot String or 2-slot long) then fall through */
+        J("%s:\n", sdrain);
+        JI(stmt_is_ref ? "pop" : "pop2", "");
+        JGoto(next_a);
+        strncpy(alphas[i], sa, 63);
+        strncpy(next_a, sa, 63);
+    }
+
+    /* Generator β tableswitch (if applicable) */
+    int total_susp = suspend_count;
+    if (is_gen && total_susp > 0) {
+        char beta_entry[64]; snprintf(beta_entry, sizeof beta_entry, "icn_%s_beta", pname);
+        JL(beta_entry);
+        get_int_field("icn_suspend_id");
+        J("    tableswitch 1 %d\n", total_susp);
+        for (int k = 0; k < total_susp; k++) {
+            /* Find the resume label for this suspend ID */
+            J("        icn_%d_resume\n", suspend_ids[k]); /* approximate: real IDs from emit */
+        }
+        J("        default: %s\n", proc_done);
+    }
+
+    /* proc_done: failure exit (for non-main); icn_main_done for main */
+    JL(proc_done);
+    if (!is_main) {
+        /* Clear suspend state so subsequent calls to this proc start fresh */
+        JI("iconst_0", ""); put_byte("icn_suspended");
+        JI("iconst_0", ""); put_int_field("icn_suspend_id");
+        set_fail();
+        JI("return","");
+        /* proc_ret: success return */
+        JL(proc_ret);
+        set_ok();
+        JI("return","");
+        /* proc_sret: suspend-yield return */
+        JL(proc_sret);
+        JI("return","");
+    } else {
+        JI("return","");
+    }
+
+    /* Read body buffer */
+    long sz = ftell(tmp); rewind(tmp);
+    char *body = malloc(sz + 1); fread(body, 1, sz, tmp); body[sz] = '\0';
+    fclose(tmp);
+    out = out_target;
+
+    /* Emit method header */
+    int jvm_locals = jvm_locals_count() + 10 + 2 * nstatics; /* +save area for all-statics spill at call sites */
+    J(".method public static icn_%s()V\n", pname);
+    J("    .limit stack 16\n");
+    J("    .limit locals %d\n", jvm_locals);
+
+    /* Zero-init ALL JVM local slots so the verifier sees consistent types at
+     * every control-flow join point.
+     * - Long-pair region [0 .. 2*nlocals-1]: lconst_0/lstore (every 2 slots)
+     * - Padding long-pairs up to 2*MAX_LOCALS: lconst_0/lstore
+     * - Int/ref scratch region [2*MAX_LOCALS .. 2*MAX_LOCALS+nint_scratch-1]:
+     *   iconst_0/istore (single slots, never touched by lstore) */
+    for (int s = 0; s < MAX_LOCALS; s++) {
+        JI("lconst_0", "");
+        J("    lstore %d\n", s * 2);
+    }
+    for (int i = 0; i < nint_scratch + 4; i++) {
+        JI("iconst_0", "");
+        J("    istore %d\n", 2 * MAX_LOCALS + 20 + i);
+    }
+    for (int i = 0; i < nref_scratch + 4; i++) {
+        JI("aconst_null", "");
+        J("    astore %d\n", 2 * MAX_LOCALS + 20 + 64 + i);
+    }
+
+    /* For non-main procs, load params from static arg fields */
+    /* NOTE: for generators, param load happens at fresh_entry (after zero-init).
+     * For non-generators, load here since there is no zero-init block. */
+    if (!is_main && np > 0 && !(is_gen && total_susp > 0)) {
+        for (int i = 0; i < np; i++) {
+            EXPR_t *pv = proc->children[1 + i];
+            const char *pname2 = (pv && pv->kind == E_VAR) ? pv->sval : "";
+            char argfield[64];    snprintf(argfield,    sizeof argfield,    "icn_arg_%d",     i);
+            char argobjfield[64]; snprintf(argobjfield, sizeof argobjfield, "icn_arg_obj_%d", i);
+            char argstrfield[64]; snprintf(argstrfield, sizeof argstrfield, "icn_arg_str_%d", i);
+            char fld[128]; var_field(pname2, fld, sizeof fld);
+            if (field_type_tag(argobjfield) == 'O') {
+                declare_static_obj(fld);
+                get_obj_field(argobjfield);
+                put_obj_field(fld);
+            } else if (field_type_tag(argstrfield) == 'A') {
+                declare_static_str(fld);
+                get_str_field(argstrfield);
+                put_str_field(fld);
+            } else {
+                declare_static(fld);
+                get_long(argfield);
+                put_long(fld);
+            }
+        }
+    }
+
+    /* Entry: generator dispatch — if icn_suspend_id != 0, we are resuming → β entry */
+    if (is_gen && total_susp > 0) {
+        char beta_entry[64]; snprintf(beta_entry, sizeof beta_entry, "icn_%s_beta", pname);
+        char fresh_entry[64]; snprintf(fresh_entry, sizeof fresh_entry, "icn_%s_fresh", pname);
+        /* Zero-init all JVM local slots so verifier sees consistent types at all
+         * control-flow join points (fresh path + all tableswitch resume targets). */
+        for (int s = 0; s < nlocals; s++) {
+            JI("lconst_0", "");
+            J("    lstore %d\n", slot_jvm(s));
+        }
+        J("    getstatic %s/icn_suspend_id I\n", classname);
+        J("    ifne %s\n", beta_entry);
+        JL(fresh_entry);
+        /* Fresh entry: load params from arg fields into per-proc static var fields.
+         * This must happen AFTER zero-init (so zero-init doesn't clobber them)
+         * and only on fresh calls (not resume — param values persist in static fields). */
+        if (np > 0) {
+            for (int i = 0; i < np; i++) {
+                EXPR_t *pv2 = proc->children[1 + i];
+                const char *pvname = (pv2 && pv2->kind == E_VAR) ? pv2->sval : "";
+                char argfield[64];    snprintf(argfield,    sizeof argfield,    "icn_arg_%d",     i);
+                char argobjfield[64]; snprintf(argobjfield, sizeof argobjfield, "icn_arg_obj_%d", i);
+                char argstrfield[64]; snprintf(argstrfield, sizeof argstrfield, "icn_arg_str_%d", i);
+                char fld[128]; var_field(pvname, fld, sizeof fld);
+                if (field_type_tag(argobjfield) == 'O') {
+                    declare_static_obj(fld);
+                    get_obj_field(argobjfield);
+                    put_obj_field(fld);
+                } else if (field_type_tag(argstrfield) == 'A') {
+                    declare_static_str(fld);
+                    get_str_field(argstrfield);
+                    put_str_field(fld);
+                } else {
+                    declare_static(fld);
+                    get_long(argfield);
+                    put_long(fld);
+                }
+            }
+        }
+    }
+    /* Entry: jump to first statement */
+    if (nstmts > 0 && alphas[0][0]) JGoto(alphas[0]);
+    else JGoto(proc_done);
+
+    fputs(body, out);
+    free(body);
+
+    J(".end method\n\n");
+
+    for (int i = 0; i < nstmts; i++) free(alphas[i]);
+    free(alphas);
+    out = save;
+}
+
+/* =========================================================================
+ * emit_jvm_icon_file — entry point
+ * ======================================================================= */
+void emit_jvm_icon_file(EXPR_t **nodes, int count, FILE *fp, const char *filename, const char *outpath, ImportEntry *imports) {
+    out = fp;
+    imports = imports;
+    uid = 0;
+    user_count = 0;
+    nstatics = 0;
+    nstrings = 0;
+    ntdflt = 0;
+    nrec = 0;
+    need_cset_builtins = 0;
+    need_random_builtin = 0;
+
+    set_classname(filename ? filename : "IconProg");
+
+    /* Pass 0: register top-level global var names in global_names so that
+     * var/assign emit routes them to icn_gvar_* fields instead of locals.
+     * Do NOT pre-declare a typed field here — type is inferred on first
+     * assignment, same as local vars.  is_global(name) is the predicate. */
+    nglobals = 0;
+    for (int pi = 0; pi < count; pi++) {
+        EXPR_t *nd = nodes[pi];
+        if (!nd) continue;
+        if (nd->kind == E_RECORD)
+            register_record(nd->sval, nd);
+        if (nd->kind != E_GLOBAL) continue;
+        for (int ci = 0; ci < nd->nchildren; ci++) {
+            EXPR_t *v = nd->children[ci];
+            if (!v || v->kind != E_VAR) continue;
+            register_global(v->sval);
+        }
+    }
+
+    /* Pre-scan: tag globals assigned from import calls as String type ('A').
+     * This ensures emit_jvm_icon_var uses Ljava/lang/String; even in helper procs
+     * that are emitted before the assignment in main() is processed. */
+    for (int pi = 0; pi < count; pi++) {
+        EXPR_t *proc = nodes[pi];
+        if (!proc || proc->kind != E_FNC) continue;
+        int np = (int)proc->ival;
+        int body_start = 1 + np;
+        for (int si = body_start; si < proc->nchildren; si++) {
+            EXPR_t *s = proc->children[si];
+            if (!s || s->kind != E_ASSIGN || s->nchildren < 2) continue;
+            EXPR_t *lhs = s->children[0];
+            EXPR_t *rhs = s->children[1];
+            if (!lhs || lhs->kind != E_VAR) continue;
+            if (!is_global(lhs->sval)) continue;
+            /* If RHS is an import call, result is always String */
+            int rhs_is_import_call = 0;
+            if (rhs && rhs->kind == E_FNC && rhs->nchildren >= 1) {
+                EXPR_t *fn = rhs->children[0];
+                if (fn && fn->kind == E_VAR)
+                    rhs_is_import_call = (find_import(fn->sval) != NULL);
+            }
+            if (rhs_is_import_call || expr_is_string(rhs)) {
+                char gname2[80]; snprintf(gname2, sizeof gname2, "icn_gvar_%s", lhs->sval);
+                declare_static_str(gname2);
+            }
+        }
+    }
+
+    /* Pass 1: register all user procs */
+    for (int pi = 0; pi < count; pi++) {
+        EXPR_t *proc = nodes[pi];
+        if (!proc || proc->kind != E_FNC || proc->nchildren < 1) continue;
+        const char *pname = proc->children[0]->sval;
+        if (strcmp(pname, "main") == 0) continue;
+        int np = (int)proc->ival;
+        int gen = 0;
+        int body_start = 1 + np;
+        for (int si = body_start; si < proc->nchildren; si++)
+            if (has_suspend(proc->children[si])) { gen = 1; break; }
+        register_proc(pname, np, gen);
+        /* Mark string-returning procs: scan body for ICN_RETURN with string child.
+         * expr_is_string on a VAR requires statics to be populated (not done yet),
+         * so when the returned expr is a VAR we do a lightweight AST scan of the body
+         * to check if that var is ever assigned from a string without touching statics. */
+        for (int si = body_start; si < proc->nchildren; si++) {
+            EXPR_t *stmt = proc->children[si];
+            if (stmt && stmt->kind == E_RETURN && stmt->nchildren > 0) {
+                EXPR_t *ret_expr = stmt->children[0];
+                /* Direct non-VAR check (works without statics) */
+                int is_str = (ret_expr->kind == E_QLIT    ||
+                              ret_expr->kind == E_CAT  ||
+                              ret_expr->kind == E_LCONCAT);
+                /* For VAR returns: scan body for string assignment to that var */
+                if (!is_str && ret_expr->kind == E_VAR) {
+                    const char *vname = ret_expr->sval;
+                    for (int sj = body_start; sj < proc->nchildren && !is_str; sj++) {
+                        EXPR_t *s2 = proc->children[sj];
+                        if (!s2) continue;
+                        /* var := str_literal  or  var := concat_expr */
+                        if (s2->kind == E_ASSIGN && s2->nchildren >= 2 &&
+                            s2->children[0] && s2->children[0]->kind == E_VAR &&
+                            strcmp(s2->children[0]->sval, vname) == 0) {
+                            EXPR_t *rhs = s2->children[1];
+                            if (rhs && (rhs->kind == E_QLIT ||
+                                        rhs->kind == E_CAT ||
+                                        rhs->kind == E_LCONCAT)) is_str = 1;
+                        }
+                        /* var ||:= anything  (ICN_AUGOP with TK_AUGCONCAT==36) */
+                        if (!is_str && s2->kind == E_AUGOP && s2->ival == (int)TK_AUGCONCAT &&
+                            s2->nchildren >= 1 &&
+                            s2->children[0] && s2->children[0]->kind == E_VAR &&
+                            strcmp(s2->children[0]->sval, vname) == 0) is_str = 1;
+                    }
+                }
+                if (is_str) { mark_proc_returns_str(pname); break; }
+            }
+        }
+    }
+
+    /* Pass 1b: pre-register variables assigned from record constructors as Object-typed.
+     * This ensures emit_jvm_icon_var emits lconst_0 (not getstatic J) even for var reads
+     * that are emitted before the assignment in the Byrd-box layout. */
+    {
+        /* Helper: walk an AST node looking for ASSIGN(VAR, CALL(RecordType,...)) */
+        /* We do a simple recursive scan of all proc bodies */
+        void scan_record_assigns(EXPR_t *n, int is_proc_scope);
+        /* Inline recursive lambda not in C — use a stack-based worklist */
+        #define MAX_SCAN_STACK 512
+        EXPR_t *stack[MAX_SCAN_STACK]; int top = 0;
+        for (int pi = 0; pi < count; pi++) {
+            EXPR_t *proc = nodes[pi];
+            if (!proc || proc->kind != E_FNC) continue;
+            /* Set up locals context for this proc */
+            locals_reset();
+            strncpy(cur_proc, proc->children[0]->sval, 63);
+            int np = (int)proc->ival;
+            for (int i = 1; i <= np; i++)
+                if (proc->children[i] && proc->children[i]->kind == E_VAR)
+                    locals_add(proc->children[i]->sval);
+            /* Push all body nodes */
+            top = 0;
+            for (int i = 1 + np; i < proc->nchildren; i++)
+                if (top < MAX_SCAN_STACK) stack[top++] = proc->children[i];
+            while (top > 0) {
+                EXPR_t *cur = stack[--top];
+                if (!cur) continue;
+                if (cur->kind == E_ASSIGN && cur->nchildren >= 2) {
+                    EXPR_t *lhs = cur->children[0];
+                    EXPR_t *rhs = cur->children[1];
+                    if (lhs && lhs->kind == E_VAR && expr_is_record(rhs)) {
+                        /* Pre-declare this var as Object */
+                        int slot = locals_find(lhs->sval);
+                        if (slot >= 0) {
+                            char fld[128]; var_field(lhs->sval, fld, sizeof fld);
+                            declare_static_obj(fld);
+                        } else {
+                            char gname[80]; snprintf(gname, sizeof gname, "icn_gvar_%s", lhs->sval);
+                            declare_static_obj(gname);
+                        }
+                    }
+                }
+                for (int i = 0; i < cur->nchildren && top < MAX_SCAN_STACK; i++)
+                    stack[top++] = cur->children[i];
+            }
+        }
+        #undef MAX_SCAN_STACK
+    }
+
+    /* Pass 1c: pre-register icn_arg_obj_N as Object for each record arg at user-proc
+     * call sites.  This must run before Pass 2 so that callee param-load emit can
+     * detect record params via field_type_tag("icn_arg_obj_N") == 'O'.
+     * Also pre-declares the callee's param var field as Object so emit_jvm_icon_var
+     * emits getstatic Object (not J) even before the param-load code runs. */
+    {
+        #define MAX_SCAN_STACK2 512
+        EXPR_t *stack2[MAX_SCAN_STACK2]; int top2 = 0;
+        for (int pi = 0; pi < count; pi++) {
+            EXPR_t *proc = nodes[pi];
+            if (!proc || proc->kind != E_FNC) continue;
+            int np2 = (int)proc->ival;
+            top2 = 0;
+            for (int i = 1 + np2; i < proc->nchildren; i++)
+                if (top2 < MAX_SCAN_STACK2) stack2[top2++] = proc->children[i];
+            while (top2 > 0) {
+                EXPR_t *cur = stack2[--top2];
+                if (!cur) continue;
+                if (cur->kind == E_FNC && cur->nchildren >= 1
+                        && cur->children[0]->kind == E_VAR
+                        && is_user_proc(cur->children[0]->sval)) {
+                    const char *callee = cur->children[0]->sval;
+                    int na = cur->nchildren - 1;
+                    /* Find callee proc node to get param names */
+                    EXPR_t *callee_proc = NULL;
+                    for (int ci = 0; ci < count; ci++) {
+                        EXPR_t *cp = nodes[ci];
+                        if (cp && cp->kind == E_FNC && cp->nchildren >= 1
+                                && cp->children[0]->kind == E_VAR
+                                && !strcmp(cp->children[0]->sval, callee)) {
+                            callee_proc = cp; break;
+                        }
+                    }
+                    for (int i = 0; i < na; i++) {
+                        if (expr_is_record(cur->children[i+1])) {
+                            char argobjfield[64];
+                            snprintf(argobjfield, sizeof argobjfield, "icn_arg_obj_%d", i);
+                            declare_static_obj(argobjfield);
+                            /* Also pre-declare callee param var field as Object */
+                            if (callee_proc) {
+                                int cnp = (int)callee_proc->ival;
+                                if (i < cnp) {
+                                    EXPR_t *pv = callee_proc->children[1 + i];
+                                    if (pv && pv->kind == E_VAR) {
+                                        char saved_proc[64];
+                                        strncpy(saved_proc, cur_proc, 63);
+                                        strncpy(cur_proc, callee, 63);
+                                        char fld[128]; var_field(pv->sval, fld, sizeof fld);
+                                        declare_static_obj(fld);
+                                        strncpy(cur_proc, saved_proc, 63);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                for (int i = 0; i < cur->nchildren && top2 < MAX_SCAN_STACK2; i++)
+                    stack2[top2++] = cur->children[i];
+            }
+        }
+        #undef MAX_SCAN_STACK2
+    }
+
+    /* Pass 1d: pre-register icn_arg_str_N as String for each string arg at user-proc
+     * call sites, and pre-declare callee param var field as String, so the callee
+     * prologue can detect string params via field_type_tag("icn_arg_str_N")=='A'.
+     * Run to fixpoint: each iteration may expose new string-typed vars that enable
+     * further propagation (e.g. wrap(s) → suffix(s) where s is string). */
+    {
+        #define MAX_SCAN_STACK3 512
+        /* Three passes covers depth-3 call chains; fixpoint for deeper chains */
+        for (int pass1d = 0; pass1d < 3; pass1d++) {
+        EXPR_t *stack3[MAX_SCAN_STACK3]; int top3 = 0;
+        for (int pi = 0; pi < count; pi++) {
+            EXPR_t *proc = nodes[pi];
+            if (!proc || proc->kind != E_FNC) continue;
+            int np3 = (int)proc->ival;
+            /* Set cur_proc so var_field() resolves correctly */
+            if (proc->children[0] && proc->children[0]->kind == E_VAR)
+                strncpy(cur_proc, proc->children[0]->sval, 63);
+            top3 = 0;
+            for (int i = 1 + np3; i < proc->nchildren; i++)
+                if (top3 < MAX_SCAN_STACK3) stack3[top3++] = proc->children[i];
+            while (top3 > 0) {
+                EXPR_t *cur = stack3[--top3];
+                if (!cur) continue;
+                if (cur->kind == E_FNC && cur->nchildren >= 1
+                        && cur->children[0]->kind == E_VAR
+                        && is_user_proc(cur->children[0]->sval)) {
+                    const char *callee = cur->children[0]->sval;
+                    int na = cur->nchildren - 1;
+                    EXPR_t *callee_proc = NULL;
+                    for (int ci = 0; ci < count; ci++) {
+                        EXPR_t *cp = nodes[ci];
+                        if (cp && cp->kind == E_FNC && cp->nchildren >= 1
+                                && cp->children[0]->kind == E_VAR
+                                && !strcmp(cp->children[0]->sval, callee)) {
+                            callee_proc = cp; break;
+                        }
+                    }
+                    for (int i = 0; i < na; i++) {
+                        if (expr_is_string(cur->children[i+1])
+                                && !expr_is_record(cur->children[i+1])) {
+                            char argstrfield[64];
+                            snprintf(argstrfield, sizeof argstrfield, "icn_arg_str_%d", i);
+                            declare_static_str(argstrfield);
+                            /* Pre-declare callee param var field as String */
+                            if (callee_proc) {
+                                int cnp = (int)callee_proc->ival;
+                                if (i < cnp) {
+                                    EXPR_t *pv = callee_proc->children[1 + i];
+                                    if (pv && pv->kind == E_VAR) {
+                                        char saved_proc[64];
+                                        strncpy(saved_proc, cur_proc, 63);
+                                        strncpy(cur_proc, callee, 63);
+                                        char fld[128]; var_field(pv->sval, fld, sizeof fld);
+                                        declare_static_str(fld);
+                                        strncpy(cur_proc, saved_proc, 63);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                for (int i = 0; i < cur->nchildren && top3 < MAX_SCAN_STACK3; i++)
+                    stack3[top3++] = cur->children[i];
+            }
+        }
+        } /* end pass1d loop */
+        #undef MAX_SCAN_STACK3
+    }
+
+    /* Pass 1e: run type pre-passes for all non-main procs so that statics is
+     * populated before we decide which procs return String.  The Pass 1 scan
+     * above runs expr_is_string on ICN_VAR return children, but statics
+     * is empty at that point — so vars like `result` look like long.  Here we
+     * set up each proc's local environment and run prepass_types on every
+     * body statement, then re-check ICN_RETURN nodes. */
+    for (int pi = 0; pi < count; pi++) {
+        EXPR_t *proc = nodes[pi];
+        if (!proc || proc->kind != E_FNC || proc->nchildren < 1) continue;
+        const char *pname = proc->children[0]->sval;
+        if (strcmp(pname, "main") == 0) continue;
+        int np = (int)proc->ival;
+        int body_start = 1 + np;
+        int nstmts = proc->nchildren - body_start;
+        /* Set up locals context */
+        locals_reset();
+        strncpy(cur_proc, pname, 63);
+        for (int i = 0; i < np; i++) {
+            EXPR_t *pv = proc->children[1 + i];
+            if (pv && pv->kind == E_VAR) locals_add(pv->sval);
+        }
+        /* Scan local declarations */
+        for (int si = 0; si < nstmts; si++) {
+            EXPR_t *s = proc->children[body_start + si];
+            if (s && s->kind == E_GLOBAL) {
+                for (int ci = 0; ci < s->nchildren; ci++) {
+                    EXPR_t *v = s->children[ci];
+                    if (v && v->kind == E_VAR && locals_find(v->sval) < 0
+                            && !is_global(v->sval))
+                        locals_add(v->sval);
+                }
+            }
+        }
+        /* Run type pre-passes to populate statics */
+        for (int si = 0; si < nstmts; si++) {
+            EXPR_t *stmt = proc->children[body_start + si];
+            if (!stmt || stmt->kind != E_ASSIGN || stmt->nchildren < 2) continue;
+            EXPR_t *lhs = stmt->children[0];
+            EXPR_t *rhs = stmt->children[1];
+            if (!lhs || lhs->kind != E_VAR) continue;
+            int slot = locals_find(lhs->sval);
+            char fld[128];
+            if (slot >= 0) var_field(lhs->sval, fld, sizeof fld);
+            else           snprintf(fld, sizeof fld, "icn_gvar_%s", lhs->sval);
+            if (expr_is_string(rhs)) {
+                declare_static_str(fld);
+                if (slot >= 0) { char g[80]; snprintf(g,sizeof g,"icn_gvar_%s",lhs->sval); declare_static_str(g); }
+                else           { char f2[128]; var_field(lhs->sval,f2,sizeof f2); declare_static_str(f2); }
+            }
+        }
+        for (int si = 0; si < nstmts; si++)
+            prepass_types(proc->children[body_start + si]);
+        /* Now re-check: mark proc as string-returning if any return stmt yields String */
+        for (int si = 0; si < nstmts; si++) {
+            EXPR_t *stmt = proc->children[body_start + si];
+            if (stmt && stmt->kind == E_RETURN &&
+                stmt->nchildren > 0 && expr_is_string(stmt->children[0])) {
+                mark_proc_returns_str(pname);
+                break;
+            }
+        }
+    }
+
+    /* Pass 2: emit each proc to a buffer */
+    FILE *body_buf = tmpfile();
+    FILE *save = out;
+    for (int pi = 0; pi < count; pi++) {
+        EXPR_t *proc = nodes[pi];
+        if (!proc || proc->kind != E_FNC || proc->nchildren < 1) continue;
+        emit_jvm_icon_proc(proc, body_buf);
+    }
+
+    /* Read proc body */
+    long bsz = ftell(body_buf); rewind(body_buf);
+    char *procs_text = malloc(bsz + 1); fread(procs_text, 1, bsz, body_buf); procs_text[bsz] = '\0';
+    fclose(body_buf);
+    out = out;
+
+    /* Emit class header */
+    J("; Auto-generated by icon_emit_jvm.c — Tiny-ICON Byrd Box JVM\n");
+    J(".bytecode 45.0\n");   /* Java 6 — no StackMapTable required */
+    J(".class public %s\n", classname);
+    J(".super java/lang/Object\n\n");
+
+    /* Static fields: byte flags */
+    J(".field public static icn_failed B\n");
+    J(".field public static icn_suspended B\n");
+    J(".field public static icn_suspend_id I\n");
+
+    /* Long fields */
+    J(".field public static icn_retval_obj Ljava/lang/Object;\n");
+    J(".field public static icn_retval J\n");
+    J(".field public static icn_retval_str Ljava/lang/String;\n");
+    /* Per-user-proc arg static fields (already in statics array from emit_call) */
+    for (int i = 0; i < nstatics; i++) {
+        char type = static_types[i];
+        if (type == 'A')
+            J(".field public static %s Ljava/lang/String;\n", statics[i]);
+        else if (type == 'L' || type == 'R' || type == 'S')
+            J(".field public static %s Ljava/util/ArrayList;\n", statics[i]);
+        else if (type == 'T')
+            J(".field public static %s Ljava/util/HashMap;\n", statics[i]);
+        else if (type == 'O')
+            J(".field public static %s Ljava/lang/Object;\n", statics[i]);
+        else if (type == 'P')
+            J(".field public static %s [Ljava/lang/Object;\n", statics[i]);
+        else
+            J(".field public static %s %c\n", statics[i], type);
+    }
+    J("\n");
+
+    /* Static initializer: set icn_subject = "" (not null), icn_pos = 0
+     * Only emit if scan was used (icn_subject will be in statics). */
+    int has_scan_fields = 0;
+    for (int i = 0; i < nstatics; i++)
+        if (!strcmp(statics[i], "icn_subject")) { has_scan_fields = 1; break; }
+    if (has_scan_fields) {
+        J(".method static <clinit>()V\n");
+        J("    .limit stack 2\n    .limit locals 0\n");
+        J("    ldc \"\"\n");
+        J("    putstatic %s/icn_subject Ljava/lang/String;\n", classname);
+        J("    iconst_0\n");
+        J("    putstatic %s/icn_pos I\n", classname);
+        J("    return\n");
+        J(".end method\n\n");
+    }
+
+    /* main method: calls icn_main */
+    J(".method public static main([Ljava/lang/String;)V\n");
+    J("    .limit stack 4\n    .limit locals 1\n");
+    J("    invokestatic %s/icn_main()V\n", classname);
+    J("    return\n");
+    J(".end method\n\n");
+
+    /* Emit built-in scan helper methods (only if cset/scan builtins are used).
+     * icn_builtin_any(cs, subj, pos)      → long newpos (1-based) or -1L
+     * icn_builtin_many(cs, subj, pos)     → long newpos (1-based) or -1L
+     * icn_builtin_upto_step(cs, subj, pos)→ long matched-pos (1-based) or -1L
+     *   upto_step scans forward from pos until it finds a char in cs,
+     *   returns that 1-based position (caller sets icn_pos=result for next resume). */
+    int need_scan_builtins = 0;
+    for (int i = 0; i < nstatics; i++)
+        if (!strncmp(statics[i], "icn_upto_cs_", 12)) { need_scan_builtins = 1; break; }
+    for (int i = 0; i < nstatics; i++)
+        if (!strcmp(statics[i], "icn_subject")) { need_scan_builtins = 1; break; }
+    /* Also detect find usage (it uses icn_find_s1_N statics) */
+    for (int i = 0; i < nstatics; i++)
+        if (!strncmp(statics[i], "icn_find_s1_", 12)) { need_scan_builtins = 1; break; }
+    if (need_scan_builtins) {
+        /* icn_builtin_any(String cs, String subj, int pos) → long */
+        J(".method public static icn_builtin_any(Ljava/lang/String;Ljava/lang/String;I)J\n");
+        J("    .limit stack 4\n    .limit locals 3\n");
+        J("    ; if pos >= subj.length() → return -1\n");
+        J("    aload_1\n");
+        J("    invokevirtual java/lang/String/length()I\n");
+        J("    iload_2\n");
+        J("    if_icmpgt icn_any_inbounds\n");
+        J("    ldc2_w -1\n    lreturn\n");
+        J("icn_any_inbounds:\n");
+        J("    ; cs.indexOf(subj.charAt(pos)) >= 0?\n");
+        J("    aload_0\n");
+        J("    aload_1\n    iload_2\n");
+        J("    invokevirtual java/lang/String/charAt(I)C\n");
+        J("    invokevirtual java/lang/String/indexOf(I)I\n");
+        J("    ifge icn_any_match\n");
+        J("    ldc2_w -1\n    lreturn\n");
+        J("icn_any_match:\n");
+        J("    ; return pos+2 (new 1-based pos after consuming one char)\n");
+        J("    iload_2\n    iconst_2\n    iadd\n    i2l\n    lreturn\n");
+        J(".end method\n\n");
+
+        /* icn_builtin_many(String cs, String subj, int pos) → long */
+        J(".method public static icn_builtin_many(Ljava/lang/String;Ljava/lang/String;I)J\n");
+        J("    .limit stack 4\n    .limit locals 4\n");
+        J("    ; check first char in cs — must match at least one\n");
+        J("    aload_1\n");
+        J("    invokevirtual java/lang/String/length()I\n");
+        J("    iload_2\n");
+        J("    if_icmpgt icn_many_first_ok\n");
+        J("    ldc2_w -1\n    lreturn\n");
+        J("icn_many_first_ok:\n");
+        J("    aload_0\n    aload_1\n    iload_2\n");
+        J("    invokevirtual java/lang/String/charAt(I)C\n");
+        J("    invokevirtual java/lang/String/indexOf(I)I\n");
+        J("    ifge icn_many_loop_init\n");
+        J("    ldc2_w -1\n    lreturn\n");
+        J("icn_many_loop_init:\n");
+        J("    ; local 3 = pos (working)\n");
+        J("    iload_2\n    istore_3\n");
+        J("icn_many_loop:\n");
+        J("    iinc 3 1\n");
+        J("    ; if pos3 >= length → done\n");
+        J("    aload_1\n    invokevirtual java/lang/String/length()I\n");
+        J("    iload_3\n    if_icmpgt icn_many_cont\n");
+        J("    iload_3\n    i2l\n    lconst_1\n    ladd\n    lreturn\n");
+        J("icn_many_cont:\n");
+        J("    aload_0\n    aload_1\n    iload_3\n");
+        J("    invokevirtual java/lang/String/charAt(I)C\n");
+        J("    invokevirtual java/lang/String/indexOf(I)I\n");
+        J("    ifge icn_many_loop\n");
+        J("    ; stopped — return pos3+1 (1-based)\n");
+        J("    iload_3\n    iconst_1\n    iadd\n    i2l\n    lreturn\n");
+        J(".end method\n\n");
+
+        /* icn_builtin_upto_step(String cs, String subj, int pos) → long */
+        J(".method public static icn_builtin_upto_step(Ljava/lang/String;Ljava/lang/String;I)J\n");
+        J("    .limit stack 4\n    .limit locals 4\n");
+        J("    iload_2\n    istore_3\n");
+        J("icn_upto_scan:\n");
+        J("    ; if pos3 >= length → -1\n");
+        J("    aload_1\n    invokevirtual java/lang/String/length()I\n");
+        J("    iload_3\n    if_icmpgt icn_upto_inbounds\n");
+        J("    ldc2_w -1\n    lreturn\n");
+        J("icn_upto_inbounds:\n");
+        J("    aload_0\n    aload_1\n    iload_3\n");
+        J("    invokevirtual java/lang/String/charAt(I)C\n");
+        J("    invokevirtual java/lang/String/indexOf(I)I\n");
+        J("    ifge icn_upto_found\n");
+        J("    iinc 3 1\n    goto icn_upto_scan\n");
+        J("icn_upto_found:\n");
+        J("    ; return pos3+1 (1-based); caller sets icn_pos=result for next resume\n");
+        J("    iload_3\n    iconst_1\n    iadd\n    i2l\n    lreturn\n");
+        J(".end method\n\n");
+
+        /* icn_builtin_find(String s1, String s2, int startpos) → long
+         * Returns 1-based index of s1 in s2 starting from startpos (0-based), or -1L. */
+        J(".method public static icn_builtin_find(Ljava/lang/String;Ljava/lang/String;I)J\n");
+        J("    .limit stack 4\n    .limit locals 3\n");
+        J("    aload_1\n    aload_0\n    iload_2\n");
+        J("    invokevirtual java/lang/String/indexOf(Ljava/lang/String;I)I\n");
+        J("    dup\n    ifge icn_find_ok\n");
+        J("    pop\n    ldc2_w -1\n    lreturn\n");
+        J("icn_find_ok:\n");
+        J("    iconst_1\n    iadd\n    i2l\n    lreturn\n");
+        J(".end method\n\n");
+
+        /* icn_builtin_match(String s1, String subj, int pos) → long
+         * If subj starts with s1 at pos, return pos+len(s1)+1 as 1-based new pos; else -1L. */
+        J(".method public static icn_builtin_match(Ljava/lang/String;Ljava/lang/String;I)J\n");
+        J("    .limit stack 4\n    .limit locals 3\n");
+        J("    aload_1\n    aload_0\n    iload_2\n");
+        J("    invokevirtual java/lang/String/startsWith(Ljava/lang/String;I)Z\n");
+        J("    ifne icn_match_ok\n");
+        J("    ldc2_w -1\n    lreturn\n");
+        J("icn_match_ok:\n");
+        J("    iload_2\n    aload_0\n    invokevirtual java/lang/String/length()I\n    iadd\n");
+        J("    iconst_1\n    iadd\n    i2l\n    lreturn\n");
+        J(".end method\n\n");
+
+        /* icn_builtin_tab_str(int n, String subj, int pos) → String or null
+         * n is 1-based target position.  end = n-1 (0-based).
+         * Returns subj.substring(pos, end) and sets icn_pos = end; null on bounds failure. */
+        J(".method public static icn_builtin_tab_str(ILjava/lang/String;I)Ljava/lang/String;\n");
+        J("    .limit stack 4\n    .limit locals 4\n");
+        J("    ; end = n-1 (0-based)\n");
+        J("    iload_0\n    iconst_1\n    isub\n    istore_3\n");
+        J("    ; fail if end < pos\n");
+        J("    iload_3\n    iload_2\n    if_icmpge icn_tab_posok\n");
+        J("    aconst_null\n    areturn\n");
+        J("icn_tab_posok:\n");
+        J("    ; fail if end > subj.length()\n");
+        J("    aload_1\n    invokevirtual java/lang/String/length()I\n");
+        J("    iload_3\n    if_icmpge icn_tab_lenok\n");
+        J("    aconst_null\n    areturn\n");
+        J("icn_tab_lenok:\n");
+        J("    ; update icn_pos = end (static field)\n");
+        J("    iload_3\n");
+        J("    putstatic %s/icn_pos I\n", classname);
+        J("    ; return subj.substring(pos, end)\n");
+        J("    aload_1\n    iload_2\n    iload_3\n");
+        J("    invokevirtual java/lang/String/substring(II)Ljava/lang/String;\n");
+        J("    areturn\n");
+        J(".end method\n\n");
+
+        /* icn_builtin_move_str(int n, String subj, int pos) → String or null
+         * Returns subj.substring(pos, pos+n) and sets icn_pos = pos+n; null if out of bounds. */
+        J(".method public static icn_builtin_move_str(ILjava/lang/String;I)Ljava/lang/String;\n");
+        J("    .limit stack 4\n    .limit locals 4\n");
+        J("    ; end = pos+n\n");
+        J("    iload_2\n    iload_0\n    iadd\n    istore_3\n");
+        J("    ; fail if end > subj.length()\n");
+        J("    aload_1\n    invokevirtual java/lang/String/length()I\n");
+        J("    iload_3\n    if_icmpge icn_move_ok\n");
+        J("    aconst_null\n    areturn\n");
+        J("icn_move_ok:\n");
+        J("    ; update icn_pos = end\n");
+        J("    iload_3\n");
+        J("    putstatic %s/icn_pos I\n", classname);
+        J("    ; return subj.substring(pos, end)\n");
+        J("    aload_1\n    iload_2\n    iload_3\n");
+        J("    invokevirtual java/lang/String/substring(II)Ljava/lang/String;\n");
+        J("    areturn\n");
+        J(".end method\n\n");
+    }
+
+    /* === Emit M-IJ-BUILTINS-STR helper methods (always emitted) === */
+
+    /* icn_builtin_left(String s, int n, String pad) → String */
+    J(".method public static icn_builtin_left(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;\n");
+    J("    .limit stack 4\n    .limit locals 5\n");
+    /* if s.length() >= n: return s.substring(0,n) */
+    J("    aload_0\n    invokevirtual java/lang/String/length()I\n");
+    J("    iload_1\n    if_icmplt icn_left_pad\n");
+    J("    aload_0\n    iconst_0\n    iload_1\n");
+    J("    invokevirtual java/lang/String/substring(II)Ljava/lang/String;\n");
+    J("    areturn\n");
+    J("icn_left_pad:\n");
+    /* build: sb = new StringBuilder(s); while sb.length()<n: sb.append(pad.charAt(0)) */
+    J("    new java/lang/StringBuilder\n    dup\n    aload_0\n");
+    J("    invokespecial java/lang/StringBuilder/<init>(Ljava/lang/String;)V\n");
+    J("    astore_3\n");
+    J("icn_left_loop:\n");
+    J("    aload_3\n    invokevirtual java/lang/StringBuilder/length()I\n");
+    J("    iload_1\n    if_icmpge icn_left_done\n");
+    J("    aload_3\n    aload_2\n    iconst_0\n");
+    J("    invokevirtual java/lang/String/charAt(I)C\n");
+    J("    invokevirtual java/lang/StringBuilder/append(C)Ljava/lang/StringBuilder;\n");
+    J("    pop\n");
+    J("    goto icn_left_loop\n");
+    J("icn_left_done:\n");
+    J("    aload_3\n    invokevirtual java/lang/StringBuilder/toString()Ljava/lang/String;\n");
+    J("    areturn\n");
+    J(".end method\n\n");
+
+    /* icn_builtin_right(String s, int n, String pad) → String */
+    J(".method public static icn_builtin_right(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;\n");
+    J("    .limit stack 4\n    .limit locals 5\n");
+    J("    aload_0\n    invokevirtual java/lang/String/length()I\n");
+    J("    iload_1\n    if_icmplt icn_right_pad\n");
+    /* truncate: return s.substring(s.length()-n) */
+    J("    aload_0\n    invokevirtual java/lang/String/length()I\n");
+    J("    iload_1\n    isub\n");
+    J("    aload_0\n    swap\n");
+    J("    invokevirtual java/lang/String/substring(I)Ljava/lang/String;\n");
+    J("    areturn\n");
+    J("icn_right_pad:\n");
+    /* pad left: build pad prefix then append s */
+    J("    new java/lang/StringBuilder\n    dup\n");
+    J("    invokespecial java/lang/StringBuilder/<init>()V\n");
+    J("    astore_3\n");
+    /* fill until length = n - s.length() */
+    J("    iload_1\n    aload_0\n    invokevirtual java/lang/String/length()I\n    isub\n    istore 4\n");
+    J("    iconst_0\n");  /* i=0 */
+    J("icn_right_loop:\n");
+    J("    dup\n    iload 4\n    if_icmpge icn_right_append\n");
+    J("    aload_3\n    aload_2\n    iconst_0\n");
+    J("    invokevirtual java/lang/String/charAt(I)C\n");
+    J("    invokevirtual java/lang/StringBuilder/append(C)Ljava/lang/StringBuilder;\n    pop\n");
+    J("    iconst_1\n    iadd\n    goto icn_right_loop\n");
+    J("icn_right_append:\n    pop\n");
+    J("    aload_3\n    aload_0\n");
+    J("    invokevirtual java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;\n    pop\n");
+    J("    aload_3\n    invokevirtual java/lang/StringBuilder/toString()Ljava/lang/String;\n");
+    J("    areturn\n");
+    J(".end method\n\n");
+
+    /* icn_builtin_center(String s, int n, String pad) → String
+     * pad_left = (n - s.length()) / 2  (integer division, truncate)
+     * pad_right = n - s.length() - pad_left */
+    J(".method public static icn_builtin_center(Ljava/lang/String;ILjava/lang/String;)Ljava/lang/String;\n");
+    J("    .limit stack 5\n    .limit locals 7\n");
+    J("    aload_0\n    invokevirtual java/lang/String/length()I\n");
+    J("    iload_1\n    if_icmplt icn_ctr_pad\n");
+    /* truncate */
+    J("    aload_0\n    iconst_0\n    iload_1\n");
+    J("    invokevirtual java/lang/String/substring(II)Ljava/lang/String;\n    areturn\n");
+    J("icn_ctr_pad:\n");
+    /* total_pad = n - s.length() */
+    J("    iload_1\n    aload_0\n    invokevirtual java/lang/String/length()I\n    isub\n    istore_3\n");
+    /* pad_left = total_pad / 2 */
+    J("    iload_3\n    iconst_2\n    idiv\n    istore 4\n");
+    /* pad_right = total_pad - pad_left */
+    J("    iload_3\n    iload 4\n    isub\n    istore 5\n");
+    J("    new java/lang/StringBuilder\n    dup\n");
+    J("    invokespecial java/lang/StringBuilder/<init>()V\n    astore 6\n");
+    /* emit pad_left pad chars */
+    J("    iconst_0\n");
+    J("icn_ctr_lloop:\n    dup\n    iload 4\n    if_icmpge icn_ctr_mid\n");
+    J("    aload 6\n    aload_2\n    iconst_0\n");
+    J("    invokevirtual java/lang/String/charAt(I)C\n");
+    J("    invokevirtual java/lang/StringBuilder/append(C)Ljava/lang/StringBuilder;\n    pop\n");
+    J("    iconst_1\n    iadd\n    goto icn_ctr_lloop\n");
+    J("icn_ctr_mid:\n    pop\n");
+    /* append s */
+    J("    aload 6\n    aload_0\n");
+    J("    invokevirtual java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;\n    pop\n");
+    /* emit pad_right pad chars */
+    J("    iconst_0\n");
+    J("icn_ctr_rloop:\n    dup\n    iload 5\n    if_icmpge icn_ctr_done\n");
+    J("    aload 6\n    aload_2\n    iconst_0\n");
+    J("    invokevirtual java/lang/String/charAt(I)C\n");
+    J("    invokevirtual java/lang/StringBuilder/append(C)Ljava/lang/StringBuilder;\n    pop\n");
+    J("    iconst_1\n    iadd\n    goto icn_ctr_rloop\n");
+    J("icn_ctr_done:\n    pop\n");
+    J("    aload 6\n    invokevirtual java/lang/StringBuilder/toString()Ljava/lang/String;\n");
+    J("    areturn\n");
+    J(".end method\n\n");
+
+    /* icn_builtin_trim(String s, String cs) → String  (remove trailing chars in cs) */
+    J(".method public static icn_builtin_trim(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;\n");
+    J("    .limit stack 4\n    .limit locals 3\n");
+    /* end = s.length() */
+    J("    aload_0\n    invokevirtual java/lang/String/length()I\n    istore_2\n");
+    J("icn_trim_loop:\n");
+    J("    iload_2\n    ifle icn_trim_done\n");
+    /* check cs.indexOf(s.charAt(end-1)) >= 0 */
+    J("    aload_1\n    aload_0\n    iload_2\n    iconst_1\n    isub\n");
+    J("    invokevirtual java/lang/String/charAt(I)C\n");
+    J("    invokevirtual java/lang/String/indexOf(I)I\n");
+    J("    iflt icn_trim_done\n");
+    J("    iinc 2 -1\n    goto icn_trim_loop\n");
+    J("icn_trim_done:\n");
+    J("    aload_0\n    iconst_0\n    iload_2\n");
+    J("    invokevirtual java/lang/String/substring(II)Ljava/lang/String;\n");
+    J("    areturn\n");
+    J(".end method\n\n");
+
+    /* icn_builtin_map(String s, String src, String dst) → String */
+    J(".method public static icn_builtin_map(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;\n");
+    J("    .limit stack 5\n    .limit locals 7\n");
+    J("    new java/lang/StringBuilder\n    dup\n");
+    J("    invokespecial java/lang/StringBuilder/<init>()V\n    astore_3\n");
+    J("    iconst_0\n    istore 4\n");  /* i = 0 */
+    J("icn_map_loop:\n");
+    J("    iload 4\n    aload_0\n    invokevirtual java/lang/String/length()I\n");
+    J("    if_icmpge icn_map_done\n");
+    J("    aload_0\n    iload 4\n    invokevirtual java/lang/String/charAt(I)C\n    istore 5\n");
+    J("    aload_1\n    iload 5\n    invokevirtual java/lang/String/indexOf(I)I\n    istore 6\n");
+    J("    iload 6\n    iflt icn_map_notfound\n");
+    /* found: append dst.charAt(idx) */
+    J("    iload 6\n    aload_2\n    invokevirtual java/lang/String/length()I\n");
+    J("    if_icmpge icn_map_notfound\n");
+    J("    aload_3\n    aload_2\n    iload 6\n");
+    J("    invokevirtual java/lang/String/charAt(I)C\n");
+    J("    invokevirtual java/lang/StringBuilder/append(C)Ljava/lang/StringBuilder;\n    pop\n");
+    J("    goto icn_map_next\n");
+    J("icn_map_notfound:\n");
+    J("    aload_3\n    iload 5\n");
+    J("    invokevirtual java/lang/StringBuilder/append(C)Ljava/lang/StringBuilder;\n    pop\n");
+    J("icn_map_next:\n");
+    J("    iinc 4 1\n    goto icn_map_loop\n");
+    J("icn_map_done:\n");
+    J("    aload_3\n    invokevirtual java/lang/StringBuilder/toString()Ljava/lang/String;\n");
+    J("    areturn\n");
+    J(".end method\n\n");
+
+    /* === M-IJ-BUILTINS-TYPE helpers === */
+
+    /* icn_builtin_parse_long(String s) → long
+     * Trims whitespace, handles <base>r<digits> radix notation (JCON),
+     * returns Long.MIN_VALUE sentinel on any parse failure. */
+    J(".method public static icn_builtin_parse_long(Ljava/lang/String;)J\n");
+    J("    .limit stack 4\n    .limit locals 4\n");
+    /* local 0 = input String, local 2 = trimmed String (wide: uses 2/3) */
+    J("    .catch java/lang/Exception from icn_plong_L0 to icn_plong_L1 using icn_plong_catch\n");
+    J("icn_plong_L0:\n");
+    /* trim whitespace */
+    J("    aload_0\n");
+    J("    invokevirtual java/lang/String/trim()Ljava/lang/String;\n");
+    J("    astore_1\n");
+    /* check for 'r' (radix notation: e.g. "16r1F") */
+    J("    aload_1\n");
+    J("    ldc \"r\"\n");
+    J("    invokevirtual java/lang/String/contains(Ljava/lang/CharSequence;)Z\n");
+    J("    ifeq icn_plong_plain\n");
+    /* radix form: split on 'r' */
+    J("    aload_1\n");
+    J("    ldc \"r\"\n");
+    J("    iconst_2\n");
+    J("    invokevirtual java/lang/String/split(Ljava/lang/String;I)[Ljava/lang/String;\n");
+    J("    astore_2\n");
+    J("    aload_2\n");
+    J("    iconst_0\n");
+    J("    aaload\n");
+    J("    invokestatic java/lang/Integer/parseInt(Ljava/lang/String;)I\n");  /* base */
+    J("    istore_3\n");
+    J("    aload_2\n");
+    J("    iconst_1\n");
+    J("    aaload\n");
+    J("    iload_3\n");
+    J("    invokestatic java/lang/Long/parseLong(Ljava/lang/String;I)J\n");
+    J("    goto icn_plong_L1\n");
+    J("icn_plong_plain:\n");
+    J("    aload_1\n");
+    J("    invokestatic java/lang/Long/parseLong(Ljava/lang/String;)J\n");
+    J("icn_plong_L1:\n");
+    J("    lreturn\n");
+    J("icn_plong_catch:\n");
+    J("    pop\n");
+    J("    ldc2_w -9223372036854775808\n");
+    J("    lreturn\n");
+    J(".end method\n\n");
+
+    /* icn_builtin_numeric(String s) → long
+     * Delegates to icn_builtin_parse_long; returns Long.MIN_VALUE sentinel on failure. */
+    J(".method public static icn_builtin_numeric(Ljava/lang/String;)J\n");
+    J("    .limit stack 2\n    .limit locals 2\n");
+    J("    aload_0\n");
+    J("    invokestatic %s/icn_builtin_parse_long(Ljava/lang/String;)J\n", classname);
+    J("    lreturn\n");
+    J(".end method\n\n");
+
+    /* === END M-IJ-BUILTINS-TYPE helpers === */
+
+    /* === M-IJ-SORT helpers === */
+
+    /* icn_builtin_sort(ArrayList src) → ArrayList
+     * Copies src into a new ArrayList, sorts ascending by Long value
+     * using insertion sort (no Comparator class needed in Jasmin).
+     * Stack discipline: local 0 = src, local 1 = result, local 2 = i (int),
+     *   local 3 = j (int), local 4-5 = key (long). */
+    J(".method public static icn_builtin_sort(Ljava/util/ArrayList;)Ljava/util/ArrayList;\n");
+    J("    .limit stack 6\n    .limit locals 8\n");
+    /* result = new ArrayList(src) */
+    J("    new java/util/ArrayList\n");
+    J("    dup\n");
+    J("    aload_0\n");
+    J("    invokespecial java/util/ArrayList/<init>(Ljava/util/Collection;)V\n");
+    J("    astore_1\n");
+    /* i = 1 */
+    J("    iconst_1\n");
+    J("    istore_2\n");
+    /* outer loop: while i < result.size() */
+    J("icn_sort_outer:\n");
+    J("    aload_1\n");
+    J("    invokevirtual java/util/ArrayList/size()I\n");
+    J("    iload_2\n");
+    J("    if_icmple icn_sort_done\n");
+    /* key = ((Long)result.get(i)).longValue() */
+    J("    aload_1\n");
+    J("    iload_2\n");
+    J("    invokevirtual java/util/ArrayList/get(I)Ljava/lang/Object;\n");
+    J("    checkcast java/lang/Long\n");
+    J("    invokevirtual java/lang/Long/longValue()J\n");
+    J("    lstore 4\n");
+    /* j = i - 1 */
+    J("    iload_2\n");
+    J("    iconst_1\n");
+    J("    isub\n");
+    J("    istore_3\n");
+    /* inner loop: while j >= 0 && result.get(j) > key */
+    J("icn_sort_inner:\n");
+    J("    iload_3\n");
+    J("    iflt icn_sort_insert\n");
+    J("    aload_1\n");
+    J("    iload_3\n");
+    J("    invokevirtual java/util/ArrayList/get(I)Ljava/lang/Object;\n");
+    J("    checkcast java/lang/Long\n");
+    J("    invokevirtual java/lang/Long/longValue()J\n");
+    J("    lload 4\n");
+    J("    lcmp\n");
+    J("    ifle icn_sort_insert\n");
+    /* result.set(j+1, result.get(j)) */
+    J("    aload_1\n");
+    J("    iload_3\n");
+    J("    iconst_1\n");
+    J("    iadd\n");
+    J("    aload_1\n");
+    J("    iload_3\n");
+    J("    invokevirtual java/util/ArrayList/get(I)Ljava/lang/Object;\n");
+    J("    invokevirtual java/util/ArrayList/set(ILjava/lang/Object;)Ljava/lang/Object;\n");
+    J("    pop\n");
+    /* j-- */
+    J("    iinc 3 -1\n");
+    J("    goto icn_sort_inner\n");
+    /* result.set(j+1, Long(key)) */
+    J("icn_sort_insert:\n");
+    J("    aload_1\n");
+    J("    iload_3\n");
+    J("    iconst_1\n");
+    J("    iadd\n");
+    J("    lload 4\n");
+    J("    invokestatic java/lang/Long/valueOf(J)Ljava/lang/Long;\n");
+    J("    invokevirtual java/util/ArrayList/set(ILjava/lang/Object;)Ljava/lang/Object;\n");
+    J("    pop\n");
+    /* i++ */
+    J("    iinc 2 1\n");
+    J("    goto icn_sort_outer\n");
+    J("icn_sort_done:\n");
+    J("    aload_1\n");
+    J("    areturn\n");
+    J(".end method\n\n");
+
+    /* icn_builtin_sortf(ArrayList src, int fieldIdx) → ArrayList
+     * Sorts list of records by 1-based fieldIdx using insertion sort.
+     * Records are Objects; fields are accessed by reflection (getDeclaredFields()[fieldIdx-1]).
+     * local 0=src, 1=fieldIdx, 2=result, 3=i, 4=j, 5=keyObj, 6=tmpObj */
+    J(".method public static icn_builtin_sortf(Ljava/util/ArrayList;I)Ljava/util/ArrayList;\n");
+    J("    .limit stack 8\n    .limit locals 10\n");
+    /* result = new ArrayList(src) */
+    J("    new java/util/ArrayList\n");
+    J("    dup\n");
+    J("    aload_0\n");
+    J("    invokespecial java/util/ArrayList/<init>(Ljava/util/Collection;)V\n");
+    J("    astore_2\n");
+    /* i = 1 */
+    J("    iconst_1\n");
+    J("    istore_3\n");
+    /* outer: while i < result.size() */
+    J("icn_sortf_outer:\n");
+    J("    aload_2\n");
+    J("    invokevirtual java/util/ArrayList/size()I\n");
+    J("    iload_3\n");
+    J("    if_icmple icn_sortf_done\n");
+    /* keyObj = result.get(i) */
+    J("    aload_2\n");
+    J("    iload_3\n");
+    J("    invokevirtual java/util/ArrayList/get(I)Ljava/lang/Object;\n");
+    J("    astore 5\n");
+    /* j = i-1 */
+    J("    iload_3\n    iconst_1\n    isub\n    istore 4\n");
+    /* inner: while j>=0 && cmpField(result[j], keyObj, fieldIdx) > 0 */
+    J("icn_sortf_inner:\n");
+    J("    iload 4\n");
+    J("    iflt icn_sortf_insert\n");
+    /* get field value of result[j] */
+    J("    aload_2\n    iload 4\n");
+    J("    invokevirtual java/util/ArrayList/get(I)Ljava/lang/Object;\n");
+    J("    astore 6\n");
+    /* reflect: result[j].getClass().getDeclaredFields()[fieldIdx-1].get(result[j]) */
+    J("    aload 6\n");
+    J("    invokevirtual java/lang/Object/getClass()Ljava/lang/Class;\n");
+    J("    invokevirtual java/lang/Class/getDeclaredFields()[Ljava/lang/reflect/Field;\n");
+    J("    iload_1\n    iconst_1\n    isub\n    aaload\n");
+    J("    aload 6\n");
+    J("    invokevirtual java/lang/reflect/Field/get(Ljava/lang/Object;)Ljava/lang/Object;\n");
+    J("    astore 7\n");
+    /* same for keyObj */
+    J("    aload 5\n");
+    J("    invokevirtual java/lang/Object/getClass()Ljava/lang/Class;\n");
+    J("    invokevirtual java/lang/Class/getDeclaredFields()[Ljava/lang/reflect/Field;\n");
+    J("    iload_1\n    iconst_1\n    isub\n    aaload\n");
+    J("    aload 5\n");
+    J("    invokevirtual java/lang/reflect/Field/get(Ljava/lang/Object;)Ljava/lang/Object;\n");
+    J("    astore 8\n");
+    /* compare as Long: if local7 (Long) > local8 (Long) → shift */
+    J("    aload 7\n");
+    J("    checkcast java/lang/Long\n");
+    J("    aload 8\n");
+    J("    checkcast java/lang/Long\n");
+    J("    invokevirtual java/lang/Long/compareTo(Ljava/lang/Long;)I\n");
+    J("    ifle icn_sortf_insert\n");
+    /* result.set(j+1, result.get(j)) */
+    J("    aload_2\n    iload 4\n    iconst_1\n    iadd\n");
+    J("    aload_2\n    iload 4\n");
+    J("    invokevirtual java/util/ArrayList/get(I)Ljava/lang/Object;\n");
+    J("    invokevirtual java/util/ArrayList/set(ILjava/lang/Object;)Ljava/lang/Object;\n");
+    J("    pop\n");
+    J("    iinc 4 -1\n");
+    J("    goto icn_sortf_inner\n");
+    J("icn_sortf_insert:\n");
+    J("    aload_2\n    iload 4\n    iconst_1\n    iadd\n    aload 5\n");
+    J("    invokevirtual java/util/ArrayList/set(ILjava/lang/Object;)Ljava/lang/Object;\n");
+    J("    pop\n");
+    J("    iinc 3 1\n");
+    J("    goto icn_sortf_outer\n");
+    J("icn_sortf_done:\n");
+    J("    aload_2\n");
+    J("    areturn\n");
+    J(".end method\n\n");
+
+    /* === END M-IJ-BUILTINS-STR helpers === */
+
+    /* G2: icn_builtin_random(long n) → long: random integer 1..n, pure Java */
+    if (need_random_builtin) {
+        J(".method public static icn_builtin_random(J)J\n");
+        J("    .limit stack 4\n    .limit locals 4\n");
+        J("    ; if n <= 0 return 0\n");
+        J("    lload_0\n");
+        J("    lconst_0\n");
+        J("    lcmp\n");
+        J("    ifgt icn_rand_pos\n");
+        J("    lconst_0\n");
+        J("    lreturn\n");
+        J("icn_rand_pos:\n");
+        J("    invokestatic java/lang/System/nanoTime()J\n");
+        J("    lload_0\n");
+        J("    lrem\n");
+        J("    lconst_1\n");
+        J("    ladd\n");
+        J("    lreturn\n");
+        J(".end method\n\n");
+    }
+
+    /* Cset operation builtins (G3–G6, M-G5-LOWER-ICON-FIX) */
+    if (need_cset_builtins) {
+        /* icn_builtin_cset_complement(String cs) → String */
+        J(".method public static icn_builtin_cset_complement(Ljava/lang/String;)Ljava/lang/String;\n");
+        J("    .limit stack 4\n    .limit locals 4\n");
+        J("    ; StringBuilder result\n");
+        J("    new java/lang/StringBuilder\n");
+        J("    dup\n");
+        J("    invokespecial java/lang/StringBuilder/<init>()V\n");
+        J("    astore_1\n");
+        J("    ; loop c = 1..127\n");
+        J("    iconst_1\n    istore_2\n");
+        J("icn_csc_loop:\n");
+        J("    iload_2\n    bipush 127\n    if_icmpgt icn_csc_done\n");
+        J("    ; cs.indexOf(c) < 0 → append\n");
+        J("    aload_0\n    iload_2\n");
+        J("    invokevirtual java/lang/String/indexOf(I)I\n");
+        J("    ifge icn_csc_skip\n");
+        J("    aload_1\n    iload_2\n");
+        J("    invokevirtual java/lang/StringBuilder/append(C)Ljava/lang/StringBuilder;\n");
+        J("    pop\n");
+        J("icn_csc_skip:\n");
+        J("    iinc 2 1\n    goto icn_csc_loop\n");
+        J("icn_csc_done:\n");
+        J("    aload_1\n");
+        J("    invokevirtual java/lang/StringBuilder/toString()Ljava/lang/String;\n");
+        J("    areturn\n");
+        J(".end method\n\n");
+
+        /* icn_builtin_cset_union(String a, String b) → String */
+        J(".method public static icn_builtin_cset_union(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;\n");
+        J("    .limit stack 4\n    .limit locals 4\n");
+        J("    ; start with copy of a\n");
+        J("    new java/lang/StringBuilder\n");
+        J("    dup\n    aload_0\n");
+        J("    invokespecial java/lang/StringBuilder/<init>(Ljava/lang/String;)V\n");
+        J("    astore_2\n");
+        J("    ; for each char in b: if a.indexOf(c)<0 append\n");
+        J("    iconst_0\n    istore_3\n");
+        J("icn_csu_loop:\n");
+        J("    iload_3\n    aload_1\n");
+        J("    invokevirtual java/lang/String/length()I\n");
+        J("    if_icmpge icn_csu_done\n");
+        J("    aload_1\n    iload_3\n");
+        J("    invokevirtual java/lang/String/charAt(I)C\n");
+        J("    istore 0\n");  /* reuse local 0 (shadow a) as char temp */
+        J("    aload_0\n    iload 0\n");
+        J("    invokevirtual java/lang/String/indexOf(I)I\n");
+        J("    ifge icn_csu_skip\n");
+        J("    aload_2\n    iload 0\n");
+        J("    invokevirtual java/lang/StringBuilder/append(C)Ljava/lang/StringBuilder;\n");
+        J("    pop\n");
+        J("icn_csu_skip:\n");
+        J("    iinc 3 1\n    goto icn_csu_loop\n");
+        J("icn_csu_done:\n");
+        J("    aload_2\n");
+        J("    invokevirtual java/lang/StringBuilder/toString()Ljava/lang/String;\n");
+        J("    areturn\n");
+        J(".end method\n\n");
+
+        /* icn_builtin_cset_diff(String a, String b) → String (chars in a not in b) */
+        J(".method public static icn_builtin_cset_diff(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;\n");
+        J("    .limit stack 4\n    .limit locals 4\n");
+        J("    new java/lang/StringBuilder\n");
+        J("    dup\n");
+        J("    invokespecial java/lang/StringBuilder/<init>()V\n");
+        J("    astore_2\n");
+        J("    iconst_0\n    istore_3\n");
+        J("icn_csd_loop:\n");
+        J("    iload_3\n    aload_0\n");
+        J("    invokevirtual java/lang/String/length()I\n");
+        J("    if_icmpge icn_csd_done\n");
+        J("    aload_0\n    iload_3\n");
+        J("    invokevirtual java/lang/String/charAt(I)C\n");
+        J("    istore 0\n");
+        J("    aload_1\n    iload 0\n");
+        J("    invokevirtual java/lang/String/indexOf(I)I\n");
+        J("    ifge icn_csd_skip\n");  /* if b contains c, skip */
+        J("    aload_2\n    iload 0\n");
+        J("    invokevirtual java/lang/StringBuilder/append(C)Ljava/lang/StringBuilder;\n");
+        J("    pop\n");
+        J("icn_csd_skip:\n");
+        J("    iinc 3 1\n    goto icn_csd_loop\n");
+        J("icn_csd_done:\n");
+        J("    aload_2\n");
+        J("    invokevirtual java/lang/StringBuilder/toString()Ljava/lang/String;\n");
+        J("    areturn\n");
+        J(".end method\n\n");
+
+        /* icn_builtin_cset_inter(String a, String b) → String (chars in both) */
+        J(".method public static icn_builtin_cset_inter(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;\n");
+        J("    .limit stack 4\n    .limit locals 4\n");
+        J("    new java/lang/StringBuilder\n");
+        J("    dup\n");
+        J("    invokespecial java/lang/StringBuilder/<init>()V\n");
+        J("    astore_2\n");
+        J("    iconst_0\n    istore_3\n");
+        J("icn_csi_loop:\n");
+        J("    iload_3\n    aload_0\n");
+        J("    invokevirtual java/lang/String/length()I\n");
+        J("    if_icmpge icn_csi_done\n");
+        J("    aload_0\n    iload_3\n");
+        J("    invokevirtual java/lang/String/charAt(I)C\n");
+        J("    istore 0\n");
+        J("    aload_1\n    iload 0\n");
+        J("    invokevirtual java/lang/String/indexOf(I)I\n");
+        J("    iflt icn_csi_skip\n");  /* if b does NOT contain c, skip */
+        J("    aload_2\n    iload 0\n");
+        J("    invokevirtual java/lang/StringBuilder/append(C)Ljava/lang/StringBuilder;\n");
+        J("    pop\n");
+        J("icn_csi_skip:\n");
+        J("    iinc 3 1\n    goto icn_csi_loop\n");
+        J("icn_csi_done:\n");
+        J("    aload_2\n");
+        J("    invokevirtual java/lang/StringBuilder/toString()Ljava/lang/String;\n");
+        J("    areturn\n");
+        J(".end method\n\n");
+    }
+
+    /* Emit all procedure methods */
+    fputs(procs_text, out);
+    free(procs_text);
+
+    /* Emit record inner classes as separate .j files */
+    for (int ri = 0; ri < nrec; ri++) {
+        /* Derive sibling filename: replace main .j basename with ClassName$RecordName.j */
+        char rec_jpath[512] = "/tmp/icn_record_tmp.j";
+        if (outpath) {
+            /* Copy outpath, replace basename with ClassName$RecordName.j */
+            const char *slash = strrchr(outpath, '/');
+            size_t dirlen = slash ? (size_t)(slash - outpath + 1) : 0;
+            snprintf(rec_jpath, sizeof rec_jpath, "%.*s%s$%s.j",
+                     (int)dirlen, outpath, classname, rec_names[ri]);
+        } else {
+            snprintf(rec_jpath, sizeof rec_jpath, "/tmp/%s$%s.j",
+                     classname, rec_names[ri]);
+        }
+        FILE *rf = fopen(rec_jpath, "w");
+        if (rf) {
+            emit_jvm_icon_record_class(rec_names[ri], rec_nfields[ri],
+                                 (const char (*)[64])rec_fields[ri], rf);
+            fclose(rf);
+        }
+    }
+
+    out = save;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * Prolog × JVM emitter — formerly emit_jvm_prolog.c
+ * ═══════════════════════════════════════════════════════════════════════════ */
+/*
+ * prolog_emit_jvm.c — Prolog IR → Jasmin .j emitter
+ *
+ * Consumes E_CHOICE/E_CLAUSE/E_UNIFY/E_CUT/E_TRAIL_MARK/E_TRAIL_UNWIND
+ * nodes produced by prolog_lower() and emits a Jasmin assembly file.
+ *
+ * Entry point: prolog_emit_jvm(Program *prog, FILE *out, const char *filename)
+ * Called from driver/main.c when -pl -jvm flags are set.
+ *
+ * Design: mirrors emit_byrd_jvm.c (SNOBOL4 JVM backend).
+ * Four-port Byrd box: α (try) / β (retry) / γ (succeed) / ω (fail).
+ * Terms encoded as Object[] on the JVM heap (see FRONTEND-PROLOG-JVM.md).
+ *
+ * Sprint: PJ-S1 (M-PJ-SCAFFOLD, M-PJ-HELLO)
+ */
+
+#include "scrip_cc.h"
+#include "prolog_atom.h"
+#include "prolog_parse.h"
+#include "prolog_lower.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
+#include <stdarg.h>
+
+/* -------------------------------------------------------------------------
+ * Output state
+ * ------------------------------------------------------------------------- */
+
+static FILE    *out = NULL;
+static FILE    *helper_buf = NULL;
+static char     classname[256];
+static Program *prog = NULL;  /* M-PJ-CUT-UCALL: program root for callee lookup */
+
+/* -------------------------------------------------------------------------
+ * Output helpers — identical pattern to emit_byrd_jvm.c
+ * ------------------------------------------------------------------------- */
+
+static void J(const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    vfprintf(out, fmt, ap);
+    va_end(ap);
+}
+
+static void JI(const char *instr, const char *ops) {
+    if (ops && ops[0])
+        J("    %s %s\n", instr, ops);
+    else
+        J("    %s\n", instr);
+}
+
+/* Emit:  ldc "escaped_string"
+ * Escapes backslash and double-quote so Jasmin accepts any atom name. */
+static void ldc_str(const char *s) {
+    J("    ldc \"");
+    for (; s && *s; s++) {
+        if      (*s == '\\') J("\\\\");
+        else if (*s == '"')  J("\\\"");
+        else                 fputc(*s, out);
+    }
+    J("\"\n");
+}
+
+static void JL(const char *label, const char *instr, const char *ops) {
+    if (label && label[0]) J("%s:\n", label);
+    JI(instr, ops);
+}
+
+static void JC(const char *comment) {
+    J("; %s\n", comment);
+}
+
+static void JSep(const char *tag) {
+    J("; === %s ", tag ? tag : "");
+    int used = 7 + (tag ? (int)strlen(tag) + 1 : 0);
+    for (int i = used; i < 72; i++) fputc('=', out);
+    J("\n");
+}
+
+/* -------------------------------------------------------------------------
+ * Class name derivation (mirrors jvm_set_classname)
+ * ------------------------------------------------------------------------- */
+
+static void set_classname(const char *filename) {
+    if (!filename || strcmp(filename, "<stdin>") == 0) {
+        strcpy(classname, "PrologProg");
+        return;
+    }
+    const char *base = strrchr(filename, '/');
+    base = base ? base + 1 : filename;
+    char buf[256];
+    strncpy(buf, base, sizeof buf - 1); buf[sizeof buf - 1] = '\0';
+    char *dot = strrchr(buf, '.');
+    if (dot) *dot = '\0';
+    char *p = buf;
+    if (!isalpha((unsigned char)*p) && *p != '_') *p = '_';
+    for (; *p; p++)
+        if (!isalnum((unsigned char)*p) && *p != '_') *p = '_';
+    /* ABI §5: lowercase classnames — do NOT capitalize */
+    strncpy(classname, buf, sizeof classname - 1);
+}
+
+/* safe_name — sanitize a Prolog functor/atom for use as a Jasmin label */
+static void safe_name(const char *src, char *dst, int dstlen) {
+    int di = 0;
+    for (int si = 0; src[si] && di < dstlen - 1; si++) {
+        char c = src[si];
+        if (isalnum((unsigned char)c) || c == '_')
+            dst[di++] = c;
+        else
+            dst[di++] = '_';
+    }
+    dst[di] = '\0';
+}
+
+/* -------------------------------------------------------------------------
+ * Atom table — collect atoms during emission, emit as static String fields
+ * ------------------------------------------------------------------------- */
+
+#define MAX_ATOMS 512
+static char *atoms[MAX_ATOMS];
+static int   natom = 0;
+
+static int intern_atom(const char *name) {
+    for (int i = 0; i < natom; i++)
+        if (strcmp(atoms[i], name) == 0) return i;
+    if (natom >= MAX_ATOMS) return 0;
+    atoms[natom] = strdup(name);
+    return natom++;
+}
+
+/* -------------------------------------------------------------------------
+ * Label counter
+ * ------------------------------------------------------------------------- */
+
+static int uid = 0;
+static int next_uid(void) { return uid++; }
+
+/* -------------------------------------------------------------------------
+ * Runtime helper emission
+ *
+ * All emitted as static methods on the class — same pattern as sno_arith etc.
+ * in emit_byrd_jvm.c.
+ *
+ * Term encoding:
+ *   Object[] of length >= 2:
+ *     [0] = String tag: "atom","int","float","var","compound","ref"
+ *     [1] = value (String for atom/int/float, Object[] for compound/ref)
+ *   null = unbound variable slot
+ * ------------------------------------------------------------------------- */
+
+static void emit_runtime_helpers(void) {
+    JSep("Runtime helpers");
+
+    /* Trail is declared in class header and initialized in <clinit>.
+     * Runtime helpers: trail_mark, trail_push, trail_unwind, deref, unify, term constructors, write. */
+
+    /* trail_mark()I — return current trail size */
+    J(".method static pl_trail_mark()I\n");
+    J("    .limit stack 2\n");
+    J("    .limit locals 0\n");
+    J("    getstatic %s/pl_trail Ljava/util/ArrayList;\n", classname);
+    JI("invokevirtual", "java/util/ArrayList/size()I");
+    JI("ireturn", "");
+    J(".end method\n\n");
+
+    /* trail_push(Object[] slot_holder, int slot_idx) — push binding to undo
+     * We encode as Object[]{slot_holder, Integer(slot_idx)} on trail */
+    /* Simpler approach: trail stores the variable cell Object[] directly.
+     * On unwind, set cell[1] = null to unbind. */
+    J(".method static pl_trail_push([Ljava/lang/Object;)V\n");
+    J("    .limit stack 4\n");
+    J("    .limit locals 1\n");
+    J("    getstatic %s/pl_trail Ljava/util/ArrayList;\n", classname);
+    JI("aload_0", "");
+    JI("invokevirtual", "java/util/ArrayList/add(Ljava/lang/Object;)Z");
+    JI("pop", "");
+    JI("return", "");
+    J(".end method\n\n");
+
+    /* trail_unwind(int mark) — undo all bindings down to mark */
+    J(".method static pl_trail_unwind(I)V\n");
+    J("    .limit stack 4\n");
+    J("    .limit locals 2\n");
+    /* local 0 = mark (I), local 1 = i (I) */
+    /* while trail.size() > mark: pop last, set [1]=null */
+    J("pl_unwind_loop:\n");
+    J("    getstatic %s/pl_trail Ljava/util/ArrayList;\n", classname);
+    JI("invokevirtual", "java/util/ArrayList/size()I");
+    JI("iload_0", "");
+    JI("if_icmple", "pl_unwind_done");
+    /* get last element */
+    J("    getstatic %s/pl_trail Ljava/util/ArrayList;\n", classname);
+    J("    getstatic %s/pl_trail Ljava/util/ArrayList;\n", classname);
+    JI("invokevirtual", "java/util/ArrayList/size()I");
+    JI("iconst_1", "");
+    JI("isub", "");
+    JI("invokevirtual", "java/util/ArrayList/remove(I)Ljava/lang/Object;");
+    /* cast to Object[] and restore both slots: [0]="var", [1]=null */
+    JI("checkcast", "[Ljava/lang/Object;");
+    /* restore [0] = "var" */
+    JI("dup", "");
+    JI("iconst_0", "");
+    JI("ldc", "\"var\"");
+    JI("aastore", "");
+    /* restore [1] = null */
+    JI("iconst_1", "");
+    JI("aconst_null", "");
+    JI("aastore", "");
+    JI("goto", "pl_unwind_loop");
+    J("pl_unwind_done:\n");
+    JI("return", "");
+    J(".end method\n\n");
+
+    /* ------------------------------------------------------------------
+     * deref(Object) — dereference chain
+     * ------------------------------------------------------------------ */
+    J(".method static pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n");
+    J("    .limit stack 3\n");
+    J("    .limit locals 2\n");
+    JI("aload_0", "");
+    JI("astore_1", "");
+    J("pl_deref_loop:\n");
+    JI("aload_1", "");
+    JI("ifnull", "pl_deref_done");
+    JI("aload_1", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_0", "");
+    JI("aaload", "");
+    JI("ldc", "\"ref\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pl_deref_done");
+    /* it's a ref: follow [1] */
+    JI("aload_1", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", "");
+    JI("aaload", "");
+    JI("astore_1", "");
+    JI("goto", "pl_deref_loop");
+    J("pl_deref_done:\n");
+    JI("aload_1", "");
+    JI("areturn", "");
+    J(".end method\n\n");
+
+    /* ------------------------------------------------------------------
+     * term_atom(String name) — allocate atom term Object[]{tag,name}
+     * ------------------------------------------------------------------ */
+    J(".method static pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n");
+    J("    .limit stack 5\n");
+    J("    .limit locals 1\n");
+    JI("iconst_2", "");
+    JI("anewarray", "java/lang/Object");
+    JI("dup", "");
+    JI("iconst_0", "");
+    JI("ldc", "\"atom\"");
+    JI("aastore", "");
+    JI("dup", "");
+    JI("iconst_1", "");
+    JI("aload_0", "");
+    JI("aastore", "");
+    JI("areturn", "");
+    J(".end method\n\n");
+
+    /* term_int(long) — allocate integer term (encode as String like SNOBOL4 JVM) */
+    J(".method static pl_term_int(J)[Ljava/lang/Object;\n");
+    J("    .limit stack 5\n");
+    J("    .limit locals 2\n");
+    JI("iconst_2", "");
+    JI("anewarray", "java/lang/Object");
+    JI("dup", "");
+    JI("iconst_0", "");
+    JI("ldc", "\"int\"");
+    JI("aastore", "");
+    JI("dup", "");
+    JI("iconst_1", "");
+    JI("lload_0", "");
+    JI("invokestatic", "java/lang/Long/toString(J)Ljava/lang/String;");
+    JI("aastore", "");
+    JI("areturn", "");
+    J(".end method\n\n");
+
+    /* term_float(D) — allocate float term: Object[]{"float", Double.toString(d)} */
+    J(".method static pl_term_float(D)[Ljava/lang/Object;\n");
+    J("    .limit stack 5\n");
+    J("    .limit locals 2\n");
+    JI("iconst_2", "");
+    JI("anewarray", "java/lang/Object");
+    JI("dup", "");
+    JI("iconst_0", "");
+    JI("ldc", "\"float\"");
+    JI("aastore", "");
+    JI("dup", "");
+    JI("iconst_1", "");
+    JI("dload_0", "");
+    JI("invokestatic", "java/lang/Double/toString(D)Ljava/lang/String;");
+    JI("aastore", "");
+    JI("areturn", "");
+    J(".end method\n\n");
+
+    /* term_var() — allocate unbound variable cell: Object[]{"var", null} */
+    J(".method static pl_term_var()[Ljava/lang/Object;\n");
+    J("    .limit stack 4\n");
+    J("    .limit locals 0\n");
+    JI("iconst_2", "");
+    JI("anewarray", "java/lang/Object");
+    JI("dup", "");
+    JI("iconst_0", "");
+    JI("ldc", "\"var\"");
+    JI("aastore", "");
+    /* [1] stays null = unbound */
+    JI("areturn", "");
+    J(".end method\n\n");
+
+    /* ------------------------------------------------------------------
+     * unify(Object a, Object b) — WAM-style; returns boolean
+     * ------------------------------------------------------------------ */
+    J(".method static pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n");
+    J("    .limit stack 6\n");
+    J("    .limit locals 4\n");
+    /* deref both */
+    JI("aload_0", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("astore_0", "");
+    JI("aload_1", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("astore_1", "");
+    /* if a==b (same reference), succeed */
+    JI("aload_0", "");
+    JI("aload_1", "");
+    JI("if_acmpeq", "pl_unify_true");
+    /* if a is unbound var (tag=="var", [1]==null): bind a→b */
+    JI("aload_0", "");
+    JI("ifnull", "pl_unify_check_b_var");
+    JI("aload_0", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_0", "");
+    JI("aaload", "");
+    JI("ldc", "\"var\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pl_unify_check_b_var");
+    JI("aload_0", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", "");
+    JI("aaload", "");
+    JI("ifnonnull", "pl_unify_check_b_var");
+    /* a is unbound: bind */
+    JI("aload_0", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    /* change tag to ref */
+    JI("dup", "");
+    JI("iconst_0", "");
+    JI("ldc", "\"ref\"");
+    JI("aastore", "");
+    /* set [1] = b */
+    JI("iconst_1", "");
+    JI("aload_1", "");
+    JI("aastore", "");
+    /* trail the cell */
+    JI("aload_0", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    J("    invokestatic %s/pl_trail_push([Ljava/lang/Object;)V\n", classname);
+    JI("goto", "pl_unify_true");
+    /* check if b is unbound var */
+    J("pl_unify_check_b_var:\n");
+    JI("aload_1", "");
+    JI("ifnull", "pl_unify_check_atoms");
+    JI("aload_1", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_0", "");
+    JI("aaload", "");
+    JI("ldc", "\"var\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pl_unify_check_atoms");
+    JI("aload_1", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", "");
+    JI("aaload", "");
+    JI("ifnonnull", "pl_unify_check_atoms");
+    /* b is unbound: bind b→a */
+    JI("aload_1", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("dup", "");
+    JI("iconst_0", "");
+    JI("ldc", "\"ref\"");
+    JI("aastore", "");
+    JI("iconst_1", "");
+    JI("aload_0", "");
+    JI("aastore", "");
+    JI("aload_1", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    J("    invokestatic %s/pl_trail_push([Ljava/lang/Object;)V\n", classname);
+    JI("goto", "pl_unify_true");
+    /* check atom==atom */
+    J("pl_unify_check_atoms:\n");
+    JI("aload_0", "");
+    JI("ifnull", "pl_unify_false");
+    JI("aload_1", "");
+    JI("ifnull", "pl_unify_false");
+    JI("aload_0", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_0", "");
+    JI("aaload", "");
+    JI("ldc", "\"atom\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pl_unify_check_int");
+    JI("aload_1", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_0", "");
+    JI("aaload", "");
+    JI("ldc", "\"atom\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pl_unify_false");
+    /* both atoms: compare names */
+    JI("aload_0", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", "");
+    JI("aaload", "");
+    JI("aload_1", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", "");
+    JI("aaload", "");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pl_unify_false");
+    JI("goto", "pl_unify_true");
+    /* check int==int */
+    J("pl_unify_check_int:\n");
+    JI("aload_0", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_0", "");
+    JI("aaload", "");
+    JI("ldc", "\"int\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pl_unify_check_float");
+    JI("aload_1", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_0", "");
+    JI("aaload", "");
+    JI("ldc", "\"int\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pl_unify_false");
+    JI("aload_0", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", "");
+    JI("aaload", "");
+    JI("aload_1", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", "");
+    JI("aaload", "");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pl_unify_check_compound");
+    JI("goto", "pl_unify_true");
+    /* check float==float: both tagged "float", compare string values */
+    J("pl_unify_check_float:\n");
+    JI("aload_0", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_0", "");
+    JI("aaload", "");
+    JI("ldc", "\"float\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pl_unify_check_compound");
+    JI("aload_1", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_0", "");
+    JI("aaload", "");
+    JI("ldc", "\"float\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pl_unify_false");
+    /* compare float values numerically (handles -0.0 == 0.0) */
+    JI("aload_0", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", "");
+    JI("aaload", "");
+    JI("checkcast", "java/lang/String");
+    JI("invokestatic", "java/lang/Double/parseDouble(Ljava/lang/String;)D");
+    JI("aload_1", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", "");
+    JI("aaload", "");
+    JI("checkcast", "java/lang/String");
+    JI("invokestatic", "java/lang/Double/parseDouble(Ljava/lang/String;)D");
+    JI("dcmpl", "");
+    JI("ifne", "pl_unify_false");
+    JI("goto", "pl_unify_true");
+    /* check compound==compound: same functor, same arity, recurse on args
+     * Flat encoding: [0]="compound",[1]=functor,[2..]=args; length=2+arity */
+    J("pl_unify_check_compound:\n");
+    JI("aload_0", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_0", "");
+    JI("aaload", "");
+    JI("ldc", "\"compound\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pl_unify_false");
+    JI("aload_1", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_0", "");
+    JI("aaload", "");
+    JI("ldc", "\"compound\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pl_unify_false");
+    /* check same functor [1] */
+    JI("aload_0", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", "");
+    JI("aaload", "");
+    JI("aload_1", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", "");
+    JI("aaload", "");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pl_unify_false");
+    /* check same arity: array length must match */
+    JI("aload_0", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("arraylength", "");
+    JI("aload_1", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("arraylength", "");
+    JI("if_icmpne", "pl_unify_false");
+    /* recurse on args: local 2=arity (arr.length-2), local 3=i */
+    JI("aload_0", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("arraylength", "");
+    JI("iconst_2", "");
+    JI("isub", "");
+    JI("istore_2", "");   /* local 2 = arity */
+    JI("iconst_0", "");
+    JI("istore_3", "");   /* local 3 = i = 0 */
+    J("pl_unify_cmp_loop:\n");
+    JI("iload_3", "");
+    JI("iload_2", "");
+    JI("if_icmpge", "pl_unify_true");   /* all args matched */
+    /* unify a.args[i] with b.args[i] */
+    JI("aload_0", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iload_3", "");
+    JI("iconst_2", "");
+    JI("iadd", "");
+    JI("aaload", "");          /* a.args[i] */
+    JI("aload_1", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iload_3", "");
+    JI("iconst_2", "");
+    JI("iadd", "");
+    JI("aaload", "");          /* b.args[i] */
+    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+    JI("ifeq", "pl_unify_false");
+    JI("iinc", "3 1");         /* i++ */
+    JI("goto", "pl_unify_cmp_loop");
+    J("pl_unify_true:\n");
+    JI("iconst_1", "");
+    JI("ireturn", "");
+    J("pl_unify_false:\n");
+    JI("iconst_0", "");
+    JI("ireturn", "");
+    J(".end method\n\n");
+
+    /* ------------------------------------------------------------------
+     * pl_term_str(Object) — convert any term to its Prolog string representation
+     * Returns String on stack.  Handles atom, int, float, compound, var, list.
+     * Flat compound encoding: [0]="compound",[1]=functor,[2..2+arity-1]=args
+     * Lists: functor=".", arity=2 → printed as [H|T] or [a,b,c]
+     * ------------------------------------------------------------------ */
+    J(".method static pl_term_str(Ljava/lang/Object;)Ljava/lang/String;\n");
+    J("    .limit stack 8\n");
+    J("    .limit locals 4\n");
+    /* deref */
+    JI("aload_0", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("astore_0", "");
+    /* null → "_" */
+    JI("aload_0", "");
+    JI("ifnonnull", "pts_notnull");
+    JI("ldc", "\"_\"");
+    JI("areturn", "");
+    J("pts_notnull:\n");
+    JI("aload_0", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_0", "");
+    JI("aaload", "");
+    JI("astore_1", "");  /* local 1 = tag */
+    /* atom/int/float → return [1] */
+    JI("aload_1", "");
+    JI("ldc", "\"atom\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifne", "pts_scalar");
+    JI("aload_1", "");
+    JI("ldc", "\"int\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifne", "pts_scalar");
+    JI("aload_1", "");
+    JI("ldc", "\"float\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifne", "pts_scalar");
+    /* compound */
+    JI("aload_1", "");
+    JI("ldc", "\"compound\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pts_var");
+    /* compound: check if it's a list ('.'/2) */
+    JI("aload_0", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", "");
+    JI("aaload", "");
+    JI("ldc", "\".\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pts_plain_compound");
+    JI("aload_0", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("arraylength", "");
+    JI("iconst_4", "");  /* 2+arity=4 for arity=2 */
+    JI("if_icmpne", "pts_plain_compound");
+    /* it's a list: build "[a,b,c]" using StringBuilder */
+    JI("new", "java/lang/StringBuilder");
+    JI("dup", "");
+    JI("invokespecial", "java/lang/StringBuilder/<init>()V");
+    JI("ldc", "\"[\"");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
+    JI("astore_2", "");   /* local 2 = sb */
+    JI("aload_0", "");    /* local 3 = current list cell */
+    JI("astore_3", "");
+    J("pts_list_loop:\n");
+    /* print head */
+    JI("aload_2", "");
+    JI("aload_3", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_2", "");
+    JI("aaload", "");   /* head */
+    J("    invokestatic %s/pl_term_str(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
+    JI("pop", "");
+    /* deref tail */
+    JI("aload_3", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_3", "");
+    JI("aaload", "");   /* tail */
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("astore_3", "");
+    /* if tail is '[]' atom → done */
+    JI("aload_3", "");
+    JI("ifnull", "pts_list_close");
+    JI("aload_3", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_0", "");
+    JI("aaload", "");
+    JI("ldc", "\"atom\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pts_list_tail_check");
+    /* atom tail: check if it's [] */
+    JI("aload_3", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", "");
+    JI("aaload", "");
+    JI("ldc", "\"[]\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifne", "pts_list_close");
+    /* non-[] atom tail: print as |atom] */
+    J("pts_list_tail_check:\n");
+    /* check if tail is another '.' compound */
+    JI("aload_3", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_0", "");
+    JI("aaload", "");
+    JI("ldc", "\"compound\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pts_list_improper");
+    JI("aload_3", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", "");
+    JI("aaload", "");
+    JI("ldc", "\".\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pts_list_improper");
+    /* proper cons cell: append comma and continue */
+    JI("aload_2", "");
+    JI("ldc", "\",\"");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
+    JI("pop", "");
+    JI("goto", "pts_list_loop");
+    J("pts_list_improper:\n");
+    /* improper list tail: print |tail */
+    JI("aload_2", "");
+    JI("ldc", "\"|\"");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
+    JI("pop", "");
+    JI("aload_2", "");
+    JI("aload_3", "");
+    J("    invokestatic %s/pl_term_str(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
+    JI("pop", "");
+    J("pts_list_close:\n");
+    JI("aload_2", "");
+    JI("ldc", "\"]\"");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
+    JI("pop", "");
+    JI("aload_2", "");
+    JI("invokevirtual", "java/lang/StringBuilder/toString()Ljava/lang/String;");
+    JI("areturn", "");
+    /* plain compound: functor(arg1,...) */
+    J("pts_plain_compound:\n");
+    /* Check for '$VAR'(N) — numbervars marker: print as A,B,...Z,A1,B1,... */
+    JI("aload_0", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("arraylength", "");
+    JI("iconst_3", "");  /* arity 1 → length 3 */
+    JI("if_icmpne", "pts_not_var_term");
+    JI("aload_0", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", ""); JI("aaload", "");
+    JI("ldc", "\"$VAR\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pts_not_var_term");
+    /* it's '$VAR'(N): compute name = chr('A'+N%26) + (N/26==0 ? "" : str(N/26)) */
+    /* get N as int */
+    JI("aload_0", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_2", ""); JI("aaload", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    J("    invokestatic %s/pl_int_val(Ljava/lang/Object;)J\n", classname);
+    JI("l2i", "");       /* int n */
+    JI("istore_1", ""); /* local 1 = n */
+    /* letter = (char)('A' + n%26) */
+    JI("iload_1", "");
+    JI("bipush", "26"); JI("irem", "");
+    JI("bipush", "65"); JI("iadd", "");  /* 'A'=65 */
+    JI("i2c", "");
+    JI("invokestatic", "java/lang/Character/toString(C)Ljava/lang/String;");
+    JI("astore_2", "");  /* local 2 = letter string */
+    /* suffix = n/26 */
+    JI("iload_1", "");
+    JI("bipush", "26"); JI("idiv", "");
+    JI("istore_3", "");  /* local 3 = suffix int */
+    JI("iload_3", "");
+    JI("ifne", "pts_var_suffix");
+    /* no suffix: return letter */
+    JI("aload_2", "");
+    JI("areturn", "");
+    J("pts_var_suffix:\n");
+    /* return letter + Integer.toString(suffix) */
+    JI("new", "java/lang/StringBuilder");
+    JI("dup", "");
+    JI("invokespecial", "java/lang/StringBuilder/<init>()V");
+    JI("aload_2", "");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
+    JI("iload_3", "");
+    JI("invokevirtual", "java/lang/StringBuilder/append(I)Ljava/lang/StringBuilder;");
+    JI("invokevirtual", "java/lang/StringBuilder/toString()Ljava/lang/String;");
+    JI("areturn", "");
+    J("pts_not_var_term:\n");
+    /* Check for infix operators: -/2, +/2, */2, //2, mod/2 → print infix */
+    JI("aload_0", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", ""); JI("aaload", "");  /* functor */
+    JI("checkcast", "java/lang/String");
+    JI("astore_1", "");
+    JI("aload_0", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("arraylength", "");
+    JI("ldc", "4");  /* arity 2 → arraylength 4 */
+    JI("if_icmpne", "pts_plain_noninfix");
+    /* check functor is one of: - + * / mod */
+    JI("aload_1", "");
+    JI("ldc", "\"-\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifne", "pts_infix");
+    JI("aload_1", "");
+    JI("ldc", "\"+\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifne", "pts_infix");
+    JI("aload_1", "");
+    JI("ldc", "\"*\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifne", "pts_infix");
+    JI("aload_1", "");
+    JI("ldc", "\"/\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifne", "pts_infix");
+    JI("goto", "pts_plain_noninfix");
+    J("pts_infix:\n");
+    JI("new", "java/lang/StringBuilder");
+    JI("dup", "");
+    JI("invokespecial", "java/lang/StringBuilder/<init>()V");
+    JI("astore_2", "");
+    /* left arg */
+    JI("aload_2", "");
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;"); JI("iconst_2", ""); JI("aaload", "");
+    J("    invokestatic %s/pl_term_str(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
+    JI("pop", "");
+    /* functor */
+    JI("aload_2", ""); JI("aload_1", "");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
+    JI("pop", "");
+    /* right arg */
+    JI("aload_2", "");
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;"); JI("iconst_3", ""); JI("aaload", "");
+    J("    invokestatic %s/pl_term_str(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
+    JI("pop", "");
+    JI("aload_2", "");
+    JI("invokevirtual", "java/lang/StringBuilder/toString()Ljava/lang/String;");
+    JI("areturn", "");
+    J("pts_plain_noninfix:\n");
+    JI("new", "java/lang/StringBuilder");
+    JI("dup", "");
+    JI("invokespecial", "java/lang/StringBuilder/<init>()V");
+    JI("astore_2", "");   /* local 2 = sb */
+    /* append functor (already in local 1) */
+    JI("aload_2", "");
+    JI("aload_1", "");  /* functor string already loaded into local 1 */
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
+    JI("pop", "");
+    /* arity = arraylength - 2 */
+    JI("aload_0", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("arraylength", "");
+    JI("iconst_2", "");
+    JI("isub", "");
+    JI("istore_3", "");   /* local 3 = arity */
+    JI("iload_3", "");
+    JI("ifeq", "pts_compound_done");
+    /* arity > 0: append "(" then args */
+    JI("aload_2", "");
+    JI("ldc", "\"(\"");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
+    JI("pop", "");
+    /* use local 1 (was tag, now free) as loop index i=0 */
+    JI("iconst_0", "");
+    JI("istore_1", "");
+    J("pts_compound_loop:\n");
+    JI("iload_1", "");
+    JI("iload_3", "");
+    JI("if_icmpge", "pts_compound_close");
+    /* if i>0 append "," */
+    JI("iload_1", "");
+    JI("ifeq", "pts_compound_nocomma");
+    JI("aload_2", "");
+    JI("ldc", "\",\"");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
+    JI("pop", "");
+    J("pts_compound_nocomma:\n");
+    JI("aload_2", "");
+    JI("aload_0", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iload_1", "");
+    JI("iconst_2", "");
+    JI("iadd", "");
+    JI("aaload", "");   /* args[i] */
+    J("    invokestatic %s/pl_term_str(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
+    JI("pop", "");
+    JI("iinc", "1 1");
+    JI("goto", "pts_compound_loop");
+    J("pts_compound_close:\n");
+    JI("aload_2", "");
+    JI("ldc", "\")\"");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
+    JI("pop", "");
+    J("pts_compound_done:\n");
+    JI("aload_2", "");
+    JI("invokevirtual", "java/lang/StringBuilder/toString()Ljava/lang/String;");
+    JI("areturn", "");
+    /* var/ref → "_" */
+    J("pts_var:\n");
+    JI("ldc", "\"_\"");
+    JI("areturn", "");
+    J("pts_scalar:\n");
+    JI("aload_0", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", "");
+    JI("aaload", "");
+    JI("checkcast", "java/lang/String");
+    JI("areturn", "");
+    J(".end method\n\n");
+
+    /* ------------------------------------------------------------------
+     * write_term(Object) — write/1 builtin
+     * ------------------------------------------------------------------ */
+    J(".method static pl_write(Ljava/lang/Object;)V\n");
+    J("    .limit stack 3\n");
+    J("    .limit locals 1\n");
+    JI("aload_0", "");
+    J("    invokestatic %s/pl_term_str(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+    JI("getstatic", "java/lang/System/out Ljava/io/PrintStream;");
+    JI("swap", "");
+    JI("invokevirtual", "java/io/PrintStream/print(Ljava/lang/String;)V");
+    JI("return", "");
+    J(".end method\n\n");
+
+    /* ------------------------------------------------------------------
+     * pl_needs_quote(String name) → Z
+     * True if atom name requires single-quote wrapping in writeq/write_canonical.
+     * Rules: empty string, starts with uppercase or '_', contains non-alnum/underscore.
+     * locals: 0=name 1=len 2=i 3=ch
+     * ------------------------------------------------------------------ */
+    J(".method static pl_needs_quote(Ljava/lang/String;)Z\n");
+    J("    .limit stack 4\n");
+    J("    .limit locals 4\n");
+    JI("aload_0", "");
+    JI("invokevirtual", "java/lang/String/length()I");
+    JI("istore_1", "");
+    /* empty string → needs quote */
+    JI("iload_1", ""); JI("ifne", "pjnq_check_first");
+    JI("iconst_1", ""); JI("ireturn", "");
+    J("pjnq_check_first:\n");
+    /* Special atoms that never need quotes: [] {} , | ! ; */
+    JI("aload_0", ""); JI("ldc", "\"[]\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z"); JI("ifne", "pjnq_no");
+    JI("aload_0", ""); JI("ldc", "\"{}\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z"); JI("ifne", "pjnq_no");
+    JI("aload_0", ""); JI("ldc", "\",\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z"); JI("ifne", "pjnq_no");
+    JI("aload_0", ""); JI("ldc", "\"|\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z"); JI("ifne", "pjnq_no");
+    JI("aload_0", ""); JI("ldc", "\"!\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z"); JI("ifne", "pjnq_no");
+    JI("aload_0", ""); JI("ldc", "\";\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z"); JI("ifne", "pjnq_no");
+    /* Scan all chars: classify as α-id (starts lower, rest alnum/_)
+       or symbolic (all in #&*+-./:<=>?@\\^~!)  or neither (needs quote) */
+    /* Check first char */
+    JI("aload_0", ""); JI("iconst_0", "");
+    JI("invokevirtual", "java/lang/String/charAt(I)C"); JI("istore_2", "");
+    /* starts lower → α-id path */
+    JI("iload_2", "");
+    JI("invokestatic", "java/lang/Character/isLowerCase(C)Z"); JI("ifne", "pjnq_alphaid");
+    /* starts symbolic char → symbolic path */
+    JI("iload_2", "");
+    J("    invokestatic %s/pl_is_sym_char(I)Z\n", classname);
+    JI("ifne", "pjnq_symbolic");
+    /* anything else (upper, digit, _, space, etc.) → quote */
+    JI("iconst_1", ""); JI("ireturn", "");
+
+    J("pjnq_alphaid:\n");
+    /* all chars must be alnum or _ */
+    JI("iconst_1", ""); JI("istore_2", "");  /* i=1 */
+    J("pjnq_ai_loop:\n");
+    JI("iload_2", ""); JI("iload_1", ""); JI("if_icmpge", "pjnq_no");
+    JI("aload_0", ""); JI("iload_2", "");
+    JI("invokevirtual", "java/lang/String/charAt(I)C"); JI("istore_3", "");
+    JI("iload_3", ""); JI("invokestatic", "java/lang/Character/isLetterOrDigit(C)Z"); JI("ifne", "pjnq_ai_next");
+    JI("iload_3", ""); JI("bipush", "95"); JI("if_icmpeq", "pjnq_ai_next");
+    JI("goto", "pjnq_yes");
+    J("pjnq_ai_next:\n"); JI("iinc", "2 1"); JI("goto", "pjnq_ai_loop");
+
+    J("pjnq_symbolic:\n");
+    /* all chars must be symbolic */
+    JI("iconst_1", ""); JI("istore_2", "");
+    J("pjnq_sym_loop:\n");
+    JI("iload_2", ""); JI("iload_1", ""); JI("if_icmpge", "pjnq_no");
+    JI("aload_0", ""); JI("iload_2", "");
+    JI("invokevirtual", "java/lang/String/charAt(I)C"); JI("istore_3", "");
+    JI("iload_3", "");
+    J("    invokestatic %s/pl_is_sym_char(I)Z\n", classname);
+    JI("ifeq", "pjnq_yes");
+    JI("iinc", "2 1"); JI("goto", "pjnq_sym_loop");
+
+    J("pjnq_yes:\n"); JI("iconst_1", ""); JI("ireturn", "");
+    J("pjnq_no:\n");  JI("iconst_0", ""); JI("ireturn", "");
+    J(".end method\n\n");
+
+    /* pl_is_sym_char(int ch) → Z: true if ch is a Prolog symbolic char */
+    J(".method static pl_is_sym_char(I)Z\n");
+    J("    .limit stack 2\n");
+    J("    .limit locals 1\n");
+    /* symbolic chars: # & * + - . / : < = > ? @ \\ ^ ~ */
+    JI("iload_0", ""); JI("bipush", "35"); JI("if_icmpeq", "pjsc_yes"); /* # */
+    JI("iload_0", ""); JI("bipush", "38"); JI("if_icmpeq", "pjsc_yes"); /* & */
+    JI("iload_0", ""); JI("bipush", "42"); JI("if_icmpeq", "pjsc_yes"); /* * */
+    JI("iload_0", ""); JI("bipush", "43"); JI("if_icmpeq", "pjsc_yes"); /* + */
+    JI("iload_0", ""); JI("bipush", "45"); JI("if_icmpeq", "pjsc_yes"); /* - */
+    JI("iload_0", ""); JI("bipush", "46"); JI("if_icmpeq", "pjsc_yes"); /* . */
+    JI("iload_0", ""); JI("bipush", "47"); JI("if_icmpeq", "pjsc_yes"); /* / */
+    JI("iload_0", ""); JI("bipush", "58"); JI("if_icmpeq", "pjsc_yes"); /* : */
+    JI("iload_0", ""); JI("bipush", "60"); JI("if_icmpeq", "pjsc_yes"); /* < */
+    JI("iload_0", ""); JI("bipush", "61"); JI("if_icmpeq", "pjsc_yes"); /* = */
+    JI("iload_0", ""); JI("bipush", "62"); JI("if_icmpeq", "pjsc_yes"); /* > */
+    JI("iload_0", ""); JI("bipush", "63"); JI("if_icmpeq", "pjsc_yes"); /* ? */
+    JI("iload_0", ""); JI("bipush", "64"); JI("if_icmpeq", "pjsc_yes"); /* @ */
+    JI("iload_0", ""); JI("bipush", "92"); JI("if_icmpeq", "pjsc_yes"); /* \ */
+    JI("iload_0", ""); JI("bipush", "94"); JI("if_icmpeq", "pjsc_yes"); /* ^ */
+    JI("iload_0", ""); JI("bipush", "126"); JI("if_icmpeq", "pjsc_yes"); /* ~ */
+    JI("iconst_0", ""); JI("ireturn", "");
+    J("pjsc_yes:\n"); JI("iconst_1", ""); JI("ireturn", "");
+    J(".end method\n\n");
+
+    /* ------------------------------------------------------------------
+     * pl_quoted_atom_str(String name) → String
+     * Wraps name in single quotes, escaping any embedded single quotes.
+     * locals: 0=name 1=sb 2=len 3=i 4=ch
+     * ------------------------------------------------------------------ */
+    J(".method static pl_quoted_atom_str(Ljava/lang/String;)Ljava/lang/String;\n");
+    J("    .limit stack 4\n");
+    J("    .limit locals 5\n");
+    JI("new", "java/lang/StringBuilder");
+    JI("dup", ""); JI("invokespecial", "java/lang/StringBuilder/<init>()V");
+    JI("astore_1", "");
+    JI("aload_1", ""); JI("ldc", "\"'\"");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
+    JI("pop", "");
+    JI("aload_0", ""); JI("invokevirtual", "java/lang/String/length()I"); JI("istore_2", "");
+    JI("iconst_0", ""); JI("istore_3", "");
+    J("pjqa_loop:\n");
+    JI("iload_3", ""); JI("iload_2", ""); JI("if_icmpge", "pjqa_close");
+    JI("aload_0", ""); JI("iload_3", "");
+    JI("invokevirtual", "java/lang/String/charAt(I)C"); JI("istore", "4");
+    JI("iload", "4"); JI("bipush", "39"); /* '\'' */
+    JI("if_icmpne", "pjqa_append");
+    /* escape: append '' */
+    JI("aload_1", ""); JI("ldc", "\"''\"");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
+    JI("pop", ""); JI("iinc", "3 1"); JI("goto", "pjqa_loop");
+    J("pjqa_append:\n");
+    JI("aload_1", ""); JI("iload", "4"); JI("i2c", "");
+    JI("invokevirtual", "java/lang/StringBuilder/append(C)Ljava/lang/StringBuilder;");
+    JI("pop", ""); JI("iinc", "3 1"); JI("goto", "pjqa_loop");
+    J("pjqa_close:\n");
+    JI("aload_1", ""); JI("ldc", "\"'\"");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
+    JI("pop", "");
+    JI("aload_1", ""); JI("invokevirtual", "java/lang/StringBuilder/toString()Ljava/lang/String;");
+    JI("areturn", "");
+    J(".end method\n\n");
+
+    /* ------------------------------------------------------------------
+     * pl_term_str_q(Object) → String   (writeq: quoted atoms, operator notation)
+     * locals: 0=term 1=tag 2=sb 3=cur 4=scratch
+     * ------------------------------------------------------------------ */
+    J(".method static pl_term_str_q(Ljava/lang/Object;)Ljava/lang/String;\n");
+    J("    .limit stack 8\n");
+    J("    .limit locals 5\n");
+    JI("aload_0", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("astore_0", "");
+    JI("aload_0", ""); JI("ifnonnull", "ptsq_notnull");
+    JI("ldc", "\"_\""); JI("areturn", "");
+    J("ptsq_notnull:\n");
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_0", ""); JI("aaload", ""); JI("astore_1", "");
+    /* atom/int/float: return quoted name if atom */
+    JI("aload_1", ""); JI("ldc", "\"int\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z"); JI("ifne", "ptsq_scalar");
+    JI("aload_1", ""); JI("ldc", "\"float\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z"); JI("ifne", "ptsq_scalar");
+    JI("aload_1", ""); JI("ldc", "\"atom\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z"); JI("ifeq", "ptsq_compound_or_var");
+    /* atom: check if needs quoting */
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", ""); JI("aaload", ""); JI("checkcast", "java/lang/String");
+    JI("astore_2", "");
+    JI("aload_2", "");
+    J("    invokestatic %s/pl_needs_quote(Ljava/lang/String;)Z\n", classname);
+    JI("ifeq", "ptsq_atom_plain");
+    JI("aload_2", "");
+    J("    invokestatic %s/pl_quoted_atom_str(Ljava/lang/String;)Ljava/lang/String;\n", classname);
+    JI("areturn", "");
+    J("ptsq_atom_plain:\n"); JI("aload_2", ""); JI("areturn", "");
+    J("ptsq_scalar:\n");
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", ""); JI("aaload", ""); JI("checkcast", "java/lang/String"); JI("areturn", "");
+    J("ptsq_compound_or_var:\n");
+    JI("aload_1", ""); JI("ldc", "\"var\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z"); JI("ifne", "ptsq_var");
+    /* compound: build functor(args) with quoted functors and recursive _q args */
+    /* arity = arraylength - 2 */
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("arraylength", ""); JI("iconst_2", ""); JI("isub", ""); JI("istore_3", "");
+    JI("new", "java/lang/StringBuilder"); JI("dup", "");
+    JI("invokespecial", "java/lang/StringBuilder/<init>()V"); JI("astore_2", "");
+    /* functor name */
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", ""); JI("aaload", ""); JI("checkcast", "java/lang/String"); JI("astore", "4");
+    /* for list functor '.' use plain pl_term_str for the whole thing */
+    JI("aload", "4"); JI("ldc", "\".\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "ptsq_not_list");
+    JI("iload_3", ""); JI("bipush", "2"); JI("if_icmpne", "ptsq_not_list");
+    /* it's a list: delegate to pl_term_str */
+    JI("aload_0", "");
+    J("    invokestatic %s/pl_term_str(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+    JI("areturn", "");
+    J("ptsq_not_list:\n");
+    /* quote functor if needed */
+    JI("aload", "4");
+    J("    invokestatic %s/pl_needs_quote(Ljava/lang/String;)Z\n", classname);
+    JI("ifeq", "ptsq_fn_plain");
+    JI("aload", "4");
+    J("    invokestatic %s/pl_quoted_atom_str(Ljava/lang/String;)Ljava/lang/String;\n", classname);
+    JI("goto", "ptsq_fn_app");
+    J("ptsq_fn_plain:\n"); JI("aload", "4");
+    J("ptsq_fn_app:\n");
+    JI("aload_2", ""); JI("swap", "");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;"); JI("pop", "");
+    JI("iload_3", ""); JI("ifne", "ptsq_open_p");
+    JI("aload_2", ""); JI("invokevirtual", "java/lang/StringBuilder/toString()Ljava/lang/String;"); JI("areturn", "");
+    J("ptsq_open_p:\n");
+    JI("aload_2", ""); JI("ldc", "\"(\"");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;"); JI("pop", "");
+    JI("iconst_0", ""); JI("istore", "4");
+    J("ptsq_arg_loop:\n");
+    JI("iload", "4"); JI("iload_3", ""); JI("if_icmpge", "ptsq_close_p");
+    JI("iload", "4"); JI("ifle", "ptsq_no_c");
+    JI("aload_2", ""); JI("ldc", "\",\"");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;"); JI("pop", "");
+    J("ptsq_no_c:\n");
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("iload", "4"); JI("iconst_2", ""); JI("iadd", ""); JI("aaload", "");
+    J("    invokestatic %s/pl_term_str_q(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+    JI("aload_2", ""); JI("swap", "");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;"); JI("pop", "");
+    JI("iinc", "4 1"); JI("goto", "ptsq_arg_loop");
+    J("ptsq_close_p:\n");
+    JI("aload_2", ""); JI("ldc", "\")\"");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;"); JI("pop", "");
+    JI("aload_2", ""); JI("invokevirtual", "java/lang/StringBuilder/toString()Ljava/lang/String;"); JI("areturn", "");
+    J("ptsq_var:\n"); JI("ldc", "\"_\""); JI("areturn", "");
+    J(".end method\n\n");
+
+    /* ------------------------------------------------------------------
+     * pl_term_str_canonical(Object) → String
+     * write_canonical: no operator notation, always functor(args), quoted atoms.
+     * locals: 0=term 1=tag 2=sb 3=arity 4=i
+     * ------------------------------------------------------------------ */
+    J(".method static pl_term_str_canonical(Ljava/lang/Object;)Ljava/lang/String;\n");
+    J("    .limit stack 8\n");
+    J("    .limit locals 5\n");
+    JI("aload_0", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("astore_0", "");
+    JI("aload_0", ""); JI("ifnonnull", "ptsc_notnull");
+    JI("ldc", "\"_\""); JI("areturn", "");
+    J("ptsc_notnull:\n");
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_0", ""); JI("aaload", ""); JI("astore_1", "");
+    /* int/float → scalar */
+    JI("aload_1", ""); JI("ldc", "\"int\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z"); JI("ifne", "ptsc_scalar");
+    JI("aload_1", ""); JI("ldc", "\"float\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z"); JI("ifne", "ptsc_scalar");
+    JI("aload_1", ""); JI("ldc", "\"atom\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z"); JI("ifeq", "ptsc_compound_or_var");
+    /* atom: quote if needed */
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", ""); JI("aaload", ""); JI("checkcast", "java/lang/String");
+    JI("astore_2", "");
+    JI("aload_2", "");
+    J("    invokestatic %s/pl_needs_quote(Ljava/lang/String;)Z\n", classname);
+    JI("ifeq", "ptsc_atom_plain");
+    JI("aload_2", "");
+    J("    invokestatic %s/pl_quoted_atom_str(Ljava/lang/String;)Ljava/lang/String;\n", classname);
+    JI("areturn", "");
+    J("ptsc_atom_plain:\n"); JI("aload_2", ""); JI("areturn", "");
+    J("ptsc_scalar:\n");
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", ""); JI("aaload", ""); JI("checkcast", "java/lang/String"); JI("areturn", "");
+    J("ptsc_compound_or_var:\n");
+    JI("aload_1", ""); JI("ldc", "\"var\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z"); JI("ifne", "ptsc_var");
+    /* compound: check for list ('.'/2) → print as [a,b,...] */
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", ""); JI("aaload", "");
+    JI("ldc", "\".\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "ptsc_plain_compound");
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("arraylength", ""); JI("iconst_4", ""); JI("if_icmpne", "ptsc_plain_compound");
+    /* list: delegate to pl_term_str for the list notation */
+    JI("aload_0", "");
+    J("    invokestatic %s/pl_term_str(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+    JI("areturn", "");
+    J("ptsc_plain_compound:\n");
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("arraylength", ""); JI("iconst_2", ""); JI("isub", ""); JI("istore_3", "");
+    /* sb = new StringBuilder */
+    JI("new", "java/lang/StringBuilder"); JI("dup", "");
+    JI("invokespecial", "java/lang/StringBuilder/<init>()V"); JI("astore_2", "");
+    /* append functor (quoted if needed) */
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", ""); JI("aaload", ""); JI("checkcast", "java/lang/String"); JI("astore", "4");
+    JI("aload", "4");
+    J("    invokestatic %s/pl_needs_quote(Ljava/lang/String;)Z\n", classname);
+    JI("ifeq", "ptsc_fn_plain");
+    JI("aload", "4");
+    J("    invokestatic %s/pl_quoted_atom_str(Ljava/lang/String;)Ljava/lang/String;\n", classname);
+    JI("goto", "ptsc_fn_append");
+    J("ptsc_fn_plain:\n"); JI("aload", "4");
+    J("ptsc_fn_append:\n");
+    JI("aload_2", ""); JI("swap", "");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;"); JI("pop", "");
+    /* if arity == 0 → just functor */
+    JI("iload_3", ""); JI("ifne", "ptsc_open_paren");
+    JI("aload_2", ""); JI("invokevirtual", "java/lang/StringBuilder/toString()Ljava/lang/String;"); JI("areturn", "");
+    J("ptsc_open_paren:\n");
+    JI("aload_2", ""); JI("ldc", "\"(\"");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;"); JI("pop", "");
+    JI("iconst_0", ""); JI("istore", "4");  /* i = 0 */
+    J("ptsc_arg_loop:\n");
+    JI("iload", "4"); JI("iload_3", ""); JI("if_icmpge", "ptsc_close_paren");
+    JI("iload", "4"); JI("ifle", "ptsc_no_comma");
+    JI("aload_2", ""); JI("ldc", "\",\"");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;"); JI("pop", "");
+    J("ptsc_no_comma:\n");
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("iload", "4"); JI("iconst_2", ""); JI("iadd", ""); JI("aaload", "");
+    J("    invokestatic %s/pl_term_str_canonical(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+    JI("aload_2", ""); JI("swap", "");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;"); JI("pop", "");
+    JI("iinc", "4 1"); JI("goto", "ptsc_arg_loop");
+    J("ptsc_close_paren:\n");
+    JI("aload_2", ""); JI("ldc", "\")\"");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;"); JI("pop", "");
+    JI("aload_2", ""); JI("invokevirtual", "java/lang/StringBuilder/toString()Ljava/lang/String;"); JI("areturn", "");
+    J("ptsc_var:\n"); JI("ldc", "\"_\""); JI("areturn", "");
+    J(".end method\n\n");
+
+    /* pl_writeq(Object) → V */
+    J(".method static pl_writeq(Ljava/lang/Object;)V\n");
+    J("    .limit stack 3\n");
+    J("    .limit locals 1\n");
+    JI("aload_0", "");
+    J("    invokestatic %s/pl_term_str_q(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+    JI("getstatic", "java/lang/System/out Ljava/io/PrintStream;");
+    JI("swap", "");
+    JI("invokevirtual", "java/io/PrintStream/print(Ljava/lang/String;)V");
+    JI("return", "");
+    J(".end method\n\n");
+
+    /* pl_write_canonical(Object) → V */
+    J(".method static pl_write_canonical(Ljava/lang/Object;)V\n");
+    J("    .limit stack 3\n");
+    J("    .limit locals 1\n");
+    JI("aload_0", "");
+    J("    invokestatic %s/pl_term_str_canonical(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+    JI("getstatic", "java/lang/System/out Ljava/io/PrintStream;");
+    JI("swap", "");
+    JI("invokevirtual", "java/io/PrintStream/print(Ljava/lang/String;)V");
+    JI("return", "");
+    J(".end method\n\n");
+
+    /* ------------------------------------------------------------------
+     * pl_term_to_list(Object term) -> Object[] list
+     * Implements =../2 (univ): atom -> [atom], compound -> [F|args]
+     * Returns a proper Prolog list as nested cons cells.
+     * ------------------------------------------------------------------ */
+    J(".method static pl_term_to_list(Ljava/lang/Object;)[Ljava/lang/Object;\n");
+    J("    .limit stack 8\n");
+    J("    .limit locals 5\n");
+    /* local 0 = term (deref'd Object[])
+     * local 1 = arity (I)
+     * local 2 = i (I) — loop counter (going backward)
+     * local 3 = list (current tail, Object[])
+     * local 4 = new cons cell */
+
+    /* deref term */
+    JI("aload_0", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("astore_0", "");
+
+    /* check tag */
+    JI("aload_0", "");
+    JI("iconst_0", ""); JI("aaload", "");  /* tag */
+    JI("astore_1", "");  /* reuse local 1 for tag temporarily */
+
+    /* start with nil */
+    JI("ldc", "\"[]\"");
+    J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+    JI("astore_3", "");  /* list = nil */
+
+    /* is it an atom? */
+    JI("aload_1", "");
+    JI("ldc", "\"atom\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "ttl_compound");
+
+    /* atom: build [name_atom] = cons(name, nil) */
+    JI("aload_0", "");
+    JI("iconst_1", ""); JI("aaload", "");  /* name string */
+    JI("checkcast", "java/lang/String");
+    J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+    /* cons = {"compound", ".", name_atom, nil} */
+    JI("bipush", "4"); JI("anewarray", "java/lang/Object");
+    JI("dup", ""); JI("iconst_0", ""); JI("ldc", "\"compound\""); JI("aastore", "");
+    JI("dup", ""); JI("iconst_1", ""); JI("ldc", "\".\""); JI("aastore", "");
+    JI("dup", ""); JI("iconst_2", "");
+    JI("aload_0", ""); JI("iconst_1", ""); JI("aaload", ""); JI("checkcast", "java/lang/String");
+    J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+    JI("aastore", "");
+    JI("dup", ""); JI("bipush", "3"); JI("aload_3", ""); JI("aastore", "");
+    JI("areturn", "");
+
+    J("ttl_compound:\n");
+    /* compound: arity = arraylength-2 */
+    JI("aload_0", ""); JI("arraylength", ""); JI("iconst_2", ""); JI("isub", "");
+    JI("istore_1", "");  /* local 1 = arity */
+    /* loop i from arity-1 down to 0: prepend args[i] to list */
+    JI("iload_1", ""); JI("iconst_1", ""); JI("isub", ""); JI("istore_2", "");
+    J("ttl_arg_loop:\n");
+    JI("iload_2", ""); JI("iflt", "ttl_prepend_functor");
+    /* cons = {"compound", ".", args[i], list} */
+    JI("bipush", "4"); JI("anewarray", "java/lang/Object");
+    JI("dup", ""); JI("iconst_0", ""); JI("ldc", "\"compound\""); JI("aastore", "");
+    JI("dup", ""); JI("iconst_1", ""); JI("ldc", "\".\""); JI("aastore", "");
+    JI("dup", ""); JI("iconst_2", "");
+    JI("aload_0", ""); JI("iload_2", ""); JI("iconst_2", ""); JI("iadd", ""); JI("aaload", ""); /* args[i] */
+    JI("aastore", "");
+    JI("dup", ""); JI("bipush", "3"); JI("aload_3", ""); JI("aastore", "");
+    JI("astore_3", "");  /* list = new cons */
+    JI("iinc", "2 -1");
+    JI("goto", "ttl_arg_loop");
+    J("ttl_prepend_functor:\n");
+    /* prepend functor atom */
+    JI("bipush", "4"); JI("anewarray", "java/lang/Object");
+    JI("dup", ""); JI("iconst_0", ""); JI("ldc", "\"compound\""); JI("aastore", "");
+    JI("dup", ""); JI("iconst_1", ""); JI("ldc", "\".\""); JI("aastore", "");
+    JI("dup", ""); JI("iconst_2", "");
+    JI("aload_0", ""); JI("iconst_1", ""); JI("aaload", ""); JI("checkcast", "java/lang/String");
+    J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+    JI("aastore", "");
+    JI("dup", ""); JI("bipush", "3"); JI("aload_3", ""); JI("aastore", "");
+    JI("areturn", "");
+    J(".end method\n\n");
+
+    /* ------------------------------------------------------------------
+     * pl_list_to_term(Object list) -> Object[]
+     * Compose direction of =../2: [F|Args] -> F(Args...)
+     * list is a proper Prolog list: cons cells or nil.
+     * Returns null on bad input.
+     * local 0 = list (current cell), local 1 = arity, local 2 = functor string
+     * local 3 = result term array, local 4 = tmp, local 5 = i
+     * ------------------------------------------------------------------ */
+    /* ------------------------------------------------------------------
+     * pl_list_to_term(Object list) -> Object[]
+     * Compose direction of =../2: [F|Args] -> F(Args...)
+     * Uses a 32-slot scratch array; returns null on bad input.
+     * local 0 = list cursor, local 1 = scratch Object[34], local 2 = count,
+     * local 3 = tmp cell, local 4 = head
+     * ------------------------------------------------------------------ */
+    J(".method static pl_list_to_term(Ljava/lang/Object;)[Ljava/lang/Object;\n");
+    J("    .limit stack 8\n");
+    J("    .limit locals 6\n");
+    /* deref first cell — must be cons */
+    JI("aload_0", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("astore_0", "");
+    JI("aload_0", ""); JI("ifnull", "ltl_fail");
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_0", ""); JI("aaload", "");
+    JI("ldc", "\"compound\""); JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "ltl_fail");
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", ""); JI("aaload", "");
+    JI("ldc", "\".\""); JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "ltl_fail");
+    /* extract functor term (head of first cons) */
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_2", ""); JI("aaload", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("astore", "4");  /* local 4 = functor term */
+    /* advance to args list */
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("bipush", "3"); JI("aaload", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("astore_0", "");
+    /* allocate scratch array of 34 elements */
+    JI("bipush", "34"); JI("anewarray", "java/lang/Object"); JI("astore_1", "");
+    JI("iconst_0", ""); JI("istore_2", "");  /* count = 0 */
+    J("ltl_loop:\n");
+    JI("aload_0", ""); JI("ifnull", "ltl_build");
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_0", ""); JI("aaload", "");
+    JI("ldc", "\"atom\""); JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifne", "ltl_build");  /* nil atom -> done */
+    /* check not overflowing scratch */
+    JI("iload_2", ""); JI("bipush", "32"); JI("if_icmpge", "ltl_fail");
+    /* store head into scratch[count] */
+    JI("aload_1", ""); JI("iload_2", "");
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_2", ""); JI("aaload", "");
+    JI("aastore", "");
+    JI("iinc", "2 1");
+    /* advance */
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("bipush", "3"); JI("aaload", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("astore_0", "");
+    JI("goto", "ltl_loop");
+    J("ltl_build:\n");
+    /* arity 0: return functor term as-is (it's already an atom cell) */
+    JI("iload_2", ""); JI("ifne", "ltl_compound");
+    JI("aload", "4"); JI("checkcast", "[Ljava/lang/Object;"); JI("areturn", "");
+    J("ltl_compound:\n");
+    /* allocate result: Object[2 + count] */
+    JI("iload_2", ""); JI("iconst_2", ""); JI("iadd", "");
+    JI("anewarray", "java/lang/Object");
+    JI("astore_3", "");
+    JI("aload_3", ""); JI("iconst_0", ""); JI("ldc", "\"compound\""); JI("aastore", "");
+    JI("aload_3", ""); JI("iconst_1", "");
+    JI("aload", "4");
+    J("    invokestatic %s/pl_atom_name(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+    JI("aastore", "");
+    /* copy args */
+    JI("iconst_0", ""); JI("istore", "5");
+    J("ltl_copy:\n");
+    JI("iload", "5"); JI("iload_2", ""); JI("if_icmpge", "ltl_ret");
+    JI("aload_3", ""); JI("iload", "5"); JI("iconst_2", ""); JI("iadd", "");
+    JI("aload_1", ""); JI("iload", "5"); JI("aaload", "");
+    JI("aastore", "");
+    JI("iinc", "5 1"); JI("goto", "ltl_copy");
+    J("ltl_ret:\n");
+    JI("aload_3", ""); JI("areturn", "");
+    J("ltl_fail:\n");
+    JI("aconst_null", ""); JI("areturn", "");
+    J(".end method\n\n");
+
+    /* ------------------------------------------------------------------
+     * pl_univ(Object term, Object list) -> boolean (Z)
+     * Bidirectional =../2 at runtime.
+     * If term is bound: decompose to list via pl_term_to_list, unify.
+     * If term is unbound: compose from list via pl_list_to_term, unify.
+     * local 0 = term, local 1 = list, local 2 = deref'd term, local 3 = result
+     * ------------------------------------------------------------------ */
+    J(".method static pl_univ(Ljava/lang/Object;Ljava/lang/Object;)Z\n");
+    J("    .limit stack 4\n");
+    J("    .limit locals 4\n");
+    JI("aload_0", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("astore_2", "");  /* local 2 = deref term */
+    /* check if term is var (unbound): tag == null or tag == "var" */
+    JI("aload_2", ""); JI("ifnull", "univ_compose");
+    JI("aload_2", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_0", ""); JI("aaload", "");
+    JI("ldc", "\"var\""); JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifne", "univ_compose");
+    /* term is bound: decompose */
+    JI("aload_2", "");
+    J("    invokestatic %s/pl_term_to_list(Ljava/lang/Object;)[Ljava/lang/Object;\n", classname);
+    JI("aload_1", "");
+    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+    JI("ireturn", "");
+    J("univ_compose:\n");
+    /* term is unbound: build term from list */
+    JI("aload_1", "");
+    J("    invokestatic %s/pl_list_to_term(Ljava/lang/Object;)[Ljava/lang/Object;\n", classname);
+    JI("astore_3", "");
+    JI("aload_3", ""); JI("ifnull", "univ_fail");
+    JI("aload_0", ""); JI("aload_3", "");
+    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+    JI("ireturn", "");
+    J("univ_fail:\n");
+    JI("iconst_0", ""); JI("ireturn", "");
+    J(".end method\n\n");
+
+    /* ------------------------------------------------------------------
+     * M-PJ-ATOM-BUILTINS — PJ-48 runtime helpers
+     * ------------------------------------------------------------------ */
+
+    /* pl_atom_name(Object term) → String
+     * Extracts the name string from an ATOM or INT term.
+     * For INT: converts to decimal string. For ATOM: returns field[1].
+     * local 0 = term */
+    J(".method static pl_atom_name(Ljava/lang/Object;)Ljava/lang/String;\n");
+    J("    .limit stack 4\n");
+    J("    .limit locals 2\n");
+    JI("aload_0", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("astore_0", "");
+    /* check tag */
+    JI("aload_0", ""); JI("iconst_0", ""); JI("aaload", "");
+    JI("ldc", "\"int\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pan_atom");
+    /* INT: field[1] is a String (Long.toString) — return it directly */
+    JI("aload_0", ""); JI("iconst_1", ""); JI("aaload", "");
+    JI("checkcast", "java/lang/String");
+    JI("areturn", "");
+    J("pan_atom:\n");
+    /* ATOM: field[1] is the name String */
+    JI("aload_0", ""); JI("iconst_1", ""); JI("aaload", "");
+    JI("checkcast", "java/lang/String");
+    JI("areturn", "");
+    J(".end method\n\n");
+
+    /* pl_int_val(Object term) → J
+     * Extracts the long value from an INT term. */
+    J(".method static pl_int_val(Ljava/lang/Object;)J\n");
+    J("    .limit stack 3\n");
+    J("    .limit locals 2\n");
+    JI("aload_0", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", ""); JI("aaload", "");
+    JI("checkcast", "java/lang/String");
+    JI("invokestatic", "java/lang/Long/parseLong(Ljava/lang/String;)J");
+    JI("lreturn", "");
+    J(".end method\n\n");
+
+    /* pl_string_to_char_list(String s) → Object[] list
+     * Builds a Prolog list of single-char atoms from a String.
+     * local 0=s, 1=len(I), 2=i(I), 3=list(Object[]), 4=char_atom(Object[]) */
+    J(".method static pl_string_to_char_list(Ljava/lang/String;)[Ljava/lang/Object;\n");
+    J("    .limit stack 8\n");
+    J("    .limit locals 5\n");
+    JI("aload_0", "");
+    JI("invokevirtual", "java/lang/String/length()I");
+    JI("istore_1", "");
+    /* list = nil */
+    JI("ldc", "\"[]\"");
+    J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+    JI("astore_3", "");
+    /* loop i from len-1 down to 0 */
+    JI("iload_1", ""); JI("iconst_1", ""); JI("isub", ""); JI("istore_2", "");
+    J("scl_loop:\n");
+    JI("iload_2", ""); JI("iflt", "scl_done");
+    /* char_atom = pl_term_atom(String.valueOf(s.charAt(i))) */
+    JI("aload_0", ""); JI("iload_2", "");
+    JI("invokevirtual", "java/lang/String/charAt(I)C");
+    JI("invokestatic", "java/lang/String/valueOf(C)Ljava/lang/String;");
+    J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+    JI("astore", "4");
+    /* cons = {"compound", ".", char_atom, list} */
+    JI("bipush", "4"); JI("anewarray", "java/lang/Object");
+    JI("dup", ""); JI("iconst_0", ""); JI("ldc", "\"compound\""); JI("aastore", "");
+    JI("dup", ""); JI("iconst_1", ""); JI("ldc", "\".\""); JI("aastore", "");
+    JI("dup", ""); JI("iconst_2", ""); JI("aload", "4"); JI("aastore", "");
+    JI("dup", ""); JI("bipush", "3"); JI("aload_3", ""); JI("aastore", "");
+    JI("astore_3", "");
+    JI("iinc", "2 -1");
+    JI("goto", "scl_loop");
+    J("scl_done:\n");
+    JI("aload_3", ""); JI("areturn", "");
+    J(".end method\n\n");
+
+    /* pl_string_to_code_list(String s) → Object[] list of INT code terms */
+    J(".method static pl_string_to_code_list(Ljava/lang/String;)[Ljava/lang/Object;\n");
+    J("    .limit stack 8\n");
+    J("    .limit locals 5\n");
+    JI("aload_0", "");
+    JI("invokevirtual", "java/lang/String/length()I");
+    JI("istore_1", "");
+    JI("ldc", "\"[]\"");
+    J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+    JI("astore_3", "");
+    JI("iload_1", ""); JI("iconst_1", ""); JI("isub", ""); JI("istore_2", "");
+    J("scol_loop:\n");
+    JI("iload_2", ""); JI("iflt", "scol_done");
+    JI("aload_0", ""); JI("iload_2", "");
+    JI("invokevirtual", "java/lang/String/charAt(I)C");
+    JI("i2l", "");
+    J("    invokestatic %s/pl_term_int(J)[Ljava/lang/Object;\n", classname);
+    JI("astore", "4");
+    JI("bipush", "4"); JI("anewarray", "java/lang/Object");
+    JI("dup", ""); JI("iconst_0", ""); JI("ldc", "\"compound\""); JI("aastore", "");
+    JI("dup", ""); JI("iconst_1", ""); JI("ldc", "\".\""); JI("aastore", "");
+    JI("dup", ""); JI("iconst_2", ""); JI("aload", "4"); JI("aastore", "");
+    JI("dup", ""); JI("bipush", "3"); JI("aload_3", ""); JI("aastore", "");
+    JI("astore_3", "");
+    JI("iinc", "2 -1");
+    JI("goto", "scol_loop");
+    J("scol_done:\n");
+    JI("aload_3", ""); JI("areturn", "");
+    J(".end method\n\n");
+
+    /* pl_atom_chars_2(Object atom_or_var, Object list_or_var) → Z
+     * Both-direction: if atom bound → build char list and unify.
+     *                 if atom unbound → read list → build string → unify atom.
+     * local 0=atom, 1=list, 2=da(Object[]), 3=dl(Object[]) */
+    J(".method static pl_atom_chars_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n");
+    J("    .limit stack 8\n");
+    J("    .limit locals 6\n");
+    JI("aload_0", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("astore_2", "");
+    /* check if atom is bound (tag != "var") */
+    JI("aload_2", ""); JI("iconst_0", ""); JI("aaload", "");
+    JI("ldc", "\"var\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifne", "ac2_reverse");
+    /* forward: atom→chars — reload deref'd term and call pl_atom_name */
+    JI("aload_2", "");
+    J("    invokestatic %s/pl_atom_name(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+    J("    invokestatic %s/pl_string_to_char_list(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+    JI("aload_1", "");
+    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+    JI("ireturn", "");
+    J("ac2_reverse:\n");
+    /* reverse: list of char atoms → concat → unify with atom arg */
+    JI("aload_1", "");
+    J("    invokestatic %s/pl_char_list_to_string(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+    J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+    JI("aload_0", "");
+    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+    JI("ireturn", "");
+    J(".end method\n\n");
+
+    /* pl_atom_codes_2(Object atom_or_var, Object list_or_var) → Z */
+    J(".method static pl_atom_codes_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n");
+    J("    .limit stack 8\n");
+    J("    .limit locals 4\n");
+    JI("aload_0", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("astore_2", "");
+    JI("aload_2", ""); JI("iconst_0", ""); JI("aaload", "");
+    JI("ldc", "\"var\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifne", "acd2_reverse");
+    /* forward: atom→codes */
+    JI("aload_2", "");
+    J("    invokestatic %s/pl_atom_name(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+    J("    invokestatic %s/pl_string_to_code_list(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+    JI("aload_1", "");
+    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+    JI("ireturn", "");
+    J("acd2_reverse:\n");
+    JI("aload_1", "");
+    J("    invokestatic %s/pl_code_list_to_string(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+    J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+    JI("aload_0", "");
+    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+    JI("ireturn", "");
+    J(".end method\n\n");
+
+    /* pl_char_code_2(Object char_or_var, Object code_or_var) → Z */
+    J(".method static pl_char_code_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n");
+    J("    .limit stack 8\n");
+    J("    .limit locals 4\n");
+    JI("aload_0", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("astore_2", "");
+    JI("aload_2", ""); JI("iconst_0", ""); JI("aaload", "");
+    JI("ldc", "\"var\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifne", "cc2_reverse");
+    /* forward: char atom → code int */
+    JI("aload_2", "");
+    J("    invokestatic %s/pl_atom_name(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+    JI("iconst_0", "");
+    JI("invokevirtual", "java/lang/String/charAt(I)C");
+    JI("i2l", "");
+    J("    invokestatic %s/pl_term_int(J)[Ljava/lang/Object;\n", classname);
+    JI("aload_1", "");
+    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+    JI("ireturn", "");
+    J("cc2_reverse:\n");
+    /* reverse: code → char atom */
+    JI("aload_1", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    J("    invokestatic %s/pl_int_val(Ljava/lang/Object;)J\n", classname);
+    JI("l2i", "");
+    JI("invokestatic", "java/lang/String/valueOf(C)Ljava/lang/String;");
+    J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+    JI("aload_0", "");
+    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+    JI("ireturn", "");
+    J(".end method\n\n");
+
+    /* pl_char_list_to_string(Object list) → String
+     * Walk a Prolog list of char atoms, concat chars into StringBuilder. */
+    J(".method static pl_char_list_to_string(Ljava/lang/Object;)Ljava/lang/String;\n");
+    J("    .limit stack 6\n");
+    J("    .limit locals 3\n");
+    JI("new", "java/lang/StringBuilder");
+    JI("dup", "");
+    JI("invokespecial", "java/lang/StringBuilder/<init>()V");
+    JI("astore_1", "");
+    JI("aload_0", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("astore_2", "");
+    J("clts_loop:\n");
+    /* check if nil */
+    JI("aload_2", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", ""); JI("aaload", "");  /* functor or name */
+    JI("ldc", "\"[]\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifne", "clts_done");
+    /* head = args[0] = field[2] */
+    JI("aload_2", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_2", ""); JI("aaload", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    J("    invokestatic %s/pl_atom_name(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+    JI("aload_1", ""); JI("swap", "");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
+    JI("pop", "");
+    /* tail = args[1] = field[3] */
+    JI("aload_2", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("bipush", "3"); JI("aaload", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("astore_2", "");
+    JI("goto", "clts_loop");
+    J("clts_done:\n");
+    JI("aload_1", "");
+    JI("invokevirtual", "java/lang/StringBuilder/toString()Ljava/lang/String;");
+    JI("areturn", "");
+    J(".end method\n\n");
+
+    /* pl_code_list_to_string(Object list) → String
+     * Walk a Prolog list of INT code terms, build string from char codes. */
+    J(".method static pl_code_list_to_string(Ljava/lang/Object;)Ljava/lang/String;\n");
+    J("    .limit stack 6\n");
+    J("    .limit locals 3\n");
+    JI("new", "java/lang/StringBuilder");
+    JI("dup", "");
+    JI("invokespecial", "java/lang/StringBuilder/<init>()V");
+    JI("astore_1", "");
+    JI("aload_0", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("astore_2", "");
+    J("colts_loop:\n");
+    JI("aload_2", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", ""); JI("aaload", "");
+    JI("ldc", "\"[]\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifne", "colts_done");
+    /* head code */
+    JI("aload_2", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_2", ""); JI("aaload", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    J("    invokestatic %s/pl_int_val(Ljava/lang/Object;)J\n", classname);
+    JI("l2i", ""); JI("i2c", "");
+    JI("aload_1", ""); JI("swap", "");
+    JI("invokevirtual", "java/lang/StringBuilder/append(C)Ljava/lang/StringBuilder;");
+    JI("pop", "");
+    /* tail */
+    JI("aload_2", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("bipush", "3"); JI("aaload", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("astore_2", "");
+    JI("goto", "colts_loop");
+    J("colts_done:\n");
+    JI("aload_1", "");
+    JI("invokevirtual", "java/lang/StringBuilder/toString()Ljava/lang/String;");
+    JI("areturn", "");
+    J(".end method\n\n");
+}
+
+/* -------------------------------------------------------------------------
+ * Class-level scaffold: header + <clinit>
+ * ------------------------------------------------------------------------- */
+
+static void pl_emit_assertz_helpers(void) {
+    JSep("Dynamic DB helpers: pl_db_assert_key, pl_db_assert, pl_db_query");
+
+    /* pl_db_assert_key(Object term) -> String
+     * Returns "functor/arity" key for the term.
+     * Term encoding: arr[0]=tag, arr[1]=name, arr[2..]=args
+     * atom  → arr[0]="atom",     arr[1]=name  → key = "name/0"
+     * compound → arr[0]="compound", arr[1]=functor, arr[2..n+1]=args → key = "functor/(n)"
+     */
+    J("; pl_db_assert_key(Object) -> String\n");
+    J(".method static pl_db_assert_key(Ljava/lang/Object;)Ljava/lang/String;\n");
+    J("    .limit stack 6\n");
+    J("    .limit locals 3\n");
+    /* is it an Object[]? */
+    JI("aload_0", "");
+    JI("dup", "");
+    J("    instanceof [Ljava/lang/Object;\n");
+    J("    ifeq pl_db_key_atom\n");
+    /* compound: arr[0]=tag, arr[1]=functor, arr[2..]=args */
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", "");
+    JI("aaload", "");  /* arr[1] = functor string */
+    JI("checkcast", "java/lang/String");
+    JI("astore_1", "");
+    /* arity = arr.length - 2 */
+    JI("aload_0", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("arraylength", "");
+    JI("iconst_2", "");
+    JI("isub", "");
+    JI("istore_2", "");
+    /* build "functor/arity" */
+    JI("new", "java/lang/StringBuilder");
+    JI("dup", "");
+    JI("invokespecial", "java/lang/StringBuilder/<init>()V");
+    JI("aload_1", "");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
+    JI("ldc", "\"/\"");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
+    JI("iload_2", "");
+    JI("invokevirtual", "java/lang/StringBuilder/append(I)Ljava/lang/StringBuilder;");
+    JI("invokevirtual", "java/lang/StringBuilder/toString()Ljava/lang/String;");
+    JI("areturn", "");
+    /* atom: key = "atom/0" */
+    J("pl_db_key_atom:\n");
+    JI("aload_0", "");
+    JI("checkcast", "java/lang/String");
+    JI("astore_1", "");
+    JI("new", "java/lang/StringBuilder");
+    JI("dup", "");
+    JI("invokespecial", "java/lang/StringBuilder/<init>()V");
+    JI("aload_1", "");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
+    JI("ldc", "\"/0\"");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
+    JI("invokevirtual", "java/lang/StringBuilder/toString()Ljava/lang/String;");
+    JI("areturn", "");
+    J(".end method\n\n");
+
+    /* pl_db_assert(String key, Object term, int prepend) -> void
+     * Appends (prepend=0) or prepends (prepend=1) a deep-copy of term
+     * to the list keyed by key in pl_db. */
+    J("; pl_db_assert(String key, Object term, int prepend) -> void\n");
+    J(".method static pl_db_assert(Ljava/lang/String;Ljava/lang/Object;I)V\n");
+    J("    .limit stack 6\n");
+    J("    .limit locals 4\n");
+    /* local 0=key, 1=term, 2=prepend, 3=list */
+    /* get or create list — store to local 3 on BOTH paths, join with empty stack */
+    J("    getstatic %s/pl_db Ljava/util/HashMap;\n", classname);
+    JI("aload_0", "");
+    JI("invokevirtual", "java/util/HashMap/get(Ljava/lang/Object;)Ljava/lang/Object;");
+    JI("dup", "");
+    J("    ifnonnull pl_db_assert_have_list\n");
+    /* null path: create new ArrayList, store to local 3, put in map */
+    JI("pop", "");
+    JI("new", "java/util/ArrayList");
+    JI("dup", "");
+    JI("invokespecial", "java/util/ArrayList/<init>()V");
+    J("    astore_3\n");          /* store new list; stack now empty */
+    J("    getstatic %s/pl_db Ljava/util/HashMap;\n", classname);
+    JI("aload_0", "");
+    JI("aload_3", "");
+    JI("invokevirtual", "java/util/HashMap/put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
+    JI("pop", "");                /* discard old value (null); stack empty */
+    J("    goto pl_db_assert_join\n");
+    /* non-null path: cast and store to local 3 */
+    J("pl_db_assert_have_list:\n");
+    JI("checkcast", "java/util/ArrayList");
+    J("    astore_3\n");          /* stack now empty */
+    J("pl_db_assert_join:\n");   /* stack empty, local 3 = list */
+    /* deep-copy the term for storage */
+    JI("aload_1", "");
+    J("    invokestatic %s/pl_copy_term_ground(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("astore_1", "");
+    /* prepend==1 → list.add(0, term); else list.add(term) */
+    JI("iload_2", "");
+    J("    ifeq pl_db_assert_append\n");
+    JI("aload_3", "");
+    JI("iconst_0", "");
+    JI("aload_1", "");
+    JI("invokevirtual", "java/util/ArrayList/add(ILjava/lang/Object;)V");
+    JI("return", "");
+    J("pl_db_assert_append:\n");
+    JI("aload_3", "");
+    JI("aload_1", "");
+    JI("invokevirtual", "java/util/ArrayList/add(Ljava/lang/Object;)Z");
+    JI("pop", "");
+    JI("return", "");
+    J(".end method\n\n");
+
+    /* pl_db_query(String key, int idx) -> Object | null
+     * Returns term at index idx in the DB list for key, or null if OOB. */
+    J("; pl_db_query(String key, int idx) -> Object | null\n");
+    J(".method static pl_db_query(Ljava/lang/String;I)Ljava/lang/Object;\n");
+    J("    .limit stack 4\n");
+    J("    .limit locals 3\n");
+    J("    getstatic %s/pl_db Ljava/util/HashMap;\n", classname);
+    JI("aload_0", "");
+    JI("invokevirtual", "java/util/HashMap/get(Ljava/lang/Object;)Ljava/lang/Object;");
+    JI("dup", "");
+    J("    ifnonnull pl_db_query_have\n");
+    JI("areturn", "");  /* null → no entries */
+    J("pl_db_query_have:\n");
+    JI("checkcast", "java/util/ArrayList");
+    JI("astore_2", "");
+    /* bounds check: idx < list.size() */
+    JI("aload_2", "");
+    JI("invokevirtual", "java/util/ArrayList/size()I");
+    JI("iload_1", "");
+    J("    if_icmpgt pl_db_query_ok\n");
+    JI("aconst_null", "");
+    JI("areturn", "");
+    J("pl_db_query_ok:\n");
+    JI("aload_2", "");
+    JI("iload_1", "");
+    JI("invokevirtual", "java/util/ArrayList/get(I)Ljava/lang/Object;");
+    JI("areturn", "");
+    J(".end method\n\n");
+
+    /* pl_db_retract(String key, int idx) -> Object | null
+     * Removes and returns the entry at index idx from the DB list for key.
+     * Returns null if key not in DB or idx out of bounds. */
+    J("; pl_db_retract(String key, int idx) -> Object | null\n");
+    J(".method static pl_db_retract(Ljava/lang/String;I)Ljava/lang/Object;\n");
+    J("    .limit stack 4\n");
+    J("    .limit locals 3\n");
+    J("    getstatic %s/pl_db Ljava/util/HashMap;\n", classname);
+    JI("aload_0", "");
+    JI("invokevirtual", "java/util/HashMap/get(Ljava/lang/Object;)Ljava/lang/Object;");
+    JI("dup", "");
+    J("    ifnonnull pl_db_retract_have\n");
+    JI("areturn", "");  /* null -> no entries */
+    J("pl_db_retract_have:\n");
+    JI("checkcast", "java/util/ArrayList");
+    JI("astore_2", "");
+    /* bounds check: idx < list.size() */
+    JI("aload_2", "");
+    JI("invokevirtual", "java/util/ArrayList/size()I");
+    JI("iload_1", "");
+    J("    if_icmpgt pl_db_retract_ok\n");
+    JI("aconst_null", "");
+    JI("areturn", "");
+    J("pl_db_retract_ok:\n");
+    JI("aload_2", "");
+    JI("iload_1", "");
+    JI("invokevirtual", "java/util/ArrayList/remove(I)Ljava/lang/Object;");
+    JI("areturn", "");
+    J(".end method\n\n");
+
+    /* pl_db_abolish(String key) -> void
+     * Removes the entire ArrayList for key from pl_db (no-op if absent). */
+    J("; pl_db_abolish(String key) -> void\n");
+    J(".method static pl_db_abolish(Ljava/lang/String;)V\n");
+    J("    .limit stack 2\n");
+    J("    .limit locals 1\n");
+    J("    getstatic %s/pl_db Ljava/util/HashMap;\n", classname);
+    JI("aload_0", "");
+    JI("invokevirtual", "java/util/HashMap/remove(Ljava/lang/Object;)Ljava/lang/Object;");
+    JI("pop", "");
+    JI("return", "");
+    J(".end method\n\n");
+
+    /* pl_db_abolish_key(Object slashTerm) -> String
+     * slashTerm is a compound /(Name, Arity) — arr[0]="compound", arr[1]="/",
+     * arr[2]=Name (pj atom term), arr[3]=Arity (pj int term).
+     * Returns "Name/Arity" string matching pl_db_assert_key format. */
+    J("; pl_db_abolish_key(Object) -> String\n");
+    J(".method static pl_db_abolish_key(Ljava/lang/Object;)Ljava/lang/String;\n");
+    J("    .limit stack 6\n");
+    J("    .limit locals 4\n");
+    /* arr[2] = Name pj-term → extract via pl_atom_name */
+    JI("aload_0", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_2", "");
+    JI("aaload", "");   /* pj atom term for Name */
+    J("    invokestatic %s/pl_atom_name(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+    JI("astore_1", "");   /* local1 = Name string */
+    /* arr[3] = Arity pj-term → extract via pl_int_val -> long -> int */
+    JI("aload_0", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_3", "");
+    JI("aaload", "");   /* pj int term for Arity */
+    J("    invokestatic %s/pl_int_val(Ljava/lang/Object;)J\n", classname);
+    JI("l2i", "");
+    JI("istore_2", "");   /* local2 = arity int */
+    /* build "Name/Arity" */
+    JI("new", "java/lang/StringBuilder");
+    JI("dup", "");
+    JI("invokespecial", "java/lang/StringBuilder/<init>()V");
+    JI("aload_1", "");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
+    JI("ldc", "\"/\"");
+    JI("invokevirtual", "java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;");
+    JI("iload_2", "");
+    JI("invokevirtual", "java/lang/StringBuilder/append(I)Ljava/lang/StringBuilder;");
+    JI("invokevirtual", "java/lang/StringBuilder/toString()Ljava/lang/String;");
+    JI("areturn", "");
+    J(".end method\n\n");
+
+    /* pl_copy_term_ground(Object) -> Object
+     * Deep-copy a ground term (atoms, ints, compounds) for DB storage.
+     * Variables are stored as-is (for future retract support). */
+    J("; pl_copy_term_ground(Object) -> Object\n");
+    J(".method static pl_copy_term_ground(Ljava/lang/Object;)Ljava/lang/Object;\n");
+    J("    .limit stack 8\n");
+    J("    .limit locals 5\n");
+    JI("aload_0", "");
+    /* atom (String) or int (Long)? return as-is */
+    JI("dup", "");
+    J("    instanceof [Ljava/lang/Object;\n");
+    J("    ifne pl_ctg_compound\n");
+    JI("areturn", "");
+    J("pl_ctg_compound:\n");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("astore_1", "");
+    /* new array of same length */
+    JI("aload_1", "");
+    JI("arraylength", "");
+    JI("istore_2", "");
+    JI("iload_2", "");
+    JI("anewarray", "java/lang/Object");
+    JI("astore_3", "");
+    /* copy each slot recursively */
+    /* slot 0 = functor (String) — copy as-is */
+    JI("aload_3", "");
+    JI("iconst_0", "");
+    JI("aload_1", "");
+    JI("iconst_0", "");
+    JI("aaload", "");
+    JI("aastore", "");
+    /* loop i=1..length-1 */
+    JI("iconst_1", "");
+    JI("istore", "4");
+    J("pl_ctg_loop:\n");
+    JI("iload", "4");
+    JI("iload_2", "");
+    J("    if_icmpge pl_ctg_done\n");
+    JI("aload_3", "");
+    JI("iload", "4");
+    JI("aload_1", "");
+    JI("iload", "4");
+    JI("aaload", "");
+    J("    invokestatic %s/pl_copy_term_ground(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("aastore", "");
+    JI("iinc", "4 1");
+    J("    goto pl_ctg_loop\n");
+    J("pl_ctg_done:\n");
+    JI("aload_3", "");
+    JI("areturn", "");
+    J(".end method\n\n");
+
+    /* pl_list_to_arraylist(Object list) -> ArrayList<Object>
+     * Walks a pj cons list ([H|T] = compound(".",H,T), [] = atom("[]"))
+     * and collects elements into a new ArrayList. */
+    J("; pl_list_to_arraylist(Object) -> ArrayList\n");
+    J(".method static pl_list_to_arraylist(Ljava/lang/Object;)Ljava/util/ArrayList;\n");
+    J("    .limit stack 4\n");
+    J("    .limit locals 3\n");
+    JI("new", "java/util/ArrayList");
+    JI("dup", "");
+    JI("invokespecial", "java/util/ArrayList/<init>()V");
+    JI("astore_1", "");   /* local1 = result ArrayList */
+    JI("aload_0", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("astore_2", "");   /* local2 = current cell */
+    J("pl_lta_loop:\n");
+    /* check if [] atom */
+    JI("aload_2", "");
+    J("    instanceof [Ljava/lang/Object;\n");
+    J("    ifeq pl_lta_done\n");
+    JI("aload_2", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", "");
+    JI("aaload", "");   /* arr[1] = functor */
+    JI("checkcast", "java/lang/String");
+    JI("astore_0", "");
+    JI("aload_0", "");
+    JI("ldc", "\"[]\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    J("    ifne pl_lta_done\n");
+    /* add head (arr[2]) to list */
+    JI("aload_1", "");
+    JI("aload_2", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_2", "");
+    JI("aaload", "");
+    JI("invokevirtual", "java/util/ArrayList/add(Ljava/lang/Object;)Z");
+    JI("pop", "");
+    /* advance to tail (arr[3]) */
+    JI("aload_2", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_3", "");
+    JI("aaload", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("astore_2", "");
+    J("    goto pl_lta_loop\n");
+    J("pl_lta_done:\n");
+    JI("aload_1", "");
+    JI("areturn", "");
+    J(".end method\n\n");
+
+    /* pl_length_2(Object list, Object n) -> Z
+     * length(+List, ?N): count cons cells, unify N with result.
+     * locals: 0=list, 1=n, 2=cur(deref'd cell), 3=count(int) */
+    J("; pl_length_2(Object list, Object n) -> Z\n");
+    J(".method static pl_length_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n");
+    J("    .limit stack 6\n");
+    J("    .limit locals 4\n");
+    JI("aload_0", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("astore_2", "");   /* cur = deref(list) */
+    JI("iconst_0", "");
+    JI("istore_3", "");   /* count = 0 */
+    J("pl_len_loop:\n");
+    /* if cur is not Object[] → it's [] atom, done */
+    JI("aload_2", "");
+    J("    instanceof [Ljava/lang/Object;\n");
+    J("    ifeq pl_len_done\n");
+    /* check functor == "[]" → done */
+    JI("aload_2", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", "");
+    JI("aaload", "");   /* arr[1] = functor */
+    JI("ldc", "\"[]\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    J("    ifne pl_len_done\n");
+    /* count++ */
+    JI("iinc", "3 1");
+    /* advance to tail arr[3] */
+    JI("aload_2", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_3", "");
+    JI("aaload", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("astore_2", "");
+    J("    goto pl_len_loop\n");
+    J("pl_len_done:\n");
+    /* build int term from count and unify with n */
+    JI("iload_3", "");
+    JI("i2l", "");
+    J("    invokestatic %s/pl_term_int(J)[Ljava/lang/Object;\n", classname);
+    JI("aload_1", "");
+    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+    JI("ireturn", "");
+    J(".end method\n\n");
+
+    /* pl_arraylist_to_list(ArrayList) -> Object
+     * Rebuilds a pj cons list from an ArrayList (last element first). */
+    J("; pl_arraylist_to_list(ArrayList) -> Object\n");
+    J(".method static pl_arraylist_to_list(Ljava/util/ArrayList;)Ljava/lang/Object;\n");
+    J("    .limit stack 8\n");
+    J("    .limit locals 4\n");
+    /* start with [] */
+    J("    ldc \"[]\"\n");
+    J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+    JI("astore_1", "");   /* local1 = accumulated list (tail-first) */
+    JI("aload_0", "");
+    JI("invokevirtual", "java/util/ArrayList/size()I");
+    JI("iconst_1", "");
+    JI("isub", "");
+    JI("istore_2", "");   /* local2 = i = size-1 */
+    J("pl_atl_loop:\n");
+    JI("iload_2", "");
+    J("    iflt pl_atl_done\n");
+    /* build cons cell: [arr[i] | acc] */
+    JI("bipush", "4");
+    JI("anewarray", "java/lang/Object");
+    JI("dup", "");
+    JI("iconst_0", "");
+    JI("ldc", "\"compound\"");
+    JI("aastore", "");
+    JI("dup", "");
+    JI("iconst_1", "");
+    JI("ldc", "\".\"");
+    JI("aastore", "");
+    JI("dup", "");
+    JI("iconst_2", "");
+    JI("aload_0", "");
+    JI("iload_2", "");
+    JI("invokevirtual", "java/util/ArrayList/get(I)Ljava/lang/Object;");
+    JI("aastore", "");
+    JI("dup", "");
+    JI("iconst_3", "");
+    JI("aload_1", "");
+    JI("aastore", "");
+    JI("astore_1", "");
+    JI("iinc", "2 -1");
+    J("    goto pl_atl_loop\n");
+    J("pl_atl_done:\n");
+    JI("aload_1", "");
+    JI("areturn", "");
+    J(".end method\n\n");
+
+    /* pl_sort_list(Object list, int dedup) -> Object
+     * Sorts a pj list by pl_term_str order (insertion sort).
+     * dedup=1 → remove duplicates (sort/2); dedup=0 → keep (msort/2). */
+    J("; pl_sort_list(Object list, int dedup) -> Object\n");
+    J(".method static pl_sort_list(Ljava/lang/Object;I)Ljava/lang/Object;\n");
+    J("    .limit stack 8\n");
+    J("    .limit locals 8\n");
+    /* collect to ArrayList */
+    JI("aload_0", "");
+    J("    invokestatic %s/pl_list_to_arraylist(Ljava/lang/Object;)Ljava/util/ArrayList;\n", classname);
+    JI("astore_2", "");   /* local2 = al */
+    JI("aload_2", "");
+    JI("invokevirtual", "java/util/ArrayList/size()I");
+    JI("istore_3", "");   /* local3 = n */
+    /* insertion sort: for i=1..n-1: key=al[i]; j=i-1; while j>=0 && al[j]>key: al[j+1]=al[j]; j--; al[j+1]=key */
+    JI("iconst_1", "");
+    JI("istore", "4");   /* i */
+    J("pl_sl_outer:\n");
+    JI("iload", "4");
+    JI("iload_3", "");
+    J("    if_icmpge pl_sl_sorted\n");
+    JI("aload_2", "");
+    JI("iload", "4");
+    JI("invokevirtual", "java/util/ArrayList/get(I)Ljava/lang/Object;");
+    JI("astore", "5");   /* key */
+    JI("iload", "4");
+    JI("iconst_1", "");
+    JI("isub", "");
+    JI("istore", "6");   /* j */
+    J("pl_sl_inner:\n");
+    JI("iload", "6");
+    J("    iflt pl_sl_insert\n");
+    /* compare al[j] vs key via pl_term_str */
+    JI("aload_2", "");
+    JI("iload", "6");
+    JI("invokevirtual", "java/util/ArrayList/get(I)Ljava/lang/Object;");
+    J("    invokestatic %s/pl_term_str(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+    JI("aload", "5");
+    J("    invokestatic %s/pl_term_str(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+    JI("invokevirtual", "java/lang/String/compareTo(Ljava/lang/String;)I");
+    J("    ifle pl_sl_insert\n");   /* al[j] <= key → stop */
+    /* al[j+1] = al[j] */
+    JI("aload_2", "");
+    JI("iload", "6");
+    JI("iconst_1", "");
+    JI("iadd", "");
+    JI("aload_2", "");
+    JI("iload", "6");
+    JI("invokevirtual", "java/util/ArrayList/get(I)Ljava/lang/Object;");
+    JI("invokevirtual", "java/util/ArrayList/set(ILjava/lang/Object;)Ljava/lang/Object;");
+    JI("pop", "");
+    JI("iinc", "6 -1");
+    J("    goto pl_sl_inner\n");
+    J("pl_sl_insert:\n");
+    JI("aload_2", "");
+    JI("iload", "6");
+    JI("iconst_1", "");
+    JI("iadd", "");
+    JI("aload", "5");
+    JI("invokevirtual", "java/util/ArrayList/set(ILjava/lang/Object;)Ljava/lang/Object;");
+    JI("pop", "");
+    JI("iinc", "4 1");
+    J("    goto pl_sl_outer\n");
+    J("pl_sl_sorted:\n");
+    /* dedup if requested */
+    JI("iload_1", "");
+    J("    ifeq pl_sl_build\n");
+    /* dedup: walk forward, remove consecutive equal elements */
+    JI("iconst_0", "");
+    JI("istore", "4");   /* i */
+    J("pl_sl_dedup:\n");
+    JI("iload", "4");
+    JI("aload_2", "");
+    JI("invokevirtual", "java/util/ArrayList/size()I");
+    JI("iconst_1", "");
+    JI("isub", "");
+    J("    if_icmpge pl_sl_build\n");
+    /* compare al[i] vs al[i+1] */
+    JI("aload_2", "");
+    JI("iload", "4");
+    JI("invokevirtual", "java/util/ArrayList/get(I)Ljava/lang/Object;");
+    J("    invokestatic %s/pl_term_str(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+    JI("aload_2", "");
+    JI("iload", "4");
+    JI("iconst_1", "");
+    JI("iadd", "");
+    JI("invokevirtual", "java/util/ArrayList/get(I)Ljava/lang/Object;");
+    J("    invokestatic %s/pl_term_str(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+    JI("invokevirtual", "java/lang/String/compareTo(Ljava/lang/String;)I");
+    J("    ifne pl_sl_dedup_next\n");
+    /* equal: remove al[i+1] */
+    JI("aload_2", "");
+    JI("iload", "4");
+    JI("iconst_1", "");
+    JI("iadd", "");
+    JI("invokevirtual", "java/util/ArrayList/remove(I)Ljava/lang/Object;");
+    JI("pop", "");
+    J("    goto pl_sl_dedup\n");
+    J("pl_sl_dedup_next:\n");
+    JI("iinc", "4 1");
+    J("    goto pl_sl_dedup\n");
+    J("pl_sl_build:\n");
+    JI("aload_2", "");
+    J("    invokestatic %s/pl_arraylist_to_list(Ljava/util/ArrayList;)Ljava/lang/Object;\n", classname);
+    JI("areturn", "");
+    J(".end method\n\n");
+
+    /* pl_is_var(Object) -> Z
+     * Returns 1 if term is an unbound variable (null or var tag with null binding). */
+    J("; pl_is_var(Object) -> Z\n");
+    J(".method static pl_is_var(Ljava/lang/Object;)Z\n");
+    J("    .limit stack 3\n");
+    J("    .limit locals 1\n");
+    JI("aload_0", "");
+    J("    ifnull pl_isvar_true\n");
+    JI("aload_0", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_0", "");
+    JI("aaload", "");
+    JI("ldc", "\"var\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    J("    ifeq pl_isvar_false\n");
+    /* tag=="var": check [1]==null */
+    JI("aload_0", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", "");
+    JI("aaload", "");
+    J("    ifnonnull pl_isvar_false\n");
+    J("pl_isvar_true:\n");
+    JI("iconst_1", "");
+    JI("ireturn", "");
+    J("pl_isvar_false:\n");
+    JI("iconst_0", "");
+    JI("ireturn", "");
+    J(".end method\n\n");
+
+    /* pl_succ_2(Object x, Object y) -> Z
+     * succ(?X, ?Y): Y = X+1 or X = Y-1.
+     * Returns 1 on success (after unification), 0 on failure. */
+    J("; pl_succ_2(Object x, Object y) -> Z\n");
+    J(".method static pl_succ_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n");
+    J("    .limit stack 6\n");
+    J("    .limit locals 6\n");
+    JI("aload_0", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("astore_0", "");
+    JI("aload_1", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("astore_1", "");
+    JI("aload_0", "");
+    J("    invokestatic %s/pl_is_var(Ljava/lang/Object;)Z\n", classname);
+    J("    ifne pl_succ2_x_unbound\n");
+    /* X is bound: Y = X+1 */
+    JI("aload_0", "");
+    J("    invokestatic %s/pl_int_val(Ljava/lang/Object;)J\n", classname);
+    JI("lconst_1", "");
+    JI("ladd", "");
+    J("    invokestatic %s/pl_term_int(J)[Ljava/lang/Object;\n", classname);
+    JI("aload_1", "");
+    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+    JI("ireturn", "");
+    J("pl_succ2_x_unbound:\n");
+    /* X unbound: X = Y-1; fail if Y-1 < 0 */
+    JI("aload_1", "");
+    J("    invokestatic %s/pl_int_val(Ljava/lang/Object;)J\n", classname);
+    JI("lconst_1", "");
+    JI("lsub", "");
+    JI("dup2", "");
+    JI("lstore_2", "");   /* save result */
+    JI("lconst_0", "");
+    JI("lcmp", "");
+    J("    iflt pl_succ2_neg\n");
+    JI("lload_2", "");
+    J("    invokestatic %s/pl_term_int(J)[Ljava/lang/Object;\n", classname);
+    JI("aload_0", "");
+    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+    JI("ireturn", "");
+    J("pl_succ2_neg:\n");
+    /* Y < 0: throw domain_error(not_less_than_zero, Y) */
+    /* Build error term: error(domain_error(not_less_than_zero, Y), context) */
+    JI("lload_2", "");
+    J("    invokestatic %s/pl_term_int(J)[Ljava/lang/Object;\n", classname); /* Y-1 as term */
+    /* domain_error(not_less_than_zero, Y-1+1) — actually Y is aload_1 */
+    JI("pop", ""); /* discard Y-1 term */
+    JI("aload_1", ""); /* Y term */
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    /* build domain_error(not_less_than_zero, Y) compound */
+    JI("bipush", "4"); JI("anewarray", "java/lang/Object");
+    JI("dup", ""); JI("iconst_0", ""); JI("ldc", "\"compound\""); JI("aastore", "");
+    JI("dup", ""); JI("iconst_1", ""); JI("ldc", "\"domain_error\""); JI("aastore", "");
+    JI("dup", ""); JI("iconst_2", "");
+    JI("ldc", "\"not_less_than_zero\"");
+    J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+    JI("aastore", "");
+    JI("dup", ""); JI("bipush", "3");
+    JI("aload_1", ""); J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("aastore", "");
+    JI("astore", "4"); /* save domain_error term in slot 4 (slots 2-3 = long) */
+    /* build error(domain_error(...), succ/2) compound */
+    JI("bipush", "4"); JI("anewarray", "java/lang/Object");
+    JI("dup", ""); JI("iconst_0", ""); JI("ldc", "\"compound\""); JI("aastore", "");
+    JI("dup", ""); JI("iconst_1", ""); JI("ldc", "\"error\""); JI("aastore", "");
+    JI("dup", ""); JI("iconst_2", ""); JI("aload", "4"); JI("aastore", "");
+    JI("dup", ""); JI("bipush", "3");
+    JI("ldc", "\"succ/2\"");
+    J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+    JI("aastore", "");
+    /* throw it */
+    J("    putstatic %s/pl_throw_term Ljava/lang/Object;\n", classname);
+    J("    new java/lang/RuntimeException\n");
+    JI("dup", ""); JI("ldc", "\"PROLOG_THROW\"");
+    J("    invokespecial java/lang/RuntimeException/<init>(Ljava/lang/String;)V\n");
+    J("    athrow\n");
+    J(".end method\n\n");
+
+    /* pl_plus_3(Object x, Object y, Object z) -> Z
+     * plus(?X, ?Y, ?Z): Z = X+Y (any two bound determines third).
+     * Returns 1 on success, 0 on failure. */
+    J("; pl_plus_3(Object x, Object y, Object z) -> Z\n");
+    J(".method static pl_plus_3(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)Z\n");
+    J("    .limit stack 8\n");
+    J("    .limit locals 8\n");
+    JI("aload_0", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("astore_0", "");
+    JI("aload_1", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("astore_1", "");
+    JI("aload_2", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("astore_2", "");
+    /* case: X var → Z = Y+? → need Y and Z bound: X = Z-Y */
+    JI("aload_0", "");
+    J("    invokestatic %s/pl_is_var(Ljava/lang/Object;)Z\n", classname);
+    J("    ifne pl_plus3_x_var\n");
+    /* X bound */
+    JI("aload_1", "");
+    J("    invokestatic %s/pl_is_var(Ljava/lang/Object;)Z\n", classname);
+    J("    ifne pl_plus3_y_var\n");
+    /* X and Y bound: Z = X+Y */
+    JI("aload_0", "");
+    J("    invokestatic %s/pl_int_val(Ljava/lang/Object;)J\n", classname);
+    JI("aload_1", "");
+    J("    invokestatic %s/pl_int_val(Ljava/lang/Object;)J\n", classname);
+    JI("ladd", "");
+    J("    invokestatic %s/pl_term_int(J)[Ljava/lang/Object;\n", classname);
+    JI("aload_2", "");
+    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+    JI("ireturn", "");
+    J("pl_plus3_y_var:\n");
+    /* X bound, Y var, Z must be bound: Y = Z-X */
+    JI("aload_2", "");
+    J("    invokestatic %s/pl_int_val(Ljava/lang/Object;)J\n", classname);
+    JI("aload_0", "");
+    J("    invokestatic %s/pl_int_val(Ljava/lang/Object;)J\n", classname);
+    JI("lsub", "");
+    J("    invokestatic %s/pl_term_int(J)[Ljava/lang/Object;\n", classname);
+    JI("aload_1", "");
+    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+    JI("ireturn", "");
+    J("pl_plus3_x_var:\n");
+    /* X var, Y and Z must be bound: X = Z-Y */
+    JI("aload_2", "");
+    J("    invokestatic %s/pl_int_val(Ljava/lang/Object;)J\n", classname);
+    JI("aload_1", "");
+    J("    invokestatic %s/pl_int_val(Ljava/lang/Object;)J\n", classname);
+    JI("lsub", "");
+    J("    invokestatic %s/pl_term_int(J)[Ljava/lang/Object;\n", classname);
+    JI("aload_0", "");
+    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+    JI("ireturn", "");
+    J(".end method\n\n");
+
+    /* ------------------------------------------------------------------
+     * pl_nb_setval_2(Object name, Object value) -> V
+     * nb_setval(+Name, +Value): store Value in global nb table under Name.
+     * Destructive (no trail). Always succeeds.
+     * ------------------------------------------------------------------ */
+    J("; pl_nb_setval_2(Object name, Object value) -> V\n");
+    J(".method static pl_nb_setval_2(Ljava/lang/Object;Ljava/lang/Object;)V\n");
+    J("    .limit stack 4\n");
+    J("    .limit locals 2\n");
+    /* deref name → String key */
+    JI("aload_0", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    J("    invokestatic %s/pl_atom_name(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+    /* deref value */
+    JI("aload_1", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    /* pl_nb.put(key, value) */
+    J("    getstatic %s/pl_nb Ljava/util/HashMap;\n", classname);
+    /* stack: key value map — need map key value */
+    JI("dup_x2", "");
+    JI("pop", "");
+    /* stack: map key value */
+    JI("invokevirtual", "java/util/HashMap/put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
+    JI("pop", "");
+    JI("return", "");
+    J(".end method\n\n");
+
+    /* ------------------------------------------------------------------
+     * pl_nb_getval_2(Object name, Object var) -> Z
+     * nb_getval(+Name, -Value): unify Value with stored term.
+     * Fails if Name not set.
+     * ------------------------------------------------------------------ */
+    J("; pl_nb_getval_2(Object name, Object var) -> Z\n");
+    J(".method static pl_nb_getval_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n");
+    J("    .limit stack 4\n");
+    J("    .limit locals 3\n");
+    /* key = atom_name(deref(name)) */
+    JI("aload_0", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    J("    invokestatic %s/pl_atom_name(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+    J("    astore_2\n");
+    /* val = pl_nb.get(key) */
+    J("    getstatic %s/pl_nb Ljava/util/HashMap;\n", classname);
+    J("    aload_2\n");
+    JI("invokevirtual", "java/util/HashMap/get(Ljava/lang/Object;)Ljava/lang/Object;");
+    JI("dup", "");
+    J("    ifnonnull pl_nb_getval_found\n");
+    JI("pop", "");
+    JI("iconst_0", "");
+    JI("ireturn", "");
+    J("pl_nb_getval_found:\n");
+    /* unify val with arg1 */
+    JI("aload_1", "");
+    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+    JI("ireturn", "");
+    J(".end method\n\n");
+
+    /* ------------------------------------------------------------------
+     * pl_succ_or_zero_2(Object x, Object y) -> Z
+     * succ_or_zero(+X, ?Y): Y = max(0, X-1).
+     * X must be bound non-negative integer. Y unified with result.
+     * ------------------------------------------------------------------ */
+    J("; pl_succ_or_zero_2(Object x, Object y) -> Z\n");
+    J(".method static pl_succ_or_zero_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n");
+    J("    .limit stack 6\n");
+    J("    .limit locals 4\n");
+    JI("aload_0", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    J("    invokestatic %s/pl_int_val(Ljava/lang/Object;)J\n", classname);
+    JI("lstore_2", "");       /* local 2-3 = x (long) */
+    JI("lload_2", "");
+    JI("lconst_0", "");
+    JI("lcmp", "");
+    J("    ifle pl_soz_zero\n");
+    /* x > 0: result = x - 1 */
+    JI("lload_2", "");
+    JI("lconst_1", "");
+    JI("lsub", "");
+    J("    invokestatic %s/pl_term_int(J)[Ljava/lang/Object;\n", classname);
+    JI("aload_1", "");
+    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+    JI("ireturn", "");
+    J("pl_soz_zero:\n");
+    /* x <= 0: result = 0 */
+    JI("lconst_0", "");
+    J("    invokestatic %s/pl_term_int(J)[Ljava/lang/Object;\n", classname);
+    JI("aload_1", "");
+    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+    JI("ireturn", "");
+    J(".end method\n\n");
+
+    /* ------------------------------------------------------------------
+     * pl_format_2(Object fmt, Object arglist) -> V
+     * Implements format/1 (pass nil as arglist) and format/2.
+     * Directives: ~w ~a ~d (write term/int), ~n (newline), ~i (ignore).
+     * locals: 0=fmt 1=arglist 2=fmtstr(String) 3=len(int)
+     *         4=i(int) 5=ch(int) 6=head(Object)
+     * ------------------------------------------------------------------ */
+    J("; pl_format_2(Object fmt, Object arglist) -> V\n");
+    J(".method static pl_format_2(Ljava/lang/Object;Ljava/lang/Object;)V\n");
+    J("    .limit stack 6\n");
+    J("    .limit locals 7\n");
+    /* deref fmt, extract name string */
+    JI("aload_0", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("astore_0", "");
+    JI("aload_0", "");
+    J("    invokestatic %s/pl_atom_name(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+    JI("astore_2", "");      /* fmtstr */
+    JI("aload_2", "");
+    JI("invokevirtual", "java/lang/String/length()I");
+    JI("istore_3", "");      /* len */
+    JI("iconst_0", "");
+    JI("istore", "4");       /* i = 0 */
+    J("pjfmt_loop:\n");
+    JI("iload", "4");
+    JI("iload_3", "");
+    JI("if_icmpge", "pjfmt_done");
+    JI("aload_2", "");
+    JI("iload", "4");
+    JI("invokevirtual", "java/lang/String/charAt(I)C");
+    JI("istore", "5");       /* ch */
+    /* if ch != '~' goto plain */
+    JI("iload", "5");
+    JI("bipush", "126");
+    JI("if_icmpne", "pjfmt_plain");
+    /* tilde: consume it, read next */
+    JI("iinc", "4 1");
+    JI("iload", "4");
+    JI("iload_3", "");
+    JI("if_icmpge", "pjfmt_done");
+    JI("aload_2", "");
+    JI("iload", "4");
+    JI("invokevirtual", "java/lang/String/charAt(I)C");
+    JI("istore", "5");
+    /* dispatch on directive */
+    JI("iload", "5"); JI("bipush", "119"); JI("if_icmpeq", "pjfmt_write"); /* w */
+    JI("iload", "5"); JI("bipush", "97");  JI("if_icmpeq", "pjfmt_write"); /* a */
+    JI("iload", "5"); JI("bipush", "100"); JI("if_icmpeq", "pjfmt_write"); /* d */
+    JI("iload", "5"); JI("bipush", "105"); JI("if_icmpeq", "pjfmt_ignore");/* i */
+    JI("iload", "5"); JI("bipush", "110"); JI("if_icmpeq", "pjfmt_nl");    /* n */
+    /* unknown: skip */
+    JI("iinc", "4 1");
+    JI("goto", "pjfmt_loop");
+
+    J("pjfmt_write:\n");
+    /* head = car(arglist) */
+    JI("aload_1", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_2", ""); JI("aaload", "");   /* args[2] = head */
+    JI("astore", "6");
+    /* arglist = cdr(arglist) */
+    JI("aload_1", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("bipush", "3"); JI("aaload", "");    /* args[3] = tail */
+    JI("astore_1", "");
+    JI("aload", "6");
+    J("    invokestatic %s/pl_write(Ljava/lang/Object;)V\n", classname);
+    JI("iinc", "4 1");
+    JI("goto", "pjfmt_loop");
+
+    J("pjfmt_ignore:\n");
+    /* advance arglist, discard head */
+    JI("aload_1", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("bipush", "3"); JI("aaload", "");
+    JI("astore_1", "");
+    JI("iinc", "4 1");
+    JI("goto", "pjfmt_loop");
+
+    J("pjfmt_nl:\n");
+    JI("getstatic", "java/lang/System/out Ljava/io/PrintStream;");
+    JI("invokevirtual", "java/io/PrintStream/println()V");
+    JI("iinc", "4 1");
+    JI("goto", "pjfmt_loop");
+
+    J("pjfmt_plain:\n");
+    JI("getstatic", "java/lang/System/out Ljava/io/PrintStream;");
+    JI("iload", "5");
+    JI("i2c", "");
+    JI("invokestatic", "java/lang/Character/toString(C)Ljava/lang/String;");
+    JI("invokevirtual", "java/io/PrintStream/print(Ljava/lang/String;)V");
+    JI("iinc", "4 1");
+    JI("goto", "pjfmt_loop");
+
+    J("pjfmt_done:\n");
+    JI("return", "");
+    J(".end method\n\n");
+
+    /* ------------------------------------------------------------------
+     * pl_numbervars_walk(Object term, int[] counter) -> V
+     * Recursive tree walk for numbervars.
+     * Binds each unbound var to '$VAR'(N) and increments counter[0].
+     * locals: 0=term(Object) 1=counter(int[]) 2=tag(Object) 3=arity(int) 4=i(int)
+     * ------------------------------------------------------------------ */
+    J("; pl_numbervars_walk(Object term, int[] counter) -> V\n");
+    J(".method static pl_numbervars_walk(Ljava/lang/Object;[I)V\n");
+    J("    .limit stack 8\n");
+    J("    .limit locals 6\n");
+    /* deref term */
+    JI("aload_0", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("astore_0", "");
+    /* get tag */
+    JI("aload_0", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_0", ""); JI("aaload", "");
+    JI("astore_2", "");
+    /* if tag == "var" → bind to '$VAR'(counter[0]) */
+    JI("aload_2", "");
+    JI("ldc", "\"var\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pjnv_not_var");
+    /* check [1] is null (unbound) */
+    JI("aload_0", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", ""); JI("aaload", "");
+    JI("ifnonnull", "pjnv_done");  /* already bound, skip */
+    /* build '$VAR'(N) compound: ["compound","$VAR", int_term(counter[0])] */
+    JI("aload_1", "");  /* counter */
+    JI("iconst_0", ""); JI("iaload", "");  /* counter[0] */
+    JI("istore_3", "");  /* local3 = n */
+    /* make int term for n */
+    JI("iload_3", "");
+    JI("i2l", "");
+    J("    invokestatic %s/pl_term_int(J)[Ljava/lang/Object;\n", classname);
+    JI("astore", "4");  /* local4 = int_term */
+    /* build ["compound","$VAR",int_term] */
+    JI("bipush", "3"); JI("anewarray", "java/lang/Object");
+    JI("dup", ""); JI("iconst_0", ""); JI("ldc", "\"compound\""); JI("aastore", "");
+    JI("dup", ""); JI("iconst_1", ""); JI("ldc", "\"$VAR\""); JI("aastore", "");
+    JI("dup", ""); JI("iconst_2", ""); JI("aload", "4"); JI("aastore", "");
+    JI("astore", "5");  /* local5 = $VAR compound */
+    /* bind: turn var into a ref pointing at $VAR compound */
+    /* var_cell[0] = "ref" */
+    JI("aload_0", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_0", "");
+    JI("ldc", "\"ref\"");
+    JI("aastore", "");
+    /* var_cell[1] = $VAR compound */
+    JI("aload_0", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", "");
+    JI("aload", "5");
+    JI("aastore", "");
+    /* counter[0]++ */
+    JI("aload_1", "");
+    JI("iconst_0", "");
+    JI("aload_1", ""); JI("iconst_0", ""); JI("iaload", "");
+    JI("iconst_1", ""); JI("iadd", "");
+    JI("iastore", "");
+    JI("goto", "pjnv_done");
+
+    J("pjnv_not_var:\n");
+    /* if tag == "compound" → recurse into args */
+    JI("aload_2", "");
+    JI("ldc", "\"compound\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pjnv_done");
+    /* arity = arraylength - 2 */
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("arraylength", ""); JI("iconst_2", ""); JI("isub", "");
+    JI("istore_3", "");  /* local3 = arity */
+    JI("iconst_0", ""); JI("istore", "4");  /* i = 0 */
+    J("pjnv_arg_loop:\n");
+    JI("iload", "4"); JI("iload_3", ""); JI("if_icmpge", "pjnv_done");
+    JI("aload_0", ""); JI("checkcast", "[Ljava/lang/Object;");
+    JI("iload", "4"); JI("iconst_2", ""); JI("iadd", ""); JI("aaload", "");
+    JI("aload_1", "");
+    J("    invokestatic %s/pl_numbervars_walk(Ljava/lang/Object;[I)V\n", classname);
+    JI("iinc", "4 1");
+    JI("goto", "pjnv_arg_loop");
+
+    J("pjnv_done:\n");
+    JI("return", "");
+    J(".end method\n\n");
+
+    /* ------------------------------------------------------------------
+     * pl_numbervars_3(Object term, Object start, Object end) -> Z
+     * numbervars(+Term, +Start, -End)
+     * locals: 0=term 1=start 2=end 3=counter(int[1]) 4=final_n
+     * ------------------------------------------------------------------ */
+    J("; pl_numbervars_3(Object term, Object start, Object end) -> Z\n");
+    J(".method static pl_numbervars_3(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)Z\n");
+    J("    .limit stack 6\n");
+    J("    .limit locals 5\n");
+    /* counter = new int[1]; counter[0] = pl_int_val(deref(start)) */
+    JI("aload_1", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    J("    invokestatic %s/pl_int_val(Ljava/lang/Object;)J\n", classname);
+    JI("l2i", "");
+    JI("iconst_1", ""); JI("newarray", "int");
+    JI("dup_x1", "");
+    JI("swap", "");
+    JI("iconst_0", ""); JI("swap", ""); JI("iastore", "");
+    JI("astore_3", "");  /* counter */
+    /* walk */
+    JI("aload_0", ""); JI("aload_3", "");
+    J("    invokestatic %s/pl_numbervars_walk(Ljava/lang/Object;[I)V\n", classname);
+    /* build int term for counter[0] */
+    JI("aload_3", ""); JI("iconst_0", ""); JI("iaload", "");
+    JI("i2l", "");
+    J("    invokestatic %s/pl_term_int(J)[Ljava/lang/Object;\n", classname);
+    /* unify with end */
+    JI("aload_2", "");
+    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+    JI("ireturn", "");
+    J(".end method\n\n");
+
+    /* ------------------------------------------------------------------
+     * pl_char_type_2(Object ch, Object type) -> Z
+     * char_type(+Char, +Type): tests/queries character properties.
+     * Supported types: α, alnum, digit, digit(V), space, white,
+     *   end_of_line, upper, upper(L), lower, lower(U),
+     *   to_upper(U), to_lower(L), ascii(Code).
+     * locals:
+     *   0 = ch (Object)   1 = type (Object)
+     *   2 = ch_str (String) 3 = ch_char (char/int)
+     *   4 = type_name (String) 5 = scratch (Object)
+     * ------------------------------------------------------------------ */
+    J("; pl_char_type_2(Object ch, Object type) -> Z\n");
+    J(".method static pl_char_type_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n");
+    J("    .limit stack 6\n");
+    J("    .limit locals 6\n");
+    /* deref ch → get char string */
+    JI("aload_0", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("astore_0", "");
+    JI("aload_0", "");
+    J("    invokestatic %s/pl_atom_name(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+    JI("astore_2", "");  /* ch_str */
+    /* ch_char = ch_str.charAt(0) */
+    JI("aload_2", "");
+    JI("iconst_0", "");
+    JI("invokevirtual", "java/lang/String/charAt(I)C");
+    JI("istore_3", "");  /* ch_char (int) */
+    /* deref type */
+    JI("aload_1", "");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("astore_1", "");
+    /* get type tag */
+    JI("aload_1", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_0", ""); JI("aaload", "");
+    /* if tag == "compound" → has argument (digit(V), upper(L), etc.) */
+    JI("ldc", "\"compound\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifne", "pjct_compound_type");
+    /* atom type: get name */
+    JI("aload_1", "");
+    J("    invokestatic %s/pl_atom_name(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+    JI("astore", "4");  /* type_name */
+
+    /* α */
+    JI("aload", "4"); JI("ldc", "\"alpha\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pjct_try_alnum");
+    JI("iload_3", "");
+    JI("invokestatic", "java/lang/Character/isLetter(C)Z");
+    JI("ireturn", "");
+
+    J("pjct_try_alnum:\n");
+    JI("aload", "4"); JI("ldc", "\"alnum\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pjct_try_digit");
+    JI("iload_3", "");
+    JI("invokestatic", "java/lang/Character/isLetterOrDigit(C)Z");
+    JI("ireturn", "");
+
+    J("pjct_try_digit:\n");
+    JI("aload", "4"); JI("ldc", "\"digit\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pjct_try_space");
+    JI("iload_3", "");
+    JI("invokestatic", "java/lang/Character/isDigit(C)Z");
+    JI("ireturn", "");
+
+    J("pjct_try_space:\n");
+    JI("aload", "4"); JI("ldc", "\"space\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pjct_try_white");
+    JI("iload_3", "");
+    JI("invokestatic", "java/lang/Character/isWhitespace(C)Z");
+    JI("ireturn", "");
+
+    J("pjct_try_white:\n");
+    JI("aload", "4"); JI("ldc", "\"white\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pjct_try_eol");
+    JI("iload_3", "");
+    JI("invokestatic", "java/lang/Character/isWhitespace(C)Z");
+    JI("ireturn", "");
+
+    J("pjct_try_eol:\n");
+    JI("aload", "4"); JI("ldc", "\"end_of_line\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pjct_try_upper");
+    /* end_of_line: ch == '\n' (10) or '\r' (13) */
+    JI("iload_3", ""); JI("bipush", "10"); JI("if_icmpeq", "pjct_true");
+    JI("iload_3", ""); JI("bipush", "13"); JI("if_icmpeq", "pjct_true");
+    JI("iconst_0", ""); JI("ireturn", "");
+
+    J("pjct_try_upper:\n");
+    JI("aload", "4"); JI("ldc", "\"upper\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pjct_try_lower");
+    JI("iload_3", "");
+    JI("invokestatic", "java/lang/Character/isUpperCase(C)Z");
+    JI("ireturn", "");
+
+    J("pjct_try_lower:\n");
+    JI("aload", "4"); JI("ldc", "\"lower\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pjct_fail");
+    JI("iload_3", "");
+    JI("invokestatic", "java/lang/Character/isLowerCase(C)Z");
+    JI("ireturn", "");
+
+    J("pjct_true:\n");
+    JI("iconst_1", ""); JI("ireturn", "");
+    J("pjct_fail:\n");
+    JI("iconst_0", ""); JI("ireturn", "");
+
+    /* compound type: functor + 1 arg */
+    J("pjct_compound_type:\n");
+    JI("aload_1", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", ""); JI("aaload", "");
+    JI("checkcast", "java/lang/String");
+    JI("astore", "4");  /* type functor name */
+
+    /* digit(V): unify V with numeric value */
+    JI("aload", "4"); JI("ldc", "\"digit\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pjct_try_upper_l");
+    JI("iload_3", "");
+    JI("invokestatic", "java/lang/Character/isDigit(C)Z");
+    JI("ifeq", "pjct_fail");
+    /* value = ch - '0' */
+    JI("iload_3", ""); JI("bipush", "48"); JI("isub", "");
+    JI("i2l", "");
+    J("    invokestatic %s/pl_term_int(J)[Ljava/lang/Object;\n", classname);
+    JI("aload_1", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_2", ""); JI("aaload", "");  /* arg of digit(V) */
+    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+    JI("ireturn", "");
+
+    /* upper(L): ch is upper, L is lower version */
+    J("pjct_try_upper_l:\n");
+    JI("aload", "4"); JI("ldc", "\"upper\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pjct_try_lower_u");
+    JI("iload_3", "");
+    JI("invokestatic", "java/lang/Character/isUpperCase(C)Z");
+    JI("ifeq", "pjct_fail");
+    /* build atom for toLowerCase(ch) */
+    JI("iload_3", "");
+    JI("invokestatic", "java/lang/Character/toLowerCase(C)C");
+    JI("invokestatic", "java/lang/Character/toString(C)Ljava/lang/String;");
+    J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+    JI("aload_1", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_2", ""); JI("aaload", "");
+    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+    JI("ireturn", "");
+
+    /* lower(U): ch is lower, U is upper version */
+    J("pjct_try_lower_u:\n");
+    JI("aload", "4"); JI("ldc", "\"lower\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pjct_try_to_upper");
+    JI("iload_3", "");
+    JI("invokestatic", "java/lang/Character/isLowerCase(C)Z");
+    JI("ifeq", "pjct_fail");
+    JI("iload_3", "");
+    JI("invokestatic", "java/lang/Character/toUpperCase(C)C");
+    JI("invokestatic", "java/lang/Character/toString(C)Ljava/lang/String;");
+    J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+    JI("aload_1", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_2", ""); JI("aaload", "");
+    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+    JI("ireturn", "");
+
+    /* to_upper(U): unify U with uppercase of ch (always succeeds) */
+    J("pjct_try_to_upper:\n");
+    JI("aload", "4"); JI("ldc", "\"to_upper\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pjct_try_to_lower");
+    JI("iload_3", "");
+    JI("invokestatic", "java/lang/Character/toUpperCase(C)C");
+    JI("invokestatic", "java/lang/Character/toString(C)Ljava/lang/String;");
+    J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+    JI("aload_1", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_2", ""); JI("aaload", "");
+    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+    JI("ireturn", "");
+
+    /* to_lower(L): unify L with lowercase of ch (always succeeds) */
+    J("pjct_try_to_lower:\n");
+    JI("aload", "4"); JI("ldc", "\"to_lower\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pjct_try_ascii");
+    JI("iload_3", "");
+    JI("invokestatic", "java/lang/Character/toLowerCase(C)C");
+    JI("invokestatic", "java/lang/Character/toString(C)Ljava/lang/String;");
+    J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+    JI("aload_1", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_2", ""); JI("aaload", "");
+    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+    JI("ireturn", "");
+
+    /* ascii(Code): unify Code with char code */
+    J("pjct_try_ascii:\n");
+    JI("aload", "4"); JI("ldc", "\"ascii\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    JI("ifeq", "pjct_fail");
+    JI("iload_3", "");
+    JI("i2l", "");
+    J("    invokestatic %s/pl_term_int(J)[Ljava/lang/Object;\n", classname);
+    JI("aload_1", "");
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_2", ""); JI("aaload", "");
+    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+    JI("ireturn", "");
+    J(".end method\n\n");
+
+    /* pl_atom_string_2(Object a, Object s) -> Z
+     * atom_string/2: bidirectional atom<->string (strings treated as atoms).
+     * Forward (atom bound): extract name, box as atom, unify with s.
+     * Reverse (atom unbound): deref s, extract name, box as atom, unify with a. */
+    J("; pl_atom_string_2\n");
+    J(".method static pl_atom_string_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n");
+    J("    .limit stack 4\n");
+    J("    .limit locals 4\n");
+    J("    aload_0\n");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    J("    checkcast [Ljava/lang/Object;\n");
+    J("    astore_2\n");
+    J("    aload_2\n");
+    J("    iconst_0\n");
+    J("    aaload\n");
+    J("    ldc \"var\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ifne as2_rev\n");
+    J("    aload_2\n");
+    J("    invokestatic %s/pl_atom_name(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+    J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+    J("    aload_1\n");
+    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+    J("    ireturn\n");
+    J("as2_rev:\n");
+    J("    aload_1\n");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    J("    checkcast [Ljava/lang/Object;\n");
+    J("    astore_3\n");
+    J("    aload_3\n");
+    J("    invokestatic %s/pl_atom_name(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+    J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+    J("    aload_0\n");
+    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+    J("    ireturn\n");
+    J(".end method\n\n");
+
+    /* pl_number_string_2(Object n, Object s) -> Z
+     * number_string/2: bidirectional.
+     * Forward (n bound): convert to string atom, unify with s.
+     * Reverse (n unbound): parse string, build int term, unify with n. */
+    J("; pl_number_string_2\n");
+    J(".method static pl_number_string_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n");
+    J("    .limit stack 4\n");
+    J("    .limit locals 5\n");
+    J("    aload_0\n");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    J("    checkcast [Ljava/lang/Object;\n");
+    J("    astore_2\n");
+    J("    aload_2\n");
+    J("    iconst_0\n");
+    J("    aaload\n");
+    J("    ldc \"var\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ifne ns2_rev\n");
+    J("    aload_2\n");
+    J("    invokestatic %s/pl_atom_name(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+    J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+    J("    aload_1\n");
+    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+    J("    ireturn\n");
+    J("ns2_rev:\n");
+    J("    aload_1\n");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    J("    astore_3\n");
+    J("    aload_3\n");
+    J("    invokestatic %s/pl_atom_name(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+    J("    astore 4\n");
+    J("    aload 4\n");
+    J("    invokestatic java/lang/Long/parseLong(Ljava/lang/String;)J\n");
+    J("    invokestatic %s/pl_term_int(J)[Ljava/lang/Object;\n", classname);
+    J("    aload_0\n");
+    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+    J("    ireturn\n");
+    J(".end method\n\n");
+
+    /* pl_term_to_atom_2(Object term, Object atom_or_var) -> Z
+     * term_to_atom/2 and term_string/2 — forward only (term bound).
+     * Converts term to its write-representation string, boxes as atom, unifies. */
+    J("; pl_term_to_atom_2\n");
+    J(".method static pl_term_to_atom_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n");
+    J("    .limit stack 4\n");
+    J("    .limit locals 2\n");
+    J("    aload_0\n");
+    J("    invokestatic %s/pl_term_str(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+    J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+    J("    aload_1\n");
+    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+    J("    ireturn\n");
+    J(".end method\n\n");
+
+    /* pl_alc_sep(Object list, String sep) -> String
+     * Walk a Prolog list of atoms/numbers, concat with separator string.
+     * locals: 0=list(Object) 1=sep(String) 2=sb(StringBuilder) 3=cur(Object) 4=first(I) */
+    J("; pl_alc_sep(Object list, String sep) -> String\n");
+    J(".method static pl_alc_sep(Ljava/lang/Object;Ljava/lang/String;)Ljava/lang/String;\n");
+    J("    .limit stack 6\n");
+    J("    .limit locals 5\n");
+    J("    new java/lang/StringBuilder\n");
+    J("    dup\n");
+    J("    invokespecial java/lang/StringBuilder/<init>()V\n");
+    J("    astore_2\n");
+    J("    iconst_1\n");  /* first = 1 */
+    J("    istore 4\n");
+    J("    aload_0\n");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    J("    astore_3\n");
+    J("alcs_loop:\n");
+    J("    aload_3\n");
+    J("    checkcast [Ljava/lang/Object;\n");
+    J("    iconst_1\n");
+    J("    aaload\n");  /* tag/name field */
+    J("    ldc \"[]\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ifne alcs_done\n");
+    /* not first: append separator */
+    J("    iload 4\n");
+    J("    ifne alcs_skip_sep\n");
+    J("    aload_2\n");
+    J("    aload_1\n");
+    J("    invokevirtual java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;\n");
+    J("    pop\n");
+    J("alcs_skip_sep:\n");
+    J("    iconst_0\n");
+    J("    istore 4\n");
+    /* head = field[2] */
+    J("    aload_3\n");
+    J("    checkcast [Ljava/lang/Object;\n");
+    J("    iconst_2\n");
+    J("    aaload\n");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    J("    invokestatic %s/pl_atom_name(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+    J("    aload_2\n");
+    J("    swap\n");
+    J("    invokevirtual java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;\n");
+    J("    pop\n");
+    /* tail = field[3] */
+    J("    aload_3\n");
+    J("    checkcast [Ljava/lang/Object;\n");
+    J("    bipush 3\n");
+    J("    aaload\n");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    J("    astore_3\n");
+    J("    goto alcs_loop\n");
+    J("alcs_done:\n");
+    J("    aload_2\n");
+    J("    invokevirtual java/lang/StringBuilder/toString()Ljava/lang/String;\n");
+    J("    areturn\n");
+    J(".end method\n\n");
+}
+
+/* -------------------------------------------------------------------------
+ * Class-level scaffold: header + <clinit>
+ * ------------------------------------------------------------------------- */
+
+static void pl_emit_class_header(void) {
+    J(".class public %s\n", classname);
+    J(".super java/lang/Object\n\n");
+    JC("Trail field");
+    J(".field static pl_trail Ljava/util/ArrayList;\n\n");
+    JC("M-PJ-EXCEPTIONS — throw/catch term carrier");
+    J(".field static pl_throw_term Ljava/lang/Object;\n\n");
+    JC("Dynamic DB field: HashMap<String, ArrayList<Object[]>>");
+    J(".field static pl_db Ljava/util/HashMap;\n\n");
+    JC("Global nb_setval/nb_getval store: HashMap<String, Object[]>");
+    J(".field static pl_nb Ljava/util/HashMap;\n\n");
+
+    /* <clinit> — init trail, dynamic DB, and nb store */
+    J(".method static <clinit>()V\n");
+    J("    .limit stack 3\n");
+    J("    .limit locals 0\n");
+    JI("new", "java/util/ArrayList");
+    JI("dup", "");
+    JI("invokespecial", "java/util/ArrayList/<init>()V");
+    J("    putstatic %s/pl_trail Ljava/util/ArrayList;\n", classname);
+    JI("new", "java/util/HashMap");
+    JI("dup", "");
+    JI("invokespecial", "java/util/HashMap/<init>()V");
+    J("    putstatic %s/pl_db Ljava/util/HashMap;\n", classname);
+    JI("new", "java/util/HashMap");
+    JI("dup", "");
+    JI("invokespecial", "java/util/HashMap/<init>()V");
+    J("    putstatic %s/pl_nb Ljava/util/HashMap;\n", classname);
+    JI("return", "");
+    J(".end method\n\n");
+}
+
+/* -------------------------------------------------------------------------
+ * Forward declarations for goal/term emitters
+ * ------------------------------------------------------------------------- */
+
+static void pl_emit_goal(EXPR_t *goal, const char *lbl_γ, const char *lbl_ω,
+                         int trail_local, int *var_locals, int n_vars,
+                         int cut_cs_seal, int cs_local_for_cut,
+                         int *next_local, const char *lbl_cutγ);
+static void pl_emit_term(EXPR_t *term, int *var_locals, int n_vars);
+static void pl_emit_arith(EXPR_t *e, int *var_locals, int n_vars);
+static void pl_emit_arith_as_term(EXPR_t *e, int *var_locals, int n_vars);
+static void pl_emit_arith_as_double(EXPR_t *e, int *var_locals, int n_vars);
+static void pl_emit_arith_as_term(EXPR_t *e, int *var_locals, int n_vars);
+
+/* pl_arith_is_float — returns 1 if arithmetic expression produces a float result */
+/* pl_emit_dbl_const — emit a double constant onto the JVM stack as D.
+ * Jasmin truncates ldc2_w decimal literals to float32, so we use the raw
+ * bit pattern: ldc2_w <longbits> then longBitsToDouble. */
+static void pl_emit_dbl_const(double v) {
+    /* reinterpret double bits as long */
+    long long bits;
+    memcpy(&bits, &v, sizeof bits);
+    J("    ldc2_w %lld\n", (long long)bits);
+    JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+}
+
+static int pl_arith_is_float(EXPR_t *e) {
+    if (!e) return 0;
+    if (e->kind == E_FLIT) return 1;
+    if (e->kind == E_FNC && e->sval) {
+        const char *fn = e->sval;
+        /* these always produce float regardless of input */
+        if (strcmp(fn,"sqrt")==0 || strcmp(fn,"sin")==0 || strcmp(fn,"cos")==0 ||
+            strcmp(fn,"tan")==0  || strcmp(fn,"exp")==0 || strcmp(fn,"log")==0 ||
+            strcmp(fn,"atan")==0 || strcmp(fn,"atan2")==0 || strcmp(fn,"float")==0 ||
+            strcmp(fn,"float_integer_part")==0 ||
+            strcmp(fn,"asin")==0 || strcmp(fn,"acos")==0 ||
+            strcmp(fn,"sinh")==0 || strcmp(fn,"cosh")==0 || strcmp(fn,"tanh")==0 ||
+            strcmp(fn,"asinh")==0 || strcmp(fn,"acosh")==0 || strcmp(fn,"atanh")==0 ||
+            strcmp(fn,"pi")==0   || strcmp(fn,"e")==0 ||
+            strcmp(fn,"nan")==0  || strcmp(fn,"inf")==0 || strcmp(fn,"infinity")==0)
+            return 1;
+        /* float_fractional_part: float if arg is float, integer (0) if arg is integer */
+        if (strcmp(fn,"float_fractional_part")==0)
+            return (e->nchildren==1) ? pl_arith_is_float(e->children[0]) : 0;
+        /* copysign: result type follows magnitude (first arg) */
+        if (strcmp(fn,"copysign")==0 && e->nchildren==2)
+            return pl_arith_is_float(e->children[0]);
+        /* sign: result type follows arg type */
+        if (strcmp(fn,"sign")==0 && e->nchildren==1)
+            return pl_arith_is_float(e->children[0]);
+        /* these always produce integer regardless of input */
+        if (strcmp(fn,"truncate")==0 || strcmp(fn,"integer")==0 ||
+            strcmp(fn,"round")==0    || strcmp(fn,"ceiling")==0 || strcmp(fn,"ceil")==0 ||
+            strcmp(fn,"floor")==0    || strcmp(fn,"gcd")==0)
+            return 0;
+    }
+    /* propagate: if any child is float, result is float */
+    for (int i = 0; i < (int)e->nchildren; i++)
+        if (pl_arith_is_float(e->children[i])) return 1;
+    return 0;
+}
+
+/* pl_arith_is_mixed_minmax — returns 1 if e is min/max with one int and one float arg.
+ * These need the pl_min_mixed/pl_max_mixed runtime helper to preserve result type. */
+static int pl_arith_is_mixed_minmax(EXPR_t *e) {
+    if (!e || !e->sval || e->nchildren != 2) return 0;
+    if (strcmp(e->sval,"min")!=0 && strcmp(e->sval,"max")!=0) return 0;
+    int lf = pl_arith_is_float(e->children[0]);
+    int rf = pl_arith_is_float(e->children[1]);
+    return (lf != rf);  /* exactly one is float */
+}
+
+
+/* pl_arith_has_var — returns 1 if expression contains a runtime variable.
+ * When true, =:= etc. must use pl_num_cmp for correct type handling. */
+static int pl_arith_has_var(EXPR_t *e) {
+    if (!e) return 0;
+    if (e->kind == E_VAR) return 1;
+    for (int i = 0; i < (int)e->nchildren; i++)
+        if (pl_arith_has_var(e->children[i])) return 1;
+    return 0;
+}
+
+
+/* M-PJ-CUT-UCALL: forward decls for callee cut-sentinel helpers */
+static int pl_predicate_base_nclauses(const char *fn, int arity);
+static int pl_callee_has_cut_no_last_ucall(const char *fn, int arity);
+
+/* -------------------------------------------------------------------------
+ * Term emitter — leaves Object[] on JVM stack
+ * Locals layout (per-clause method):
+ *   local 0..n_args-1  = head args (Object[])
+ *   local n_args..n_vars-1 = body vars (Object[])
+ *   local n_vars       = trail mark (I)
+ * var_locals[slot] = JVM local index for that Prolog variable
+ * ------------------------------------------------------------------------- */
+
+static void pl_emit_term(EXPR_t *e, int *var_locals, int n_vars) {
+    if (!e) { JI("aconst_null", ""); return; }
+    switch (e->kind) {
+    case E_QLIT: {
+        /* atom — push atom term */
+        intern_atom(e->sval ? e->sval : "");
+        ldc_str(e->sval ? e->sval : "");
+        J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n",
+          classname);
+        break;
+    }
+    case E_ILIT: {
+        J("    ldc2_w %ld\n", e->ival);
+        J("    invokestatic %s/pl_term_int(J)[Ljava/lang/Object;\n", classname);
+        break;
+    }
+    case E_FLIT: {
+        pl_emit_dbl_const(e->dval);   /* push double constant */
+        J("    invokestatic %s/pl_term_float(D)[Ljava/lang/Object;\n", classname);
+        break;
+    }
+    case E_VAR: {
+        int slot = e->ival;
+        if (slot >= 0 && slot < n_vars && var_locals) {
+            J("    aload %d\n", var_locals[slot]);
+        } else {
+            /* anonymous wildcard _ (slot=-1): allocate fresh unbound var cell.
+             * aconst_null would break unification — every _ must be a distinct
+             * fresh variable so it unifies with anything without binding anything
+             * the caller cares about. */
+            J("    invokestatic %s/pl_term_var()[Ljava/lang/Object;\n", classname);
+        }
+        break;
+    }
+    case E_FNC: {
+        /* compound term f(arg0, arg1, ...) — flat Object[] encoding:
+         * [0]="compound", [1]=functor_string, [2..2+arity-1]=args */
+        int arity = e->nchildren;
+        if (arity == 0) {
+            /* arity-0 compound = atom */
+            ldc_str(e->sval ? e->sval : "");
+            J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n",
+              classname);
+        } else {
+            /* allocate array of size 2+arity */
+            J("    bipush %d\n", 2 + arity);
+            JI("anewarray", "java/lang/Object");
+            /* [0] = "compound" */
+            JI("dup", "");
+            JI("iconst_0", "");
+            JI("ldc", "\"compound\"");
+            JI("aastore", "");
+            /* [1] = functor string */
+            JI("dup", "");
+            JI("iconst_1", "");
+            ldc_str(e->sval ? e->sval : "");
+            JI("aastore", "");
+            /* [2..] = args */
+            for (int ai = 0; ai < arity; ai++) {
+                JI("dup", "");
+                J("    bipush %d\n", 2 + ai);
+                pl_emit_term(e->children[ai], var_locals, n_vars);
+                JI("aastore", "");
+            }
+        }
+        break;
+    }
+    case E_ADD: case E_SUB: case E_MUL: case E_DIV: {
+        /* Arithmetic op node in TERM position (e.g. write(X-Y), write(A+B)).
+         * Lowerer maps -/+/* to E_SUB/E_ADD/E_MUL unconditionally.
+         * In term position emit as compound so write/1 and unification work. */
+        const char *afn = (e->kind==E_ADD)?"+": (e->kind==E_SUB)?"-":
+                          (e->kind==E_MUL)?"*": "/";
+        int arity = e->nchildren;
+        if (arity == 0) {
+            J("    ldc \"%s\"\n", afn);
+            J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n",
+              classname);
+        } else {
+            J("    bipush %d\n", 2 + arity);
+            JI("anewarray", "java/lang/Object");
+            JI("dup",""); JI("iconst_0",""); JI("ldc","\"compound\""); JI("aastore","");
+            JI("dup",""); JI("iconst_1","");
+            J("    ldc \"%s\"\n", afn);
+            JI("aastore","");
+            for (int ai = 0; ai < arity; ai++) {
+                JI("dup","");
+                J("    bipush %d\n", 2 + ai);
+                pl_emit_term(e->children[ai], var_locals, n_vars);
+                JI("aastore","");
+            }
+        }
+        break;
+    }
+    default:
+        JI("aconst_null", "");
+        break;
+    }
+}
+
+/* -------------------------------------------------------------------------
+ * Arithmetic emitter for is/2 RHS — mirrors emit_byrd_jvm.c arith pattern
+ * Leaves long on stack.
+ * ------------------------------------------------------------------------- */
+
+static void pl_emit_arith(EXPR_t *e, int *var_locals, int n_vars) {
+    if (!e) { JI("lconst_0", ""); return; }
+    switch (e->kind) {
+    case E_ILIT:
+        J("    ldc2_w %ld\n", e->ival);
+        break;
+    case E_FLIT:
+        /* float literal: push as double, convert to long bits */
+        pl_emit_dbl_const(e->dval);
+        JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+        break;
+    case E_VAR: {
+        int slot = e->ival;
+        /* load var, deref; if float tag → parseDouble→bits, else parseLong */
+        if (slot >= 0 && slot < n_vars && var_locals)
+            J("    aload %d\n", var_locals[slot]);
+        else
+            JI("aconst_null", "");
+        J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+        JI("checkcast", "[Ljava/lang/Object;");
+        JI("dup", "");
+        JI("iconst_0", "");
+        JI("aaload", "");          /* tag string */
+        JI("ldc", "\"float\"");
+        JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+        char lbl_flt[64], lbl_done[64];
+        static int vart_cnt = 0; vart_cnt++;
+        snprintf(lbl_flt,  sizeof lbl_flt,  "pl_%d_flt",  vart_cnt);
+        snprintf(lbl_done, sizeof lbl_done, "pl_%d_done", vart_cnt);
+        J("    ifne %s\n", lbl_flt);
+        /* int path: return parseLong as-is (raw long) */
+        JI("iconst_1", "");
+        JI("aaload", "");
+        JI("checkcast", "java/lang/String");
+        JI("invokestatic", "java/lang/Long/parseLong(Ljava/lang/String;)J");
+        J("    goto %s\n", lbl_done);
+        /* float path */
+        J("%s:\n", lbl_flt);
+        JI("iconst_1", "");
+        JI("aaload", "");
+        JI("checkcast", "java/lang/String");
+        JI("invokestatic", "java/lang/Double/parseDouble(Ljava/lang/String;)D");
+        JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+        J("%s:\n", lbl_done);
+        break;
+    }
+    case E_ADD: {
+        int lf = pl_arith_is_float(e->children[0]);
+        int rf = pl_arith_is_float(e->children[1]);
+        int lv = pl_arith_has_var(e->children[0]);
+        int rv = pl_arith_has_var(e->children[1]);
+        if (lf || rf) {
+            pl_emit_arith(e->children[0], var_locals, n_vars);
+            if (!lf) JI("l2d", ""); else JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+            pl_emit_arith(e->children[1], var_locals, n_vars);
+            if (!rf) JI("l2d", ""); else JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+            JI("dadd", "");
+            JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+        } else if (pl_arith_has_var(e->children[0]) || pl_arith_has_var(e->children[1])) {
+            /* var operand: runtime dispatch via pl_varnum_* */
+            pl_emit_arith_as_term(e->children[0], var_locals, n_vars);
+            pl_emit_arith_as_term(e->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_varnum_add([Ljava/lang/Object;[Ljava/lang/Object;)[Ljava/lang/Object;\n", classname);
+            J("    invokestatic %s/pl_obj_to_bits([Ljava/lang/Object;)J\n", classname);
+        } else {
+            pl_emit_arith(e->children[0], var_locals, n_vars);
+            pl_emit_arith(e->children[1], var_locals, n_vars);
+            JI("ladd", "");
+        }
+        break;
+    }
+    case E_SUB: {
+        int lf = pl_arith_is_float(e->children[0]);
+        int rf = pl_arith_is_float(e->children[1]);
+        int lv = pl_arith_has_var(e->children[0]);
+        int rv = pl_arith_has_var(e->children[1]);
+        if (lf || rf) {
+            pl_emit_arith(e->children[0], var_locals, n_vars);
+            if (!lf) JI("l2d", ""); else JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+            pl_emit_arith(e->children[1], var_locals, n_vars);
+            if (!rf) JI("l2d", ""); else JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+            JI("dsub", "");
+            JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+        } else if (pl_arith_has_var(e->children[0]) || pl_arith_has_var(e->children[1])) {
+            /* var operand: runtime dispatch via pl_varnum_* */
+            pl_emit_arith_as_term(e->children[0], var_locals, n_vars);
+            pl_emit_arith_as_term(e->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_varnum_sub([Ljava/lang/Object;[Ljava/lang/Object;)[Ljava/lang/Object;\n", classname);
+            J("    invokestatic %s/pl_obj_to_bits([Ljava/lang/Object;)J\n", classname);
+        } else {
+            pl_emit_arith(e->children[0], var_locals, n_vars);
+            pl_emit_arith(e->children[1], var_locals, n_vars);
+            JI("lsub", "");
+        }
+        break;
+    }
+    case E_MUL: {
+        int lf = pl_arith_is_float(e->children[0]);
+        int rf = pl_arith_is_float(e->children[1]);
+        int lv = pl_arith_has_var(e->children[0]);
+        int rv = pl_arith_has_var(e->children[1]);
+        if (lf || rf) {
+            pl_emit_arith(e->children[0], var_locals, n_vars);
+            if (!lf) JI("l2d", ""); else JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+            pl_emit_arith(e->children[1], var_locals, n_vars);
+            if (!rf) JI("l2d", ""); else JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+            JI("dmul", "");
+            JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+        } else if (pl_arith_has_var(e->children[0]) || pl_arith_has_var(e->children[1])) {
+            /* var operand: runtime dispatch via pl_varnum_* */
+            pl_emit_arith_as_term(e->children[0], var_locals, n_vars);
+            pl_emit_arith_as_term(e->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_varnum_mul([Ljava/lang/Object;[Ljava/lang/Object;)[Ljava/lang/Object;\n", classname);
+            J("    invokestatic %s/pl_obj_to_bits([Ljava/lang/Object;)J\n", classname);
+        } else {
+            pl_emit_arith(e->children[0], var_locals, n_vars);
+            pl_emit_arith(e->children[1], var_locals, n_vars);
+            JI("lmul", "");
+        }
+        break;
+    }
+    case E_DIV: {
+        int lf = pl_arith_is_float(e->children[0]);
+        int rf = pl_arith_is_float(e->children[1]);
+        int lv = pl_arith_has_var(e->children[0]);
+        int rv = pl_arith_has_var(e->children[1]);
+        if (lf || rf) {
+            pl_emit_arith(e->children[0], var_locals, n_vars);
+            if (!lf) JI("l2d", ""); else JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+            pl_emit_arith(e->children[1], var_locals, n_vars);
+            if (!rf) JI("l2d", ""); else JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+            JI("ddiv", "");
+            JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+        } else if (pl_arith_has_var(e->children[0]) || pl_arith_has_var(e->children[1])) {
+            /* var operand: runtime dispatch via pl_varnum_* */
+            pl_emit_arith_as_term(e->children[0], var_locals, n_vars);
+            pl_emit_arith_as_term(e->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_varnum_div([Ljava/lang/Object;[Ljava/lang/Object;)[Ljava/lang/Object;\n", classname);
+            J("    invokestatic %s/pl_obj_to_bits([Ljava/lang/Object;)J\n", classname);
+        } else {
+            pl_emit_arith(e->children[0], var_locals, n_vars);
+            pl_emit_arith(e->children[1], var_locals, n_vars);
+            JI("ldiv", "");
+        }
+        break;
+    }
+    case E_FNC:
+        /* mod/2, rem/2, //2 (integer div) — not given dedicated opcodes by lowerer */
+        if (e->sval && e->nchildren >= 2) {
+            if (strcmp(e->sval, "rem") == 0) {
+                pl_emit_arith(e->children[0], var_locals, n_vars);
+                pl_emit_arith(e->children[1], var_locals, n_vars);
+                JI("lrem", "");  /* truncating remainder = SWI rem/2 */
+                break;
+            }
+            if (strcmp(e->sval, "mod") == 0) {
+                /* floor remainder: r = a rem b; if (r != 0 && (r^b) < 0) r += b */
+                pl_emit_arith(e->children[0], var_locals, n_vars);
+                pl_emit_arith(e->children[1], var_locals, n_vars);
+                J("    invokestatic %s/pl_mod(JJ)J\n", classname);
+                break;
+            }
+            if (strcmp(e->sval, "//") == 0) {
+                pl_emit_arith(e->children[0], var_locals, n_vars);
+                pl_emit_arith(e->children[1], var_locals, n_vars);
+                JI("ldiv", "");
+                break;
+            }
+            if (strcmp(e->sval, "/\\") == 0 && e->nchildren == 2) {
+                pl_emit_arith(e->children[0], var_locals, n_vars);
+                pl_emit_arith(e->children[1], var_locals, n_vars);
+                JI("land", ""); break;
+            }
+            if (strcmp(e->sval, "\\/") == 0 && e->nchildren == 2) {
+                pl_emit_arith(e->children[0], var_locals, n_vars);
+                pl_emit_arith(e->children[1], var_locals, n_vars);
+                JI("lor", ""); break;
+            }
+            if (strcmp(e->sval, "xor") == 0 && e->nchildren == 2) {
+                pl_emit_arith(e->children[0], var_locals, n_vars);
+                pl_emit_arith(e->children[1], var_locals, n_vars);
+                JI("lxor", ""); break;
+            }
+            if (strcmp(e->sval, ">>") == 0 && e->nchildren == 2) {
+                pl_emit_arith(e->children[0], var_locals, n_vars);
+                pl_emit_arith(e->children[1], var_locals, n_vars);
+                J("    invokestatic %s/pl_shr(JJ)J\n", classname);
+                break;
+            }
+            if (strcmp(e->sval, "<<") == 0 && e->nchildren == 2) {
+                pl_emit_arith(e->children[0], var_locals, n_vars);
+                pl_emit_arith(e->children[1], var_locals, n_vars);
+                J("    invokestatic %s/pl_shl(JJ)J\n", classname);
+                break;
+            }
+            if (strcmp(e->sval, "\\") == 0 && e->nchildren == 1) {
+                pl_emit_arith(e->children[0], var_locals, n_vars);
+                JI("lconst_1", ""); JI("lneg", ""); JI("lxor", ""); /* ~N = N xor -1 */
+                break;
+            }
+            if (strcmp(e->sval, "max") == 0 && e->nchildren == 2) {
+                int lf = pl_arith_is_float(e->children[0]);
+                int rf = pl_arith_is_float(e->children[1]);
+                if (lf || rf) {
+                    pl_emit_arith(e->children[0], var_locals, n_vars);
+                    if (!lf) JI("l2d", ""); else JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                    pl_emit_arith(e->children[1], var_locals, n_vars);
+                    if (!rf) JI("l2d", ""); else JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                    J("    invokestatic java/lang/Math/max(DD)D\n");
+                    JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                } else {
+                    pl_emit_arith(e->children[0], var_locals, n_vars);
+                    pl_emit_arith(e->children[1], var_locals, n_vars);
+                    J("    invokestatic java/lang/Math/max(JJ)J\n");
+                }
+                break;
+            }
+            if (strcmp(e->sval, "min") == 0 && e->nchildren == 2) {
+                int lf = pl_arith_is_float(e->children[0]);
+                int rf = pl_arith_is_float(e->children[1]);
+                if (lf || rf) {
+                    pl_emit_arith(e->children[0], var_locals, n_vars);
+                    if (!lf) JI("l2d", ""); else JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                    pl_emit_arith(e->children[1], var_locals, n_vars);
+                    if (!rf) JI("l2d", ""); else JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                    J("    invokestatic java/lang/Math/min(DD)D\n");
+                    JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                } else {
+                    pl_emit_arith(e->children[0], var_locals, n_vars);
+                    pl_emit_arith(e->children[1], var_locals, n_vars);
+                    J("    invokestatic java/lang/Math/min(JJ)J\n");
+                }
+                break;
+            }
+            if ((strcmp(e->sval, "**") == 0 || strcmp(e->sval, "^") == 0) && e->nchildren == 2) {
+                pl_emit_arith(e->children[0], var_locals, n_vars);
+                JI("l2d", "");
+                pl_emit_arith(e->children[1], var_locals, n_vars);
+                JI("l2d", "");
+                J("    invokestatic java/lang/Math/pow(DD)D\n");
+                JI("d2l", "");
+                break;
+            }
+        }
+        /* unary arithmetic functions */
+        if (e->sval && e->nchildren >= 1) {
+            if (strcmp(e->sval, "abs") == 0 && e->nchildren == 1) {
+                if (pl_arith_is_float(e->children[0])) {
+                    pl_emit_arith(e->children[0], var_locals, n_vars);
+                    JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                    J("    invokestatic java/lang/Math/abs(D)D\n");
+                    JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                } else {
+                    pl_emit_arith(e->children[0], var_locals, n_vars);
+                    J("    invokestatic java/lang/Math/abs(J)J\n");
+                }
+                break;
+            }
+            if (strcmp(e->sval, "sign") == 0 && e->nchildren == 1) {
+                if (pl_arith_is_float(e->children[0])) {
+                    /* float sign: Math.signum, then normalize -0.0→0.0 via +0.0 */
+                    pl_emit_arith(e->children[0], var_locals, n_vars);
+                    JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                    J("    invokestatic java/lang/Math/signum(D)D\n");
+                    JI("dconst_0", "");
+                    JI("dadd", "");  /* signum(x)+0.0: normalizes -0.0 to 0.0 */
+                    JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                } else {
+                    /* integer sign: Long.signum returns int, convert to long */
+                    pl_emit_arith(e->children[0], var_locals, n_vars);
+                    J("    invokestatic java/lang/Long/signum(J)I\n");
+                    JI("i2l", "");
+                }
+                break;
+            }
+            if (strcmp(e->sval, "copysign") == 0 && e->nchildren == 2) {
+                /* copysign(Mag, Sign): result type follows magnitude type */
+                int mag_float = pl_arith_is_float(e->children[0]);
+                int sgn_float = pl_arith_is_float(e->children[1]);
+                if (mag_float) {
+                    /* float magnitude: result is float */
+                    pl_emit_arith(e->children[0], var_locals, n_vars);
+                    JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                    pl_emit_arith(e->children[1], var_locals, n_vars);
+                    if (!sgn_float) { JI("l2d", ""); } else { JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D"); }
+                    J("    invokestatic java/lang/Math/copySign(DD)D\n");
+                    JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                } else if (sgn_float) {
+                    /* integer magnitude, float sign: result is integer
+                     * copySign(1.0, sign_arg) gives +1.0 or -1.0, then d2l, times abs(mag) */
+                    JI("dconst_1", "");
+                    pl_emit_arith(e->children[1], var_locals, n_vars);
+                    JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                    J("    invokestatic java/lang/Math/copySign(DD)D\n");
+                    JI("d2l", "");
+                    pl_emit_arith(e->children[0], var_locals, n_vars);
+                    J("    invokestatic java/lang/Math/abs(J)J\n");
+                    JI("lmul", "");
+                } else {
+                    /* both integer: abs(Mag) * signum(Sign) */
+                    pl_emit_arith(e->children[0], var_locals, n_vars);
+                    J("    invokestatic java/lang/Math/abs(J)J\n");
+                    pl_emit_arith(e->children[1], var_locals, n_vars);
+                    J("    invokestatic java/lang/Long/signum(J)I\n");
+                    JI("i2l", "");
+                    JI("lmul", "");
+                }
+                break;
+            }
+            if (strcmp(e->sval, "truncate") == 0 && e->nchildren == 1) {
+                if (pl_arith_is_float(e->children[0])) {
+                    /* float→int: truncate toward zero */
+                    pl_emit_arith(e->children[0], var_locals, n_vars);
+                    JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                    JI("d2l", "");
+                } else {
+                    pl_emit_arith(e->children[0], var_locals, n_vars);
+                }
+                break;
+            }
+            if (strcmp(e->sval, "integer") == 0 && e->nchildren == 1) {
+                if (pl_arith_is_float(e->children[0]) || pl_arith_has_var(e->children[0])) {
+                    pl_emit_arith_as_double(e->children[0], var_locals, n_vars);
+                    JI("invokestatic", "java/lang/Math/round(D)J");
+                } else {
+                    pl_emit_arith(e->children[0], var_locals, n_vars);
+                }
+                break;
+            }
+            if (strcmp(e->sval, "round") == 0 && e->nchildren == 1) {
+                if (pl_arith_is_float(e->children[0]) || pl_arith_has_var(e->children[0])) {
+                    pl_emit_arith_as_double(e->children[0], var_locals, n_vars);
+                    JI("invokestatic", "java/lang/Math/round(D)J");
+                } else {
+                    pl_emit_arith(e->children[0], var_locals, n_vars);
+                }
+                break;
+            }
+            if ((strcmp(e->sval, "ceiling") == 0 || strcmp(e->sval, "ceil") == 0) && e->nchildren == 1) {
+                if (pl_arith_is_float(e->children[0])) {
+                    pl_emit_arith(e->children[0], var_locals, n_vars);
+                    JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                    JI("invokestatic", "java/lang/Math/ceil(D)D");
+                    JI("d2l", "");
+                } else {
+                    pl_emit_arith(e->children[0], var_locals, n_vars);
+                }
+                break;
+            }
+            if (strcmp(e->sval, "floor") == 0 && e->nchildren == 1) {
+                if (pl_arith_is_float(e->children[0])) {
+                    pl_emit_arith(e->children[0], var_locals, n_vars);
+                    JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                    JI("invokestatic", "java/lang/Math/floor(D)D");
+                    JI("d2l", "");
+                } else {
+                    pl_emit_arith(e->children[0], var_locals, n_vars);
+                }
+                break;
+            }
+            if (strcmp(e->sval, "msb") == 0 && e->nchildren == 1) {
+                /* msb(N) = 63 - Long.numberOfLeadingZeros(N) */
+                JI("ldc2_w", "63");
+                pl_emit_arith(e->children[0], var_locals, n_vars);
+                J("    invokestatic java/lang/Long/numberOfLeadingZeros(J)I\n");
+                JI("i2l", "");
+                JI("lsub", "");
+                break;
+            }
+        }  /* end unary */
+        /* ---- float math functions ---- */
+        if (e->sval && e->nchildren == 1) {
+            if (strcmp(e->sval, "sqrt") == 0) {
+                pl_emit_arith(e->children[0], var_locals, n_vars);
+                JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                JI("invokestatic", "java/lang/Math/sqrt(D)D");
+                JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                break;
+            }
+            if (strcmp(e->sval, "sin") == 0) {
+                pl_emit_arith(e->children[0], var_locals, n_vars);
+                JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                JI("invokestatic", "java/lang/Math/sin(D)D");
+                JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                break;
+            }
+            if (strcmp(e->sval, "cos") == 0) {
+                pl_emit_arith(e->children[0], var_locals, n_vars);
+                JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                JI("invokestatic", "java/lang/Math/cos(D)D");
+                JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                break;
+            }
+            if (strcmp(e->sval, "tan") == 0) {
+                pl_emit_arith(e->children[0], var_locals, n_vars);
+                JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                JI("invokestatic", "java/lang/Math/tan(D)D");
+                JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                break;
+            }
+            if (strcmp(e->sval, "exp") == 0) {
+                pl_emit_arith(e->children[0], var_locals, n_vars);
+                JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                JI("invokestatic", "java/lang/Math/exp(D)D");
+                JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                break;
+            }
+            if (strcmp(e->sval, "log") == 0) {
+                pl_emit_arith(e->children[0], var_locals, n_vars);
+                JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                JI("invokestatic", "java/lang/Math/log(D)D");
+                JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                break;
+            }
+            if (strcmp(e->sval, "atan") == 0) {
+                pl_emit_arith(e->children[0], var_locals, n_vars);
+                JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                JI("invokestatic", "java/lang/Math/atan(D)D");
+                JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                break;
+            }
+            if (strcmp(e->sval, "asin") == 0) {
+                pl_emit_arith(e->children[0], var_locals, n_vars);
+                JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                JI("invokestatic", "java/lang/Math/asin(D)D");
+                JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                break;
+            }
+            if (strcmp(e->sval, "acos") == 0) {
+                pl_emit_arith(e->children[0], var_locals, n_vars);
+                JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                JI("invokestatic", "java/lang/Math/acos(D)D");
+                JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                break;
+            }
+            if (strcmp(e->sval, "sinh") == 0) {
+                pl_emit_arith(e->children[0], var_locals, n_vars);
+                JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                JI("invokestatic", "java/lang/Math/sinh(D)D");
+                JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                break;
+            }
+            if (strcmp(e->sval, "cosh") == 0) {
+                pl_emit_arith(e->children[0], var_locals, n_vars);
+                JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                JI("invokestatic", "java/lang/Math/cosh(D)D");
+                JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                break;
+            }
+            if (strcmp(e->sval, "tanh") == 0) {
+                pl_emit_arith(e->children[0], var_locals, n_vars);
+                JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                JI("invokestatic", "java/lang/Math/tanh(D)D");
+                JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                break;
+            }
+            if (strcmp(e->sval, "asinh") == 0) {
+                pl_emit_arith(e->children[0], var_locals, n_vars);
+                JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                J("    invokestatic %s/pl_asinh(D)D\n", classname);
+                JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                break;
+            }
+            if (strcmp(e->sval, "acosh") == 0) {
+                pl_emit_arith(e->children[0], var_locals, n_vars);
+                JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                J("    invokestatic %s/pl_acosh(D)D\n", classname);
+                JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                break;
+            }
+            if (strcmp(e->sval, "atanh") == 0) {
+                /* atanh(x) implemented via pl_atanh helper: 0.5*log((1+x)/(1-x)) */
+                pl_emit_arith(e->children[0], var_locals, n_vars);
+                JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                J("    invokestatic %s/pl_atanh(D)D\n", classname);
+                JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                break;
+            }
+            if (strcmp(e->sval, "float") == 0) {
+                /* float(X): if arg is already float, bits pass through unchanged;
+                 * if int, convert via l2d */
+                pl_emit_arith(e->children[0], var_locals, n_vars);
+                if (!pl_arith_is_float(e->children[0])) {
+                    JI("l2d", "");
+                    JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                }
+                /* else: already float bits on stack, leave as-is */
+                break;
+            }
+            if (strcmp(e->sval, "float_integer_part") == 0) {
+                pl_emit_arith(e->children[0], var_locals, n_vars);
+                /* promote integer to float if needed */
+                if (!pl_arith_is_float(e->children[0])) {
+                    JI("l2d", ""); JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                }
+                JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                /* truncate toward zero: (double)(long)x */
+                JI("d2l", "");
+                JI("l2d", "");
+                JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                break;
+            }
+            if (strcmp(e->sval, "float_fractional_part") == 0) {
+                if (!pl_arith_is_float(e->children[0])) {
+                    /* integer arg: fractional part is always 0 (integer) */
+                    pl_emit_arith(e->children[0], var_locals, n_vars);
+                    JI("pop2", "");  /* discard the integer value */
+                    JI("lconst_0", "");
+                } else {
+                    pl_emit_arith(e->children[0], var_locals, n_vars);
+                    JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                    JI("dup2", "");  /* x x */
+                    JI("d2l", ""); JI("l2d", "");  /* x trunc(x) */
+                    JI("dsub", "");
+                    JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                }
+                break;
+            }
+        }
+        if (e->sval && e->nchildren == 2) {
+            if (strcmp(e->sval, "atan2") == 0) {
+                pl_emit_arith(e->children[0], var_locals, n_vars);
+                JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                pl_emit_arith(e->children[1], var_locals, n_vars);
+                JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                J("    invokestatic java/lang/Math/atan2(DD)D\n");
+                JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                break;
+            }
+            if (strcmp(e->sval, "gcd") == 0) {
+                /* gcd via Euclidean: emit helper call */
+                pl_emit_arith(e->children[0], var_locals, n_vars);
+                pl_emit_arith(e->children[1], var_locals, n_vars);
+                J("    invokestatic %s/pl_gcd(JJ)J\n", classname);
+                break;
+            }
+        }
+        /* pi and e constants */
+        if (e->sval && e->nchildren == 0) {
+            if (strcmp(e->sval, "pi") == 0) {
+                pl_emit_dbl_const(3.141592653589793);
+                JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                break;
+            }
+            if (strcmp(e->sval, "e") == 0) {
+                pl_emit_dbl_const(2.718281828459045);
+                JI("invokestatic", "java/lang/Double/doubleToRawLongBits(D)J");
+                break;
+            }
+            if (strcmp(e->sval, "nan") == 0) {
+                J("    ldc2_w 9221120237041090560\n"); /* Double.NaN bits */
+                break;
+            }
+            if (strcmp(e->sval, "inf") == 0 || strcmp(e->sval, "infinity") == 0) {
+                J("    ldc2_w 9218868437227405312\n"); /* Double.POSITIVE_INFINITY bits */
+                break;
+            }
+        }
+        JI("lconst_0", "");
+        break;
+    default:
+        JI("lconst_0", "");
+        break;
+    }
+}
+
+/* pl_emit_arith_as_term — emit arithmetic expression, leave Object[] term on stack.
+ * Used by =:= etc. when operands may contain runtime-typed variables.
+ * For variables: deref and return the term directly (already typed).
+ * For constants/exprs: compute via pl_emit_arith, then box. */
+static void pl_emit_arith_as_term(EXPR_t *e, int *var_locals, int n_vars) {
+    if (!e) { JI("aconst_null", ""); return; }
+    if (e->kind == E_VAR) {
+        /* variable: deref and return the term as-is */
+        int slot = e->ival;
+        if (slot >= 0 && slot < n_vars && var_locals)
+            J("    aload %d\n", var_locals[slot]);
+        else
+            JI("aconst_null", "");
+        J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+        JI("checkcast", "[Ljava/lang/Object;");
+    } else if (pl_arith_is_mixed_minmax(e)) {
+        /* mixed min/max already returns Object[] */
+        int is_min = (strcmp(e->sval,"min")==0);
+        int lf = pl_arith_is_float(e->children[0]);
+        if (lf) {
+            pl_emit_arith(e->children[1], var_locals, n_vars);
+            pl_emit_arith(e->children[0], var_locals, n_vars);
+        } else {
+            pl_emit_arith(e->children[0], var_locals, n_vars);
+            pl_emit_arith(e->children[1], var_locals, n_vars);
+        }
+        if (is_min)
+            J("    invokestatic %s/pl_min_mixed(JJ)[Ljava/lang/Object;\n", classname);
+        else
+            J("    invokestatic %s/pl_max_mixed(JJ)[Ljava/lang/Object;\n", classname);
+    } else if (pl_arith_has_var(e) && !pl_arith_is_float(e) &&
+               (e->kind == E_ADD || e->kind == E_SUB ||
+                e->kind == E_MUL || e->kind == E_DIV)) {
+        /* var-containing binary op: use runtime pl_varnum_* helper */
+        const char *vn_fn = (e->kind==E_ADD) ? "pl_varnum_add" :
+                            (e->kind==E_SUB) ? "pl_varnum_sub" :
+                            (e->kind==E_MUL) ? "pl_varnum_mul" : "pl_varnum_div";
+        pl_emit_arith_as_term(e->children[0], var_locals, n_vars);
+        pl_emit_arith_as_term(e->children[1], var_locals, n_vars);
+        J("    invokestatic %s/%s([Ljava/lang/Object;[Ljava/lang/Object;)[Ljava/lang/Object;\n",
+          classname, vn_fn);
+    } else {
+        pl_emit_arith(e, var_locals, n_vars);
+        if (pl_arith_is_float(e)) {
+            JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+            J("    invokestatic %s/pl_term_float(D)[Ljava/lang/Object;\n", classname);
+        } else {
+            J("    invokestatic %s/pl_term_int(J)[Ljava/lang/Object;\n", classname);
+        }
+    }
+}
+
+/* pl_emit_arith_as_double — emit arithmetic expr leaving a D (double) on JVM stack.
+ * For E_VAR: uses pl_num_as_double to handle int/float tags at runtime.
+ * For float exprs: pl_emit_arith then longBitsToDouble.
+ * For int exprs: pl_emit_arith then l2d. */
+static void pl_emit_arith_as_double(EXPR_t *e, int *var_locals, int n_vars) {
+    if (!e) { JI("dconst_0", ""); return; }
+    if (e->kind == E_VAR || pl_arith_has_var(e)) {
+        /* runtime dispatch: emit as term, then pl_num_as_double */
+        pl_emit_arith_as_term(e, var_locals, n_vars);
+        J("    invokestatic %s/pl_num_as_double([Ljava/lang/Object;)D\n", classname);
+    } else if (pl_arith_is_float(e)) {
+        pl_emit_arith(e, var_locals, n_vars);
+        JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+    } else {
+        pl_emit_arith(e, var_locals, n_vars);
+        JI("l2d", "");
+    }
+}
+
+
+/* pl_emit_stdlib_shim — always-emitted pure-Prolog stdlib predicates.
+ * member/2 and memberchk/2 are general builtins, skipped if user defines them. */
+static void pl_emit_choice(EXPR_t *choice); /* forward decl */
+
+static int prog_defines(Program *prog, const char *name, int arity) {
+    char key[128]; snprintf(key, sizeof key, "%s/%d", name, arity);
+    for (STMT_t *s = prog->head; s; s = s->next) {
+        if (!s->subject || s->subject->kind != E_CHOICE) continue;
+        if (s->subject->sval && strcmp(s->subject->sval, key) == 0)
+            return 1;
+    }
+    return 0;
+}
+
+static void pl_emit_stdlib_pred(const char *src) {
+    PlProgram *pl = prolog_parse(src, "stdlib");
+    if (!pl) return;
+    PlProgram *lowered = prolog_lower(pl);
+    if (!lowered) return;
+    for (STMT_t *s = lowered->head; s; s = s->next) {
+        if (!s->subject) continue;
+        if (s->subject->kind == E_CHOICE)
+            pl_emit_choice(s->subject);
+    }
+}
+
+static void pl_emit_stdlib_shim(Program *prog) {
+    if (!prog_defines(prog, "member", 2))
+        pl_emit_stdlib_pred("member(X, [X|_]).\nmember(X, [_|T]) :- member(X, T).\n");
+    if (!prog_defines(prog, "memberchk", 2))
+        pl_emit_stdlib_pred("memberchk(X, [X|_]) :- !.\nmemberchk(X, [_|T]) :- memberchk(X, T).\n");
+    if (!prog_defines(prog, "forall", 2)) {
+        /* forall/2 is now a synthetic JVM method — no pure-Prolog shim needed */
+    }
+}
+
+/* pl_gcd(J,J)J emitter — emitted once into the class */
+static void pl_emit_gcd_helper(void) {
+    J(".method static pl_gcd(JJ)J\n");
+    J("    .limit stack 4\n");
+    J("    .limit locals 4\n");
+    /* Euclidean gcd: while b != 0 { t=b; b=a%b; a=t; } return abs(a) */
+    J("    lload_0\n");
+    J("    invokestatic java/lang/Math/abs(J)J\n");
+    J("    lstore_0\n");
+    J("    lload_2\n");
+    J("    invokestatic java/lang/Math/abs(J)J\n");
+    J("    lstore_2\n");
+    J("pl_gcd_loop:\n");
+    J("    lload_2\n");
+    JI("lconst_0", "");
+    JI("lcmp", "");
+    J("    ifeq pl_gcd_done\n");
+    J("    lload_0\n");
+    J("    lload_2\n");
+    JI("lrem", "");
+    J("    lload_2\n");
+    J("    lstore_0\n");
+    J("    lstore_2\n");
+    J("    goto pl_gcd_loop\n");
+    J("pl_gcd_done:\n");
+    J("    lload_0\n");
+    JI("lreturn", "");
+    J(".end method\n\n");
+}
+
+/* -------------------------------------------------------------------------
+ * pl_is_always_fail — true for goals that unconditionally fail (no retry).
+ * These must route their ω to lbl_pred_ω (next clause), not to the
+ * clause's own α/retry label, to avoid infinite retry loops.
+ * ------------------------------------------------------------------------- */
+static int pl_is_always_fail(EXPR_t *goal) {
+    if (!goal || goal->kind != E_FNC || !goal->sval) return 0;
+    return (strcmp(goal->sval, "fail") == 0 || strcmp(goal->sval, "false") == 0)
+           && goal->nchildren == 0;
+}
+
+/* -------------------------------------------------------------------------
+ * pl_body_has_cut — recursive scan for E_CUT in a goal tree (walks E_FNC
+ * children for "," and ";" conjunction/disjunction nodes).
+ * ------------------------------------------------------------------------- */
+static int pl_body_has_cut(EXPR_t *g) {
+    if (!g) return 0;
+    if (g->kind == E_CUT) return 1;
+    if (g->kind == E_FNC) {
+        for (int i = 0; i < (int)g->nchildren; i++)
+            if (pl_body_has_cut(g->children[i])) return 1;
+    }
+    return 0;
+}
+
+/* -------------------------------------------------------------------------
+ * pl_is_user_call — true for user-defined predicates needing retry loop
+ * ------------------------------------------------------------------------- */
+static int pl_is_user_call(EXPR_t *goal) {
+    if (!goal || goal->kind != E_FNC || !goal->sval) return 0;
+    const char *fn = goal->sval;
+    static const char *builtins[] = {
+        "true","fail","halt","nl","write","writeln","print","tab","is",
+        "<",">","=<",">=","=:=","=\\=","=","\\=","==","\\==",
+        "@<","@>","@=<","@>=",
+        "var","nonvar","atom","integer","float","compound","atomic","is_list",
+        "functor","arg","=..","\\+","not",",",";","->",
+        "atom_length","atom_concat","atom_chars","atom_codes","char_code",
+        "number_chars","number_codes","upcase_atom","downcase_atom",
+        "between","findall",
+        "assertz","asserta","abolish","retract",
+        "sort","msort",
+        "succ","plus",
+        "format",
+        "numbervars",
+        "char_type",
+        "writeq","write_canonical",
+        "atom_string","number_string",
+        "string_chars","string_codes",
+        "length",
+        "string_concat","string_length","string_lower","string_upper",
+        "term_to_atom","term_string",
+        "copy_term",
+        "string_to_atom","concat_atom",
+        "atomic_list_concat",
+        "nb_setval","nb_getval",
+        "aggregate_all",
+        "succ_or_zero",
+        "throw","catch",
+        "garbage_collect","trim_stacks",
+        "?=",
+        NULL
+    };
+    for (int i = 0; builtins[i]; i++)
+        if (strcmp(fn, builtins[i]) == 0) return 0;
+    return 1;
+}
+
+/* -------------------------------------------------------------------------
+ * pl_count_ucalls — count total user calls in a body (each allocates 5 locals)
+ * ------------------------------------------------------------------------- */
+static int pl_count_ucalls(EXPR_t **goals, int ngoals) {
+    int count = 0;
+    for (int i = 0; i < ngoals; i++) {
+        EXPR_t *g = goals[i];
+        if (!g) continue;
+        if (pl_is_user_call(g)) count++;
+    }
+    return count;
+}
+
+/* pl_count_neq — count \=/2 goals in a body (each allocates 2 scratch locals) */
+static int pl_count_neq(EXPR_t **goals, int ngoals) {
+    int count = 0;
+    for (int i = 0; i < ngoals; i++) {
+        EXPR_t *g = goals[i];
+        if (!g) continue;
+        if (g->kind == E_FNC && g->sval && strcmp(g->sval, "\\=") == 0 && g->nchildren == 2)
+            count++;
+    }
+    return count;
+}
+
+/* pl_count_disj_locals — extra JVM locals for plain disjunctions in a body.
+ * Each plain ; allocates: 2 (local_cs+local_tmark) + 2*narms (ics+sco per arm)
+ * + 2 (fresh_init + fresh_sub). Also recurse into arm bodies. */
+static int pl_count_disj_locals(EXPR_t **goals, int ngoals) {
+    int total = 0;
+    for (int i = 0; i < ngoals; i++) {
+        EXPR_t *g = goals[i];
+        if (!g || g->kind != E_FNC || !g->sval) continue;
+        if (strcmp(g->sval, ";") == 0 && g->nchildren >= 2) {
+            if (g->children[0] && g->children[0]->kind == E_FNC &&
+                g->children[0]->sval && strcmp(g->children[0]->sval, "->") == 0)
+                continue; /* ITE handled separately */
+            /* base cost: 2 + 2 + 2*narms locals at this disjunction level */
+            total += 4 + 2 * g->nchildren;
+            /* recurse into each arm — each arm may have user calls (5 locals each) */
+            for (int ai = 0; ai < g->nchildren; ai++) {
+                EXPR_t *arm = g->children[ai];
+                if (!arm) continue;
+                if (arm->kind == E_FNC && arm->sval && strcmp(arm->sval, ",") == 0) {
+                    /* count user calls in conjunction arm */
+                    total += 5 * pl_count_ucalls(arm->children, arm->nchildren);
+                    total += pl_count_disj_locals(arm->children, arm->nchildren);
+                } else {
+                    /* single goal arm */
+                    if (pl_is_user_call(arm)) total += 5;
+                }
+            }
+        }
+    }
+    return total;
+}
+
+/* pl_term_stack_depth — compute max JVM stack slots needed to emit a term.
+ * Compound: dup+idx+child leaves [arr,arr,idx,child]=4 per level before aastore.
+ * Worst case per nesting level = 4 slots. */
+static int pl_term_stack_depth(EXPR_t *e) {
+    if (!e) return 1;
+    switch (e->kind) {
+    case E_FNC:
+        if (e->nchildren == 0) return 2; /* ldc + invokestatic */
+        {
+            int max_child = 0;
+            for (int i = 0; i < e->nchildren; i++) {
+                int d = pl_term_stack_depth(e->children[i]);
+                if (d > max_child) max_child = d;
+            }
+            return 4 + max_child; /* array ref + dup + index + child */
+        }
+    default:
+        return 2;
+    }
+}
+
+/* pl_clause_stack_needed — max stack depth across all goals in a clause body */
+static int pl_clause_stack_needed(EXPR_t **goals, int ngoals) {
+    int max_s = 4; /* baseline for simple goals */
+    for (int i = 0; i < ngoals; i++) {
+        EXPR_t *g = goals[i];
+        if (!g) continue;
+        /* for goals with term arguments, stack depth = goal overhead + max arg depth */
+        if (g->kind == E_FNC || g->kind == E_UNIFY) {
+            int nc = g->nchildren;
+            for (int j = 0; j < nc; j++) {
+                int d = pl_term_stack_depth(g->children[j]);
+                if (d > max_s) max_s = d;
+            }
+        }
+    }
+    return max_s + 4; /* +4 for invokestatic overhead */
+}
+
+/* -------------------------------------------------------------------------
+ * Goal emitter
+ * lbl_γ = label to goto on goal success
+ * lbl_ω  = label to goto on goal failure
+ * trail_local = JVM local index of trail mark (I)
+ * var_locals  = JVM local indices for Prolog variables
+ * ------------------------------------------------------------------------- */
+
+/* forward decl for pl_emit_body */
+static void pl_emit_body(EXPR_t **goals, int ngoals, const char *lbl_γ,
+                         const char *lbl_ω, const char *lbl_outer_ω,
+                         int trail_local,
+                         int *var_locals, int n_vars, int *next_local,
+                         int init_cs_local, int sub_cs_out_local,
+                         int cut_cs_seal, int cs_local_for_cut,
+                         const char *lbl_pred_ω,
+                         const char *lbl_cutγ);
+
+static void pl_emit_goal(EXPR_t *goal, const char *lbl_γ, const char *lbl_ω,
+                         int trail_local, int *var_locals, int n_vars,
+                         int cut_cs_seal, int cs_local_for_cut,
+                         int *next_local, const char *lbl_cutγ) {
+    if (!goal) { JI("goto", lbl_γ); return; }
+
+    if (goal->kind == E_CUT) {
+        /* cut: seal β by storing base[nclauses] into cs_local,
+         * so the next dispatch hits default:ω.
+         * -1 means no enclosing choice (should not happen in valid Prolog). */
+        if (cut_cs_seal >= 0 && cs_local_for_cut >= 0) {
+            J("    ldc %d\n", cut_cs_seal);
+            J("    istore %d\n", cs_local_for_cut);
+        }
+        /* Jump to cutgamma label which returns base[nclauses] sentinel,
+         * preventing caller from retrying this predicate. */
+        JI("goto", lbl_cutγ ? lbl_cutγ : lbl_γ);
+        return;
+    }
+
+    if (goal->kind == E_UNIFY) {
+        /* =/2: unify children[0] and children[1] */
+        pl_emit_term(goal->children[0], var_locals, n_vars);
+        pl_emit_term(goal->children[1], var_locals, n_vars);
+        J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+        J("    ifeq %s\n", lbl_ω);
+        JI("goto", lbl_γ);
+        return;
+    }
+
+    if (goal->kind == E_FNC) {
+        const char *fn = goal->sval ? goal->sval : "";
+        int nargs = goal->nchildren;
+
+        /* write/1 */
+        if (strcmp(fn, "write") == 0 && nargs == 1) {
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pl_write(Ljava/lang/Object;)V\n", classname);
+            JI("goto", lbl_γ);
+            return;
+        }
+        /* nl/0 */
+        if (strcmp(fn, "nl") == 0 && nargs == 0) {
+            JI("getstatic", "java/lang/System/out Ljava/io/PrintStream;");
+            JI("invokevirtual", "java/io/PrintStream/println()V");
+            JI("goto", lbl_γ);
+            return;
+        }
+        /* writeln/1 */
+        if (strcmp(fn, "writeln") == 0 && nargs == 1) {
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pl_write(Ljava/lang/Object;)V\n", classname);
+            JI("getstatic", "java/lang/System/out Ljava/io/PrintStream;");
+            JI("invokevirtual", "java/io/PrintStream/println()V");
+            JI("goto", lbl_γ);
+            return;
+        }
+        /* true/0 */
+        if (strcmp(fn, "true") == 0 && nargs == 0) {
+            JI("goto", lbl_γ);
+            return;
+        }
+        /* fail/0 */
+        if (strcmp(fn, "fail") == 0 && nargs == 0) {
+            JI("goto", lbl_ω);
+            return;
+        }
+        /* halt/0, halt/1 */
+        if (strcmp(fn, "halt") == 0) {
+            if (nargs == 1) {
+                /* evaluate arg as int */
+                pl_emit_arith(goal->children[0], var_locals, n_vars);
+                JI("l2i", "");
+            } else {
+                JI("iconst_0", "");
+            }
+            JI("invokestatic", "java/lang/System/exit(I)V");
+            JI("goto", lbl_γ);
+            return;
+        }
+        /* is/2 — arithmetic */
+        if (strcmp(fn, "is") == 0 && nargs == 2) {
+            /* evaluate RHS, create int or float term, unify with LHS */
+            EXPR_t *rhs = goal->children[1];
+            if (pl_arith_is_mixed_minmax(rhs)) {
+                /* mixed min/max: helper returns Object[] term directly */
+                int is_min = (strcmp(rhs->sval,"min")==0);
+                int lf = pl_arith_is_float(rhs->children[0]);
+                /* always pass (intArg, floatArg) to helper */
+                if (lf) {
+                    /* left is float, right is int */
+                    pl_emit_arith(rhs->children[1], var_locals, n_vars); /* int */
+                    pl_emit_arith(rhs->children[0], var_locals, n_vars); /* float bits */
+                } else {
+                    /* left is int, right is float */
+                    pl_emit_arith(rhs->children[0], var_locals, n_vars); /* int */
+                    pl_emit_arith(rhs->children[1], var_locals, n_vars); /* float bits */
+                }
+                if (is_min)
+                    J("    invokestatic %s/pl_min_mixed(JJ)[Ljava/lang/Object;\n", classname);
+                else
+                    J("    invokestatic %s/pl_max_mixed(JJ)[Ljava/lang/Object;\n", classname);
+                /* result is already an Object[] term; unify with LHS */
+                pl_emit_term(goal->children[0], var_locals, n_vars);
+                JI("swap", "");
+                J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+                J("    ifeq %s\n", lbl_ω);
+                JI("goto", lbl_γ);
+                return;
+            }
+            /* When rhs has vars with no static float type, use pl_emit_arith_as_term
+             * which returns Object[] with correct int/float tag via pl_varnum_* helpers. */
+            int rhs_has_var = pl_arith_has_var(rhs);
+            int rhs_is_float = pl_arith_is_float(rhs);
+            if (rhs_has_var && !rhs_is_float) {
+                /* runtime dispatch: pl_emit_arith_as_term handles var+float correctly */
+                pl_emit_arith_as_term(rhs, var_locals, n_vars);
+            } else {
+                pl_emit_arith(rhs, var_locals, n_vars);
+                if (rhs_is_float) {
+                    JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                    J("    invokestatic %s/pl_term_float(D)[Ljava/lang/Object;\n", classname);
+                } else {
+                    J("    invokestatic %s/pl_term_int(J)[Ljava/lang/Object;\n", classname);
+                }
+            }
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            /* swap: stack = [int_term, lhs_term] — need (lhs, rhs) for unify */
+            JI("swap", "");
+            J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+        /* comparison builtins =:= < > =< >= =\= */
+        if ((strcmp(fn, "=:=") == 0 || strcmp(fn, "=\\=") == 0 ||
+             strcmp(fn, "<")   == 0 || strcmp(fn, ">")    == 0 ||
+             strcmp(fn, "=<")  == 0 || strcmp(fn, ">=")   == 0) && nargs == 2) {
+            int has_var = pl_arith_has_var(goal->children[0]) ||
+                          pl_arith_has_var(goal->children[1]);
+            int flt = pl_arith_is_float(goal->children[0]) ||
+                      pl_arith_is_float(goal->children[1]);
+            if (has_var) {
+                /* runtime type dispatch via pl_num_cmp */
+                pl_emit_arith_as_term(goal->children[0], var_locals, n_vars);
+                pl_emit_arith_as_term(goal->children[1], var_locals, n_vars);
+                J("    invokestatic %s/pl_num_cmp([Ljava/lang/Object;[Ljava/lang/Object;)I\n", classname);
+            } else {
+                pl_emit_arith(goal->children[0], var_locals, n_vars);
+                if (flt) JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                pl_emit_arith(goal->children[1], var_locals, n_vars);
+                if (flt) JI("invokestatic", "java/lang/Double/longBitsToDouble(J)D");
+                if (flt) JI("dcmpl", ""); else JI("lcmp", "");
+            }
+            /* result: negative/zero/positive */
+            if (strcmp(fn, "=:=") == 0)      J("    ifne %s\n", lbl_ω);
+            else if (strcmp(fn, "=\\=") == 0) J("    ifeq %s\n", lbl_ω);
+            else if (strcmp(fn, "<") == 0)    J("    ifge %s\n", lbl_ω);
+            else if (strcmp(fn, ">") == 0)    J("    ifle %s\n", lbl_ω);
+            else if (strcmp(fn, "=<") == 0)   J("    ifgt %s\n", lbl_ω);
+            else if (strcmp(fn, ">=") == 0)   J("    iflt %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+        /* term-order comparisons @< @> @=< @>= */
+        if ((strcmp(fn, "@<")  == 0 || strcmp(fn, "@>")  == 0 ||
+             strcmp(fn, "@=<") == 0 || strcmp(fn, "@>=") == 0) && nargs == 2) {
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+            J("    invokestatic %s/pl_term_str(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+            pl_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+            J("    invokestatic %s/pl_term_str(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+            J("    invokevirtual java/lang/String/compareTo(Ljava/lang/String;)I\n");
+            if      (strcmp(fn, "@<")  == 0) J("    ifge %s\n", lbl_ω);
+            else if (strcmp(fn, "@>")  == 0) J("    ifle %s\n", lbl_ω);
+            else if (strcmp(fn, "@=<") == 0) J("    ifgt %s\n", lbl_ω);
+            else if (strcmp(fn, "@>=") == 0) J("    iflt %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+        /* ------------------------------------------------------------------ *
+         * M-PJ-ATOM-BUILTINS — PJ-48
+         * All atom/string builtins are JVM String operations.
+         * Pattern: deref the bound arg → extract String → operate → box result
+         * as a PlTerm atom → unify with the output variable.
+         * pl_term_atom(String) → Object[]   (tag=ATOM, name=String)
+         * pl_term_int(long)    → Object[]   (tag=INT, val=long)
+         * pl_unify(a,b)        → Z
+         * pl_deref(Object)     → Object   (follow REF chain)
+         * pl_atom_name(Object) → String   (extract name field from ATOM term)
+         * pl_int_val(Object)   → J        (extract val field from INT term)
+         * pl_term_list_chars(String) → Object[]  (build char-atom list)
+         * pl_term_list_codes(String) → Object[]  (build int-code list)
+         * pl_list_to_string(Object)  → String    (build String from char/code list)
+         * ------------------------------------------------------------------ */
+
+        /* assertz(+Term) — append fact to dynamic DB */
+        if ((strcmp(fn, "assertz") == 0 || strcmp(fn, "asserta") == 0) && nargs == 1) {
+            int is_asserta = (strcmp(fn, "asserta") == 0);
+            /* We emit a call to the static helper pl_db_assert(key, term, append).
+             * key = functor/arity string of the asserted fact.
+             * We push: term (Object[]), key (String), is_asserta (I) */
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+            J("    invokestatic %s/pl_db_assert_key(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+            J("    %s\n", is_asserta ? "iconst_1" : "iconst_0");
+            J("    invokestatic %s/pl_db_assert(Ljava/lang/String;Ljava/lang/Object;I)V\n", classname);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* retract(+Head) — remove first matching fact from dynamic DB, backtrackable.
+         * Strategy: peek with pl_db_query first; unify; only remove on confirmed match.
+         * On unify failure: undo trail, increment idx, loop. Never removes until match. */
+        if (strcmp(fn, "retract") == 0 && nargs == 1) {
+            int uid = next_uid();
+            int db_idx_local  = (*next_local)++;  /* I — current probe index */
+            int db_term_local = (*next_local)++;  /* Object — peeked term */
+            int trail_lbl     = (*next_local)++;  /* I — trail mark for unify probe */
+            char loop[64], ok[64], unify_fail[64], miss[64];
+            snprintf(loop,       sizeof loop,       "pl_%d_loop",  uid);
+            snprintf(ok,         sizeof ok,         "pl_%d_ok",    uid);
+            snprintf(unify_fail, sizeof unify_fail, "pl_%d_ufail", uid);
+            snprintf(miss,       sizeof miss,       "pl_%d_miss",  uid);
+
+            /* initialise locals */
+            JI("iconst_0", ""); J("    istore %d\n", db_idx_local);
+            JI("aconst_null", ""); J("    astore %d\n", db_term_local);
+            JI("iconst_0", ""); J("    istore %d\n", trail_lbl);
+
+            /* --- loop: peek at db_idx_local without removing --- */
+            J("%s:\n", loop);
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+            J("    invokestatic %s/pl_db_assert_key(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+            J("    iload %d\n", db_idx_local);
+            J("    invokestatic %s/pl_db_query(Ljava/lang/String;I)Ljava/lang/Object;\n", classname);
+            JI("dup", "");
+            J("    ifnonnull %s\n", ok);
+            JI("pop", "");
+            J("    goto %s\n", miss);
+
+            J("%s:\n", ok);
+            J("    astore %d\n", db_term_local);
+            J("    invokestatic %s/pl_trail_mark()I\n", classname);
+            J("    istore %d\n", trail_lbl);
+
+            /* probe unify */
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            J("    aload %d\n", db_term_local);
+            J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+            J("    ifeq %s\n", unify_fail);
+
+            /* unify succeeded: remove from DB at db_idx_local */
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+            J("    invokestatic %s/pl_db_assert_key(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+            J("    iload %d\n", db_idx_local);
+            J("    invokestatic %s/pl_db_retract(Ljava/lang/String;I)Ljava/lang/Object;\n", classname);
+            JI("pop", "");
+            JI("goto", lbl_γ);
+
+            /* unify failed: unwind trail, increment idx, try next */
+            J("%s:\n", unify_fail);
+            J("    iload %d\n", trail_lbl);
+            J("    invokestatic %s/pl_trail_unwind(I)V\n", classname);
+            J("    iinc %d 1\n", db_idx_local);
+            J("    goto %s\n", loop);
+
+            J("%s:\n", miss);
+            J("    goto %s\n", lbl_ω);
+            return;
+        }
+        /* abolish(+Functor/Arity) — remove entire predicate from dynamic DB.
+         * Always succeeds (even if predicate absent). */
+        if (strcmp(fn, "abolish") == 0 && nargs == 1) {
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+            J("    invokestatic %s/pl_db_abolish_key(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+            J("    invokestatic %s/pl_db_abolish(Ljava/lang/String;)V\n", classname);
+            JI("goto", lbl_γ);
+            return;
+        }
+        /* length(+List, ?N) — count list elements, unify N */
+        if (strcmp(fn, "length") == 0 && nargs == 2) {
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            pl_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_length_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* sort(+List, -Sorted) — sort with deduplication */
+        /* msort(+List, -Sorted) — sort without deduplication */
+        if ((strcmp(fn, "sort") == 0 || strcmp(fn, "msort") == 0) && nargs == 2) {
+            int dedup = (strcmp(fn, "sort") == 0) ? 1 : 0;
+            int uid = next_uid();
+            char ok[64]; snprintf(ok, sizeof ok, "sort%d_ok", uid);
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+            J("    %s\n", dedup ? "iconst_1" : "iconst_0");
+            J("    invokestatic %s/pl_sort_list(Ljava/lang/Object;I)Ljava/lang/Object;\n", classname);
+            pl_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+        /* succ(?X, ?Y) — Y = X+1 or X = Y-1 */
+        if (strcmp(fn, "succ") == 0 && nargs == 2) {
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            pl_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_succ_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+        /* plus(?X, ?Y, ?Z) — Z = X+Y */
+        if (strcmp(fn, "plus") == 0 && nargs == 3) {
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            pl_emit_term(goal->children[1], var_locals, n_vars);
+            pl_emit_term(goal->children[2], var_locals, n_vars);
+            J("    invokestatic %s/pl_plus_3(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+        /* format/1: format(Fmt) — no args */
+        if (strcmp(fn, "format") == 0 && nargs == 1) {
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            /* push nil as arglist */
+            JI("ldc", "\"[]\"");
+            J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+            J("    invokestatic %s/pl_format_2(Ljava/lang/Object;Ljava/lang/Object;)V\n", classname);
+            JI("goto", lbl_γ);
+            return;
+        }
+        /* format/2: format(Fmt, Args) */
+        if (strcmp(fn, "format") == 0 && nargs == 2) {
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            pl_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_format_2(Ljava/lang/Object;Ljava/lang/Object;)V\n", classname);
+            JI("goto", lbl_γ);
+            return;
+        }
+        /* numbervars/3: numbervars(+Term, +Start, -End) */
+        if (strcmp(fn, "numbervars") == 0 && nargs == 3) {
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            pl_emit_term(goal->children[1], var_locals, n_vars);
+            pl_emit_term(goal->children[2], var_locals, n_vars);
+            J("    invokestatic %s/pl_numbervars_3(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+        /* char_type/2: char_type(+Char, +Type) */
+        if (strcmp(fn, "char_type") == 0 && nargs == 2) {
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            pl_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_char_type_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+        /* writeq/1 */
+        if (strcmp(fn, "writeq") == 0 && nargs == 1) {
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pl_writeq(Ljava/lang/Object;)V\n", classname);
+            JI("goto", lbl_γ);
+            return;
+        }
+        /* write_canonical/1 */
+        if (strcmp(fn, "write_canonical") == 0 && nargs == 1) {
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pl_write_canonical(Ljava/lang/Object;)V\n", classname);
+            JI("goto", lbl_γ);
+            return;
+        }
+        /* print/1 — same as write/1 */
+        if (strcmp(fn, "print") == 0 && nargs == 1) {
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pl_write(Ljava/lang/Object;)V\n", classname);
+            JI("goto", lbl_γ);
+            return;
+        }
+        if (strcmp(fn, "atom_length") == 0 && nargs == 2) {
+            int uid = next_uid();
+            char ok[64]; snprintf(ok, sizeof ok, "atlen%d_ok", uid);
+            /* deref arg0, extract atom name string, call .length() */
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+            J("    invokestatic %s/pl_atom_name(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+            J("    invokevirtual java/lang/String/length()I\n");
+            J("    i2l\n");
+            J("    invokestatic %s/pl_term_int(J)[Ljava/lang/Object;\n", classname);
+            /* unify result with arg1 */
+            pl_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* atom_concat(+A, +B, ?C) */
+        if (strcmp(fn, "atom_concat") == 0 && nargs == 3) {
+            /* extract A name, extract B name, concatenate, box as atom, unify with C */
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+            J("    invokestatic %s/pl_atom_name(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+            pl_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+            J("    invokestatic %s/pl_atom_name(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+            J("    invokevirtual java/lang/String/concat(Ljava/lang/String;)Ljava/lang/String;\n");
+            J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+            pl_emit_term(goal->children[2], var_locals, n_vars);
+            J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* atom_chars(+Atom, ?Chars) or atom_chars(?Atom, +Chars)
+         * Direction detected at runtime via pl_atom_chars_2 helper. */
+        if (strcmp(fn, "atom_chars") == 0 && nargs == 2) {
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            pl_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_atom_chars_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* atom_codes(+Atom, ?Codes) or atom_codes(?Atom, +Codes) */
+        if (strcmp(fn, "atom_codes") == 0 && nargs == 2) {
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            pl_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_atom_codes_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* string_chars(+Str, ?Chars) — identical semantics to atom_chars on JVM */
+        if (strcmp(fn, "string_chars") == 0 && nargs == 2) {
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            pl_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_atom_chars_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* string_codes(+Str, ?Codes) — identical semantics to atom_codes on JVM */
+        if (strcmp(fn, "string_codes") == 0 && nargs == 2) {
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            pl_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_atom_codes_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* number_chars(+Number, ?Chars) — one-directional (+N → chars) */
+        if (strcmp(fn, "number_chars") == 0 && nargs == 2) {
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+            J("    invokestatic %s/pl_int_val(Ljava/lang/Object;)J\n", classname);
+            J("    invokestatic java/lang/Long/toString(J)Ljava/lang/String;\n");
+            J("    invokestatic %s/pl_string_to_char_list(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+            pl_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* number_codes(+Number, ?Codes) — one-directional */
+        if (strcmp(fn, "number_codes") == 0 && nargs == 2) {
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+            J("    invokestatic %s/pl_int_val(Ljava/lang/Object;)J\n", classname);
+            J("    invokestatic java/lang/Long/toString(J)Ljava/lang/String;\n");
+            J("    invokestatic %s/pl_string_to_code_list(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+            pl_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* char_code(+Char, ?Code) or char_code(?Char, +Code) */
+        if (strcmp(fn, "char_code") == 0 && nargs == 2) {
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            pl_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_char_code_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* upcase_atom(+Atom, ?Upper) */
+        if (strcmp(fn, "upcase_atom") == 0 && nargs == 2) {
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+            J("    invokestatic %s/pl_atom_name(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+            J("    invokevirtual java/lang/String/toUpperCase()Ljava/lang/String;\n");
+            J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+            pl_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* downcase_atom(+Atom, ?Lower) */
+        if (strcmp(fn, "downcase_atom") == 0 && nargs == 2) {
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+            J("    invokestatic %s/pl_atom_name(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+            J("    invokevirtual java/lang/String/toLowerCase()Ljava/lang/String;\n");
+            J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+            pl_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* atom_string(?Atom, ?Str) — bidirectional via helper */
+        if (strcmp(fn, "atom_string") == 0 && nargs == 2) {
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            pl_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_atom_string_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* number_string(?Num, ?Str) — bidirectional via helper */
+        if (strcmp(fn, "number_string") == 0 && nargs == 2) {
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            pl_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_number_string_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* string_concat(+A, +B, ?C) — identical to atom_concat */
+        if (strcmp(fn, "string_concat") == 0 && nargs == 3) {
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+            J("    invokestatic %s/pl_atom_name(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+            pl_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+            J("    invokestatic %s/pl_atom_name(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+            J("    invokevirtual java/lang/String/concat(Ljava/lang/String;)Ljava/lang/String;\n");
+            J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+            pl_emit_term(goal->children[2], var_locals, n_vars);
+            J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* string_length(+Str, ?Len) — identical to atom_length */
+        if (strcmp(fn, "string_length") == 0 && nargs == 2) {
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+            J("    invokestatic %s/pl_atom_name(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+            J("    invokevirtual java/lang/String/length()I\n");
+            J("    i2l\n");
+            J("    invokestatic %s/pl_term_int(J)[Ljava/lang/Object;\n", classname);
+            pl_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* string_upper(+Str, ?Upper) — identical to upcase_atom */
+        if (strcmp(fn, "string_upper") == 0 && nargs == 2) {
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+            J("    invokestatic %s/pl_atom_name(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+            J("    invokevirtual java/lang/String/toUpperCase()Ljava/lang/String;\n");
+            J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+            pl_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* string_lower(+Str, ?Lower) — identical to downcase_atom */
+        if (strcmp(fn, "string_lower") == 0 && nargs == 2) {
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+            J("    invokestatic %s/pl_atom_name(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+            J("    invokevirtual java/lang/String/toLowerCase()Ljava/lang/String;\n");
+            J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+            pl_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* term_to_atom(+Term, ?Atom) — forward: serialize term → atom string */
+        if (strcmp(fn, "term_to_atom") == 0 && nargs == 2) {
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            pl_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_term_to_atom_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* term_string(+Term, ?Str) — identical to term_to_atom */
+        if (strcmp(fn, "term_string") == 0 && nargs == 2) {
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            pl_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_term_to_atom_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* garbage_collect/0 — no-op on JVM (GC is automatic) */
+        if (strcmp(fn, "garbage_collect") == 0 && nargs == 0) {
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* trim_stacks/0 — no-op on JVM */
+        if (strcmp(fn, "trim_stacks") == 0 && nargs == 0) {
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* ?=(X, Y) — can-compare: succeed if X and Y are ground (contain no vars)
+         * or are identical. Fails if either contains unbound variables. */
+        if (strcmp(fn, "?=") == 0 && nargs == 2) {
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            pl_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_can_compare(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* copy_term(+Original, ?Copy) — deep copy with fresh variables */
+        if (strcmp(fn, "copy_term") == 0 && nargs == 2) {
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pl_copy_term(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+            pl_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* string_to_atom(?Str, ?Atom) — bidirectional alias for atom_string */
+        if (strcmp(fn, "string_to_atom") == 0 && nargs == 2) {
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            pl_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_atom_string_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* atomic_list_concat(+List, ?Atom) — concat list with no separator */
+        if (strcmp(fn, "atomic_list_concat") == 0 && nargs == 2) {
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            J("    ldc \"\"\n");
+            J("    invokestatic %s/pl_alc_sep(Ljava/lang/Object;Ljava/lang/String;)Ljava/lang/String;\n", classname);
+            J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+            pl_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* atomic_list_concat(+List, +Sep, ?Atom) — concat with separator */
+        if (strcmp(fn, "atomic_list_concat") == 0 && nargs == 3) {
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            pl_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+            J("    invokestatic %s/pl_atom_name(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+            J("    invokestatic %s/pl_alc_sep(Ljava/lang/Object;Ljava/lang/String;)Ljava/lang/String;\n", classname);
+            J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+            pl_emit_term(goal->children[2], var_locals, n_vars);
+            J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* concat_atom(+List, ?Atom) — SWI alias for atomic_list_concat/2 */
+        if (strcmp(fn, "concat_atom") == 0 && nargs == 2) {
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            J("    ldc \"\"\n");
+            J("    invokestatic %s/pl_alc_sep(Ljava/lang/Object;Ljava/lang/String;)Ljava/lang/String;\n", classname);
+            J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+            pl_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* nb_setval(+Name, +Value) — destructive global store */
+        if (strcmp(fn, "nb_setval") == 0 && nargs == 2) {
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            pl_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_nb_setval_2(Ljava/lang/Object;Ljava/lang/Object;)V\n", classname);
+            JI("goto", lbl_γ);
+            return;
+        }
+        /* nb_getval(+Name, -Value) — read global store */
+        if (strcmp(fn, "nb_getval") == 0 && nargs == 2) {
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            pl_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_nb_getval_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+        /* succ_or_zero(+X, ?Y) — Y = max(0, X-1) */
+        if (strcmp(fn, "succ_or_zero") == 0 && nargs == 2) {
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            pl_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_succ_or_zero_2(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+        /* aggregate_all(+Template, +Goal, -Result)
+         * Supported templates: count, sum(E), max(E), min(E), bag(T), set(T).
+         * Dispatched as a synthetic predicate p_aggregate_all_3 (like findall). */
+        if (strcmp(fn, "aggregate_all") == 0 && nargs == 3) {
+            int agg_rv = (*next_local)++;
+            char desc[512];
+            snprintf(desc, sizeof desc,
+                     "%s/p_aggregate_all_3([Ljava/lang/Object;[Ljava/lang/Object;[Ljava/lang/Object;I)[Ljava/lang/Object;",
+                     classname);
+            for (int i = 0; i < 3; i++)
+                pl_emit_term(goal->children[i], var_locals, n_vars);
+            JI("iconst_0", "");
+            J("    invokestatic %s\n", desc);
+            J("    astore %d\n", agg_rv);
+            J("    aload %d\n", agg_rv);
+            J("    ifnull %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+
+        /* M-PJ-EXCEPTIONS -------------------------------------------------- */
+
+        /* throw/1 — store term in pl_throw_term, throw RuntimeException("PROLOG_THROW") */
+        if (strcmp(fn, "throw") == 0 && nargs == 1) {
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+            J("    putstatic %s/pl_throw_term Ljava/lang/Object;\n", classname);
+            J("    new java/lang/RuntimeException\n");
+            J("    dup\n");
+            J("    ldc \"PROLOG_THROW\"\n");
+            J("    invokespecial java/lang/RuntimeException/<init>(Ljava/lang/String;)V\n");
+            J("    athrow\n");
+            /* unreachable, but lbl_ω is still valid target for verifier */
+            return;
+        }
+
+        /* catch/3 — catch(Goal, Catcher, Recovery)
+         * Wrap Goal in a .catch block.  On RuntimeException("PROLOG_THROW"),
+         * attempt to unify pl_throw_term with Catcher.  If unification
+         * succeeds run Recovery (→ lbl_γ), otherwise re-throw.
+         * If no exception, Goal success → lbl_γ, Goal failure → lbl_ω. */
+        if (strcmp(fn, "catch") == 0 && nargs == 3) {
+            static int catch_ctr = 0;
+            int cid = catch_ctr++;
+            char lbl_try_start[64], lbl_try_end[64], lbl_catch_h[64];
+            char lbl_match_ok[64], lbl_rethrow[64], lbl_goal_ok[64];
+            snprintf(lbl_try_start, sizeof lbl_try_start, "pl_catch%d_try_start", cid);
+            snprintf(lbl_try_end,   sizeof lbl_try_end,   "pl_catch%d_try_end",   cid);
+            snprintf(lbl_catch_h,   sizeof lbl_catch_h,   "pl_catch%d_handler",   cid);
+            snprintf(lbl_match_ok,  sizeof lbl_match_ok,  "pl_catch%d_match_ok",  cid);
+            snprintf(lbl_rethrow,   sizeof lbl_rethrow,   "pl_catch%d_rethrow",   cid);
+            snprintf(lbl_goal_ok,   sizeof lbl_goal_ok,   "pl_catch%d_goal_ok",   cid);
+
+            int exc_local = (*next_local)++;   /* stores the caught exception */
+
+            /* Emit .catch directive before the try block */
+            J("    .catch java/lang/RuntimeException from %s to %s using %s\n",
+              lbl_try_start, lbl_try_end, lbl_catch_h);
+
+            /* --- try block: emit Goal --- */
+            J("%s:\n", lbl_try_start);
+            /* Inline the goal; on success fall through to lbl_goal_ok */
+            pl_emit_goal(goal->children[0], lbl_goal_ok, lbl_ω,
+                         trail_local, var_locals, n_vars,
+                         cut_cs_seal, cs_local_for_cut, next_local, lbl_cutγ);
+            J("%s:\n", lbl_try_end);
+            J("    goto %s\n", lbl_ω);   /* goal failed without exception → fail */
+
+            /* goal_ok: goal succeeded without exception */
+            J("%s:\n", lbl_goal_ok);
+            JI("goto", lbl_γ);
+
+            /* --- exception handler --- */
+            J("%s:\n", lbl_catch_h);
+            J("    astore %d\n", exc_local);  /* save exception */
+            /* Is it a Prolog throw? Check getMessage() == "PROLOG_THROW" */
+            J("    aload %d\n", exc_local);
+            J("    invokevirtual java/lang/Throwable/getMessage()Ljava/lang/String;\n");
+            J("    ldc \"PROLOG_THROW\"\n");
+            J("    invokevirtual java/lang/String/equals(Ljava/lang/Object;)Z\n");
+            J("    ifeq %s\n", lbl_rethrow);  /* not a Prolog throw → re-throw */
+
+            /* It is a Prolog throw — try to unify pl_throw_term with Catcher */
+            J("    getstatic %s/pl_throw_term Ljava/lang/Object;\n", classname);
+            pl_emit_term(goal->children[1], var_locals, n_vars);  /* Catcher */
+            J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+            J("    ifeq %s\n", lbl_rethrow);   /* unification failed → re-throw */
+
+            /* Catcher matched — run Recovery */
+            J("    goto %s\n", lbl_match_ok);
+
+            J("%s:\n", lbl_rethrow);
+            J("    aload %d\n", exc_local);
+            J("    athrow\n");
+
+            J("%s:\n", lbl_match_ok);
+            /* Emit Recovery goal */
+            pl_emit_goal(goal->children[2], lbl_γ, lbl_ω,
+                         trail_local, var_locals, n_vars,
+                         cut_cs_seal, cs_local_for_cut, next_local, lbl_cutγ);
+            return;
+        }
+
+        /* END M-PJ-EXCEPTIONS ---------------------------------------------- */
+
+        /* ,/2 (now n-ary after lowering) — conjunction.
+         * All children are conjuncts; pass directly to pl_emit_body. */
+        if (strcmp(fn, ",") == 0 && nargs >= 1) {
+            int next_local_tmp = trail_local + 1 + n_vars + 8;
+            int ics = next_local_tmp++; /* fresh init_cs = 0 */
+            int sco = next_local_tmp++; /* fresh sub_cs_out */
+            /* These locals don't exist in the JVM frame yet; we use 0 constants */
+            /* emit iconst_0 into dummy locals to satisfy the interface */
+            JI("iconst_0", ""); J("    istore %d\n", ics);
+            JI("iconst_0", ""); J("    istore %d\n", sco);
+            pl_emit_body(goal->children, nargs, lbl_γ, lbl_ω, lbl_ω,
+                         trail_local, var_locals, n_vars, &next_local_tmp,
+                         ics, sco, cut_cs_seal, cs_local_for_cut, NULL, lbl_cutγ);
+            return;
+        }
+        /* ;/2 (now n-ary after lowering) — disjunction: try each branch.
+         * Special case: if first child is ->/2, it's an if-then-else:
+         *   (Cond -> Then ; Else)  ==> branch on Cond; take Then or Else.
+         * On success goto lbl_γ; on failure of all branches goto lbl_ω. */
+        if (strcmp(fn, ";") == 0 && nargs >= 2) {
+            /* check for (Cond -> Then) as first branch = if-then-else */
+            EXPR_t *first = goal->children[0];
+            if (first && first->kind == E_FNC && first->sval &&
+                strcmp(first->sval, "->") == 0 && first->nchildren >= 2) {
+                /* if-then-else: Cond -> Then ; Else1 ; Else2 ...
+                 * -> is flat n-ary: children[0]=Cond, children[1..]=Then goals */
+                int uid = next_uid();
+                char cond_ok[128], cond_fail[128], done_lbl[128];
+                snprintf(cond_ok,   sizeof cond_ok,   "ite%d_ok",   uid);
+                snprintf(cond_fail, sizeof cond_fail, "ite%d_else", uid);
+                snprintf(done_lbl,  sizeof done_lbl,  "ite%d_done", uid);
+                /* emit condition — success falls through to cond_ok, failure jumps to else */
+                pl_emit_goal(first->children[0], cond_ok, cond_fail,
+                             trail_local, var_locals, n_vars,
+                             cut_cs_seal, cs_local_for_cut, next_local, lbl_cutγ);
+                J("%s:\n", cond_ok);
+                /* ITE cut: once condition succeeds, commit — seal the enclosing
+                 * clause β so backtrack cannot retry the else branches.
+                 * This matches swipl semantics: (Cond -> Then ; Else) is
+                 * deterministic once Cond succeeds. */
+                if (cut_cs_seal >= 0 && cs_local_for_cut >= 0) {
+                    J("    ldc %d\n", cut_cs_seal);
+                    J("    istore %d\n", cs_local_for_cut);
+                }
+                /* emit Then goals: children[1..nchildren-1] as flat sequence */
+                int nthen = first->nchildren - 1;
+                for (int ti = 0; ti < nthen; ti++) {
+                    char tstep_γ[128], tstep_ω[128];
+                    snprintf(tstep_γ, sizeof tstep_γ, "ite%d_t%d_gamma", uid, ti);
+                    snprintf(tstep_ω, sizeof tstep_ω, "ite%d_t%d_omega", uid, ti);
+                    const char *step_γ = (ti == nthen - 1) ? lbl_γ : tstep_γ;
+                    pl_emit_goal(first->children[1 + ti], step_γ, lbl_ω,
+                                 trail_local, var_locals, n_vars,
+                                 cut_cs_seal, cs_local_for_cut, next_local, lbl_cutγ);
+                    if (ti < nthen - 1) J("%s:\n", tstep_γ);
+                }
+                J("    goto %s\n", done_lbl);
+                J("%s:\n", cond_fail);
+                /* emit remaining else branches */
+                for (int bi = 1; bi < nargs; bi++) {
+                    char next_lbl[128];
+                    snprintf(next_lbl, sizeof next_lbl, "ite%d_alt%d", uid, bi + 1);
+                    const char *fail_to = (bi < nargs - 1) ? next_lbl : lbl_ω;
+                    pl_emit_goal(goal->children[bi], lbl_γ, fail_to,
+                                 trail_local, var_locals, n_vars,
+                                 cut_cs_seal, cs_local_for_cut, next_local, lbl_cutγ);
+                    if (bi < nargs - 1) {
+                        J("    goto %s\n", done_lbl);
+                        J("%s:\n", next_lbl);
+                    }
+                }
+                J("%s:\n", done_lbl);
+                return;
+            }
+            /* plain disjunction: try each branch in sequence.
+             * Use pl_emit_body for each branch so that user calls within
+             * a branch get proper retry loops (e.g. puzzle ; true). */
+            int uid = next_uid();
+            char done_lbl[128];
+            snprintf(done_lbl, sizeof done_lbl, "disj%d_done", uid);
+            for (int bi = 0; bi < nargs; bi++) {
+                char next_lbl[128];
+                snprintf(next_lbl, sizeof next_lbl, "disj%d_alt%d", uid, bi + 1);
+                const char *fail_to = (bi < nargs - 1) ? next_lbl : lbl_ω;
+                /* Fresh locals for this branch — branches are mutually exclusive */
+                int next_local_disj = trail_local + 1 + n_vars + 8;
+                int ics_disj = next_local_disj++;
+                int sco_disj = next_local_disj++;
+                JI("iconst_0", ""); J("    istore %d\n", ics_disj);
+                JI("iconst_0", ""); J("    istore %d\n", sco_disj);
+                EXPR_t *branch = goal->children[bi];
+                if (branch && branch->kind == E_FNC && branch->sval &&
+                    strcmp(branch->sval, ",") == 0) {
+                    /* conjunction branch: pass children directly to pl_emit_body */
+                    pl_emit_body(branch->children, branch->nchildren,
+                                 lbl_γ, fail_to, fail_to,
+                                 trail_local, var_locals, n_vars, &next_local_disj,
+                                 ics_disj, sco_disj, cut_cs_seal, cs_local_for_cut, NULL, lbl_cutγ);
+                } else {
+                    /* single goal branch */
+                    pl_emit_body(&branch, 1,
+                                 lbl_γ, fail_to, fail_to,
+                                 trail_local, var_locals, n_vars, &next_local_disj,
+                                 ics_disj, sco_disj, cut_cs_seal, cs_local_for_cut, NULL, lbl_cutγ);
+                }
+                if (bi < nargs - 1) {
+                    J("    goto %s\n", done_lbl);
+                    J("%s:\n", next_lbl);
+                }
+            }
+            J("%s:\n", done_lbl);
+            return;
+        }
+        /* -> (if-then, no else): Cond -> Then1, Then2, ...
+         * Flat n-ary: children[0]=Cond, children[1..]=Then goals.
+         * Condition success → emit each Then step in sequence.
+         * Condition failure → lbl_ω. */
+        if (strcmp(fn, "->") == 0 && nargs >= 2) {
+            int uid = next_uid();
+            char cond_ok[128], cond_fail[128];
+            snprintf(cond_ok,   sizeof cond_ok,   "ifthen%d_ok",   uid);
+            snprintf(cond_fail, sizeof cond_fail,  "ifthen%d_fail", uid);
+            pl_emit_goal(goal->children[0], cond_ok, cond_fail, trail_local, var_locals, n_vars,
+                         cut_cs_seal, cs_local_for_cut, next_local, lbl_cutγ);
+            J("%s:\n", cond_ok);
+            int nthen = nargs - 1;
+            for (int ti = 0; ti < nthen; ti++) {
+                char tstep_γ[128];
+                snprintf(tstep_γ, sizeof tstep_γ, "ifthen%d_t%d_gamma", uid, ti);
+                const char *step_γ = (ti == nthen - 1) ? lbl_γ : tstep_γ;
+                pl_emit_goal(goal->children[1 + ti], step_γ, lbl_ω,
+                             trail_local, var_locals, n_vars,
+                             cut_cs_seal, cs_local_for_cut, next_local, lbl_cutγ);
+                if (ti < nthen - 1) J("%s:\n", tstep_γ);
+            }
+            J("%s:\n", cond_fail);
+            JI("goto", lbl_ω);
+            return;
+        }
+        /* structural equality ==/2, \==/2 */
+        if ((strcmp(fn, "==") == 0 || strcmp(fn, "\\==") == 0) && nargs == 2) {
+            int uid = next_uid();
+            char ok[128]; snprintf(ok, sizeof ok, "seq%d_ok", uid);
+            /* deref both terms and compare via pl_term_str (structural print) */
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+            J("    invokestatic %s/pl_term_str(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+            pl_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+            J("    invokestatic %s/pl_term_str(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+            JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+            if (strcmp(fn, "==") == 0) J("    ifeq %s\n", lbl_ω);
+            else                        J("    ifne %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+        /* \=/2 — non-unifiability: succeed iff X and Y cannot be unified.
+         * Strategy: save trail mark, probe pl_unify, unwind regardless, branch inverted.
+         * Uses a fresh local for the trial trail mark so we don't clobber trail_local
+         * (which belongs to the enclosing clause's β-retry machinery). */
+        if (strcmp(fn, "\\=") == 0 && nargs == 2) {
+            int scratch_tmark  = (*next_local)++;
+            int scratch_result = (*next_local)++;
+            /* initialise scratch locals to 0 */
+            JI("iconst_0", ""); J("    istore %d\n", scratch_tmark);
+            JI("iconst_0", ""); J("    istore %d\n", scratch_result);
+            /* save trail mark */
+            J("    invokestatic %s/pl_trail_mark()I\n", classname);
+            J("    istore %d\n", scratch_tmark);
+            /* attempt unification; save boolean result */
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            pl_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+            J("    istore %d\n", scratch_result);
+            /* unwind trail — undo any bindings made by the probe */
+            J("    iload %d\n", scratch_tmark);
+            J("    invokestatic %s/pl_trail_unwind(I)V\n", classname);
+            /* branch inverted: unify succeeded (1) → \= fails; unify failed (0) → \= succeeds */
+            J("    iload %d\n", scratch_result);
+            J("    ifne %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+        /* \+/1, not/1 — negation as failure.
+         * Emit the inner goal into a separate synthetic static helper method
+         * naf_helper_N(Object v0 ... vN-1) returning Z (boolean).
+         * This gives the inner goal its own clean JVM local frame, preventing
+         * aliasing between inner ucall cs-locals and outer clause locals.
+         * The helper is emitted inline at the current output position;
+         * Jasmin accepts methods in any order in the file. */
+        if ((strcmp(fn, "\\+") == 0 || strcmp(fn, "not") == 0) && nargs == 1) {
+            int uid = next_uid();
+            /* --- emit helper method into helper_buf (flushed after .end method) --- */
+            char parmdesc[1024]; parmdesc[0] = '\0';
+            for (int _p = 0; _p < n_vars; _p++) strcat(parmdesc, "[Ljava/lang/Object;");
+            char hname[128];
+            snprintf(hname, sizeof hname, "naf_helper_%d", uid);
+            int inner_var_locals[256];
+            int nvl = n_vars < 256 ? n_vars : 256;
+            for (int _v = 0; _v < nvl; _v++) inner_var_locals[_v] = _v;
+            int h_trail = n_vars;
+            int h_next  = n_vars + 1;
+            /* Redirect to helper buffer */
+            FILE *pl_saved_out = out;
+            if (!helper_buf) helper_buf = tmpfile();
+            out = helper_buf;
+            J("\n.method static %s(%s)Z\n", hname, parmdesc);
+            J("    .limit stack 32\n");
+            J("    .limit locals %d\n", n_vars + 64);
+            J("    iconst_0\n"); J("    istore %d\n", h_trail);
+            J("    invokestatic %s/pl_trail_mark()I\n", classname);
+            J("    istore %d\n", h_trail);
+            /* Emit inner goal */
+            char h_ok[128], h_fail[128];
+            snprintf(h_ok,   sizeof h_ok,   "nafh%d_ok",   uid);
+            snprintf(h_fail, sizeof h_fail, "nafh%d_fail", uid);
+            EXPR_t *naf_inner = goal->children[0];
+            if (naf_inner && naf_inner->kind == E_FNC && naf_inner->sval
+                    && strcmp(naf_inner->sval, ",") == 0 && naf_inner->nchildren >= 1) {
+                int h_ics = h_next++; int h_sco = h_next++;
+                J("    iconst_0\n"); J("    istore %d\n", h_ics);
+                J("    iconst_0\n"); J("    istore %d\n", h_sco);
+                pl_emit_body(naf_inner->children, naf_inner->nchildren,
+                             h_ok, h_fail, h_fail,
+                             h_trail, inner_var_locals, nvl, &h_next,
+                             h_ics, h_sco, 0, 0, NULL, NULL);
+            } else {
+                int h_ics = h_next++; int h_sco = h_next++;
+                J("    iconst_0\n"); J("    istore %d\n", h_ics);
+                J("    iconst_0\n"); J("    istore %d\n", h_sco);
+                pl_emit_body(&naf_inner, 1,
+                             h_ok, h_fail, h_fail,
+                             h_trail, inner_var_locals, nvl, &h_next,
+                             h_ics, h_sco, 0, 0, NULL, NULL);
+            }
+            J("%s:\n", h_ok);
+            J("    iload %d\n", h_trail);
+            J("    invokestatic %s/pl_trail_unwind(I)V\n", classname);
+            J("    iconst_1\n    ireturn\n");
+            J("%s:\n", h_fail);
+            J("    iload %d\n", h_trail);
+            J("    invokestatic %s/pl_trail_unwind(I)V\n", classname);
+            J("    iconst_0\n    ireturn\n");
+            J(".end method\n\n");
+            out = pl_saved_out;
+            /* --- call helper from outer body --- */
+            for (int _p = 0; _p < n_vars && _p < nvl; _p++)
+                J("    aload %d\n", var_locals[_p]);
+            J("    invokestatic %s/%s(%s)Z\n", classname, hname, parmdesc);
+            /* result on stack: 1=inner succeeded (NAF fails), 0=inner failed (NAF succeeds) */
+            J("    ifeq %s\n", lbl_γ);   /* == 0 → inner failed → NAF succeeds → lbl_γ */
+            JI("goto", lbl_ω);           /* != 0 → inner succeeded → NAF fails → lbl_ω */
+            return;
+        }
+        /* type tests: atom/1, integer/1, float/1, compound/1, var/1, nonvar/1, atomic/1, is_list/1 */
+        if (nargs == 1 &&
+            (strcmp(fn,"atom")==0 || strcmp(fn,"integer")==0 || strcmp(fn,"float")==0 ||
+             strcmp(fn,"compound")==0 || strcmp(fn,"var")==0 || strcmp(fn,"nonvar")==0 ||
+             strcmp(fn,"atomic")==0 || strcmp(fn,"is_list")==0)) {
+            int uid = next_uid();
+            char deref_lbl[128], tag_lbl[128];
+            snprintf(deref_lbl, sizeof deref_lbl, "tt%d_deref", uid);
+            snprintf(tag_lbl,   sizeof tag_lbl,   "tt%d_tag",   uid);
+            /* deref term, store in a temp — we'll check its tag string */
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+            /* stack: deref'd term (Object) */
+            if (strcmp(fn, "var") == 0) {
+                /* var: term is null OR (tag=="var" && [1]==null) */
+                int uid2 = next_uid();
+                char vok[128], vfail[128];
+                snprintf(vok,   sizeof vok,   "var%d_ok",   uid2);
+                snprintf(vfail, sizeof vfail, "var%d_fail", uid2);
+                JI("dup", "");
+                J("    ifnull %s\n", vok);   /* null = unbound → succeed */
+                /* not null: check tag=="var" */
+                JI("checkcast", "[Ljava/lang/Object;");
+                JI("dup", ""); JI("iconst_0", ""); JI("aaload", "");
+                JI("ldc", "\"var\"");
+                JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+                /* stack: [cast-ref, bool] - swap+pop to get bool alone, stack clean */
+                JI("swap", ""); JI("pop", "");
+                J("    ifeq %s\n", vfail);   /* not var tag → fail; stack empty */
+                /* tag=="var": re-deref and check [1]==null */
+                pl_emit_term(goal->children[0], var_locals, n_vars);
+                J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+                JI("checkcast", "[Ljava/lang/Object;");
+                JI("iconst_1", ""); JI("aaload", "");
+                J("    ifnonnull %s\n", vfail); /* bound → fail; stack empty */
+                JI("goto", lbl_γ);
+                /* vok: reached via ifnull (which popped dup'd copy); original ref still on stack → pop it */
+                J("%s:\n", vok);   JI("pop", ""); JI("goto", lbl_γ);
+                /* vfail: reached via ifeq/ifnonnull (which already popped); stack clean */
+                J("%s:\n", vfail); JI("goto", lbl_ω);
+                return;
+            }
+            if (strcmp(fn, "nonvar") == 0) {
+                /* nonvar: not null AND not unbound var */
+                int uid2 = next_uid();
+                char nfail[128], nok[128];
+                snprintf(nfail, sizeof nfail, "nv%d_fail", uid2);
+                snprintf(nok,   sizeof nok,   "nv%d_ok",   uid2);
+                JI("dup", "");
+                J("    ifnull %s\n", nfail);  /* null = unbound → fail */
+                JI("checkcast", "[Ljava/lang/Object;");
+                JI("dup", ""); JI("iconst_0", ""); JI("aaload", "");
+                JI("ldc", "\"var\"");
+                JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+                /* stack: [cast-ref, bool] - swap+pop to get bool alone */
+                JI("swap", ""); JI("pop", "");
+                J("    ifeq %s\n", nok);   /* not var tag → nonvar → succeed; stack empty */
+                /* tag=="var": re-deref, check if [1]!=null (bound ref = nonvar) */
+                pl_emit_term(goal->children[0], var_locals, n_vars);
+                J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+                JI("checkcast", "[Ljava/lang/Object;");
+                JI("iconst_1", ""); JI("aaload", "");
+                J("    ifnonnull %s\n", nok); /* bound ref → succeed; stack empty */
+                /* unbound var → fail */
+                JI("goto", lbl_ω);
+                J("%s:\n", nok);   JI("goto", lbl_γ);
+                J("%s:\n", nfail); JI("goto", lbl_ω);
+                return;
+            }
+            /* For remaining type tests: get tag string */
+            JI("ifnull", lbl_ω);  /* null = unbound var → fail for all remaining */
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+            JI("checkcast", "[Ljava/lang/Object;");
+            JI("iconst_0", ""); JI("aaload", "");  /* tag string on stack */
+            if (strcmp(fn, "atom") == 0) {
+                JI("ldc", "\"atom\"");
+                JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+                J("    ifeq %s\n", lbl_ω);
+            } else if (strcmp(fn, "integer") == 0) {
+                JI("ldc", "\"int\"");
+                JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+                J("    ifeq %s\n", lbl_ω);
+            } else if (strcmp(fn, "float") == 0) {
+                JI("ldc", "\"float\"");
+                JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+                J("    ifeq %s\n", lbl_ω);
+            } else if (strcmp(fn, "compound") == 0) {
+                JI("ldc", "\"compound\"");
+                JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+                J("    ifeq %s\n", lbl_ω);
+            } else if (strcmp(fn, "atomic") == 0) {
+                /* atomic: atom or integer or float */
+                int uid2 = next_uid();
+                char a_ok[128]; snprintf(a_ok, sizeof a_ok, "atomic%d_ok", uid2);
+                JI("dup", ""); JI("ldc", "\"atom\"");
+                JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+                J("    ifne %s\n", a_ok);
+                JI("dup", ""); JI("ldc", "\"int\"");
+                JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+                J("    ifne %s\n", a_ok);
+                JI("ldc", "\"float\"");
+                JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+                J("    ifeq %s\n", lbl_ω);
+                J("%s:\n", a_ok);
+            } else if (strcmp(fn, "is_list") == 0) {
+                /* is_list: atom "[]" or compound with functor "." and arity 2 */
+                /* We already have the tag on stack; just check it's [] atom or '.' compound */
+                int uid2 = next_uid();
+                char il_ok[128]; snprintf(il_ok, sizeof il_ok, "islist%d_ok", uid2);
+                JI("pop", "");  /* discard tag — re-emit term */
+                pl_emit_term(goal->children[0], var_locals, n_vars);
+                J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+                J("    invokestatic %s/pl_term_str(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+                JI("ldc", "\"[]\"");
+                JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+                J("    ifne %s\n", lbl_γ);
+                /* not [] — check if starts with '[' (is a proper list string) */
+                pl_emit_term(goal->children[0], var_locals, n_vars);
+                J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+                J("    invokestatic %s/pl_term_str(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+                JI("iconst_0", "");
+                JI("invokevirtual", "java/lang/String/charAt(I)C");
+                JI("bipush", "91");  /* '[' */
+                J("    if_icmpne %s\n", lbl_ω);
+                /* also confirm no '|' (proper list only) */
+                pl_emit_term(goal->children[0], var_locals, n_vars);
+                J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+                J("    invokestatic %s/pl_term_str(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+                JI("ldc", "\"|\"");
+                JI("invokevirtual", "java/lang/String/contains(Ljava/lang/CharSequence;)Z");
+                J("    ifne %s\n", lbl_ω);
+            }
+            JI("goto", lbl_γ);
+            return;
+        }
+        /* functor/3: functor(Term, Name, Arity)
+         * Deref Term; if atom → Name=functor, Arity=0; if compound → Name=functor, Arity=arity.
+         * Unify Name and Arity with children[1] and children[2]. */
+        if (strcmp(fn, "functor") == 0 && nargs == 3) {
+            int uid = next_uid();
+            char is_atom[128], is_compound[128], done[128], is_null[128];
+            snprintf(is_atom,     sizeof is_atom,     "funct%d_atom",     uid);
+            snprintf(is_compound, sizeof is_compound, "funct%d_compound", uid);
+            snprintf(done,        sizeof done,        "funct%d_done",     uid);
+            snprintf(is_null,     sizeof is_null,     "funct%d_null",     uid);
+            /* deref once, check tag — all paths start with empty stack */
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+            JI("ifnull", lbl_ω);  /* consumes the ref; stack empty */
+            /* re-emit to check tag */
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+            JI("checkcast", "[Ljava/lang/Object;");
+            JI("iconst_0", ""); JI("aaload", "");  /* tag on stack */
+            JI("ldc", "\"atom\"");
+            JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+            J("    ifne %s\n", is_atom);   /* consumes boolean; stack empty */
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+            JI("checkcast", "[Ljava/lang/Object;");
+            JI("iconst_0", ""); JI("aaload", "");
+            JI("ldc", "\"compound\"");
+            JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+            J("    ifne %s\n", is_compound);
+            JI("goto", lbl_ω);
+
+            /* atom path: stack empty at label */
+            J("%s:\n", is_atom);
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+            JI("checkcast", "[Ljava/lang/Object;");
+            JI("iconst_1", ""); JI("aaload", "");
+            JI("checkcast", "java/lang/String");
+            J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+            pl_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("lconst_0", "");
+            J("    invokestatic %s/pl_term_int(J)[Ljava/lang/Object;\n", classname);
+            pl_emit_term(goal->children[2], var_locals, n_vars);
+            J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+            J("    ifeq %s\n", lbl_ω);
+            J("    goto %s\n", done);
+
+            /* compound path: stack empty at label */
+            J("%s:\n", is_compound);
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+            JI("checkcast", "[Ljava/lang/Object;");
+            JI("iconst_1", ""); JI("aaload", "");
+            JI("checkcast", "java/lang/String");
+            J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+            pl_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+            J("    ifeq %s\n", lbl_ω);
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+            JI("checkcast", "[Ljava/lang/Object;");
+            JI("arraylength", ""); JI("iconst_2", ""); JI("isub", ""); JI("i2l", "");
+            J("    invokestatic %s/pl_term_int(J)[Ljava/lang/Object;\n", classname);
+            pl_emit_term(goal->children[2], var_locals, n_vars);
+            J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+            J("    ifeq %s\n", lbl_ω);
+            J("%s:\n", done);
+            JI("goto", lbl_γ);
+            return;
+        }
+        /* arg/3: arg(N, Term, Arg) — 1-based argument access */
+        if (strcmp(fn, "arg") == 0 && nargs == 3) {
+            /* check Term is non-null compound first */
+            pl_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+            JI("ifnull", lbl_ω);
+            /* load compound array, index into args: array[N+1] */
+            pl_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+            JI("checkcast", "[Ljava/lang/Object;");
+            pl_emit_arith(goal->children[0], var_locals, n_vars);
+            JI("l2i", ""); JI("iconst_1", ""); JI("iadd", "");
+            JI("aaload", "");  /* args[N-1+2] = array[N+1] */
+            pl_emit_term(goal->children[2], var_locals, n_vars);
+            J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+        /* =../2: Term =.. List (univ) — bidirectional via pl_univ helper.
+         * Decompose: Term bound   -> list = pl_term_to_list(Term); unify list.
+         * Compose:   Term unbound -> term = pl_list_to_term(List); unify term.
+         * Both directions handled at runtime by pl_univ(term, list) -> bool. */
+        if (strcmp(fn, "=..") == 0 && nargs == 2) {
+            pl_emit_term(goal->children[0], var_locals, n_vars);
+            pl_emit_term(goal->children[1], var_locals, n_vars);
+            J("    invokestatic %s/pl_univ(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+            J("    ifeq %s\n", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+        /* phrase/2 — phrase(NT, List) -> NT(List, [])\n         * phrase/3 — phrase(NT, List, Rest) -> NT(List, Rest)\n         * Rewrite into a direct NT/+2 call so the normal ucall retry loop\n         * handles backtracking correctly. */
+        if (strcmp(fn, "phrase") == 0 && (nargs == 2 || nargs == 3)) {
+            EXPR_t *nt_expr  = goal->children[0];
+            EXPR_t *list_arg = goal->children[1];
+            EXPR_t *rest_arg = (nargs == 3) ? goal->children[2] : NULL;
+
+            /* Variable NT: phrase(Var, List[, Rest]) — NT is unbound/runtime-determined.
+             * Build a phrase/N term and dispatch via pl_call_goal at runtime. */
+            if (nt_expr->kind == E_VAR) {
+                int n_phrase = nargs; /* 2 or 3 */
+                /* build phrase(NT, List[, Rest]) as a compound term on stack */
+                J("    ldc %d\n", n_phrase + 2);
+                J("    anewarray java/lang/Object\n");
+                J("    dup\n"); J("    iconst_0\n"); J("    ldc \"compound\"\n"); J("    aastore\n");
+                J("    dup\n"); J("    iconst_1\n"); J("    ldc \"phrase\"\n");   J("    aastore\n");
+                J("    dup\n"); J("    iconst_2\n");
+                pl_emit_term(nt_expr, var_locals, n_vars);
+                J("    aastore\n");
+                J("    dup\n"); J("    iconst_3\n");
+                pl_emit_term(list_arg, var_locals, n_vars);
+                J("    aastore\n");
+                if (rest_arg) {
+                    J("    dup\n"); J("    bipush 4\n");
+                    pl_emit_term(rest_arg, var_locals, n_vars);
+                    J("    aastore\n");
+                }
+                J("    iconst_0\n");
+                J("    invokestatic %s/pl_call_goal(Ljava/lang/Object;I)I\n", classname);
+                J("    ldc -1\n");
+                J("    if_icmpeq %s\n", lbl_ω);
+                J("    goto %s\n", lbl_γ);
+                return;
+            }
+
+            /* Special case: NT = [] (empty list body).
+             * phrase([], List)       -> List = []
+             * phrase([], List, Rest) -> List = Rest */
+            int nt_is_nil = (nt_expr->sval && strcmp(nt_expr->sval, "[]") == 0 &&
+                             nt_expr->nchildren == 0);
+            if (nt_is_nil) {
+                EXPR_t *rhs;
+                if (rest_arg) {
+                    rhs = rest_arg;
+                } else {
+                    rhs = expr_new(E_QLIT);
+                    rhs->sval = strdup("[]");
+                }
+                /* emit: pl_unify(list_arg, rhs); ifeq ω; goto γ */
+                pl_emit_term(list_arg, var_locals, n_vars);
+                pl_emit_term(rhs, var_locals, n_vars);
+                J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+                J("    ifeq %s\n", lbl_ω);
+                J("    goto %s\n", lbl_γ);
+                return;
+            }
+
+            /* Special case: NT = '.'(H, T) — list terminal body.
+             * phrase([H|T], L0)       -> L0 = [H|L1], phrase(T, L1)
+             * phrase([H|T], L0, L)    -> L0 = [H|L1], phrase(T, L1, L)
+             * Allocate a fresh local for L1, extend var_locals so pl_emit_term
+             * can address it via an E_VAR at index n_vars, then recurse. */
+            int nt_is_cons = (nt_expr->sval && strcmp(nt_expr->sval, ".") == 0 &&
+                              nt_expr->nchildren == 2);
+            if (nt_is_cons) {
+                EXPR_t *head_elem = nt_expr->children[0];
+                EXPR_t *tail_nt   = nt_expr->children[1];
+                int l1_local = *next_local; *next_local += 1;
+                J("    invokestatic %s/pl_term_var()[Ljava/lang/Object;\n", classname);
+                J("    astore %d\n", l1_local);
+                /* emit: L0 = [H | L1] */
+                pl_emit_term(list_arg, var_locals, n_vars);
+                J("    ldc 4\n"); J("    anewarray java/lang/Object\n");
+                J("    dup\n"); J("    iconst_0\n"); J("    ldc \"compound\"\n"); J("    aastore\n");
+                J("    dup\n"); J("    iconst_1\n"); J("    ldc \".\"\n");       J("    aastore\n");
+                J("    dup\n"); J("    iconst_2\n");
+                pl_emit_term(head_elem, var_locals, n_vars);
+                J("    aastore\n");
+                J("    dup\n"); J("    iconst_3\n"); J("    aload %d\n", l1_local); J("    aastore\n");
+                J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+                J("    ifeq %s\n", lbl_ω);
+                /* extend var_locals: index n_vars → l1_local */
+                int *vl2 = malloc((n_vars + 1) * sizeof(int));
+                for (int i = 0; i < n_vars; i++) vl2[i] = var_locals ? var_locals[i] : 0;
+                vl2[n_vars] = l1_local;
+                /* build E_VAR for L1 at index n_vars */
+                EXPR_t *l1_vart = expr_new(E_VAR); l1_vart->ival = n_vars;
+                /* build phrase(tail_nt, L1 [, rest_arg]) goal */
+                EXPR_t *rec = expr_new(E_FNC);
+                rec->sval = strdup("phrase");
+                rec->nchildren = rest_arg ? 3 : 2;
+                rec->children = malloc(rec->nchildren * sizeof(EXPR_t *));
+                rec->children[0] = tail_nt;
+                rec->children[1] = l1_vart;
+                if (rest_arg) rec->children[2] = rest_arg;
+                pl_emit_goal(rec, lbl_γ, lbl_ω,
+                             trail_local, vl2, n_vars + 1,
+                             cut_cs_seal, cs_local_for_cut, next_local, lbl_cutγ);
+                free(vl2);
+                return;
+            }
+
+            /* General NT (atom or compound, non-list): phrase(NT, List[, Rest]) -> NT/+2 call */
+            {
+                EXPR_t *nil_node = NULL;
+                if (!rest_arg) {
+                    nil_node = expr_new(E_QLIT);
+                    nil_node->sval = strdup("[]");
+                }
+                EXPR_t *call = expr_new(E_FNC);
+                int base = (nt_expr->kind == E_FNC) ? nt_expr->nchildren : 0;
+                call->sval = strdup(nt_expr->sval ? nt_expr->sval : "unknown");
+                call->nchildren = base + 2;
+                call->children  = malloc(call->nchildren * sizeof(EXPR_t *));
+                for (int i = 0; i < base; i++) call->children[i] = nt_expr->children[i];
+                call->children[base]   = list_arg;
+                call->children[base+1] = rest_arg ? rest_arg : nil_node;
+                pl_emit_goal(call, lbl_γ, lbl_ω,
+                             trail_local, var_locals, n_vars,
+                             cut_cs_seal, cs_local_for_cut, next_local, lbl_cutγ);
+                return;
+            }
+        }
+        /* user-defined predicate call — deterministic single-solution call.
+         * For backtracking calls in a clause body, pl_emit_body() wraps
+         * this in a retry loop (Proebsting E2.fail→E1.resume). */
+        {
+            char safe[256]; safe_name(fn, safe, sizeof safe);
+            char desc[512];
+            char argpart[256]; argpart[0] = '\0';
+            for (int i = 0; i < nargs; i++) strcat(argpart, "[Ljava/lang/Object;");
+            snprintf(desc, sizeof desc, "%s/p_%s_%d(%sI)[Ljava/lang/Object;",
+                     classname, safe, nargs, argpart);
+            /* push args */
+            for (int i = 0; i < nargs && i < goal->nchildren; i++)
+                pl_emit_term(goal->children[i], var_locals, n_vars);
+            /* push continuation index 0 (first try) */
+            JI("iconst_0", "");
+            J("    invokestatic %s\n", desc);
+            JI("ifnull", lbl_ω);
+            JI("goto", lbl_γ);
+            return;
+        }
+    }
+
+    /* E_VAR: variable used as goal — dispatch via pl_call_goal at runtime.
+     * This handles catch(Goal,...) and call(Var) where Goal/Var is a variable. */
+    if (goal->kind == E_VAR) {
+        int slot = goal->ival;
+        if (slot >= 0 && slot < n_vars) {
+            J("    aload %d\n", var_locals[slot]);
+        } else {
+            /* shouldn't happen — emit atom 'fail' as safe fallback */
+            J("    ldc \"fail\"\n");
+            J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+        }
+        J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+        J("    iconst_0\n");
+        J("    invokestatic %s/pl_call_goal(Ljava/lang/Object;I)I\n", classname);
+        /* pl_call_goal returns -1 on failure, >=0 (next cs) on success */
+        J("    ldc -1\n");
+        J("    if_icmpeq %s\n", lbl_ω);
+        JI("goto", lbl_γ);
+        return;
+    }
+
+    /* fallthrough */
+    JI("goto", lbl_γ);
+}
+
+/* -------------------------------------------------------------------------
+ * pl_emit_body — emit N goals with Proebsting retry wiring.
+ *
+ * User calls: wrapped in a retry loop (E2.fail -> E1.resume).
+ * Deterministic goals: linear recursive chain.
+ * next_local: pointer to next available JVM local slot (bumped on alloc).
+ * ------------------------------------------------------------------------- */
+static void pl_emit_body(EXPR_t **goals, int ngoals, const char *lbl_γ,
+                         const char *lbl_ω, const char *lbl_outer_ω,
+                         int trail_local,
+                         int *var_locals, int n_vars, int *next_local,
+                         int init_cs_local, int sub_cs_out_local,
+                         int cut_cs_seal, int cs_local_for_cut,
+                         const char *lbl_pred_ω,
+                         const char *lbl_cutγ) {
+    if (ngoals == 0) { JI("goto", lbl_γ); return; }
+
+    EXPR_t *g = goals[0];
+
+    if (!g || g->kind == E_TRAIL_MARK || g->kind == E_TRAIL_UNWIND) {
+        pl_emit_body(goals + 1, ngoals - 1, lbl_γ, lbl_ω, lbl_outer_ω,
+                     trail_local, var_locals, n_vars, next_local,
+                     init_cs_local, sub_cs_out_local,
+                     cut_cs_seal, cs_local_for_cut, lbl_pred_ω, lbl_cutγ);
+        return;
+    }
+
+    if (g->kind == E_CUT) {
+        /* seal β: store base[nclauses] into cs_local so next dispatch → ω */
+        if (cut_cs_seal >= 0 && cs_local_for_cut >= 0) {
+            J("    ldc %d\n", cut_cs_seal);
+            J("    istore %d\n", cs_local_for_cut);
+        }
+        /* Remaining goals after cut: failure goes to predicate ω.
+         * Success goes to cutgamma which returns base[nclauses] so caller
+         * cannot retry — fixes M-PJ-CUT-UCALL double-output. */
+        const char *cut_fail = lbl_pred_ω ? lbl_pred_ω : lbl_outer_ω;
+        const char *cut_succ = lbl_cutγ ? lbl_cutγ : lbl_γ;
+        pl_emit_body(goals + 1, ngoals - 1, cut_succ, cut_fail, cut_fail,
+                     trail_local, var_locals, n_vars, next_local,
+                     init_cs_local, sub_cs_out_local,
+                     cut_cs_seal, cs_local_for_cut, lbl_pred_ω, lbl_cutγ);
+        return;
+    }
+
+    if (pl_is_user_call(g)) {
+        /* PJ-72: phrase/N rewrite in ucall path.
+         * phrase/2,3 is recognised as a user call by pl_is_user_call, so it
+         * reaches here before pl_emit_goal's phrase handler fires.  Rewrite
+         * phrase(NT, List) -> NT(List, []) and phrase(NT, List, Rest) ->
+         * NT(List, Rest) so the retry loop below operates on the real NT. */
+        if (g->sval && strcmp(g->sval, "phrase") == 0 &&
+            (g->nchildren == 2 || g->nchildren == 3)) {
+            EXPR_t *nt_expr  = g->children[0];
+            EXPR_t *list_arg = g->children[1];
+            EXPR_t *rest_arg = (g->nchildren == 3) ? g->children[2] : NULL;
+
+            /* Variable NT: dispatch at runtime via pl_call_goal */
+            if (nt_expr->kind == E_VAR) {
+                int np = g->nchildren;
+                J("    ldc %d\n", np + 2);
+                J("    anewarray java/lang/Object\n");
+                J("    dup\n"); J("    iconst_0\n"); J("    ldc \"compound\"\n"); J("    aastore\n");
+                J("    dup\n"); J("    iconst_1\n"); J("    ldc \"phrase\"\n");   J("    aastore\n");
+                J("    dup\n"); J("    iconst_2\n");
+                pl_emit_term(nt_expr, var_locals, n_vars);
+                J("    aastore\n");
+                J("    dup\n"); J("    iconst_3\n");
+                pl_emit_term(list_arg, var_locals, n_vars);
+                J("    aastore\n");
+                if (rest_arg) {
+                    J("    dup\n"); J("    bipush 4\n");
+                    pl_emit_term(rest_arg, var_locals, n_vars);
+                    J("    aastore\n");
+                }
+                J("    iconst_0\n");
+                J("    invokestatic %s/pl_call_goal(Ljava/lang/Object;I)I\n", classname);
+                J("    ldc -1\n"); J("    if_icmpeq %s\n", lbl_ω);
+                pl_emit_body(goals + 1, ngoals - 1, lbl_γ, lbl_ω, lbl_outer_ω,
+                             trail_local, var_locals, n_vars, next_local,
+                             init_cs_local, sub_cs_out_local,
+                             cut_cs_seal, cs_local_for_cut, lbl_pred_ω, lbl_cutγ);
+                return;
+            }
+
+            /* Special case: NT = [] — phrase([], List) -> List = []
+             *                        phrase([], List, Rest) -> List = Rest */
+            int nt_is_nil = (nt_expr->sval && strcmp(nt_expr->sval, "[]") == 0 &&
+                             nt_expr->nchildren == 0);
+            if (nt_is_nil) {
+                EXPR_t *rhs;
+                if (rest_arg) {
+                    rhs = rest_arg;
+                } else {
+                    rhs = expr_new(E_QLIT);
+                    rhs->sval = strdup("[]");
+                }
+                pl_emit_term(list_arg, var_locals, n_vars);
+                pl_emit_term(rhs, var_locals, n_vars);
+                J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+                J("    ifeq %s\n", lbl_ω);
+                pl_emit_body(goals + 1, ngoals - 1, lbl_γ, lbl_ω, lbl_outer_ω,
+                             trail_local, var_locals, n_vars, next_local,
+                             init_cs_local, sub_cs_out_local,
+                             cut_cs_seal, cs_local_for_cut, lbl_pred_ω, lbl_cutγ);
+                return;
+            }
+
+            EXPR_t *nil_node = NULL;
+            if (!rest_arg) {
+                nil_node = expr_new(E_QLIT);
+                nil_node->sval = strdup("[]");
+            }
+
+            /* Special case: NT = '.'(H, T) — list terminal.
+             * Allocate L1 local, extend var_locals, recurse via pl_emit_body. */
+            int nt_is_cons2 = (nt_expr->sval && strcmp(nt_expr->sval, ".") == 0 &&
+                               nt_expr->nchildren == 2);
+            if (nt_is_cons2) {
+                EXPR_t *hd2 = nt_expr->children[0];
+                EXPR_t *tl2 = nt_expr->children[1];
+                int l1_loc = *next_local; *next_local += 1;
+                J("    invokestatic %s/pl_term_var()[Ljava/lang/Object;\n", classname);
+                J("    astore %d\n", l1_loc);
+                pl_emit_term(list_arg, var_locals, n_vars);
+                J("    ldc 4\n"); J("    anewarray java/lang/Object\n");
+                J("    dup\n"); J("    iconst_0\n"); J("    ldc \"compound\"\n"); J("    aastore\n");
+                J("    dup\n"); J("    iconst_1\n"); J("    ldc \".\"\n");       J("    aastore\n");
+                J("    dup\n"); J("    iconst_2\n"); pl_emit_term(hd2, var_locals, n_vars); J("    aastore\n");
+                J("    dup\n"); J("    iconst_3\n"); J("    aload %d\n", l1_loc); J("    aastore\n");
+                J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+                J("    ifeq %s\n", lbl_ω);
+                /* extend var_locals: new index n_vars → l1_loc */
+                int *vl2b = malloc((n_vars + 1) * sizeof(int));
+                for (int i = 0; i < n_vars; i++) vl2b[i] = var_locals ? var_locals[i] : 0;
+                vl2b[n_vars] = l1_loc;
+                EXPR_t *l1v2 = expr_new(E_VAR); l1v2->ival = n_vars;
+                EXPR_t *rec2 = expr_new(E_FNC);
+                rec2->sval = strdup("phrase");
+                rec2->nchildren = rest_arg ? 3 : 2;
+                rec2->children = malloc(rec2->nchildren * sizeof(EXPR_t *));
+                rec2->children[0] = tl2; rec2->children[1] = l1v2;
+                if (rest_arg) rec2->children[2] = rest_arg;
+                /* Prepend rec2 to remaining goals */
+                int ngoals2 = ngoals; /* total remaining including current phrase */
+                EXPR_t **goals2 = malloc((ngoals2) * sizeof(EXPR_t *));
+                goals2[0] = rec2;
+                for (int gi = 1; gi < ngoals2; gi++) goals2[gi] = goals[gi]; /* goals[0]=current phrase, rest follow */
+                pl_emit_body(goals2, ngoals2, lbl_γ, lbl_ω, lbl_outer_ω,
+                             trail_local, vl2b, n_vars + 1, next_local,
+                             init_cs_local, sub_cs_out_local,
+                             cut_cs_seal, cs_local_for_cut, lbl_pred_ω, lbl_cutγ);
+                free(goals2); free(vl2b);
+                return;
+            }
+
+            EXPR_t *call = expr_new(E_FNC);
+            int base = (nt_expr->kind == E_FNC) ? nt_expr->nchildren : 0;
+            call->sval      = strdup(nt_expr->sval ? nt_expr->sval : "unknown");
+            call->nchildren = base + 2;
+            call->children  = malloc(call->nchildren * sizeof(EXPR_t *));
+            for (int i = 0; i < base; i++) call->children[i] = nt_expr->children[i];
+            call->children[base]   = list_arg;
+            call->children[base+1] = rest_arg ? rest_arg : nil_node;
+            g = call;
+        }
+        const char *fn = g->sval;
+        int nargs = g->nchildren;
+        char safe[256]; safe_name(fn, safe, sizeof safe);
+        char desc[512], argpart[256]; argpart[0] = '\0';
+        for (int j = 0; j < nargs; j++) strcat(argpart, "[Ljava/lang/Object;");
+        snprintf(desc, sizeof desc, "%s/p_%s_%d(%sI)[Ljava/lang/Object;",
+                 classname, safe, nargs, argpart);
+
+        int uid          = next_uid();
+        int local_cs     = (*next_local)++;
+        int local_rv     = (*next_local)++;
+        int local_tmark  = (*next_local)++;  /* per-call trail mark for β-unwind */
+
+        char call_α[128], call_ω[128];
+        snprintf(call_α,   sizeof call_α,   "call%d_alpha",   uid);
+        snprintf(call_ω, sizeof call_ω, "call%d_omega", uid);
+
+        /* init: local_cs = init_cs_local.
+         * init_cs_local is set by the clause dispatcher to (incoming_cs - base[ci]),
+         * which is 0 on first entry and non-zero only when resuming a suspended body
+         * ucall (i.e., when the CALLER retries this clause for a next solution and
+         * the clause itself has an inner ucall that was mid-stream).
+         * local_cs is self-contained after init — sfail updates it directly. */
+        J("    iload %d\n", init_cs_local);
+        J("    istore %d\n", local_cs);
+
+        J("%s:\n", call_α);
+        /* Save trail mark before call — unwind here on β-retry to reset
+         * any bindings made by the previous solution (e.g. X bound by member). */
+        J("    invokestatic %s/pl_trail_mark()I\n", classname);
+        J("    istore %d\n", local_tmark);
+        for (int j = 0; j < nargs && j < g->nchildren; j++)
+            pl_emit_term(g->children[j], var_locals, n_vars);
+        J("    iload %d\n", local_cs);
+        J("    invokestatic %s\n", desc);
+        JI("dup", "");
+        J("    astore %d\n", local_rv);
+        J("    ifnull %s\n", call_ω);
+        /* M-PJ-CUT-UCALL: cutgamma propagation guard.
+         * If callee contains cut and its last clause has no ucall, the
+         * sentinel base[nclauses] is reliable.  Non-null rv with
+         * rv[0].intValue() >= callee_sentinel means cut fired inside callee —
+         * propagate upward by jumping to lbl_cutγ (caller's cutgamma port).
+         * Without this guard, cutgamma is treated as a normal success and the
+         * body continues, causing puzzle_18-style double-output. */
+        /* M-PJ-CUT-UCALL: if callee has cut and reliable sentinel, propagate cutgamma.
+         * MAX_VALUE (2147483647) is the unambiguous sentinel — check rv[0] >= it. */
+        if (pl_callee_has_cut_no_last_ucall(fn, nargs)) {
+            /* M-PJ-CUT-SCOPE: A cut inside a *called* predicate is scoped to
+             * that predicate only and must NOT propagate into the caller.
+             * Clamp MAX_VALUE return to 1 (deterministic success) so the
+             * caller's γ body continues normally. */
+            char clamp_done[128];
+            snprintf(clamp_done, sizeof clamp_done, "clamp_done_%d", uid);
+            J("    aload %d\n", local_rv);
+            JI("iconst_0", "");
+            JI("aaload", "");
+            JI("checkcast", "java/lang/Integer");
+            JI("invokevirtual", "java/lang/Integer/intValue()I");
+            J("    ldc 2147483647\n");
+            J("    if_icmpne %s\n", clamp_done);
+            J("    aload %d\n", local_rv);
+            J("    iconst_0\n");
+            J("    iconst_1\n");
+            J("    invokestatic java/lang/Integer/valueOf(I)Ljava/lang/Integer;\n");
+            J("    aastore\n");
+            J("%s:\n", clamp_done);
+        }
+        /* extract returned cs — store into sub_cs_out_local for γ encoding,
+         * and advance local_cs for the next β-retry of THIS call. */
+        J("    aload %d\n", local_rv);
+        JI("iconst_0", "");
+        JI("aaload", "");
+        JI("checkcast", "java/lang/Integer");
+        JI("invokevirtual", "java/lang/Integer/intValue()I");
+        JI("dup", "");
+        J("    istore %d\n", sub_cs_out_local);
+        /* γ already encodes base[ci]+sub_cs+1 — pass directly as next cs.
+         * Do NOT add another +1 here; the predicate's dispatch (cs >= base[ci])
+         * handles advancement. Double-incrementing causes clause skipping. */
+        J("    istore %d\n", local_cs);
+        /* suffix: failure → unwind bindings from this call, then retry */
+        {
+            int fresh_init = (*next_local)++;
+            JI("iconst_0", ""); J("    istore %d\n", fresh_init);
+            int fresh_sub = (*next_local)++;
+            JI("iconst_0", ""); J("    istore %d\n", fresh_sub);
+            char call_β[128];
+            snprintf(call_β, sizeof call_β, "call%d_beta", uid);
+            pl_emit_body(goals + 1, ngoals - 1, lbl_γ, call_β, lbl_outer_ω,
+                         trail_local, var_locals, n_vars, next_local,
+                         fresh_init, fresh_sub,
+                         cut_cs_seal, cs_local_for_cut, lbl_pred_ω, lbl_cutγ);
+            J("%s:\n", call_β);
+            /* β port: body conjunction after ucall succeeded has failed.
+             * Unwind trail (undo bindings from last solution) then retry the
+             * ucall with the next cs.  This is the standard retry driver —
+             * call_α increments local_cs from the γ value stored in istore 8
+             * above, giving the ucall's next continuation state.
+             * NOTE: do NOT update init_cs_local here; that corrupts the outer
+             * clause's sub-cs tracking for recursive predicates. */
+            J("    iload %d\n", local_tmark);
+            J("    invokestatic %s/pl_trail_unwind(I)V\n", classname);
+            JI("goto", call_α);   /* β port: retry ucall for next solution */
+        }
+        /* ucall exhausted → retry enclosing call (lbl_ω = enclosing β).
+         * Reset local_cs to 0 so the next invocation of this predicate
+         * starts fresh.  Without this reset, a retry of the enclosing call
+         * (e.g. item(Y) binding a new Y) would re-enter differ with cs
+         * already past its last clause, causing an infinite loop. */
+        J("%s:\n", call_ω);
+        JI("iconst_0", "");
+        J("    istore %d\n", local_cs);
+        JI("goto", lbl_ω);
+        return;
+    }
+
+    /* Plain disjunction in body — needs retry loop like a user call.
+     * Each arm is a choice point: try arm[local_cs], on success continue
+     * body; if body later fails, unwind trail and try arm[local_cs+1].
+     * This handles (A ; B), (A ; B ; C), etc. without ITE.
+     * ITE (Cond -> Then ; Else) is handled above in pl_emit_goal. */
+    if (g->kind == E_FNC && g->sval && strcmp(g->sval, ";") == 0 &&
+        g->nchildren >= 2 &&
+        !(g->children[0] && g->children[0]->kind == E_FNC &&
+          g->children[0]->sval && strcmp(g->children[0]->sval, "->") == 0)) {
+        int narms = g->nchildren;
+        int uid = next_uid();
+        int local_cs    = (*next_local)++;
+        int local_tmark = (*next_local)++;
+        char dj_α[128], dj_β[128], dj_ω[128];
+        snprintf(dj_α, sizeof dj_α, "dj%d_alpha", uid);
+        snprintf(dj_β, sizeof dj_β, "dj%d_beta",  uid);
+        snprintf(dj_ω, sizeof dj_ω, "dj%d_omega", uid);
+
+        /* init local_cs = 0 on first entry (disjunction always starts fresh) */
+        J("    iconst_0\n");
+        J("    istore %d\n", local_cs);
+
+        J("%s:\n", dj_α);
+        /* save trail mark so β can undo bindings from previous arm */
+        J("    invokestatic %s/pl_trail_mark()I\n", classname);
+        J("    istore %d\n", local_tmark);
+
+        /* dispatch: if local_cs >= narms → dj_ω */
+        J("    iload %d\n", local_cs);
+        J("    ldc %d\n", narms);
+        J("    if_icmpge %s\n", dj_ω);
+
+        /* tableswitch on local_cs → arm labels */
+        char arm_done[128];
+        snprintf(arm_done, sizeof arm_done, "dj%d_arm_done", uid);
+        char **arm_ok  = (char**)malloc(narms * sizeof(char*));
+        char **arm_fail = (char**)malloc(narms * sizeof(char*));
+        for (int ai = 0; ai < narms; ai++) {
+            arm_ok[ai]   = (char*)malloc(128);
+            arm_fail[ai] = (char*)malloc(128);
+            snprintf(arm_ok[ai],   128, "dj%d_arm%d_ok",   uid, ai);
+            snprintf(arm_fail[ai], 128, "dj%d_arm%d_fail", uid, ai);
+        }
+        J("    iload %d\n", local_cs);
+        J("    tableswitch 0\n");
+        for (int ai = 0; ai < narms; ai++)
+            J("        %s\n", arm_ok[ai]);
+        J("        default: %s\n", dj_ω);
+
+        /* emit each arm: success falls to arm_done, failure to dj_β */
+        for (int ai = 0; ai < narms; ai++) {
+            J("%s:\n", arm_ok[ai]);
+            EXPR_t *arm = g->children[ai];
+            int next_local_arm = *next_local;
+            int ics_arm = next_local_arm++;
+            int sco_arm = next_local_arm++;
+            *next_local = next_local_arm;
+            J("    iconst_0\n"); J("    istore %d\n", ics_arm);
+            J("    iconst_0\n"); J("    istore %d\n", sco_arm);
+            if (arm && arm->kind == E_FNC && arm->sval && strcmp(arm->sval, ",") == 0) {
+                pl_emit_body(arm->children, arm->nchildren,
+                             arm_done, arm_fail[ai], arm_fail[ai],
+                             trail_local, var_locals, n_vars, next_local,
+                             ics_arm, sco_arm, cut_cs_seal, cs_local_for_cut, NULL, lbl_cutγ);
+            } else {
+                pl_emit_body(&arm, 1,
+                             arm_done, arm_fail[ai], arm_fail[ai],
+                             trail_local, var_locals, n_vars, next_local,
+                             ics_arm, sco_arm, cut_cs_seal, cs_local_for_cut, NULL, lbl_cutγ);
+            }
+            J("%s:\n", arm_fail[ai]);
+            /* arm failed: fall through to dj_β to try next arm */
+            J("    goto %s\n", dj_β);
+        }
+
+        /* arm succeeded — now emit the rest of the body */
+        J("%s:\n", arm_done);
+        {
+            int fresh_init = (*next_local)++;
+            J("    iconst_0\n"); J("    istore %d\n", fresh_init);
+            int fresh_sub = (*next_local)++;
+            J("    iconst_0\n"); J("    istore %d\n", fresh_sub);
+            pl_emit_body(goals + 1, ngoals - 1, lbl_γ, dj_β, lbl_outer_ω,
+                         trail_local, var_locals, n_vars, next_local,
+                         fresh_init, fresh_sub,
+                         cut_cs_seal, cs_local_for_cut, lbl_pred_ω, lbl_cutγ);
+        }
+
+        /* β: unwind trail (undo arm bindings), advance to next arm */
+        J("%s:\n", dj_β);
+        J("    iload %d\n", local_tmark);
+        J("    invokestatic %s/pl_trail_unwind(I)V\n", classname);
+        J("    iload %d\n", local_cs);
+        J("    iconst_1\n");
+        J("    iadd\n");
+        J("    istore %d\n", local_cs);
+        J("    goto %s\n", dj_α);
+
+        /* ω: all arms exhausted → outer fail */
+        J("%s:\n", dj_ω);
+        J("    iconst_0\n");
+        J("    istore %d\n", local_cs);
+        J("    goto %s\n", lbl_ω);
+
+        for (int ai = 0; ai < narms; ai++) { free(arm_ok[ai]); free(arm_fail[ai]); }
+        free(arm_ok); free(arm_fail);
+        return;
+    }
+
+    /* Deterministic goal */
+    {
+        int uid = next_uid();
+        char g_γ[128], g_ω[128];
+        snprintf(g_γ, sizeof g_γ, "dg%d_gamma", uid);
+        snprintf(g_ω, sizeof g_ω, "dg%d_omega", uid);
+        pl_emit_goal(g, g_γ, g_ω, trail_local, var_locals, n_vars,
+                     cut_cs_seal, cs_local_for_cut, next_local, lbl_cutγ);
+        J("%s:\n", g_γ);
+        pl_emit_body(goals + 1, ngoals - 1, lbl_γ, lbl_ω, lbl_outer_ω,
+                     trail_local, var_locals, n_vars, next_local,
+                     init_cs_local, sub_cs_out_local,
+                     cut_cs_seal, cs_local_for_cut, lbl_pred_ω, lbl_cutγ);
+        J("%s:\n", g_ω);
+        JI("goto", lbl_ω);
+    }
+}
+
+/* -------------------------------------------------------------------------
+ * pl_emit_reverse_builtin — emit synthetic p_reverse_2 method.
+ * Signature: p_reverse_2([List], [Result], cs) → Object[] | null
+ * Deterministic: reverses the Prolog list in List and unifies with Result.
+ * cs > 0 → always fail (no retry).
+ * ------------------------------------------------------------------------- */
+static void pl_emit_reverse_builtin(void) {
+    J("; === reverse/2 synthetic predicate ========================================\n");
+    J(".method static p_reverse_2([Ljava/lang/Object;[Ljava/lang/Object;I)[Ljava/lang/Object;\n");
+    J("    .limit stack 8\n");
+    J("    .limit locals 8\n");
+    /* cs > 0 → already used, fail */
+    J("    iload_2\n");
+    J("    ifne p_reverse_2_fail\n");
+    /* Walk list into ArrayList */
+    J("    new java/util/ArrayList\n");
+    J("    dup\n");
+    J("    invokespecial java/util/ArrayList/<init>()V\n");
+    J("    astore_3\n");
+    J("    aload_0\n");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    J("    astore 4\n");
+    J("p_rev_walk:\n");
+    J("    aload 4\n");
+    J("    checkcast [Ljava/lang/Object;\n");
+    J("    iconst_1\n");
+    J("    aaload\n");
+    J("    ldc \"[]\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ifne p_rev_build\n");
+    /* head = list[2] */
+    J("    aload_3\n");
+    J("    aload 4\n");
+    J("    checkcast [Ljava/lang/Object;\n");
+    J("    iconst_2\n");
+    J("    aaload\n");
+    J("    invokevirtual java/util/ArrayList/add(Ljava/lang/Object;)Z\n");
+    J("    pop\n");
+    /* tail = list[3], deref, loop */
+    J("    aload 4\n");
+    J("    checkcast [Ljava/lang/Object;\n");
+    J("    iconst_3\n");
+    J("    aaload\n");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    J("    astore 4\n");
+    J("    goto p_rev_walk\n");
+    /* Build reversed Prolog list: prepend each element front-to-back.
+     * Walking i=0..size-1 and prepending gives [arr[N-1],...,arr[0]] = reversed. */
+    J("p_rev_build:\n");
+    J("    ldc \"[]\"\n");
+    J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+    J("    astore 5\n");     /* accumulator, starts as [] */
+    J("    iconst_0\n");
+    J("    istore 6\n");     /* i = 0, iterate forward */
+    J("p_rev_loop:\n");
+    J("    iload 6\n");
+    J("    aload_3\n");
+    J("    invokevirtual java/util/ArrayList/size()I\n");
+    J("    if_icmpge p_rev_unify\n");
+    J("    bipush 4\n");
+    J("    anewarray java/lang/Object\n");
+    J("    dup\n");
+    J("    iconst_0\n");
+    J("    ldc \"compound\"\n");
+    J("    aastore\n");
+    J("    dup\n");
+    J("    iconst_1\n");
+    J("    ldc \".\"\n");
+    J("    aastore\n");
+    J("    dup\n");
+    J("    iconst_2\n");
+    J("    aload_3\n");
+    J("    iload 6\n");
+    J("    invokevirtual java/util/ArrayList/get(I)Ljava/lang/Object;\n");
+    J("    aastore\n");
+    J("    dup\n");
+    J("    iconst_3\n");
+    J("    aload 5\n");
+    J("    aastore\n");
+    J("    astore 5\n");
+    J("    iinc 6 1\n");
+    J("    goto p_rev_loop\n");
+    /* Unify result */
+    J("p_rev_unify:\n");
+    J("    aload 5\n");
+    J("    aload_1\n");
+    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+    J("    ifeq p_reverse_2_fail\n");
+    J("    iconst_1\n");
+    J("    anewarray java/lang/Object\n");
+    J("    dup\n");
+    J("    iconst_0\n");
+    J("    iconst_1\n");
+    J("    invokestatic java/lang/Integer/valueOf(I)Ljava/lang/Integer;\n");
+    J("    aastore\n");
+    J("    areturn\n");
+    J("p_reverse_2_fail:\n");
+    J("    aconst_null\n");
+    J("    areturn\n");
+    J(".end method\n\n");
+}
+
+/* -------------------------------------------------------------------------
+ * pl_emit_forall_builtin — emit synthetic p_forall_2 method.
+ * forall(Cond, Action): for each solution of Cond call Action; succeed iff
+ * all Actions succeed (vacuously true if Cond has no solutions).
+ * Signature: p_forall_2([Cond], [Action], cs) → Object[] | null
+ * cs is ignored (forall always deterministic); returns singleton {0} on success.
+ * Uses pl_call_goal to drive Cond with backtracking and call Action for each.
+ * ------------------------------------------------------------------------- */
+static void pl_emit_forall_builtin(void) {
+    J("; === forall/2 synthetic predicate =========================================\n");
+    J(".method static p_forall_2([Ljava/lang/Object;[Ljava/lang/Object;I)[Ljava/lang/Object;\n");
+    J("    .limit stack 6\n");
+    J("    .limit locals 6\n");
+    /* locals: 0=Cond[], 1=Action[], 2=cs(ignored), 3=cs_cond(int), 4=r(int) */
+    /* deref Cond */
+    J("    aload_0\n");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    J("    iconst_0\n");
+    J("    istore 3\n");             /* cs_cond = 0 */
+    J("p_forall_2_loop:\n");
+    /* call Cond with cs_cond */
+    J("    dup\n");                  /* Cond still on stack */
+    J("    iload 3\n");
+    J("    invokestatic %s/pl_call_goal(Ljava/lang/Object;I)I\n", classname);
+    J("    istore 4\n");
+    J("    iload 4\n");
+    J("    ldc -1\n");
+    J("    if_icmpeq p_forall_2_done\n");  /* Cond exhausted → success */
+    J("    iload 4\n");
+    J("    istore 3\n");             /* cs_cond = next cs */
+    /* call Action */
+    J("    aload_1\n");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    J("    iconst_0\n");
+    J("    invokestatic %s/pl_call_goal(Ljava/lang/Object;I)I\n", classname);
+    J("    ldc -1\n");
+    J("    if_icmpeq p_forall_2_fail\n");  /* Action failed → fail */
+    J("    goto p_forall_2_loop\n");
+    J("p_forall_2_done:\n");
+    J("    pop\n");                  /* pop Cond ref */
+    J("    iconst_1\n");
+    J("    anewarray java/lang/Object\n");
+    J("    dup\n");
+    J("    iconst_0\n");
+    J("    iconst_0\n");
+    J("    invokestatic java/lang/Integer/valueOf(I)Ljava/lang/Integer;\n");
+    J("    aastore\n");
+    J("    areturn\n");
+    J("p_forall_2_fail:\n");
+    J("    pop\n");                  /* pop Cond ref */
+    J("    aconst_null\n");
+    J("    areturn\n");
+    J(".end method\n\n");
+}
+
+/* -------------------------------------------------------------------------
+ * pl_emit_between_builtin — emit synthetic p_between_3 method.
+ * Signature: p_between_3([Low], [High], [Var], cs) -> Object[] | null
+ * cs = offset from Low: try value Low+cs each invocation.
+ * Returns {cs+1} on success so caller retries with the next value.
+ * ------------------------------------------------------------------------- */
+static void pl_emit_between_builtin(void) {
+    J("; === between/3 synthetic predicate ========================================\n");
+    J(".method static p_between_3([Ljava/lang/Object;[Ljava/lang/Object;[Ljava/lang/Object;I)[Ljava/lang/Object;\n");
+    J("    .limit stack 8\n");
+    J("    .limit locals 10\n");
+    /* locals: 0=Low,1=High,2=Var,3=cs, 4-5=low(long),6-7=high(long),8-9=cur(long) */
+
+    /* Fast path: if cs==0 AND Var is already bound (tag!="var"), do range check */
+    J("    iload_3\n"); J("    ifne p_between_3_generate\n");  /* cs!=0 → generate mode */
+    J("    aload_2\n");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_0", ""); JI("aaload", "");     /* tag */
+    JI("ldc", "\"var\"");
+    JI("invokevirtual", "java/lang/Object/equals(Ljava/lang/Object;)Z");
+    J("    ifne p_between_3_generate\n");     /* var is unbound → generate mode */
+
+    /* Bound var fast path: check Low =< Var =< High */
+    J("    aload_0\n");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("checkcast", "[Ljava/lang/Object;"); JI("iconst_1", ""); JI("aaload", "");
+    JI("checkcast", "java/lang/String"); JI("invokestatic", "java/lang/Long/parseLong(Ljava/lang/String;)J");
+    J("    lstore 4\n");   /* low */
+    J("    aload_1\n");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("checkcast", "[Ljava/lang/Object;"); JI("iconst_1", ""); JI("aaload", "");
+    JI("checkcast", "java/lang/String"); JI("invokestatic", "java/lang/Long/parseLong(Ljava/lang/String;)J");
+    J("    lstore 6\n");   /* high */
+    J("    aload_2\n");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("checkcast", "[Ljava/lang/Object;"); JI("iconst_1", ""); JI("aaload", "");
+    JI("checkcast", "java/lang/String"); JI("invokestatic", "java/lang/Long/parseLong(Ljava/lang/String;)J");
+    J("    lstore 8\n");   /* var_val */
+    /* check low <= var_val */
+    J("    lload 4\n"); J("    lload 8\n"); JI("lcmp", ""); J("    ifgt p_between_3_fail\n");
+    /* check var_val <= high */
+    J("    lload 8\n"); J("    lload 6\n"); JI("lcmp", ""); J("    ifgt p_between_3_fail\n");
+    /* succeed deterministically: return {MAX_INT} to signal no retry needed */
+    JI("iconst_1", ""); JI("anewarray", "java/lang/Object");
+    JI("dup", ""); JI("iconst_0", "");
+    JI("ldc", "2147483647");
+    JI("invokestatic", "java/lang/Integer/valueOf(I)Ljava/lang/Integer;");
+    JI("aastore", "");
+    JI("areturn", "");
+
+    /* Generate mode: iterate cur = Low + cs */
+    J("p_between_3_generate:\n");
+    J("    aload_0\n");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", "");
+    JI("aaload", "");
+    JI("checkcast", "java/lang/String");
+    JI("invokestatic", "java/lang/Long/parseLong(Ljava/lang/String;)J");
+    J("    iload_3\n");
+    JI("i2l", "");
+    JI("ladd", "");
+    J("    lstore 8\n");                /* cur = Low + cs */
+    J("    aload_1\n");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    JI("checkcast", "[Ljava/lang/Object;");
+    JI("iconst_1", "");
+    JI("aaload", "");
+    JI("checkcast", "java/lang/String");
+    JI("invokestatic", "java/lang/Long/parseLong(Ljava/lang/String;)J");
+    J("    lstore 6\n");                /* high */
+    J("    lload 8\n");
+    J("    lload 6\n");
+    JI("lcmp", "");
+    J("    ifgt p_between_3_fail\n");   /* cur > high → fail */
+    J("    lload 8\n");
+    J("    invokestatic %s/pl_term_int(J)[Ljava/lang/Object;\n", classname);
+    J("    aload_2\n");
+    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+    J("    ifeq p_between_3_fail\n");   /* unify failed → fail */
+    JI("iconst_1", "");
+    JI("anewarray", "java/lang/Object");
+    JI("dup", "");
+    JI("iconst_0", "");
+    J("    iload_3\n");
+    JI("iconst_1", "");
+    JI("iadd", "");
+    JI("invokestatic", "java/lang/Integer/valueOf(I)Ljava/lang/Integer;");
+    JI("aastore", "");
+    JI("areturn", "");
+    J("p_between_3_fail:\n");
+    JI("aconst_null", "");
+    JI("areturn", "");
+    J(".end method\n\n");
+}
+
+/* -------------------------------------------------------------------------
+ * pl_emit_aggregate_all_builtin — emit synthetic p_aggregate_all_3 method.
+ *
+ * aggregate_all(+Template, +Goal, -Result)
+ * Supported templates:
+ *   count       → Result = N (integer count of solutions)
+ *   sum(Expr)   → Result = sum of Expr over solutions
+ *   max(Expr)   → Result = max of Expr over solutions (fail if 0 solutions)
+ *   min(Expr)   → Result = min of Expr over solutions (fail if 0 solutions)
+ *   bag(T)      → Result = list of T  (alias for findall)
+ *   set(T)      → Result = sorted deduped list of T
+ *
+ * Strategy: run the same pl_call_goal loop as findall, collecting solutions
+ * into an ArrayList.  After loop, reduce according to Template tag.
+ *
+ * Locals: 0=tmpl 1=goal 2=result_var 3=cs(unused)
+ *         4=acc(ArrayList) 5=trail_mark 6=goal_cs
+ *         7=tag(String) 8=count(I) 9=tmp 10=i 11=sum(long lo) 12=sum hi
+ *         13=best(long lo) 14=best hi 15=has_val(I)
+ * ------------------------------------------------------------------------- */
+static void pl_emit_aggregate_all_builtin(void) {
+    J("; === aggregate_all/3 synthetic predicate ============================\n");
+    J(".method static p_aggregate_all_3([Ljava/lang/Object;[Ljava/lang/Object;[Ljava/lang/Object;I)[Ljava/lang/Object;\n");
+    J("    .limit stack 20\n");
+    J("    .limit locals 20\n");
+
+    /* deref template to get tag string */
+    J("    aload_0\n");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    J("    astore_0\n");
+
+    /* acc = new ArrayList */
+    J("    new java/util/ArrayList\n");
+    J("    dup\n");
+    J("    invokespecial java/util/ArrayList/<init>()V\n");
+    J("    astore 4\n");
+
+    /* trail mark */
+    J("    invokestatic %s/pl_trail_mark()I\n", classname);
+    J("    istore 5\n");
+
+    /* goal_cs = 0 */
+    J("    iconst_0\n"); J("    istore 6\n");
+
+    /* --- solution loop (same as findall) --- */
+    J("pl_agg_loop:\n");
+    J("    aload_1\n");
+    J("    iload 6\n");
+    J("    invokestatic %s/pl_call_goal(Ljava/lang/Object;I)I\n", classname);
+    J("    istore 6\n");
+    J("    iload 6\n");
+    J("    ldc -1\n");
+    J("    if_icmpeq pl_agg_done\n");
+    /* copy template and accumulate */
+    J("    aload_0\n");
+    J("    invokestatic %s/pl_copy_term(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    J("    astore 9\n");
+    J("    aload 4\n");
+    J("    aload 9\n");
+    J("    invokevirtual java/util/ArrayList/add(Ljava/lang/Object;)Z\n");
+    J("    pop\n");
+    /* unwind trail */
+    J("    iload 5\n");
+    J("    invokestatic %s/pl_trail_unwind(I)V\n", classname);
+    J("    goto pl_agg_loop\n");
+
+    J("pl_agg_done:\n");
+    J("    iload 5\n");
+    J("    invokestatic %s/pl_trail_unwind(I)V\n", classname);
+
+    /* --- determine template functor name ---
+     * atom term:     tmpl = ["atom", name]        → functor = tmpl[1]
+     * compound term: tmpl = ["compound", name, …] → functor = tmpl[1]
+     * Either way, tmpl[1] gives us the functor name. */
+    J("    aload_0\n");
+    J("    checkcast [Ljava/lang/Object;\n");
+    J("    iconst_1\n");
+    J("    aaload\n");
+    J("    invokevirtual java/lang/Object/toString()Ljava/lang/String;\n");
+    J("    astore 7\n");  /* functor name */
+
+    /* --- dispatch on tag --- */
+
+    /* count */
+    J("    aload 7\n");
+    J("    ldc \"count\"\n");
+    J("    invokevirtual java/lang/String/equals(Ljava/lang/Object;)Z\n");
+    J("    ifeq pl_agg_not_count\n");
+    /* Result = size of acc */
+    J("    aload 4\n");
+    J("    invokevirtual java/util/ArrayList/size()I\n");
+    J("    i2l\n");
+    J("    invokestatic %s/pl_term_int(J)[Ljava/lang/Object;\n", classname);
+    J("    aload_2\n");
+    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+    J("    ifeq pl_agg_fail\n");
+    J("    goto pl_agg_succeed\n");
+
+    J("pl_agg_not_count:\n");
+
+    /* bag(T) — build list of T values */
+    J("    aload 7\n");
+    J("    ldc \"bag\"\n");
+    J("    invokevirtual java/lang/String/equals(Ljava/lang/Object;)Z\n");
+    J("    ifne pl_agg_build_list\n");
+    /* set(T) — sorted deduped list */
+    J("    aload 7\n");
+    J("    ldc \"set\"\n");
+    J("    invokevirtual java/lang/String/equals(Ljava/lang/Object;)Z\n");
+    J("    ifne pl_agg_build_sorted_list\n");
+    /* not bag or set — fall through to sum/max/min */
+    J("    goto pl_agg_not_bag\n");
+
+    J("pl_agg_build_list:\n");
+    /* Build Prolog list from acc — each element is bag(T), extract T at index [2] */
+    J("    ldc \"[]\"\n");
+    J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+    J("    astore 10\n");  /* tail = [] */
+    J("    aload 4\n");
+    J("    invokevirtual java/util/ArrayList/size()I\n");
+    J("    iconst_1\n"); J("    isub\n"); J("    istore 11\n"); /* i */
+    J("pl_agg_bag_loop:\n");
+    J("    iload 11\n"); J("    iflt pl_agg_bag_done\n");
+    /* elem = acc[i][2] (the T in bag(T)) */
+    J("    aload 4\n"); J("    iload 11\n");
+    J("    invokevirtual java/util/ArrayList/get(I)Ljava/lang/Object;\n");
+    J("    checkcast [Ljava/lang/Object;\n");
+    J("    iconst_2\n"); J("    aaload\n");  /* T value */
+    J("    astore 12\n");
+    /* cons = [compound, ".", T, tail] */
+    J("    bipush 4\n"); J("    anewarray java/lang/Object\n"); J("    astore 13\n");
+    J("    aload 13\n"); J("    iconst_0\n"); J("    ldc \"compound\"\n"); J("    aastore\n");
+    J("    aload 13\n"); J("    iconst_1\n"); J("    ldc \".\"\n"); J("    aastore\n");
+    J("    aload 13\n"); J("    iconst_2\n"); J("    aload 12\n"); J("    aastore\n");
+    J("    aload 13\n"); J("    iconst_3\n"); J("    aload 10\n"); J("    aastore\n");
+    J("    aload 13\n"); J("    astore 10\n");
+    J("    iinc 11 -1\n");
+    J("    goto pl_agg_bag_loop\n");
+    J("pl_agg_bag_done:\n");
+    J("    aload_2\n"); J("    aload 10\n");
+    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+    J("    ifeq pl_agg_fail\n");
+    J("    goto pl_agg_succeed\n");
+
+    J("pl_agg_build_sorted_list:\n");
+    /* Build list first, sort it (dedup=1), unify with result_var */
+    J("    ldc \"[]\"\n");
+    J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+    J("    astore 10\n");
+    J("    aload 4\n");
+    J("    invokevirtual java/util/ArrayList/size()I\n");
+    J("    iconst_1\n"); J("    isub\n"); J("    istore 11\n");
+    J("pl_agg_set_bld_loop:\n");
+    J("    iload 11\n"); J("    iflt pl_agg_set_bld_done\n");
+    J("    bipush 4\n"); J("    anewarray java/lang/Object\n"); J("    astore 12\n");
+    J("    aload 12\n"); J("    iconst_0\n"); J("    ldc \"compound\"\n"); J("    aastore\n");
+    J("    aload 12\n"); J("    iconst_1\n"); J("    ldc \".\"\n"); J("    aastore\n");
+    J("    aload 12\n"); J("    iconst_2\n");
+    J("    aload 4\n"); J("    iload 11\n");
+    J("    invokevirtual java/util/ArrayList/get(I)Ljava/lang/Object;\n");
+    J("    aastore\n");
+    J("    aload 12\n"); J("    iconst_3\n"); J("    aload 10\n"); J("    aastore\n");
+    J("    aload 12\n"); J("    astore 10\n");
+    J("    iinc 11 -1\n");
+    J("    goto pl_agg_set_bld_loop\n");
+    J("pl_agg_set_bld_done:\n");
+    /* sort with dedup=1 via pl_sort_list */
+    J("    aload 10\n");
+    J("    iconst_1\n");  /* dedup=1 */
+    J("    invokestatic %s/pl_sort_list(Ljava/lang/Object;I)Ljava/lang/Object;\n", classname);
+    J("    astore 10\n");
+    J("    aload_2\n"); J("    aload 10\n");
+    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+    J("    ifeq pl_agg_fail\n");
+    J("    goto pl_agg_succeed\n");
+
+    J("pl_agg_not_bag:\n");
+
+    /* sum(Expr), max(Expr), min(Expr) — local 7 already holds functor name */
+    J("    lconst_0\n"); J("    lstore 11\n");  /* accumulator = 0 */
+    J("    lconst_0\n"); J("    lstore 13\n");  /* best = 0 */
+    J("    iconst_0\n"); J("    istore 15\n");  /* has_val = false */
+
+    J("    aload 7\n");
+    J("    ldc \"sum\"\n");
+    J("    invokevirtual java/lang/String/equals(Ljava/lang/Object;)Z\n");
+    J("    ifne pl_agg_sum\n");
+    J("    aload 7\n");
+    J("    ldc \"max\"\n");
+    J("    invokevirtual java/lang/String/equals(Ljava/lang/Object;)Z\n");
+    J("    ifne pl_agg_max\n");
+    J("    aload 7\n");
+    J("    ldc \"min\"\n");
+    J("    invokevirtual java/lang/String/equals(Ljava/lang/Object;)Z\n");
+    J("    ifne pl_agg_min\n");
+    J("    goto pl_agg_unknown\n");
+
+    /* --- sum loop --- */
+    J("pl_agg_sum:\n");
+    J("    iconst_0\n"); J("    istore 10\n");  /* i=0 */
+    J("pl_agg_sum_loop:\n");
+    J("    iload 10\n");
+    J("    aload 4\n"); J("    invokevirtual java/util/ArrayList/size()I\n");
+    J("    if_icmpge pl_agg_sum_done\n");
+    J("    aload 4\n"); J("    iload 10\n");
+    J("    invokevirtual java/util/ArrayList/get(I)Ljava/lang/Object;\n");
+    J("    checkcast [Ljava/lang/Object;\n");
+    J("    iconst_2\n"); J("    aaload\n");  /* bag(Expr) — arg0 of compound */
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    J("    invokestatic %s/pl_int_val(Ljava/lang/Object;)J\n", classname);
+    J("    lload 11\n"); J("    ladd\n"); J("    lstore 11\n");
+    J("    iinc 10 1\n");
+    J("    goto pl_agg_sum_loop\n");
+    J("pl_agg_sum_done:\n");
+    J("    lload 11\n");
+    J("    invokestatic %s/pl_term_int(J)[Ljava/lang/Object;\n", classname);
+    J("    aload_2\n");
+    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+    J("    ifeq pl_agg_fail\n");
+    J("    goto pl_agg_succeed\n");
+
+    /* --- max loop --- */
+    J("pl_agg_max:\n");
+    J("    iconst_0\n"); J("    istore 10\n");
+    J("pl_agg_max_loop:\n");
+    J("    iload 10\n");
+    J("    aload 4\n"); J("    invokevirtual java/util/ArrayList/size()I\n");
+    J("    if_icmpge pl_agg_max_done\n");
+    J("    aload 4\n"); J("    iload 10\n");
+    J("    invokevirtual java/util/ArrayList/get(I)Ljava/lang/Object;\n");
+    J("    checkcast [Ljava/lang/Object;\n");
+    J("    iconst_2\n"); J("    aaload\n");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    J("    invokestatic %s/pl_int_val(Ljava/lang/Object;)J\n", classname);
+    J("    lstore 13\n");  /* val */
+    J("    iload 15\n"); J("    ifne pl_agg_max_cmp\n");
+    /* first element */
+    J("    lload 13\n"); J("    lstore 11\n");
+    J("    iconst_1\n"); J("    istore 15\n");
+    J("    goto pl_agg_max_next\n");
+    J("pl_agg_max_cmp:\n");
+    J("    lload 13\n"); J("    lload 11\n"); J("    lcmp\n");
+    J("    ifle pl_agg_max_next\n");
+    J("    lload 13\n"); J("    lstore 11\n");
+    J("pl_agg_max_next:\n");
+    J("    iinc 10 1\n");
+    J("    goto pl_agg_max_loop\n");
+    J("pl_agg_max_done:\n");
+    J("    iload 15\n"); J("    ifeq pl_agg_fail\n");  /* no solutions → fail */
+    J("    lload 11\n");
+    J("    invokestatic %s/pl_term_int(J)[Ljava/lang/Object;\n", classname);
+    J("    aload_2\n");
+    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+    J("    ifeq pl_agg_fail\n");
+    J("    goto pl_agg_succeed\n");
+
+    /* --- min loop --- */
+    J("pl_agg_min:\n");
+    J("    iconst_0\n"); J("    istore 10\n");
+    J("pl_agg_min_loop:\n");
+    J("    iload 10\n");
+    J("    aload 4\n"); J("    invokevirtual java/util/ArrayList/size()I\n");
+    J("    if_icmpge pl_agg_min_done\n");
+    J("    aload 4\n"); J("    iload 10\n");
+    J("    invokevirtual java/util/ArrayList/get(I)Ljava/lang/Object;\n");
+    J("    checkcast [Ljava/lang/Object;\n");
+    J("    iconst_2\n"); J("    aaload\n");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    J("    invokestatic %s/pl_int_val(Ljava/lang/Object;)J\n", classname);
+    J("    lstore 13\n");
+    J("    iload 15\n"); J("    ifne pl_agg_min_cmp\n");
+    J("    lload 13\n"); J("    lstore 11\n");
+    J("    iconst_1\n"); J("    istore 15\n");
+    J("    goto pl_agg_min_next\n");
+    J("pl_agg_min_cmp:\n");
+    J("    lload 13\n"); J("    lload 11\n"); J("    lcmp\n");
+    J("    ifge pl_agg_min_next\n");
+    J("    lload 13\n"); J("    lstore 11\n");
+    J("pl_agg_min_next:\n");
+    J("    iinc 10 1\n");
+    J("    goto pl_agg_min_loop\n");
+    J("pl_agg_min_done:\n");
+    J("    iload 15\n"); J("    ifeq pl_agg_fail\n");
+    J("    lload 11\n");
+    J("    invokestatic %s/pl_term_int(J)[Ljava/lang/Object;\n", classname);
+    J("    aload_2\n");
+    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+    J("    ifeq pl_agg_fail\n");
+    J("    goto pl_agg_succeed\n");
+
+    J("pl_agg_unknown:\n");
+    J("    aconst_null\n"); J("    areturn\n");
+
+    J("pl_agg_succeed:\n");
+    J("    iconst_1\n");
+    J("    anewarray java/lang/Object\n");
+    J("    dup\n");
+    J("    iconst_0\n");
+    J("    iconst_1\n");
+    J("    invokestatic java/lang/Integer/valueOf(I)Ljava/lang/Integer;\n");
+    J("    aastore\n");
+    J("    areturn\n");
+
+    J("pl_agg_fail:\n");
+    J("    aconst_null\n"); J("    areturn\n");
+    J(".end method\n\n");
+}
+
+/* -------------------------------------------------------------------------
+ * pl_emit_findall_builtin — emit synthetic p_findall_3 method.
+ *
+ * findall(Template, Goal, List) — collect all solutions to Goal,
+ * binding Template on each, copy each bound template, unify List with
+ * the resulting Prolog list.  Never fails (returns [] on no solutions).
+ *
+ * Signature: p_findall_3([Template], [Goal], [List], cs) → Object[] | null
+ * cs is always 0 on entry (findall is deterministic / never retried).
+ *
+ * Runtime strategy:
+ *   1. Mark the trail.
+ *   2. Use reflection to call p_functor_arity(args..., cs) in a loop,
+ *      incrementing cs until null (ω).
+ *   3. On each success: deep-copy the deref'd template, add to ArrayList.
+ *   4. Unwind trail to mark after each attempt to reset bindings.
+ *   5. Build Prolog list from ArrayList, unify with List arg.
+ *   6. Return {1} (success).
+ *
+ * Goal dispatch: handles atom "fail/0", "true/0", compound "," (conj),
+ * compound "is" (arithmetic), and user predicates via reflection.
+ * Conjunction is handled by pl_call_goal_conj helper.
+ * ------------------------------------------------------------------------- */
+static void pl_emit_findall_builtin(void) {
+    /* ---- pl_copy_term: deep-copy a deref'd term with fresh vars ---------- */
+    J("; === pl_copy_term (deep copy for findall) ===========================\n");
+    J(".method static pl_copy_term(Ljava/lang/Object;)Ljava/lang/Object;\n");
+    J("    .limit stack 10\n");
+    J("    .limit locals 6\n");
+    /* deref arg */
+    J("    aload_0\n");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    J("    astore_0\n");
+    /* if null → return null */
+    J("    aload_0\n");
+    J("    ifnonnull pl_ct_notnull\n");
+    J("    aconst_null\n");
+    J("    areturn\n");
+    J("pl_ct_notnull:\n");
+    J("    aload_0\n");
+    J("    checkcast [Ljava/lang/Object;\n");
+    J("    astore_1\n");  /* t = (Object[]) term */
+    /* tag = t[0] */
+    J("    aload_1\n");
+    J("    iconst_0\n");
+    J("    aaload\n");
+    J("    astore_2\n");  /* tag string */
+    /* if tag == "var" → return fresh var */
+    J("    aload_2\n");
+    J("    ldc \"var\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ifeq pl_ct_not_var\n");
+    J("    invokestatic %s/pl_term_var()[Ljava/lang/Object;\n", classname);
+    J("    areturn\n");
+    J("pl_ct_not_var:\n");
+    /* if tag == "atom" → return same (atoms are immutable) */
+    J("    aload_2\n");
+    J("    ldc \"atom\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ifeq pl_ct_not_atom\n");
+    J("    aload_1\n");  /* return same atom */
+    J("    areturn\n");
+    J("pl_ct_not_atom:\n");
+    /* if tag == "int" → return same (ints are immutable) */
+    J("    aload_2\n");
+    J("    ldc \"int\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ifeq pl_ct_not_int\n");
+    J("    aload_1\n");
+    J("    areturn\n");
+    J("pl_ct_not_int:\n");
+    /* compound: copy all args */
+    J("    aload_1\n");
+    J("    arraylength\n");
+    J("    istore_3\n");  /* len */
+    J("    iload_3\n");
+    J("    anewarray java/lang/Object\n");
+    J("    astore 4\n");  /* newArr */
+    /* copy [0] tag and [1] functor unchanged */
+    J("    aload 4\n"); J("    iconst_0\n"); J("    aload_1\n"); J("    iconst_0\n"); J("    aaload\n"); J("    aastore\n");
+    J("    aload 4\n"); J("    iconst_1\n"); J("    aload_1\n"); J("    iconst_1\n"); J("    aaload\n"); J("    aastore\n");
+    /* copy args [2..len-1] recursively */
+    J("    iconst_2\n");
+    J("    istore 5\n");  /* i = 2 */
+    J("pl_ct_arg_loop:\n");
+    J("    iload 5\n");
+    J("    iload_3\n");
+    J("    if_icmpge pl_ct_done\n");
+    J("    aload 4\n");
+    J("    iload 5\n");
+    J("    aload_1\n");
+    J("    iload 5\n");
+    J("    aaload\n");  /* t[i] */
+    J("    invokestatic %s/pl_copy_term(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    J("    aastore\n");
+    J("    iinc 5 1\n");
+    J("    goto pl_ct_arg_loop\n");
+    J("pl_ct_done:\n");
+    J("    aload 4\n");
+    J("    areturn\n");
+    J(".end method\n\n");
+
+    /* ---- pl_is_ground: check if a term contains no unbound variables ---- */
+    J("; === pl_is_ground (recursive ground check) ===========================\n");
+    J(".method static pl_is_ground(Ljava/lang/Object;)Z\n");
+    J("    .limit stack 8\n");
+    J("    .limit locals 5\n");
+    /* deref */
+    J("    aload_0\n");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    J("    astore_0\n");
+    /* null = unbound var → not ground */
+    J("    aload_0\n");
+    J("    ifnull pl_isg_false\n");
+    J("    aload_0\n");
+    J("    instanceof [Ljava/lang/Object;\n");
+    J("    ifeq pl_isg_string\n");
+    J("    aload_0\n"); J("    checkcast [Ljava/lang/Object;\n"); J("    astore 1\n");
+    J("    aload 1\n"); J("    iconst_0\n"); J("    aaload\n");
+    J("    checkcast java/lang/String\n"); J("    astore 2\n");
+    /* var tag → not ground */
+    J("    aload 2\n"); J("    ldc \"var\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ifne pl_isg_false\n");
+    /* ref tag → recurse on [1] */
+    J("    aload 2\n"); J("    ldc \"ref\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ifeq pl_isg_not_ref\n");
+    J("    aload 1\n"); J("    iconst_1\n"); J("    aaload\n");
+    J("    invokestatic %s/pl_is_ground(Ljava/lang/Object;)Z\n", classname);
+    J("    ireturn\n");
+    J("pl_isg_not_ref:\n");
+    /* atom or int → ground */
+    J("    aload 2\n"); J("    ldc \"atom\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ifne pl_isg_true\n");
+    J("    aload 2\n"); J("    ldc \"int\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ifne pl_isg_true\n");
+    J("    aload 2\n"); J("    ldc \"float\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ifne pl_isg_true\n");
+    /* compound: check all args */
+    J("    aload 1\n"); J("    arraylength\n"); J("    iconst_2\n"); J("    isub\n"); J("    istore 3\n"); /* arity */
+    J("    iconst_0\n"); J("    istore 4\n"); /* i=0 */
+    J("pl_isg_compound_loop:\n");
+    J("    iload 4\n"); J("    iload 3\n"); J("    if_icmpge pl_isg_true\n");
+    J("    aload 1\n"); J("    iload 4\n"); J("    iconst_2\n"); J("    iadd\n"); J("    aaload\n");
+    J("    invokestatic %s/pl_is_ground(Ljava/lang/Object;)Z\n", classname);
+    J("    ifeq pl_isg_false\n");
+    J("    iinc 4 1\n"); J("    goto pl_isg_compound_loop\n");
+    J("pl_isg_string:\n");
+    J("pl_isg_true:\n"); J("    iconst_1\n"); J("    ireturn\n");
+    J("pl_isg_false:\n"); J("    iconst_0\n"); J("    ireturn\n");
+    J(".end method\n\n");
+
+    /* ---- pl_can_compare(?X, ?Y) → Z: succeed if both ground or identical -- */
+    J("; === pl_can_compare (?= operator) ====================================\n");
+    J(".method static pl_can_compare(Ljava/lang/Object;Ljava/lang/Object;)Z\n");
+    J("    .limit stack 4\n");
+    J("    .limit locals 2\n");
+    J("    aload_0\n");
+    J("    invokestatic %s/pl_is_ground(Ljava/lang/Object;)Z\n", classname);
+    J("    ifeq pl_cc_false\n");
+    J("    aload_1\n");
+    J("    invokestatic %s/pl_is_ground(Ljava/lang/Object;)Z\n", classname);
+    J("    ifeq pl_cc_false\n");
+    J("    iconst_1\n"); J("    ireturn\n");
+    J("pl_cc_false:\n"); J("    iconst_0\n"); J("    ireturn\n");
+    J(".end method\n\n");
+
+    /* ---- pl_call_goal: interpret a goal term.
+     * Returns new_cs (>=0) on success so caller can resume, -1 on failure.
+     * For user predicates: extracts result[0].intValue() as the new cs.
+     * For builtins (true, is, conj): returns 0 on success (deterministic).
+     * Caller (p_findall_3) stores the returned value as goal_cs for next iter.
+     * --------------------------------------------------------------------- */
+    J("; === pl_call_goal (goal interpreter for findall) ====================\n");
+    J(".method static pl_call_goal(Ljava/lang/Object;I)I\n");
+    J("    .limit stack 20\n");
+    J("    .limit locals 16\n");
+    /* local 0 = goal, local 1 = cs, local 2..11 = scratch */
+    J("    aload_0\n");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    J("    astore_0\n");
+    J("    aload_0\n");
+    J("    ifnull pl_cg_fail\n");
+    J("    aload_0\n");
+    J("    checkcast [Ljava/lang/Object;\n");
+    J("    astore 2\n");  /* t */
+    /* get tag */
+    J("    aload 2\n"); J("    iconst_0\n"); J("    aaload\n"); J("    checkcast java/lang/String\n"); J("    astore 3\n"); /* tag */
+    /* atom? */
+    J("    aload 3\n");
+    J("    ldc \"atom\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ifeq pl_cg_not_atom\n");
+    /* atom: get name */
+    J("    aload 2\n"); J("    iconst_1\n"); J("    aaload\n"); J("    checkcast java/lang/String\n"); J("    astore 4\n");
+    /* fail? */
+    J("    aload 4\n"); J("    ldc \"fail\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ifeq pl_cg_not_fail_atom\n");
+    J("    ldc -1\n"); J("    ireturn\n");
+    J("pl_cg_not_fail_atom:\n");
+    /* true? */
+    J("    aload 4\n"); J("    ldc \"true\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ifeq pl_cg_atom_user\n");
+    J("    iconst_0\n"); J("    ireturn\n");
+    J("pl_cg_atom_user:\n");
+    /* atom user predicate (arity 0) — call via reflection, return new cs */
+    J("    aload 4\n");      /* functor name */
+    J("    iconst_0\n");     /* arity 0 */
+    J("    aconst_null\n");  /* args[] = null for arity 0 */
+    J("    iload_1\n");      /* cs */
+    J("    invokestatic %s/pl_reflect_call(Ljava/lang/String;I[Ljava/lang/Object;I)[Ljava/lang/Object;\n", classname);
+    J("    astore 5\n");
+    J("    aload 5\n"); J("    ifnull pl_cg_fail\n");
+    /* extract new cs from result[0].intValue() */
+    J("    aload 5\n"); J("    iconst_0\n"); J("    aaload\n");
+    J("    checkcast java/lang/Integer\n");
+    J("    invokevirtual java/lang/Integer/intValue()I\n");
+    J("    ireturn\n");
+    J("pl_cg_not_atom:\n");
+    /* compound */
+    J("    aload 3\n"); J("    ldc \"compound\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ifeq pl_cg_fail\n");
+    /* functor */
+    J("    aload 2\n"); J("    iconst_1\n"); J("    aaload\n"); J("    checkcast java/lang/String\n"); J("    astore 4\n");
+    /* arity = arraylength - 2 */
+    J("    aload 2\n"); J("    arraylength\n"); J("    iconst_2\n"); J("    isub\n"); J("    istore 5\n");
+    /* conjunction? */
+    J("    aload 4\n"); J("    ldc \",\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ifeq pl_cg_not_conj\n");
+    /* conjunction: pass cs to left (backtracking), right always cs=0 (det).
+     * Return left_new_cs so p_findall_3 can advance left on next iteration. (PJ-46) */
+    J("    aload 2\n"); J("    iconst_2\n"); J("    aaload\n");  /* left */
+    J("    iload_1\n");  /* pass incoming cs to left — was iconst_0 */
+    J("    invokestatic %s/pl_call_goal(Ljava/lang/Object;I)I\n", classname);
+    J("    istore 9\n");  /* left_new_cs */
+    J("    iload 9\n"); J("    ldc -1\n"); J("    if_icmpeq pl_cg_fail\n");
+    J("    aload 2\n"); J("    iconst_3\n"); J("    aaload\n");  /* right */
+    J("    iconst_0\n");
+    J("    invokestatic %s/pl_call_goal(Ljava/lang/Object;I)I\n", classname);
+    J("    ldc -1\n"); J("    if_icmpeq pl_cg_fail\n");
+    J("    iload 9\n"); J("    ireturn\n");  /* return left_new_cs → findall advances left */
+    J("pl_cg_not_conj:\n");
+    /* is/2? */
+    J("    aload 4\n"); J("    ldc \"is\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ifeq pl_cg_not_is\n");
+    /* is(Var, Expr): evaluate expr, unify with var — return 0 on success, -1 on fail */
+    J("    aload 2\n"); J("    iconst_2\n"); J("    aaload\n"); J("    astore 6\n"); /* lhs */
+    J("    aload 2\n"); J("    iconst_3\n"); J("    aaload\n"); J("    astore 7\n"); /* rhs expr */
+    J("    aload 7\n");
+    J("    invokestatic %s/pl_eval_arith(Ljava/lang/Object;)J\n", classname);
+    J("    invokestatic %s/pl_term_int(J)[Ljava/lang/Object;\n", classname);
+    J("    astore 8\n");
+    J("    aload 6\n"); J("    aload 8\n");
+    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+    J("    ifeq pl_cg_fail\n");
+    J("    iconst_0\n"); J("    ireturn\n");
+    J("pl_cg_not_is:\n");
+    /* phrase/2,3 — rewrite to NT/+2 then reflect-call NT.
+     * phrase(NT, List)       -> p_NT_2(List, [])
+     * phrase(NT, List, Rest) -> p_NT_3(List, Rest)   (arity = NT_base+2)
+     * NT may itself be a compound: item(X) -> p_item_3(X, List, Rest).
+     * We detect phrase by functor name and arity 2 or 3, then build a new
+     * args array [nt_arg0..., list, rest] and reflect-call the NT functor. */
+    J("    aload 4\n"); J("    ldc \"phrase\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ifeq pl_cg_not_phrase\n");
+    /* compute arity = t.length - 2 inline (local 5 not yet set at this point) */
+    J("    aload 2\n"); J("    arraylength\n"); J("    iconst_2\n"); J("    isub\n"); J("    istore 5\n");
+    J("    iload 5\n"); J("    iconst_2\n"); J("    if_icmplt pl_cg_not_phrase\n");
+    J("    iload 5\n"); J("    iconst_3\n"); J("    if_icmpgt pl_cg_not_phrase\n");
+    /* NT term = t[2] (first arg of phrase), deref */
+    J("    aload 2\n"); J("    iconst_2\n"); J("    aaload\n");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    J("    astore 6\n");  /* nt_term */
+    /* Determine NT functor name and base arity */
+    J("    aload 6\n");
+    J("    instanceof [Ljava/lang/Object;\n");
+    J("    ifeq pl_cg_phrase_atom_nt\n");
+    /* compound NT: functor = nt[1], base_arity = nt.length-2 */
+    J("    aload 6\n"); J("    checkcast [Ljava/lang/Object;\n"); J("    astore 7\n");
+    J("    aload 7\n"); J("    iconst_1\n"); J("    aaload\n");
+    J("    checkcast java/lang/String\n"); J("    astore 8\n"); /* nt_fn */
+    J("    aload 7\n"); J("    arraylength\n"); J("    iconst_2\n"); J("    isub\n"); J("    istore 9\n"); /* nt_base */
+    J("    goto pl_cg_phrase_have_nt\n");
+    J("pl_cg_phrase_atom_nt:\n");
+    /* atom NT: functor = nt itself, base_arity = 0 */
+    J("    aconst_null\n"); J("    astore 7\n"); /* local 7 unused but must be typed */
+    J("    aload 6\n"); J("    checkcast java/lang/String\n"); J("    astore 8\n"); /* nt_fn */
+    J("    iconst_0\n"); J("    istore 9\n"); /* nt_base = 0 */
+    J("pl_cg_phrase_have_nt:\n");
+    /* nil-NT shortcut: phrase([], List) -> List=[] ; phrase([], List, Rest) -> List=Rest */
+    J("    aload 8\n"); J("    ldc \"[]\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ifeq pl_cg_phrase_not_nil_nt\n");
+    /* nt_fn == "[]": List unifies with Rest (or []) */
+    J("    aload 2\n"); J("    iconst_3\n"); J("    aaload\n"); /* list arg */
+    J("    iload 5\n"); J("    iconst_3\n"); J("    if_icmpeq pl_cg_phrase_nil_has_rest\n");
+    J("    ldc \"[]\"\n");
+    J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+    J("    goto pl_cg_phrase_nil_do_unify\n");
+    J("pl_cg_phrase_nil_has_rest:\n");
+    J("    aload 2\n"); J("    bipush 4\n"); J("    aaload\n"); /* rest arg */
+    J("pl_cg_phrase_nil_do_unify:\n");
+    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+    J("    ifeq pl_cg_fail\n");
+    J("    iconst_0\n"); J("    ireturn\n");
+    J("pl_cg_phrase_not_nil_nt:\n");
+    /* total call arity = nt_base + 2 */
+    J("    iload 9\n"); J("    iconst_2\n"); J("    iadd\n"); J("    istore 10\n"); /* call_arity */
+    /* build args array: [nt_args..., list, rest_or_nil] */
+    J("    iload 10\n");
+    J("    anewarray java/lang/Object\n"); J("    astore 11\n");
+    /* copy nt_args (indices 2..nt_base+1 from nt_term if compound) */
+    J("    iconst_0\n"); J("    istore 12\n"); /* j=0 */
+    J("pl_cg_phrase_nt_args_loop:\n");
+    J("    iload 12\n"); J("    iload 9\n"); J("    if_icmpge pl_cg_phrase_nt_args_done\n");
+    J("    aload 11\n"); J("    iload 12\n");
+    J("    aload 7\n"); J("    iload 12\n"); J("    iconst_2\n"); J("    iadd\n"); J("    aaload\n"); /* nt[j+2] */
+    J("    aastore\n");
+    J("    iinc 12 1\n"); J("    goto pl_cg_phrase_nt_args_loop\n");
+    J("pl_cg_phrase_nt_args_done:\n");
+    /* args[nt_base] = list arg = t[3] */
+    J("    aload 11\n"); J("    iload 9\n");
+    J("    aload 2\n"); J("    iconst_3\n"); J("    aaload\n"); /* t[3] = list */
+    J("    aastore\n");
+    /* args[nt_base+1] = rest: t[4] if phrase/3, else [] */
+    J("    aload 11\n"); J("    iload 9\n"); J("    iconst_1\n"); J("    iadd\n");
+    J("    iload 5\n"); J("    iconst_3\n"); J("    if_icmpeq pl_cg_phrase_has_rest\n");
+    /* phrase/2: rest = [] (nil atom term, not bare string) */
+    J("    ldc \"[]\"\n");
+    J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+    J("    goto pl_cg_phrase_store_rest\n");
+    J("pl_cg_phrase_has_rest:\n");
+    J("    aload 2\n"); J("    bipush 4\n"); J("    aaload\n"); /* t[4] = rest */
+    J("pl_cg_phrase_store_rest:\n");
+    J("    aastore\n");
+    /* reflect-call NT */
+    J("    aload 8\n");   /* nt functor */
+    J("    iload 10\n");  /* call arity */
+    J("    aload 11\n");  /* args */
+    J("    iload_1\n");   /* cs */
+    J("    invokestatic %s/pl_reflect_call(Ljava/lang/String;I[Ljava/lang/Object;I)[Ljava/lang/Object;\n", classname);
+    J("    astore 13\n");
+    J("    aload 13\n"); J("    ifnull pl_cg_fail\n");
+    J("    aload 13\n"); J("    iconst_0\n"); J("    aaload\n");
+    J("    checkcast java/lang/Integer\n");
+    J("    invokevirtual java/lang/Integer/intValue()I\n");
+    J("    ireturn\n");
+    J("pl_cg_not_phrase:\n");
+    /* assertz/1 — dynamic fact assertion */
+    J("    aload 4\n");
+    J("    ldc \"assertz\"\n");
+    J("    invokevirtual java/lang/String/equals(Ljava/lang/Object;)Z\n");
+    J("    ifeq pl_cg_not_assertz\n");
+    J("    aload 2\n"); J("    iconst_2\n"); J("    aaload\n");   /* assertz arg */
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    J("    dup\n");
+    J("    invokestatic %s/pl_db_assert_key(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+    J("    swap\n"); J("    iconst_0\n");
+    J("    invokestatic %s/pl_db_assert(Ljava/lang/String;Ljava/lang/Object;I)V\n", classname);
+    J("    iconst_0\n"); J("    ireturn\n");
+    J("pl_cg_not_assertz:\n");
+    /* user predicate: build args array, call via reflection, return new cs */
+    J("    aload 2\n"); J("    arraylength\n"); J("    iconst_2\n"); J("    isub\n"); J("    istore 5\n"); /* arity */
+    J("    iload 5\n");
+    J("    anewarray java/lang/Object\n");
+    J("    astore 6\n");  /* args array */
+    J("    iconst_0\n"); J("    istore 7\n"); /* i=0 */
+    J("pl_cg_args_loop:\n");
+    J("    iload 7\n"); J("    iload 5\n"); J("    if_icmpge pl_cg_args_done\n");
+    J("    aload 6\n"); J("    iload 7\n");
+    J("    aload 2\n"); J("    iload 7\n"); J("    iconst_2\n"); J("    iadd\n"); J("    aaload\n"); /* t[i+2] */
+    J("    aastore\n");
+    J("    iinc 7 1\n");
+    J("    goto pl_cg_args_loop\n");
+    J("pl_cg_args_done:\n");
+    J("    aload 4\n"); /* functor */
+    J("    iload 5\n"); /* arity */
+    J("    aload 6\n"); /* args */
+    J("    iload_1\n"); /* cs */
+    J("    invokestatic %s/pl_reflect_call(Ljava/lang/String;I[Ljava/lang/Object;I)[Ljava/lang/Object;\n", classname);
+    J("    astore 8\n");
+    J("    aload 8\n"); J("    ifnull pl_cg_fail\n");
+    /* extract new cs from result[0].intValue() */
+    J("    aload 8\n"); J("    iconst_0\n"); J("    aaload\n");
+    J("    checkcast java/lang/Integer\n");
+    J("    invokevirtual java/lang/Integer/intValue()I\n");
+    J("    ireturn\n");
+    J("pl_cg_fail:\n");
+    J("    ldc -1\n"); J("    ireturn\n");
+    J(".end method\n\n");
+
+    /* ---- pl_eval_arith: evaluate arithmetic term, return long ------------ */
+    J("; === pl_eval_arith (arithmetic evaluator for findall/is) ============\n");
+    J(".method static pl_eval_arith(Ljava/lang/Object;)J\n");
+    J("    .limit stack 10\n");
+    J("    .limit locals 8\n");
+    J("    aload_0\n");
+    J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    J("    astore_0\n");
+    J("    aload_0\n");
+    J("    checkcast [Ljava/lang/Object;\n");
+    J("    astore_1\n");
+    J("    aload_1\n"); J("    iconst_0\n"); J("    aaload\n"); J("    checkcast java/lang/String\n"); J("    astore_2\n"); /* tag */
+    /* int? */
+    J("    aload_2\n"); J("    ldc \"int\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ifeq pl_ea_not_int\n");
+    J("    aload_1\n"); J("    iconst_1\n"); J("    aaload\n"); J("    checkcast java/lang/String\n");
+    J("    invokestatic java/lang/Long/parseLong(Ljava/lang/String;)J\n");
+    J("    lreturn\n");
+    J("pl_ea_not_int:\n");
+    /* compound: get functor */
+    J("    aload_1\n"); J("    iconst_1\n"); J("    aaload\n"); J("    checkcast java/lang/String\n"); J("    astore_3\n");
+    /* eval left (arg[0] = t[2]) and right (arg[1] = t[3]) */
+    J("    aload_1\n"); J("    iconst_2\n"); J("    aaload\n");
+    J("    invokestatic %s/pl_eval_arith(Ljava/lang/Object;)J\n", classname);
+    J("    lstore 4\n");  /* L */
+    /* check arity before loading right */
+    J("    aload_1\n"); J("    arraylength\n"); J("    iconst_3\n"); J("    if_icmplt pl_ea_unary\n");
+    J("    aload_1\n"); J("    iconst_3\n"); J("    aaload\n");
+    J("    invokestatic %s/pl_eval_arith(Ljava/lang/Object;)J\n", classname);
+    J("    lstore 6\n");  /* R */
+    /* dispatch on functor */
+    J("    aload_3\n"); J("    ldc \"+\"\n"); J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n"); J("    ifeq pl_ea_not_add\n");
+    J("    lload 4\n"); J("    lload 6\n"); J("    ladd\n"); J("    lreturn\n");
+    J("pl_ea_not_add:\n");
+    J("    aload_3\n"); J("    ldc \"-\"\n"); J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n"); J("    ifeq pl_ea_not_sub\n");
+    J("    lload 4\n"); J("    lload 6\n"); J("    lsub\n"); J("    lreturn\n");
+    J("pl_ea_not_sub:\n");
+    J("    aload_3\n"); J("    ldc \"*\"\n"); J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n"); J("    ifeq pl_ea_not_mul\n");
+    J("    lload 4\n"); J("    lload 6\n"); J("    lmul\n"); J("    lreturn\n");
+    J("pl_ea_not_mul:\n");
+    J("    aload_3\n"); J("    ldc \"/\"\n"); J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n"); J("    ifeq pl_ea_not_div\n");
+    J("    lload 4\n"); J("    lload 6\n"); J("    ldiv\n"); J("    lreturn\n");
+    J("pl_ea_not_div:\n");
+    J("    aload_3\n"); J("    ldc \"mod\"\n"); J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n"); J("    ifeq pl_ea_not_mod\n");
+    J("    lload 4\n"); J("    lload 6\n"); J("    lrem\n"); J("    lreturn\n");
+    J("pl_ea_not_mod:\n");
+    J("    lload 4\n"); J("    lreturn\n"); /* fallback */
+    J("pl_ea_unary:\n");
+    /* unary minus */
+    J("    aload_3\n"); J("    ldc \"-\"\n"); J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n"); J("    ifeq pl_ea_unary_other\n");
+    J("    lload 4\n"); J("    lneg\n"); J("    lreturn\n");
+    J("pl_ea_unary_other:\n");
+    J("    lload 4\n"); J("    lreturn\n");
+    J(".end method\n\n");
+
+    /* ---- pl_reflect_call: call p_name_arity via reflection --------------- */
+    /* Signature: pl_reflect_call(String functor, int arity, Object[] args, int cs) → Object[] | null */
+    J("; === pl_reflect_call (reflection dispatch for findall) ==============\n");
+    J(".method static pl_reflect_call(Ljava/lang/String;I[Ljava/lang/Object;I)[Ljava/lang/Object;\n");
+    J("    .limit stack 20\n");
+    J("    .limit locals 15\n");
+    /* wrap entire body in try/catch Exception → return null */
+    J("    .catch java/lang/Exception from pl_rc_try_start to pl_rc_try_end using pl_rc_catch\n");
+    J("pl_rc_try_start:\n");
+    /* build method name: "p_" + functor + "_" + arity */
+    J("    ldc \"p_\"\n");
+    J("    aload_0\n");
+    J("    invokevirtual java/lang/String/concat(Ljava/lang/String;)Ljava/lang/String;\n");
+    J("    ldc \"_\"\n");
+    J("    invokevirtual java/lang/String/concat(Ljava/lang/String;)Ljava/lang/String;\n");
+    J("    iload_1\n");
+    J("    invokestatic java/lang/Integer/toString(I)Ljava/lang/String;\n");
+    J("    invokevirtual java/lang/String/concat(Ljava/lang/String;)Ljava/lang/String;\n");
+    J("    astore 4\n");  /* methodName = "p_functor_arity" */
+    /* build param type array: [Object[]]*arity + [int] */
+    J("    iload_1\n"); J("    iconst_1\n"); J("    iadd\n");
+    J("    anewarray java/lang/Class\n");
+    J("    astore 5\n");  /* paramTypes */
+    J("    iconst_0\n"); J("    istore 6\n"); /* i=0 */
+    J("pl_rc_param_loop:\n");
+    J("    iload 6\n"); J("    iload_1\n"); J("    if_icmpge pl_rc_param_done\n");
+    J("    aload 5\n"); J("    iload 6\n");
+    /* Get Object[].class by creating a zero-length Object[] and calling getClass() */
+    J("    iconst_0\n");
+    J("    anewarray java/lang/Object\n");
+    J("    invokevirtual java/lang/Object/getClass()Ljava/lang/Class;\n");
+    J("    aastore\n");
+    J("    iinc 6 1\n"); J("    goto pl_rc_param_loop\n");
+    J("pl_rc_param_done:\n");
+    /* last param: int.class */
+    J("    aload 5\n"); J("    iload_1\n");
+    J("    getstatic java/lang/Integer/TYPE Ljava/lang/Class;\n");
+    J("    aastore\n");
+    /* get class */
+    J("    ldc \"%s\"\n", classname);
+    J("    invokestatic java/lang/Class/forName(Ljava/lang/String;)Ljava/lang/Class;\n");
+    J("    astore 7\n");
+    /* getDeclaredMethod(name, paramTypes) — finds non-public methods too */
+    J("    aload 7\n");
+    J("    aload 4\n");
+    J("    aload 5\n");
+    J("    invokevirtual java/lang/Class/getDeclaredMethod(Ljava/lang/String;[Ljava/lang/Class;)Ljava/lang/reflect/Method;\n");
+    J("    astore 8\n");  /* method */
+    /* setAccessible(true) so we can call package-private static methods */
+    J("    aload 8\n");
+    J("    iconst_1\n");
+    J("    invokevirtual java/lang/reflect/Method/setAccessible(Z)V\n");
+    /* build invoke args: [args[0], args[1], ..., Integer(cs)] */
+    J("    iload_1\n"); J("    iconst_1\n"); J("    iadd\n");
+    J("    anewarray java/lang/Object\n");
+    J("    astore 9\n");
+    J("    iconst_0\n"); J("    istore 6\n");
+    J("pl_rc_invoke_loop:\n");
+    J("    iload 6\n"); J("    iload_1\n"); J("    if_icmpge pl_rc_invoke_done\n");
+    J("    aload 9\n"); J("    iload 6\n");
+    J("    aload_2\n"); J("    iload 6\n"); J("    aaload\n");
+    J("    aastore\n");
+    J("    iinc 6 1\n"); J("    goto pl_rc_invoke_loop\n");
+    J("pl_rc_invoke_done:\n");
+    J("    aload 9\n"); J("    iload_1\n");
+    J("    iload_3\n");
+    J("    invokestatic java/lang/Integer/valueOf(I)Ljava/lang/Integer;\n");
+    J("    aastore\n");
+    /* invoke: null target for static */
+    J("    aload 8\n");
+    J("    aconst_null\n");
+    J("    aload 9\n");
+    J("    invokevirtual java/lang/reflect/Method/invoke(Ljava/lang/Object;[Ljava/lang/Object;)Ljava/lang/Object;\n");
+    J("pl_rc_try_end:\n");
+    J("    checkcast [Ljava/lang/Object;\n");
+    J("    areturn\n");
+    J("pl_rc_catch:\n");
+    J("    astore 10\n");   /* save exception */
+    /* Unwrap InvocationTargetException so PROLOG_THROW survives reflection */
+    J("    aload 10\n");
+    J("    instanceof java/lang/reflect/InvocationTargetException\n");
+    J("    ifeq pl_rc_not_ite\n");
+    J("    aload 10\n");
+    J("    checkcast java/lang/reflect/InvocationTargetException\n");
+    J("    invokevirtual java/lang/reflect/InvocationTargetException/getCause()Ljava/lang/Throwable;\n");
+    J("    dup\n");
+    J("    ifnull pl_rc_ite_null\n");  /* no cause → swallow */
+    J("    astore 10\n");   /* replace with unwrapped cause */
+    J("    goto pl_rc_not_ite\n");
+    J("pl_rc_ite_null:\n");
+    J("    pop\n");   /* discard null from stack */
+    J("    goto pl_rc_swallow\n");
+    J("pl_rc_not_ite:\n");
+    J("    aload 10\n");
+    J("    invokevirtual java/lang/Throwable/getMessage()Ljava/lang/String;\n");
+    J("    ifnull pl_rc_swallow\n");
+    J("    aload 10\n");
+    J("    invokevirtual java/lang/Throwable/getMessage()Ljava/lang/String;\n");
+    J("    ldc \"PROLOG_THROW\"\n");
+    J("    invokevirtual java/lang/String/equals(Ljava/lang/Object;)Z\n");
+    J("    ifeq pl_rc_swallow\n");
+    J("    aload 10\n");
+    J("    athrow\n");       /* re-throw Prolog exceptions */
+    J("pl_rc_swallow:\n");
+    /* DB fallback: try pl_db_query(functor+\"/\"+arity, cs) for dynamic predicates */
+    J("    new java/lang/StringBuilder\n");
+    J("    dup\n");
+    J("    invokespecial java/lang/StringBuilder/<init>()V\n");
+    J("    aload_0\n");   /* functor */
+    J("    invokevirtual java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;\n");
+    J("    ldc \"/\"\n");
+    J("    invokevirtual java/lang/StringBuilder/append(Ljava/lang/String;)Ljava/lang/StringBuilder;\n");
+    J("    iload_1\n");   /* arity */
+    J("    invokevirtual java/lang/StringBuilder/append(I)Ljava/lang/StringBuilder;\n");
+    J("    invokevirtual java/lang/StringBuilder/toString()Ljava/lang/String;\n");
+    J("    iload_3\n");   /* cs */
+    J("    invokestatic %s/pl_db_query(Ljava/lang/String;I)Ljava/lang/Object;\n", classname);
+    J("    dup\n");
+    J("    ifnull pl_rc_db_miss\n");
+    /* Got a fact — unify each arg with fact[2..arity+1] */
+    J("    checkcast [Ljava/lang/Object;\n");
+    J("    astore 11\n");
+    J("    aconst_null\n");
+    J("    astore 12\n");  /* result placeholder */
+    J("    iconst_0\n");   /* unify_ok flag */
+    J("    istore 13\n");
+    J("    iconst_0\n");   /* i */
+    J("    istore 14\n");
+    J("pl_rc_db_unify_loop:\n");
+    J("    iload 14\n");
+    J("    iload_1\n");    /* arity */
+    J("    if_icmpge pl_rc_db_unify_done\n");
+    J("    aload_2\n");    /* args[] */
+    J("    iload 14\n");
+    J("    aaload\n");     /* args[i] */
+    J("    aload 11\n");   /* fact Object[] */
+    J("    iload 14\n");
+    J("    iconst_2\n");
+    J("    iadd\n");       /* fact[i+2] */
+    J("    aaload\n");
+    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+    J("    ifeq pl_rc_db_unify_fail\n");
+    J("    iinc 14 1\n");
+    J("    goto pl_rc_db_unify_loop\n");
+    J("pl_rc_db_unify_done:\n");
+    /* Unification succeeded — return Object[]{Integer(cs+1)} matching reflect_call convention */
+    J("    iconst_1\n");
+    J("    anewarray java/lang/Object\n");
+    J("    dup\n");
+    J("    iconst_0\n");
+    J("    iload_3\n");   /* cs */
+    J("    iconst_1\n");
+    J("    iadd\n");
+    J("    invokestatic java/lang/Integer/valueOf(I)Ljava/lang/Integer;\n");
+    J("    aastore\n");
+    J("    areturn\n");
+    J("pl_rc_db_unify_fail:\n");
+    J("    aconst_null\n");
+    J("    areturn\n");
+    J("pl_rc_db_miss:\n");
+    J("    pop\n");
+    J("    aconst_null\n");
+    J("    areturn\n");
+    J(".end method\n\n");
+
+    /* ---- p_findall_3: the main findall predicate -------------------------- */
+    J("; === findall/3 synthetic predicate ===================================\n");
+    J(".method static p_findall_3([Ljava/lang/Object;[Ljava/lang/Object;[Ljava/lang/Object;I)[Ljava/lang/Object;\n");
+    J("    .limit stack 20\n");
+    J("    .limit locals 16\n");
+    /* locals: 0=template, 1=goal, 2=list_var, 3=cs(unused), 4=results(ArrayList),
+               5=trail_mark, 6=goal_cs, 7=call_result, 8=copied_template,
+               9=prolog_list(built), 10=nil, 11=cons */
+    /* results = new ArrayList */
+    J("    new java/util/ArrayList\n");
+    J("    dup\n");
+    J("    invokespecial java/util/ArrayList/<init>()V\n");
+    J("    astore 4\n");
+    /* save trail mark */
+    J("    invokestatic %s/pl_trail_mark()I\n", classname);
+    J("    istore 5\n");
+    /* goal_cs = 0 */
+    J("    iconst_0\n"); J("    istore 6\n");
+    /* loop: call goal with goal_cs, collect solutions */
+    J("pl_fa_loop:\n");
+    /* call pl_call_goal(goal, goal_cs) → new_cs or -1 */
+    J("    aload_1\n");
+    J("    iload 6\n");
+    J("    invokestatic %s/pl_call_goal(Ljava/lang/Object;I)I\n", classname);
+    J("    istore 6\n");        /* goal_cs = returned new_cs (or -1) */
+    J("    iload 6\n");
+    J("    ldc -1\n");
+    J("    if_icmpeq pl_fa_done\n");  /* -1 = failure → done */
+    /* success: copy template and add to results */
+    J("    aload_0\n");
+    J("    invokestatic %s/pl_copy_term(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+    J("    astore 8\n");
+    J("    aload 4\n");
+    J("    aload 8\n");
+    J("    invokevirtual java/util/ArrayList/add(Ljava/lang/Object;)Z\n");
+    J("    pop\n");
+    /* unwind trail to reset bindings */
+    J("    iload 5\n");
+    J("    invokestatic %s/pl_trail_unwind(I)V\n", classname);
+    /* goal_cs already updated above — loop back */
+    J("    goto pl_fa_loop\n");
+    J("pl_fa_done:\n");
+    /* unwind any residual trail */
+    J("    iload 5\n");
+    J("    invokestatic %s/pl_trail_unwind(I)V\n", classname);
+    /* build Prolog list from results ArrayList (reverse iterate) */
+    /* nil = atom("[]") */
+    J("    ldc \"[]\"\n");
+    J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+    J("    astore 9\n");
+    /* i = results.size()-1, down to 0 */
+    J("    aload 4\n");
+    J("    invokevirtual java/util/ArrayList/size()I\n");
+    J("    iconst_1\n"); J("    isub\n"); J("    istore 10\n");
+    J("pl_fa_list_loop:\n");
+    J("    iload 10\n"); J("    iflt pl_fa_list_done\n");
+    /* cons = ["compound", ".", element, tail] */
+    J("    bipush 4\n"); J("    anewarray java/lang/Object\n"); J("    astore 11\n");
+    J("    aload 11\n"); J("    iconst_0\n"); J("    ldc \"compound\"\n"); J("    aastore\n");
+    J("    aload 11\n"); J("    iconst_1\n"); J("    ldc \".\"\n"); J("    aastore\n");
+    J("    aload 11\n"); J("    iconst_2\n");
+    J("    aload 4\n"); J("    iload 10\n");
+    J("    invokevirtual java/util/ArrayList/get(I)Ljava/lang/Object;\n");
+    J("    aastore\n");
+    J("    aload 11\n"); J("    iconst_3\n"); J("    aload 9\n"); J("    aastore\n");
+    J("    aload 11\n"); J("    astore 9\n");  /* tail = cons */
+    J("    iinc 10 -1\n");
+    J("    goto pl_fa_list_loop\n");
+    J("pl_fa_list_done:\n");
+    /* unify list var with built list */
+    J("    aload_2\n");  /* list_var */
+    J("    aload 9\n");  /* prolog_list */
+    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+    J("    ifeq pl_fa_fail\n");
+    /* return success {1} */
+    J("    iconst_1\n");
+    J("    anewarray java/lang/Object\n");
+    J("    dup\n");
+    J("    iconst_0\n");
+    J("    iconst_1\n");
+    J("    invokestatic java/lang/Integer/valueOf(I)Ljava/lang/Integer;\n");
+    J("    aastore\n");
+    J("    areturn\n");
+    J("pl_fa_fail:\n");
+    J("    aconst_null\n"); J("    areturn\n");
+    J(".end method\n\n");
+}
+
+/* -------------------------------------------------------------------------
+ * Clause emitter
+ * Emits one clause block inside the predicate method (switch case).
+ * Layout: p_functor_arity(arg0..argN-1, cs) — cs = continuation state
+ * Returns Object[] = args array on success, null on failure.
+ * ------------------------------------------------------------------------- */
+
+/* -------------------------------------------------------------------------
+ * pl_predicate_base_nclauses — M-PJ-CUT-UCALL
+ * Returns base[nclauses] for the named predicate (fn/arity key).
+ * Since stride=1 and base[0]=0, base[nclauses] == nclauses exactly.
+ * Returns -1 if predicate not found or too large.
+ * ------------------------------------------------------------------------- */
+static int pl_predicate_base_nclauses(const char *fn, int arity) {
+    if (!prog || !fn) return -1;
+    char key[256];
+    snprintf(key, sizeof key, "%s/%d", fn, arity);
+    for (STMT_t *s = prog->head; s; s = s->next) {
+        if (!s->subject || s->subject->kind != E_CHOICE) continue;
+        if (!s->subject->sval || strcmp(s->subject->sval, key) != 0) continue;
+        int nc = s->subject->nchildren;
+        if (nc <= 0 || nc > 64) return -1;
+        return nc;  /* base[nclauses] = nclauses (stride=1, base[0]=0) */
+    }
+    return -1;
+}
+
+/* -------------------------------------------------------------------------
+ * pl_callee_has_cut_no_last_ucall — M-PJ-CUT-UCALL
+ * Returns 1 if the named predicate has any cut AND its last clause has no
+ * user call (i.e., base[nclauses] is a reliable sentinel — not open-ended).
+ * ------------------------------------------------------------------------- */
+static int pl_callee_has_cut_no_last_ucall(const char *fn, int arity) {
+    if (!prog || !fn) return 0;
+    char key[256];
+    snprintf(key, sizeof key, "%s/%d", fn, arity);
+    for (STMT_t *s = prog->head; s; s = s->next) {
+        if (!s->subject || s->subject->kind != E_CHOICE) continue;
+        if (!s->subject->sval || strcmp(s->subject->sval, key) != 0) continue;
+        EXPR_t *choice = s->subject;
+        int nc = choice->nchildren;
+        if (nc <= 0 || nc > 64) return 0;
+        /* scan all clauses for cut */
+        int any_cut = 0;
+        for (int ci = 0; ci < nc && !any_cut; ci++) {
+            EXPR_t *cl = choice->children[ci];
+            if (!cl) continue;
+            int nv = (int)cl->dval;
+            int nb = (int)cl->nchildren - nv;
+            if (nb < 0) nb = 0;
+            for (int bi = 0; bi < nb && !any_cut; bi++)
+                if (pl_body_has_cut(cl->children[nv + bi])) any_cut = 1;
+        }
+        if (!any_cut) return 0;
+        /* check last clause has no user call */
+        EXPR_t *last = choice->children[nc - 1];
+        if (!last) return 1;
+        int nv_last = (int)last->dval;
+        int nb_last = (int)last->nchildren - nv_last;
+        if (nb_last < 0) nb_last = 0;
+        for (int bi = 0; bi < nb_last; bi++) {
+            EXPR_t *g = last->children[nv_last + bi];
+            if (g && pl_is_user_call(g)) return 0;  /* last has ucall — sentinel unreliable */
+        }
+        return 1;
+    }
+    return 0;
+}
+
+static void pl_emit_choice(EXPR_t *choice) {
+    if (!choice || choice->kind != E_CHOICE) return;
+    const char *functor = choice->sval ? choice->sval : "unknown";
+    int nclauses = choice->nchildren;
+    /* parse arity from sval "name/arity" */
+    int arity = 0;
+    const char *sl = functor ? strrchr(functor, '/') : NULL;
+    if (sl) arity = atoi(sl + 1);
+    char safe_fn[256];
+    char name_only[256];
+    if (sl) {
+        int nlen = (int)(sl - functor);
+        strncpy(name_only, functor, nlen); name_only[nlen] = '\0';
+    } else {
+        strncpy(name_only, functor, sizeof name_only - 1);
+    }
+    safe_name(name_only, safe_fn, sizeof safe_fn);
+
+    JSep(functor);
+    JC("Predicate method: p_FUNCTOR_ARITY(args..., cs) -> Object[]|null");
+    JC("cs = continuation state: 0=first try, N=retry from clause N");
+
+    /* method signature: static [Ljava/lang/Object; p_fn_arity(arg0.., cs I) */
+    J(".method static p_%s_%d(", safe_fn, arity);
+    for (int i = 0; i < arity; i++) J("[Ljava/lang/Object;");
+    J("I)[Ljava/lang/Object;\n");
+
+    /* compute max locals needed:
+     * 0..arity-1: args
+     * arity: cs
+     * arity+1: trail mark (per clause) */
+    int max_vars = 0;
+    for (int ci = 0; ci < nclauses; ci++) {
+        EXPR_t *cl = choice->children[ci];
+        if (cl && cl->kind == E_CLAUSE) {
+            int nv = (int)cl->ival;  /* n_vars stored directly on E_CLAUSE */
+            if (nv > max_vars) max_vars = nv;
+        }
+    }
+    /* -----------------------------------------------------------------
+     * base[] computation — mirrors emit_byrd_asm.c base[] logic.
+     * Fact/builtin-only clause: 1 slot → base[ci+1] = base[ci] + 1.
+     * Body-ucall clause: open range, same stride (cs encodes sub_cs offset
+     * within the range, which is [base[ci], base[ci+1]) = open-ended for
+     * the last clause with a ucall; the sub_cs from the inner call fills
+     * the gap and the next entry is base[ci] + sub_cs + 1).
+     * Dispatch: linear scan from last clause to first — jge base[ci] → clause.
+     * ----------------------------------------------------------------- */
+    if (nclauses > 64) nclauses = 64;
+    int base[64];
+    base[0] = 0;
+    /* helper: does clause ci have any body user-calls? */
+    for (int ci = 0; ci < nclauses - 1; ci++) {
+        EXPR_t *ec = choice->children[ci];
+        int nv_args = ec ? (int)ec->dval : 0;
+        int nb = ec ? (int)ec->nchildren - nv_args : 0;
+        if (nb < 0) nb = 0;
+        int has_ucall = 0;
+        for (int bi = 0; bi < nb && !has_ucall; bi++) {
+            EXPR_t *g = ec->children[nv_args + bi];
+            if (g && pl_is_user_call(g)) has_ucall = 1;
+        }
+        base[ci + 1] = base[ci] + 1;
+        (void)has_ucall; /* stride is 1 regardless; sub_cs fills the gap */
+    }
+    /* base[nclauses]: one-past-end sentinel for the dispatch ω guard */
+    base[nclauses] = base[nclauses - 1] + 1;
+    /* last_has_ucall: does the last clause have any body user-calls?
+     * If yes, the cs range for that clause is open-ended (sub_cs from inner
+     * calls can push cs beyond base[nclauses]), so we CANNOT add an ω guard.
+     * If no (pure fact/builtin), cs >= base[nclauses] means exhausted → ω safe. */
+    int last_has_ucall = 0;
+    int any_has_cut = 0;
+    {
+        EXPR_t *last = choice->children[nclauses - 1];
+        int nv_args_last = last ? (int)last->dval : 0;
+        int nb_last = last ? (int)last->nchildren - nv_args_last : 0;
+        if (nb_last < 0) nb_last = 0;
+        for (int bi = 0; bi < nb_last && !last_has_ucall; bi++) {
+            EXPR_t *g = last->children[nv_args_last + bi];
+            if (g && pl_is_user_call(g)) last_has_ucall = 1;
+        }
+        /* scan all clauses for cut presence — recursive so nested "," and ";" are checked */
+        for (int ci2 = 0; ci2 < nclauses && !any_has_cut; ci2++) {
+            EXPR_t *cl = choice->children[ci2];
+            if (!cl) continue;
+            int nv2 = (int)cl->dval;
+            int nb2 = (int)cl->nchildren - nv2;
+            if (nb2 < 0) nb2 = 0;
+            for (int bi2 = 0; bi2 < nb2 && !any_has_cut; bi2++) {
+                if (pl_body_has_cut(cl->children[nv2 + bi2])) any_has_cut = 1;
+            }
+        }
+    }
+
+    /* locals layout:
+     *   0..arity-1          : args
+     *   arity               : cs (parameter)
+     *   arity+1             : trail_mark (I)
+     *   arity+2             : init_cs (sub_cs extracted from incoming cs) (I)
+     *   arity+3             : sub_cs_out (accumulated from body ucalls) (I)
+     *   arity+4..arity+3+max_vars : var slots
+     *   arity+4+max_vars..  : retry loop temporaries
+     */
+    int cs_local      = arity;
+    int trail_local   = arity + 1;
+    int init_cs_local = arity + 2;
+    int sub_cs_out_local = arity + 3;
+    int vars_base     = arity + 4;
+    /* count max user calls in any single clause body — each allocates 5 locals */
+    int max_ucalls = 0;
+    int max_neq = 0;
+    int max_disj = 0;
+    int max_stack = 16;
+    for (int ci2 = 0; ci2 < nclauses; ci2++) {
+        EXPR_t *cl2 = choice->children[ci2];
+        if (!cl2 || cl2->kind != E_CLAUSE) continue;
+        int n_args_ci2 = (int)cl2->dval;
+        int nb2 = cl2->nchildren - n_args_ci2;
+        if (nb2 < 0) nb2 = 0;
+        int uc = pl_count_ucalls(cl2->children + n_args_ci2, nb2);
+        if (uc > max_ucalls) max_ucalls = uc;
+        int nq = pl_count_neq(cl2->children + n_args_ci2, nb2);
+        if (nq > max_neq) max_neq = nq;
+        int dj = pl_count_disj_locals(cl2->children + n_args_ci2, nb2);
+        if (dj > max_disj) max_disj = dj;
+        /* also check head args for deep terms */
+        int s = pl_clause_stack_needed(cl2->children + n_args_ci2, nb2);
+        for (int hi = 0; hi < n_args_ci2; hi++) {
+            int d = pl_term_stack_depth(cl2->children[hi]) + 4;
+            if (d > s) s = d;
+        }
+        if (s > max_stack) max_stack = s;
+    }
+    int locals_needed = vars_base + max_vars + 5 * max_ucalls + 2 * max_neq + max_disj + 16 + 42;
+    /* Reserve last two slots for dynamic DB walker: db_idx (int) and db_term (ref).
+     * Using locals_needed-2/locals_needed-1 ensures no overlap with clause locals.
+     * Declared here so we can emit iconst_0/istore at method entry before any branch,
+     * ensuring the JVM verifier types the slot as int (avoids ClassCastException on iinc). */
+    int db_idx_local_slot  = locals_needed - 2;
+
+    J("    .limit stack %d\n", max_stack < 512 ? 512 : max_stack);
+    J("    .limit locals %d\n", locals_needed);
+    /* Pre-initialise db_idx slot as int so iinc is always valid */
+    J("    iconst_0\n");
+    J("    istore %d\n", db_idx_local_slot);
+
+    /* dispatch: linear scan from last clause down.
+     * cs >= base[ci] → enter clause ci.
+     * Mirrors ASM: cmp eax, base[ci]; jge pl_name_cN_α
+     *
+     * CUT SENTINEL GUARD: if last clause has ucalls AND a cut, add exact-equality
+     * guard cs == base[nclauses] → ω.  cutgamma returns base[nclauses] as the
+     * sentinel; this guard catches it before clause dispatch (the >= range guard
+     * is suppressed for last_has_ucall predicates to allow open-ended sub-cs). */
+    if (!last_has_ucall) {
+        J("    iload %d ; cs >= %d (all clauses exhausted)? → ω\n    ldc %d\n    if_icmpge p_%s_%d_omega\n",
+          cs_local, base[nclauses], base[nclauses], safe_fn, arity);
+    } else if (any_has_cut) {
+        /* M-PJ-CUT-UCALL: use MAX_VALUE as unambiguous cutgamma sentinel.
+         * base[nclauses] collides with last-clause γ return (base[nc-1]+0+1==nclauses).
+         * Integer.MAX_VALUE (0x7fffffff) is never a legitimate cs value. */
+        J("    iload %d ; cs == 0x7fffffff (cutgamma sentinel)? -> ω\n    ldc 2147483647\n    if_icmpeq p_%s_%d_omega\n",
+          cs_local, safe_fn, arity);
+    }
+    J("    iload %d\n", cs_local);
+    J("    istore %d\n", init_cs_local);   /* will be refined per clause below */
+    /* PJ-81: method splitting.
+     * When nclauses > PJ_SPLIT_THRESHOLD the combined clause bodies can exceed
+     * the JVM 16-bit branch-offset limit (~32 KB of bytecode per method).
+     * Fix: emit each clause as its own static sub-method
+     *   p_fn_arity__cN(args..., I init_cs) → Object[]
+     * The main dispatcher calls invokestatic for the matched clause and returns
+     * the result directly.  Branch distances in the dispatcher stay tiny.
+     *
+     * Sub-method signature: same args as parent + I (init_cs), no outer cs.
+     * Returns: null = clause failed (→ try next), Object[] = γ/cutgamma result.
+     */
+#define PJ_SPLIT_THRESHOLD 16
+    int do_split = (nclauses > PJ_SPLIT_THRESHOLD);
+
+    if (!do_split) {
+    /* Linear scan from last to first */
+    for (int ci = nclauses - 1; ci >= 0; ci--)
+        J("    iload %d ; cs >= %d? → clause%d\n    ldc %d\n    if_icmpge p_%s_%d_clause%d\n",
+          cs_local, base[ci], ci, base[ci], safe_fn, arity, ci);
+    J("    goto p_%s_%d_omega\n", safe_fn, arity);
+    }
+
+    /* PJ-81 split threshold */
+    /* When nclauses > PJ_SPLIT_THRESHOLD the combined clause bodies can exceed
+     * the JVM 16-bit branch-offset limit (~32 KB of bytecode per method).
+     * Fix: emit each clause as its own static sub-method
+     *   p_fn_arity__cN(args..., I init_cs) → Object[]
+     * The main dispatcher calls invokestatic for the matched clause and returns
+     * the result directly.  Branch distances in the dispatcher stay tiny.
+     *
+     * Sub-method signature: same args as parent + I (init_cs), no outer cs.
+     * Returns: null = clause failed (→ try next), Object[] = γ/cutgamma result.
+     */
+    if (do_split) {
+        /* ---- SPLIT PATH: dispatcher calls per-clause sub-methods ---- */
+
+        /* Dispatcher: linear scan, invokestatic to sub-method, areturn result.
+         * On null return try next clause. */
+        for (int ci = nclauses - 1; ci >= 0; ci--)
+            J("    iload %d ; cs >= %d? → clause%d\n    ldc %d\n    if_icmpge p_%s_%d_clause%d\n",
+              cs_local, base[ci], ci, base[ci], safe_fn, arity, ci);
+        J("    goto p_%s_%d_omega\n", safe_fn, arity);
+
+        /* Emit per-clause dispatch stubs in the main method */
+        for (int ci = 0; ci < nclauses; ci++) {
+            EXPR_t *clause = choice->children[ci];
+            if (!clause || clause->kind != E_CLAUSE) continue;
+
+            /* label */
+            J("p_%s_%d_clause%d:\n", safe_fn, arity, ci);
+
+            /* compute init_cs = max(0, cs - base[ci]) */
+            J("    iload %d\n", cs_local);
+            J("    ldc %d\n", base[ci]);
+            J("    isub\n");
+            J("    dup\n");
+            {
+                char lbl_clamp[128];
+                snprintf(lbl_clamp, sizeof lbl_clamp, "p_%s_%d_dc_clamp_%d", safe_fn, arity, ci);
+                J("    ifge %s\n", lbl_clamp);
+                J("    pop\n");
+                J("    iconst_0\n");
+                J("%s:\n", lbl_clamp);
+            }
+            /* init_cs is on stack from clamp above — save it, then load args, then reload */
+            J("    istore %d\n", init_cs_local);
+            for (int ai = 0; ai < arity; ai++)
+                J("    aload %d\n", ai);
+            J("    iload %d\n", init_cs_local);
+            /* invokestatic p_fn_arity__cN */
+            J("    invokestatic %s/p_%s_%d__c%d(", classname, safe_fn, arity, ci);
+            for (int ai = 0; ai < arity; ai++) J("[Ljava/lang/Object;");
+            J("I)[Ljava/lang/Object;\n");
+            /* null → next clause; non-null → return to caller */
+            {
+                char lbl_null[128];
+                snprintf(lbl_null, sizeof lbl_null, "p_%s_%d_split_null_%d", safe_fn, arity, ci);
+                char next_lbl[128];
+                if (ci + 1 < nclauses)
+                    snprintf(next_lbl, sizeof next_lbl, "p_%s_%d_clause%d", safe_fn, arity, ci + 1);
+                else
+                    snprintf(next_lbl, sizeof next_lbl, "p_%s_%d_omega", safe_fn, arity);
+                J("    dup\n");
+                J("    ifnull %s\n", lbl_null);
+                J("    areturn\n");
+                J("%s:\n", lbl_null);
+                J("    pop\n");
+                J("    goto %s\n", next_lbl);
+            }
+        }
+
+        /* Close the main dispatcher method before sub-methods */
+        J("p_%s_%d_omega:\n", safe_fn, arity);
+        /* (dynamic DB walker follows below — we fall through to it) */
+
+    } else {
+    /* ---- INLINE PATH (original): emit all clause bodies in main method ---- */
+
+    /* emit each clause block */
+    for (int ci = 0; ci < nclauses; ci++) {
+        EXPR_t *clause = choice->children[ci];
+        if (!clause || clause->kind != E_CLAUSE) continue;
+
+        int n_vars = (int)clause->ival;
+        int n_args = (int)clause->dval;
+
+        /* var_locals: map slot → JVM local */
+        int *var_locals = calloc(n_vars + 1, sizeof(int));
+        for (int vi = 0; vi < n_vars; vi++)
+            var_locals[vi] = vars_base + vi;
+
+        char α_lbl[128], ω_lbl[128];
+        snprintf(α_lbl, sizeof α_lbl, "p_%s_%d_clause%d", safe_fn, arity, ci);
+        if (ci + 1 < nclauses)
+            snprintf(ω_lbl, sizeof ω_lbl, "p_%s_%d_clause%d", safe_fn, arity, ci + 1);
+        else
+            snprintf(ω_lbl, sizeof ω_lbl, "p_%s_%d_omega", safe_fn, arity);
+
+        /* α port */
+        J("%s:\n", α_lbl);
+        /* Compute init_cs = max(0, cs - base[ci]).
+         * 0 means fresh entry; positive means resuming a suspended body ucall.
+         * CLAMP to 0: when alphafail routes from an earlier clause to this one,
+         * cs < base[ci] (e.g. cs=0, base[ci]=1 → would give -1).
+         * A negative init_cs propagates into body ucall cs arguments, causing
+         * the callee's dispatch to hit ω immediately (cs < 0 < base[0]).
+         * Clamping ensures fresh-entry semantics on any alphafail path. */
+        J("    iload %d\n", cs_local);
+        J("    ldc %d\n", base[ci]);
+        JI("isub", "");
+        JI("dup", "");
+        {
+            char lbl_clamp[128];
+            snprintf(lbl_clamp, sizeof lbl_clamp, "p_%s_%d_initcs_clamp_%d",
+                     safe_fn, arity, ci);
+            J("    ifge %s\n", lbl_clamp);
+            JI("pop", "");
+            JI("iconst_0", "");
+            J("%s:\n", lbl_clamp);
+        }
+        J("    istore %d\n", init_cs_local);
+        /* Reset sub_cs_out to 0 */
+        JI("iconst_0", "");
+        J("    istore %d\n", sub_cs_out_local);
+
+        /* trail mark */
+        J("    invokestatic %s/pl_trail_mark()I\n", classname);
+        J("    istore %d\n", trail_local);
+
+        /* allocate variable cells.
+         * Build jvm_arg_for_slot[]: for each var slot, which JVM arg local
+         * provides its initial binding (-1 = none, allocate fresh var cell).
+         * A var slot is a "direct arg" when head position ai is E_VAR with
+         * ival==slot.  slot and ai can differ (e.g. append([H|T],L,[H|R]):
+         * H=slot0, T=slot1, L=slot2, R=slot3; L is at head arg position 1
+         * with slot 2 — old code failed because it tested slot==ai). */
+        int *jvm_arg_for_slot = calloc(n_vars + 1, sizeof(int));
+        for (int vi = 0; vi < n_vars; vi++) jvm_arg_for_slot[vi] = -1;
+        for (int ai = 0; ai < n_args && ai < clause->nchildren; ai++) {
+            EXPR_t *ht = clause->children[ai];
+            if (ht && ht->kind == E_VAR && ht->ival >= 0 && ht->ival < n_vars)
+                if (jvm_arg_for_slot[ht->ival] < 0)   /* first occurrence wins */
+                    jvm_arg_for_slot[ht->ival] = ai;
+        }
+        for (int vi = 0; vi < n_vars; vi++) {
+            if (jvm_arg_for_slot[vi] >= 0) {
+                J("    aload %d\n", jvm_arg_for_slot[vi]);
+                J("    astore %d\n", var_locals[vi]);
+            } else {
+                J("    invokestatic %s/pl_term_var()[Ljava/lang/Object;\n", classname);
+                J("    astore %d\n", var_locals[vi]);
+            }
+        }
+        free(jvm_arg_for_slot);
+
+        /* head unification.
+         * For compound/atom/int head terms: unify arg[ai] with the emitted term.
+         * For E_VAR head terms: the var was initialized from the FIRST occurrence's
+         * JVM arg (via jvm_arg_for_slot above).  Subsequent occurrences of the same
+         * slot need an explicit unify to enforce non-linear equality.
+         * E.g. append([],L,L): L=slot0, first at ai=1 → slot loaded from arg1.
+         * At ai=2: also E_VAR slot0, but var_locals[0] already holds arg1 value.
+         * We must unify arg2 with var_locals[0] to enforce arg1==arg2. */
+        {
+            /* seen_at_arg[slot] = first arg index that claimed this slot, or -1 */
+            int *seen_at = calloc(n_vars + 1, sizeof(int));
+            for (int vi = 0; vi < n_vars; vi++) seen_at[vi] = -1;
+            /* first pass: record first-claim arg for each var slot */
+            for (int ai = 0; ai < n_args && ai < clause->nchildren; ai++) {
+                EXPR_t *ht = clause->children[ai];
+                if (ht && ht->kind == E_VAR && ht->ival >= 0 && ht->ival < n_vars) {
+                    if (seen_at[ht->ival] < 0) seen_at[ht->ival] = ai;
+                }
+            }
+            for (int ai = 0; ai < n_args && ai < clause->nchildren; ai++) {
+                EXPR_t *head_term = clause->children[ai];
+                if (!head_term) continue;
+                if (head_term->kind == E_VAR) {
+                    int slot = head_term->ival;
+                    if (slot < 0 || slot >= n_vars) continue;
+                    if (seen_at[slot] == ai) continue;  /* first occurrence: no-op */
+                    /* second+ occurrence: unify arg[ai] with the var cell */
+                    J("    aload %d\n", ai);
+                    J("    aload %d\n", var_locals[slot]);
+                    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+                    J("    ifeq p_%s_%d_alphafail_%d\n", safe_fn, arity, ci);
+                    continue;
+                }
+                /* compound/atom/int: standard unify */
+                J("    aload %d\n", ai);
+                pl_emit_term(head_term, var_locals, n_vars);
+                J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+                J("    ifeq p_%s_%d_alphafail_%d\n", safe_fn, arity, ci);
+            }
+            free(seen_at);
+        }
+        J("    goto p_%s_%d_beta_%d\n", safe_fn, arity, ci);
+        J("p_%s_%d_alphafail_%d:\n", safe_fn, arity, ci);
+        J("    iload %d\n", trail_local);
+        J("    invokestatic %s/pl_trail_unwind(I)V\n", classname);
+        J("    goto %s\n", ω_lbl);
+
+        /* retry_head label: on β-retry from body ucall, unwind clause
+         * trail mark and redo var alloc + head unification with updated cs.
+         * This correctly handles body-only vars that got bound during head unif. */
+        J("p_%s_%d_alpha_%d:\n", safe_fn, arity, ci);
+        J("    iload %d\n", trail_local);
+        J("    invokestatic %s/pl_trail_unwind(I)V\n", classname);
+        /* re-allocate variable cells (same fix as initial alloc above) */
+        {
+            int *jaf = calloc(n_vars + 1, sizeof(int));
+            for (int vi = 0; vi < n_vars; vi++) jaf[vi] = -1;
+            for (int ai = 0; ai < n_args && ai < clause->nchildren; ai++) {
+                EXPR_t *ht = clause->children[ai];
+                if (ht && ht->kind == E_VAR && ht->ival >= 0 && ht->ival < n_vars)
+                    jaf[ht->ival] = ai;
+            }
+            for (int vi = 0; vi < n_vars; vi++) {
+                if (jaf[vi] >= 0) {
+                    J("    aload %d\n", jaf[vi]);
+                    J("    astore %d\n", var_locals[vi]);
+                } else {
+                    J("    invokestatic %s/pl_term_var()[Ljava/lang/Object;\n", classname);
+                    J("    astore %d\n", var_locals[vi]);
+                }
+            }
+            free(jaf);
+        }
+        /* re-run head unification */
+        for (int ai = 0; ai < n_args && ai < clause->nchildren; ai++) {
+            EXPR_t *head_term = clause->children[ai];
+            if (!head_term) continue;
+            if (head_term->kind == E_VAR) continue;
+            J("    aload %d\n", ai);
+            pl_emit_term(head_term, var_locals, n_vars);
+            J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+            J("    ifeq %s\n", ω_lbl);  /* head fail on retry → ω */
+        }
+        /* fall through to body */
+
+        /* body goals */
+        J("p_%s_%d_beta_%d:\n", safe_fn, arity, ci);
+        {
+            int nbody = clause->nchildren - n_args;
+            EXPR_t **body_goals = clause->children + n_args;
+            char γ_lbl[128], α_retry_lbl[128];
+            snprintf(γ_lbl, sizeof γ_lbl, "p_%s_%d_gamma_%d", safe_fn, arity, ci);
+            snprintf(α_retry_lbl, sizeof α_retry_lbl, "p_%s_%d_alpha_%d", safe_fn, arity, ci);
+            char pred_ω_lbl[128];
+            snprintf(pred_ω_lbl, sizeof pred_ω_lbl, "p_%s_%d_omega", safe_fn, arity);
+            char cutγ_lbl[128];
+            snprintf(cutγ_lbl, sizeof cutγ_lbl, "p_%s_%d_cutgamma_%d", safe_fn, arity, ci);
+            int next_local = vars_base + n_vars;
+            /* PJ-24 fix: body-fail trail unwind.
+             * When a body goal fails it jumps to lbl_ω (next clause label).
+             * But head unification may have bound caller vars that must be
+             * undone before the next clause tries its own head unification.
+             * Previously the body-fail path skipped trail unwind entirely.
+             * Fix: emit a per-clause body_fail trampoline that unwinds the
+             * clause's own trail mark, then jumps to the real ω_lbl.
+             * Pass this trampoline as lbl_ω to pl_emit_body so ALL body-goal
+             * failure paths route through it.
+             * PJ-16 fix preserved: outermost body ucall exhaustion still routes
+             * to ω_lbl (next clause) rather than α_retry_lbl. */
+            char body_fail_lbl[128];
+            snprintf(body_fail_lbl, sizeof body_fail_lbl,
+                     "p_%s_%d_bodyfail_%d", safe_fn, arity, ci);
+            /* lbl_ω=body_fail_lbl: deterministic goal failure unwinds clause trail.
+             * lbl_outer_ω=ω_lbl: ucall exhaustion goes directly to next clause;
+             * ucall already manages its own trail via local_tmark so the clause-level
+             * unwind must NOT fire again (would double-unwind and corrupt bindings). */
+            pl_emit_body(body_goals, nbody, γ_lbl, body_fail_lbl, ω_lbl,
+                         trail_local, var_locals, n_vars, &next_local,
+                         init_cs_local, sub_cs_out_local,
+                         base[nclauses], cs_local, pred_ω_lbl, cutγ_lbl);
+            /* body_fail trampoline: unwind this clause's trail, jump to next
+             * clause (or predicate ω for the last clause). */
+            J("p_%s_%d_bodyfail_%d:\n", safe_fn, arity, ci);
+            J("    iload %d\n", trail_local);
+            J("    invokestatic %s/pl_trail_unwind(I)V\n", classname);
+            J("    goto %s\n", ω_lbl);
+        }
+
+        /* γ port: return new_cs for caller to retry this predicate.
+         * General case: base[ci] + init_cs + 1  (advances outer clause cs by 1).
+         * Special case: nclauses==1 && last_has_ucall — single-clause predicate
+         *   whose body contains a ucall (e.g. even/1 :- num(X), ...).
+         *   The outer cs (init_cs) is always 0 here; what the caller needs to
+         *   advance is the sub_cs from the inner ucall (sub_cs_out_local = local4).
+         *   Returning init_cs+1=1 always would restart the inner call from 0
+         *   on every retry, producing duplicates (PJ-46 fix). */
+        J("p_%s_%d_gamma_%d:\n", safe_fn, arity, ci);
+        JI("iconst_1", "");
+        JI("anewarray", "java/lang/Object");
+        JI("dup", "");
+        JI("iconst_0", "");
+        if (nclauses == 1 && last_has_ucall) {
+            /* Return sub_cs_out so caller can drive the inner ucall forward. */
+            J("    iload %d\n", sub_cs_out_local);  /* sub_cs_out (PJ-46) */
+        } else {
+            /* Multi-clause or no-ucall: advance outer clause cs by 1. */
+            J("    ldc %d\n", base[ci]);
+            J("    iload %d\n", init_cs_local);
+            JI("iadd", "");
+            JI("iconst_1", "");
+            JI("iadd", "");
+        }
+        JI("invokestatic", "java/lang/Integer/valueOf(I)Ljava/lang/Integer;");
+        JI("aastore", "");
+        JI("areturn", "");
+
+        /* cutgamma port: cut fired — return {base[nclauses]} sentinel (M-PJ-CUT-UCALL fix).
+         * base[nclauses] is the one-past-end value. The dispatch at the top of this
+         * predicate now has an unconditional exact-equality guard (cs == base[nclauses]
+         * → ω) regardless of last_has_ucall, so re-entry with this sentinel
+         * immediately routes to ω without executing any clause body. */
+        J("p_%s_%d_cutgamma_%d:\n", safe_fn, arity, ci);
+        JI("iconst_1", "");
+        JI("anewarray", "java/lang/Object");
+        JI("dup", "");
+        JI("iconst_0", "");
+        /* M-PJ-CUT-UCALL: return MAX_VALUE (2147483647) as unambiguous sentinel.
+         * base[nclauses] is ambiguous — last-clause γ returns the same value. */
+        J("    ldc 2147483647\n");
+        JI("invokestatic", "java/lang/Integer/valueOf(I)Ljava/lang/Integer;");
+        JI("aastore", "");
+        JI("areturn", "");
+
+        free(var_locals);
+    }
+    } /* end inline else */
+
+    /* ω port — first try dynamic DB, then truly fail */
+    if (!do_split)
+        J("p_%s_%d_omega:\n", safe_fn, arity);
+
+    /* Dynamic DB walker: key = "name/arity", cs encodes db index as base[nclauses]+idx */
+    {
+        /* cs range for dynamic clauses: base[nclauses], base[nclauses]+1, ...
+         * db_idx = cs - base[nclauses]  (0 = first dynamic clause)
+         * On static-clause exhaustion cs < base[nclauses]+N, so we check if
+         * cs >= base[nclauses] which is already assured by reaching ω.
+         * We use a local for db_idx. */
+        int db_idx_local = db_idx_local_slot; /* fixed: use locals_needed-2, not hardcoded offset */
+        int db_lbl = next_uid();
+        char db_key[128], db_loop[128], db_hit[128], db_miss[128];
+        snprintf(db_key,  sizeof db_key,  "pl_db%d_key",  db_lbl);
+        snprintf(db_loop, sizeof db_loop, "pl_db%d_loop", db_lbl);
+        snprintf(db_hit,  sizeof db_hit,  "pl_db%d_hit",  db_lbl);
+        snprintf(db_miss, sizeof db_miss, "pl_db%d_miss", db_lbl);
+
+        /* compute db_idx = max(0, cs - base[nclauses]) */
+        J("    iload %d\n", cs_local);
+        J("    ldc %d\n", base[nclauses]);
+        JI("isub", "");
+        JI("dup", "");
+        J("    ifge pl_db%d_store\n", db_lbl);
+        JI("pop", "");
+        JI("iconst_0", "");
+        J("pl_db%d_store:\n", db_lbl);
+        J("    istore %d\n", db_idx_local);
+
+        /* retry entry point — db_idx_local already set */
+        J("%s:\n", db_loop);
+
+        /* query DB for this index */
+        J("    ldc \"%s/%d\"\n", name_only, arity);
+        J("    iload %d\n", db_idx_local);
+        J("    invokestatic %s/pl_db_query(Ljava/lang/String;I)Ljava/lang/Object;\n", classname);
+        JI("dup", "");
+        J("    ifnonnull %s\n", db_hit);
+        JI("pop", "");
+        J("    goto %s\n", db_miss);
+
+        J("%s:\n", db_hit);
+        /* stack: term (Object[]) — try to unify with each arg */
+        /* For arity 0 (atom fact): just succeed */
+        if (arity == 0) {
+            JI("pop", ""); /* discard term */
+        } else {
+            /* term is Object[]: slot 0=functor, slots 1..arity = args */
+            JI("checkcast", "[Ljava/lang/Object;");
+            /* unify each arg */
+            int db_term_local = db_idx_local_slot + 1; /* locals_needed-1 */
+            J("    astore %d\n", db_term_local);
+            /* save trail mark for backtrack-on-fail */
+            J("    invokestatic %s/pl_trail_mark()I\n", classname);
+            J("    istore %d\n", trail_local);
+
+            int unify_ok_lbl = next_uid();
+            char unify_ok[128], unify_fail[128];
+            snprintf(unify_ok,   sizeof unify_ok,   "pl_dbu%d_ok",   unify_ok_lbl);
+            snprintf(unify_fail, sizeof unify_fail, "pl_dbu%d_fail", unify_ok_lbl);
+
+            for (int ai = 0; ai < arity; ai++) {
+                J("    aload %d\n", ai);  /* incoming arg */
+                J("    aload %d\n", db_term_local);
+                J("    ldc %d\n", ai + 2);
+                JI("aaload", ""); /* term->args[ai] */
+                J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+                J("    ifeq %s\n", unify_fail);
+            }
+            J("    goto %s\n", unify_ok);
+
+            J("%s:\n", unify_fail);
+            /* undo bindings, try next */
+            J("    iload %d\n", trail_local);
+            J("    invokestatic %s/pl_trail_unwind(I)V\n", classname);
+            J("    iinc %d 1\n", db_idx_local);
+            J("    goto %s\n", db_loop);
+
+            J("%s:\n", unify_ok);
+        }
+
+        /* success — return proper continuation array: Object[1+arity]
+         * slot [0] = Integer(base[nclauses] + db_idx + 1)  (next cs for retry)
+         * slots [1..arity] = args (already unified in-place above) */
+        J("    ldc %d\n", arity + 1);
+        JI("anewarray", "java/lang/Object");
+        JI("dup", "");
+        JI("iconst_0", "");
+        /* next cs = base[nclauses] + db_idx + 1 */
+        J("    ldc %d\n", base[nclauses]);
+        J("    iload %d\n", db_idx_local);
+        JI("iadd", "");
+        JI("iconst_1", "");
+        JI("iadd", "");
+        JI("invokestatic", "java/lang/Integer/valueOf(I)Ljava/lang/Integer;");
+        JI("aastore", "");
+        for (int ai = 0; ai < arity; ai++) {
+            JI("dup", "");
+            J("    ldc %d\n", ai + 1);
+            J("    aload %d\n", ai);
+            JI("aastore", "");
+        }
+        JI("areturn", "");
+
+        J("%s:\n", db_miss);
+    }
+
+    /* truly exhausted */
+    JI("aconst_null", "");
+    JI("areturn", "");
+
+    J(".end method\n\n");
+    /* Flush any NAF helper methods buffered during this predicate */
+    if (helper_buf) {
+        fflush(helper_buf);
+        rewind(helper_buf);
+        int _hc;
+        while ((_hc = fgetc(helper_buf)) != EOF) fputc(_hc, out);
+        fclose(helper_buf);
+        helper_buf = NULL;
+    }
+
+    /* PJ-81: emit per-clause sub-methods for split predicates */
+    if (do_split) {
+        for (int ci = 0; ci < nclauses; ci++) {
+            EXPR_t *clause = choice->children[ci];
+            if (!clause || clause->kind != E_CLAUSE) continue;
+
+            int n_vars = (int)clause->ival;
+            int n_args = (int)clause->dval;
+
+            /* Sub-method signature: p_fn_arity__cN(args..., I init_cs) → Object[] */
+            J("; --- split clause %d of %s/%d ---\n", ci, name_only, arity);
+            J(".method static p_%s_%d__c%d(", safe_fn, arity, ci);
+            for (int ai = 0; ai < arity; ai++) J("[Ljava/lang/Object;");
+            J("I)[Ljava/lang/Object;\n");
+
+            /* locals layout in sub-method:
+             *   0..arity-1  : args (same as parent)
+             *   arity       : init_cs  (was arity+2 in parent; here it's the last param)
+             *   arity+1     : trail_mark
+             *   arity+2     : sub_cs_out
+             *   arity+3..   : vars + ucall temps
+             */
+            int sm_init_cs   = arity;       /* parameter */
+            int sm_trail     = arity + 1;
+            int sm_subcs_out = arity + 2;
+            int sm_vars_base = arity + 3;
+
+            /* recompute max_ucalls/stack for this clause only */
+            int sm_max_vars  = n_vars;
+            int sm_max_uc    = 0, sm_max_neq = 0, sm_max_disj = 0, sm_max_stack = 16;
+            {
+                int n_args_ci = (int)clause->dval;
+                int nb = clause->nchildren - n_args_ci; if (nb < 0) nb = 0;
+                sm_max_uc   = pl_count_ucalls(clause->children + n_args_ci, nb);
+                sm_max_neq  = pl_count_neq(clause->children + n_args_ci, nb);
+                sm_max_disj = pl_count_disj_locals(clause->children + n_args_ci, nb);
+                sm_max_stack = pl_clause_stack_needed(clause->children + n_args_ci, nb);
+                for (int hi = 0; hi < n_args_ci; hi++) {
+                    int d = pl_term_stack_depth(clause->children[hi]) + 4;
+                    if (d > sm_max_stack) sm_max_stack = d;
+                }
+                if (sm_max_stack < 512) sm_max_stack = 512;
+            }
+            int sm_locals = sm_vars_base + sm_max_vars + 5*sm_max_uc + 2*sm_max_neq + sm_max_disj + 16 + 4;
+            J("    .limit stack %d\n", sm_max_stack);
+            J("    .limit locals %d\n", sm_locals);
+
+            /* var_locals for this sub-method */
+            int *var_locals = calloc(n_vars + 1, sizeof(int));
+            for (int vi = 0; vi < n_vars; vi++)
+                var_locals[vi] = sm_vars_base + vi;
+
+            /* ω label = return null */
+            char sm_omega[128];
+            snprintf(sm_omega, sizeof sm_omega, "p_%s_%d__c%d_omega", safe_fn, arity, ci);
+
+            /* trail mark */
+            J("    invokestatic %s/pl_trail_mark()I\n", classname);
+            J("    istore %d\n", sm_trail);
+
+            /* init sub_cs_out = 0 */
+            J("    iconst_0\n");
+            J("    istore %d\n", sm_subcs_out);
+
+            /* allocate var cells */
+            {
+                int *jaf = calloc(n_vars + 1, sizeof(int));
+                for (int vi = 0; vi < n_vars; vi++) jaf[vi] = -1;
+                for (int ai2 = 0; ai2 < n_args && ai2 < clause->nchildren; ai2++) {
+                    EXPR_t *ht = clause->children[ai2];
+                    if (ht && ht->kind == E_VAR && ht->ival >= 0 && ht->ival < n_vars)
+                        if (jaf[ht->ival] < 0) jaf[ht->ival] = ai2;
+                }
+                for (int vi = 0; vi < n_vars; vi++) {
+                    if (jaf[vi] >= 0) {
+                        J("    aload %d\n", jaf[vi]);
+                        J("    astore %d\n", var_locals[vi]);
+                    } else {
+                        J("    invokestatic %s/pl_term_var()[Ljava/lang/Object;\n", classname);
+                        J("    astore %d\n", var_locals[vi]);
+                    }
+                }
+                free(jaf);
+            }
+
+            /* head unification */
+            {
+                char sm_alphafail[128];
+                snprintf(sm_alphafail, sizeof sm_alphafail, "p_%s_%d__c%d_af", safe_fn, arity, ci);
+                int *seen_at = calloc(n_vars + 1, sizeof(int));
+                for (int vi = 0; vi < n_vars; vi++) seen_at[vi] = -1;
+                for (int ai2 = 0; ai2 < n_args && ai2 < clause->nchildren; ai2++) {
+                    EXPR_t *ht = clause->children[ai2];
+                    if (ht && ht->kind == E_VAR && ht->ival >= 0 && ht->ival < n_vars)
+                        if (seen_at[ht->ival] < 0) seen_at[ht->ival] = ai2;
+                }
+                for (int ai2 = 0; ai2 < n_args && ai2 < clause->nchildren; ai2++) {
+                    EXPR_t *ht = clause->children[ai2];
+                    if (!ht) continue;
+                    if (ht->kind == E_VAR) {
+                        int slot = ht->ival;
+                        if (slot < 0 || slot >= n_vars) continue;
+                        if (seen_at[slot] == ai2) continue;
+                        J("    aload %d\n", ai2);
+                        J("    aload %d\n", var_locals[slot]);
+                        J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+                        J("    ifeq %s\n", sm_alphafail);
+                        continue;
+                    }
+                    J("    aload %d\n", ai2);
+                    pl_emit_term(ht, var_locals, n_vars);
+                    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+                    J("    ifeq %s\n", sm_alphafail);
+                }
+                free(seen_at);
+
+                J("    goto p_%s_%d__c%d_beta\n", safe_fn, arity, ci);
+                J("%s:\n", sm_alphafail);
+                J("    iload %d\n", sm_trail);
+                J("    invokestatic %s/pl_trail_unwind(I)V\n", classname);
+                J("    aconst_null\n");
+                J("    areturn\n");
+            }
+
+            /* retry_head (α) label */
+            J("p_%s_%d__c%d_alpha:\n", safe_fn, arity, ci);
+            J("    iload %d\n", sm_trail);
+            J("    invokestatic %s/pl_trail_unwind(I)V\n", classname);
+            {
+                int *jaf = calloc(n_vars + 1, sizeof(int));
+                for (int vi = 0; vi < n_vars; vi++) jaf[vi] = -1;
+                for (int ai2 = 0; ai2 < n_args && ai2 < clause->nchildren; ai2++) {
+                    EXPR_t *ht = clause->children[ai2];
+                    if (ht && ht->kind == E_VAR && ht->ival >= 0 && ht->ival < n_vars)
+                        jaf[ht->ival] = ai2;
+                }
+                for (int vi = 0; vi < n_vars; vi++) {
+                    if (jaf[vi] >= 0) { J("    aload %d\n", jaf[vi]); J("    astore %d\n", var_locals[vi]); }
+                    else { J("    invokestatic %s/pl_term_var()[Ljava/lang/Object;\n", classname); J("    astore %d\n", var_locals[vi]); }
+                }
+                free(jaf);
+            }
+            for (int ai2 = 0; ai2 < n_args && ai2 < clause->nchildren; ai2++) {
+                EXPR_t *ht = clause->children[ai2];
+                if (!ht || ht->kind == E_VAR) continue;
+                J("    aload %d\n", ai2);
+                pl_emit_term(ht, var_locals, n_vars);
+                J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+                J("    ifeq %s\n", sm_omega);
+            }
+
+            /* β label + body */
+            J("p_%s_%d__c%d_beta:\n", safe_fn, arity, ci);
+            {
+                int nbody = clause->nchildren - n_args;
+                EXPR_t **body_goals = clause->children + n_args;
+                char γ_lbl[128], cutγ_lbl[128], bodyfail_lbl[128];
+                snprintf(γ_lbl,        sizeof γ_lbl,        "p_%s_%d__c%d_gamma",    safe_fn, arity, ci);
+                snprintf(cutγ_lbl,     sizeof cutγ_lbl,     "p_%s_%d__c%d_cutgamma", safe_fn, arity, ci);
+                snprintf(bodyfail_lbl, sizeof bodyfail_lbl,  "p_%s_%d__c%d_bodyfail", safe_fn, arity, ci);
+                int next_local_sm = sm_vars_base + n_vars;
+                /* lbl_outer_ω = sm_omega (null return = clause failed) */
+                pl_emit_body(body_goals, nbody, γ_lbl, bodyfail_lbl, sm_omega,
+                             sm_trail, var_locals, n_vars, &next_local_sm,
+                             sm_init_cs, sm_subcs_out,
+                             base[nclauses], sm_init_cs, sm_omega, cutγ_lbl);
+                J("%s:\n", bodyfail_lbl);
+                J("    iload %d\n", sm_trail);
+                J("    invokestatic %s/pl_trail_unwind(I)V\n", classname);
+                J("    aconst_null\n");
+                J("    areturn\n");
+            }
+
+            /* γ port */
+            J("p_%s_%d__c%d_gamma:\n", safe_fn, arity, ci);
+            J("    iconst_1\n");
+            J("    anewarray java/lang/Object\n");
+            J("    dup\n");
+            J("    iconst_0\n");
+            if (nclauses == 1 && last_has_ucall) {
+                J("    iload %d\n", sm_subcs_out);
+            } else {
+                J("    ldc %d\n", base[ci]);
+                J("    iload %d\n", sm_init_cs);
+                J("    iadd\n");
+                J("    iconst_1\n");
+                J("    iadd\n");
+            }
+            J("    invokestatic java/lang/Integer/valueOf(I)Ljava/lang/Integer;\n");
+            J("    aastore\n");
+            J("    areturn\n");
+
+            /* cutgamma port */
+            J("p_%s_%d__c%d_cutgamma:\n", safe_fn, arity, ci);
+            J("    iconst_1\n");
+            J("    anewarray java/lang/Object\n");
+            J("    dup\n");
+            J("    iconst_0\n");
+            J("    ldc 2147483647\n");
+            J("    invokestatic java/lang/Integer/valueOf(I)Ljava/lang/Integer;\n");
+            J("    aastore\n");
+            J("    areturn\n");
+
+            /* ω: null return */
+            J("%s:\n", sm_omega);
+            J("    aconst_null\n");
+            J("    areturn\n");
+
+            J(".end method\n\n");
+            free(var_locals);
+        }
+    }
+}
+
+/* =========================================================================
+ * M-PJ-LINKER: plunit linker
+ *
+ * When a program contains :- use_module(library(plunit)), the linker:
+ *   1. Compiles the embedded plunit.pl shim (parse→lower→emit choices)
+ *   2. Emits empty dynamic stubs for pl_suite/1 and pl_test/4
+ *   3. In pl_emit_main, assertz pl_suite/pl_test facts statically derived
+ *      from the test/1 and test/2 clause heads between begin_tests/end_tests
+ *   4. Emits bridge predicates suite_name/0 :- test(name)
+ *
+ * This is the Wizard of Oz approach: SWI files load unchanged.
+ * ========================================================================= */
+
+/* plunit.pl shim source embedded as a C string */
+static const char pl_plunit_shim_src[] =
+    "begin_tests(_).\n"
+    "end_tests(_).\n"
+    "forall(Cond, Action) :- \\+ forall_fails(Cond, Action).\n"
+    "forall_fails(Cond, Action) :- Cond, \\+ Action.\n"
+    "acyclic_term(_).\n"
+    "cyclic_term(_) :- fail.\n"
+    "maplist(_, []).\n"
+    "maplist(Goal, [H|T]) :- call_1(Goal, H), maplist(Goal, T).\n"
+    "maplist(_, [], []).\n"
+    "maplist(Goal, [H1|T1], [H2|T2]) :- call_2(Goal, H1, H2), maplist(Goal, T1, T2).\n"
+    "call_1(Goal, Arg) :- Goal =.. L, append(L, [Arg], L2), G2 =.. L2, G2.\n"
+    "call_2(Goal, A1, A2) :- Goal =.. L, append(L, [A1,A2], L2), G2 =.. L2, G2.\n"
+    "append([], L, L).\n"
+    "append([H|T], L, [H|R]) :- append(T, L, R).\n"
+    "pl_init :- nb_setval(pl_p,0), nb_setval(pl_f,0), nb_setval(pl_s,0).\n"
+    "pl_inc_pass :- nb_getval(pl_p,N), N1 is N+1, nb_setval(pl_p,N1).\n"
+    "pl_inc_fail :- nb_getval(pl_f,N), N1 is N+1, nb_setval(pl_f,N1).\n"
+    "pl_inc_skip :- nb_getval(pl_s,N), N1 is N+1, nb_setval(pl_s,N1).\n"
+    "pl_summary :-\n"
+    "    nb_getval(pl_p,P), nb_getval(pl_f,F), nb_getval(pl_s,S),\n"
+    "    format('~n% ~w passed, ~w failed, ~w skipped~n',[P,F,S]).\n"
+    "run_tests :- pl_init, run_all_suites, pl_summary.\n"
+    "run_tests(Suite) :- is_list(Suite), !, pl_init, run_suites_list(Suite), pl_summary.\n"
+    "run_tests(Suite) :- pl_init, run_suite(Suite), pl_summary.\n"
+    "run_suites_list([]).\n"
+    "run_suites_list([H|T]) :- run_suite(H), run_suites_list(T).\n"
+    "run_all_suites :- pl_suite(S), run_suite(S), fail.\n"
+    "run_all_suites.\n"
+    "run_suite(Suite) :-\n"
+    "    format('~n% PL-Unit: ~w~n',[Suite]), !,\n"
+    "    run_suite_tests(Suite).\n"
+    "run_suite_tests(Suite) :-\n"
+    "    pl_test(Suite, Name, Opts, Goal),\n"
+    "    run_one(Suite, Name, Opts, Goal),\n"
+    "    fail.\n"
+    "run_suite_tests(_).\n"
+    "run_one(Suite, Name, Opts, Goal) :-\n"
+    "    ( Opts = pl_inline ->\n"
+    "        ( catch(Goal, _E, fail) -> true ; true )\n"
+    "    ; pl_has_sto(Opts) ->\n"
+    "        pl_inc_skip, format('  skip: ~w:~w  [sto]~n',[Suite,Name])\n"
+    "    ; pl_skip_condition(Opts) ->\n"
+    "        pl_inc_skip, format('  skip: ~w:~w  [condition]~n',[Suite,Name])\n"
+    "    ; pl_has_error(Opts, ExpErr) ->\n"
+    "        run_error(Suite, Name, Goal, ExpErr)\n"
+    "    ; pl_has_throws(Opts, ExpThrow) ->\n"
+    "        run_throw(Suite, Name, Goal, ExpThrow)\n"
+    "    ; pl_wants_fail(Opts) ->\n"
+    "        run_fail(Suite, Name, Goal)\n"
+    "    ; pl_has_true(Opts, Expr) ->\n"
+    "        run_true(Suite, Name, Goal, Expr)\n"
+    "    ; pl_has_all(Opts, AllExpr) ->\n"
+    "        run_all(Suite, Name, Goal, AllExpr)\n"
+    "    ;\n"
+    "        run_succeed(Suite, Name, Goal, Opts)\n"
+    "    ).\n"
+    "pl_has_sto([H|_]) :- H = sto(_), !.\n"
+    "pl_has_sto([_|T]) :- pl_has_sto(T).\n"
+    "pl_skip_condition(Opts) :- member(condition(C), Opts), \\+ C.\n"
+    "pl_has_error([error(E)|_], E) :- !.\n"
+    "pl_has_error([_|T], E) :- pl_has_error(T, E).\n"
+    "pl_has_error(error(E), E).\n"
+    "pl_has_throws([throws(T)|_], T) :- !.\n"
+    "pl_has_throws([_|T2], T) :- pl_has_throws(T2, T).\n"
+    "pl_has_throws(throws(T), T).\n"
+    "pl_wants_fail([fail|_]) :- !.\n"
+    "pl_wants_fail([false|_]) :- !.\n"
+    "pl_wants_fail([_|T]) :- pl_wants_fail(T).\n"
+    "pl_wants_fail(fail).\n"
+    "pl_wants_fail(false).\n"
+    "pl_has_true([true(E)|_], E) :- !.\n"
+    "pl_has_true([_|T], E) :- pl_has_true(T, E).\n"
+    "pl_has_all([all(E)|_], E) :- !.\n"
+    "pl_has_all([_|T], E) :- pl_has_all(T, E).\n"
+    "run_succeed(Suite, Name, Goal, Opts) :-\n"
+    "    ( is_list(Opts), \\+ Opts = [] -> true ; Opts = [] ; Opts = true ),\n"
+    "    ( catch(Goal, _E, fail) ->\n"
+    "        pl_inc_pass, format('  pass: ~w:~w~n',[Suite,Name])\n"
+    "    ;   pl_inc_fail, format('  FAIL: ~w:~w  (goal failed)~n',[Suite,Name])\n"
+    "    ).\n"
+    "run_succeed(Suite, Name, Goal, Opts) :-\n"
+    "    Opts \\= [], \\+ is_list(Opts), Opts \\= true, Opts \\= fail, Opts \\= false,\n"
+    "    Opts \\= pl_inline,\n"
+    "    run_true(Suite, Name, Goal, Opts).\n"
+    "run_fail(Suite, Name, Goal) :-\n"
+    "    ( catch(Goal, _E, true) ->\n"
+    "        pl_inc_fail, format('  FAIL: ~w:~w  (expected fail, succeeded)~n',[Suite,Name])\n"
+    "    ;   pl_inc_pass, format('  pass: ~w:~w~n',[Suite,Name])\n"
+    "    ).\n"
+    "run_error(Suite, Name, Goal, ExpErr) :-\n"
+    "    ( catch(Goal, error(ActErr,_), pl_match_err(Suite,Name,ExpErr,ActErr)) ->\n"
+    "        true\n"
+    "    ;   pl_inc_fail, format('  FAIL: ~w:~w  (no exception)~n',[Suite,Name])\n"
+    "    ).\n"
+    "pl_match_err(Suite, Name, Exp, Act) :-\n"
+    "    copy_term(Exp, ExpC),\n"
+    "    ( ExpC = Act ->\n"
+    "        pl_inc_pass, format('  pass: ~w:~w~n',[Suite,Name])\n"
+    "    ; functor(ExpC,F,_), functor(Act,F,_) ->\n"
+    "        pl_inc_pass, format('  pass: ~w:~w~n',[Suite,Name])\n"
+    "    ;   pl_inc_fail, format('  FAIL: ~w:~w  (error mismatch ~w vs ~w)~n',[Suite,Name,Exp,Act])\n"
+    "    ).\n"
+    "run_throw(Suite, Name, Goal, ExpThrow) :-\n"
+    "    ( catch(Goal, Actual,\n"
+    "        ( Actual = ExpThrow ->\n"
+    "            pl_inc_pass, format('  pass: ~w:~w~n',[Suite,Name])\n"
+    "        ;   pl_inc_fail, format('  FAIL: ~w:~w  (throw mismatch)~n',[Suite,Name])\n"
+    "        )) ->\n"
+    "        true\n"
+    "    ;   pl_inc_fail, format('  FAIL: ~w:~w  (no throw)~n',[Suite,Name])\n"
+    "    ).\n"
+    "run_true(Suite, Name, Goal, Expr) :-\n"
+    "    ( catch(Goal, _E, fail) ->\n"
+    "        ( catch(Expr, _E2, fail) ->\n"
+    "            pl_inc_pass, format('  pass: ~w:~w~n',[Suite,Name])\n"
+    "        ;   pl_inc_fail, format('  FAIL: ~w:~w  (check failed: ~w)~n',[Suite,Name,Expr])\n"
+    "        )\n"
+    "    ;   pl_inc_fail, format('  FAIL: ~w:~w  (goal failed)~n',[Suite,Name])\n"
+    "    ).\n"
+    "run_all(Suite, Name, Goal, (Var == Expected)) :-\n"
+    "    findall(Var, Goal, Actual),\n"
+    "    ( Actual == Expected ->\n"
+    "        pl_inc_pass, format('  pass: ~w:~w~n',[Suite,Name])\n"
+    "    ;   pl_inc_fail, format('  FAIL: ~w:~w  (all mismatch)~n',[Suite,Name])\n"
+    "    ).\n";
+
+/* -------------------------------------------------------------------------
+ * pl_linker_has_plunit — returns 1 if program uses use_module(library(plunit))
+ * ------------------------------------------------------------------------- */
+static int pl_linker_has_plunit(Program *prog) {
+    for (STMT_t *s = prog->head; s; s = s->next) {
+        if (!s->subject) continue;
+        EXPR_t *g = s->subject;
+        if (g->kind == E_CHOICE) continue;
+        if (g->kind != E_FNC || !g->sval) continue;
+        if (strcmp(g->sval, "use_module") != 0 || g->nchildren != 1) continue;
+        /* use_module(library(plunit)) — child is library(plunit) */
+        EXPR_t *arg = g->children[0];
+        if (!arg || arg->kind != E_FNC || !arg->sval) continue;
+        if (strcmp(arg->sval, "library") != 0 || arg->nchildren != 1) continue;
+        EXPR_t *lib = arg->children[0];
+        if (!lib || !lib->sval) continue;
+        if (strcmp(lib->sval, "plunit") == 0) return 1;
+    }
+    return 0;
+}
+
+/* -------------------------------------------------------------------------
+ * pl_linker_emit_plunit_shim — parse+lower+emit the embedded plunit.pl
+ * Called from prolog_emit_jvm() before the user predicates are emitted.
+ * ------------------------------------------------------------------------- */
+static void pl_linker_emit_plunit_shim(void) {
+    JC("=== plunit shim (M-PJ-LINKER) ===");
+    PlProgram *pl = prolog_parse(pl_plunit_shim_src, "plunit.pl");
+    if (!pl) { fprintf(stderr, "plunit linker: parse failed\n"); return; }
+    Program *shim = prolog_lower(pl);
+    if (!shim) { fprintf(stderr, "plunit linker: lower failed\n"); return; }
+    /* Emit each E_CHOICE from the shim, but skip predicates already defined
+     * in the user program to avoid duplicate method errors. */
+    for (STMT_t *ss = shim->head; ss; ss = ss->next) {
+        if (!ss->subject || ss->subject->kind != E_CHOICE) continue;
+        const char *shim_key = ss->subject->sval; /* "name/arity" */
+        if (!shim_key) continue;
+        /* Check if user already defines this predicate */
+        int user_defines = 0;
+        for (STMT_t *us = prog->head; us; us = us->next) {
+            if (!us->subject || us->subject->kind != E_CHOICE) continue;
+            if (us->subject->sval && strcmp(us->subject->sval, shim_key) == 0) {
+                user_defines = 1; break;
+            }
+        }
+        if (!user_defines) {
+            /* Also skip predicates emitted as JVM synthetics to avoid duplicates */
+            if (strcmp(shim_key, "forall/2") == 0 ||
+                strcmp(shim_key, "forall_fails/2") == 0)
+                continue;
+            pl_emit_choice(ss->subject);
+        }
+    }
+    /* Note: shim/pl memory intentionally not freed (static lifetime) */
+}
+
+/* -------------------------------------------------------------------------
+ * pl_linker_emit_db_stub — emit a proper dynamic-DB stub for name/arity.
+ * Mirrors the Bug 1 pure-dynamic stub pattern exactly.
+ * ------------------------------------------------------------------------- */
+static void pl_linker_emit_db_stub(const char *name, int arity) {
+    char safe[256];
+    safe_name(name, safe, sizeof safe);
+    JC("dynamic DB stub (M-PJ-LINKER)");
+    J("; stub for linker-dynamic predicate %s/%d\n", name, arity);
+    J(".method static p_%s_%d(", safe, arity);
+    for (int i = 0; i < arity; i++) J("[Ljava/lang/Object;");
+    J("I)[Ljava/lang/Object;\n");
+    int stub_locals = arity + 50;
+    J("    .limit stack 16\n");
+    J("    .limit locals %d\n", stub_locals);
+    int cs_loc  = arity;
+    int tr_loc  = arity + 1;
+    int idx_loc = arity + 2;
+    int trm_loc = arity + 3;
+    int lbl = next_uid();
+    char sb_store[64], sb_loop[64], sb_hit[64], sb_miss[64], sb_ok[64], sb_fail[64];
+    snprintf(sb_store, sizeof sb_store, "lnk%d_store", lbl);
+    snprintf(sb_loop,  sizeof sb_loop,  "lnk%d_loop",  lbl);
+    snprintf(sb_hit,   sizeof sb_hit,   "lnk%d_hit",   lbl);
+    snprintf(sb_miss,  sizeof sb_miss,  "lnk%d_miss",  lbl);
+    snprintf(sb_ok,    sizeof sb_ok,    "lnk%d_ok",    lbl);
+    snprintf(sb_fail,  sizeof sb_fail,  "lnk%d_fail",  lbl);
+    J("    iload %d\n", cs_loc);
+    JI("dup", "");
+    J("    ifge %s\n", sb_store);
+    JI("pop", "");
+    JI("iconst_0", "");
+    J("%s:\n", sb_store);
+    J("    istore %d\n", idx_loc);
+    J("%s:\n", sb_loop);
+    J("    ldc \"%s/%d\"\n", name, arity);
+    J("    iload %d\n", idx_loc);
+    J("    invokestatic %s/pl_db_query(Ljava/lang/String;I)Ljava/lang/Object;\n", classname);
+    JI("dup", "");
+    J("    ifnonnull %s\n", sb_hit);
+    JI("pop", "");
+    J("    goto %s\n", sb_miss);
+    J("%s:\n", sb_hit);
+    JI("checkcast", "[Ljava/lang/Object;");
+    J("    astore %d\n", trm_loc);
+    J("    invokestatic %s/pl_trail_mark()I\n", classname);
+    J("    istore %d\n", tr_loc);
+    for (int ai = 0; ai < arity; ai++) {
+        J("    aload %d\n", ai);
+        J("    aload %d\n", trm_loc);
+        J("    ldc %d\n", ai + 2);
+        JI("aaload", "");
+        J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+        J("    ifeq %s\n", sb_fail);
+    }
+    J("    goto %s\n", sb_ok);
+    J("%s:\n", sb_fail);
+    J("    iload %d\n", tr_loc);
+    J("    invokestatic %s/pl_trail_unwind(I)V\n", classname);
+    J("    iinc %d 1\n", idx_loc);
+    J("    goto %s\n", sb_loop);
+    J("%s:\n", sb_ok);
+    J("    ldc %d\n", arity + 1);
+    JI("anewarray", "java/lang/Object");
+    JI("dup", "");
+    JI("iconst_0", "");
+    J("    iload %d\n", idx_loc);
+    JI("iconst_1", "");
+    JI("iadd", "");
+    JI("invokestatic", "java/lang/Integer/valueOf(I)Ljava/lang/Integer;");
+    JI("aastore", "");
+    for (int ai = 0; ai < arity; ai++) {
+        JI("dup", "");
+        J("    ldc %d\n", ai + 1);
+        J("    aload %d\n", ai);
+        JI("aastore", "");
+    }
+    JI("areturn", "");
+    J("%s:\n", sb_miss);
+    JI("aconst_null", "");
+    JI("areturn", "");
+    J(".end method\n\n");
+}
+
+/* -------------------------------------------------------------------------
+ * pl_linker_emit_dynamic_stubs — emit proper DB stubs for pl_suite/1 and pl_test/4
+ * ------------------------------------------------------------------------- */
+static void pl_linker_emit_dynamic_stubs(void) {
+    pl_linker_emit_db_stub("pl_suite", 1);
+    pl_linker_emit_db_stub("pl_test",  4);
+}
+
+/* -------------------------------------------------------------------------
+ * pl_linker_prescan — called from main.c BEFORE prolog_program_free(),
+ * while PlProgram source order is still intact.
+ *
+ * Walks the flat PlClause list in source order, tracking begin_tests /
+ * end_tests directives, and records which suite each test/N clause belongs
+ * to by (functor_key, occurrence_index).
+ *
+ * Result is stored in pl_prescan_map[], consumed by pl_linker_scan pass-2.
+ * ------------------------------------------------------------------------- */
+#include "prolog_atom.h"
+#include "term.h"
+
+#define PJ_PRESCAN_MAX 512
+typedef struct {
+    char key[64];   /* "test/1" or "test/2" */
+    int  idx;       /* 0-based occurrence within that key */
+    char suite[64]; /* suite name from enclosing begin_tests */
+} PjPrescanEntry;
+static PjPrescanEntry pl_prescan_map[PJ_PRESCAN_MAX];
+static int            pl_prescan_n = 0;
+
+void pl_linker_prescan(PlProgram *pl_prog) {
+    pl_prescan_n = 0;
+    char current_suite[64] = "";
+    /* per-key occurrence counters */
+    int cnt1 = 0, cnt2 = 0;  /* test/1, test/2 */
+
+    for (PlClause *cl = pl_prog->head; cl; cl = cl->next) {
+        if (!cl->head) {
+            /* directive — check for begin_tests/end_tests */
+            if (cl->nbody > 0) {
+                Term *d = cl->body[0];
+                if (d && d->tag == TT_COMPOUND && d->compound.arity >= 1) {
+                    const char *fn = prolog_atom_name(d->compound.functor);
+                    Term *arg0 = d->compound.args[0];
+                    if (fn && strcmp(fn, "begin_tests") == 0 && arg0) {
+                        const char *sname = NULL;
+                        if (arg0->tag == TT_ATOM)
+                            sname = prolog_atom_name(arg0->atom_id);
+                        else if (arg0->tag == TT_COMPOUND)
+                            sname = prolog_atom_name(arg0->compound.functor);
+                        if (sname) strncpy(current_suite, sname, 63);
+                    } else if (fn && strcmp(fn, "end_tests") == 0) {
+                        current_suite[0] = '\0';
+                    }
+                }
+            }
+            continue;
+        }
+        /* clause — record if it's test/1 or test/2 */
+        if (!cl->head) continue;
+        if (cl->head->tag != TT_COMPOUND && cl->head->tag != TT_ATOM) continue;
+        const char *fn = NULL;
+        int arity = 0;
+        if (cl->head->tag == TT_COMPOUND) {
+            fn    = prolog_atom_name(cl->head->compound.functor);
+            arity = cl->head->compound.arity;
+        } else {
+            fn    = prolog_atom_name(cl->head->atom_id);
+            arity = 0;
+        }
+        if (!fn) continue;
+        int is1 = (strcmp(fn,"test") == 0 && arity == 1);
+        int is2 = (strcmp(fn,"test") == 0 && arity == 2);
+        if (!is1 && !is2) continue;
+        if (pl_prescan_n >= PJ_PRESCAN_MAX) continue;
+        PjPrescanEntry *e = &pl_prescan_map[pl_prescan_n++];
+        snprintf(e->key, sizeof e->key, "test/%d", arity);
+        e->idx = is1 ? cnt1++ : cnt2++;
+        strncpy(e->suite, current_suite[0] ? current_suite : "unknown", 63);
+    }
+}
+
+/* Forward declarations — pl_linker_emit_bridge needs the test array
+ * but the canonical definitions follow below. */
+#ifndef PJ_LINKER_MAX_TESTS
+#define PJ_LINKER_MAX_TESTS 512
+typedef struct {
+    char suite[64]; char name[64]; char bridge[128];
+    int  arity; EXPR_t *opts_expr;
+    EXPR_t *clause_expr;  /* full E_CLAUSE node — needed for true(Expr) var-sharing fix */
+} PjTestInfo;
+static PjTestInfo pl_linker_tests[PJ_LINKER_MAX_TESTS];
+static int        pl_linker_ntest = 0;
+static char       pl_linker_suites[32][64];
+static int        pl_linker_nsuite = 0;
+#endif
+
+/* -------------------------------------------------------------------------
+ * pl_linker_emit_bridge — emit a bridge predicate:
+ *   suite_name/0 :- test(name).          [arity==1]
+ *   suite_name/0 :- test(name, opts).    [arity==2]
+ * bridge_fn is "suite_name" (safe-name), test_name is the raw atom.
+ * For test/2 the opts term is emitted inline so p_test_2 gets both args.
+ * ------------------------------------------------------------------------- */
+static void pl_linker_emit_bridge(const char *bridge_fn, const char *test_name, const char *suite_name) {
+    /* arity and opts_expr are picked up from the PjTestInfo array by the caller;
+     * we need them here — find the matching entry */
+    int arity = 1;
+    EXPR_t *opts_expr   = NULL;
+    EXPR_t *clause_expr = NULL;
+    for (int i = 0; i < pl_linker_ntest; i++) {
+        if (strcmp(pl_linker_tests[i].bridge, bridge_fn) == 0) {
+            arity       = pl_linker_tests[i].arity;
+            opts_expr   = pl_linker_tests[i].opts_expr;
+            clause_expr = pl_linker_tests[i].clause_expr;
+            break;
+        }
+    }
+
+    /* Detect true(Expr) opts — may be bare true(E), a bare expression, or inside a list.
+     * Walk the list to find the first true(Expr) or bare-expression element. */
+    int has_true_expr = 0;
+    EXPR_t *true_expr_arg = NULL;
+    if (arity == 2 && opts_expr) {
+        /* bare true(Expr) */
+        if (opts_expr->sval && strcmp(opts_expr->sval, "true") == 0
+            && opts_expr->nchildren == 1) {
+            has_true_expr = 1;
+            true_expr_arg = opts_expr->children[0];
+        } else if (opts_expr->sval &&
+                   strcmp(opts_expr->sval, ".") != 0 &&
+                   strcmp(opts_expr->sval, "[]") != 0 &&
+                   strcmp(opts_expr->sval, "fail") != 0 &&
+                   strcmp(opts_expr->sval, "error") != 0 &&
+                   strcmp(opts_expr->sval, "throws") != 0 &&
+                   strcmp(opts_expr->sval, "all") != 0 &&
+                   strcmp(opts_expr->sval, "forall") != 0 &&
+                   strcmp(opts_expr->sval, "sto") != 0 &&
+                   strcmp(opts_expr->sval, "blocked") != 0 &&
+                   strcmp(opts_expr->sval, "setup") != 0 &&
+                   strcmp(opts_expr->sval, "cleanup") != 0 &&
+                   opts_expr->nchildren > 0) {
+            /* bare expression like X==y or Bs==[b]: treat as true(Expr) */
+            has_true_expr = 1;
+            true_expr_arg = opts_expr;
+        } else {
+            /* walk list .(Head, Tail): look for true(E) or bare expr as head */
+            EXPR_t *node = opts_expr;
+            while (node && node->sval && strcmp(node->sval, ".") == 0
+                   && node->nchildren >= 2) {
+                EXPR_t *head = node->children[0];
+                if (head && head->sval && strcmp(head->sval, "true") == 0
+                    && head->nchildren == 1) {
+                    has_true_expr = 1;
+                    true_expr_arg = head->children[0];
+                    break;
+                } else if (head && head->sval &&
+                           strcmp(head->sval, "fail") != 0 &&
+                           strcmp(head->sval, "error") != 0 &&
+                           strcmp(head->sval, "throws") != 0 &&
+                           strcmp(head->sval, "all") != 0 &&
+                           strcmp(head->sval, "forall") != 0 &&
+                           strcmp(head->sval, "sto") != 0 &&
+                           strcmp(head->sval, "blocked") != 0 &&
+                           strcmp(head->sval, "setup") != 0 &&
+                           strcmp(head->sval, "cleanup") != 0 &&
+                           strcmp(head->sval, ".") != 0 &&
+                           strcmp(head->sval, "[]") != 0 &&
+                           head->nchildren > 0) {
+                    has_true_expr = 1;
+                    true_expr_arg = head;
+                    break;
+                }
+                node = node->children[1];
+            }
+        }
+    }
+
+    JC("bridge predicate (M-PJ-LINKER)");
+    J(".method static p_%s_0(I)[Ljava/lang/Object;\n", bridge_fn);
+    J("    .limit stack 512\n");
+    /* For true(Expr) we need locals: 0=cs(I), 1=trail(I), 2..2+n_vars-1=vars, then scratch */
+    if (has_true_expr && clause_expr) {
+        int n_vars = (int)clause_expr->ival;
+        J("    .limit locals %d\n", 4 + n_vars + 32);  /* generous: vars + scratch for body/check */
+    } else {
+        J("    .limit locals 4\n");
+    }
+    /* cs dispatch — single clause, cs==0 only */
+    J("    iload 0\n");
+    J("    ifne p_%s_0_omega_empty\n", bridge_fn);
+
+    if (has_true_expr && clause_expr) {
+        /* true(Expr) opts: inline body + check in same frame so vars are shared.
+         * Locals layout: 0=cs(I), 1=trail(I), 2..2+n_vars-1=Prolog vars */
+        int n_vars = (int)clause_expr->ival;
+        int n_args = (int)clause_expr->dval;
+        int trail_local = 1;
+        int vars_base   = 2;
+        int *var_locals = (int*)calloc(n_vars + 1, sizeof(int));
+        for (int vi = 0; vi < n_vars; vi++) var_locals[vi] = vars_base + vi;
+        int next_local_val = vars_base + n_vars;
+        int *next_local = &next_local_val;
+
+        /* trail mark */
+        J("    invokestatic %s/pl_trail_mark()I\n", classname);
+        J("    istore %d\n", trail_local);
+
+        /* allocate fresh var cells for all Prolog variables */
+        for (int vi = 0; vi < n_vars; vi++) {
+            J("    invokestatic %s/pl_term_var()[Ljava/lang/Object;\n", classname);
+            J("    astore %d\n", var_locals[vi]);
+        }
+
+        /* allocate scratch locals for cs bookkeeping */
+        int init_cs_local    = (*next_local)++;
+        int sub_cs_out_local = (*next_local)++;
+        /* initialise them to 0 */
+        J("    iconst_0\n"); J("    istore %d\n", init_cs_local);
+        J("    iconst_0\n"); J("    istore %d\n", sub_cs_out_local);
+
+        /* emit body goals (children[n_args..nchildren-1]) */
+        int nbody = (int)clause_expr->nchildren - n_args;
+        if (nbody > 0) {
+            EXPR_t **body_goals = clause_expr->children + n_args;
+            char lbl_body_ok[128], lbl_body_fail[128];
+            snprintf(lbl_body_ok,   sizeof lbl_body_ok,   "p_%s_0_body_ok",   bridge_fn);
+            snprintf(lbl_body_fail, sizeof lbl_body_fail, "p_%s_0_omega_fail", bridge_fn);
+            pl_emit_body(body_goals, nbody,
+                         lbl_body_ok, lbl_body_fail, lbl_body_fail,
+                         trail_local, var_locals, n_vars, next_local,
+                         init_cs_local, sub_cs_out_local,
+                         /*cut_cs_seal=*/0, /*cs_local_for_cut=*/0,
+                         lbl_body_fail, NULL);
+            J("%s:\n", lbl_body_ok);
+        }
+
+        /* emit the true(Expr) check as a goal */
+        {
+            char lbl_check_ok[128], lbl_check_fail[128];
+            snprintf(lbl_check_ok,   sizeof lbl_check_ok,   "p_%s_0_check_ok",   bridge_fn);
+            snprintf(lbl_check_fail, sizeof lbl_check_fail, "p_%s_0_omega_fail",  bridge_fn);
+            pl_emit_goal(true_expr_arg, lbl_check_ok, lbl_check_fail,
+                         trail_local, var_locals, n_vars,
+                         /*cut_cs_seal=*/0, /*cs_local_for_cut=*/0,
+                         next_local, NULL);
+            J("%s:\n", lbl_check_ok);
+        }
+
+        free(var_locals);
+
+        /* check_ok: body+expr both succeeded — report pass, return null */
+        J("    iconst_0\n");
+        J("    invokestatic %s/p_pl_inc_pass_0(I)[Ljava/lang/Object;\n", classname);
+        J("    pop\n");
+        J("    getstatic java/lang/System/out Ljava/io/PrintStream;\n");
+        J("    ldc \"  pass: %s:%s\"\n", suite_name, test_name);
+        J("    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V\n");
+        J("    aconst_null\n");
+        J("    areturn\n");
+        J("p_%s_0_omega_fail:\n", bridge_fn);
+        J("    iconst_0\n");
+        J("    invokestatic %s/p_pl_inc_fail_0(I)[Ljava/lang/Object;\n", classname);
+        J("    pop\n");
+        J("    getstatic java/lang/System/out Ljava/io/PrintStream;\n");
+        J("    ldc \"  FAIL: %s:%s  (true-check failed)\"\n", suite_name, test_name);
+        J("    invokevirtual java/io/PrintStream/println(Ljava/lang/String;)V\n");
+        J("    aconst_null\n");
+        J("    areturn\n");
+        J("p_%s_0_omega_empty:\n", bridge_fn);
+        J("    aconst_null\n");
+        J("    areturn\n");
+        J(".end method\n\n");
+        return;
+
+    } else if (arity == 2) {
+        /* call test(name, opts) — emit as p_test_2(atom(name), opts_term, 0) */
+        J("    ldc \"%s\"\n", test_name);
+        J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+        /* opts: emit term if available, else [] */
+        if (opts_expr) {
+            int *dummy_locals = NULL;
+            pl_emit_term(opts_expr, dummy_locals, 0);
+        } else {
+            J("    ldc \"[]\"\n");
+            J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+        }
+        J("    iconst_0\n");
+        J("    invokestatic %s/p_test_2([Ljava/lang/Object;[Ljava/lang/Object;I)[Ljava/lang/Object;\n", classname);
+    } else {
+        /* call test(name) — emit as p_test_1(atom(name), 0) */
+        J("    ldc \"%s\"\n", test_name);
+        J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+        J("    iconst_0\n");
+        J("    invokestatic %s/p_test_1([Ljava/lang/Object;I)[Ljava/lang/Object;\n", classname);
+    }
+
+    /* if null → fail (result on stack) */
+    J("    dup\n");
+    J("    ifnull p_%s_0_omega_pop\n", bridge_fn);
+    /* success: return the result array as-is (non-null means success) */
+    J("    areturn\n");
+    /* omega_pop: result (null) on stack — pop then return null */
+    J("p_%s_0_omega_pop:\n", bridge_fn);
+    J("    pop\n");
+    J("    aconst_null\n");
+    J("    areturn\n");
+    /* omega_empty: nothing on stack */
+    J("p_%s_0_omega_empty:\n", bridge_fn);
+    J("    aconst_null\n");
+    J("    areturn\n");
+    J(".end method\n\n");
+}
+
+/* -------------------------------------------------------------------------
+ * Linker test registration info (declared earlier as forward decl)
+ * ------------------------------------------------------------------------- */
+
+/* -------------------------------------------------------------------------
+ * pl_linker_scan — walk program collecting suite/test info.
+ * Must be called before pl_emit_main and before bridge emission.
+ *
+ * NOTE: prolog_lower() batches all E_CHOICE nodes separately from directives.
+ * They are NOT interleaved in source order.  So we cannot track
+ * begin_tests/end_tests windows while walking E_CHOICE nodes.
+ *
+ * Strategy:
+ *   Pass 1 — collect suite names from begin_tests directives.
+ *   Pass 2 — collect test/1 and test/2 E_CHOICE nodes; assign all to
+ *             suite[0].  Correct for the universal case of one suite per file.
+ * ------------------------------------------------------------------------- */
+static void pl_linker_scan(Program *prog) {
+    pl_linker_ntest  = 0;
+    pl_linker_nsuite = 0;
+
+    /* Pass 1: collect suite names from begin_tests directives */
+    for (STMT_t *s = prog->head; s; s = s->next) {
+        if (!s->subject) continue;
+        EXPR_t *g = s->subject;
+        if (g->kind == E_CHOICE) continue;
+        if (g->kind != E_FNC || !g->sval) continue;
+        if (strcmp(g->sval, "begin_tests") != 0 || g->nchildren < 1) continue;
+        EXPR_t *suite_arg = g->children[0];
+        if (!suite_arg || !suite_arg->sval) continue;
+        const char *sname = suite_arg->sval;
+        int found = 0;
+        for (int i = 0; i < pl_linker_nsuite; i++)
+            if (strcmp(pl_linker_suites[i], sname) == 0) { found = 1; break; }
+        if (!found && pl_linker_nsuite < 32)
+            strncpy(pl_linker_suites[pl_linker_nsuite++], sname, 63);
+    }
+
+    if (pl_linker_nsuite == 0) return;
+
+    /* Pass 2: collect test/1 and test/2 clause heads.
+     * Suite assignment: use pl_prescan_map[] (populated by pl_linker_prescan
+     * before PlProgram was freed) to recover source-order suite context.
+     * Falls back to suite[0] if prescan map is empty (single-suite files). */
+    int cnt1 = 0, cnt2 = 0;  /* per-key occurrence counters, match prescan order */
+    for (STMT_t *s = prog->head; s; s = s->next) {
+        if (!s->subject || s->subject->kind != E_CHOICE) continue;
+        EXPR_t *g = s->subject;
+        const char *key = g->sval;
+        if (!key) continue;
+        int is_test1 = (strcmp(key, "test/1") == 0);
+        int is_test2 = (strcmp(key, "test/2") == 0);
+        if (!is_test1 && !is_test2) continue;
+
+        for (int ci = 0; ci < g->nchildren && pl_linker_ntest < PJ_LINKER_MAX_TESTS; ci++) {
+            EXPR_t *cl = g->children[ci];
+            if (!cl || cl->kind != E_CLAUSE) continue;
+            int n_args = (int)cl->dval;
+            if (n_args < 1) continue;
+            EXPR_t *name_arg = cl->children[0];
+            if (!name_arg || !name_arg->sval) continue;
+
+            /* Determine suite: consult prescan map by key+occurrence index */
+            int occ = is_test1 ? cnt1++ : cnt2++;
+            const char *suite = pl_linker_nsuite > 0 ? pl_linker_suites[0] : "unknown";
+            if (pl_prescan_n > 0) {
+                for (int pi = 0; pi < pl_prescan_n; pi++) {
+                    if (strcmp(pl_prescan_map[pi].key, key) == 0 &&
+                        pl_prescan_map[pi].idx == occ) {
+                        suite = pl_prescan_map[pi].suite;
+                        break;
+                    }
+                }
+            }
+
+            PjTestInfo *ti = &pl_linker_tests[pl_linker_ntest++];
+            strncpy(ti->suite, suite, 63);
+            strncpy(ti->name,  name_arg->sval, 63);
+            ti->arity       = is_test2 ? 2 : 1;
+            ti->opts_expr   = (is_test2 && n_args >= 2) ? cl->children[1] : NULL;
+            ti->clause_expr = cl;
+            /* Count prior entries with same suite+name to form a unique bridge name */
+            int dup = 0;
+            for (int di = 0; di < pl_linker_ntest - 1; di++)
+                if (strcmp(pl_linker_tests[di].suite, suite) == 0 &&
+                    strcmp(pl_linker_tests[di].name,  name_arg->sval) == 0)
+                    dup++;
+            char raw[128];
+            if (dup == 0)
+                snprintf(raw, sizeof raw, "pjt__%s_%s", suite, name_arg->sval);
+            else
+                snprintf(raw, sizeof raw, "pjt__%s_%s_%d", suite, name_arg->sval, dup);
+            safe_name(raw, ti->bridge, sizeof ti->bridge);
+        }
+    }
+}
+
+/* -------------------------------------------------------------------------
+ * pl_linker_emit_main_assertz — emit assertz calls for pl_suite/pl_test facts.
+ * Called from inside pl_emit_main after the existing assertz loop.
+ *
+ * Each pl_suite(Suite) assertz:
+ *   ldc "Suite" → pl_term_atom → pl_db_assert_key → pl_term_atom → iconst_0
+ *   → pl_db_assert
+ *
+ * Each pl_test(Suite, Name, Opts, Goal) assertz:
+ *   build compound ["compound","pl_test", atom(Suite), atom(Name), Opts, atom(bridge)]
+ *   → pl_db_assert_key → same term → iconst_0 → pl_db_assert
+ * ------------------------------------------------------------------------- */
+static void pl_linker_emit_main_assertz(void) {
+    if (pl_linker_ntest == 0 && pl_linker_nsuite == 0) return;
+
+    JC("M-PJ-LINKER: assert pl_suite facts");
+    for (int i = 0; i < pl_linker_nsuite; i++) {
+        const char *sname = pl_linker_suites[i];
+        /* build pl_suite(Suite) term — compound arity 1 */
+        /* Emit twice: once for key derivation, once for the actual assert */
+        for (int pass = 0; pass < 2; pass++) {
+            J("    bipush 3\n");
+            J("    anewarray java/lang/Object\n");
+            J("    dup\n");
+            J("    iconst_0\n");
+            J("    ldc \"compound\"\n");
+            J("    aastore\n");
+            J("    dup\n");
+            J("    iconst_1\n");
+            J("    ldc \"pl_suite\"\n");
+            J("    aastore\n");
+            J("    dup\n");
+            J("    bipush 2\n");
+            J("    ldc \"%s\"\n", sname);
+            J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+            J("    aastore\n");
+            if (pass == 0) {
+                J("    invokestatic %s/pl_db_assert_key(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+            }
+        }
+        J("    iconst_0\n");  /* asserta=1 / assertz=0 */
+        J("    invokestatic %s/pl_db_assert(Ljava/lang/String;Ljava/lang/Object;I)V\n", classname);
+    }
+
+    JC("M-PJ-LINKER: assert pl_test facts");
+    int *dummy_locals = NULL;
+    for (int i = 0; i < pl_linker_ntest; i++) {
+        PjTestInfo *ti = &pl_linker_tests[i];
+        /* build pl_test(Suite, Name, Opts, BridgeAtom) — compound arity 4 */
+        for (int pass = 0; pass < 2; pass++) {
+            J("    bipush 6\n");  /* 2 + 4 args */
+            J("    anewarray java/lang/Object\n");
+            J("    dup\n");
+            J("    iconst_0\n");
+            J("    ldc \"compound\"\n");
+            J("    aastore\n");
+            J("    dup\n");
+            J("    iconst_1\n");
+            J("    ldc \"pl_test\"\n");
+            J("    aastore\n");
+            /* arg0: Suite atom */
+            J("    dup\n");
+            J("    bipush 2\n");
+            J("    ldc \"%s\"\n", ti->suite);
+            J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+            J("    aastore\n");
+            /* arg1: Name atom */
+            J("    dup\n");
+            J("    bipush 3\n");
+            J("    ldc \"%s\"\n", ti->name);
+            J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+            J("    aastore\n");
+            /* arg2: Opts — emit as term if available, else []
+             * If opts contain true(Expr) (var-sharing case), emit pl_inline atom
+             * so run_one delegates entirely to the self-reporting bridge. */
+            J("    dup\n");
+            J("    bipush 4\n");
+            if (ti->opts_expr) {
+                EXPR_t *oe = ti->opts_expr;
+                /* Check for true(Expr) — bare or inside list */
+                int is_true_expr = 0;
+                if (oe->sval && strcmp(oe->sval,"true")==0 && oe->nchildren==1) {
+                    is_true_expr = 1;
+                } else if (oe->sval && strcmp(oe->sval,".") != 0 &&
+                           strcmp(oe->sval,"[]") != 0 &&
+                           strcmp(oe->sval,"fail") != 0 && strcmp(oe->sval,"false") != 0 &&
+                           strcmp(oe->sval,"error") != 0 && strcmp(oe->sval,"throws") != 0 &&
+                           strcmp(oe->sval,"all") != 0 && strcmp(oe->sval,"sto") != 0 &&
+                           strcmp(oe->sval,"blocked") != 0 && strcmp(oe->sval,"setup") != 0 &&
+                           strcmp(oe->sval,"cleanup") != 0 && strcmp(oe->sval,"forall") != 0 &&
+                           oe->nchildren > 0) {
+                    is_true_expr = 1; /* bare expression like X==y */
+                } else if (oe->sval && strcmp(oe->sval,".")==0 && oe->nchildren>=2) {
+                    EXPR_t *nd = oe;
+                    while (nd && nd->sval && strcmp(nd->sval,".")==0 && nd->nchildren>=2) {
+                        EXPR_t *hd = nd->children[0];
+                        if (hd && hd->sval && strcmp(hd->sval,"true")==0 && hd->nchildren==1)
+                            { is_true_expr=1; break; }
+                        /* bare expression inside list */
+                        if (hd && hd->sval &&
+                            strcmp(hd->sval,"fail")!=0 && strcmp(hd->sval,"false")!=0 &&
+                            strcmp(hd->sval,"error")!=0 && strcmp(hd->sval,"throws")!=0 &&
+                            strcmp(hd->sval,"all")!=0 && strcmp(hd->sval,"sto")!=0 &&
+                            strcmp(hd->sval,"blocked")!=0 && strcmp(hd->sval,"setup")!=0 &&
+                            strcmp(hd->sval,"cleanup")!=0 && strcmp(hd->sval,"forall")!=0 &&
+                            strcmp(hd->sval,".")!=0 && strcmp(hd->sval,"[]")!=0 &&
+                            hd->nchildren > 0)
+                            { is_true_expr=1; break; }
+                        nd = nd->children[1];
+                    }
+                }
+                if (is_true_expr) {
+                    /* emit pl_inline atom — bridge is self-reporting.
+                     * For bare goals (X==y) this is essential: the check
+                     * shares variables with the body only inside the bridge
+                     * JVM frame, so we cannot re-evaluate the expression
+                     * from a disconnected assertz'd term. */
+                    J("    ldc \"pl_inline\"\n");
+                    J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+                } else {
+                    pl_emit_term(oe, dummy_locals, 0);
+                }
+            } else {
+                /* [] */
+                J("    ldc \"[]\"\n");
+                J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+            }
+            J("    aastore\n");
+            /* arg3: Goal — atom naming the bridge predicate */
+            J("    dup\n");
+            J("    bipush 5\n");
+            J("    ldc \"%s\"\n", ti->bridge);
+            J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+            J("    aastore\n");
+            if (pass == 0) {
+                J("    invokestatic %s/pl_db_assert_key(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+            }
+        }
+        J("    iconst_0\n");
+        J("    invokestatic %s/pl_db_assert(Ljava/lang/String;Ljava/lang/Object;I)V\n", classname);
+    }
+}
+
+/* -------------------------------------------------------------------------
+ * Main method emitter
+ * Finds the initialization(main) directive and emits a JVM main() that calls it.
+ * ------------------------------------------------------------------------- */
+
+static void pl_emit_main(Program *prog) {
+    J(".method public static main([Ljava/lang/String;)V\n");
+    J("    .limit stack 512\n");
+    J("    .limit locals 4\n");
+
+    /* M-PJ-LINKER: assert pl_suite/pl_test facts FIRST — before any directives
+     * (run_tests/:- halt may appear as directives and must find the DB populated) */
+    pl_linker_emit_main_assertz();
+
+    /* Bug 2 fix: execute :- assertz/asserta directives before calling main/0.
+     * Directives are STMT_t nodes whose subject is NOT E_CHOICE. */
+    for (STMT_t *s = prog->head; s; s = s->next) {
+        if (!s->subject) continue;
+        if (s->subject->kind == E_CHOICE) continue;
+        EXPR_t *g = s->subject;
+        if (g->kind != E_FNC || !g->sval) continue;
+        /* Skip meta-directives that have no runtime effect */
+        if (strcmp(g->sval, "dynamic") == 0 ||
+            strcmp(g->sval, "discontiguous") == 0 ||
+            strcmp(g->sval, "module") == 0 ||
+            strcmp(g->sval, "use_module") == 0 ||
+            strcmp(g->sval, "begin_tests") == 0 ||
+            strcmp(g->sval, "end_tests") == 0 ||
+            strcmp(g->sval, "ensure_loaded") == 0 ||
+            strcmp(g->sval, "style_check") == 0 ||
+            strcmp(g->sval, "set_prolog_flag") == 0 ||
+            strcmp(g->sval, "module_transparent") == 0 ||
+            strcmp(g->sval, "meta_predicate") == 0 ||
+            strcmp(g->sval, "multifile") == 0 ||
+            strcmp(g->sval, "reexport") == 0 ||
+            strcmp(g->sval, "load_files") == 0 ||
+            strcmp(g->sval, "if") == 0 ||
+            strcmp(g->sval, "else") == 0 ||
+            strcmp(g->sval, "endif") == 0 ||
+            strcmp(g->sval, "initialization") == 0) {
+            /* silently skip */
+        } else if ((strcmp(g->sval, "assertz") == 0 || strcmp(g->sval, "asserta") == 0)
+             && g->nchildren == 1) {
+            /* emit assertz/asserta inline — same logic as pl_emit_goal assertz case */
+            int is_asserta = (strcmp(g->sval, "asserta") == 0);
+            int *dummy_locals = NULL;
+            pl_emit_term(g->children[0], dummy_locals, 0);
+            J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+            J("    invokestatic %s/pl_db_assert_key(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+            pl_emit_term(g->children[0], dummy_locals, 0);
+            J("    invokestatic %s/pl_deref(Ljava/lang/Object;)Ljava/lang/Object;\n", classname);
+            J("    %s\n", is_asserta ? "iconst_1" : "iconst_0");
+            J("    invokestatic %s/pl_db_assert(Ljava/lang/String;Ljava/lang/Object;I)V\n", classname);
+        } else {
+            /* General directive: call via pl_call_goal at runtime */
+            int *dummy_locals = NULL;
+            pl_emit_term(s->subject, dummy_locals, 0);
+            J("    iconst_0\n");
+            J("    invokestatic %s/pl_call_goal(Ljava/lang/Object;I)I\n", classname);
+            J("    pop\n");
+        }
+    }
+
+    /* Call p_main_0(0) once — only if main/0 is actually defined.
+     * Plunit files use :- run_tests / :- halt directives and have no main/0. */
+    int has_main0 = 0;
+    for (STMT_t *s2 = prog->head; s2; s2 = s2->next) {
+        if (!s2->subject || s2->subject->kind != E_CHOICE) continue;
+        if (s2->subject->sval && strcmp(s2->subject->sval, "main/0") == 0) {
+            has_main0 = 1; break;
+        }
+    }
+    if (has_main0) {
+        JI("iconst_0", ""); /* cs = 0 */
+        J("    invokestatic %s/p_main_0(I)[Ljava/lang/Object;\n", classname);
+        JI("pop", "");
+    }
+
+    /* Auto run_tests: if this is a plunit file with no main/0 and no explicit
+     * :- run_tests directive, emit run_tests + halt automatically so plunit-only
+     * files (e.g. SWI test_*.pl) execute without needing a wrapper. */
+    if (pl_linker_ntest > 0 && !has_main0) {
+        /* Check whether :- run_tests was already emitted as a directive */
+        int has_run_tests_dir = 0;
+        for (STMT_t *s2 = prog->head; s2; s2 = s2->next) {
+            if (!s2->subject || s2->subject->kind == E_CHOICE) continue;
+            EXPR_t *g = s2->subject;
+            if (g->kind == E_FNC && g->sval &&
+                (strcmp(g->sval, "run_tests") == 0)) {
+                has_run_tests_dir = 1; break;
+            }
+        }
+        if (!has_run_tests_dir) {
+            JC("auto run_tests (M-PJ-LINKER: no main/0, no :- run_tests)");
+            J("    ldc \"run_tests\"\n");
+            J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+            J("    iconst_0\n");
+            J("    invokestatic %s/pl_call_goal(Ljava/lang/Object;I)I\n", classname);
+            J("    pop\n");
+        }
+    }
+    JI("return", "");
+    J(".end method\n\n");
+}
+
+/* -------------------------------------------------------------------------
+ * Public entry point
+ * ------------------------------------------------------------------------- */
+
+void prolog_emit_jvm(Program *prog_in, FILE *fp, const char *filename) {
+    prog = prog_in;  /* M-PJ-CUT-UCALL: store for callee base[nclauses] lookup */
+    out  = fp;
+    natom = 0;
+    uid = 0;
+    set_classname(filename);
+
+    JC("Generated by scrip-cc Prolog JVM emitter (prolog_emit_jvm.c)");
+    J("; Source: %s\n\n", filename ? filename : "<stdin>");
+
+    pl_emit_class_header();
+    emit_runtime_helpers();
+    pl_emit_assertz_helpers();
+
+    /* Always emit forall/2 synthetic (unless user defines it) */
+    {
+        int defines_forall = 0;
+        for (STMT_t *s = prog->head; s; s = s->next) {
+            if (!s->subject) continue;
+            if (s->subject->kind == E_CHOICE && s->subject->sval &&
+                strcmp(s->subject->sval, "forall") == 0)
+                defines_forall = 1;
+        }
+        if (!defines_forall)
+            pl_emit_forall_builtin();
+    }
+
+    /* Check if program uses between/3 but doesn't define it — emit synthetic method */
+    {
+        int defines_between = 0;
+        for (STMT_t *s = prog->head; s; s = s->next) {
+            if (!s->subject) continue;
+            if (s->subject->kind == E_CHOICE && s->subject->sval &&
+                strcmp(s->subject->sval, "between") == 0) {
+                defines_between = 1;
+            }
+        }
+        if (!defines_between)
+            pl_emit_between_builtin();
+    }
+
+    /* Check if program uses findall/3 but doesn't define it — emit synthetic method */
+    {
+        int defines_findall = 0;
+        for (STMT_t *s = prog->head; s; s = s->next) {
+            if (!s->subject) continue;
+            if (s->subject->kind == E_CHOICE && s->subject->sval &&
+                strcmp(s->subject->sval, "findall") == 0)
+                defines_findall = 1;
+        }
+        if (!defines_findall)
+            pl_emit_findall_builtin();
+    }
+
+    /* Check if program uses aggregate_all/3 but doesn't define it */
+    {
+        int defines_agg = 0;
+        for (STMT_t *s = prog->head; s; s = s->next) {
+            if (!s->subject) continue;
+            if (s->subject->kind == E_CHOICE && s->subject->sval &&
+                strcmp(s->subject->sval, "aggregate_all") == 0)
+                defines_agg = 1;
+        }
+        if (!defines_agg)
+            pl_emit_aggregate_all_builtin();
+    }
+
+    /* Check if program uses reverse/2 but doesn't define it — emit synthetic method */
+    {
+        int defines_reverse = 0;
+        for (STMT_t *s = prog->head; s; s = s->next) {
+            if (!s->subject) continue;
+            if (s->subject->kind == E_CHOICE && s->subject->sval &&
+                strcmp(s->subject->sval, "reverse") == 0)
+                defines_reverse = 1;
+        }
+        if (!defines_reverse)
+            pl_emit_reverse_builtin();
+    }
+
+    /* M-PJ-LINKER: plunit linker — scan + emit shim + stubs + bridges */
+    int use_plunit = pl_linker_has_plunit(prog);
+    if (use_plunit) {
+        pl_linker_scan(prog);
+        pl_linker_emit_plunit_shim();
+        pl_linker_emit_dynamic_stubs();
+    }
+
+    /* Always emit pl_gcd helper (used by gcd/2 in is/2) */
+    pl_emit_gcd_helper();
+
+    /* pl_shr(J val, J count) -> J: arithmetic right shift with saturation (count>=63 -> 0 or -1) */
+    J(".method static pl_shr(JJ)J\n");
+    J("    .limit stack 4\n"); J("    .limit locals 4\n");
+    J("    lload_2\n"); J("    ldc2_w 63\n"); J("    lcmp\n"); J("    ifle pl_shr_ok\n");
+    /* count > 63: result is sign extension of val */
+    J("    lload_0\n"); J("    ldc2_w 63\n"); J("    l2i\n"); J("    lshr\n"); J("    lreturn\n");
+    J("pl_shr_ok:\n");
+    J("    lload_0\n"); J("    lload_2\n"); J("    l2i\n"); J("    lshr\n"); J("    lreturn\n");
+    J(".end method\n\n");
+
+    /* pl_shl(J val, J count) -> J: left shift with saturation (count>=64 -> 0) */
+    J(".method static pl_shl(JJ)J\n");
+    J("    .limit stack 4\n"); J("    .limit locals 4\n");
+    J("    lload_2\n"); J("    ldc2_w 63\n"); J("    lcmp\n"); J("    ifle pl_shl_ok\n");
+    J("    lconst_0\n"); J("    lreturn\n");
+    J("pl_shl_ok:\n");
+    J("    lload_0\n"); J("    lload_2\n"); J("    l2i\n"); J("    lshl\n"); J("    lreturn\n");
+    J(".end method\n\n");
+
+    /* pl_mod(J a, J b) -> J: floor remainder (SWI mod/2 semantics)
+     * r = a rem b; if (r != 0 && signs differ) r += b */
+    J(".method static pl_mod(JJ)J\n");
+    J("    .limit stack 6\n"); J("    .limit locals 6\n");
+    J("    lload_0\n"); J("    lload_2\n"); J("    lrem\n"); J("    lstore 4\n"); /* r = a%b, local4 */
+    /* if r == 0, return 0 */
+    J("    lload 4\n"); J("    lconst_0\n"); J("    lcmp\n"); J("    ifeq pl_mod_done\n");
+    /* if (r XOR b) >= 0 (same sign), return r */
+    J("    lload 4\n"); J("    lload_2\n"); J("    lxor\n");
+    J("    lconst_0\n"); J("    lcmp\n"); J("    ifge pl_mod_done\n");
+    /* different signs: r += b */
+    J("    lload 4\n"); J("    lload_2\n"); J("    ladd\n"); J("    lstore 4\n");
+    J("pl_mod_done:\n"); J("    lload 4\n"); J("    lreturn\n");
+    J(".end method\n\n");
+
+    /* Hyperbolic inverse function helpers (not in java.lang.Math pre-Java 21) */
+    J(".method static pl_asinh(D)D\n");
+    J("    .limit stack 6\n"); J("    .limit locals 2\n");
+    J("    dload_0\n");                                     /* x */
+    J("    dload_0\n"); J("    dload_0\n"); J("    dmul\n");/* x x² */
+    J("    dconst_1\n"); J("    dadd\n");                   /* x (x²+1) */
+    J("    invokestatic java/lang/Math/sqrt(D)D\n");        /* x sqrt(x²+1) */
+    J("    dadd\n");                                        /* x+sqrt(x²+1) */
+    J("    invokestatic java/lang/Math/log(D)D\n");
+    J("    dreturn\n"); J(".end method\n\n");
+
+    J(".method static pl_acosh(D)D\n");
+    J("    .limit stack 6\n"); J("    .limit locals 2\n");
+    J("    dload_0\n");
+    J("    dload_0\n"); J("    dload_0\n"); J("    dmul\n");
+    J("    dconst_1\n"); J("    dsub\n");
+    J("    invokestatic java/lang/Math/sqrt(D)D\n");
+    J("    dadd\n");
+    J("    invokestatic java/lang/Math/log(D)D\n");
+    J("    dreturn\n"); J(".end method\n\n");
+
+    J(".method static pl_atanh(D)D\n");
+    J("    .limit stack 6\n"); J("    .limit locals 2\n");
+    /* 0.5 * log((1+x)/(1-x)) */
+    J("    dconst_1\n"); J("    dload_0\n"); J("    dadd\n"); /* (1+x) */
+    J("    dconst_1\n"); J("    dload_0\n"); J("    dsub\n"); /* (1-x) */
+    J("    ddiv\n");                                           /* (1+x)/(1-x) */
+    J("    invokestatic java/lang/Math/log(D)D\n");
+    J("    ldc2_w 4602678819172646912\n");                    /* 0.5 bits */
+    J("    invokestatic java/lang/Double/longBitsToDouble(J)D\n");
+    J("    dmul\n");
+    J("    dreturn\n"); J(".end method\n\n");
+
+    /* pl_num_as_double(Object[] term) → D: extract numeric value as double.
+     * Handles both "int" and "float" tagged terms. */
+    J(".method static pl_num_as_double([Ljava/lang/Object;)D\n");
+    J("    .limit stack 4\n");
+    J("    .limit locals 1\n");
+    J("    aload_0\n");
+    J("    iconst_0\n"); J("    aaload\n");
+    J("    ldc \"float\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ifeq pl_num_as_double_int\n");
+    /* float: parse as double */
+    J("    aload_0\n"); J("    iconst_1\n"); J("    aaload\n");
+    J("    checkcast java/lang/String\n");
+    J("    invokestatic java/lang/Double/parseDouble(Ljava/lang/String;)D\n");
+    J("    dreturn\n");
+    J("pl_num_as_double_int:\n");
+    J("    aload_0\n"); J("    iconst_1\n"); J("    aaload\n");
+    J("    checkcast java/lang/String\n");
+    J("    invokestatic java/lang/Long/parseLong(Ljava/lang/String;)J\n");
+    J("    l2d\n");
+    J("    dreturn\n");
+    J(".end method\n\n");
+
+    /* pl_num_cmp(Object[] a, Object[] b) → I: numeric comparison.
+     * Returns negative/zero/positive like Double.compare.
+     * Used by =:= =\= < > =< >= when operands may be runtime-typed vars. */
+    J(".method static pl_num_cmp([Ljava/lang/Object;[Ljava/lang/Object;)I\n");
+    J("    .limit stack 6\n");
+    J("    .limit locals 2\n");
+    J("    aload_0\n");
+    J("    invokestatic %s/pl_num_as_double([Ljava/lang/Object;)D\n", classname);
+    J("    aload_1\n");
+    J("    invokestatic %s/pl_num_as_double([Ljava/lang/Object;)D\n", classname);
+    /* Use dcmpl for IEEE semantics: -0.0 == 0.0, NaN comparisons return -1 */
+    J("    dcmpl\n");
+    J("    ireturn\n");
+    J(".end method\n\n");
+
+    /* Always emit pl_min_mixed / pl_max_mixed helpers:
+     * pl_min_mixed(J intVal, J floatBits) -> Object[] term (int or float)
+     * pl_max_mixed(J intVal, J floatBits) -> Object[] term (int or float)
+     * Result type follows the winning value (int if int wins, float if float wins) */
+    J(".method static pl_min_mixed(JJ)[Ljava/lang/Object;\n");
+    J("    .limit stack 8\n");
+    J("    .limit locals 4\n");
+    /* convert float bits to double, compare with int */
+    J("    lload_0\n"); J("    l2d\n");      /* (double)intVal */
+    J("    lload_2\n");
+    J("    invokestatic java/lang/Double/longBitsToDouble(J)D\n");
+    J("    dcmpl\n");                          /* intAsDouble cmp floatVal */
+    J("    ifgt pl_min_mixed_float\n");       /* int > float → float wins */
+    /* int wins (int <= float): return int term */
+    J("    lload_0\n");
+    J("    invokestatic %s/pl_term_int(J)[Ljava/lang/Object;\n", classname);
+    J("    areturn\n");
+    J("pl_min_mixed_float:\n");
+    /* float wins: return float term */
+    J("    lload_2\n");
+    J("    invokestatic java/lang/Double/longBitsToDouble(J)D\n");
+    J("    invokestatic %s/pl_term_float(D)[Ljava/lang/Object;\n", classname);
+    J("    areturn\n");
+    J(".end method\n\n");
+
+    J(".method static pl_max_mixed(JJ)[Ljava/lang/Object;\n");
+    J("    .limit stack 8\n");
+    J("    .limit locals 4\n");
+    J("    lload_0\n"); J("    l2d\n");
+    J("    lload_2\n");
+    J("    invokestatic java/lang/Double/longBitsToDouble(J)D\n");
+    J("    dcmpl\n");
+    J("    iflt pl_max_mixed_float\n");       /* int < float → float wins */
+    /* int wins (int >= float): return int term */
+    J("    lload_0\n");
+    J("    invokestatic %s/pl_term_int(J)[Ljava/lang/Object;\n", classname);
+    J("    areturn\n");
+    J("pl_max_mixed_float:\n");
+    J("    lload_2\n");
+    J("    invokestatic java/lang/Double/longBitsToDouble(J)D\n");
+    J("    invokestatic %s/pl_term_float(D)[Ljava/lang/Object;\n", classname);
+    J("    areturn\n");
+    J(".end method\n\n");
+
+    /* Always emit stdlib shim: member/2, memberchk/2 (skipped if user-defined) */
+    /* pl_varnum helpers: runtime arithmetic when one operand may be a var holding float.
+     * Each takes two Object[] terms (already deref'd), returns long bits
+     * (float raw bits if result is float, else raw long). */
+    J(".method static pl_obj_to_double([Ljava/lang/Object;)D\n");
+    J("    .limit stack 4\n");
+    J("    .limit locals 2\n");
+    J("    aload_0\n");
+    J("    iconst_0\n"); J("    aaload\n");
+    J("    ldc \"float\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ifeq pl_o2d_int\n");
+    J("    aload_0\n"); J("    iconst_1\n"); J("    aaload\n");
+    J("    checkcast java/lang/String\n");
+    J("    invokestatic java/lang/Double/parseDouble(Ljava/lang/String;)D\n");
+    J("    dreturn\n");
+    J("pl_o2d_int:\n");
+    J("    aload_0\n"); J("    iconst_1\n"); J("    aaload\n");
+    J("    checkcast java/lang/String\n");
+    J("    invokestatic java/lang/Long/parseLong(Ljava/lang/String;)J\n");
+    J("    l2d\n");
+    J("    dreturn\n");
+    J(".end method\n\n");
+
+    J(".method static pl_obj_is_float([Ljava/lang/Object;)Z\n");
+    J("    .limit stack 3\n");
+    J("    .limit locals 1\n");
+    J("    aload_0\n"); J("    iconst_0\n"); J("    aaload\n");
+    J("    ldc \"float\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ireturn\n");
+    J(".end method\n\n");
+
+    /* pl_varnum_mul(Object[] a, Object[] b) -> J */
+    J(".method static pl_varnum_mul([Ljava/lang/Object;[Ljava/lang/Object;)[Ljava/lang/Object;\n");
+    J("    .limit stack 8\n");
+    J("    .limit locals 2\n");
+    J("    aload_0\n");
+    J("    invokestatic %s/pl_obj_is_float([Ljava/lang/Object;)Z\n", classname);
+    J("    aload_1\n");
+    J("    invokestatic %s/pl_obj_is_float([Ljava/lang/Object;)Z\n", classname);
+    J("    ior\n");
+    J("    ifeq pl_vn_mul_int\n");
+    /* float path */
+    J("    aload_0\n");
+    J("    invokestatic %s/pl_obj_to_double([Ljava/lang/Object;)D\n", classname);
+    J("    aload_1\n");
+    J("    invokestatic %s/pl_obj_to_double([Ljava/lang/Object;)D\n", classname);
+    J("    dmul\n");
+    J("    invokestatic %s/pl_term_float(D)[Ljava/lang/Object;\n", classname);
+    J("    areturn\n");
+    J("pl_vn_mul_int:\n");
+    J("    aload_0\n"); J("    iconst_1\n"); J("    aaload\n");
+    J("    checkcast java/lang/String\n");
+    J("    invokestatic java/lang/Long/parseLong(Ljava/lang/String;)J\n");
+    J("    aload_1\n"); J("    iconst_1\n"); J("    aaload\n");
+    J("    checkcast java/lang/String\n");
+    J("    invokestatic java/lang/Long/parseLong(Ljava/lang/String;)J\n");
+    J("    lmul\n");
+    J("    invokestatic %s/pl_term_int(J)[Ljava/lang/Object;\n", classname);
+    J("    areturn\n");
+    J(".end method\n\n");
+
+    /* pl_varnum_add(Object[] a, Object[] b) -> J */
+    J(".method static pl_varnum_add([Ljava/lang/Object;[Ljava/lang/Object;)[Ljava/lang/Object;\n");
+    J("    .limit stack 8\n");
+    J("    .limit locals 2\n");
+    J("    aload_0\n");
+    J("    invokestatic %s/pl_obj_is_float([Ljava/lang/Object;)Z\n", classname);
+    J("    aload_1\n");
+    J("    invokestatic %s/pl_obj_is_float([Ljava/lang/Object;)Z\n", classname);
+    J("    ior\n");
+    J("    ifeq pl_vn_add_int\n");
+    J("    aload_0\n");
+    J("    invokestatic %s/pl_obj_to_double([Ljava/lang/Object;)D\n", classname);
+    J("    aload_1\n");
+    J("    invokestatic %s/pl_obj_to_double([Ljava/lang/Object;)D\n", classname);
+    J("    dadd\n");
+    J("    invokestatic %s/pl_term_float(D)[Ljava/lang/Object;\n", classname);
+    J("    areturn\n");
+    J("pl_vn_add_int:\n");
+    J("    aload_0\n"); J("    iconst_1\n"); J("    aaload\n");
+    J("    checkcast java/lang/String\n");
+    J("    invokestatic java/lang/Long/parseLong(Ljava/lang/String;)J\n");
+    J("    aload_1\n"); J("    iconst_1\n"); J("    aaload\n");
+    J("    checkcast java/lang/String\n");
+    J("    invokestatic java/lang/Long/parseLong(Ljava/lang/String;)J\n");
+    J("    ladd\n");
+    J("    invokestatic %s/pl_term_int(J)[Ljava/lang/Object;\n", classname);
+    J("    areturn\n");
+    J(".end method\n\n");
+
+    /* pl_varnum_sub(Object[] a, Object[] b) -> J */
+    J(".method static pl_varnum_sub([Ljava/lang/Object;[Ljava/lang/Object;)[Ljava/lang/Object;\n");
+    J("    .limit stack 8\n");
+    J("    .limit locals 2\n");
+    J("    aload_0\n");
+    J("    invokestatic %s/pl_obj_is_float([Ljava/lang/Object;)Z\n", classname);
+    J("    aload_1\n");
+    J("    invokestatic %s/pl_obj_is_float([Ljava/lang/Object;)Z\n", classname);
+    J("    ior\n");
+    J("    ifeq pl_vn_sub_int\n");
+    J("    aload_0\n");
+    J("    invokestatic %s/pl_obj_to_double([Ljava/lang/Object;)D\n", classname);
+    J("    aload_1\n");
+    J("    invokestatic %s/pl_obj_to_double([Ljava/lang/Object;)D\n", classname);
+    J("    dsub\n");
+    J("    invokestatic %s/pl_term_float(D)[Ljava/lang/Object;\n", classname);
+    J("    areturn\n");
+    J("pl_vn_sub_int:\n");
+    J("    aload_0\n"); J("    iconst_1\n"); J("    aaload\n");
+    J("    checkcast java/lang/String\n");
+    J("    invokestatic java/lang/Long/parseLong(Ljava/lang/String;)J\n");
+    J("    aload_1\n"); J("    iconst_1\n"); J("    aaload\n");
+    J("    checkcast java/lang/String\n");
+    J("    invokestatic java/lang/Long/parseLong(Ljava/lang/String;)J\n");
+    J("    lsub\n");
+    J("    invokestatic %s/pl_term_int(J)[Ljava/lang/Object;\n", classname);
+    J("    areturn\n");
+    J(".end method\n\n");
+
+    /* pl_varnum_div(Object[] a, Object[] b) -> J */
+    J(".method static pl_varnum_div([Ljava/lang/Object;[Ljava/lang/Object;)[Ljava/lang/Object;\n");
+    J("    .limit stack 8\n");
+    J("    .limit locals 2\n");
+    J("    aload_0\n");
+    J("    invokestatic %s/pl_obj_is_float([Ljava/lang/Object;)Z\n", classname);
+    J("    aload_1\n");
+    J("    invokestatic %s/pl_obj_is_float([Ljava/lang/Object;)Z\n", classname);
+    J("    ior\n");
+    J("    ifeq pl_vn_div_int\n");
+    J("    aload_0\n");
+    J("    invokestatic %s/pl_obj_to_double([Ljava/lang/Object;)D\n", classname);
+    J("    aload_1\n");
+    J("    invokestatic %s/pl_obj_to_double([Ljava/lang/Object;)D\n", classname);
+    J("    ddiv\n");
+    J("    invokestatic %s/pl_term_float(D)[Ljava/lang/Object;\n", classname);
+    J("    areturn\n");
+    J("pl_vn_div_int:\n");
+    J("    aload_0\n"); J("    iconst_1\n"); J("    aaload\n");
+    J("    checkcast java/lang/String\n");
+    J("    invokestatic java/lang/Long/parseLong(Ljava/lang/String;)J\n");
+    J("    aload_1\n"); J("    iconst_1\n"); J("    aaload\n");
+    J("    checkcast java/lang/String\n");
+    J("    invokestatic java/lang/Long/parseLong(Ljava/lang/String;)J\n");
+    J("    ldiv\n");
+    J("    invokestatic %s/pl_term_int(J)[Ljava/lang/Object;\n", classname);
+    J("    areturn\n");
+    J(".end method\n\n");
+
+    /* pl_obj_to_bits: extract J from Object[] term (raw long or float bits) */
+    J(".method static pl_obj_to_bits([Ljava/lang/Object;)J\n");
+    J("    .limit stack 4\n");
+    J("    .limit locals 1\n");
+    J("    aload_0\n");
+    J("    iconst_0\n"); J("    aaload\n");
+    J("    ldc \"float\"\n");
+    J("    invokevirtual java/lang/Object/equals(Ljava/lang/Object;)Z\n");
+    J("    ifeq pl_otb_int\n");
+    J("    aload_0\n"); J("    iconst_1\n"); J("    aaload\n");
+    J("    checkcast java/lang/String\n");
+    J("    invokestatic java/lang/Double/parseDouble(Ljava/lang/String;)D\n");
+    J("    invokestatic java/lang/Double/doubleToRawLongBits(D)J\n");
+    J("    lreturn\n");
+    J("pl_otb_int:\n");
+    J("    aload_0\n"); J("    iconst_1\n"); J("    aaload\n");
+    J("    checkcast java/lang/String\n");
+    J("    invokestatic java/lang/Long/parseLong(Ljava/lang/String;)J\n");
+    J("    lreturn\n");
+    J(".end method\n\n");
+
+    pl_emit_stdlib_shim(prog);
+
+    /* emit each predicate */
+    for (STMT_t *s = prog->head; s; s = s->next) {
+        if (!s->subject) continue;
+        if (s->subject->kind == E_CHOICE)
+            pl_emit_choice(s->subject);
+    }
+
+    /* M-PJ-LINKER: emit bridge predicates suite_name/0 :- test(name). */
+    if (use_plunit) {
+        for (int i = 0; i < pl_linker_ntest; i++)
+            pl_linker_emit_bridge(pl_linker_tests[i].bridge, pl_linker_tests[i].name, pl_linker_tests[i].suite);
+    }
+
+    /* Bug 1 fix: emit stub methods for pure-dynamic predicates.
+     * A predicate is "pure-dynamic" if it appears as assertz/asserta arg
+     * in a directive but has no E_CHOICE in the program. */
+    {
+        /* Collect all statically-defined functor/arity keys */
+        /* Simple approach: for each directive assertz(foo(...)), check if
+         * foo/arity has an E_CHOICE; if not, emit a stub. */
+        for (STMT_t *s = prog->head; s; s = s->next) {
+            if (!s->subject || s->subject->kind == E_CHOICE) continue;
+            EXPR_t *g = s->subject;
+            if (!g || g->kind != E_FNC || !g->sval) continue;
+            if ((strcmp(g->sval, "assertz") != 0 && strcmp(g->sval, "asserta") != 0)
+                || g->nchildren != 1) continue;
+            EXPR_t *term = g->children[0];
+            if (!term || term->kind != E_FNC || !term->sval) continue;
+            /* get functor and arity */
+            const char *raw = term->sval;
+            int dyn_arity = term->nchildren;
+            /* check if static choice exists */
+            int has_static = 0;
+            for (STMT_t *s2 = prog->head; s2; s2 = s2->next) {
+                if (!s2->subject || s2->subject->kind != E_CHOICE) continue;
+                EXPR_t *ch = s2->subject;
+                if (!ch->sval) continue;
+                /* ch->sval is "name/arity" */
+                const char *sl2 = strrchr(ch->sval, '/');
+                int ch_arity = sl2 ? atoi(sl2+1) : 0;
+                int nlen = sl2 ? (int)(sl2 - ch->sval) : (int)strlen(ch->sval);
+                if (ch_arity == dyn_arity && strncmp(ch->sval, raw, nlen) == 0
+                    && (int)strlen(raw) == nlen) {
+                    has_static = 1; break;
+                }
+            }
+            if (has_static) continue;
+            /* check we haven't already emitted a stub for this functor/arity
+             * (multiple assertz calls for same predicate) — use a dedup scan
+             * of earlier directives */
+            int already = 0;
+            for (STMT_t *s3 = prog->head; s3 != s; s3 = s3->next) {
+                if (!s3->subject || s3->subject->kind == E_CHOICE) continue;
+                EXPR_t *g3 = s3->subject;
+                if (!g3 || g3->kind != E_FNC || !g3->sval) continue;
+                if ((strcmp(g3->sval,"assertz")!=0 && strcmp(g3->sval,"asserta")!=0)
+                    || g3->nchildren!=1) continue;
+                EXPR_t *t3 = g3->children[0];
+                if (t3 && t3->kind == E_FNC && t3->sval &&
+                    strcmp(t3->sval, raw) == 0 && t3->nchildren == dyn_arity) {
+                    already = 1; break;
+                }
+            }
+            if (already) continue;
+
+            /* emit stub: only the dynamic DB walker */
+            char safe_stub[256];
+            safe_name(raw, safe_stub, sizeof safe_stub);
+            JSep(raw);
+            J("; stub for pure-dynamic predicate %s/%d\n", raw, dyn_arity);
+            J(".method static p_%s_%d(", safe_stub, dyn_arity);
+            for (int i = 0; i < dyn_arity; i++) J("[Ljava/lang/Object;");
+            J("I)[Ljava/lang/Object;\n");
+            int stub_locals = dyn_arity + 50;
+            J("    .limit stack 16\n");
+            J("    .limit locals %d\n", stub_locals);
+            int cs_loc  = dyn_arity;
+            int tr_loc  = dyn_arity + 1;
+            int idx_loc = dyn_arity + 2;
+            int trm_loc = dyn_arity + 3;
+            int stub_lbl = next_uid();
+            char sb_store[64], sb_loop[64], sb_hit[64], sb_miss[64], sb_ok[64], sb_fail[64];
+            snprintf(sb_store, sizeof sb_store, "stub%d_store", stub_lbl);
+            snprintf(sb_loop,  sizeof sb_loop,  "stub%d_loop",  stub_lbl);
+            snprintf(sb_hit,   sizeof sb_hit,   "stub%d_hit",   stub_lbl);
+            snprintf(sb_miss,  sizeof sb_miss,  "stub%d_miss",  stub_lbl);
+            snprintf(sb_ok,    sizeof sb_ok,    "stub%d_ok",    stub_lbl);
+            snprintf(sb_fail,  sizeof sb_fail,  "stub%d_fail",  stub_lbl);
+            /* db_idx = max(0, cs) */
+            J("    iload %d\n", cs_loc);
+            JI("dup", "");
+            J("    ifge %s\n", sb_store);
+            JI("pop", "");
+            JI("iconst_0", "");
+            J("%s:\n", sb_store);
+            J("    istore %d\n", idx_loc);
+            J("%s:\n", sb_loop);
+            J("    ldc \"%s/%d\"\n", raw, dyn_arity);
+            J("    iload %d\n", idx_loc);
+            J("    invokestatic %s/pl_db_query(Ljava/lang/String;I)Ljava/lang/Object;\n", classname);
+            JI("dup", "");
+            J("    ifnonnull %s\n", sb_hit);
+            JI("pop", "");
+            J("    goto %s\n", sb_miss);
+            J("%s:\n", sb_hit);
+            if (dyn_arity == 0) {
+                JI("pop", "");
+            } else {
+                JI("checkcast", "[Ljava/lang/Object;");
+                J("    astore %d\n", trm_loc);
+                J("    invokestatic %s/pl_trail_mark()I\n", classname);
+                J("    istore %d\n", tr_loc);
+                for (int ai = 0; ai < dyn_arity; ai++) {
+                    J("    aload %d\n", ai);
+                    J("    aload %d\n", trm_loc);
+                    J("    ldc %d\n", ai + 2);
+                    JI("aaload", "");
+                    J("    invokestatic %s/pl_unify(Ljava/lang/Object;Ljava/lang/Object;)Z\n", classname);
+                    J("    ifeq %s\n", sb_fail);
+                }
+                J("    goto %s\n", sb_ok);
+                J("%s:\n", sb_fail);
+                J("    iload %d\n", tr_loc);
+                J("    invokestatic %s/pl_trail_unwind(I)V\n", classname);
+                J("    iinc %d 1\n", idx_loc);
+                J("    goto %s\n", sb_loop);
+                J("%s:\n", sb_ok);
+            }
+            /* return proper continuation array: Object[1+dyn_arity]
+             * [0] = Integer(idx_loc + 1),  [1..N] = args (unified in-place) */
+            J("    ldc %d\n", dyn_arity + 1);
+            JI("anewarray", "java/lang/Object");
+            JI("dup", "");
+            JI("iconst_0", "");
+            J("    iload %d\n", idx_loc);
+            JI("iconst_1", "");
+            JI("iadd", "");
+            JI("invokestatic", "java/lang/Integer/valueOf(I)Ljava/lang/Integer;");
+            JI("aastore", "");
+            for (int ai = 0; ai < dyn_arity; ai++) {
+                JI("dup", "");
+                J("    ldc %d\n", ai + 1);
+                J("    aload %d\n", ai);
+                JI("aastore", "");
+            }
+            JI("areturn", "");
+            J("%s:\n", sb_miss);
+            JI("aconst_null", "");
+            JI("areturn", "");
+            J(".end method\n\n");
+        }
+    }
+
+    /* -----------------------------------------------------------------------
+     * M-LINK-JVM: EXPORT wrappers for Prolog predicates.
+     * ----------------------------------------------------------------------- */
+    if (prog && prog->exports) {
+        typedef struct { char name[64]; int arity; } PjExportArity;
+        #define PJ_EXPORT_MAX 64
+        PjExportArity pl_ea[PJ_EXPORT_MAX];
+        int pl_nea = 0;
+        for (STMT_t *s = prog->head; s; s = s->next) {
+            if (!s->subject || s->subject->kind != E_CHOICE) continue;
+            if (!s->subject->sval) continue;
+            const char *sv = s->subject->sval;
+            const char *slash = strchr(sv, '/');
+            if (!slash) continue;
+            int ar = atoi(slash + 1);
+            int namelen = (int)(slash - sv);
+            if (namelen <= 0 || namelen >= 64) continue;
+            char fn[64]; strncpy(fn, sv, namelen); fn[namelen] = '\0';
+            int found = 0;
+            for (int k = 0; k < pl_nea; k++)
+                if (strcmp(pl_ea[k].name, fn) == 0) { found = 1; break; }
+            if (!found && pl_nea < PJ_EXPORT_MAX) {
+                strncpy(pl_ea[pl_nea].name, fn, 63);
+                pl_ea[pl_nea].arity = ar;
+                pl_nea++;
+            }
+        }
+
+        for (ExportEntry *e = prog->exports; e; e = e->next) {
+            int arity = -1;
+            char lname[64]; strncpy(lname, e->name, 63); lname[63] = '\0';
+            for (int k = 0; lname[k]; k++) lname[k] = (char)tolower((unsigned char)lname[k]);
+            for (int k = 0; k < pl_nea; k++) {
+                char kl[64]; strncpy(kl, pl_ea[k].name, 63); kl[63] = '\0';
+                for (int j = 0; kl[j]; j++) kl[j] = (char)tolower((unsigned char)kl[j]);
+                if (strcmp(kl, lname) == 0) { arity = pl_ea[k].arity; break; }
+            }
+            if (arity < 0) {
+                J("; EXPORT %s — predicate not found, skipping\n", e->name);
+                continue;
+            }
+
+            J("\n; EXPORT wrapper for %s/%d (M-LINK-JVM)\n", e->name, arity);
+            J(".method public static %s([Ljava/lang/Object;Ljava/lang/Runnable;Ljava/lang/Runnable;)V\n", e->name);
+            J("    .limit stack 16\n");
+            J("    .limit locals %d\n", 4 + arity);
+
+            /* Each arg: if args non-null and args[a] non-null → atom; else fresh var */
+            for (int a = 0; a < arity; a++) {
+                char ok[64], var[64], done[64];
+                snprintf(ok,   sizeof ok,   "pl_exp_%s_a%d_ok",   e->name, a);
+                snprintf(var,  sizeof var,  "pl_exp_%s_a%d_var",  e->name, a);
+                snprintf(done, sizeof done, "pl_exp_%s_a%d_done", e->name, a);
+                J("    aload_0\n"); J("    ifnull %s\n", var);
+                J("    aload_0\n"); J("    ldc %d\n", a); J("    aaload\n");
+                J("    ifnull %s\n", var);
+                J("    aload_0\n"); J("    ldc %d\n", a); J("    aaload\n");
+                J("    checkcast java/lang/String\n");
+                J("    invokestatic %s/pl_term_atom(Ljava/lang/String;)[Ljava/lang/Object;\n", classname);
+                J("    astore %d\n", 4 + a);
+                J("    goto %s\n", done);
+                J("%s:\n", var);
+                J("    invokestatic %s/pl_term_var()[Ljava/lang/Object;\n", classname);
+                J("    astore %d\n", 4 + a);
+                J("%s:\n", done);
+            }
+
+            /* Call p_name_arity(arg0, ..., 0) */
+            char internal[128];
+            snprintf(internal, sizeof internal, "p_%s_%d", lname, arity);
+            char desc[512]; int dp = 0;
+            for (int a = 0; a < arity; a++) {
+                const char *s2 = "[Ljava/lang/Object;";
+                for (const char *p = s2; *p; p++) desc[dp++] = *p;
+            }
+            desc[dp++] = 'I'; desc[dp++] = ')';
+            const char *rs = "[Ljava/lang/Object;";
+            for (const char *p = rs; *p; p++) desc[dp++] = *p;
+            desc[dp] = '\0';
+            for (int a = 0; a < arity; a++) J("    aload %d\n", 4 + a);
+            J("    ldc 0\n");
+            J("    invokestatic %s/%s(%s\n", classname, internal, desc);
+            J("    astore_3\n");
+
+            J("    aload_3\n"); J("    ifnull pl_exp_omega_%s\n", e->name);
+            J("    aload_3\n");
+            J("    invokestatic %s/pl_term_str(Ljava/lang/Object;)Ljava/lang/String;\n", classname);
+            J("    getstatic ByrdBoxLinkage/RESULT Ljava/util/concurrent/atomic/AtomicReference;\n");
+            J("    swap\n");
+            J("    invokevirtual java/util/concurrent/atomic/AtomicReference/set(Ljava/lang/Object;)V\n");
+            J("    aload_1\n"); J("    ifnull pl_exp_done_%s\n", e->name);
+            J("    aload_1\n"); J("    invokeinterface java/lang/Runnable/run()V 1\n");
+            J("    goto pl_exp_done_%s\n", e->name);
+            J("pl_exp_omega_%s:\n", e->name);
+            J("    aload_2\n"); J("    ifnull pl_exp_done_%s\n", e->name);
+            J("    aload_2\n"); J("    invokeinterface java/lang/Runnable/run()V 1\n");
+            J("pl_exp_done_%s:\n", e->name);
+            J("    return\n");
+            J(".end method\n");
+        }
+    }
+
+    pl_emit_main(prog);
+}

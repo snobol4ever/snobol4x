@@ -19,15 +19,15 @@ BACKEND_C="$TINY/src/backend"
 RTLIB="$TMPDIR_RUN/libsnobol4rt.a"
 _rt_objs=()
 for _src in \
-    "$RT/snobol4/snobol4.c" \
+    "$RT/x86/snobol4.c" \
     "$RT/mock/mock_includes.c" \
-    "$RT/snobol4/snobol4_pattern.c" \
+    "$RT/x86/snobol4_pattern.c" \
     "$RT/mock/mock_engine.c" \
     "$BACKEND_C/trampoline_branches.c" \
     "$BACKEND_C/trampoline_hello.c" \
     "$BACKEND_C/trampoline_pattern.c"; do
     _o="$TMPDIR_RUN/$(basename "${_src%.c}").o"
-    gcc -O0 -g -c "$_src" -I"$RT/snobol4" -I"$RT" -I"$RT/engine" -I"$RT/mock" -I"$SCRIP_CC_INC" -I"$BACKEND_C" -w -o "$_o"
+    gcc -O0 -g -c "$_src" -I"$RT/x86" -I"$RT" -I"$RT/x86" -I"$RT/mock" -I"$SCRIP_CC_INC" -I"$BACKEND_C" -w -o "$_o"
     _rt_objs+=("$_o")
 done
 ar rcs "$RTLIB" "${_rt_objs[@]}"
@@ -45,7 +45,7 @@ run_test() {
         [[ "$STOP_ON_FAIL" == "1" ]] && summary && exit 1; return 1
     fi
     if ! gcc -O0 -g "$c" "$RTLIB" \
-        -I"$RT/snobol4" -I"$RT" -I"$RT/engine" -I"$RT/mock" -I"$SCRIP_CC_INC" -I"$BACKEND_C" \
+        -I"$RT/x86" -I"$RT" -I"$RT/x86" -I"$RT/mock" -I"$SCRIP_CC_INC" -I"$BACKEND_C" \
         -lgc -lm -w -o "$bin" 2>/dev/null; then
         echo -e "${RED}FAIL${RESET} $name  [gcc]"; FAIL=$((FAIL+1))
         [[ "$STOP_ON_FAIL" == "1" ]] && summary && exit 1; return 1

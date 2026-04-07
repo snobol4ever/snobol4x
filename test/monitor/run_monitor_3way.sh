@@ -49,16 +49,16 @@ with open(path, 'w') as f:
 PYEOF
 
 # ── Step 2: compile ASM ──────────────────────────────────────────────────
-for src in "$RT/asm/snobol4_stmt_rt.c" "$RT/snobol4/snobol4.c" \
-           "$RT/mock/mock_includes.c"   "$RT/snobol4/snobol4_pattern.c" \
-           "$RT/engine/engine.c" \
-           "$RT/asm/blk_alloc.c" "$RT/asm/blk_reloc.c"; do
-    gcc -O0 -g -c "$src" -I"$RT/snobol4" -I"$RT" -I"$RT/asm" \
+for src in "$RT/x86/snobol4_stmt_rt.c" "$RT/x86/snobol4.c" \
+           "$RT/mock/mock_includes.c"   "$RT/x86/snobol4_pattern.c" \
+           "$RT/x86/engine.c" \
+           "$RT/x86/blk_alloc.c" "$RT/x86/blk_reloc.c"; do
+    gcc -O0 -g -c "$src" -I"$RT/x86" -I"$RT" -I"$RT/x86" \
         -I"$DIR/src/frontend/snobol4" -w \
         -o "$TMP/$(basename "$src" .c).o" 2>/dev/null
 done
 "$DIR/scrip-cc" -asm -I"$INC" "$TMP/instr.sno" > "$TMP/prog.s" 2>/dev/null
-nasm -f elf64 -I"$RT/asm/" "$TMP/prog.s" -o "$TMP/prog.o" 2>/dev/null
+nasm -f elf64 -I"$RT/x86/" "$TMP/prog.s" -o "$TMP/prog.o" 2>/dev/null
 gcc -no-pie "$TMP/prog.o" \
     "$TMP/snobol4_stmt_rt.o" "$TMP/snobol4.o" "$TMP/mock_includes.o" \
     "$TMP/snobol4_pattern.o" "$TMP/engine.o" \

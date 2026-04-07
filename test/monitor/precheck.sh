@@ -147,12 +147,12 @@ fi
 
 # ── 4c: ASM null ────────────────────────────────────────────────────────
 "$DIR/scrip-cc" -asm "$NULL_SNO" > "$TMP/null.s" 2>/dev/null
-gcc -O0 -g -c "$RT/asm/snobol4_stmt_rt.c"    -I"$RT/snobol4" -I"$RT" -I"$DIR/src/frontend/snobol4" -w -o "$TMP/stmt_rt.o" 2>/dev/null
-gcc -O0 -g -c "$RT/snobol4/snobol4.c"         -I"$RT/snobol4" -I"$RT" -I"$DIR/src/frontend/snobol4" -w -o "$TMP/snobol4.o" 2>/dev/null
-gcc -O0 -g -c "$RT/mock/mock_includes.c"       -I"$RT/snobol4" -I"$RT" -I"$DIR/src/frontend/snobol4" -w -o "$TMP/mock.o" 2>/dev/null
-gcc -O0 -g -c "$RT/snobol4/snobol4_pattern.c" -I"$RT/snobol4" -I"$RT" -I"$DIR/src/frontend/snobol4" -w -o "$TMP/pat.o" 2>/dev/null
-gcc -O0 -g -c "$RT/engine/engine.c"            -I"$RT/snobol4" -I"$RT" -I"$DIR/src/frontend/snobol4" -w -o "$TMP/eng.o" 2>/dev/null
-nasm -f elf64 -I"$RT/asm/" "$TMP/null.s" -o "$TMP/null.o" 2>/dev/null
+gcc -O0 -g -c "$RT/x86/snobol4_stmt_rt.c"    -I"$RT/x86" -I"$RT" -I"$DIR/src/frontend/snobol4" -w -o "$TMP/stmt_rt.o" 2>/dev/null
+gcc -O0 -g -c "$RT/x86/snobol4.c"         -I"$RT/x86" -I"$RT" -I"$DIR/src/frontend/snobol4" -w -o "$TMP/snobol4.o" 2>/dev/null
+gcc -O0 -g -c "$RT/mock/mock_includes.c"       -I"$RT/x86" -I"$RT" -I"$DIR/src/frontend/snobol4" -w -o "$TMP/mock.o" 2>/dev/null
+gcc -O0 -g -c "$RT/x86/snobol4_pattern.c" -I"$RT/x86" -I"$RT" -I"$DIR/src/frontend/snobol4" -w -o "$TMP/pat.o" 2>/dev/null
+gcc -O0 -g -c "$RT/x86/engine.c"            -I"$RT/x86" -I"$RT" -I"$DIR/src/frontend/snobol4" -w -o "$TMP/eng.o" 2>/dev/null
+nasm -f elf64 -I"$RT/x86/" "$TMP/null.s" -o "$TMP/null.o" 2>/dev/null
 gcc -no-pie "$TMP/null.o" "$TMP/stmt_rt.o" "$TMP/snobol4.o" "$TMP/mock.o" \
     "$TMP/pat.o" "$TMP/eng.o" -lgc -lm -o "$TMP/prog_asm" 2>/dev/null
 "$TMP/prog_asm" < /dev/null > "$TMP/asm_null.out" 2>"$TMP/asm_null.err"
@@ -220,7 +220,7 @@ fi
 # ── 5c: ASM IPC ─────────────────────────────────────────────────────────
 # Rebuild ASM binary from hello.sno (section 4 left prog_asm as null program)
 "$DIR/scrip-cc" -asm "$HELLO_SNO" > "$TMP/hello.s" 2>/dev/null
-nasm -f elf64 -I"$RT/asm/" "$TMP/hello.s" -o "$TMP/hello_asm.o" 2>/dev/null
+nasm -f elf64 -I"$RT/x86/" "$TMP/hello.s" -o "$TMP/hello_asm.o" 2>/dev/null
 gcc -no-pie "$TMP/hello_asm.o" "$TMP/stmt_rt.o" "$TMP/snobol4.o" "$TMP/mock.o" \
     "$TMP/pat.o" "$TMP/eng.o" -lgc -lm -o "$TMP/prog_asm_hello" 2>/dev/null
 apid=$(fifo_drain "$TMP/asm.fifo" "$TMP/asm.trace")

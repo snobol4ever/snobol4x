@@ -135,19 +135,19 @@ echo -e "${BOLD}START   $START_HUMAN  run_invariants.sh${RESET}"
 ensure_sno4_archive() {
   local out="$RT_CACHE/libsno4rt_asm.a"
   local stamp_file="$RT_CACHE/stamp"
-  local cur_stamp; cur_stamp=$(md5sum "$RT/asm/snobol4_stmt_rt.c" "$RT/dyn/stmt_exec.c" "$RT/boxes/lit/bb_lit.c" 2>/dev/null | md5sum | cut -d' ' -f1 || echo "x")
+  local cur_stamp; cur_stamp=$(md5sum "$RT/x86/snobol4_stmt_rt.c" "$RT/x86/stmt_exec.c" "$RT/boxes/lit/bb_lit.c" 2>/dev/null | md5sum | cut -d' ' -f1 || echo "x")
   if [[ -f "$out" && -f "$stamp_file" && "$(cat "$stamp_file" 2>/dev/null)" == "$cur_stamp" ]]; then
     return 0  # cache hit
   fi
   echo -e "${YELLOW}  [cache] Building libsno4rt_asm.a...${RESET}"
   mkdir -p "$RT_CACHE" /tmp/rtbuild_sno_$$
-  gcc -O2 -c "$RT/asm/snobol4_stmt_rt.c"    -I"$RT/snobol4" -I"$RT" -I"$SCRIP_CC_INC" -w -o /tmp/rtbuild_sno_$$/stmt_rt.o    || return 1
-  gcc -O2 -c "$RT/snobol4/snobol4.c"         -I"$RT/snobol4" -I"$RT" -I"$SCRIP_CC_INC" -w -o /tmp/rtbuild_sno_$$/snobol4.o    || return 1
-  gcc -O2 -c "$RT/mock/mock_includes.c"       -I"$RT/snobol4" -I"$RT" -I"$SCRIP_CC_INC" -w -o /tmp/rtbuild_sno_$$/mock_inc.o   || return 1
-  gcc -O2 -c "$RT/snobol4/snobol4_pattern.c" -I"$RT/snobol4" -I"$RT" -I"$SCRIP_CC_INC" -w -o /tmp/rtbuild_sno_$$/pat.o        || return 1
-  gcc -O2 -c "$RT/mock/mock_engine.c"         -I"$RT/snobol4" -I"$RT" -I"$SCRIP_CC_INC" -w -o /tmp/rtbuild_sno_$$/mock_eng.o   || return 1
-  gcc -O2 -c "$RT/asm/blk_alloc.c"            -I"$RT/asm"                               -w -o /tmp/rtbuild_sno_$$/blk_alloc.o  || return 1
-  gcc -O2 -c "$RT/asm/blk_reloc.c"            -I"$RT/asm"                               -w -o /tmp/rtbuild_sno_$$/blk_reloc.o  || return 1
+  gcc -O2 -c "$RT/x86/snobol4_stmt_rt.c"    -I"$RT/x86" -I"$RT" -I"$SCRIP_CC_INC" -w -o /tmp/rtbuild_sno_$$/stmt_rt.o    || return 1
+  gcc -O2 -c "$RT/x86/snobol4.c"         -I"$RT/x86" -I"$RT" -I"$SCRIP_CC_INC" -w -o /tmp/rtbuild_sno_$$/snobol4.o    || return 1
+  gcc -O2 -c "$RT/mock/mock_includes.c"       -I"$RT/x86" -I"$RT" -I"$SCRIP_CC_INC" -w -o /tmp/rtbuild_sno_$$/mock_inc.o   || return 1
+  gcc -O2 -c "$RT/x86/snobol4_pattern.c" -I"$RT/x86" -I"$RT" -I"$SCRIP_CC_INC" -w -o /tmp/rtbuild_sno_$$/pat.o        || return 1
+  gcc -O2 -c "$RT/mock/mock_engine.c"         -I"$RT/x86" -I"$RT" -I"$SCRIP_CC_INC" -w -o /tmp/rtbuild_sno_$$/mock_eng.o   || return 1
+  gcc -O2 -c "$RT/x86/blk_alloc.c"            -I"$RT/x86"                               -w -o /tmp/rtbuild_sno_$$/blk_alloc.o  || return 1
+  gcc -O2 -c "$RT/x86/blk_reloc.c"            -I"$RT/x86"                               -w -o /tmp/rtbuild_sno_$$/blk_reloc.o  || return 1
   # M-DYN-S1: 5-phase dynamic executor and Byrd box C layer
   local DYN="$RT/boxes"
   local DYNENG="$RT/dyn"
@@ -400,7 +400,7 @@ run_snobol4_x86() {
   ensure_sno4_archive || { echo "BUILD_FAIL" > "$RESULTS/${cell}_status"; return; }
   local LIB="$RT_CACHE/libsno4rt_asm.a"
   local W="$WORK/$cell"; mkdir -p "$W"
-  local RT_ASM_INC="$RT/asm/"
+  local RT_ASM_INC="$RT/x86/"
 
   # Gather all test tuples into a temp file for xargs
   local manifest="$WORK/${cell}_manifest"

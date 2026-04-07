@@ -29,13 +29,13 @@ WORK=$(mktemp -d); trap "rm -rf $WORK" EXIT
 PASS=0; FAIL=0; SKIP=0; NASM_FAIL=0; TIMEOUT_COUNT=0
 
 # ── Precompile runtime once ───────────────────────────────────────────────────
-gcc -O0 -g -c "$RT/asm/snobol4_stmt_rt.c"    -I"$RT/snobol4" -I"$RT" -I"$SCRIP_CC_INC" -w -o "$WORK/stmt_rt.o"
-gcc -O0 -g -c "$RT/snobol4/snobol4.c"         -I"$RT/snobol4" -I"$RT" -I"$SCRIP_CC_INC" -w -o "$WORK/snobol4.o"
-gcc -O0 -g -c "$RT/mock/mock_includes.c"       -I"$RT/snobol4" -I"$RT" -I"$SCRIP_CC_INC" -w -o "$WORK/mock_includes.o"
-gcc -O0 -g -c "$RT/snobol4/snobol4_pattern.c" -I"$RT/snobol4" -I"$RT" -I"$SCRIP_CC_INC" -w -o "$WORK/snobol4_pattern.o"
-gcc -O0 -g -c "$RT/mock/mock_engine.c"         -I"$RT/snobol4" -I"$RT" -I"$SCRIP_CC_INC" -w -o "$WORK/mock_engine.o"
-gcc -O0 -g -c "$RT/asm/blk_alloc.c"            -I"$RT/asm"                              -w -o "$WORK/blk_alloc.o"
-gcc -O0 -g -c "$RT/asm/blk_reloc.c"            -I"$RT/asm"                              -w -o "$WORK/blk_reloc.o"
+gcc -O0 -g -c "$RT/x86/snobol4_stmt_rt.c"    -I"$RT/x86" -I"$RT" -I"$SCRIP_CC_INC" -w -o "$WORK/stmt_rt.o"
+gcc -O0 -g -c "$RT/x86/snobol4.c"         -I"$RT/x86" -I"$RT" -I"$SCRIP_CC_INC" -w -o "$WORK/snobol4.o"
+gcc -O0 -g -c "$RT/mock/mock_includes.c"       -I"$RT/x86" -I"$RT" -I"$SCRIP_CC_INC" -w -o "$WORK/mock_includes.o"
+gcc -O0 -g -c "$RT/x86/snobol4_pattern.c" -I"$RT/x86" -I"$RT" -I"$SCRIP_CC_INC" -w -o "$WORK/snobol4_pattern.o"
+gcc -O0 -g -c "$RT/mock/mock_engine.c"         -I"$RT/x86" -I"$RT" -I"$SCRIP_CC_INC" -w -o "$WORK/mock_engine.o"
+gcc -O0 -g -c "$RT/x86/blk_alloc.c"            -I"$RT/x86"                              -w -o "$WORK/blk_alloc.o"
+gcc -O0 -g -c "$RT/x86/blk_reloc.c"            -I"$RT/x86"                              -w -o "$WORK/blk_reloc.o"
 
 RT_OBJS="$WORK/stmt_rt.o $WORK/snobol4.o $WORK/mock_includes.o $WORK/snobol4_pattern.o $WORK/mock_engine.o $WORK/blk_alloc.o $WORK/blk_reloc.o"
 
@@ -62,7 +62,7 @@ run_test() {
     fi
 
     # Assemble
-    if ! nasm -f elf64 -I"$RT/asm/" "$s_file" -o "$o_file" 2>/dev/null; then
+    if ! nasm -f elf64 -I"$RT/x86/" "$s_file" -o "$o_file" 2>/dev/null; then
         echo -e "${RED}NASM_FAIL${RESET} $name"
         NASM_FAIL=$((NASM_FAIL+1))
         [[ "$STOP_ON_FAIL" == "1" ]] && exit 1

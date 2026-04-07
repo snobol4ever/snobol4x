@@ -13,7 +13,7 @@ base=$(mktemp /tmp/icon_x86_XXXXXX)
 nasm -f elf64 "${base}.s" -o "${base}.o" 2>/dev/null
 gcc -nostdlib -no-pie -Wl,--no-warn-execstack \
     "${base}.o" "$ICN_INC/icon_runtime.c" \
-    -I"$ICN_INC" -I"$RT/snobol4" -I"$RT" \
+    -I"$ICN_INC" -I"$RT/x86" -I"$RT" \
     -o "${base}_bin" -lm 2>/dev/null
 "${base}_bin"
 rm -f "${base}" "${base}.s" "${base}.o" "${base}_bin"

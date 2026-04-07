@@ -49,13 +49,13 @@ RT_CACHE_DIR="$TINY/out/rt_cache"
 mkdir -p "$RT_CACHE_DIR"
 
 RT_SRCS=(
-  "$RT/asm/snobol4_stmt_rt.c"
-  "$RT/snobol4/snobol4.c"
+  "$RT/x86/snobol4_stmt_rt.c"
+  "$RT/x86/snobol4.c"
   "$RT/mock/mock_includes.c"
-  "$RT/snobol4/snobol4_pattern.c"
+  "$RT/x86/snobol4_pattern.c"
   "$RT/mock/mock_engine.c"
-  "$RT/asm/blk_alloc.c"
-  "$RT/asm/blk_reloc.c"
+  "$RT/x86/blk_alloc.c"
+  "$RT/x86/blk_reloc.c"
 )
 RT_ARCHIVE="$RT_CACHE_DIR/snocone_rt.a"
 RT_STAMP="$RT_CACHE_DIR/snocone_rt.stamp"
@@ -72,13 +72,13 @@ fi
 if [[ $_need_rebuild -eq 1 ]]; then
   _objs=()
   _bld=$(mktemp -d); trap "rm -rf $_bld" EXIT
-  gcc -O0 -g -c "$RT/asm/snobol4_stmt_rt.c"    -I"$RT/snobol4" -I"$RT" -I"$TINY/src/frontend/snobol4" -w -o "$_bld/stmt_rt.o"
-  gcc -O0 -g -c "$RT/snobol4/snobol4.c"         -I"$RT/snobol4" -I"$RT" -I"$TINY/src/frontend/snobol4" -w -o "$_bld/snobol4.o"
-  gcc -O0 -g -c "$RT/mock/mock_includes.c"       -I"$RT/snobol4" -I"$RT" -I"$TINY/src/frontend/snobol4" -w -o "$_bld/mock_includes.o"
-  gcc -O0 -g -c "$RT/snobol4/snobol4_pattern.c" -I"$RT/snobol4" -I"$RT" -I"$TINY/src/frontend/snobol4" -w -o "$_bld/snobol4_pattern.o"
-  gcc -O0 -g -c "$RT/mock/mock_engine.c"         -I"$RT/snobol4" -I"$RT" -I"$TINY/src/frontend/snobol4" -w -o "$_bld/mock_engine.o"
-  gcc -O0 -g -c "$RT/asm/blk_alloc.c"           -I"$RT/asm"                                             -w -o "$_bld/blk_alloc.o"
-  gcc -O0 -g -c "$RT/asm/blk_reloc.c"           -I"$RT/asm"                                             -w -o "$_bld/blk_reloc.o"
+  gcc -O0 -g -c "$RT/x86/snobol4_stmt_rt.c"    -I"$RT/x86" -I"$RT" -I"$TINY/src/frontend/snobol4" -w -o "$_bld/stmt_rt.o"
+  gcc -O0 -g -c "$RT/x86/snobol4.c"         -I"$RT/x86" -I"$RT" -I"$TINY/src/frontend/snobol4" -w -o "$_bld/snobol4.o"
+  gcc -O0 -g -c "$RT/mock/mock_includes.c"       -I"$RT/x86" -I"$RT" -I"$TINY/src/frontend/snobol4" -w -o "$_bld/mock_includes.o"
+  gcc -O0 -g -c "$RT/x86/snobol4_pattern.c" -I"$RT/x86" -I"$RT" -I"$TINY/src/frontend/snobol4" -w -o "$_bld/snobol4_pattern.o"
+  gcc -O0 -g -c "$RT/mock/mock_engine.c"         -I"$RT/x86" -I"$RT" -I"$TINY/src/frontend/snobol4" -w -o "$_bld/mock_engine.o"
+  gcc -O0 -g -c "$RT/x86/blk_alloc.c"           -I"$RT/x86"                                             -w -o "$_bld/blk_alloc.o"
+  gcc -O0 -g -c "$RT/x86/blk_reloc.c"           -I"$RT/x86"                                             -w -o "$_bld/blk_reloc.o"
   ar rcs "$RT_ARCHIVE" "$_bld"/*.o
   echo "$_stamp" > "$RT_STAMP"
 fi
@@ -132,7 +132,7 @@ run_test() {
         fi
 
         # nasm
-        if ! nasm -f elf64 -I"$RT/asm/" "$s_file" -o "$o_file" 2>"$WORK/${base}.nasm_err"; then
+        if ! nasm -f elf64 -I"$RT/x86/" "$s_file" -o "$o_file" 2>"$WORK/${base}.nasm_err"; then
             echo -e "${RED}FAIL${RESET} $base  [nasm error]"
             head -5 "$WORK/${base}.nasm_err"
             FAIL=$((FAIL+1))

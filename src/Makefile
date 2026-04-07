@@ -34,30 +34,23 @@ FRONTEND_REBUS = \
     frontend/rebus/rebus_print.c
 
 BACKEND_C = \
-    emit_cnode.c \
-    emit_byrd_c.c
+    backend/emit_c.c
 
 BACKEND_X64 = \
-    backend/emit_x64.c \
-    backend/emit_x64_icon.c \
-    backend/emit_x64_snocone.c
+    backend/emit_x64.c
 
 
 DRIVER = \
     driver/scrip.c
 
 BACKEND_JVM = \
-    backend/emit_jvm.c \
-    backend/emit_jvm_icon.c \
-    backend/emit_jvm_prolog.c
+    backend/emit_jvm.c
 
 BACKEND_NET = \
     backend/emit_net.c
 
 BACKEND_WASM = \
-    backend/emit_wasm.c \
-    backend/emit_wasm_icon.c \
-    backend/emit_wasm_prolog.c
+    backend/emit_wasm.c
 
 BACKEND_JS = \
     backend/emit_js.c
@@ -108,8 +101,7 @@ frontend/snobol4/snobol4.lex.c: | frontend/snobol4/snobol4.l
 
 frontend/rebus/rebus.tab.o frontend/rebus/lex.rebus.o frontend/rebus/rebus_lower.o frontend/rebus/rebus_print.o: frontend/rebus/rebus.tab.h
 
-# emit_x64_prolog.c is included by emit_x64.c — explicit dep so make rebuilds on change
-backend/emit_x64.o: backend/emit_x64_prolog.c
+
 
 # Pattern rule — each .c depends on the shared headers
 %.o: %.c \
