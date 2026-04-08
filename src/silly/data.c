@@ -214,7 +214,8 @@ DESCR_t ZEROCL = D0;
 DESCR_t TRSKELS = D0;
 DESCR_t COMDCT = D0;    /* 15*DESCR [PLB58]                               */
 DESCR_t COMREG = D0;
-DESCR_t OBEND  = D0;    /* OBLIST + DESCR*OBOFF — set in data_init    */
+DESCR_t OBEND  = D0;    /* OBLIST + DESCR*OBOFF — set in arena_init  */
+DESCR_t OBPTR  = D0;    /* OBLIST = OBSTRT - LNKFLD — set in arena_init */
 
 /* ── Null value ──────────────────────────────────────────────────────── */
 
@@ -284,9 +285,8 @@ DESCR_t ARHEAD  = D0;    /* ARHED arena offset */
 DESCR_t ARTAIL  = D0;    /* ARTAL arena offset */
 DESCR_t STRPAT  = D0;    /* STARPT arena offset */
 
-/* ── Symbol table bin array ──────────────────────────────────────────── */
-
-DESCR_t OBLIST_arr[OBARY];   /* zeroed at startup; filled by FINDEX      */
+/* ── Symbol table bins: now allocated in arena by arena_init() ──────── */
+/* OBPTR.a = arena base of OBLIST (= OBSTRT - LNKFLD); OBSLOT(i) in arena.c */
 
 /* ── Permanent block table ────────────────────────────────────────────── */
 
@@ -528,7 +528,7 @@ void data_init(void)
     STARSZ.a.i = (int_t)(11 * DESCR); STARSZ.v = P;
     COMDCT.a.i = (int_t)(15 * DESCR);
     SIZLMT.a.i = (int_t)(0x7fffffff);
-    OBEND.a.i = P2A(&OBLIST_arr[0]) + (int_t)(DESCR * OBOFF); /* OBEND = OBLIST + DESCR*OBOFF (address arithmetic on OBLIST_arr) */
+    /* OBEND and OBPTR set by arena_init() — OBLIST now lives in arena */
     OUTBLK.a.i = P2A(&OUTPUT) - DESCR; /* OUTBLK = OUTPUT - DESCR  (pointer arithmetic on unit DESCRs) */
     ERRBLK.a.i = P2A(&PUNCH) - DESCR;
 #define INIT_SP(sp, lit) (sp).a = P2A(lit); (sp).o = 0; (sp).l = (int32_t)(sizeof(lit)-1) /* Stacks — allocate from arena (done by arena_init before us)  pdl_stack and stack are arena-allocated; set arena offsets  Actual allocation is in arena_init(); we just record the pointers  Control-card command SPEC_t globals — backed by static literals */

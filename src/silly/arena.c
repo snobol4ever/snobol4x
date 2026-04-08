@@ -48,6 +48,22 @@ void arena_init(void)
     STKEND.a.i = D_A(FRSGPT);
     obj_code = (DESCR_t *)A2P(D_A(FRSGPT)); /* Allocate initial object code block (OCASIZ DESCRs) */
     D_A(FRSGPT) += (int32_t)(OCASIZ * DESCR);
+    /* Allocate OBLIST symbol-table bins in arena.
+     * Oracle: OBLIST = OBSTRT - LNKFLD; OBPTR.a = OBLIST.
+     * OBSTRT is OBARY DESCRs; chain head for bin i is at OBSTRT[i].lnkfld.a.
+     * We allocate LNKFLD padding + OBARY*DESCR bytes, zero them.
+     * OBPTR.a = base (= OBSTRT - LNKFLD in oracle terms).
+     * OBEND.a = OBPTR.a + LNKFLD + DESCR*OBOFF. */
+    {
+        int32_t oblist_base = D_A(FRSGPT);
+        int32_t oblist_bytes = LNKFLD + (int32_t)(OBARY) * DESCR;
+        memset(A2P(oblist_base), 0, (size_t)oblist_bytes);
+        D_A(FRSGPT) += oblist_bytes;
+        OBPTR.a.i = oblist_base;
+        OBPTR.f   = PTR;
+        OBPTR.v   = S;
+        OBEND.a.i = oblist_base + LNKFLD + DESCR * OBOFF;
+    }
     D_A(HDSGPT) = D_A(FRSGPT); /* HDSGPT marks start of dynamic heap (after fixed allocations) */
 }
 
@@ -89,6 +105,10 @@ retry:
 
 /*====================================================================================================================*/
 /* ── hash_spec: compute bin index for GENVAR ─────────────────────────── */
+/* OBSTRT[i] = bin slot i — arena offset of the DESCR at OBPTR.a + LNKFLD + i*DESCR */
+#define OBSLOT_OFF(n)  (OBPTR.a.i + LNKFLD + (n) * DESCR)
+#define OBSLOT(n)      (*(DESCR_t *)A2P(OBSLOT_OFF(n)))
+
 /* Mirrors SIL VARID / hash computation: sum of chars, masked to OBSIZ  */
 
 static int32_t hash_spec(const SPEC_t *sp)
@@ -122,9 +142,8 @@ int32_t GENVAR_fn(const SPEC_t *sp)
      *   V < bin_idx → continue (earlier bin, keep walking)
      *   V > bin_idx → stop (overshot, insert here = LOCA5)
      *   V == bin_idx → string compare; mismatch → continue, match → found */
-    int32_t bukptr = OBLIST_arr[bin_idx].a.i; /* LOCA2: BUKPTR = first chain entry */
-    int32_t lstptr_lnk; /* arena offset of LNKFLD.a slot in LSTPTR (previous) */
-    lstptr_lnk = P2A(&OBLIST_arr[bin_idx]); /* LSTPTR = bin slot itself initially */
+    int32_t bukptr = OBSLOT(bin_idx).a.i; /* LOCA2: BUKPTR = first chain entry */
+    int32_t lstptr_lnk = OBSLOT_OFF(bin_idx); /* LSTPTR = bin slot itself initially */
     while (bukptr != 0) { /* LOCA2 loop */
         DESCR_t *lnk = (DESCR_t *)A2P(bukptr + LNKFLD);
         int32_t lnk_v = (int32_t)lnk->v;
@@ -423,8 +442,8 @@ int32_t GC_fn(int32_t required)
         int32_t bi;
         D_A(NODPCL) = 1;
         for (bi = 0; bi < OBSIZ; bi++) {
-            int32_t st2ptr = P2A(&OBLIST_arr[bi]); /* previous LNKFLD holder = bin slot itself */
-            int32_t st1ptr = OBLIST_arr[bi].a.i;
+            int32_t st2ptr = OBSLOT_OFF(bi); /* previous LNKFLD holder = bin slot itself */
+            int32_t st1ptr = OBSLOT(bi).a.i;
             while (st1ptr != 0) {
                 DESCR_t *ent = (DESCR_t *)A2P(st1ptr);
                 int32_t next = ((DESCR_t *)A2P(st1ptr + LNKFLD))->a.i;

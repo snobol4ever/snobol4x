@@ -148,6 +148,7 @@ extern DESCR_t TRSKELS;   /* trace skeleton pointer                       */
 extern DESCR_t COMDCT;    /* compiler descriptor count = 15*DESCR [PLB58] */
 extern DESCR_t COMREG;    /* pointer to compiler descriptors              */
 extern DESCR_t OBEND;     /* end of bin list                              */
+extern DESCR_t OBPTR;     /* OBLIST = OBSTRT - LNKFLD (arena base)        */
 
 /* ── Counters and accumulators ───────────────────────────────────────── */
 
@@ -528,8 +529,7 @@ extern DESCR_t STRPAT;    /* STARPT pattern (unevaluated expression)      */
 /* ── Symbol table bin array ──────────────────────────────────────────── */
 /* OBARY = OBSIZ+3 bins; each holds a chain head arena offset            */
 
-extern DESCR_t OBLIST_arr[OBARY];  /* OBLIST = OBSTRT - LNKFLD            */
-                                    /* access: OBLIST_arr[hash]             */
+/* OBLIST bins now in arena — use OBSLOT(i) macro in arena.c; OBPTR/OBEND are arena-relative */
 
 /* ── Permanent block pointer table (for GC root marking) ─────────────── */
 
