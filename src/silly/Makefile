@@ -10,7 +10,7 @@ CFLAGS  = -Wall -Wextra -std=c99 -g -O0 -I.
 RFLAGS  = -Wall -Wextra -std=c99 -O2    -I.
 LDFLAGS = -lm
 
-SRCS = $(wildcard sil_*.c)
+SRCS = $(wildcard *.c)
 OBJS = $(SRCS:.c=.o)
 
 TARGET = /tmp/silly-snobol4
