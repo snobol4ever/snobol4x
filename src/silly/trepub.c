@@ -53,8 +53,8 @@ trepu1:
     GETDC_B(XPTR, YPTR, T_CODE); /* Get code descriptor from node */
     INCRA(CMOFCL, DESCR); /* INCRA CMOFCL,DESCR; PUTD CMBSCL,CMOFCL,XPTR */
     PUTD_B(CMBSCL, CMOFCL, XPTR);
-    SUM(ZPTR, CMBSCL, CMOFCL); /* PCOMP ZPTR,OCLIM — check buffer limit */
-    if (D_A(ZPTR) <= D_A(OCLIM)) { /* TR-A: oracle uses >, so spill only when ZPTR > OCLIM */
+    SUM(ZPTR, CMBSCL, CMOFCL); /* PCOMP ZPTR,OCLIM: oracle D_PTR, ours D_A; arena model equiv */
+    if (D_A(ZPTR) <= D_A(OCLIM)) { /* oracle: > → spill; ours: <= → continue. Inverted, identical. */
         goto trepu4;
     }
     { /* TREPU5: buffer full — allocate new block */
@@ -67,9 +67,9 @@ trepu1:
         if (!AEQLC(LPTR, 0)) { /* If there's a pending label, point it at the new block */
             PUTDC_B(LPTR, ATTRIB, XCL);
         }
-        memcpy(A2P(new_blk), /* Move old code into new block */
-               (char*)A2P(D_A(CMBSCL)),
-               (size_t)D_A(CMOFCL));
+        memmove((char*)A2P(new_blk  + DESCR),  /* MOVBLK(XCL,CMBSCL,CMOFCL): skip title on both sides */
+                (char*)A2P(D_A(CMBSCL) + DESCR),
+                (size_t)D_A(CMOFCL));
         PUTDC_B(CMBSCL, DESCR, GOTGCL); /* Insert direct goto in old block: GOTG, LIT1, ptr-to-new */
         PUTDC_B(CMBSCL, 2*DESCR, LIT1CL);
         PUTDC_B(CMBSCL, 3*DESCR, XCL);
