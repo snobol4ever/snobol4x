@@ -2059,26 +2059,10 @@ int main(int argc, char **argv)
         return 0;
     }
 
-    /* ── --jit-emit --wasm: IR → WAT text file ──────────────────────── */
+    /* ── --jit-emit --wasm: REMOVED (2026-04-08) ────────────────────── */
     if (mode_jit_emit && target_wasm) {
-        extern void emit_wasm(Program *prog, FILE *out, const char *filename);
-        /* Determine output filename: replace .sno/.spt/etc with .wat,
-         * or append .wat if no recognised extension found. */
-        char wat_path[4096];
-        strncpy(wat_path, input_path, sizeof wat_path - 5);
-        wat_path[sizeof wat_path - 5] = '\0';
-        char *dot = strrchr(wat_path, '.');
-        if (dot) *dot = '\0';
-        strncat(wat_path, ".wat", 4);
-        FILE *wat_out = fopen(wat_path, "w");
-        if (!wat_out) {
-            fprintf(stderr, "scrip: cannot open output '%s'\n", wat_path);
-            return 1;
-        }
-        emit_wasm(prog, wat_out, wat_path);
-        fclose(wat_out);
-        fprintf(stderr, "scrip: wrote %s\n", wat_path);
-        return 0;
+        fprintf(stderr, "scrip: --wasm emit removed from scrip build\n");
+        return 1;
     }
 
     if (mode_sm_run) {
@@ -2173,7 +2157,8 @@ int main(int argc, char **argv)
         fprintf(stderr, "BENCH parse=%.2fms lower=%.2fms exec=%.2fms total=%.2fms\n",
                 parse_ms, lower_ms, exec_ms, parse_ms + lower_ms + exec_ms);
     }
-    if (getenv("SNO_BINARY_BOXES")) {
+    /* M-DYN-B13: BINARY_AUDIT=1 is canonical; SNO_BINARY_BOXES=1 is legacy alias */
+    if (getenv("BINARY_AUDIT") || getenv("SNO_BINARY_BOXES")) {
         extern void bin_audit_print(void);
         bin_audit_print();
     }

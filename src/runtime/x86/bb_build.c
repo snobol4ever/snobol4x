@@ -1430,9 +1430,22 @@ static bb_box_fn bb_build_binary_node(PATND_t *p)
         return bb_callcap_emit_binary(p);
 
     default:
-        /* Not yet implemented in binary path — signal fallback to C bb_build */
-        if (getenv("SNO_BIN_MISS_LOG"))
-            fprintf(stderr, "BIN_MISS: kind=%d\n", (int)p->kind);
+        /* Not yet implemented in binary path — signal fallback to C bb_build.
+         * Known intentional fallbacks: XABRT, XSUCF, XBAL, XVAR.
+         * BINARY_AUDIT=1 or SNO_BIN_MISS_LOG=1 enables per-miss logging. */
+        if (getenv("BINARY_AUDIT") || getenv("SNO_BIN_MISS_LOG")) {
+            /* symbolic name lookup must match snobol4_patnd.h enum order */
+            static const char *knames[] = {
+                "XCHR","XSPNC","XBRKC","XANYC","XNNYC","XLNTH","XPOSI","XRPSI",
+                "XTB","XRTB","XFARB","XARBN","XSTAR","XFNCE","XFAIL","XABRT",
+                "XSUCF","XBAL","XEPS","XCAT","XOR","XDSAR","XFNME","XNME",
+                "XCALLCAP","XVAR","XATP","XBRKX"
+            };
+            int k = (int)p->kind;
+            const char *kn = (k >= 0 && k < (int)(sizeof knames/sizeof knames[0]))
+                             ? knames[k] : "XUNKNOWN";
+            fprintf(stderr, "BIN_MISS: %s (kind=%d)\n", kn, k);
+        }
         return NULL;
     }
 }

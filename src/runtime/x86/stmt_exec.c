@@ -386,19 +386,50 @@ void cache_stats(int *hits, int *misses)
     if (misses) *misses = g_cache_misses;
 }
 
-/* M-DYN-B6: print binary coverage audit to stderr (call at program end) */
+/* M-DYN-B13: symbolic XKIND name for BIN_MISS logging */
+static const char *xkind_name(int k)
+{
+    switch (k) {
+    case  0: return "XCHR";    case  1: return "XSPNC";
+    case  2: return "XBRKC";   case  3: return "XANYC";
+    case  4: return "XNNYC";   case  5: return "XLNTH";
+    case  6: return "XPOSI";   case  7: return "XRPSI";
+    case  8: return "XTB";     case  9: return "XRTB";
+    case 10: return "XFARB";   case 11: return "XARBN";
+    case 12: return "XSTAR";   case 13: return "XFNCE";
+    case 14: return "XFAIL";   case 15: return "XABRT";
+    case 16: return "XSUCF";   case 17: return "XBAL";
+    case 18: return "XEPS";    case 19: return "XCAT";
+    case 20: return "XOR";     case 21: return "XDSAR";
+    case 22: return "XFNME";   case 23: return "XNME";
+    case 24: return "XCALLCAP"; case 25: return "XVAR";
+    case 26: return "XATP";    case 27: return "XBRKX";
+    default: return "XUNKNOWN";
+    }
+}
+
+/* M-DYN-B13: print binary coverage audit to stderr.
+ * Triggered by BINARY_AUDIT=1 or SNO_BINARY_BOXES=1 at program end.
+ * Known fallbacks (always C path, not in 50-file corpus):
+ *   XABRT — ABORT primitive      (rare in real programs)
+ *   XSUCF — SUCCEED primitive    (rare in real programs)
+ *   XBAL  — BAL primitive        (rare in real programs)
+ *   XVAR  — *var dynamic pattern (deferred re-resolve needs C path) */
 void bin_audit_print(void)
 {
     int pat_total = g_bin_hits + g_bin_misses;
     int all_total = pat_total + g_bin_str_hits;
     if (all_total == 0) return;
     fprintf(stderr,
-        "BINARY_AUDIT: DT_P hits=%d misses=%d (%.0f%%)  DT_S hits=%d  total_binary=%d/%d (%.0f%%)\n",
+        "BINARY_AUDIT: DT_P hits=%d misses=%d (%.1f%%)  DT_S hits=%d  total_binary=%d/%d (%.1f%%)\n",
         g_bin_hits, g_bin_misses,
         pat_total ? 100.0 * g_bin_hits / pat_total : 0.0,
         g_bin_str_hits,
         g_bin_hits + g_bin_str_hits, all_total,
-        100.0 * (g_bin_hits + g_bin_str_hits) / all_total);
+        all_total ? 100.0 * (g_bin_hits + g_bin_str_hits) / all_total : 0.0);
+    if (g_bin_misses > 0)
+        fprintf(stderr,
+            "BINARY_AUDIT: known fallbacks: XABRT XSUCF XBAL XVAR (not in 50-file corpus)\n");
 }
 
 /* ── ATP box (@var) — cursor-position capture ───────────────────────────────
