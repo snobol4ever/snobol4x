@@ -1,5 +1,5 @@
 /*
- * sil_strings.h — string helper procedures (v311.sil §5 string ops + §4 DTREP string ops)
+ * strings.h — string helper procedures (v311.sil §5 string ops + §4 DTREP string ops)
  *
  * Faithful C translation of the SIL string macro operations:
  *   APDSP  — append specifier to buffer specifier
@@ -13,8 +13,8 @@
  *   LOCSP  — build specifier from a STRING DESCR_t
  *   SUBSP  — substring specifier (offset + length into existing spec)
  *
- * NOTE: x_getlth is declared in sil_arena.h — do not duplicate here.
- * NOTE: DTREP_fn is in sil_symtab.c — do not duplicate here.
+ * NOTE: x_getlth is declared in arena.h — do not duplicate here.
+ * NOTE: DTREP_fn is in symtab.c — do not duplicate here.
  *
  * Authors: Lon Jones Cherryholmes · Claude Sonnet 4.6
  * Date:    2026-04-06

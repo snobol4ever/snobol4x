@@ -1,5 +1,5 @@
 /*
- * sil_extern.h — External functions (v311.sil §13 lines 4471–4643)
+ * extern.h — External functions (v311.sil §13 lines 4471–4643)
  *
  * LOAD(P,L)  — load an external function from library
  * UNLOAD(F)  — unload an external function

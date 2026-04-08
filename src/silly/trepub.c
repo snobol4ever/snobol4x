@@ -1,5 +1,5 @@
 /*
- * sil_trepub.c — Code tree publication (v311.sil §6 TREPUB line 2466)
+ * trepub.c — Code tree publication (v311.sil §6 TREPUB line 2466)
  *
  * Faithful C translation of Phil Budne's CSNOBOL4 v311.sil §6 TREPUB.
  *
@@ -28,7 +28,7 @@
 #include "trepub.h"
 #include "arena.h"
 
-/* SPLIT_fn declared in sil_arena.h as void(int32_t) */
+/* SPLIT_fn declared in arena.h as void(int32_t) */
 
 /* Tree node field offsets — from v311.sil lines 838–841 */
 #define T_FATHER  DESCR

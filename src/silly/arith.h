@@ -1,5 +1,5 @@
 /*
- * sil_arith.h — arithmetic operations, predicates, and functions (v311.sil §9)
+ * arith.h — arithmetic operations, predicates, and functions (v311.sil §9)
  *
  * Faithful C translation of v311.sil §9 lines 2923–3118:
  *   ADD EXPOP DIV MPY SUB — binary arithmetic (→ ARITH dispatcher)
@@ -15,13 +15,13 @@
  *
  * Dependencies: XYARGS_fn (§8, M6) — forward-declared here as extern.
  *   ARGVAL_fn (§8) — same.
- *   Globals XPTR YPTR ZPTR WPTR SCL XSP YSP ARTHCL from sil_data.h.
- *   Type-pair constants IIDTP..VVDTP from sil_data.h.
- *   SPCINT_fn SPREAL_fn LOCSP_fn from sil_strings.h.
+ *   Globals XPTR YPTR ZPTR WPTR SCL XSP YSP ARTHCL from data.h.
+ *   Type-pair constants IIDTP..VVDTP from data.h.
+ *   SPCINT_fn SPREAL_fn LOCSP_fn from strings.h.
  *
  * Error exits (matching v311.sil):
- *   AERROR  — arithmetic error (overflow, div-by-zero) → sil_error(ERR_ARITH)
- *   INTR1   — illegal data type                        → sil_error(ERR_TYPE)
+ *   AERROR  — arithmetic error (overflow, div-by-zero) → error(ERR_ARITH)
+ *   INTR1   — illegal data type                        → error(ERR_TYPE)
  *   FAIL    — predicate failure or argument failure    → return FAIL
  *
  * Return convention: all entry points return RESULT_t (OK=1, FAIL=0).

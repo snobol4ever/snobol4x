@@ -1,5 +1,5 @@
 /*
- * sil_cmpile.h — Statement compilation (v311.sil §6 CMPILE)
+ * cmpile.h — Statement compilation (v311.sil §6 CMPILE)
  *
  * CMPILE_fn — compile one statement from TEXTSP into object code.
  * CDIAG_fn  — compiler diagnostic handler (error recovery).

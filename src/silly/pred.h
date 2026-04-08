@@ -1,5 +1,5 @@
 /*
- * sil_pred.h — Predicate functions (v311.sil §18 lines 6102–6321)
+ * pred.h — Predicate functions (v311.sil §18 lines 6102–6321)
  *
  * Faithful C translation of:
  *   DIFFER FUNCTN IDENT LABEL LABELC

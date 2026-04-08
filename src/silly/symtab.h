@@ -1,5 +1,5 @@
 /*
- * sil_symtab.h — symbol table and support procedures (v311.sil §4)
+ * symtab.h — symbol table and support procedures (v311.sil §4)
  *
  * Faithful C translation of v311.sil §4 "Support Procedures"
  * (lines 1088–1218): AUGATL, CODSKP, DTREP, FINDEX.
@@ -44,7 +44,7 @@ void CODSKP_fn(int32_t n);
  *   TABLE  → "TABLE(size,extent)"
  *   other  → looked up in DTLIST by type code
  *   unknown→ "EXTERNAL"
- * Returns pointer to DPSP (the output specifier, in sil_data).
+ * Returns pointer to DPSP (the output specifier, in data).
  */
 SPEC_t *DTREP_fn(DESCR_t *d);
 

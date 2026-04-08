@@ -1,8 +1,8 @@
 /*
- * sil_strings.c — string helper procedures (v311.sil §5 string ops + §4 DTREP string ops)
+ * strings.c — string helper procedures (v311.sil §5 string ops + §4 DTREP string ops)
  *
  * Faithful C translation of the SIL string macro operations.
- * See sil_strings.h for full API documentation.
+ * See strings.h for full API documentation.
  *
  * Source oracle: v311.sil (CSNOBOL4 2.3.3, Phil Budne)
  * Reference C:   snobol4-2.3.3/lib/str.c, lib/lexcmp.c,

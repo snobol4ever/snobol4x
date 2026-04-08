@@ -1,5 +1,5 @@
 /*
- * sil_nmd.c — Naming list commit procedure (v311.sil §17 lines 6055–6091)
+ * nmd.c — Naming list commit procedure (v311.sil §17 lines 6055–6091)
  *
  * Faithful C translation of Phil Budne's CSNOBOL4 v311.sil §17 NMD section.
  *
@@ -40,7 +40,7 @@ extern RESULT_t EXPEVL_fn(void);
 extern RESULT_t TRPHND_fn(DESCR_t atptr);
 extern void       PUTOUT_fn(DESCR_t yptr, DESCR_t val);
 
-/* Arena block read helpers (mirror sil_scan.c) */
+/* Arena block read helpers (mirror scan.c) */
 #define GETDC_B(dst, base_d, off_i) \
     memcpy(&(dst), (char*)A2P(D_A(base_d)) + (off_i), sizeof(DESCR_t))
 

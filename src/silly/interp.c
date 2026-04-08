@@ -1,5 +1,5 @@
 /*
- * sil_interp.c — Interpreter executive (v311.sil §7 lines 2520–2678)
+ * interp.c — Interpreter executive (v311.sil §7 lines 2520–2678)
  *
  * Faithful C translation of Phil Budne's CSNOBOL4 v311.sil §7.
  *
@@ -272,4 +272,4 @@ RESULT_t INVOKE_fn(void)
 }
 
 /*====================================================================================================================*/
-/* end of sil_interp.c */
+/* end of interp.c */

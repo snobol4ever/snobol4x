@@ -1,5 +1,5 @@
 /*
- * sil_forwrd.c — Text scanning / card processing (v311.sil §4+§6)
+ * forwrd.c — Text scanning / card processing (v311.sil §4+§6)
  *
  * Faithful C translation of Phil Budne's CSNOBOL4 v311.sil.
  *
@@ -349,4 +349,4 @@ RESULT_t FILCHK_fn(void)
 }
 
 /*====================================================================================================================*/
-/* end of sil_forwrd.c */
+/* end of forwrd.c */

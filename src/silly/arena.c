@@ -1,5 +1,5 @@
 /*
- * sil_arena.c — arena allocator and mark-compact GC (v311.sil §5)
+ * arena.c — arena allocator and mark-compact GC (v311.sil §5)
  *
  * Faithful C translation of v311.sil §5 "Storage Allocation and
  * Regeneration Procedures" (lines 1219–1553).
@@ -42,7 +42,7 @@ void arena_init(void)
     D_A(TLSGP1) = (int32_t)(ARENA_SIZE - DESCR); /* TLSGP1 = arena end - one DESCR safety margin */
     pdl_stack = (DESCR_t *)A2P(D_A(FRSGPT)); /* Allocate pattern history list (SPDLSZ DESCRs) */
     D_A(FRSGPT) += (int32_t)(SPDLSZ * DESCR);
-    sil_stack = (DESCR_t *)A2P(D_A(FRSGPT)); /* Allocate interpreter stack (STSIZE DESCRs) */
+    stack = (DESCR_t *)A2P(D_A(FRSGPT)); /* Allocate interpreter stack (STSIZE DESCRs) */
     STKHED.a.i = D_A(FRSGPT);
     D_A(FRSGPT) += (int32_t)(STSIZE * DESCR);
     STKEND.a.i = D_A(FRSGPT);
@@ -62,8 +62,8 @@ void arena_init(void)
 int32_t BLOCK_fn(int32_t size, int32_t typetag)
 {
     if (size > SIZLIM) { /* PCOMP ARG1CL,SIZLMT — check against size limit [PLB132] */
-        extern void sil_error(int code); /* SIZERR */
-        sil_error(23); /* ERR_OBJ_TOO_LARGE */
+        extern void error(int code); /* SIZERR */
+        error(23); /* ERR_OBJ_TOO_LARGE */
         return 0; /* not reached */
     }
 retry:
@@ -75,7 +75,7 @@ retry:
         int32_t got = GC_fn(size);
         if (got >= size)
             goto retry; /* BLOCK1 — GC succeeded, try again */
-        return 0; /* ALOC2: GC_fn calls sil_error — never returns here */
+        return 0; /* ALOC2: GC_fn calls error — never returns here */
     }
     memset(A2P(D_A(BLOCL) + DESCR), 0, (size_t)size); /* ZERBLK BLOCL, size — clear block body */
     { /* PUTAC BLOCL,0,BLOCL — self-pointer in title */
@@ -141,8 +141,8 @@ int32_t GENVAR_fn(const SPEC_t *sp)
     int32_t len = SP_LEN(sp); /* LOCA5: not found — allocate new STRING block */
     int32_t blk_sz = x_getlth(len);
     if (blk_sz > SIZLIM) {
-        extern void sil_error(int);
-        sil_error(23);
+        extern void error(int);
+        error(23);
         return 0;
     }
 retry_alloc: /* LOCA7: MOVD LCPTR,FRSGPT */
@@ -238,8 +238,8 @@ int32_t CONVAR_fn(int32_t len)
     D_A(CONVSW) = 1; /* note CONVAR entry */
     int32_t blk_sz = x_getlth(len);
     if (blk_sz > SIZLIM) {
-        extern void sil_error(int);
-        sil_error(23);
+        extern void error(int);
+        error(23);
         return 0;
     }
 retry_convar:
@@ -509,8 +509,8 @@ int32_t GC_fn(int32_t required)
                 (int)D_A(GCGOT));
     }
     if (required > D_A(GCGOT)) { /* ACOMP GCREQ,GCGOT — check if enough was freed */
-        extern void sil_error(int); /* FAIL exit — storage exhausted */
-        sil_error(20); /* ERR_NO_STORAGE */
+        extern void error(int); /* FAIL exit — storage exhausted */
+        error(20); /* ERR_NO_STORAGE */
         return 0; /* not reached */
     }
     return D_A(GCGOT); /* exit 2 — success */

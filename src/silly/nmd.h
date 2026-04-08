@@ -1,5 +1,5 @@
 /*
- * sil_nmd.h — Naming list commit procedure (v311.sil §17 NMD)
+ * nmd.h — Naming list commit procedure (v311.sil §17 NMD)
  *
  * Faithful C translation of v311.sil lines 6055–6091:
  *   NMD NMD1 NMD2 NMD3 NMD4 NMD5 NMDIC NAMEXN

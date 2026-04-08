@@ -1,5 +1,5 @@
 /*
- * sil_argval.h — argument evaluation procedures (v311.sil §8)
+ * argval.h — argument evaluation procedures (v311.sil §8)
  *
  * Faithful C translation of v311.sil §8 lines 2679–2922:
  *   ARGVAL  — evaluate one argument from object code stream → XPTR
@@ -19,7 +19,7 @@
  *   INVOKE_fn  (§7)   — dispatch function call
  *   PUTIN_fn   (§15)  — perform input association
  *   CONVE_fn   (§19)  — convert to EXPRESSION type
- *   CONVAR_fn  (§5)   — allocate scratch space (sil_arena.h)
+ *   CONVAR_fn  (§5)   — allocate scratch space (arena.h)
  *   GNVARI_fn  (§5)   — intern integer as string variable
  *   GNVARS_fn  (§5)   — intern raw C string
  *   GENVAR_fn  (§5)   — intern specifier as string variable

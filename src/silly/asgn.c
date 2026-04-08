@@ -1,5 +1,5 @@
 /*
- * sil_asgn.c — Assignment and core operations (v311.sil §17 lines 5828–6101)
+ * asgn.c — Assignment and core operations (v311.sil §17 lines 5828–6101)
  *
  * Faithful C translation of Phil Budne's CSNOBOL4 v311.sil §17.
  * Covers: ASGN ASGNV ASGNVV ASGNVN ASGNV1 ASGNC ASGNCV ASGNVP ASGNIC
@@ -52,7 +52,7 @@ extern void       cpypat_fn(int32_t dst, int32_t src,
                               int32_t link, int32_t dbase,
                               int32_t sbase, int32_t count);
 extern int32_t    lvalue_fn(int32_t pat_off);
-/* CODSKP_fn: declared in sil_symtab.h as void(int32_t) */
+/* CODSKP_fn: declared in symtab.h as void(int32_t) */
 
 /* Small operand stack for ASGN */
 static DESCR_t asgn_stk[16];

@@ -1,5 +1,5 @@
 /*
- * sil_scan.c — Pattern Matching Procedures (v311.sil §11 lines 3323–4239)
+ * scan.c — Pattern Matching Procedures (v311.sil §11 lines 3323–4239)
  *
  * Faithful C translation of Phil Budne's CSNOBOL4 v311.sil §11.
  * Top-level procs: SCAN_fn, SJSR_fn, SCNR_fn.
@@ -12,7 +12,7 @@
  *   Global FAIL exit       → longjmp(ctx->fail_jmp, 1)
  *   TSALT/TSALF/TSCOK      → same targets (aliases in LEN/POS section)
  *
- * SPEC_t field layout (sil_types.h):
+ * SPEC_t field layout (types.h):
  *   .l = length, .o = byte-offset into string block, .a = arena offset,
  *   .v = type (S=1), .f = flags (MBZ).
  *
@@ -35,7 +35,7 @@
 #include "symtab.h"
 
 /* ── External stubs: runtime functions not yet implemented ───────────── */
-/* These are declared here so sil_scan.c compiles (-c); they will be     */
+/* These are declared here so scan.c compiles (-c); they will be     */
 /* resolved at link time when their milestone is complete.               */
 extern RESULT_t NMD_fn(void);
 extern RESULT_t INVOKE_fn(void);
@@ -1172,4 +1172,4 @@ static void do_SALF_d(void)   { GOTO_SALF; }
 static void do_SCOK_d(void)   { GOTO_SCOK; }
 static void do_RTNUL3(void)   { GOTO_SCOK; }
 
-/* end of sil_scan.c */
+/* end of scan.c */

@@ -1,5 +1,5 @@
 /*
- * sil_arena.h — arena allocator and GC (v311.sil §5)
+ * arena.h — arena allocator and GC (v311.sil §5)
  *
  * Faithful C translation of v311.sil §5 "Storage Allocation and
  * Regeneration Procedures" (lines 1219–1553):
@@ -94,7 +94,7 @@ int32_t GNVARS_fn(const char *s, int32_t len);
  *   Returns bytes freed; exits via ALOC2 (fatal) if GCGOT < required.
  *
  * SIL exit 2 = success (GCGOT >= required).
- * SIL exit 1 (ALOC2) = storage exhausted — calls sil_error(ERR_NO_STORAGE).
+ * SIL exit 1 (ALOC2) = storage exhausted — calls error(ERR_NO_STORAGE).
  */
 int32_t GC_fn(int32_t required);
 

@@ -1,5 +1,5 @@
 /*
- * sil_pred.c — Predicate functions (v311.sil §18 lines 6102–6321)
+ * pred.c — Predicate functions (v311.sil §18 lines 6102–6321)
  *
  * Faithful C translation of Phil Budne's CSNOBOL4 v311.sil §18.
  *
@@ -25,7 +25,7 @@
 
 /* External stubs */
 extern RESULT_t XYARGS_fn(void);
-/* CODSKP_fn declared in sil_symtab.h as void(int32_t) */
+/* CODSKP_fn declared in symtab.h as void(int32_t) */
 extern void       PAD_fn(int32_t dir, SPEC_t *out, SPEC_t *subj, SPEC_t *pad);
 
 static RESULT_t rpad_common(void);  /* forward */

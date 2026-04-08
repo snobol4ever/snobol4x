@@ -1,5 +1,5 @@
 /*
- * sil_expr.h — Expression and element analysis (v311.sil §6)
+ * expr.h — Expression and element analysis (v311.sil §6)
  *
  * ELEMNT — break one element from TEXTSP and build a tree node.
  * EXPR   — compile a complete expression into a tree.

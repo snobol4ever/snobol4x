@@ -1,5 +1,5 @@
 /*
- * sil_data.h — declarations for all named globals from v311.sil §23 Data
+ * data.h — declarations for all named globals from v311.sil §23 Data
  *
  * Faithful C translation of v311.sil §23 "Data" (lines 10481–12293).
  * Every named DESCR, SPEC, STRING, FORMAT, REAL, and ARRAY from that
@@ -341,7 +341,7 @@ extern DESCR_t SCNTCL; extern DESCR_t FRETCL;  extern DESCR_t ENDPTR;
 extern DESCR_t EXTPTR; extern DESCR_t NRETCL;  extern DESCR_t RETCL;
 extern DESCR_t EFFCL;
 
-/* ── M8: sil_scan globals ─────────────────────────────────────────────── */
+/* ── M8: scan globals ─────────────────────────────────────────────── */
 /* Function-code DESCRs used by PATBRA dispatch (missing from earlier M) */
 extern DESCR_t SCFLCL;   /* scan failure function code                    */
 extern DESCR_t SUCFCL;   /* SUCCEED failure function code                 */
@@ -357,10 +357,10 @@ extern DESCR_t CONTIN;   /* stream-table continue sentinel                */
 /* Return-type pointers (from v311.sil §21 common code) */
 extern DESCR_t RTYPTR;   /* RTYPTR — return to caller success exit        */
 extern DESCR_t RTZPTR;   /* RTZPTR — return to caller with ZPTR           */
-/* Name-list sizing constants — NAMLSZ and SPDR are in sil_types.h */
+/* Name-list sizing constants — NAMLSZ and SPDR are in types.h */
 extern int32_t NMOVER;   /* current end of name list block (byte count)   */
 
-/* ── M10: sil_asgn globals ───────────────────────────────────────────── */
+/* ── M10: asgn globals ───────────────────────────────────────────── */
 extern DESCR_t KNATL;    /* unprotected keyword attribute list head       */
 extern DESCR_t KVATL;    /* protected keyword attribute list head         */
 extern DESCR_t FNCPL;    /* function pair list head                       */
@@ -368,7 +368,7 @@ extern DESCR_t UNDFCL;   /* undefined-function sentinel descriptor        */
 extern SPEC_t  REALSP;   /* scratch SPEC for REAL→STRING conversion       */
 extern DESCR_t ZSPPTR;   /* pointer-to-ZSP scratch (mirrors XSPPTR)      */
 
-/* ── M12: sil_func globals ───────────────────────────────────────────── */
+/* ── M12: func globals ───────────────────────────────────────────── */
 extern DESCR_t DTATL;    /* data-type attribute list head                 */
 extern DESCR_t INCL;     /* global function descriptor (APPLY)           */
 extern DESCR_t A2PTR;    /* scratch pointer A2 (DT proc)                 */
@@ -386,9 +386,9 @@ extern SPEC_t  CMASP;    /* "," specifier                                */
 extern DESCR_t FORMND;   /* compiler object node (CONVERT/CODER)         */
 extern DESCR_t ALCL;     /* ARG(F,N) entry indicator                     */
 #define BUFLEN  256         /* max dump line length                       */
-/* LNKFLD already defined in sil_types.h as (3*DESCR) */
+/* LNKFLD already defined in types.h as (3*DESCR) */
 
-/* ── M13: sil_arrays globals ─────────────────────────────────────────── */
+/* ── M13: arrays globals ─────────────────────────────────────────── */
 extern DESCR_t DATSEG;   /* current data-type code (DATDEF)              */
 extern DESCR_t DATCL;    /* defined-data procedure descriptor            */
 extern DESCR_t FLDCL;    /* FIELD procedure descriptor                   */
@@ -401,33 +401,33 @@ extern DESCR_t NONARY;   /* non-array error descriptor                   */
 extern DESCR_t A4PTR, A5PTR, A6PTR, A7PTR;
 extern DESCR_t F1PTR, F2PTR;
 extern DESCR_t LPTR;
-/* DATSIZ, EXTSIZ, LPTYP already #define'd in sil_types.h */
+/* DATSIZ, EXTSIZ, LPTYP already #define'd in types.h */
 
-/* ── M14: sil_define globals ─────────────────────────────────────────── */
+/* ── M14: define globals ─────────────────────────────────────────── */
 extern DESCR_t FNCLKY;   /* &FNCLEVEL keyword descriptor (trace)         */
 
-/* ── M15: sil_io globals ─────────────────────────────────────────────── */
+/* ── M15: io globals ─────────────────────────────────────────────── */
 extern DESCR_t IO1PTR;   /* I/O scratch 1 (block/recl)                   */
 extern DESCR_t IO2PTR;   /* I/O scratch 2 (variable/value)               */
 extern DESCR_t IO3PTR;   /* I/O scratch 3 (unit)                         */
 extern DESCR_t IO4PTR;   /* I/O scratch 4 (preallocated buf)             */
 extern SPEC_t  IOSP;     /* I/O string specifier                         */
 extern DESCR_t DFLFST;   /* default output format                        */
-/* VLRECL already #define'd in sil_types.h as 0 */
+/* VLRECL already #define'd in types.h as 0 */
 extern DESCR_t ISPPTR;   /* pointer-to-IOSP scratch                      */
 #define UNITI   1        /* default input  unit number                   */
 #define UNITO   2        /* default output unit number                   */
 
-/* ── M18a/b/c/d: sil_compiler globals ───────────────────────────────── */
-/* M18b: sil_forwrd */
+/* ── M18a/b/c/d: compiler globals ───────────────────────────────── */
+/* M18b: forwrd */
 extern DESCR_t INCSTK;   /* INCLUDE file stack pointer                   */
 extern SPEC_t  LNOSP;    /* left  listing number specifier               */
 extern SPEC_t  RNOSP;    /* right listing number specifier               */
 extern SPEC_t  BLNSP;    /* blank specifier                              */
 extern DESCR_t LNBFSP_d; /* line buffer (DESCR form) for STREAD          */
-/* TEXTSP NEXTSP LNBFSP already in sil_data.h as SPEC_t */
+/* TEXTSP NEXTSP LNBFSP already in data.h as SPEC_t */
 
-/* M18c: sil_cmpile */
+/* M18c: cmpile */
 extern SPEC_t  CERRSP;   /* compiler error message accumulator           */
 extern SPEC_t  ERRSP;    /* error pointer line specifier                 */
 extern SPEC_t  STARSP;   /* "***" attention getter specifier             */
@@ -435,7 +435,7 @@ extern DESCR_t EOSTB;    /* end-of-statement scan table                  */
 extern char    INBUF[];  /* compiler input buffer (raw card image)       */
 extern char    ERRBUF[]; /* error pointer buffer (spaces + '^')          */
 
-/* M18d: sil_expr */
+/* M18d: expr */
 extern DESCR_t ELEMND;   /* element tree node scratch                    */
 extern DESCR_t ELEXND;   /* element temp node scratch                    */
 extern DESCR_t ELEYND;   /* element temp node scratch 2                  */
@@ -451,20 +451,20 @@ extern DESCR_t ELEMTB;   /* element scan table                           */
 extern DESCR_t INTGTB;   /* integer scan table                           */
 extern DESCR_t GOTSTB;   /* peek-ahead table for '<' and '['             */
 
-/* M19: sil_interp */
+/* M19: interp */
 extern DESCR_t STNOKY;   /* &STNO keyword descriptor for trace           */
 extern DESCR_t STCTKY;   /* &STCOUNT keyword descriptor for trace        */
 extern DESCR_t FALKY;    /* &STFCOUNT keyword descriptor for trace       */
 
-/* M20/M21: sil_errors / sil_main */
+/* M20/M21: errors / main */
 extern DESCR_t FCL;      /* real-number scratch (stats)                  */
-/* MSGNO already declared as const char *MSGNO[] in sil_data.h          */
+/* MSGNO already declared as const char *MSGNO[] in data.h          */
 extern DESCR_t GCTTTL;   /* GC total time (&GCTIME)                      */
 extern DESCR_t SIGNCL;   /* terminating signal for SYSCUT [PLB47]        */
 extern DESCR_t FATLCL;   /* &FATAL flag (non-zero = fatal in progress)   */
 extern DESCR_t ERRTKY;   /* error-type keyword key (ERRTSP) for trace    */
 
-/* M21: sil_main */
+/* M21: main */
 extern DESCR_t ABRTKY;   /* &ABORT  keyword descriptor                   */
 extern DESCR_t ARBKY;    /* &ARB    keyword descriptor                   */
 extern DESCR_t BALKY;    /* &BAL    keyword descriptor                   */
@@ -472,7 +472,7 @@ extern DESCR_t FAILKY;   /* &FAIL   keyword descriptor                   */
 extern DESCR_t FNCEKY;   /* &FENCE  keyword descriptor                   */
 extern DESCR_t REMKY;    /* &REM    keyword descriptor                   */
 extern DESCR_t SUCCKY;   /* &SUCCEED keyword descriptor                  */
-/* Tree node field offsets — already #define'd in sil_types.h:
+/* Tree node field offsets — already #define'd in types.h:
  *   FATHER=DESCR  LSON=2*DESCR  RSIB=3*DESCR  CODE=4*DESCR            */
 extern DESCR_t BOSCL;    /* offset of beginning of current statement     */
 extern DESCR_t FRNCL;    /* failure return offset (INIT argument)        */
@@ -536,11 +536,11 @@ extern DESCR_t OBLIST_arr[OBARY];  /* OBLIST = OBSTRT - LNKFLD            */
 
 extern DESCR_t PRMTBL[22];  /* PRMTBL array — all live block roots       */
 
-/* ── Static stacks (arena-allocated in sil_data_init) ───────────────── */
-/* Pointers set by sil_data_init(); actual storage is in arena           */
+/* ── Static stacks (arena-allocated in data_init) ───────────────── */
+/* Pointers set by data_init(); actual storage is in arena           */
 
 extern DESCR_t *pdl_stack;    /* pattern history list — SPDLSZ DESCRs    */
-extern DESCR_t *sil_stack;    /* interpreter stack    — STSIZE  DESCRs   */
+extern DESCR_t *stack;    /* interpreter stack    — STSIZE  DESCRs   */
 extern DESCR_t *obj_code;     /* initial object code  — OCASIZ  DESCRs   */
 
 /* ── Error message strings — verbatim from v311.sil ─────────────────── */
@@ -666,7 +666,7 @@ extern const char ABORCL_s[],CONTSP_s[], SCNTSP_s[], FSSP[], KSP[];
 extern const char LSP[], RSP[], VESP[];
 
 /* ── Control-card command SPEC_t globals (v311.sil STRING directives) ── */
-/* Backed by static char literals; .a/.l filled by sil_data_init()       */
+/* Backed by static char literals; .a/.l filled by data_init()       */
 extern SPEC_t UNLSP_sp;   /* "UNLIST"     */
 extern SPEC_t LISTSP_sp;  /* "LIST"       */
 extern SPEC_t EJCTSP_sp;  /* "EJECT"      */
@@ -684,9 +684,9 @@ extern SPEC_t LEFTSP_sp;  /* "LEFT"       */
 
 /* ── Initialization function ─────────────────────────────────────────── */
 
-/* sil_data_init: called once from BEGIN to set up all static data       */
-/* Allocates pdl_stack, sil_stack, obj_code from arena;                  */
+/* data_init: called once from BEGIN to set up all static data       */
+/* Allocates pdl_stack, stack, obj_code from arena;                  */
 /* sets initial DESCR_t values matching v311.sil declarations            */
-void sil_data_init(void);
+void data_init(void);
 
 #endif /* SIL_DATA_H */

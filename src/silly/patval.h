@@ -1,5 +1,5 @@
 /*
- * sil_patval.h — pattern-valued functions and operations (v311.sil §10)
+ * patval.h — pattern-valued functions and operations (v311.sil §10)
  *
  * Faithful C translation of v311.sil §10 lines 3119–3322:
  *   ANY BREAKX BREAK NOTANY SPAN — character-set pattern functions

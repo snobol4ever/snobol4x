@@ -1,5 +1,5 @@
 /*
- * sil_arrays.h — Arrays, Tables, and Defined Data Objects (v311.sil §14)
+ * arrays.h — Arrays, Tables, and Defined Data Objects (v311.sil §14)
  *
  * Authors: Lon Jones Cherryholmes · Claude Sonnet 4.6
  * Date:    2026-04-06

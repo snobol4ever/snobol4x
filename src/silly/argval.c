@@ -1,8 +1,8 @@
 /*
- * sil_argval.c — argument evaluation procedures (v311.sil §8)
+ * argval.c — argument evaluation procedures (v311.sil §8)
  *
  * Faithful C translation of v311.sil §8 lines 2679–2922.
- * See sil_argval.h for full API documentation.
+ * See argval.h for full API documentation.
  *
  * Source oracle: v311.sil §8
  * Reference C:   snobol4-2.3.3/snobol4.c ARGVAL/XYARGS/INTVAL/PATVAL/VARVAL/EXPVAL

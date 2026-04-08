@@ -1,10 +1,10 @@
 /*
- * sil_io.c — I/O functions (v311.sil §15 lines 5268–5465)
+ * io.c — I/O functions (v311.sil §15 lines 5268–5465)
  *
  * Faithful C translation of Phil Budne's CSNOBOL4 v311.sil §15.
  * Platform I/O calls (STREAD, STPRNT, IO_OPENI, IO_OPENO, IO_SEEK,
  * BKSPCE/ENFILE/REWIND macros) are wrapped as extern stubs resolved
- * by the platform layer (sil_platform.c, not yet written).
+ * by the platform layer (platform.c, not yet written).
  *
  * Authors: Lon Jones Cherryholmes · Claude Sonnet 4.6
  * Date:    2026-04-06
@@ -23,7 +23,7 @@
 #include "symtab.h"
 #include "asgn.h"   /* IND_fn */
 
-/* Platform I/O stubs — resolved by sil_platform.c */
+/* Platform I/O stubs — resolved by platform.c */
 extern RESULT_t XCALL_IO_OPENI(DESCR_t unit, SPEC_t *fname,
                                   SPEC_t *opts, DESCR_t *recl_out);
 extern RESULT_t XCALL_IO_OPENO(DESCR_t unit, SPEC_t *fname, SPEC_t *fmt);
@@ -33,7 +33,7 @@ extern void       STPRNT_fn(int32_t key, DESCR_t blk, SPEC_t *sp);
 extern void       XCALL_BKSPCE(DESCR_t unit);
 extern void       XCALL_ENFILE(DESCR_t unit);
 extern void       XCALL_REWIND(DESCR_t unit);
-/* AUGATL_fn declared in sil_symtab.h as int32_t(int32_t, DESCR_t, DESCR_t) */
+/* AUGATL_fn declared in symtab.h as int32_t(int32_t, DESCR_t, DESCR_t) */
 extern RESULT_t DTREP_fn2(DESCR_t *out, DESCR_t obj);
 
 #define GETDC_B(dst, base_d, off_i) \

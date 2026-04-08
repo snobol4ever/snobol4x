@@ -1,8 +1,8 @@
 /*
- * sil_arith.c — arithmetic operations, predicates, and functions (v311.sil §9)
+ * arith.c — arithmetic operations, predicates, and functions (v311.sil §9)
  *
  * Faithful C translation of v311.sil §9 lines 2923–3118.
- * See sil_arith.h for full API documentation.
+ * See arith.h for full API documentation.
  *
  * Source oracle: v311.sil §9
  * Reference C:   snobol4-2.3.3/snobol4.c ARITH/INTGER/MNS/PLS
@@ -25,7 +25,7 @@
 extern RESULT_t XYARGS_fn(void);   /* v311.sil §8 XYARGS — eval X and Y args */
 extern RESULT_t ARGVAL_fn(void);   /* v311.sil §8 ARGVAL — eval one arg      */
 
-/* DTCL: data type pair descriptor — declared in sil_data.h */
+/* DTCL: data type pair descriptor — declared in data.h */
 
 /* ── Math error flag (mirrors snobol4-2.3.3 volatile math_error) ─────── */
 static volatile int math_error_flag;
@@ -39,11 +39,11 @@ static volatile int math_error_flag;
 #include <stdio.h>
 #include <stdlib.h>
 static RESULT_t aerror(void) {
-    fprintf(stderr, "sil_arith: arithmetic error (overflow/div-zero)\n");
+    fprintf(stderr, "arith: arithmetic error (overflow/div-zero)\n");
     exit(2);
 }
 static RESULT_t intr1(void) {
-    fprintf(stderr, "sil_arith: illegal data type\n");
+    fprintf(stderr, "arith: illegal data type\n");
     exit(1);
 }
 

@@ -1,5 +1,5 @@
 /*
- * sil_io.h — I/O functions (v311.sil §15 lines 5268–5465)
+ * io.h — I/O functions (v311.sil §15 lines 5268–5465)
  *
  * READ   — INPUT(V,U,O,N)
  * PRINT  — OUTPUT(V,U,O,N)

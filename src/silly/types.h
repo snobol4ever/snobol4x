@@ -1,5 +1,5 @@
 /*
- * sil_types.h — SIL types, structs, flags, and equates
+ * types.h — SIL types, structs, flags, and equates
  *
  * Faithful C translation of v311.sil §1 "Linkage and Equivalences"
  * (Phil Budne, CSNOBOL4 2.3.3, lines 829–953).

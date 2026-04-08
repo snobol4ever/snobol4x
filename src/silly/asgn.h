@@ -1,5 +1,5 @@
 /*
- * sil_asgn.h — Assignment and core operations (v311.sil §17 lines 5828–6101)
+ * asgn.h — Assignment and core operations (v311.sil §17 lines 5828–6101)
  *
  * Faithful C translation of:
  *   ASGN   — X = Y  (assignment)

@@ -1,5 +1,5 @@
 /*
- * sil_interp.h — Interpreter executive (v311.sil §7 lines 2520–2678)
+ * interp.h — Interpreter executive (v311.sil §7 lines 2520–2678)
  *
  * BASE   — code-basing: advance OCBSCL by OCICL, zero OCICL.
  * GOTG   — direct goto :<X>

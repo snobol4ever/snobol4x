@@ -1,5 +1,5 @@
 /*
- * sil_cmpile.c — Statement compilation (v311.sil §6 CMPILE line 1554)
+ * cmpile.c — Statement compilation (v311.sil §6 CMPILE line 1554)
  *
  * Faithful C translation of Phil Budne's CSNOBOL4 v311.sil §6 CMPILE.
  *
@@ -10,7 +10,7 @@
  *   CMPNGO / CMPGO / CMPGG / CMPUGO — goto phase
  *   CERR1..CERR12 / CDIAG — error handlers
  *
- * ELEMNT/EXPR/EXPR1 are in M18d (sil_expr.c); declared extern here.
+ * ELEMNT/EXPR/EXPR1 are in M18d (expr.c); declared extern here.
  * STREAM table calls (LBLTB, GOTOTB, EOSTB) are extern stubs.
  *
  * Authors: Lon Jones Cherryholmes · Claude Sonnet 4.6
@@ -263,4 +263,4 @@ static void cdiag_inner(void)
 /*====================================================================================================================*/
 void CDIAG_fn(void) { cdiag_inner(); }
 
-/* end of sil_cmpile.c */
+/* end of cmpile.c */

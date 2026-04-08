@@ -1,5 +1,5 @@
 /*
- * sil_errors.c — Error handlers and termination (v311.sil §22+§23)
+ * errors.c — Error handlers and termination (v311.sil §22+§23)
  *
  * Authors: Lon Jones Cherryholmes · Claude Sonnet 4.6
  * Date:    2026-04-06
@@ -24,9 +24,9 @@ extern DESCR_t ERRBLK;
 extern DESCR_t PUNCH;   /* stderr output block                           */
 extern DESCR_t OUTBLK;
 extern DESCR_t GCTTTL;
-/* GENVAR_fn: const SPEC_t* — declared in sil_arena.h */
-/* TRPHND_fn: DESCR_t (by value) — declared in sil_trace.h */
-/* MSGNO: const char*[] — declared in sil_data.h */
+/* GENVAR_fn: const SPEC_t* — declared in arena.h */
+/* TRPHND_fn: DESCR_t (by value) — declared in trace.h */
+/* MSGNO: const char*[] — declared in data.h */
 extern int32_t  locapt_fn(int32_t tbl, DESCR_t *key); /* assoc lookup   */
 extern DESCR_t  TKEYL;   /* keyword trace list                           */
 extern DESCR_t  ERRTKY;  /* error keyword descriptor                     */

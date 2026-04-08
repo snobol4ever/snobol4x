@@ -1,5 +1,5 @@
 /*
- * sil_func.h — Other functions (v311.sil §19 lines 6322–7037)
+ * func.h — Other functions (v311.sil §19 lines 6322–7037)
  *
  * Faithful C translation of §19 procedures.
  * Complex procs (OPSYN, CONVERT, DMP/DUMP, ARG/LOCAL/FIELDS, CNVTA/CNVAT)

@@ -1,5 +1,5 @@
 /*
- * sil_trace.c — Tracing procedures (v311.sil §16 lines 5466–5827)
+ * trace.c — Tracing procedures (v311.sil §16 lines 5466–5827)
  *
  * Authors: Lon Jones Cherryholmes · Claude Sonnet 4.6
  * Date:    2026-04-06
@@ -467,4 +467,4 @@ RESULT_t XITHND_fn(void)
 }
 
 /*====================================================================================================================*/
-/* end of sil_trace.c */
+/* end of trace.c */

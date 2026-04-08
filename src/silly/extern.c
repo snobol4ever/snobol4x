@@ -1,5 +1,5 @@
 /*
- * sil_extern.c — External functions (v311.sil §13 lines 4471–4643)
+ * extern.c — External functions (v311.sil §13 lines 4471–4643)
  *
  * Faithful C translation of Phil Budne's CSNOBOL4 v311.sil §13.
  *

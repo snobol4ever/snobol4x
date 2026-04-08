@@ -1,5 +1,5 @@
 /*
- * sil_arrays.c — Arrays, Tables, and Defined Data (v311.sil §14 4644–5267)
+ * arrays.c — Arrays, Tables, and Defined Data (v311.sil §14 4644–5267)
  *
  * Faithful C translation of Phil Budne's CSNOBOL4 v311.sil §14.
  * SORT/RSORT are stubbed (complex shell-sort + scratch ptr infra).
@@ -22,7 +22,7 @@
 /* External stubs — use signatures from headers where already declared */
 extern RESULT_t INVOKE_fn(void);
 extern RESULT_t INTVAL_fn(void);
-/* VARVUP_fn, GENVUP_fn, FINDEX_fn declared in sil_argval.h / sil_arena.h / sil_symtab.h */
+/* VARVUP_fn, GENVUP_fn, FINDEX_fn declared in argval.h / arena.h / symtab.h */
 extern void       PSTACK_fn(DESCR_t *pos);
 extern RESULT_t MULT_fn(DESCR_t *out, DESCR_t a, DESCR_t b);
 extern void       VPXPTR_fn2(void);

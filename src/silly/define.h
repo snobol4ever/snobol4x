@@ -1,5 +1,5 @@
 /*
- * sil_define.h — Defined functions (v311.sil §12 lines 4240–4470)
+ * define.h — Defined functions (v311.sil §12 lines 4240–4470)
  *
  * DEFINE(P,E) — define a user function from prototype string.
  * DEFFNC      — invoke a defined function (called by INVOKE dispatch).

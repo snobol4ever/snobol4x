@@ -1,5 +1,5 @@
 /*
- * sil_symtab.c — symbol table and support procedures (v311.sil §4)
+ * symtab.c — symbol table and support procedures (v311.sil §4)
  *
  * Faithful C translation of v311.sil §4 "Support Procedures"
  * (lines 1088–1218): AUGATL, CODSKP, DTREP, FINDEX.

@@ -1,5 +1,5 @@
 /*
- * sil_trepub.h — Code tree publication (v311.sil §6 TREPUB)
+ * trepub.h — Code tree publication (v311.sil §6 TREPUB)
  *
  * TREPUB walks the expression tree built by ELEMNT/EXPR and emits each
  * node's CODE descriptor into the compiler output buffer (CMBSCL/CMOFCL).

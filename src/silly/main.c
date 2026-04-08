@@ -1,5 +1,5 @@
 /*
- * sil_main.c — Program initialization and main loop (v311.sil §2+§3+§21)
+ * main.c — Program initialization and main loop (v311.sil §2+§3+§21)
  *
  * Faithful C translation of Phil Budne's CSNOBOL4 v311.sil.
  * BEGIN: system initialisation, string interning, pattern keyword init.
@@ -86,7 +86,7 @@ static void BEGIN_fn(void)
     }
     { /* Convert initialisation specifier lists to string structures */
         DESCR_t ycl; GETDC_B(ycl, INITLS, 0);
-        (void)ycl; /* Walk INITLS — abbreviated for M21; sil_data_init() handles most */
+        (void)ycl; /* Walk INITLS — abbreviated for M21; data_init() handles most */
     }
     while (D_A(INITB) < D_A(INITE)) { /* INITB / INITE: convert remaining init block */
         DESCR_t xptr, yptr, zptr;
@@ -223,7 +223,7 @@ int main(int argc, char *argv[])
     signal(SIGFPE, sighandler);
 #endif
     arena_init(); /* Initialise the arena */
-    sil_data_init(); /* Initialise all static data */
+    data_init(); /* Initialise all static data */
     BEGIN_fn(); /* Run the interpreter */
     compile_loop();
     return (int)D_A(RETCOD);

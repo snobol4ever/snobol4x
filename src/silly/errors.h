@@ -1,5 +1,5 @@
 /*
- * sil_errors.h — Error handlers and termination (v311.sil §22+§23)
+ * errors.h — Error handlers and termination (v311.sil §22+§23)
  *
  * Authors: Lon Jones Cherryholmes · Claude Sonnet 4.6
  * Date:    2026-04-06

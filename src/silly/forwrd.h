@@ -1,5 +1,5 @@
 /*
- * sil_forwrd.h — Text scanning / card processing (v311.sil §4+§6)
+ * forwrd.h — Text scanning / card processing (v311.sil §4+§6)
  *
  * CODSKP  — skip N object-code items   (§4 line 1116, pure C)
  * FORWRD  — advance to next character   (§6 line 2214, uses STREAM)

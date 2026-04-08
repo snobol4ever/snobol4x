@@ -1,5 +1,5 @@
 /*
- * sil_define.c — Defined functions (v311.sil §12 lines 4240–4470)
+ * define.c — Defined functions (v311.sil §12 lines 4240–4470)
  *
  * Faithful C translation of Phil Budne's CSNOBOL4 v311.sil §12.
  *
@@ -39,7 +39,7 @@ extern RESULT_t INTERP_fn(void);   /* M19 — not yet built */
 
 /* STREAM/VARATB-based prototype parsing — not yet available */
 extern int STREAM_varatb(SPEC_t *res, SPEC_t *src, int *stype_out);
-/* GENVUP_fn declared in sil_arena.h */
+/* GENVUP_fn declared in arena.h */
 
 #define GETDC_B(dst, base_d, off_i) \
     memcpy(&(dst), (char*)A2P(D_A(base_d)) + (off_i), sizeof(DESCR_t))

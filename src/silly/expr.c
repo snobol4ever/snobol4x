@@ -1,5 +1,5 @@
 /*
- * sil_expr.c — Expression and element analysis (v311.sil §6)
+ * expr.c — Expression and element analysis (v311.sil §6)
  *
  * Faithful C translation of Phil Budne's CSNOBOL4 v311.sil §6.
  * Covers ELEMNT, EXPR, EXPR1, NULNOD, ADDSIB, INSERT, BINOP, UNOP,
@@ -456,4 +456,4 @@ RESULT_t UNOP_fn(DESCR_t *out)
 }
 
 /*====================================================================================================================*/
-/* end of sil_expr.c */
+/* end of expr.c */

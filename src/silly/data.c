@@ -1,5 +1,5 @@
 /*
- * sil_data.c — definitions of all named globals from v311.sil §23 Data
+ * data.c — definitions of all named globals from v311.sil §23 Data
  *
  * Faithful C translation of v311.sil §23 "Data" (lines 10481–12293).
  * Each SIL "X DESCR a,f,v" becomes: DESCR_t X = {.a={.i=a}, .f=f, .v=v};
@@ -110,7 +110,7 @@ DESCR_t UINTCL = D0;
 
 DESCR_t ERRTYP    = D(0, 0, I);  /* &ERRTYPE                            */
 DESCR_t ERRTXT    = D(0, 0, S);  /* &ERRTEXT [PLB38]                    */
-DESCR_t ARBPAT    = D0;           /* &ARB    — filled in sil_data_init   */
+DESCR_t ARBPAT    = D0;           /* &ARB    — filled in data_init   */
 DESCR_t BALPAT    = D0;           /* &BAL                                */
 DESCR_t FNCPAT    = D0;           /* &FENCE                              */
 DESCR_t ABOPAT    = D0;           /* &ABORT                              */
@@ -186,7 +186,7 @@ DESCR_t INITB = D0, INITE = D0, INITLS = D0;
 DESCR_t PRMPTR = D0;
 
 /* ── Constants (DESCR-valued) ────────────────────────────────────────── */
-/* Values computed in sil_data_init() once DESCR size is known          */
+/* Values computed in data_init() once DESCR size is known          */
 
 DESCR_t ARBSIZ = D0;    /* 8*NODESZ                                       */
 DESCR_t CHARCL = D(1, 0, 0);
@@ -205,8 +205,8 @@ DESCR_t LNODSZ = D0;    /* NODESZ+DESCR                                   */
 DESCR_t NODSIZ = D0;    /* NODESZ                                         */
 DESCR_t OCALIM = D0;    /* OCASIZ*DESCR                                   */
 DESCR_t ONECL  = D(1, 0, 0);
-DESCR_t OUTBLK = D0;    /* set in sil_data_init to &OUTPUT - DESCR        */
-DESCR_t ERRBLK = D0;    /* set in sil_data_init to &PUNCH  - DESCR        */
+DESCR_t OUTBLK = D0;    /* set in data_init to &OUTPUT - DESCR        */
+DESCR_t ERRBLK = D0;    /* set in data_init to &PUNCH  - DESCR        */
 DESCR_t SIZLMT = D(0x7fffffff, 0, 0);
 DESCR_t SNODSZS = D0;   /* NODESZ                                         */
 DESCR_t STARSZ = D0;    /* 11*DESCR                                       */
@@ -214,7 +214,7 @@ DESCR_t ZEROCL = D0;
 DESCR_t TRSKELS = D0;
 DESCR_t COMDCT = D0;    /* 15*DESCR [PLB58]                               */
 DESCR_t COMREG = D0;
-DESCR_t OBEND  = D0;    /* OBLIST + DESCR*OBOFF — set in sil_data_init    */
+DESCR_t OBEND  = D0;    /* OBLIST + DESCR*OBOFF — set in data_init    */
 
 /* ── Null value ──────────────────────────────────────────────────────── */
 
@@ -277,7 +277,7 @@ DESCR_t TRCBLK[6] = {
     D0                          /* [5] tag for trace                    */
 };
 
-/* ── Primitive patterns (arena offsets — filled by sil_data_init) ────── */
+/* ── Primitive patterns (arena offsets — filled by data_init) ────── */
 
 DESCR_t ARBBACK = D0;    /* ARBAK arena offset */
 DESCR_t ARHEAD  = D0;    /* ARHED arena offset */
@@ -290,12 +290,12 @@ DESCR_t OBLIST_arr[OBARY];   /* zeroed at startup; filled by FINDEX      */
 
 /* ── Permanent block table ────────────────────────────────────────────── */
 
-DESCR_t PRMTBL[22];          /* filled in sil_data_init                  */
+DESCR_t PRMTBL[22];          /* filled in data_init                  */
 
-/* ── Stack pointers (set in sil_data_init after arena allocation) ────── */
+/* ── Stack pointers (set in data_init after arena allocation) ────── */
 
 DESCR_t *pdl_stack  = NULL;
-DESCR_t *sil_stack  = NULL;
+DESCR_t *stack  = NULL;
 DESCR_t *obj_code   = NULL;
 
 /* ── Error messages — verbatim from v311.sil MSG1..MSG39 [PLB11] ─────── */
@@ -477,7 +477,7 @@ const char DIGSP[]  = "DIGITS";
 const char TRLASP[] = "LABEL";
 
 /* ── Control-card command SPEC_t globals (v311.sil §24 STRING directives) */
-/* Each backed by a static char literal; .a/.l set in sil_data_init()     */
+/* Each backed by a static char literal; .a/.l set in data_init()     */
 static const char ctllit_UNLIST[]    = "UNLIST";
 static const char ctllit_LIST[]      = "LIST";
 static const char ctllit_EJECT[]     = "EJECT";
@@ -508,9 +508,9 @@ SPEC_t LINESP_sp = {0};
 SPEC_t HIDESP_sp = {0};
 SPEC_t LEFTSP_sp = {0};
 
-/* ── sil_data_init: initialize computed constants and stacks ─────────── */
+/* ── data_init: initialize computed constants and stacks ─────────── */
 
-void sil_data_init(void)
+void data_init(void)
 {
     ARBSIZ.a.i = (int_t)(8 * NODESZ); /* Computed DESCR-valued constants — must be done at runtime  because DESCR is a compile-time sizeof, not a macro constant */
     CNDSIZ.a.i = (int_t)(CNODSZ); CNDSIZ.v = B;
@@ -531,7 +531,7 @@ void sil_data_init(void)
     OBEND.a.i = P2A(&OBLIST_arr[0]) + (int_t)(DESCR * OBOFF); /* OBEND = OBLIST + DESCR*OBOFF (address arithmetic on OBLIST_arr) */
     OUTBLK.a.i = P2A(&OUTPUT) - DESCR; /* OUTBLK = OUTPUT - DESCR  (pointer arithmetic on unit DESCRs) */
     ERRBLK.a.i = P2A(&PUNCH) - DESCR;
-#define INIT_SP(sp, lit) (sp).a = P2A(lit); (sp).o = 0; (sp).l = (int32_t)(sizeof(lit)-1) /* Stacks — allocate from arena (done by arena_init before us)  pdl_stack and sil_stack are arena-allocated; set arena offsets  Actual allocation is in arena_init(); we just record the pointers  Control-card command SPEC_t globals — backed by static literals */
+#define INIT_SP(sp, lit) (sp).a = P2A(lit); (sp).o = 0; (sp).l = (int32_t)(sizeof(lit)-1) /* Stacks — allocate from arena (done by arena_init before us)  pdl_stack and stack are arena-allocated; set arena offsets  Actual allocation is in arena_init(); we just record the pointers  Control-card command SPEC_t globals — backed by static literals */
     INIT_SP(UNLSP_sp, ctllit_UNLIST);
     INIT_SP(LISTSP_sp, ctllit_LIST);
     INIT_SP(EJCTSP_sp, ctllit_EJECT);

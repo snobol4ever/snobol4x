@@ -1,12 +1,12 @@
 /*
- * sil_scan.h — Pattern Matching Procedures (v311.sil §11)
+ * scan.h — Pattern Matching Procedures (v311.sil §11)
  *
  * Faithful C translation of v311.sil §11 lines 3323–4239.
  * SCAN, SJSR, SCNR — top-level entry points for pattern matching
  * and 27 XPROC sub-procedures dispatched via PATBRA / SELBRA.
  *
  * The SIL scanner dispatches via a 35-entry branch table (PATBRA SELBRA).
- * In C each XPROC becomes a static function in sil_scan.c; the dispatch
+ * In C each XPROC becomes a static function in scan.c; the dispatch
  * table is a function-pointer array indexed by PTBRCL (the pattern node's
  * function-code descriptor index, zero-based).
  *
@@ -52,7 +52,7 @@ RESULT_t SCNR_fn(void);
  *
  * SIL's scanner communicates between SCNR/SCIN and the 27 XPROCs via
  * named globals (PATBCL, PATICL, TXSP, XSP, HEADSP, LENFCL, PDLPTR …).
- * In C we keep those same globals (declared in sil_data.h) and use a
+ * In C we keep those same globals (declared in data.h) and use a
  * Scan_ctx for the setjmp recovery points only.
  *
  * Two longjmp targets matching the two SIL failure paths:
@@ -81,7 +81,7 @@ extern Scan_ctx *scan_ctx_g;   /* pointer to current innermost Scan_ctx */
 
 typedef void (*scan_fn_t)(void);
 
-/* Populated in sil_scan.c; index = pattern node function-code value    */
+/* Populated in scan.c; index = pattern node function-code value    */
 extern scan_fn_t scan_dispatch[SCAN_DISPATCH_SZ];
 
 /* Dispatch indices matching SELBRA list order in v311.sil              */

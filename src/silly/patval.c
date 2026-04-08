@@ -1,8 +1,8 @@
 /*
- * sil_patval.c — pattern-valued functions and operations (v311.sil §10)
+ * patval.c — pattern-valued functions and operations (v311.sil §10)
  *
  * Faithful C translation of v311.sil §10 lines 3119–3322.
- * See sil_patval.h for full API documentation.
+ * See patval.h for full API documentation.
  *
  * Source oracle: v311.sil §10
  * Reference C:   snobol4-2.3.3/snobol4.c §10 functions
@@ -28,10 +28,10 @@ extern RESULT_t INVOKE_fn(void);   /* §7 */
 /* ── Error stubs ─────────────────────────────────────────────────────── */
 #include <stdio.h>
 #include <stdlib.h>
-static RESULT_t intr1(void)  { fprintf(stderr,"sil_patval: illegal data type\n");  exit(1); }
-static RESULT_t lenerr(void) { fprintf(stderr,"sil_patval: negative length\n");    exit(1); }
-static RESULT_t nemo(void)   { fprintf(stderr,"sil_patval: variable not present\n"); exit(1); }
-static RESULT_t noname(void) { fprintf(stderr,"sil_patval: null string\n");        exit(1); }
+static RESULT_t intr1(void)  { fprintf(stderr,"patval: illegal data type\n");  exit(1); }
+static RESULT_t lenerr(void) { fprintf(stderr,"patval: negative length\n");    exit(1); }
+static RESULT_t nemo(void)   { fprintf(stderr,"patval: variable not present\n"); exit(1); }
+static RESULT_t noname(void) { fprintf(stderr,"patval: null string\n");        exit(1); }
 
 /* ════════════════════════════════════════════════════════════════════════
  * Pattern node primitives — translated from lib/pat.c
@@ -384,10 +384,10 @@ RESULT_t OR_fn(void)
     return OK;
 }
 
-/* ── Scalar-ABI wrappers for sil_scan.c ─────────────────────────────────
- * sil_scan.c was written against raw int32_t offset args (old SIL ABI).
+/* ── Scalar-ABI wrappers for scan.c ─────────────────────────────────
+ * scan.c was written against raw int32_t offset args (old SIL ABI).
  * These thin wrappers bridge between the two conventions.
- * Exported (non-static); declared in sil_patval.h.
+ * Exported (non-static); declared in patval.h.
  */
 
 /* maknod_scalar — allocate one pattern node into *out_descr.

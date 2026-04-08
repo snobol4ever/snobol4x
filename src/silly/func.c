@@ -1,5 +1,5 @@
 /*
- * sil_func.c — Other functions (v311.sil §19 lines 6322–7037)
+ * func.c — Other functions (v311.sil §19 lines 6322–7037)
  *
  * Authors: Lon Jones Cherryholmes · Claude Sonnet 4.6
  * Date:    2026-04-06
@@ -21,10 +21,10 @@
 extern RESULT_t INVOKE_fn(void);
 extern RESULT_t INTVAL_fn(void);
 extern RESULT_t XYARGS_fn(void);
-/* GC_fn declared in sil_arena.h as int32_t(int32_t) */
-/* FINDEX_fn declared in sil_symtab.h as int32_t(DESCR_t*) */
-/* DTREP_fn declared in sil_symtab.h as SPEC_t*(DESCR_t*) */
-extern void       CODSKP_fn(int32_t n);  /* declared in sil_symtab.h */
+/* GC_fn declared in arena.h as int32_t(int32_t) */
+/* FINDEX_fn declared in symtab.h as int32_t(DESCR_t*) */
+/* DTREP_fn declared in symtab.h as SPEC_t*(DESCR_t*) */
+extern void       CODSKP_fn(int32_t n);  /* declared in symtab.h */
 extern RESULT_t EXPR_fn(void);
 extern RESULT_t CMPILE_fn(void);
 extern RESULT_t TREPUB_fn(DESCR_t node);
