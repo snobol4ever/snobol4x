@@ -128,31 +128,30 @@ RESULT_t EXPVAL_fn(void)
     }
     if (D_F(XPTR) & FNC) {
         int saved_scl = SCL.a.i;
-        switch (INVOKE_fn()) {
-        case FAIL:
-            SCL.a.i = 1;
-            break;
-        case OK:
-            SCL.a.i = saved_scl; /* exit 2: came back as name */
-            if (SCL.a.i == 0) {
-                deref_name(&XPTR); /* EXPEVL entry: just get value */
-                SCL.a.i = 2;
+        int inv_rc = INVOKE_fn();
+        if (inv_rc == FAIL) {
+            SCL.a.i = 1; /* exit 1: FAIL → restore and return FAIL */
+        } else if (inv_rc == OK) {
+            /* exit 2 (EXPV5): POP SCL, re-enter EXPV11 (non-FNC path with INSW/LOCAPV check) */
+            SCL.a.i = saved_scl;
+            goto expv11;
+        } else {
+            /* exit 3 (fall-through in oracle): POP SCL;
+             * if SCL!=0 → SCL=2 (RTXNAM, value in XPTR);
+             * else (EXPEVL entry) → SCL=3, ZPTR=XPTR (RTZPTR) */
+            SCL.a.i = saved_scl;
+            if (SCL.a.i != 0) {
+                SCL.a.i = 2; /* EXPV6: deref_name not needed — XPTR is already the value */
+                deref_name(&XPTR);
             } else {
                 ZPTR = XPTR;
                 SCL.a.i = 3;
             }
-            break;
-        default:
-            SCL.a.i = saved_scl; /* exit 3: value direct */
-            if (SCL.a.i == 0) {
-                SCL.a.i = 2;
-            } else {
-                ZPTR = XPTR;
-                SCL.a.i = 3;
-            }
-            break;
         }
-    } else {
+        goto expv7;
+    }
+expv11:
+    {
         /* EXPV11: AEQLC SCL,0,,EXPV6 — SCL==0 (EXPEVL) skips input-assoc, goes to EXPV4/deref.
          * SCL!=0 (EXPVAL) checks INSW/LOCAPV first. */
         if (SCL.a.i != 0 && INSW.a.i != 0 && check_input_assoc(&XPTR)) {
@@ -166,6 +165,7 @@ RESULT_t EXPVAL_fn(void)
             SCL.a.i = 2;
         }
     }
+expv7:
     OCBSCL = sv_ocbscl; OCICL = sv_ocicl; /* restore interpreter state */
     PATBCL = sv_patbcl; PATICL = sv_paticl;
     WPTR = sv_wptr; XCL = sv_xcl;

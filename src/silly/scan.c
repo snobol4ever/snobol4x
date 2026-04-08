@@ -333,10 +333,10 @@ RESULT_t SCNR_fn(void)
           MOVD(lf, LENFCL); SETAC(LENFCL, 1);
           pdl_push3(SCFLCL, cur, lf); }
     } else {
-        if (AEQLC(FULLCL, 0)) /* non-anchored — FULLCL==0: use MAXLEN direct */
-            D_A(YSIZ_l) = D_A(MAXLEN);
-        else
+        if (AEQLC(FULLCL, 0)) /* non-anchored, not fullscan: YSIZ = MAXLEN - YSIZ (limit start positions) */
             D_A(YSIZ_l) = D_A(MAXLEN) - D_A(YSIZ_l);
+        else                   /* non-anchored, fullscan: YSIZ = MAXLEN (scan whole string) */
+            D_A(YSIZ_l) = D_A(MAXLEN);
         D_A(YSIZ_l) += D_A(CHARCL); /* +1 */
         opush(YPTR); opush(YSIZ_l);
         sp_copy(&HEADSP, TXSP);
