@@ -85,9 +85,28 @@ static void BEGIN_fn(void)
         SETAC(SCBSCL, blk); MOVD(OCSVCL, SCBSCL);
         D_F(SCBSCL) &= ~PTR; /* RESETF SCBSCL,PTR */
     }
-    { /* Convert initialisation specifier lists to string structures */
-        DESCR_t ycl; GETDC_B(ycl, INITLS, 0);
-        (void)ycl; /* Walk INITLS — abbreviated for M21; data_init() handles most */
+    { /* SPCNVT/SPCNV1/SPCNV2: walk initialization specifier lists (v311.sil 969-977)
+       * Outer loop: YCL counts down through INITLS sublists (step=DESCR).
+       * Inner loop: XCL counts down through each sublist's (spec,dest) pairs (step=2*DESCR).
+       * For each non-zero ZPTR entry: call GENVAR on the spec, write result back.
+       * Oracle C: L_SPCNVT/L_SPCNV1/L_SPCNV2 with D_A(XCL)=D_V(D_A(XPTR)); > 0 guards. */
+        DESCR_t ycl, xcl, xptr, zptr;
+        D_A(ycl) = (int32_t)((DESCR_t *)A2P(D_A(INITLS)))->v; /* GETSIZ YCL,INITLS */
+        while (D_A(ycl) > 0) {                                  /* ACOMPC YCL,0,SPCNVT */
+            memcpy(&xptr, A2P(D_A(INITLS) + D_A(ycl)), sizeof(DESCR_t)); /* GETD XPTR,INITLS,YCL */
+            D_A(xcl) = (int32_t)((DESCR_t *)A2P(D_A(xptr)))->v; /* GETSIZ XCL,XPTR */
+            while (D_A(xcl) > 0) {                               /* SPCNV1/ACOMPC XCL,0 */
+                memcpy(&zptr, A2P(D_A(xptr) + D_A(xcl)), sizeof(DESCR_t)); /* GETD ZPTR,XPTR,XCL */
+                if (D_A(zptr) != 0) {                            /* AEQLC ZPTR,0,,SPCNV2 */
+                    SPEC_t sp; memcpy(&sp, A2P(D_A(zptr)), sizeof(SPEC_t)); /* RCALL ZPTR,GENVAR,ZPTR */
+                    int32_t off = GENVAR_fn(&sp);
+                    SETAC(zptr, off);
+                    memcpy(A2P(D_A(xptr) + D_A(xcl)), &zptr, sizeof(DESCR_t)); /* PUTD XPTR,XCL,ZPTR */
+                }
+                D_A(xcl) -= 2*DESCR;                             /* SPCNV2: DECRA XCL,2*DESCR */
+            }
+            D_A(ycl) -= DESCR;                                   /* DECRA YCL,DESCR */
+        }
     }
     while (D_A(INITB) < D_A(INITE)) { /* INITB / INITE: convert remaining init block */
         DESCR_t xptr, yptr, zptr;
