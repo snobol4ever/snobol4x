@@ -1311,6 +1311,8 @@ static const char *fn_name(int fn) {
     case BINGFN: return "BINGFN(~)";
     case BIQSFN: return "BIQSFN(?)";
     case BIEQFN: return "BIEQFN(=)";  /* P2D */
+    case BARFN:  return "BARFN(|)";   /* unary | user-definable */
+    case AROWFN: return "AROWFN(^)";  /* unary ^ user-definable */
     default: { static char buf[16]; snprintf(buf,16,"FN(%d)",fn); return buf; }
     }
 }

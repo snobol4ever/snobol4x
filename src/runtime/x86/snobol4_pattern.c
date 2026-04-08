@@ -1538,6 +1538,7 @@ EXPR_t *cmpnd_to_expr(CMPND_t *n) {
         /* User-definable — treat as opaque function call */
         case BIATFN: case BIPDFN: case BIPRFN:
         case BIAMFN: case BINGFN:
+        case BARFN:  case AROWFN:  /* unary user-definable: | ^ */
             e->kind = E_OPSYN; e->sval = n->text ? strdup(n->text) : NULL; break;
         default:
             e->kind = E_VAR; e->sval = n->text ? strdup(n->text) : NULL; break;

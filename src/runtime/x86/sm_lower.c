@@ -472,11 +472,26 @@ static void lower_expr(SM_Program *p, LabelTable *lt, const EXPR_t *e)
         return;
 
     /* ── OPSYN operator & / @ / | — dispatch via APPLY_fn(sval, args, n) ── */
-    case E_OPSYN:
+    case E_OPSYN: {
+        /* sval is either:
+         *   mangled: "BIATFN(@)", "ORFN(|)", "BIAMFN(&)" — op char between '(' and ')'
+         *   bare:    "BARFN", "AROWFN" — unary ops from uop_names[] table
+         * Extract the bare operator char so APPLY_fn finds the opsyn alias. */
+        const char *raw = e->sval ? e->sval : "&";
+        const char *op = raw;
+        static char op_buf[4];
+        const char *lp = strchr(raw, '(');
+        if (lp && lp[1] && lp[2] == ')') {
+            /* mangled form: extract char between parens */
+            op_buf[0] = lp[1]; op_buf[1] = '\0';
+            op = op_buf;
+        } else if (strcmp(raw, "BARFN")  == 0) { op = "|"; }
+        else if (strcmp(raw, "AROWFN") == 0) { op = "^"; }
         for (int i = 0; i < e->nchildren; i++)
             lower_expr(p, lt, e->children[i]);
-        sm_emit_si(p, SM_CALL, e->sval ? e->sval : "&", (int64_t)e->nchildren);
+        sm_emit_si(p, SM_CALL, op, (int64_t)e->nchildren);
         return;
+    }
 
     /* ── Swap :=: ── */
     case E_SWAP:
@@ -549,8 +564,10 @@ static void lower_stmt(SM_Program *p, LabelTable *lt, const STMT_t *s)
 
         if (s->has_eq && s->replacement)
             lower_expr(p, lt, s->replacement);
+        else if (s->has_eq)
+            sm_emit_si(p, SM_PUSH_LIT_S, "", 0);  /* X pat = with no RHS → empty string replacement */
         else
-            sm_emit_i(p, SM_PUSH_LIT_I, (int64_t)s->has_eq);  /* 0 = no repl */
+            sm_emit_i(p, SM_PUSH_LIT_I, 0);       /* no = at all → no replacement */
 
         sm_emit(p, SM_EXEC_STMT);
         /* operand a[0].s = subject variable name for write-back (NULL if not a simple var) */
