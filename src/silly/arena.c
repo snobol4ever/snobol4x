@@ -112,6 +112,7 @@ static int32_t hash_spec(const SPEC_t *sp)
 
 int32_t GENVAR_fn(const SPEC_t *sp)
 {
+    D_A(CONVSW) = 0;                  /* oracle: D_A(CONVSW)=0 at GENVAR entry */
     if (SP_LEN(sp) <= 0) /* LEQLC SPECR1,0 — null string → NULVCL */
         return 0;
     int32_t bin_idx = hash_spec(sp); /* LOCA1: VARID — compute bin index */
@@ -381,10 +382,9 @@ int32_t GC_fn(int32_t required)
                                 val.v == NULVCL.v);
                 int32_t att = ((DESCR_t *)A2P(st1ptr + ATTRIB))->a.i;
                 if (nonnull || att != 0) {
-                    DESCR_t *gcblk_ptr = (DESCR_t *)A2P(D_A(GCBLK) + DESCR); /* GCBA4: set up pseudoblock and mark */
-                    gcblk_ptr->a.i = st1ptr;
-                    gcblk_ptr->f = PTR;
-                    gcblk_ptr->v = 0;
+                    /* GCBA4: D(D_A(GCBLK)+DESCR) = D(ST1PTR) — copy full DESCR */
+                    DESCR_t st1d; SETAC(st1d, st1ptr); /* ST1PTR as arena-offset DESCR */
+                    *((DESCR_t *)A2P(D_A(GCBLK) + DESCR)) = st1d;
                     GCM_fn(D_A(GCBLK));
                 }
             }
@@ -446,8 +446,8 @@ int32_t GC_fn(int32_t required)
             else
                 bkdx = bkdxu;
             if (t->f & MARK) {
-                int32_t off = bkdx - DESCR; /* GCLAP2/GCLAP3: walk descriptors */
-                while (off >= 0) {
+                int32_t off = bkdx - DESCR; /* GCLAP2: start one DESCR below size, stop at DESCR (not 0) */
+                while (off != 0) {
                     DESCR_t *dp = (DESCR_t *)A2P(ttlcl + off);
                     if ((dp->f & PTR) && dp->a.i >= mvsgpt) {
                         int32_t ref = dp->a.i; /* pointer into region being compacted  TOP: find title */
@@ -471,7 +471,7 @@ int32_t GC_fn(int32_t required)
             if (ttlcl != 0) {
                 int32_t bkdx = ((DESCR_t *)A2P(ttlcl))->v;
                 int32_t off = bkdx;
-                while (off >= 0) {
+                while (off != 0) {
                     DESCR_t *dp = (DESCR_t *)A2P(ttlcl + off);
                     if ((dp->f & PTR) && dp->a.i >= mvsgpt) {
                         int32_t ref = dp->a.i;
