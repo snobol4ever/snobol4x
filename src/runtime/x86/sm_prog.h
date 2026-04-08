@@ -70,6 +70,7 @@ typedef enum {
     SM_PAT_CAT,
     SM_PAT_DEREF,
     SM_PAT_CAPTURE,
+    SM_PAT_CAPTURE_FN,  /* . *func() — a[0].s=funcname; calls func(matched_text) at match time */
 
     /* Statement execution */
     SM_EXEC_STMT,

@@ -20,6 +20,10 @@
 #include "snobol4.h"   /* DESCR_t, PATND_t, DT_* */
 #include "sil_macros.h" /* IS_NAMEPTR, NAME_DEREF_PTR, IS_NAMEVAL, etc. */
 
+/* EXPR_t / EKind for SM_PAT_CAPTURE_FN synthetic E_FNC node */
+#include "../../ir/ir.h"
+#include "../../frontend/snobol4/scrip_cc.h"
+
 /* Pattern constructors from snobol4_pattern.c */
 extern DESCR_t pat_lit(const char *s);
 extern DESCR_t pat_span(const char *chars);
@@ -416,6 +420,31 @@ int sm_interp_run(SM_Program *prog, SM_State *st)
                 pat_push(pat_assign_imm(child, var));
             else if (kind == 2)
                 pat_push(pat_cat(child, pat_at_cursor(vname)));  /* cursor: seq child then @var */
+            else
+                pat_push(pat_assign_cond(child, var));
+            break;
+        }
+
+        case SM_PAT_CAPTURE_FN: {
+            /* . *func() — a[0].s = function name.
+             * Pass a DT_E descriptor as 'var' to pat_assign_cond so the
+             * XNME materialise case (snobol4_pattern.c) detects it and wires
+             * deferred_call_with_text_fn to call func(matched_substring). */
+            DESCR_t child = pat_pop();
+            const char *fname = ins->a[0].s ? ins->a[0].s : "";
+            /* Build a minimal frozen E_FNC EXPR_t to carry the function name */
+            EXPR_t *efnc = GC_malloc(sizeof(EXPR_t));
+            memset(efnc, 0, sizeof(EXPR_t));
+            efnc->kind  = E_FNC;
+            efnc->sval  = GC_strdup(fname);
+            DESCR_t var;
+            var.v   = DT_E;
+            var.ptr = efnc;
+            var.slen = 0;
+            var.s   = NULL;
+            int kind = (int)ins->a[1].i;
+            if (kind == 1)
+                pat_push(pat_assign_imm(child, var));
             else
                 pat_push(pat_assign_cond(child, var));
             break;

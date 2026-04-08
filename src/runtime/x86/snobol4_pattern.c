@@ -390,6 +390,10 @@ typedef struct {
     /* Deferred var name: when var is *FuncCall(), evaluate at APPLY_fn time */
     char *(*var_fn)(void *data); /* if set, call this at APPLY_fn time to get var name */
     void   *var_data;   /* userdata for var_fn */
+    /* RT-144fix: deferred *func(text) call — receives captured substring as arg.
+     * When set, apply_captures calls this instead of var_fn+NV_SET_fn.
+     * Signature: call_fn(data, captured_text, len) */
+    void  (*call_fn)(void *data, const char *text, int len);
     int     start;      /* MATCH_fn start cursor */
     int     end;        /* MATCH_fn end cursor */
     int     is_imm;        /* 1 = immediate ($), 0 = conditional (.) */
@@ -476,6 +480,22 @@ static char *deferred_var_fn(void *data) {
     if (r.v == DT_S && r.s && r.s[0]) return (char *)r.s;
     if (r.v == DT_SNUL) return NULL; /* NRETURN — no assignment */
     return NULL;
+}
+
+/* RT-fix: deferred *func() capture — call func(captured_text) at apply time.
+ * SIL: PAT . *Push()  fires Push(matched_substring) when PAT succeeds.
+ * The function receives the matched text as its first argument. */
+static void deferred_call_with_text_fn(void *data, const char *text, int len) {
+    UCData *d = (UCData *)data;
+    /* Build arg list: [captured_text] prepended before any static args */
+    int total = 1 + d->nargs;
+    DESCR_t *args = (DESCR_t *)GC_MALLOC(total * sizeof(DESCR_t));
+    char *buf = (char *)GC_MALLOC(len + 1);
+    if (text && len > 0) memcpy(buf, text, len);
+    buf[len] = '\0';
+    args[0] = BSTRVAL(buf, len);
+    for (int i = 0; i < d->nargs; i++) args[i+1] = d->args[i];
+    APPLY_fn(d->name, args, total);
 }
 
 static Pattern *materialise(PATND_t *sp, MatchCtx *ctx);
@@ -783,6 +803,7 @@ static Pattern *materialise(PATND_t *sp, MatchCtx *ctx) {
         ctx->captures[slot].var_name = NULL;
         ctx->captures[slot].var_fn   = NULL;
         ctx->captures[slot].var_data = NULL;
+        ctx->captures[slot].call_fn  = NULL;   /* RT-fix: default off */
         if (vv.v == DT_S) {
             vname = vv.s;
             ctx->captures[slot].var_name = vname ? GC_strdup(vname) : NULL;
@@ -798,7 +819,22 @@ static Pattern *materialise(PATND_t *sp, MatchCtx *ctx) {
                     d->args = (DESCR_t *)GC_MALLOC(vsp->nargs * sizeof(DESCR_t));
                     memcpy(d->args, vsp->args, vsp->nargs * sizeof(DESCR_t));
                 }
-                ctx->captures[slot].var_fn   = deferred_var_fn;
+                /* RT-fix: use call_fn — delivers matched text as first arg to func */
+                ctx->captures[slot].call_fn  = deferred_call_with_text_fn;
+                ctx->captures[slot].var_fn   = NULL;
+                ctx->captures[slot].var_data = d;
+            }
+        } else if (vv.v == DT_E && vv.ptr) {
+            /* *func() lowers to E_DEFER(E_FNC) → DT_E with ptr=E_FNC EXPR_t*.
+             * Extract the function name and set call_fn to call it with matched text. */
+            EXPR_t *efnc = (EXPR_t *)vv.ptr;
+            if (efnc && efnc->kind == E_FNC && efnc->sval) {
+                UCData *d = (UCData *)GC_MALLOC(sizeof(UCData));
+                d->name  = efnc->sval;
+                d->nargs = 0;   /* matched text is prepended as arg[0] at call time */
+                d->args  = NULL;
+                ctx->captures[slot].call_fn  = deferred_call_with_text_fn;
+                ctx->captures[slot].var_fn   = NULL;
                 ctx->captures[slot].var_data = d;
             }
         }
@@ -928,6 +964,16 @@ static void apply_captures(MatchCtx *ctx) {
         Capture *cap = &ctx->captures[i];
         if (cap->start < 0) continue;
 
+        int len = cap->end - cap->start;
+        if (len < 0) len = 0;
+
+        /* RT-fix: deferred *func(text) — call func with matched text as arg */
+        if (cap->call_fn) {
+            const char *text = ctx->subject ? ctx->subject + cap->start : "";
+            cap->call_fn(cap->var_data, text, len);
+            continue;
+        }
+
         /* Resolve variable name: static or deferred */
         const char *vname = cap->var_name;
         if (!vname && cap->var_fn) {
@@ -943,8 +989,6 @@ static void apply_captures(MatchCtx *ctx) {
             continue;
         }
 
-        int len = cap->end - cap->start;
-        if (len < 0) len = 0;
         char *text = (char *)GC_MALLOC(len + 1);
         if (ctx->subject)
             memcpy(text, ctx->subject + cap->start, len);

@@ -36,6 +36,8 @@
 #include "sm_interp.h"   /* SM_State, sm_push, sm_pop, sm_state_init */
 #include "snobol4.h"
 #include "sil_macros.h"
+#include "../../ir/ir.h"
+#include "../../frontend/snobol4/scrip_cc.h"  /* EXPR_t, E_FNC for SM_PAT_CAPTURE_FN */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -349,6 +351,28 @@ static void h_pat_capture(void)
         jit_pat_push(pat_assign_cond(child, var));
 }
 
+static void h_pat_capture_fn(void)
+{
+    /* . *func() — a[0].s = function name.
+     * Pass DT_E var with synthetic E_FNC so XNME materialise fires call_fn. */
+    DESCR_t child  = jit_pat_pop();
+    const char *fname = CUR_INS->a[0].s ? CUR_INS->a[0].s : "";
+    EXPR_t *efnc = GC_malloc(sizeof(EXPR_t));
+    memset(efnc, 0, sizeof(EXPR_t));
+    efnc->kind = E_FNC;
+    efnc->sval = GC_strdup(fname);
+    DESCR_t var;
+    var.v   = DT_E;
+    var.ptr = efnc;
+    var.slen = 0;
+    var.s   = NULL;
+    int kind = (int)CUR_INS->a[1].i;
+    if (kind == 1)
+        jit_pat_push(pat_assign_imm(child, var));
+    else
+        jit_pat_push(pat_assign_cond(child, var));
+}
+
 static void h_exec_stmt(void)
 {
     int has_repl   = (int)CUR_INS->a[1].i;
@@ -482,7 +506,8 @@ static void init_handler_table(void)
     g_handlers[SM_PAT_ALT]     = h_pat_alt;
     g_handlers[SM_PAT_CAT]     = h_pat_cat;
     g_handlers[SM_PAT_DEREF]   = h_pat_deref;
-    g_handlers[SM_PAT_CAPTURE] = h_pat_capture;
+    g_handlers[SM_PAT_CAPTURE]    = h_pat_capture;
+    g_handlers[SM_PAT_CAPTURE_FN] = h_pat_capture_fn;
     g_handlers[SM_PAT_BOXVAL]  = h_pat_boxval;
 
     g_handlers[SM_EXEC_STMT]   = h_exec_stmt;

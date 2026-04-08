@@ -247,16 +247,40 @@ static void lower_pat_expr(SM_Program *p, LabelTable *lt, const EXPR_t *e)
         /* child[0] = sub-pattern, child[1] = variable; a[1].i=0 → cond (.V) */
         lower_pat_expr(p, lt, e->nchildren > 0 ? e->children[0] : NULL);
         if (e->nchildren > 1 && e->children[1]) {
-            int idx = sm_emit_s(p, SM_PAT_CAPTURE, e->children[1]->sval);
-            p->instrs[idx].a[1].i = 0;  /* conditional */
+            EXPR_t *var_expr = e->children[1];
+            /* Detect . *func() — E_DEFER(E_FNC) — emit SM_PAT_CAPTURE_FN */
+            if (var_expr->kind == E_DEFER
+                    && var_expr->nchildren > 0
+                    && var_expr->children[0]
+                    && var_expr->children[0]->kind == E_FNC
+                    && var_expr->children[0]->sval) {
+                int idx = sm_emit_s(p, SM_PAT_CAPTURE_FN,
+                                    var_expr->children[0]->sval);
+                p->instrs[idx].a[1].i = 0;  /* conditional */
+            } else {
+                int idx = sm_emit_s(p, SM_PAT_CAPTURE, var_expr->sval);
+                p->instrs[idx].a[1].i = 0;  /* conditional */
+            }
         }
         return;
     case E_CAPT_IMMED_ASGN:
         /* a[1].i=1 → immediate ($V) */
         lower_pat_expr(p, lt, e->nchildren > 0 ? e->children[0] : NULL);
         if (e->nchildren > 1 && e->children[1]) {
-            int idx = sm_emit_s(p, SM_PAT_CAPTURE, e->children[1]->sval);
-            p->instrs[idx].a[1].i = 1;  /* immediate */
+            EXPR_t *var_expr = e->children[1];
+            /* Detect $ *func() — E_DEFER(E_FNC) — emit SM_PAT_CAPTURE_FN */
+            if (var_expr->kind == E_DEFER
+                    && var_expr->nchildren > 0
+                    && var_expr->children[0]
+                    && var_expr->children[0]->kind == E_FNC
+                    && var_expr->children[0]->sval) {
+                int idx = sm_emit_s(p, SM_PAT_CAPTURE_FN,
+                                    var_expr->children[0]->sval);
+                p->instrs[idx].a[1].i = 1;  /* immediate */
+            } else {
+                int idx = sm_emit_s(p, SM_PAT_CAPTURE, var_expr->sval);
+                p->instrs[idx].a[1].i = 1;  /* immediate */
+            }
         }
         return;
     case E_CAPT_CURSOR:
