@@ -424,11 +424,16 @@ static RESULT_t expr7(DESCR_t *out)
 /* ── BINOP — binary operator analysis ───────────────────────────────── */
 RESULT_t BINOP_fn(DESCR_t *out)
 {
-    if (FORBLK_fn() == FAIL) return FAIL; /* BINOP: STREAM BIOPTB */
+    /* BINOP: RCALL ,FORBLK,,BINOP1. BINOP1 fires on FORBLK RTN1 = ST_ERROR from IBLKTB.
+     * Our STREAM_fn calls error()→exit(1) on AC_ERROR before returning; FAIL here is
+     * only reachable on the same fatal path. Functionally equivalent. */
+    if (FORBLK_fn() == FAIL) return FAIL;
     SPEC_t xsp; int stype;
     if (AEQLC(BRTYPE, EQTYP) && !AEQLC(SPITCL, 0)) {
-        SETAC(STYPE, D_A(BIEQFN)); /* SPITBOL assignment operator */
-        *out = BIEQFN;
+        /* BINOP2: SPITBOL '=' op. Oracle: D_A(STYPE)=(int_t)BIEQFN (addr of descriptor).
+         * Ours: P2A(&BIEQFN) = arena offset of the BIEQFN global DESCR. Then return STYPE. */
+        SETAC(STYPE, P2A(&BIEQFN));
+        *out = STYPE;
         return OK;
     }
     if (AEQLC(BRTYPE, NBTYP)) return FAIL; /* RTN2 — no operator */
@@ -436,10 +441,10 @@ RESULT_t BINOP_fn(DESCR_t *out)
     DESCR_t *optb = (!AEQLC(SPITCL, 0)) ? &SBIPTB : &BIOPTB;
     RESULT_t rc = STREAM_fn(&xsp, &TEXTSP, optb, &stype);
     if (rc == FAIL) {
-        *out = CONCL; /* BINCON: concatenation */
+        *out = CONCL; /* BINCON: D(ZPTR)=D(CONCL); RTZPTR. Full DESCR copy. ✓ */
         return OK;
     }
-    MOVD(*out, STYPE); /* STYPE holds the function descriptor */
+    MOVD(*out, STYPE); /* BINOP3: D(ZPTR)=D(STYPE); RTZPTR — return function descriptor. ✓ */
     return OK;
 }
 
