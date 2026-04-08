@@ -89,11 +89,16 @@ def run(csn_evt, csn_ack, sly_evt, sly_ack, timeout, filter_fns=None):
             name, ef = fds[fd]
             line = ef.readline()
             if line == '':
-                # EOF — participant exited cleanly
+                # EOF — participant exited cleanly (shouldn't happen with O_RDWR, but handle it)
                 alive[name] = False
                 print(f"EOF [{name}]", flush=True)
                 continue
             line = line.rstrip('\n')
+            if line == 'DONE':
+                # clean sentinel — participant called mon_close()
+                alive[name] = False
+                print(f"EOF [{name}] (DONE)", flush=True)
+                continue
             last_event[name] = line
             last_time[name] = now
             # Filter: if filter_fns set and event fn not in shared whitelist, skip it

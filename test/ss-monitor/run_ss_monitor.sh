@@ -48,7 +48,7 @@ echo "[monitor] Starting controller..."
 # Launch controller in background (opens evt FIFOs for reading first,
 # then ack FIFOs for writing — unblocks participant open() calls in order)
 FILTER_ARG=""
-if [ -f "$DIR/sly_fns.txt" ]; then
+if [ "$PING_MODE" = "0" ] && [ -f "$DIR/sly_fns.txt" ]; then
     FILTER_ARG="--filter-fns $DIR/sly_fns.txt"
 fi
 python3 "$DIR/monitor_sync.py" \

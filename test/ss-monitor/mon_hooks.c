@@ -66,6 +66,12 @@ void mon_exit(const char *fn, const char *result)
 
 void mon_close(void)
 {
+    if (enabled) {
+        /* send DONE sentinel so controller sees clean EOF without O_RDWR tricks */
+        char buf[] = "DONE\n";
+        write(evt_fd, buf, sizeof(buf)-1);
+        /* no ack expected for DONE — controller just marks us done */
+    }
     enabled = 0;
     if (evt_fd >= 0) { close(evt_fd); evt_fd = -1; }
     if (ack_fd >= 0) { close(ack_fd); ack_fd = -1; }

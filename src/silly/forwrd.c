@@ -118,26 +118,27 @@ RESULT_t FORWRD_fn(void)
 RESULT_t FORBLK_fn(void)
 {
     /* v311.sil: STREAM XSP,TEXTSP,IBLKTB,RTN1,FORRUN,FORJRN
-     * IBLKTB matches EOS characters (AC_STOP/EOSTYP) and skips blanks (AC_CONTIN).
-     * STREAM returns:
-     *   OK   + stype=EOSTYP  → EOS delimiter consumed → FORJRN: call forrun, loop
-     *   FAIL + stype=0       → input exhausted (nonblank found) → return to CMPILE
-     * CMPILE then calls ELEMNT to parse the nonblank element. FORBLK itself never
-     * calls ELEMNT — it only skips inter-block whitespace/EOS chars.
+     * oracle snobol4.c FORBLK:
+     *   ST_ERROR (STREAM FAIL, stype=0)      → RTN1  (error return)
+     *   ST_EOS   (STREAM OK,   stype=EOSTYP) → FORRUN (read next card, loop)
+     *   ST_STOP  (STREAM OK,   stype=NBTYP)  → FORJRN (nonblank found, return OK)
+     *
+     * IBLKTB fires:
+     *   [1] AC_STOP,  put=EOSTYP  → OK, stype=EOSTYP → FORRUN
+     *   FRWDTB[6] AC_STOPSH, put=NBTYP → OK, stype=NBTYP → FORJRN
      */
     SPEC_t xsp;
     int stype;
     while (1) {
         RESULT_t rc = STREAM_fn(&xsp, &TEXTSP, &IBLKTB, &stype);
-        if (rc == OK) {
-            /* EOS char found (FORJRN): read next card and loop */
+        if (rc == FAIL) return FAIL;    /* ST_ERROR → RTN1 */
+        if (stype == EOSTYP) {          /* ST_EOS → FORRUN: read next card, loop */
             SETAC(BRTYPE, stype);
             rc = forrun();
             if (rc == FAIL) return FAIL;
             continue;
         }
-        /* FAIL: input exhausted = nonblank content at TEXTSP → return to caller */
-        return OK;  /* RTN2 to CMPILE — proceed to ELEMNT */
+        return OK;                      /* ST_STOP/NBTYP → FORJRN: nonblank found */
     }
 }
 

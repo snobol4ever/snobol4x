@@ -1245,6 +1245,20 @@ void init_syntab(void)
     reg_tbl(&SBIPTB, &SBIPTB_st);
     reg_tbl(&UNOPTB, &UNOPTB_st);
     reg_tbl(&INTGTB, &INTGTB_st);
+
+    /* BUG-CERRSP: CERRSP needs an arena-backed buffer (oracle: ERRBUF CARDSZ+STNOSZ+1).
+     * Without this, sp_ptr(&CERRSP) = A2P(0) = arena_base and APDSP corrupts it. */
+    {
+        int32_t errbuf_sz = CARDSZ + STNOSZ + 1;
+        int32_t errbuf = BLOCK_fn(errbuf_sz, B);
+        if (errbuf) {
+            CERRSP.a = errbuf;
+            CERRSP.o = 0;
+            CERRSP.l = 0;
+            CERRSP.v = S;
+            CERRSP.f = 0;
+        }
+    }
 }
 
 /*====================================================================================================================*/

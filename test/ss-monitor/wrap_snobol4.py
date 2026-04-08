@@ -160,7 +160,10 @@ def wrap_file(src_path, dst_path):
         # Determine if void return
         is_void = 'void' in ret_type and 'ret_t' not in ret_type
 
-        out.append(f'{ret_type} {name}{params}\n')
+        # Wrapper must NOT be static — proc.h declares these as extern.
+        # The _inner version keeps the original storage class.
+        wrapper_ret = ret_type.replace('static ', '').strip()
+        out.append(f'{wrapper_ret} {name}{params}\n')
         out.append('{\n')
         out.append(f'    mon_enter("{name}");\n')
         if is_void:
@@ -170,7 +173,7 @@ def wrap_file(src_path, dst_path):
             out.append(f'    int _r = (int)({inner_name}({call_args}));\n')
             out.append(f'    char _rb[16]; snprintf(_rb,sizeof(_rb),"%d",_r);\n')
             out.append(f'    mon_exit("{name}", _rb);\n')
-            out.append(f'    return ({ret_type.split()[-1]})_r;\n')
+            out.append(f'    return ({wrapper_ret.split()[-1]})_r;\n')
         out.append('}\n\n')
 
         wrapped += 1
