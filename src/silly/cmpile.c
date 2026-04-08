@@ -77,32 +77,35 @@ RESULT_t CMPILE_fn(void)
 {
     SETAC(BRTYPE, 0);
     MOVD(BOSCL, CMOFCL);
-    if (!AEQLC(HIDECL, 0)) INCRA(CSTNCL, 1); /* AEQLC HIDECL,0,CMPIL0 — increment statement number unless hidden */
+    if (AEQLC(HIDECL, 0)) INCRA(CSTNCL, 1); /* AEQLC HIDECL,0,,CMPIL0 — if HIDECL!=0 skip; increment only when not hidden */
     { /* CMPIL0: scan label field */
         SPEC_t xsp; int stype;
         RESULT_t rc = STREAM_fn(&xsp, &TEXTSP, &LBLTB, &stype);
         if (rc == FAIL) { cerr(EMSG1); goto stmt_done; }
         SETAC(STYPE, stype);
         if (xsp.l > 0) {
-            INCRA(CMOFCL, DESCR); /* Label found */
+            /* Oracle: INCRA CMOFCL,DESCR; PUTD CMBSCL,CMOFCL,BASECL; SUM CMBSCL,CMBSCL,CMOFCL */
+            INCRA(CMOFCL, DESCR);
             PUTD_B(CMBSCL, CMOFCL, BASECL);
-            DESCR_t zptr; SUM(zptr, CMBSCL, CMOFCL); /* Check object-code limit */
-            if (D_A(zptr) >= D_A(OCLIM)) {
-                DESCR_t new_sz; SUM(new_sz, CMOFCL, CODELT); SETVC(new_sz, C); /* Spill: allocate new block, insert GOTG bridge */
-                int32_t nb = BLOCK_fn(D_A(new_sz), C);
+            SUM(CMBSCL, CMBSCL, CMOFCL); /* advance CMBSCL to the BASECL slot */
+            if (D_A(CMBSCL) >= D_A(OCLIM)) {
+                /* Spill: write GOTG bridge at current CMBSCL, allocate new block.
+                 * Oracle: BLOCK(XCL); D(CMBSCL)=GOTGCL; D(CMBSCL+DESCR)=LIT1CL;
+                 *         D(CMBSCL+2*DESCR)=XCL; CMBSCL=XCL;
+                 *         OCLIM=CMBSCL+CODELT-7*DESCR;
+                 *         D(CMBSCL+DESCR)=BASECL; CMBSCL+=DESCR. */
+                int32_t nb = BLOCK_fn(D_A(CODELT), C);
                 if (!nb) return FAIL;
                 SETAC(XCL, nb);
-                if (!AEQLC(LPTR, 0)) PUTDC_B(LPTR, ATTRIB, XCL);
-                memcpy(A2P(nb), (char*)A2P(D_A(CMBSCL)), (size_t)D_A(CMOFCL));
-                PUTDC_B(CMBSCL, DESCR, GOTGCL);
-                PUTDC_B(CMBSCL, 2*DESCR, LIT1CL);
-                PUTDC_B(CMBSCL, 3*DESCR, XCL);
-                INCRA(CMBSCL, 3*DESCR);
-                SPLIT_fn(D_A(CMBSCL));
+                *((DESCR_t *)A2P(D_A(CMBSCL)))            = GOTGCL;
+                *((DESCR_t *)A2P(D_A(CMBSCL) + DESCR))   = LIT1CL;
+                *((DESCR_t *)A2P(D_A(CMBSCL) + 2*DESCR)) = XCL;
                 MOVD(CMBSCL, XCL);
-                SUM(OCLIM, CMBSCL, new_sz); DECRA(OCLIM, 7*DESCR);
+                SUM(OCLIM, CMBSCL, CODELT); DECRA(OCLIM, 7*DESCR);
+                *((DESCR_t *)A2P(D_A(CMBSCL) + DESCR)) = BASECL;
+                INCRA(CMBSCL, DESCR);
             }
-            SETAC(CMOFCL, 0); SETAC(BOSCL, 0); /* CMPILO: zero offsets */
+            SETAC(CMOFCL, 0); SETAC(BOSCL, 0); /* CMPILO */
             int32_t loff = GENVUP_fn(&xsp); /* GENVUP for label variable */
             if (!loff) { cerr(EMSG1); goto stmt_done; }
             SETAC(LPTR, loff); SETVC(LPTR, S);
@@ -124,18 +127,22 @@ RESULT_t CMPILE_fn(void)
     INCRA(CMOFCL, DESCR);
     PUTD_B(CMBSCL, CMOFCL, FILENM);
     if (AEQLC(BRTYPE, NBTYP)) goto cmpsub;
-    if (AEQLC(BRTYPE, CLNTYP)) { cerr(EMSG3); goto stmt_done; }
-    goto cmpgo;
+    if (AEQLC(BRTYPE, CLNTYP)) goto cmpgo;
+    cerr(EMSG3); goto stmt_done; /* CERR3: unexpected break type */
 cmpsub:
     if (ELEMNT_fn(&SUBJND) == FAIL) { cdiag_inner(); goto stmt_done; } /* Compile subject */
     if (FORBLK_fn() == FAIL) { cerr(ILLBRK); goto stmt_done; }
-    if (AEQLC(BRTYPE, NBTYP)) {
-        if (AEQLC(BRTYPE, EQTYP)) goto cmpfrm; /* CMPSB1 */
-        if (TREPUB_fn(SUBJND) == FAIL) { cdiag_inner(); goto stmt_done; } /* Publish subject, check for goto */
-        if (AEQLC(BRTYPE, CLNTYP)) goto cmpgo;
-        if (AEQLC(BRTYPE, EOSTYP)) { cerr(ILLBRK); goto stmt_done; }
-        goto cmpngo;
-    }
+    if (D_A(BRTYPE) != NBTYP) goto cmpsb1; /* CMPSB1 path when break is not binary */
+    /* BRTYPE==NBTYP after subject: SPITCL/? check then CMPATN (binary pattern match) */
+    /* [PLB32] SNOBOL4+ '?' unary — simplified: just fall to CMPAT2 (EXPR for pattern) */
+    goto cmpatn;
+cmpsb1: /* CMPSB1: non-binary break after subject */
+    if (AEQLC(BRTYPE, EQTYP)) goto cmpfrm; /* '=' → assignment */
+    if (TREPUB_fn(SUBJND) == FAIL) { cdiag_inner(); goto stmt_done; } /* Publish subject-only statement */
+    if (AEQLC(BRTYPE, CLNTYP)) goto cmpgo;
+    if (AEQLC(BRTYPE, EOSTYP)) goto cmpngo;
+    cerr(ILLBRK); goto stmt_done;
+cmpatn: /* CMPATN/CMPAT2: compile pattern expression */
     if (EXPR_fn(&PATND) == FAIL) { cdiag_inner(); goto stmt_done; } /* Pattern: CMPAT2 */
     if (AEQLC(BRTYPE, EQTYP)) goto cmpasp;
     INCRA(CMOFCL, DESCR); /* Emit SCAN + subject + pattern */
@@ -156,7 +163,7 @@ cmpasp:
     if (TREPUB_fn(SUBJND) == FAIL) { cdiag_inner(); goto stmt_done; }
     if (TREPUB_fn(PATND) == FAIL) { cdiag_inner(); goto stmt_done; }
 cmpft:
-    if (TREPUB_fn(FORMND) == FAIL) { cdiag_inner(); goto stmt_done; }
+    TREPUB_fn(FORMND); /* CMPFT: TREPUB(FORMND) — result (ok or fail) always joins CMPTGO */
 cmptgo:
     if (AEQLC(BRTYPE, EOSTYP)) goto cmpngo;
     if (!AEQLC(BRTYPE, CLNTYP)) { cerr(ILLBRK); goto stmt_done; }
