@@ -13,8 +13,9 @@
 
 /* Fatal termination paths */
 void FTLEND_fn(void);   /* fatal end (always terminates)                 */
-void FTLTST_fn(void);   /* non-fatal: test &ERRLIMIT, maybe continue     */
-void FTLERR_fn(void);   /* check &FATALLIMIT, then FTLEND or FTLTST      */
+void FTERST_fn(void);   /* core restart: check ERRLIMIT, ERRTEXT, XITHND */
+void FTLTST_fn(void);   /* non-fatal: FATLCL=0, fall to FTERST          */
+void FTLERR_fn(void);   /* check &FATALLIMIT, FATLCL=1, fall to FTERST  */
 void END_fn(void);      /* normal program end                            */
 void SYSCUT_fn(void);   /* signal/interrupt cut                          */
 
@@ -22,6 +23,8 @@ void SYSCUT_fn(void);   /* signal/interrupt cut                          */
 void AERROR_fn(void);   /* arithmetic error             ERRTYP=2        */
 void ALOC2_fn(void);    /* storage exhausted            ERRTYP=20       */
 void ARGNER_fn(void);   /* wrong argument count         ERRTYP=25       */
+void CFTERR_fn(void);   /* cannot CONTINUE from FATAL   ERRTYP=39       */
+void CNTERR_fn(void);   /* not in SETEXIT handler       ERRTYP=35       */
 void COMP1_fn(void);    /* missing END                  ERRTYP=32       */
 void COMP3_fn(void);    /* program error                ERRTYP=17       */
 void COMP5_fn(void);    /* reading error                ERRTYP=11       */
@@ -44,9 +47,14 @@ void MAIN1_fn(void);    /* return from level zero       ERRTYP=18       */
 void NEMO_fn(void);     /* variable not present         ERRTYP=8        */
 void NONAME_fn(void);   /* null string                  ERRTYP=4        */
 void NONARY_fn(void);   /* bad array/table ref          ERRTYP=3        */
-void PROTER_fn(void);   /* prototype error              ERRTYP=30       */
-void SIZERR_fn(void);   /* size limit exceeded          ERRTYP=23       */
+void OVER_fn(void);     /* stack overflow                ERRTYP=21      */
+void PROTER_fn(void);   /* prototype error              ERRTYP=6        */
+void SCERST_fn(void);   /* scan error restart           SCERCL=1        */
+void SIZERR_fn(void);   /* object too large             ERRTYP=23       */
+void UNDF_fn(void);     /* undefined function           ERRTYP=5        */
+void UNDFFE_fn(void);   /* fn entry point not label     ERRTYP=9        */
 void UNKNKW_fn(void);   /* unknown keyword              ERRTYP=7        */
-void UNDFFE_fn(void);   /* undefined function           ERRTYP=29       */
+void UNTERR_fn(void);   /* illegal I/O unit             ERRTYP=12       */
+void USRINT_fn(void);   /* user interrupt (SIGINT)      ERRTYP=34       */
 
 #endif /* SIL_ERRORS_H */

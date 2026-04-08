@@ -462,6 +462,7 @@ extern DESCR_t FCL;      /* real-number scratch (stats)                  */
 extern DESCR_t GCTTTL;   /* GC total time (&GCTIME)                      */
 extern DESCR_t SIGNCL;   /* terminating signal for SYSCUT [PLB47]        */
 extern DESCR_t FATLCL;   /* &FATAL flag (non-zero = fatal in progress)   */
+extern DESCR_t ERRTKY;   /* error-type keyword key (ERRTSP) for trace    */
 
 /* M21: sil_main */
 extern DESCR_t ABRTKY;   /* &ABORT  keyword descriptor                   */

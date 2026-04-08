@@ -536,6 +536,7 @@ DESCR_t XPTR_b = {.a={.i=0},.f=0,.v=0};
 DESCR_t ABRTKY = {.a={.i=0},.f=TTL|MARK,.v=0};
 DESCR_t ARBKY  = {.a={.i=0},.f=TTL|MARK,.v=0};
 DESCR_t BALKY  = {.a={.i=0},.f=TTL|MARK,.v=0};
+DESCR_t ERRTKY = {.a={.i=0},.f=TTL|MARK,.v=0}; /* error-type keyword key (ERRTSP) */
 DESCR_t FAILKY = {.a={.i=0},.f=TTL|MARK,.v=0};
 DESCR_t FNCEKY = {.a={.i=0},.f=TTL|MARK,.v=0};
 DESCR_t REMKY  = {.a={.i=0},.f=TTL|MARK,.v=0};
