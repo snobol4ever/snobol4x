@@ -28,6 +28,10 @@
 #include "types.h"
 #include "data.h"
 
+/* ── I/O read EOF/ERR flag (set by STREAD_fn, read by callers) ───────── */
+/* 1 = EOF (oracle IO_EOF → XLATIN/FILCHK), 0 = I/O error (oracle IO_ERR → COMP1) */
+int sread_last_eof = 0;
+
 /* ── 1. ARENA ─────────────────────────────────────────────────────────── */
 
 
@@ -1417,11 +1421,18 @@ void XCALL_DATE(SPEC_t *sp)
 
 /*====================================================================================================================*/
 /* STREAD_fn / STPRNT_fn — I/O primitives */
+/* io_eof_out: set to 1 on EOF (→ XLATIN/FILCHK), 0 on I/O error (→ COMP1). NULL = don't care. */
 RESULT_t STREAD_fn(SPEC_t *dst, DESCR_t unit)
 {
     (void)unit;
     static char linebuf[4096]; /* Read a line from stdin into arena */
-    if (!fgets(linebuf, (int)sizeof linebuf, stdin)) return FAIL;
+    if (!fgets(linebuf, (int)sizeof linebuf, stdin)) {
+        /* Oracle: IO_EOF → XLATIN (FILCHK path); IO_ERR → COMP1 */
+        /* Callers check sread_is_eof after FAIL to dispatch correctly. */
+        sread_last_eof = feof(stdin) ? 1 : 0;
+        return FAIL;
+    }
+    sread_last_eof = 0;
     int n = (int)strlen(linebuf);
     if (n > 0 && linebuf[n-1] == '\n') n--;
     int32_t off = D_A(FRSGPT);

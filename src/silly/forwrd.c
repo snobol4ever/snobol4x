@@ -144,7 +144,9 @@ static RESULT_t forrun(void)
     TEXTSP = NEXTSP; /* SETSP TEXTSP,NEXTSP — switch to next-line buffer */
     RESULT_t rc = STREAD_fn(&TEXTSP, UNIT); /* Read new card */
     if (rc == FAIL) {
-        return FILCHK_fn(); /* EOF: try FILCHK */
+        extern int sread_last_eof;
+        if (sread_last_eof) return FILCHK_fn(); /* IO_EOF → XLATIN/FILCHK */
+        else { extern void COMP1_fn(void); COMP1_fn(); return FAIL; } /* IO_ERR → COMP1 */
     }
     D_A(TMVAL) = TEXTSP.l + STNOSZ; /* Update line-buffer length for listing */
     LNBFSP.l = D_A(TMVAL);

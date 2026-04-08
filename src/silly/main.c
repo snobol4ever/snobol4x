@@ -155,8 +155,9 @@ xlatrd:
 xlatrn:
     TEXTSP = NEXTSP; /* XLATRN: read a card */
     if (STREAD_fn(&TEXTSP, UNIT) == FAIL) {
-        FILCHK_fn(); /* XLATIN */
-        goto xlatrn;
+        extern int sread_last_eof;
+        if (sread_last_eof) { FILCHK_fn(); goto xlatrn; } /* IO_EOF → XLATIN */
+        else { extern void COMP1_fn(void); COMP1_fn(); return; } /* IO_ERR → COMP1 */
     }
     D_A(TMVAL) = TEXTSP.l + STNOSZ;
     LNBFSP.l = D_A(TMVAL);
