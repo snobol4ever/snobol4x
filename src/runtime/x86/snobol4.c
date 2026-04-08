@@ -2077,9 +2077,9 @@ DESCR_t NV_GET_fn(const char *name) {
     return NULVCL;
 }
 
-void NV_SET_fn(const char *name, DESCR_t val) {
+DESCR_t NV_SET_fn(const char *name, DESCR_t val) {  /* RT-5: returns val for embedded assignment */
     _var_init();
-    if (!name) return;
+    if (!name) return val;  /* RT-5 */
     comm_var(name, val);
     /* Channel-bound output variable? */
     _io_chan_setup();
@@ -2087,25 +2087,25 @@ void NV_SET_fn(const char *name, DESCR_t val) {
     if (ch >= 0 && _io_chan[ch].is_output && _io_chan[ch].fp) {
         char *s = VARVAL_fn(val);
         fprintf(_io_chan[ch].fp, "%s\n", s ? s : "");
-        return;
+        return val;  /* RT-5 */
     }
     /* Special I/O variables */
-    if (strcasecmp(name, "OUTPUT") == 0) { output_val(val); return; }
+    if (strcasecmp(name, "OUTPUT") == 0) { output_val(val); return val; }  /* RT-5 */
     if (strcasecmp(name, "TERMINAL") == 0) {
         const char *s = IS_STR(val) ? val.s : "";
         fprintf(stderr, "%s\n", s);
-        return;
+        return val;  /* RT-5 */
     }
     /* Unprotected keywords backed by C globals */
-    if (strcasecmp(name, "STLIMIT")  == 0) { kw_stlimit  = (val.v==DT_I)?val.i:(int64_t)to_real(val); return; }
-    if (strcasecmp(name, "ANCHOR")   == 0) { kw_anchor   = (val.v==DT_I)?val.i:(int64_t)to_real(val); return; }
-    if (strcasecmp(name, "TRIM")     == 0) { kw_trim     = (val.v==DT_I)?val.i:(int64_t)to_real(val); return; }
-    if (strcasecmp(name, "FULLSCAN") == 0) { kw_fullscan = (val.v==DT_I)?val.i:(int64_t)to_real(val); return; }
-    if (strcasecmp(name, "CASE")     == 0) { kw_case     = (val.v==DT_I)?val.i:(int64_t)to_real(val); return; }
-    if (strcasecmp(name, "MAXLNGTH") == 0) { kw_maxlngth = (val.v==DT_I)?val.i:(int64_t)to_real(val); return; }
-    if (strcasecmp(name, "FTRACE")   == 0) { kw_ftrace   = (val.v==DT_I)?val.i:(int64_t)to_real(val); return; }
-    if (strcasecmp(name, "ERRLIMIT") == 0) { kw_errlimit = (val.v==DT_I)?val.i:(int64_t)to_real(val); return; }
-    if (strcasecmp(name, "CODE")     == 0) { kw_code     = (val.v==DT_I)?val.i:(int64_t)to_real(val); return; }
+    if (strcasecmp(name, "STLIMIT")  == 0) { kw_stlimit  = (val.v==DT_I)?val.i:(int64_t)to_real(val); return val; }  /* RT-5 */
+    if (strcasecmp(name, "ANCHOR")   == 0) { kw_anchor   = (val.v==DT_I)?val.i:(int64_t)to_real(val); return val; }  /* RT-5 */
+    if (strcasecmp(name, "TRIM")     == 0) { kw_trim     = (val.v==DT_I)?val.i:(int64_t)to_real(val); return val; }  /* RT-5 */
+    if (strcasecmp(name, "FULLSCAN") == 0) { kw_fullscan = (val.v==DT_I)?val.i:(int64_t)to_real(val); return val; }  /* RT-5 */
+    if (strcasecmp(name, "CASE")     == 0) { kw_case     = (val.v==DT_I)?val.i:(int64_t)to_real(val); return val; }  /* RT-5 */
+    if (strcasecmp(name, "MAXLNGTH") == 0) { kw_maxlngth = (val.v==DT_I)?val.i:(int64_t)to_real(val); return val; }  /* RT-5 */
+    if (strcasecmp(name, "FTRACE")   == 0) { kw_ftrace   = (val.v==DT_I)?val.i:(int64_t)to_real(val); return val; }  /* RT-5 */
+    if (strcasecmp(name, "ERRLIMIT") == 0) { kw_errlimit = (val.v==DT_I)?val.i:(int64_t)to_real(val); return val; }  /* RT-5 */
+    if (strcasecmp(name, "CODE")     == 0) { kw_code     = (val.v==DT_I)?val.i:(int64_t)to_real(val); return val; }  /* RT-5 */
     /* &FNCLEVEL, &RTNTYPE, read-only/protected keywords: writes silently ignored
      * (interpreter-controlled; SIL KVLIST items are protected at a higher level) */
 
@@ -2130,7 +2130,7 @@ void NV_SET_fn(const char *name, DESCR_t val) {
             if (strcasecmp(name, known_kw[_ki]) == 0) { found = 1; break; }
         if (!found) {
             sno_runtime_error(7, NULL);
-            return;
+            return FAILDESCR;  /* RT-5: unknown keyword */
         }
     }
 
@@ -2151,6 +2151,7 @@ void NV_SET_fn(const char *name, DESCR_t val) {
     /* Also update registered C static if present */
     for (int _ri = 0; _ri < _var_reg_n; _ri++)
         if (strcmp(_var_reg[_ri].name, name) == 0) { *_var_reg[_ri].ptr = val; break; }
+    return val;  /* RT-5: embedded assignment */
 }
 
 /* NV_PTR_fn — return pointer to the live DESCR_t cell for 'name'.

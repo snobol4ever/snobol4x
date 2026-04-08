@@ -73,7 +73,7 @@ static DESCR_t jit_pat_pop(void)
 /* ── Externs from snobol4 runtime ────────────────────────────────────── */
 
 extern DESCR_t  NV_GET_fn(const char *name);
-extern void     NV_SET_fn(const char *name, DESCR_t val);
+extern DESCR_t  NV_SET_fn(const char *name, DESCR_t val);  /* RT-5 */
 extern char    *VARVAL_fn(DESCR_t d);
 extern DESCR_t  CONCAT_fn(DESCR_t l, DESCR_t r);
 extern DESCR_t  INVOKE_fn(const char *name, DESCR_t *args, int nargs);

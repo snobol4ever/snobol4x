@@ -30,14 +30,15 @@ DESCR_t NV_GET_fn(const char *name) {
         if (strcmp(nv_store[i].name, name) == 0) return nv_store[i].val;
     return NULVCL;
 }
-void NV_SET_fn(const char *name, DESCR_t val) {
+DESCR_t NV_SET_fn(const char *name, DESCR_t val) {  /* RT-5 */
     for (int i = 0; i < nv_count; i++)
-        if (strcmp(nv_store[i].name, name) == 0) { nv_store[i].val = val; return; }
+        if (strcmp(nv_store[i].name, name) == 0) { nv_store[i].val = val; return val; }
     if (nv_count < NV_MAX) {
         strncpy(nv_store[nv_count].name, name, 63);
         nv_store[nv_count].val = val;
         nv_count++;
     }
+    return val;  /* RT-5 */
 }
 static void nv_reset(void) { nv_count = 0; }
 

@@ -246,7 +246,10 @@ int sm_interp_run(SM_Program *prog, SM_State *st)
                 st->last_ok = 0;
                 break;
             }
-            NV_SET_fn(name, val);
+            /* RT-5: NV_SET_fn returns the assigned value — push it so that
+             * embedded assignment X = (A = B) leaves B's value on stack for X. */
+            DESCR_t stored = NV_SET_fn(name, val);
+            sm_push(st, stored);
             /* leave last_ok unchanged — assignment always succeeds */
             break;
         }

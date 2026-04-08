@@ -63,7 +63,7 @@ typedef struct DESCR_t {
 
 /* Stubs supplied by test driver */
 extern DESCR_t NV_GET_fn(const char *name);
-extern void    NV_SET_fn(const char *name, DESCR_t val);
+extern DESCR_t  NV_SET_fn(const char *name, DESCR_t val);  /* RT-5 */
 extern char   *VARVAL_fn(DESCR_t d);
 extern DESCR_t (*g_user_call_hook)(const char *name, DESCR_t *args, int nargs);
 

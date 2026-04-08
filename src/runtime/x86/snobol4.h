@@ -246,7 +246,7 @@ void   FIELD_SET_fn(DESCR_t obj, const char *field, DESCR_t val);
  * ============================================================ */
 
 DESCR_t  NV_GET_fn(const char *name);
-void    NV_SET_fn(const char *name, DESCR_t val);
+DESCR_t  NV_SET_fn(const char *name, DESCR_t val);  /* RT-5: returns val for embedded assignment */
 void    NV_REG_fn(const char *name, DESCR_t *ptr);
 void    NV_SYNC_fn(void);
 void    NV_CLEAR_fn(void);      /* reset all non-keyword NV vars to null */
