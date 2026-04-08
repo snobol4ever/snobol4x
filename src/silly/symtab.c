@@ -97,11 +97,13 @@ int32_t AUGATL_fn(int32_t list_off, DESCR_t type_d, DESCR_t val_d)
      * type at new_title + old_sz, value at new_title + old_sz + DESCR */
     *((DESCR_t *)A2P(new_off + old_sz))         = type_d;
     *((DESCR_t *)A2P(new_off + old_sz + DESCR)) = val_d;
-    /* MOVBLK(new_title, old_title, old_sz): memmove(new+DESCR, old+DESCR, old_sz) */
-    if (old_sz > 0)
+    /* Oracle: DECRA A4PTR,DESCR twice after += 2*DESCR → copy_sz = old_sz - DESCR */
+    /* MOVBLK(new_title, old_title, copy_sz): memmove(new+DESCR, old+DESCR, old_sz-DESCR) */
+    int32_t copy_sz = old_sz - DESCR;
+    if (copy_sz > 0)
         memmove(A2P(new_off + DESCR),
                 A2P(list_off + DESCR),
-                (size_t)old_sz);
+                (size_t)copy_sz);
     return new_off;
 }
 
