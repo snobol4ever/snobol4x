@@ -27,20 +27,21 @@
 int32_t locapt_fn(int32_t list_off, DESCR_t *key_d)
 {
     if (list_off == 0) return 0;
-    DESCR_t *title = (DESCR_t *)A2P(list_off);
-    int32_t size = (int32_t)title->v; /* GETSIZ */
-    int32_t off = DESCR; /* skip title */
-    while (off <= size) {
-        DESCR_t *slot = (DESCR_t *)A2P(list_off + off);
-        if (key_d->a.i == 0 && key_d->f == 0 && key_d->v == 0) { /* looking for hole: zero A field */
-            if (slot->a.i == 0 && slot->f == 0 && slot->v == 0)
-                return list_off + off;
-        } else {
-            if ((int32_t)slot->v == (int32_t)key_d->v && /* match on V field (type tag) */
-                slot->a.i == key_d->a.i)
-                return list_off + off;
-        }
-        off += 2 * DESCR; /* each pair is 2 DESCRs */
+    /* Oracle pair.c: a starts at title offset, checks DCMP(a+DESCR, key).
+     * Returns a (pair base), not a+DESCR (type slot). Pairs: [base][type][value]. */
+    int32_t a = list_off;
+    int32_t end = list_off + ((DESCR_t *)A2P(list_off))->v;
+    while (a < end) {
+        DESCR_t *type_slot = (DESCR_t *)A2P(a + DESCR);
+        int match;
+        if (key_d->a.i == 0 && key_d->f == 0 && key_d->v == 0)
+            match = (type_slot->a.i == 0 && type_slot->f == 0 && type_slot->v == 0);
+        else
+            match = (type_slot->a.i == key_d->a.i &&
+                     type_slot->f   == key_d->f   &&
+                     (int32_t)type_slot->v == (int32_t)key_d->v);
+        if (match) return a; /* return pair base, like oracle */
+        a += 2 * DESCR;
     }
     return 0;
 }
@@ -56,16 +57,17 @@ int32_t locapt_fn(int32_t list_off, DESCR_t *key_d)
 int32_t locapv_fn(int32_t list_off, DESCR_t *key_d)
 {
     if (list_off == 0) return 0;
-    DESCR_t *title = (DESCR_t *)A2P(list_off);
-    int32_t size = (int32_t)title->v;
-    int32_t off = DESCR;
-    while (off < size) {
-        DESCR_t *val_slot = (DESCR_t *)A2P(list_off + off + DESCR); /* value DESCR is at off + DESCR (second of the pair) */
+    /* Oracle: a starts at title, checks DCMP(a+2*DESCR, key) (value slot).
+     * Returns a (pair base). Caller reads a+DESCR for type. */
+    int32_t a = list_off;
+    int32_t end = list_off + ((DESCR_t *)A2P(list_off))->v;
+    while (a < end) {
+        DESCR_t *val_slot = (DESCR_t *)A2P(a + 2 * DESCR);
         if (val_slot->a.i == key_d->a.i &&
-            val_slot->f == key_d->f &&
+            val_slot->f   == key_d->f   &&
             (int32_t)val_slot->v == (int32_t)key_d->v)
-            return list_off + off + DESCR;
-        off += 2 * DESCR;
+            return a; /* return pair base, like oracle */
+        a += 2 * DESCR;
     }
     return 0;
 }
@@ -81,24 +83,26 @@ int32_t AUGATL_fn(int32_t list_off, DESCR_t type_d, DESCR_t val_d)
     DESCR_t zero = ZEROD; /* LOCAPT A4PTR,A1PTR,ZEROCL — look for hole */
     int32_t hole = locapt_fn(list_off, &zero);
     if (hole != 0) {
-        *((DESCR_t *)A2P(hole)) = type_d; /* Found a hole — fill it in place  PUTDC A4PTR,DESCR,A2PTR — insert type */
-        *((DESCR_t *)A2P(hole + DESCR)) = val_d; /* PUTDC A4PTR,2*DESCR,A3PTR — insert value */
+        /* Oracle: A4PTR.a = pair-base a; type at a+DESCR, value at a+2*DESCR */
+        *((DESCR_t *)A2P(hole + DESCR))         = type_d;
+        *((DESCR_t *)A2P(hole + 2 * DESCR))     = val_d;
         return list_off; /* A5RTN: return same list */
     }
-    DESCR_t *old_title = (DESCR_t *)A2P(list_off); /* AUG1: no hole — allocate a larger block */
+    DESCR_t *old_title = (DESCR_t *)A2P(list_off);
     int32_t old_sz = (int32_t)old_title->v;
-    int32_t new_sz = old_sz + 2 * DESCR; /* INCRA A4PTR,2*DESCR */
-    int32_t new_off = BLOCK_fn(new_sz, B); /* SETVC A4PTR,B — block type */
-    if (new_off == 0) return list_off; /* allocation failed */
-    *((DESCR_t *)A2P(new_off + new_sz)) = val_d; /* PUTD A5PTR,A4PTR,A3PTR — insert value at end of new block */
-    *((DESCR_t *)A2P(new_off + new_sz - DESCR)) = type_d; /* PUTD A5PTR,A4PTR-DESCR,A2PTR — insert type just before */
-    /* MOVBLK A5PTR,A1PTR,A4PTR: oracle A4PTR = old_sz after second DECRA.
-     * MOVBLK(dst,src,count) copies count bytes from src+DESCR to dst+DESCR. */
+    int32_t new_sz = old_sz + 2 * DESCR;
+    int32_t new_off = BLOCK_fn(new_sz, B);
+    if (new_off == 0) return list_off;
+    /* Oracle order: write type/value BEFORE MOVBLK (positions won't overlap old body)
+     * type at new_title + old_sz, value at new_title + old_sz + DESCR */
+    *((DESCR_t *)A2P(new_off + old_sz))         = type_d;
+    *((DESCR_t *)A2P(new_off + old_sz + DESCR)) = val_d;
+    /* MOVBLK(new_title, old_title, old_sz): memmove(new+DESCR, old+DESCR, old_sz) */
     if (old_sz > 0)
         memmove(A2P(new_off + DESCR),
                 A2P(list_off + DESCR),
                 (size_t)old_sz);
-    return new_off; /* A5RTN: return new list */
+    return new_off;
 }
 
 /*====================================================================================================================*/
@@ -171,7 +175,7 @@ SPEC_t *DTREP_fn(DESCR_t *d)
         dt1cl.a.i = 0;
         dt1cl.f = 0;
         dt1cl.v = d->v; /* MOVV DT1CL,A2PTR */
-        int32_t a3ptr = locapt_fn(P2A(&DTLIST), &dt1cl);
+        int32_t a3ptr = locapt_fn(D_A(DTATL), &dt1cl);
         if (a3ptr != 0) {
             DESCR_t name_d = *((DESCR_t *)A2P(a3ptr + 2 * DESCR)); /* GETDC A3PTR,A3PTR,2*DESCR — get type name descriptor */
             if (name_d.a.i != 0) { /* LOCSP DPSP,A3PTR */
@@ -195,10 +199,11 @@ SPEC_t *DTREP_fn(DESCR_t *d)
 
 int32_t FINDEX_fn(DESCR_t *name_d)
 {
-    int32_t f2ptr = locapv_fn(D_A(FNCPL), name_d); /* LOCAPV F2PTR,FNCPL,F1PTR — look for function pair */
+    int32_t f2ptr = locapv_fn(D_A(FNCPL), name_d);
     if (f2ptr != 0) {
-        f2ptr = ((DESCR_t *)A2P(f2ptr + DESCR))->a.i; /* Found — GETDC F2PTR,F2PTR,DESCR — get function descriptor */
-        return f2ptr; /* FATBAK: RRTURN F2PTR,1 */
+        /* Oracle: D(F2PTR) = D(D_A(F2PTR)+DESCR) — type slot at pair_base+DESCR */
+        f2ptr = ((DESCR_t *)A2P(f2ptr + DESCR))->a.i;
+        return f2ptr; /* FATBAK */
     }
     D_A(NEXFCL) += 2 * DESCR; /* FATNF: not found  INCRA NEXFCL,2*DESCR */
     if (D_A(NEXFCL) > FBLKSZ) { /* ACOMPC NEXFCL,FBLKSZ — check for end of current block */

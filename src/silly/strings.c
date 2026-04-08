@@ -26,6 +26,7 @@
 #include <string.h>
 
 #include "types.h"
+#include "data.h"
 #include "strings.h"
 
 /* ── internal helper: raw pointer to first byte of a specifier ───────── */
@@ -75,7 +76,7 @@ void TRIMSP_fn(SPEC_t *dst, const SPEC_t *src)
 {
     int32_t len = src->l;
     const char *cp = sp_ptr(src) + len - 1;
-    while (len > 0 && (unsigned char)*cp == ' ') { len--; cp--; }
+    while (len > 0 && isspace((unsigned char)*cp)) { len--; cp--; }
     *dst = *src;
     dst->l = len;
 }
@@ -110,7 +111,8 @@ RESULT_t SPCINT_fn(DESCR_t *dp, const SPEC_t *sp)
     const char *cp = sp_ptr(sp);
     long val;
     char *end;
-    while (len > 0 && (*cp == ' '    || *cp == '\t')) { cp++; len--; } /* strip leading whitespace (SPITBOL-compatible, always) */
+    while (len > 0 && D_A(SPITCL) != 0 &&
+           (*cp == ' ' || *cp == '\t')) { cp++; len--; } /* strip leading ws only in SPITBOL mode */
     if (len == 0) return FAIL;
     if (len > sizeof(buf) - 1) len = sizeof(buf) - 1;
     memcpy(buf, cp, len);
