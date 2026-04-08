@@ -135,7 +135,7 @@ RESULT_t LNKFNC_fn(void)
     }
     int32_t sz = x_bksize(D_A(ZCL_d)); /* Get definition block end: entry point and target type */
     DESCR_t xptr2; GETDC_B(xptr2, ZCL_d, sz - DESCR); /* target type   */
-    DESCR_t zcl2; GETDC_B(zcl2, ZCL_d, 0); /* entry address — LOAD stores at slot 0 (PUTDC XPTR,0,YPTR) */
+    DESCR_t zcl2; GETDC_B(zcl2, ZCL_d, DESCR); /* entry address — oracle: D(ZCL)=D(D_A(ZCL)+DESCR) → slot 1 */
     int32_t nargs = ext_top - stack_base; /* Pointer to argument list on our ext_stk */
     DESCR_t *arg_base = &ext_stk[stack_base];
     if (XCALL_LINK(&ZPTR, arg_base, nargs, zcl2) == FAIL) { /* LINK: call external function */

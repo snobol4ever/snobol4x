@@ -113,9 +113,10 @@ RESULT_t ARRAY_fn(void)
         DESCR_t pair; SETAC(pair, D_A(lo_d2)); D_V(pair) = D_A(ct_d2);
         PUTDC_B(ZPTR, (3 + i) * DESCR, pair);
     }
-    for (int i = 0; i < total_elems; i++) { /* Fill element cells with initial value TPTR
-                                              * Oracle: XPTR walks from blk+(2+ndim)*DESCR, writing at XPTR+DESCR
-                                              * → elements land at slots 3+ndim .. 2+ndim+total */
+    for (int i = 0; i < total_elems; i++) { /* Fill element cells with initial value TPTR.
+                                              * Oracle ARRFIL: after ndim dim-pair writes, XPTR = blk+(ndim+1)*DESCR,
+                                              * then ARRFIL does +=DESCR → blk+(ndim+2)*DESCR, writes at XPTR+DESCR
+                                              * → first element at blk+(ndim+3)*DESCR = slot ndim+3. */
         PUTDC_B(ZPTR, (3 + ndim + i) * DESCR, TPTR);
     }
     MOVD(XPTR, ZPTR); return OK;
@@ -205,7 +206,9 @@ RESULT_t ITEM_fn(void)
             int32_t count = D_V(pair);
             linear = linear * count + idx_arr[i];
         }
-        /* Oracle: element slots start at 3+ndim (PUTDC XPTR,DESCR with XPTR at blk+(2+ndim)*DESCR) */
+        /* Oracle ARYA12: element address = blk + (ndim+2)*DESCR + linear*DESCR.
+         * Note: YPTR computed as blk+(ndim+2)*DESCR; requires harness to verify
+         * exact slot. Current: (3+ndim+linear) consistent with ARRAY fill at (3+ndim). */
         int32_t elem_off = (3 + ndim + linear) * DESCR;
         SETAC(XPTR, D_A(YCL) + elem_off);
         SETVC(XPTR, N); /* NAME — interior pointer */
