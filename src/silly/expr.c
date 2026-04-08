@@ -241,6 +241,7 @@ fn_pad: { /* Pad with null args if too few — oracle L_ELEMN3/L_ELEMN4 */
             /* Climb to function node root (ELEXND = fn node base) */
             while (!AEQLIC(ELEXND, T_FATHER, 0))
                 GETDC_B(ELEXND, ELEXND, T_FATHER);
+            MOVD(ZPTR, ELEXND);  /* ELEMNR: set ZPTR before climb */
         }
         goto elem_exit;
     case 6: /* ELEFLT: real literal — STYPE=6 */
@@ -265,6 +266,7 @@ fn_pad: { /* Pad with null args if too few — oracle L_ELEMN3/L_ELEMN4 */
             /* ELEAR2: build ITEM function node with args */
             if (elearg(ITEMCL) == FAIL) return FAIL;
             if (!AEQLC(BRTYPE, RBTYP)) { SETAC(EMSGCL, (intptr_t)ILLBRK); return FAIL; }
+            MOVD(ZPTR, ELEMND);  /* ELEMNR: set ZPTR before climb */
         }
         goto elem_exit;
     default: /* literal string (quoted) — STYPE=QLITYP=1 or other */
@@ -280,14 +282,14 @@ fn_pad: { /* Pad with null args if too few — oracle L_ELEMN3/L_ELEMN4 */
         }
         break;
     }
-    if (AEQLC(ELEMND, 0)) { /* ELEMN1: attach ELEXND to ELEMND (unary-op tree) */
-        MOVD(ELEXND, ELEXND);
+    if (D_A(ELEMND) != 0) { /* ELEMN1: if unop tree exists, attach as son */
+        addson(ELEMND, ELEXND);   /* ELEMN6: ADDSON ELEMND,ELEXND */
+        MOVD(ZPTR, ELEMND);       /* ELEMNR: ZPTR = ELEMND */
     } else {
-        addson(ELEMND, ELEXND);
-        MOVD(ELEXND, ELEMND);
+        MOVD(ZPTR, ELEXND);       /* ELEMN1 zero path: ZPTR = ELEXND */
     }
 elem_exit:
-    MOVD(ZPTR, ELEXND); /* Climb to root of tree */
+    /* ELEMRR: climb to root of tree */
     while (!AEQLIC(ZPTR, T_FATHER, 0))
         GETDC_B(ZPTR, ZPTR, T_FATHER);
     { /* ELEM10: peek-ahead for '<' or '[' (ITEM subscription) */

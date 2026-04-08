@@ -28,6 +28,7 @@
 #include "trepub.h"
 #include "forwrd.h"
 #include "arena.h"
+#include "errors.h"
 #include "strings.h"
 #include "symtab.h"
 
@@ -196,7 +197,7 @@ cmpngo:
     return RTN3;
 cmpgo:
     /* CMPGO (v311.sil 1726): advance past whitespace to goto field */
-    if (FORWRD_fn() == FAIL) { cerr(ILLEOS); goto stmt_done; }
+    if (FORWRD_fn() == FAIL) { COMP3_fn(); return OK; }
     if (AEQLC(BRTYPE, EOSTYP)) goto cmpngo;
     if (!AEQLC(BRTYPE, NBTYP)) { cerr(EMSG14); goto stmt_done; } /* must be at a nonbreak char */
     {
@@ -237,7 +238,7 @@ cmpugo:
     INCRA(CMOFCL, DESCR);
     PUTD_B(CMBSCL, CMOFCL, GOGOCL);
     if (TREPUB_fn(GOTOND) == FAIL) { cdiag_inner(); goto stmt_done; }
-    if (FORWRD_fn() == FAIL) { cerr(ILLEOS); goto stmt_done; }
+    if (FORWRD_fn() == FAIL) { COMP3_fn(); return OK; }
     if (AEQLC(BRTYPE, EOSTYP)) return RTN3;
     cerr(EMSG14); goto stmt_done;
 cmpsgo:
@@ -247,7 +248,7 @@ cmpsgo:
     INCRA(CMOFCL, DESCR);
     PUTD_B(CMBSCL, CMOFCL, GOGOCL);
     if (TREPUB_fn(SGOND) == FAIL) { cdiag_inner(); goto stmt_done; }
-    if (FORWRD_fn() == FAIL) { cerr(ILLEOS); goto stmt_done; }
+    if (FORWRD_fn() == FAIL) { COMP3_fn(); return OK; }
     if (!AEQLC(BRTYPE, EOSTYP)) goto cmpill;
     /* EOS after :S(L) — no failure goto, fill failure offset and done */
     SETVA(CSTNCL, CMOFCL);
@@ -278,7 +279,7 @@ cmpfgo:
     /* CMPFGO (v311.sil 1801): compile failure goto */
     if (EXPR_fn(&FGOND) == FAIL) { cdiag_inner(); goto stmt_done; }
     if (D_A(BRTYPE) != D_A(GOBRCL)) { cerr(EMSG14); goto stmt_done; }
-    if (FORWRD_fn() == FAIL) { cerr(ILLEOS); goto stmt_done; }
+    if (FORWRD_fn() == FAIL) { COMP3_fn(); return OK; }
     if (!AEQLC(BRTYPE, EOSTYP)) goto cmpilm;
     /* EOS after :F(L) only — insert GOTOCL + failure goto, done */
     INCRA(CMOFCL, DESCR);
@@ -315,7 +316,7 @@ cmpiln:
     /* CMPILN (v311.sil 1834): compile success goto after :F(L) */
     if (EXPR_fn(&SGOND) == FAIL) { cdiag_inner(); goto stmt_done; }
     if (D_A(BRTYPE) != D_A(GOBRCL)) { cerr(EMSG14); goto stmt_done; }
-    if (FORWRD_fn() == FAIL) { cerr(ILLEOS); goto stmt_done; }
+    if (FORWRD_fn() == FAIL) { COMP3_fn(); return OK; }
     if (!AEQLC(BRTYPE, EOSTYP)) { cerr(EMSG14); goto stmt_done; }
     INCRA(CMOFCL, DESCR);
     WCL = push_tmp;
@@ -348,8 +349,7 @@ static void cdiag_inner(void)
     MOVD(CMOFCL, BOSCL);
     INCRA(ESAICL, DESCR);
     if (ACOMP(ESAICL, ESALIM) > 0) { /* ACOMP ESAICL,ESALIM → COMP9 when > (strict) */
-        SETAC(ERRTYP, 17); /* COMP9 → program error */
-        return;
+        COMP9_fn(); return;           /* ERRTYP=26, DECRA(ESAICL), FTLEND */
     }
     if (!AEQLC(COMPCL, 0)) { /* Build error pointer line ('^' under offending token) */
         int32_t off = (int32_t)(TEXTSP.o);
