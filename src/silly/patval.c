@@ -191,7 +191,7 @@ static RESULT_t lprtnd(const DESCR_t *ycl)
         return intr1();
     }
     if (XPTR.a.i < 0) return lenerr(); /* LPRTNI: check non-negative; if LEN, use value as min-length */
-    if (XPTR.a.i == LNTHCL.a.i) ZCL.a.i = XPTR.a.i; /* LEN: min = N */
+    if (DEQL(*ycl, LNTHCL)) ZCL.a.i = XPTR.a.i; /* LEN: if fn descriptor == LNTHCL, use N as min-length */
 patnod:
     { /* null string check — XPTR with zero arena offset and STRING type */
         DESCR_t nulvcl = NULVCL;
@@ -294,13 +294,13 @@ static RESULT_t nam_dol(const DESCR_t *op_cl)
     YPTR = oc_fetch(); /* get second argument from OC stream */
     if (D_F(YPTR) & FNC) {
         DESCR_t saved_xptr = XPTR;
-        switch (INVOKE_fn()) {
-        case FAIL: return FAIL;
-        case OK: XPTR = saved_xptr; break;
-        default: XPTR = saved_xptr; break;
-        }
-        if (YPTR.v != E) return nemo();
+        int rc = INVOKE_fn();
+        XPTR = saved_xptr; /* NAM4: restore first argument */
+        if (rc == FAIL) return FAIL;
+        if (rc == NRETURN) goto nam3; /* NRETURN (name result): skip NEMO check, join NAM3 */
+        if (YPTR.v != E) return nemo(); /* OK path: only EXPRESSION valid */
     }
+nam3:;
     if (XPTR.v == S) { /* NAM3: coerce STRING first-arg to pattern node if needed */
         LOCSP_fn(&TSP, &XPTR); /* NAMV: convert string to pattern */
         TMVAL.a.i = TSP.l; TMVAL.f = 0; TMVAL.v = 0;

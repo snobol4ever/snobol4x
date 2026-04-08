@@ -177,7 +177,6 @@ typedef struct __attribute__((packed)) {
 
 /* Size limits */
 #define ESASIZ   50           /* Limit on number of syntactic errors        */
-#define FBKLSZ  (10 * DESCR)  /* Size of function descriptor block          */
 #define ARRLEN   20           /* Limit on array print image length          */
 #define CARDSZ   1024         /* Width of compiler input [PLB21][PLB57]     */
 #define STNOSZ   8            /* Length of statement number field           */
