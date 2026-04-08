@@ -223,27 +223,24 @@ RESULT_t INTERP_fn(void)
         INCRA(OCICL, DESCR);
         GETD_B(XPTR, OCBSCL, OCICL);
         if (!TESTF(XPTR, FNC)) {
-            continue; /* Literal value — push onto operand stack and continue  (The operand stack is managed implicitly through INCL/ARGVAL) */
+            continue; /* Literal value — skip (INCL/ARGVAL fetches it when needed) */
         }
-        RESULT_t rc = INVOKE_fn(); /* Call via INVOKE */
-        switch ((int)rc) {
-        case OK: /* exits 1,2,3 — continue */
-            continue;
-        case FAIL: /* exit 4 — failure */
-            MOVD(OCICL, FRTNCL);
-            INCRA(FALCL, 1); /* &STFCOUNT */
-            if (D_A(TRAPCL) > 0) { /* &TRACE check on failure */
-                int32_t assoc = locapt_fn(D_A(TKEYL), &FALKY);
-                if (assoc) { SETAC(ATPTR, assoc); TRPHND_fn(ATPTR); }
-            }
-            continue;
-        case 5: /* NRETURN — caller handles */
-            return NRETURN;
-        case 6: /* RETURN — caller handles */
-            return VRETURN;
-        default:
-            return rc;
+        /* SAVSTK(); PUSH(XPTR) — in our model: load INCL from XPTR */
+        INCL = XPTR;
+        RESULT_t rc = INVOKE_fn();
+        /* Oracle: case2,3=loop; case4=RTN1(fail up); case5=RTN2; case6=RTN3.
+         * Our RESULT_t: OK=1(success→loop), FAIL=0(failure path),
+         * NRETURN=5 / VRETURN=6 propagate out of INTERP to caller. */
+        if (rc == OK) continue;
+        if (rc == NRETURN || rc == VRETURN) return rc;
+        /* FAIL (and any other) → failure path */
+        MOVD(OCICL, FRTNCL);
+        INCRA(FALCL, 1); /* &STFCOUNT */
+        if (D_A(TRAPCL) > 0) {
+            int32_t assoc = locapt_fn(D_A(TKEYL), &FALKY);
+            if (assoc) { SETAC(ATPTR, assoc); TRPHND_fn(ATPTR); }
         }
+        /* continue loop (BRANCH INTRP0) */
     }
 }
 
@@ -261,14 +258,17 @@ RESULT_t INTERP_fn(void)
  */
 RESULT_t INVOKE_fn(void)
 {
-    GETDC_B(XPTR, INCL, 0); /* procedure descriptor */     /* INCL already loaded by caller (from object code stream) */
-    if (D_V(INCL) != D_V(XPTR)) { /* VEQL INCL,XPTR — check arg counts (V fields) */
-        if (TESTF(XPTR, FNC)) { /* INVK2: TESTF XPTR,FNC,ARGNER,INVK1 */
-        } else { /* variable argument function — pass as-is */
-            SETAC(ERRTYP, 25); return FAIL; /* ARGNER: incorrect number of arguments (v311.sil line 10344) */
-        }
+    /* Oracle: POP(INCL) — caller sets INCL=XPTR (our push/pop equivalent) */
+    /* Oracle: D(XPTR) = D(D_A(INCL)) — dereference INCL.a as arena offset to get proc descr */
+    memcpy(&XPTR, A2P(D_A(INCL)), sizeof(DESCR_t));
+    if (D_V(INCL) != D_V(XPTR)) {  /* VEQL INCL,XPTR — arg count check */
+        /* INVK2: TESTF XPTR,FNC,ARGNER,INVK1 — FNC set → variable args → ok; else ARGNER */
+        if (!(D_F(XPTR) & FNC))
+            { SETAC(ERRTYP, 25); return FAIL; } /* ARGNER */
+        /* FNC set → fall through to INVK1 */
     }
-    int32_t idx = D_A(INCL); /* INVK1: BRANIC INCL,0 — indirect call */
+    /* INVK1: BRANIC INCL,0 — indirect branch through function pointer at D_A(D_A(INCL)) */
+    int32_t idx = D_A(INCL);
     if ((uint32_t)idx >= INVOKE_TABLE_SZ || !invoke_table[idx].fn) {
         SETAC(ERRTYP, 13); return FAIL; /* undefined function */
     }

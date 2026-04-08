@@ -299,6 +299,7 @@ RESULT_t TRPHND_fn(DESCR_t atptr)
     memcpy(&XPTR, (char*)A2P(D_A(OCBSCL)) + D_A(OCICL), sizeof(DESCR_t));
     SETAC(TRAPCL, 0);
     SETAC(TRACL, 0);
+    INCL = XPTR;
     INVOKE_fn(); /* execute trace function (ignore return value) */
     MOVD(LSLNCL, sv_lslncl); MOVD(LSFLNM, sv_lsflnm); /* Restore */
     MOVD(TRACL, sv_tracl); MOVD(TRAPCL, sv_trapcl);

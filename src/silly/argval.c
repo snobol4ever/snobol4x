@@ -81,10 +81,11 @@ RESULT_t ARGVAL_fn(void)
 {
     XPTR = oc_fetch();
     if (D_F(XPTR) & FNC) {
-        switch (INVOKE_fn()) { /* function descriptor — call INVOKE */
-        case FAIL: return FAIL;
-        case OK: goto argv1; /* exit 2: name returned, dereference  */
-        default: return OK; /* exit 3: value returned directly      */
+        INCL = XPTR; /* SAVSTK(); PUSH(XPTR) — our equiv */
+        switch (INVOKE_fn()) {
+        case FAIL: return FAIL;   /* case1 → FAIL */
+        case OK:   goto argv1;    /* case2 → ARGV1: name result, dereference */
+        default:   return OK;     /* case3 → RTXNAM: value in XPTR */
         }
     }
 argv1:
@@ -128,6 +129,7 @@ RESULT_t EXPVAL_fn(void)
     }
     if (D_F(XPTR) & FNC) {
         int saved_scl = SCL.a.i;
+        INCL = XPTR;
         int inv_rc = INVOKE_fn();
         if (inv_rc == FAIL) {
             SCL.a.i = 1; /* exit 1: FAIL → restore and return FAIL */
@@ -203,6 +205,7 @@ RESULT_t INTVAL_fn(void)
 {
     XPTR = oc_fetch();
     if (D_F(XPTR) & FNC) {
+        INCL = XPTR;
         switch (INVOKE_fn()) {
         case FAIL: return FAIL;
         case OK: goto intv1;
@@ -237,10 +240,11 @@ RESULT_t PATVAL_fn(void)
 {
     XPTR = oc_fetch();
     if (D_F(XPTR) & FNC) {
+        INCL = XPTR;
         switch (INVOKE_fn()) {
         case FAIL: return FAIL;
-        case OK: goto patv1;
-        default: goto patv3;
+        case OK: goto patv1; /* exit 2: name result → input assoc check */
+        default: goto patv3; /* exit 3: value → type check directly */
         }
     }
 patv1:
@@ -287,6 +291,7 @@ RESULT_t VARVAL_fn(void)
 {
     XPTR = oc_fetch();
     if (D_F(XPTR) & FNC) {
+        INCL = XPTR;
         switch (INVOKE_fn()) {
         case FAIL: return FAIL;
         case OK: goto varv1;
@@ -374,6 +379,7 @@ next_arg: /* XYN */
     if (D_F(YPTR) & FNC) { /* XYC: PUSH(SCL,XPTR); INVOKE; case1=FAIL, case2=XY4, default=XY3 */
         int32_t saved_scl = SCL.a.i;
         DESCR_t saved_xptr = XPTR;
+        INCL = YPTR;
         switch (INVOKE_fn()) {
         case FAIL:
             SCL.a.i = saved_scl; XPTR = saved_xptr;

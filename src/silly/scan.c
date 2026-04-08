@@ -468,6 +468,7 @@ RESULT_t SJSR_fn(void)
         GETDC_BLK(XPTR, WPTR, DESCR);
     } else {
         /* SC-6: INVOKE returns: 1=FAIL, 2=SJSR1 (check INSW), 3=NEMO (error 8) */
+        INCL = XPTR;
         RESULT_t inv_rc = INVOKE_fn();
         if (inv_rc == FAIL) return FAIL;
         if (inv_rc == NEMO) { scan_error(8); return FAIL; } /* case 3 → NEMO */

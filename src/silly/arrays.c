@@ -301,6 +301,7 @@ RESULT_t DEFDAT_fn(void)
         GETD_B(XPTR, OCBSCL, OCICL);
         if (TESTF(XPTR, FNC)) {
             ar_push(XCL); ar_push(WCL_d); ar_push(YCL_d); ar_push(YPTR_d);
+            INCL = XPTR;
             if (INVOKE_fn() == FAIL) {
                 ar_top -= 4; return FAIL;
             }

@@ -268,9 +268,8 @@ RESULT_t ATOP_fn(void)
 {
     YPTR = oc_fetch();
     if (D_F(YPTR) & FNC) {
+        INCL = YPTR;
         switch (INVOKE_fn()) {
-        case FAIL: return FAIL;
-        case OK: break; /* exit 2: name in YPTR, skip type check (oracle: goto ATOP1) */
         default:
             if (YPTR.v != E) return nemo();
             break;
@@ -294,6 +293,7 @@ static RESULT_t nam_dol(const DESCR_t *op_cl)
     YPTR = oc_fetch(); /* get second argument from OC stream */
     if (D_F(YPTR) & FNC) {
         DESCR_t saved_xptr = XPTR;
+        INCL = YPTR;
         int rc = INVOKE_fn();
         XPTR = saved_xptr; /* NAM4: restore first argument */
         if (rc == FAIL) return FAIL;

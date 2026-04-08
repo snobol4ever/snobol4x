@@ -106,6 +106,7 @@ RESULT_t ASGN_fn(void)
             GETDC_B(YPTR, YPTR, DESCR); /* ASGNV1: GETDC YPTR,YPTR,DESCR */
         } else {
             opush_asgn(XPTR); /* ASGNCV: PUSH XPTR; RCALL YPTR,INVOKE,(YPTR),(FAIL,ASGNVP) */
+            INCL = YPTR;
             RESULT_t rci = INVOKE_fn();
             if (rci == FAIL) {
                 optop_asgn--; /* discard saved XPTR */
@@ -127,6 +128,7 @@ RESULT_t ASGN_fn(void)
         }
     } else {
         /* ASGNC: subject side is function — INVOKE(XPTR),(FAIL,ASGNV,NEMO) */
+        INCL = XPTR;
         RESULT_t rc = INVOKE_fn();
         if (rc == FAIL) return FAIL;
         if (rc == NEMO) return NEMO;
@@ -143,6 +145,7 @@ RESULT_t ASGN_fn(void)
             GETDC_B(YPTR, YPTR, DESCR);
         } else {
             opush_asgn(XPTR); /* ASGNCV: PUSH XPTR; RCALL YPTR,INVOKE,(YPTR),(FAIL,ASGNVP) */
+            INCL = YPTR;
             RESULT_t rci2 = INVOKE_fn();
             if (rci2 == FAIL) {
                 optop_asgn--;
@@ -324,6 +327,7 @@ RESULT_t KEYWRD_fn(void)
     GETD_B(XPTR, OCBSCL, OCICL);
     if (TESTF(XPTR, FNC)) { /* TESTF XPTR,FNC,,KEYC */
         opush_asgn(XPTR);
+        INCL = XPTR;
         RESULT_t rc = INVOKE_fn();
         if (rc == FAIL) { optop_asgn--; return FAIL; }
         if (rc == NEMO) { optop_asgn--; return NEMO; }
@@ -371,6 +375,7 @@ RESULT_t NAME_fn(void)
         MOVD(XPTR, ZPTR); return OK;
     }
     /* INVOKE(ZPTR): case1=FAIL, case2=RTZPTR (success), case3=NEMO */
+    INCL = ZPTR;
     RESULT_t rc = INVOKE_fn();
     if (rc == FAIL) return FAIL;
     if (rc == NEMO) return NEMO;
