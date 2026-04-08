@@ -57,7 +57,7 @@ extern void       plugtb_fn(DESCR_t *table, DESCR_t sentinel,
                              const SPEC_t *chars);
 extern void       clertb_fn(DESCR_t *table, DESCR_t fill);
 extern int        deql_fn(DESCR_t a, DESCR_t b);
-extern void       realst_fn(SPEC_t *sp, DESCR_t dp);
+/* use canonical REALST_fn from strings.h — realst_fn (platform.c) lacks the trailing-dot fix */
 extern void       intspc_fn(SPEC_t *sp, DESCR_t dp);
 
 /* ── Globals defined here ────────────────────────────────────────────── */
@@ -421,7 +421,7 @@ RESULT_t SCAN_fn(void)
         D_A(XPTR) = off; D_V(XPTR) = S;
     }
     if (D_V(XPTR) == R) {
-        SPEC_t rsp; realst_fn(&rsp, XPTR);
+        SPEC_t rsp; REALST_fn(&rsp, &XPTR);
         int32_t off = GENVAR_fn(&rsp);
         if (!off) return FAIL;
         D_A(XPTR) = off; D_V(XPTR) = S;
@@ -490,7 +490,7 @@ RESULT_t SJSR_fn(void)
         D_A(XPTR) = off; D_V(XPTR) = S;
     }
     if (D_V(XPTR) == R) {
-        SPEC_t rsp; realst_fn(&rsp, XPTR);
+        SPEC_t rsp; REALST_fn(&rsp, &XPTR);
         int32_t off = GENVAR_fn(&rsp);
         if (!off) return FAIL;
         D_A(XPTR) = off; D_V(XPTR) = S;
@@ -526,7 +526,7 @@ sjss1:
         int32_t zt = D_V(ZPTR);
         if (zt == S) goto sjsrv;
         if (zt == I) { SPEC_t isp; intspc_fn(&isp, ZPTR); ZSP = isp; goto sjsrs; }
-        if (zt == R) { SPEC_t rsp; realst_fn(&rsp, ZPTR); ZSP = rsp; goto sjsrs; }
+        if (zt == R) { SPEC_t rsp; REALST_fn(&rsp, &ZPTR); ZSP = rsp; goto sjsrs; }
         if (zt == P) goto sjsrp;
         { /* E or other — allocate STARPT wrapper */
             int32_t off = BLOCK_fn(D_A(STARSZ), P);
