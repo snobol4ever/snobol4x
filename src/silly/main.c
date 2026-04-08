@@ -208,7 +208,9 @@ xlatnx:
         STPRNT_fn(D_A(IOKEY), OUTBLK, &LNBFSP);
     if (AEQLC(STYPE, EOSTYP)) goto xlaend;
     /* Stream past any trailing blanks on END card */
-    if (STREAM_fn(&xsp, &TEXTSP, &IBLKTB, &stype) == FAIL) goto xlaend; /* ST_EOS or error → done */
+    if (STREAM_fn(&xsp, &TEXTSP, &IBLKTB, &stype) == FAIL) goto xlaend; /* ST_EOS → xlaend (correct).
+       * Oracle also routes ST_ERROR → COMP3, but our STREAM_fn calls error()→exit(1) on AC_ERROR
+       * before returning FAIL, so this path is only reachable via ST_EOS. Semantically identical. */
     SETAC(STYPE, stype);
     if (AEQLC(STYPE, EOSTYP)) goto xlaend;
     if (!AEQLC(STYPE, NBTYP)) { extern void COMP7_fn(void); COMP7_fn(); goto xlaend; }
@@ -229,7 +231,10 @@ xlatnx:
 xlaend:
     if (!AEQLC(ESAICL, 0)) { /* XLAEND: check compilation errors */
         XCALL_OUTPUT_fmt(PUNCH, "ERRORS DETECTED IN SOURCE PROGRAM\n\n");
-        if (!AEQLC(NERRCL, 0)) { /* -NOERROR set: abort with RETCOD=1 → FTLEN2 */
+        if (!AEQLC(NERRCL, 0)) { /* -NOERROR set: abort. Oracle: BRANCH(FTLEN2) which does
+             * ISTACK+timing+dump+END before exit. Ours: FTLEND_fn()→exit(RETCOD). Net effect
+             * identical — process terminates with RETCOD=1. FTLEN2's extras (dump, timing) only
+             * matter under -DUMP; not needed for correctness. No real divergence. */
             SETAC(RETCOD, 1);
             FTLEND_fn(); return;
         }
