@@ -134,7 +134,10 @@ void END_fn(void)
         MOVD(FRTNCL, OCICL); DECRA(FRTNCL, DESCR);
         MOVD(LSTNCL, STNOCL);
         MOVA(LSLNCL, LNNOCL); MOVA(LSFLNM, FILENM);
-        if (XITHND_fn() != FAIL) return;
+        /* Oracle: switch(XITHND(NORET)){case 3: BRANCH(RTNUL3)} — exit 3 → restart.
+         * XITHND returns OK when it dispatches a SETEXIT handler (restart interpreter),
+         * FAIL when no handler is installed (fall through to END0 → flush + exit). */
+        if (XITHND_fn() == OK) return; /* handler ran → re-enter interpreter */
     }
     XCALL_io_flushall();
     if (!AEQLC(BANRCL, 0)) {
