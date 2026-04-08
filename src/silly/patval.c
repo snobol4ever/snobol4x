@@ -170,7 +170,8 @@ static RESULT_t charz_abnsnd(const DESCR_t *ycl, const DESCR_t *zcl)
     if (blk == 0) return FAIL;
     TPTR.a.i = blk; TPTR.f = 0; TPTR.v = P;
     maknod_fn(&ZPTR, &TPTR, zcl, &ZEROCL, ycl, &XPTR);
-    return OK; /* result in ZPTR */
+    XPTR = ZPTR; /* RTZPTR: result register for callers */
+    return OK; /* result in XPTR (= ZPTR) */
 }
 
 /*====================================================================================================================*/
@@ -201,6 +202,7 @@ patnod:
     if (blk == 0) return FAIL;
     TPTR.a.i = blk; TPTR.f = 0; TPTR.v = P;
     maknod_fn(&ZPTR, &TPTR, &ZCL, &ZEROCL, ycl, &XPTR);
+    XPTR = ZPTR; /* RTZPTR */
     return OK;
 }
 
@@ -256,7 +258,8 @@ RESULT_t ARBNO_fn(void)
     cpypat_fn(&TPTR, &ARTAIL, &zero, &ZSIZ, &zero, &TSIZ);
     ZSIZ.a.i = TSIZ.a.i + ZSIZ.a.i;
     cpypat_fn(&TPTR, &ARBACK, &zero, &ZSIZ, &TSIZ, &TSIZ);
-    return OK; /* result in ZPTR */
+    XPTR = ZPTR; /* RTZPTR */
+    return OK;
 }
 
 /*====================================================================================================================*/
@@ -279,6 +282,7 @@ RESULT_t ATOP_fn(void)
     if (blk == 0) return FAIL;
     TPTR.a.i = blk; TPTR.f = 0; TPTR.v = P;
     maknod_fn(&ZPTR, &TPTR, &ZEROCL, &ZEROCL, &ATOPCL, &YPTR);
+    XPTR = ZPTR; /* RTZPTR */
     return OK;
 }
 
@@ -335,6 +339,7 @@ nam3:;
     cpypat_fn(&TPTR, &WPTR, &TVAL, &ZEROCL, &nodsiz, &nodsiz);
     cpypat_fn(&TPTR, &XPTR, &ZEROCL, &nodsiz, &YSIZ, &XSIZ);
     cpypat_fn(&TPTR, &YPTR, &ZEROCL, &YSIZ, &ZEROCL, &TSIZ);
+    XPTR = ZPTR; /* RTZPTR */
     return OK;
 }
 
@@ -381,6 +386,7 @@ RESULT_t OR_fn(void)
     cpypat_fn(&TPTR, &XPTR, &zero, &zero, &zero, &XSIZ);
     cpypat_fn(&TPTR, &YPTR, &zero, &XSIZ, &zero, &YSIZ);
     linkor_fn(&ZPTR, &XSIZ);
+    XPTR = ZPTR; /* RTZPTR */
     return OK;
 }
 
