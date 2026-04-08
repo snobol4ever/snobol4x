@@ -191,7 +191,7 @@ RESULT_t INIT_fn(void)
     if (!AEQLC(UINTCL, 0)) { USRINT_fn(); return FAIL; } /* Check user interrupt */
     INCRA(OCICL, DESCR); GETD_B(XCL, OCBSCL, OCICL); /* Load statement number, failure offset, line, file from object code */
     MOVA(STNOCL, XCL);
-    SETAV(FRTNCL, XCL);
+    D_A(FRTNCL) = D_V(XCL); /* oracle: D_A(FRTNCL)=D_V(XCL) — V field holds failure offset */
     INCRA(OCICL, DESCR); GETD_B(LNNOCL, OCBSCL, OCICL);
     INCRA(OCICL, DESCR); GETD_B(FILENM, OCBSCL, OCICL);
     INCRA(EXN2CL, 1); /* &STEXEC */
