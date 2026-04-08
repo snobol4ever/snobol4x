@@ -107,6 +107,7 @@ argv1:
  * ════════════════════════════════════════════════════════════════════════ */
 RESULT_t EXPVAL_fn(void)
 {
+    SCL.a.i = 1; /* oracle: EXPVAL SETAC SCL,1 — EXPEVL overrides to 0 before calling */
     DESCR_t sv_ocbscl = OCBSCL, sv_ocicl = OCICL; /* save interpreter state — mirrors SIL PUSH list */
     DESCR_t sv_patbcl = PATBCL, sv_paticl = PATICL;
     DESCR_t sv_wptr = WPTR, sv_xcl = XCL;
@@ -116,7 +117,6 @@ RESULT_t EXPVAL_fn(void)
     DESCR_t sv_namicl = NAMICL, sv_nhedcl = NHEDCL;
     SPEC_t sv_headsp = HEADSP, sv_tsp = TSP;
     SPEC_t sv_txsp = TXSP, sv_xsp = XSP;
-    int scl_entry = SCL.a.i; /* save entry indicator */
     RESULT_t rc;
     OCBSCL = XPTR; /* set up new code base from XPTR */
     OCICL.a.i = DESCR;
@@ -153,28 +153,17 @@ RESULT_t EXPVAL_fn(void)
             break;
         }
     } else {
-        if (scl_entry == 0) { /* not a function */
-            if (INSW.a.i != 0 && check_input_assoc(&XPTR)) { /* EXPEVL path */
-                ZPTR = *(DESCR_t *)A2P(ZPTR.a.i + DESCR);
-                switch (PUTIN_fn()) {
-                case FAIL: SCL.a.i = 1; break;
-                default: SCL.a.i = 2; break;
-                }
-            } else {
-                deref_name(&XPTR);
-                SCL.a.i = 2;
+        /* EXPV11: AEQLC SCL,0,,EXPV6 — SCL==0 (EXPEVL) skips input-assoc, goes to EXPV4/deref.
+         * SCL!=0 (EXPVAL) checks INSW/LOCAPV first. */
+        if (SCL.a.i != 0 && INSW.a.i != 0 && check_input_assoc(&XPTR)) {
+            ZPTR = *(DESCR_t *)A2P(ZPTR.a.i + DESCR);
+            switch (PUTIN_fn()) {
+            case FAIL: SCL.a.i = 1; break;
+            default:   SCL.a.i = 2; break;
             }
-        } else {
-            if (INSW.a.i != 0 && check_input_assoc(&XPTR)) {
-                ZPTR = *(DESCR_t *)A2P(ZPTR.a.i + DESCR);
-                switch (PUTIN_fn()) {
-                case FAIL: SCL.a.i = 1; break;
-                default: SCL.a.i = 2; break;
-                }
-            } else {
-                deref_name(&XPTR);
-                SCL.a.i = 2;
-            }
+        } else { /* EXPV4 / EXPV6: deref */
+            deref_name(&XPTR);
+            SCL.a.i = 2;
         }
     }
     OCBSCL = sv_ocbscl; OCICL = sv_ocicl; /* restore interpreter state */
