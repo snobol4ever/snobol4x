@@ -261,8 +261,8 @@ extern DESCR_t FATLCL;    /* &FATAL        [PLB128]                       */
 
 extern real_t  PI_val;    /* &PI = 3.14159... [PLB106] — real_t PI_val    */
 extern real_t  GCTTTL_val;/* &GCTIME accumulator (real)                   */
-extern real_t  RZERCL;    /* real constant 0.0 [PLB104]                   */
-extern real_t  R1MCL;     /* real constant 1e6 [PLB107]                   */
+extern DESCR_t   RZERCL;   /* real constant 0.0  [PLB104]                  */
+extern DESCR_t   R1MCL;    /* real constant 1e6  [PLB107]                  */
 
 /* ── I/O units ───────────────────────────────────────────────────────── */
 

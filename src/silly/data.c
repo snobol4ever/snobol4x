@@ -139,8 +139,8 @@ DESCR_t FATLCL   = D(0, 0, I);   /* &FATAL [PLB128]                     */
 
 real_t PI_val    = 3.14159265358979323846f;   /* &PI [PLB106]            */
 real_t GCTTTL_val = 0.0f;                      /* GC total time           */
-real_t RZERCL    = 0.0f;                       /* real zero [PLB104]      */
-real_t R1MCL     = 1.0e6f;                     /* 1e6 [PLB107]            */
+DESCR_t RZERCL   = {.a={.f=0.0f},  .f=0, .v=R}; /* real zero [PLB104]  */
+DESCR_t R1MCL    = {.a={.f=1.0e6f},.f=0, .v=R}; /* 1e6 [PLB107]        */
 
 /* ── I/O units ───────────────────────────────────────────────────────── */
 
