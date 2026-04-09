@@ -463,25 +463,89 @@ struct syntab BSBIPTB_st = { "BSBIPTB", {
 /* ── 4. OPERATOR-FN DESCR GLOBALS (v311.sil §24 lines 11629–11720) ──── */
 /* FNC-flagged function descriptors; V = arity; A = filled by data_init */
 
-DESCR_t ADDFN  = {{.i=0}, 0, 2};
-DESCR_t BIAMFN = {{.i=0}, 1, 0};
-DESCR_t BIATFN = {{.i=0}, 1, 0};
-DESCR_t BINGFN = {{.i=0}, 1, 0};
-DESCR_t BIPDFN = {{.i=0}, 1, 0};
-DESCR_t BIPRFN = {{.i=0}, 1, 0};
-DESCR_t BIBDFN = {{.i=0}, 1, 0};
-DESCR_t BIBRFN = {{.i=0}, 1, 0};
-DESCR_t BIQSFN = {{.i=0}, 1, 0};
+DESCR_t ADDFN[3] = {
+    {{.i=0},0,2},
+    {{.i=0},0,0},
+    {{.i=30},0,29}
+};
+DESCR_t BIAMFN[3] = {
+    {{.i=0},1,0},
+    {{.i=0},0,0},
+    {{.i=5},0,4}
+};
+DESCR_t BIATFN[3] = {
+    {{.i=0},1,0},
+    {{.i=0},0,0},
+    {{.i=25},0,24}
+};
+DESCR_t BINGFN[3] = {
+    {{.i=0},1,0},
+    {{.i=0},0,0},
+    {{.i=70},0,70}
+};
+DESCR_t BIPDFN[3] = {
+    {{.i=0},1,0},
+    {{.i=0},0,0},
+    {{.i=35},0,34}
+};
+DESCR_t BIPRFN[3] = {
+    {{.i=0},1,0},
+    {{.i=0},0,0},
+    {{.i=45},0,44}
+};
+DESCR_t BIBDFN[3] = {
+    {{.i=0},1,0},
+    {{.i=0},0,0},
+    {{.i=16},0,15}
+};
+DESCR_t BIBRFN[3] = {
+    {{.i=0},1,0},
+    {{.i=0},0,0},
+    {{.i=18},0,17}
+};
+DESCR_t BIQSFN[3] = {
+    {{.i=0},1,0},
+    {{.i=0},0,0},
+    {{.i=70},0,69}
+};
 DESCR_t BIEQFN = {{.i=0}, 0, 2};
 DESCR_t BISNFN = {{.i=0}, 0, 2};
 DESCR_t BISRFN = {{.i=0}, 0, 2};
-DESCR_t DIVFN  = {{.i=0}, 0, 2};
-DESCR_t DOLFN  = {{.i=0}, 0, 2};
-DESCR_t EXPFN  = {{.i=0}, 0, 2};
-DESCR_t MPYFN  = {{.i=0}, 0, 2};
-DESCR_t NAMFN  = {{.i=0}, 0, 2};
-DESCR_t ORFN   = {{.i=0}, 0, 2};
-DESCR_t SUBFN  = {{.i=0}, 0, 2};
+DESCR_t DIVFN[3] = {
+    {{.i=0},0,2},
+    {{.i=0},0,0},
+    {{.i=40},0,39}
+};
+DESCR_t DOLFN[3] = {
+    {{.i=0},0,2},
+    {{.i=0},0,0},
+    {{.i=60},0,59}
+};
+DESCR_t EXPFN[3] = {
+    {{.i=0},0,2},
+    {{.i=0},0,0},
+    {{.i=50},0,50}
+};
+DESCR_t MPYFN[3] = {
+    {{.i=0},0,2},
+    {{.i=0},0,0},
+    {{.i=42},0,41}
+};
+DESCR_t NAMFN[3] = {
+    {{.i=0},0,2},
+    {{.i=0},0,0},
+    {{.i=60},0,59}
+};
+DESCR_t ORFN[3] = {
+    {{.i=0},0,2},
+    {{.i=0},0,0},
+    {{.i=10},0,9}
+};
+DESCR_t SUBFN[3] = {
+    {{.i=0},0,2},
+    {{.i=0},0,0},
+    {{.i=30},0,29}
+};
 DESCR_t AROWFN = {{.i=0}, 1, 0};
 DESCR_t ATFN   = {{.i=0}, 0, 1};
 DESCR_t BARFN  = {{.i=0}, 1, 0};
@@ -990,43 +1054,43 @@ static void init_actions(void)
     UNOPTB_actions[14] = (struct acts){0, AC_CONTIN, NULL}; /* HW-3: non-op chars → ST_EOS, not error */
 
     /* SBIPTB */
-    SBIPTB_actions[0].put = P2A(&ADDFN);
+    SBIPTB_actions[0].put = P2A(ADDFN);
     SBIPTB_actions[0].act = AC_GOTO;
     SBIPTB_actions[0].go = &TBLKTB_st;
-    SBIPTB_actions[1].put = P2A(&SUBFN);
+    SBIPTB_actions[1].put = P2A(SUBFN);
     SBIPTB_actions[1].act = AC_GOTO;
     SBIPTB_actions[1].go = &TBLKTB_st;
-    SBIPTB_actions[2].put = P2A(&NAMFN);
+    SBIPTB_actions[2].put = P2A(NAMFN);
     SBIPTB_actions[2].act = AC_GOTO;
     SBIPTB_actions[2].go = &TBLKTB_st;
-    SBIPTB_actions[3].put = P2A(&DOLFN);
+    SBIPTB_actions[3].put = P2A(DOLFN);
     SBIPTB_actions[3].act = AC_GOTO;
     SBIPTB_actions[3].go = &TBLKTB_st;
-    SBIPTB_actions[4].put = P2A(&MPYFN);
+    SBIPTB_actions[4].put = P2A(MPYFN);
     SBIPTB_actions[4].act = AC_GOTO;
     SBIPTB_actions[4].go = &STARTB_st;
-    SBIPTB_actions[5].put = P2A(&DIVFN);
+    SBIPTB_actions[5].put = P2A(DIVFN);
     SBIPTB_actions[5].act = AC_GOTO;
     SBIPTB_actions[5].go = &TBLKTB_st;
-    SBIPTB_actions[6].put = P2A(&BIATFN);
+    SBIPTB_actions[6].put = P2A(BIATFN);
     SBIPTB_actions[6].act = AC_GOTO;
     SBIPTB_actions[6].go = &TBLKTB_st;
-    SBIPTB_actions[7].put = P2A(&BIPDFN);
+    SBIPTB_actions[7].put = P2A(BIPDFN);
     SBIPTB_actions[7].act = AC_GOTO;
     SBIPTB_actions[7].go = &TBLKTB_st;
-    SBIPTB_actions[8].put = P2A(&BIPRFN);
+    SBIPTB_actions[8].put = P2A(BIPRFN);
     SBIPTB_actions[8].act = AC_GOTO;
     SBIPTB_actions[8].go = &TBLKTB_st;
-    SBIPTB_actions[9].put = P2A(&EXPFN);
+    SBIPTB_actions[9].put = P2A(EXPFN);
     SBIPTB_actions[9].act = AC_GOTO;
     SBIPTB_actions[9].go = &TBLKTB_st;
-    SBIPTB_actions[10].put = P2A(&ORFN);
+    SBIPTB_actions[10].put = P2A(ORFN);
     SBIPTB_actions[10].act = AC_GOTO;
     SBIPTB_actions[10].go = &TBLKTB_st;
-    SBIPTB_actions[11].put = P2A(&BIAMFN);
+    SBIPTB_actions[11].put = P2A(BIAMFN);
     SBIPTB_actions[11].act = AC_GOTO;
     SBIPTB_actions[11].go = &TBLKTB_st;
-    SBIPTB_actions[12].put = P2A(&BINGFN);
+    SBIPTB_actions[12].put = P2A(BINGFN);
     SBIPTB_actions[12].act = AC_GOTO;
     SBIPTB_actions[12].go = &TBLKTB_st;
     SBIPTB_actions[13].put = P2A(&BISNFN);
@@ -1036,43 +1100,43 @@ static void init_actions(void)
     SBIPTB_actions[14].act = AC_GOTO;
     SBIPTB_actions[14].go = &TBLKTB_st;
     SBIPTB_actions[15].act = AC_CONTIN; /* HW-5: arg3=arg4 in all STREAM calls */
-    BSBIPTB_actions[0].put = P2A(&ADDFN);
+    BSBIPTB_actions[0].put = P2A(ADDFN);
     BSBIPTB_actions[0].act = AC_GOTO;
     BSBIPTB_actions[0].go = &TBLKTB_st;
-    BSBIPTB_actions[1].put = P2A(&SUBFN);
+    BSBIPTB_actions[1].put = P2A(SUBFN);
     BSBIPTB_actions[1].act = AC_GOTO;
     BSBIPTB_actions[1].go = &TBLKTB_st;
-    BSBIPTB_actions[2].put = P2A(&NAMFN);
+    BSBIPTB_actions[2].put = P2A(NAMFN);
     BSBIPTB_actions[2].act = AC_GOTO;
     BSBIPTB_actions[2].go = &TBLKTB_st;
-    BSBIPTB_actions[3].put = P2A(&DOLFN);
+    BSBIPTB_actions[3].put = P2A(DOLFN);
     BSBIPTB_actions[3].act = AC_GOTO;
     BSBIPTB_actions[3].go = &TBLKTB_st;
-    BSBIPTB_actions[4].put = P2A(&MPYFN);
+    BSBIPTB_actions[4].put = P2A(MPYFN);
     BSBIPTB_actions[4].act = AC_GOTO;
     BSBIPTB_actions[4].go = &STARTB_st;
-    BSBIPTB_actions[5].put = P2A(&DIVFN);
+    BSBIPTB_actions[5].put = P2A(DIVFN);
     BSBIPTB_actions[5].act = AC_GOTO;
     BSBIPTB_actions[5].go = &TBLKTB_st;
-    BSBIPTB_actions[6].put = P2A(&BIATFN);
+    BSBIPTB_actions[6].put = P2A(BIATFN);
     BSBIPTB_actions[6].act = AC_GOTO;
     BSBIPTB_actions[6].go = &TBLKTB_st;
-    BSBIPTB_actions[7].put = P2A(&BIBDFN);
+    BSBIPTB_actions[7].put = P2A(BIBDFN);
     BSBIPTB_actions[7].act = AC_GOTO;
     BSBIPTB_actions[7].go = &TBLKTB_st;
-    BSBIPTB_actions[8].put = P2A(&BIBRFN);
+    BSBIPTB_actions[8].put = P2A(BIBRFN);
     BSBIPTB_actions[8].act = AC_GOTO;
     BSBIPTB_actions[8].go = &TBLKTB_st;
-    BSBIPTB_actions[9].put = P2A(&EXPFN);
+    BSBIPTB_actions[9].put = P2A(EXPFN);
     BSBIPTB_actions[9].act = AC_GOTO;
     BSBIPTB_actions[9].go = &TBLKTB_st;
-    BSBIPTB_actions[10].put = P2A(&ORFN);
+    BSBIPTB_actions[10].put = P2A(ORFN);
     BSBIPTB_actions[10].act = AC_GOTO;
     BSBIPTB_actions[10].go = &TBLKTB_st;
-    BSBIPTB_actions[11].put = P2A(&BIAMFN);
+    BSBIPTB_actions[11].put = P2A(BIAMFN);
     BSBIPTB_actions[11].act = AC_GOTO;
     BSBIPTB_actions[11].go = &TBLKTB_st;
-    BSBIPTB_actions[12].put = P2A(&BINGFN);
+    BSBIPTB_actions[12].put = P2A(BINGFN);
     BSBIPTB_actions[12].act = AC_GOTO;
     BSBIPTB_actions[12].go = &TBLKTB_st;
     BSBIPTB_actions[13].put = P2A(&BISNFN);
@@ -1083,87 +1147,87 @@ static void init_actions(void)
     BSBIPTB_actions[14].go = &TBLKTB_st;
     BSBIPTB_actions[15].act = AC_CONTIN; /* HW-7: arg3=arg4 */
     /* BBIOPTB */
-    BBIOPTB_actions[0].put = P2A(&ADDFN);
+    BBIOPTB_actions[0].put = P2A(ADDFN);
     BBIOPTB_actions[0].act = AC_GOTO;
     BBIOPTB_actions[0].go = &TBLKTB_st;
-    BBIOPTB_actions[1].put = P2A(&SUBFN);
+    BBIOPTB_actions[1].put = P2A(SUBFN);
     BBIOPTB_actions[1].act = AC_GOTO;
     BBIOPTB_actions[1].go = &TBLKTB_st;
-    BBIOPTB_actions[2].put = P2A(&NAMFN);
+    BBIOPTB_actions[2].put = P2A(NAMFN);
     BBIOPTB_actions[2].act = AC_GOTO;
     BBIOPTB_actions[2].go = &TBLKTB_st;
-    BBIOPTB_actions[3].put = P2A(&DOLFN);
+    BBIOPTB_actions[3].put = P2A(DOLFN);
     BBIOPTB_actions[3].act = AC_GOTO;
     BBIOPTB_actions[3].go = &TBLKTB_st;
-    BBIOPTB_actions[4].put = P2A(&MPYFN);
+    BBIOPTB_actions[4].put = P2A(MPYFN);
     BBIOPTB_actions[4].act = AC_GOTO;
     BBIOPTB_actions[4].go = &STARTB_st;
-    BBIOPTB_actions[5].put = P2A(&DIVFN);
+    BBIOPTB_actions[5].put = P2A(DIVFN);
     BBIOPTB_actions[5].act = AC_GOTO;
     BBIOPTB_actions[5].go = &TBLKTB_st;
-    BBIOPTB_actions[6].put = P2A(&BIATFN);
+    BBIOPTB_actions[6].put = P2A(BIATFN);
     BBIOPTB_actions[6].act = AC_GOTO;
     BBIOPTB_actions[6].go = &TBLKTB_st;
-    BBIOPTB_actions[7].put = P2A(&BIBDFN);
+    BBIOPTB_actions[7].put = P2A(BIBDFN);
     BBIOPTB_actions[7].act = AC_GOTO;
     BBIOPTB_actions[7].go = &TBLKTB_st;
-    BBIOPTB_actions[8].put = P2A(&BIBRFN);
+    BBIOPTB_actions[8].put = P2A(BIBRFN);
     BBIOPTB_actions[8].act = AC_GOTO;
     BBIOPTB_actions[8].go = &TBLKTB_st;
-    BBIOPTB_actions[9].put = P2A(&EXPFN);
+    BBIOPTB_actions[9].put = P2A(EXPFN);
     BBIOPTB_actions[9].act = AC_GOTO;
     BBIOPTB_actions[9].go = &TBLKTB_st;
-    BBIOPTB_actions[10].put = P2A(&ORFN);
+    BBIOPTB_actions[10].put = P2A(ORFN);
     BBIOPTB_actions[10].act = AC_GOTO;
     BBIOPTB_actions[10].go = &TBLKTB_st;
-    BBIOPTB_actions[11].put = P2A(&BIAMFN);
+    BBIOPTB_actions[11].put = P2A(BIAMFN);
     BBIOPTB_actions[11].act = AC_GOTO;
     BBIOPTB_actions[11].go = &TBLKTB_st;
-    BBIOPTB_actions[12].put = P2A(&BINGFN);
+    BBIOPTB_actions[12].put = P2A(BINGFN);
     BBIOPTB_actions[12].act = AC_GOTO;
     BBIOPTB_actions[12].go = &TBLKTB_st;
-    BBIOPTB_actions[13].put = P2A(&BIQSFN);
+    BBIOPTB_actions[13].put = P2A(BIQSFN);
     BBIOPTB_actions[13].act = AC_GOTO;
     BBIOPTB_actions[13].go = &TBLKTB_st;
     BBIOPTB_actions[14].act = AC_CONTIN; /* HW-6: arg3=arg4 */
     /* BSBIPTB */
-    BSBIPTB_actions[0].put = P2A(&ADDFN);
+    BSBIPTB_actions[0].put = P2A(ADDFN);
     BSBIPTB_actions[0].act = AC_GOTO;
     BSBIPTB_actions[0].go = &TBLKTB_st;
-    BSBIPTB_actions[1].put = P2A(&SUBFN);
+    BSBIPTB_actions[1].put = P2A(SUBFN);
     BSBIPTB_actions[1].act = AC_GOTO;
     BSBIPTB_actions[1].go = &TBLKTB_st;
-    BSBIPTB_actions[2].put = P2A(&NAMFN);
+    BSBIPTB_actions[2].put = P2A(NAMFN);
     BSBIPTB_actions[2].act = AC_GOTO;
     BSBIPTB_actions[2].go = &TBLKTB_st;
-    BSBIPTB_actions[3].put = P2A(&DOLFN);
+    BSBIPTB_actions[3].put = P2A(DOLFN);
     BSBIPTB_actions[3].act = AC_GOTO;
     BSBIPTB_actions[3].go = &TBLKTB_st;
-    BSBIPTB_actions[4].put = P2A(&MPYFN);
+    BSBIPTB_actions[4].put = P2A(MPYFN);
     BSBIPTB_actions[4].act = AC_GOTO;
     BSBIPTB_actions[4].go = &STARTB_st;
-    BSBIPTB_actions[5].put = P2A(&DIVFN);
+    BSBIPTB_actions[5].put = P2A(DIVFN);
     BSBIPTB_actions[5].act = AC_GOTO;
     BSBIPTB_actions[5].go = &TBLKTB_st;
-    BSBIPTB_actions[6].put = P2A(&BIATFN);
+    BSBIPTB_actions[6].put = P2A(BIATFN);
     BSBIPTB_actions[6].act = AC_GOTO;
     BSBIPTB_actions[6].go = &TBLKTB_st;
-    BSBIPTB_actions[7].put = P2A(&BIBDFN);
+    BSBIPTB_actions[7].put = P2A(BIBDFN);
     BSBIPTB_actions[7].act = AC_GOTO;
     BSBIPTB_actions[7].go = &TBLKTB_st;
-    BSBIPTB_actions[8].put = P2A(&BIBRFN);
+    BSBIPTB_actions[8].put = P2A(BIBRFN);
     BSBIPTB_actions[8].act = AC_GOTO;
     BSBIPTB_actions[8].go = &TBLKTB_st;
-    BSBIPTB_actions[9].put = P2A(&EXPFN);
+    BSBIPTB_actions[9].put = P2A(EXPFN);
     BSBIPTB_actions[9].act = AC_GOTO;
     BSBIPTB_actions[9].go = &TBLKTB_st;
-    BSBIPTB_actions[10].put = P2A(&ORFN);
+    BSBIPTB_actions[10].put = P2A(ORFN);
     BSBIPTB_actions[10].act = AC_GOTO;
     BSBIPTB_actions[10].go = &TBLKTB_st;
-    BSBIPTB_actions[11].put = P2A(&BIAMFN);
+    BSBIPTB_actions[11].put = P2A(BIAMFN);
     BSBIPTB_actions[11].act = AC_GOTO;
     BSBIPTB_actions[11].go = &TBLKTB_st;
-    BSBIPTB_actions[12].put = P2A(&BINGFN);
+    BSBIPTB_actions[12].put = P2A(BINGFN);
     BSBIPTB_actions[12].act = AC_GOTO;
     BSBIPTB_actions[12].go = &TBLKTB_st;
     BSBIPTB_actions[13].put = P2A(&BISNFN);
@@ -1200,21 +1264,21 @@ static void reg_tbl(DESCR_t *d, struct syntab *st)
 void init_syntab(void)
 {
     init_actions();
-    BIOPTB_actions[ 0].put = P2A(&ADDFN); /* Bind operator fn arena offsets into BIOPTB/UNOPTB put fields */
-    BIOPTB_actions[ 1].put = P2A(&SUBFN);
-    BIOPTB_actions[ 2].put = P2A(&NAMFN);
-    BIOPTB_actions[ 3].put = P2A(&DOLFN);
-    BIOPTB_actions[ 4].put = P2A(&MPYFN);
-    BIOPTB_actions[ 5].put = P2A(&DIVFN);
-    BIOPTB_actions[ 6].put = P2A(&BIATFN);
-    BIOPTB_actions[ 7].put = P2A(&BIPDFN);
-    BIOPTB_actions[ 8].put = P2A(&BIPRFN);
-    BIOPTB_actions[ 9].put = P2A(&EXPFN);
-    BIOPTB_actions[10].put = P2A(&ORFN);
-    BIOPTB_actions[11].put = P2A(&BIAMFN);
-    BIOPTB_actions[12].put = P2A(&BINGFN);
-    BIOPTB_actions[13].put = P2A(&BIQSFN);
-    STARTB_actions[1].put = P2A(&EXPFN);
+    BIOPTB_actions[ 0].put = P2A(ADDFN); /* Bind operator fn arena offsets into BIOPTB/UNOPTB put fields */
+    BIOPTB_actions[ 1].put = P2A(SUBFN);
+    BIOPTB_actions[ 2].put = P2A(NAMFN);
+    BIOPTB_actions[ 3].put = P2A(DOLFN);
+    BIOPTB_actions[ 4].put = P2A(MPYFN);
+    BIOPTB_actions[ 5].put = P2A(DIVFN);
+    BIOPTB_actions[ 6].put = P2A(BIATFN);
+    BIOPTB_actions[ 7].put = P2A(BIPDFN);
+    BIOPTB_actions[ 8].put = P2A(BIPRFN);
+    BIOPTB_actions[ 9].put = P2A(EXPFN);
+    BIOPTB_actions[10].put = P2A(ORFN);
+    BIOPTB_actions[11].put = P2A(BIAMFN);
+    BIOPTB_actions[12].put = P2A(BINGFN);
+    BIOPTB_actions[13].put = P2A(BIQSFN);
+    STARTB_actions[1].put = P2A(EXPFN);
     UNOPTB_actions[ 0].put = P2A(&PLSFN);
     UNOPTB_actions[ 1].put = P2A(&MNSFN);
     UNOPTB_actions[ 2].put = P2A(&DOTFN);
