@@ -463,39 +463,39 @@ struct syntab BSBIPTB_st = { "BSBIPTB", {
 /* ── 4. OPERATOR-FN DESCR GLOBALS (v311.sil §24 lines 11629–11720) ──── */
 /* FNC-flagged function descriptors; V = arity; A = filled by data_init */
 
-DESCR_t ADDFN  = {{.i=0}, 0x40, 2};
-DESCR_t BIAMFN = {{.i=0}, 0x40, 2};
-DESCR_t BIATFN = {{.i=0}, 0x40, 2};
-DESCR_t BINGFN = {{.i=0}, 0x40, 2};
-DESCR_t BIPDFN = {{.i=0}, 0x40, 2};
-DESCR_t BIPRFN = {{.i=0}, 0x40, 2};
-DESCR_t BIBDFN = {{.i=0}, 0x40, 2};
-DESCR_t BIBRFN = {{.i=0}, 0x40, 2};
-DESCR_t BIQSFN = {{.i=0}, 0x40, 2};
-DESCR_t BIEQFN = {{.i=0}, 0x40, 2};
-DESCR_t BISNFN = {{.i=0}, 0x40, 2};
-DESCR_t BISRFN = {{.i=0}, 0x40, 2};
-DESCR_t DIVFN  = {{.i=0}, 0x40, 2};
-DESCR_t DOLFN  = {{.i=0}, 0x40, 2};
-DESCR_t EXPFN  = {{.i=0}, 0x40, 2};
-DESCR_t MPYFN  = {{.i=0}, 0x40, 2};
-DESCR_t NAMFN  = {{.i=0}, 0x40, 2};
-DESCR_t ORFN   = {{.i=0}, 0x40, 2};
-DESCR_t SUBFN  = {{.i=0}, 0x40, 2};
-DESCR_t AROWFN = {{.i=0}, 0x40, 1};
-DESCR_t ATFN   = {{.i=0}, 0x40, 1};
-DESCR_t BARFN  = {{.i=0}, 0x40, 1};
-DESCR_t DOTFN  = {{.i=0}, 0x40, 1};
-DESCR_t INDFN  = {{.i=0}, 0x40, 1};
-DESCR_t KEYFN  = {{.i=0}, 0x40, 1};
-DESCR_t MNSFN  = {{.i=0}, 0x40, 1};
-DESCR_t NEGFN  = {{.i=0}, 0x40, 1};
-DESCR_t PDFN   = {{.i=0}, 0x40, 1};
-DESCR_t PLSFN  = {{.i=0}, 0x40, 1};
-DESCR_t PRFN   = {{.i=0}, 0x40, 1};
-DESCR_t QUESFN = {{.i=0}, 0x40, 1};
-DESCR_t SLHFN  = {{.i=0}, 0x40, 1};
-DESCR_t STRFN  = {{.i=0}, 0x40, 1};
+DESCR_t ADDFN  = {{.i=0}, 0, 2};
+DESCR_t BIAMFN = {{.i=0}, 1, 0};
+DESCR_t BIATFN = {{.i=0}, 1, 0};
+DESCR_t BINGFN = {{.i=0}, 1, 0};
+DESCR_t BIPDFN = {{.i=0}, 1, 0};
+DESCR_t BIPRFN = {{.i=0}, 1, 0};
+DESCR_t BIBDFN = {{.i=0}, 1, 0};
+DESCR_t BIBRFN = {{.i=0}, 1, 0};
+DESCR_t BIQSFN = {{.i=0}, 1, 0};
+DESCR_t BIEQFN = {{.i=0}, 0, 2};
+DESCR_t BISNFN = {{.i=0}, 0, 2};
+DESCR_t BISRFN = {{.i=0}, 0, 2};
+DESCR_t DIVFN  = {{.i=0}, 0, 2};
+DESCR_t DOLFN  = {{.i=0}, 0, 2};
+DESCR_t EXPFN  = {{.i=0}, 0, 2};
+DESCR_t MPYFN  = {{.i=0}, 0, 2};
+DESCR_t NAMFN  = {{.i=0}, 0, 2};
+DESCR_t ORFN   = {{.i=0}, 0, 2};
+DESCR_t SUBFN  = {{.i=0}, 0, 2};
+DESCR_t AROWFN = {{.i=0}, 1, 0};
+DESCR_t ATFN   = {{.i=0}, 0, 1};
+DESCR_t BARFN  = {{.i=0}, 1, 0};
+DESCR_t DOTFN  = {{.i=0}, 0, 1};
+DESCR_t INDFN  = {{.i=0}, 0, 1};
+DESCR_t KEYFN  = {{.i=0}, 0, 1};
+DESCR_t MNSFN  = {{.i=0}, 0, 1};
+DESCR_t NEGFN  = {{.i=0}, 0, 1};
+DESCR_t PDFN   = {{.i=0}, 1, 0};
+DESCR_t PLSFN  = {{.i=0}, 0, 1};
+DESCR_t PRFN   = {{.i=0}, 1, 0};
+DESCR_t QUESFN = {{.i=0}, 0, 1};
+DESCR_t SLHFN  = {{.i=0}, 1, 0};
+DESCR_t STRFN  = {{.i=0}, 0, 1};
 
 /* ── 5. OTHER MISSING DATA GLOBALS ───────────────────────────────────── */
 
