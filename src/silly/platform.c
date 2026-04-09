@@ -1260,6 +1260,34 @@ void init_syntab(void)
             CERRSP.f = 0;
         }
     }
+
+    /* Trace pair-list self-ptrs [v311.sil §24: each DESCR X,TTL+MARK,2*DESCR] */
+    TVALPL[0].a.i = P2A(TVALPL);
+    TLABPL[0].a.i = P2A(TLABPL);
+    TFENPL[0].a.i = P2A(TFENPL);
+    TFEXPL[0].a.i = P2A(TFEXPL);
+    TKEYPL[0].a.i = P2A(TKEYPL);
+
+    /* Primitive pattern node self-ptrs + fn-code slot ptrs [v311.sil §24] */
+    /* FAILPT: [0]=self-ptr, [1].a=P2A(&SALFFN) */
+    FAILPT[0].a.i = P2A(FAILPT);
+    FAILPT[1].a.i = P2A(&SALFFN);
+    /* FNCEPT: [0]=self-ptr, [1].a=P2A(&FNCEFN) */
+    FNCEPT[0].a.i = P2A(FNCEPT);
+    FNCEPT[1].a.i = P2A(&FNCEFN);
+    /* REMPT: [0]=self-ptr, [1].a=P2A(&RTBFN) */
+    REMPT[0].a.i = P2A(REMPT);
+    REMPT[1].a.i = P2A(&RTBFN);
+    /* STARPT: [0]=self-ptr, [1].a=P2A(&STARFN), [5].a=P2A(&SCOKFN), [8].a=P2A(&DSARFN) */
+    STARPT[0].a.i = P2A(STARPT);
+    STARPT[1].a.i = P2A(&STARFN);
+    STARPT[5].a.i = P2A(&SCOKFN);
+    STARPT[8].a.i = P2A(&DSARFN);
+    /* SUCCPT: [0]=self-ptr, [1].a=P2A(&SUCFFN) */
+    SUCCPT[0].a.i = P2A(SUCCPT);
+    SUCCPT[1].a.i = P2A(&SUCFFN);
+    /* STRPAT: arena offset of STARPT template (used by SJSR/ASGN for *X wrapping) */
+    STRPAT.a.i = P2A(STARPT);
 }
 
 /*====================================================================================================================*/
@@ -1743,8 +1771,62 @@ int deql_fn(DESCR_t a, DESCR_t b)
     return (D_A(a) == D_A(b) && a.f == b.f && a.v == b.v);
 }
 
+/* ── Scan function-code descriptors [v311.sil §24: DESCR Xfoo,0,narg]       */
+/* A-field = integer opcode (XSUCF etc); flag=0; v=arg count.               */
+DESCR_t SUCFFN = {.a={.i=XSUCF}, .f=0, .v=2}; /* SUCCEED              */
+DESCR_t SALFFN = {.a={.i=XSALF}, .f=0, .v=2}; /* SALF link            */
+DESCR_t SCOKFN = {.a={.i=XSCOK}, .f=0, .v=2}; /* scan-ok continuation */
+DESCR_t STARFN = {.a={.i=XSTAR}, .f=0, .v=3}; /* *X expression        */
+DESCR_t FNCEFN = {.a={.i=XFNCE}, .f=0, .v=2}; /* FENCE                */
+DESCR_t RTBFN  = {.a={.i=XRTB},  .f=0, .v=3}; /* RTAB(n)              */
+DESCR_t DSARFN = {.a={.i=XDSAR}, .f=0, .v=3}; /* deferred expression  */
+
+/* ── Primitive pattern nodes [v311.sil §24] ──────────────────────────────── */
+/* Slot[0]: self-ptr (A filled by init_syntab) / TTL|MARK / size-in-bytes    */
+/* Slot[1]: fn-code ptr (A = P2A(&XxxFN) filled by init_syntab) / FNC / 2-3 */
+/* FAILPT — FAIL: 3*DESCR body (4 slots total)                               */
+DESCR_t FAILPT[4] = {
+    {.a={.i=0}, .f=TTL|MARK, .v=3*DESCR},  /* [0] hdr: self-ptr filled at init */
+    {.a={.i=0}, .f=FNC,      .v=2},         /* [1] SALFFN ptr filled at init    */
+    {0}, {0}
+};
+/* FNCEPT — FENCE: 3*DESCR body (4 slots total)                              */
+DESCR_t FNCEPT[4] = {
+    {.a={.i=0}, .f=TTL|MARK, .v=3*DESCR},  /* [0] hdr: self-ptr filled at init */
+    {.a={.i=0}, .f=FNC,      .v=2},         /* [1] FNCEFN ptr filled at init    */
+    {0}, {0}
+};
+/* REMPT — RTAB: 4*DESCR body (5 slots total); slot[4].v=I (integer type)    */
+DESCR_t REMPT[5] = {
+    {.a={.i=0}, .f=TTL|MARK, .v=4*DESCR},  /* [0] hdr: self-ptr filled at init */
+    {.a={.i=0}, .f=FNC,      .v=3},         /* [1] RTBFN ptr filled at init     */
+    {0}, {0},
+    {.a={.i=0}, .f=0,        .v=I}          /* [4] integer-type slot            */
+};
+/* STARPT — * expression: 11*DESCR body (12 slots total)                     */
+/* Internal offsets are relative to STARPT base (oracle uses ptr arithmetic)  */
+DESCR_t STARPT[12] = {
+    {.a={.i=0}, .f=TTL|MARK, .v=11*DESCR}, /* [0]  hdr: self-ptr at init       */
+    {.a={.i=0}, .f=FNC,      .v=3},         /* [1]  STARFN ptr at init          */
+    {.a={.i=0}, .f=0,        .v=4*DESCR},   /* [2]  nval offset = 4*DESCR       */
+    {.a={.i=1}, .f=0,        .v=0},          /* [3]  counter = 1                 */
+    {0},                                     /* [4]  (zero)                      */
+    {.a={.i=0}, .f=FNC,      .v=2},         /* [5]  SCOKFN ptr at init          */
+    {.a={.i=0}, .f=0,        .v=7*DESCR},   /* [6]  success-link offset 7*DESCR */
+    {0},                                     /* [7]  (zero)                      */
+    {.a={.i=0}, .f=FNC,      .v=3},         /* [8]  DSARFN ptr at init          */
+    {.a={.i=0}, .f=0,        .v=4*DESCR},   /* [9]  nval offset = 4*DESCR       */
+    {0}, {0}                                 /* [10][11] (zero)                  */
+};
+/* SUCCPT — SUCCEED: 3*DESCR body (4 slots total)                            */
+DESCR_t SUCCPT[4] = {
+    {.a={.i=0}, .f=TTL|MARK, .v=3*DESCR},  /* [0] hdr: self-ptr filled at init */
+    {.a={.i=0}, .f=FNC,      .v=2},         /* [1] SUCFFN ptr filled at init    */
+    {0}, {0}
+};
+
 /* ── Trace pair lists — 3-slot each (header + 2 zero slots) [v311.sil §24] */
-/* A-field (self-ptr) filled by data_init(); F=TTL|MARK; V=2*DESCR          */
+/* A-field (self-ptr) filled by init_syntab(); F=TTL|MARK; V=2*DESCR        */
 DESCR_t TVALPL[3] = { {.a={.i=0},.f=TTL|MARK,.v=2*DESCR}, {0}, {0} };
 DESCR_t TLABPL[3] = { {.a={.i=0},.f=TTL|MARK,.v=2*DESCR}, {0}, {0} };
 DESCR_t TFENPL[3] = { {.a={.i=0},.f=TTL|MARK,.v=2*DESCR}, {0}, {0} };

@@ -284,6 +284,20 @@ extern DESCR_t OTLIST;    /* output association pair list                 */
 extern DESCR_t OTSATL;    /* output block list                            */
 extern DESCR_t INSATL;    /* input block list                             */
 extern DESCR_t TRLIST;    /* trace type pair list                         */
+/* Scan function-code descriptors (v311.sil §24 — flag=0, v=arity, a=opcode)  */
+extern DESCR_t SUCFFN;    /* SUCCEED scan fn (opcode XSUCF=36)            */
+extern DESCR_t SALFFN;    /* SALF scan fn   (opcode XSALF=28)             */
+extern DESCR_t SCOKFN;    /* SCOK scan fn   (opcode XSCOK=29)             */
+extern DESCR_t STARFN;    /* * expr scan fn (opcode XSTAR=32)             */
+extern DESCR_t FNCEFN;    /* FENCE scan fn  (opcode XFNCE=35)             */
+extern DESCR_t RTBFN;     /* RTAB scan fn   (opcode XRTB=26)              */
+extern DESCR_t DSARFN;    /* deferred-expr scan fn (opcode XDSAR=14)      */
+/* Primitive pattern nodes (v311.sil §24 — static arena blocks)             */
+extern DESCR_t FAILPT[4];    /* FAIL pattern node  (3*DESCR body)            */
+extern DESCR_t FNCEPT[4];    /* FENCE pattern node (3*DESCR body)            */
+extern DESCR_t REMPT[5];     /* RTAB pattern node  (4*DESCR body)            */
+extern DESCR_t STARPT[12];   /* * expression pattern node (11*DESCR body)    */
+extern DESCR_t SUCCPT[4];    /* SUCCEED pattern node (3*DESCR body)          */
 extern DESCR_t TVALPL[3];    /* value trace pair list                        */
 extern DESCR_t TLABPL[3];    /* label trace pair list                        */
 extern DESCR_t TFENPL[3];    /* call trace pair list                         */
