@@ -1663,7 +1663,7 @@ YY_RULE_SETUP
 case 86:
 YY_RULE_SETUP
 #line 326 "snobol4.l"
-{ /* skip whitespace in goto field */ }
+{ return T_CONCAT; } /* concat between atoms in $(expr) */
 	YY_BREAK
 case 87:
 *yy_cp = yyg->yy_hold_char; /* undo effects of setting up yytext */

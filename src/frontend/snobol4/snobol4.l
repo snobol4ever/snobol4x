@@ -322,7 +322,7 @@ G       ({WS}|{CONT})*
      * Tokens emitted from GT: T_GOTO_S, T_GOTO_F, T_IDENT, T_FUNCTION,
      * T_LPAREN, T_RPAREN, T_LANGLE, T_RANGLE, T_STR, T_STMT_END. */
 
-<GT>[ \t]+              { /* skip whitespace in goto field */ }
+<GT>[ \t]+              { return T_CONCAT; } /* concat between atoms in $(expr) */
 <GT>[Ss]/"("            { return T_GOTO_S; }
 <GT>[Ss]/"<"            { return T_GOTO_S; }
 <GT>[Ff]/"("            { return T_GOTO_F; }

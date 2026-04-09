@@ -81,12 +81,12 @@ struct EXPR_t {
 
 /* ---- goto ---- */
 typedef struct {
-    char *onsuccess;
-    char *onfailure;
-    char *uncond;
-    char *computed_success_expr;
-    char *computed_failure_expr;
-    char *computed_uncond_expr;
+    char   *onsuccess;
+    char   *onfailure;
+    char   *uncond;
+    EXPR_t *computed_success_expr;
+    EXPR_t *computed_failure_expr;
+    EXPR_t *computed_uncond_expr;
 } SnoGoto;
 
 /* Forward declaration so STMT_t can reference EXPR_t* before the full

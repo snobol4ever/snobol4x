@@ -39,18 +39,21 @@ static EXPR_t  *parse_expr(Lex*);
 %type <expr> expr0 expr2 expr3 expr4 expr5 expr6 expr7 expr8
 %type <expr> expr9 expr10 expr11 expr12 expr13 expr14 expr15 expr17
 %type <expr> exprlist exprlist_ne opt_subject opt_pattern opt_repl
-%type <tok>  opt_label
 %type <go>   opt_goto goto_label_expr
+%type <expr> goto_expr goto_atom
 
 %%
 top        : program                                                                                { }
+           | /* empty */                                                                            { }
            ;
-program    : program stmt | stmt | /* empty */                                                     ;
-stmt       : opt_label opt_subject opt_repl opt_goto T_STMT_END                      { sno4_stmt_commit_go(yyparse_param,$1,$2,NULL,($3!=NULL),$3,$4); }
-           | opt_label expr2 T_MATCH opt_pattern opt_repl opt_goto T_STMT_END        { EXPR_t*sc=expr_binary(E_SCAN,$2,$4); sno4_stmt_commit_go(yyparse_param,$1,sc,NULL,($5!=NULL),$5,$6); }
+program    : program stmt | stmt                                                                    ;
+stmt       : T_LABEL opt_subject opt_repl opt_goto T_STMT_END                        { Token l=$1; sno4_stmt_commit_go(yyparse_param,l,$2,NULL,($3!=NULL),$3,$4); }
+           | T_LABEL expr2 T_MATCH opt_pattern opt_repl opt_goto T_STMT_END          { Token l=$1; EXPR_t*sc=expr_binary(E_SCAN,$2,$4); sno4_stmt_commit_go(yyparse_param,l,sc,NULL,($5!=NULL),$5,$6); }
+           | unlabeled_stmt
            ;
-opt_label  : T_LABEL                                                                              { $$=$1; }
-           | /* empty */                                                                           { $$.sval=NULL;$$.ival=0;$$.lineno=0;$$.kind=0; }
+unlabeled_stmt
+           : opt_subject opt_repl opt_goto T_STMT_END                                { Token l; l.sval=NULL;l.ival=0;l.lineno=0;l.kind=0; sno4_stmt_commit_go(yyparse_param,l,$1,NULL,($2!=NULL),$2,$3); }
+           | expr2 T_MATCH opt_pattern opt_repl opt_goto T_STMT_END                  { Token l; l.sval=NULL;l.ival=0;l.lineno=0;l.kind=0; EXPR_t*sc=expr_binary(E_SCAN,$1,$3); sno4_stmt_commit_go(yyparse_param,l,sc,NULL,($4!=NULL),$4,$5); }
            ;
 opt_subject: expr3                                                                                { $$=$1; }
            | /* empty */                                                                           { $$=NULL; }
@@ -63,12 +66,25 @@ opt_repl   : T_ASSIGNMENT expr0                                                 
            | /* empty */                                                                           { $$=NULL; }
            ;
 
+/* goto_atom / goto_expr: mini expression inside $(…) in a goto field.
+ * Only atoms that GT state can lex: T_STR, T_IDENT, T_FUNCTION, T_END.
+ * Implicit concat via T_CONCAT (whitespace between atoms). */
+goto_atom  : T_STR   { EXPR_t*e=expr_new(E_QLIT);  e->sval=(char*)$1.sval; $$=e; }
+           | T_IDENT  { EXPR_t*e=expr_new(E_VAR);   e->sval=(char*)$1.sval; $$=e; }
+           | T_FUNCTION { EXPR_t*e=expr_new(E_VAR); e->sval=(char*)$1.sval; $$=e; }
+           | T_END    { EXPR_t*e=expr_new(E_VAR);   e->sval=(char*)$1.sval; $$=e; }
+           ;
+goto_expr  : goto_atom                          { $$=$1; }
+           | goto_expr T_CONCAT goto_atom       { if($1->kind==E_SEQ){expr_add_child($1,$3);$$=$1;}else{EXPR_t*s=expr_new(E_SEQ);expr_add_child(s,$1);expr_add_child(s,$3);$$=s;} }
+           ;
+
 /* goto_label_expr: T_GOTO_LPAREN/RPAREN are exclusive to GT state — no S/R conflict */
 goto_label_expr
            : T_GOTO_LPAREN T_IDENT T_GOTO_RPAREN              { $$=sgoto_new(); $$->uncond=strdup($2.sval); }
            | T_GOTO_LPAREN T_END T_GOTO_RPAREN                { $$=sgoto_new(); $$->uncond=strdup($2.sval); }
            | T_GOTO_LPAREN T_FUNCTION T_GOTO_RPAREN           { $$=sgoto_new(); $$->uncond=strdup($2.sval); }
            | T_GOTO_LPAREN T_UN_DOLLAR_SIGN T_IDENT T_GOTO_RPAREN { $$=sgoto_new(); char buf[512]; snprintf(buf,sizeof buf,"$%s",$3.sval); $$->uncond=strdup(buf); }
+           | T_GOTO_LPAREN T_UN_DOLLAR_SIGN T_GOTO_LPAREN goto_expr T_GOTO_RPAREN T_GOTO_RPAREN { $$=sgoto_new(); $$->computed_uncond_expr=($4); }
            ;
 
 opt_goto   : goto_label_expr                                  { $$=$1; }
