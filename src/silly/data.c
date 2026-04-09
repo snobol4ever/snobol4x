@@ -552,6 +552,9 @@ void data_init(void)
     /* OBEND and OBPTR set by arena_init() — OBLIST now lives in arena */
     OUTBLK.a.i = P2A(&OUTPUT) - DESCR; /* OUTBLK = OUTPUT - DESCR  (pointer arithmetic on unit DESCRs) */
     ERRBLK.a.i = P2A(&PUNCH) - DESCR;
+    OPTBL.a.i  = P2A(&OPTBL);          /* OPTBL: self-referential table header (oracle: A=OPTBL) */
+    OPTBL.f    = TTL|MARK;              /* oracle: F=TTL+MARK */
+    OPTBL.v    = 0;                     /* oracle V=OPTBND-OPTBL-DESCR; Silly: non-contiguous, use 0 */
 #define INIT_SP(sp, lit) (sp).a = P2A(lit); (sp).o = 0; (sp).l = (int32_t)(sizeof(lit)-1) /* Stacks — allocate from arena (done by arena_init before us)  pdl_stack and stack are arena-allocated; set arena offsets  Actual allocation is in arena_init(); we just record the pointers  Control-card command SPEC_t globals — backed by static literals */
     INIT_SP(UNLSP_sp, ctllit_UNLIST);
     INIT_SP(LISTSP_sp, ctllit_LIST);
