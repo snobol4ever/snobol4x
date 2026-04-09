@@ -466,6 +466,17 @@ const char LSLNSP[] = "LASTLINE";    const char ALNMSP[] = "ALPHABET";
 SPEC_t ALPHSP, EXDTSP;
 const char CRDFSP[] = "(80A1)";
 const char OUTPSP[] = "(1X,132A1)";
+/* F1SP-F28SP: graphics/format field name strings [v311.sil §24 lines 11921-11948] */
+const char F1SP[]="PRINT"; const char F2SP[]="HOR";      const char F3SP[]="VER";
+const char F4SP[]="FRONT"; const char F5SP[]="BOX";      const char F6SP[]="PAR";
+const char F7SP[]="SER";   const char F8SP[]="OVY";      const char F9SP[]="HOR_REG";
+const char F10SP[]="VER_REG"; const char F11SP[]="NORM_REG"; const char F12SP[]="IT";
+const char F13SP[]="REP";  const char F14SP[]="DEF";     const char F15SP[]="NODE";
+const char F16SP[]="MERGE"; const char F17SP[]="HEIGHT"; const char F18SP[]="WIDTH";
+const char F19SP[]="DEPTH"; const char F20SP[]="BSIZE";  const char F21SP[]="SLAB";
+const char F22SP[]="FIX";  const char F23SP[]="BCHAR";   const char F24SP[]="DUP";
+const char F25SP[]="CC";   const char F26SP[]="EJECT";   const char F27SP[]="LRECL";
+const char F28SP[]="LOC";
 const char ABORCL_s[] = "ABORT";     const char CONTSP_s[] = "CONTINUE";
 const char SCNTSP_s[] = "SCONTINUE"; const char FSSP[]   = "F";
 const char KSP[]    = "K";           const char LSP[]    = "L";

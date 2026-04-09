@@ -697,6 +697,10 @@ extern const char ALNMSP[], STCTSP_kv[], FNCLSP_kv[], DIGSP[];
 extern SPEC_t ALPHSP, EXDTSP;   /* v311.sil: SPEC/STRING literals — full specifiers */
 extern const char CRDFSP[]; /* "(80A1)"      default output format        */
 extern const char OUTPSP[]; /* "(1X,132A1)"  standard print format        */
+extern const char F1SP[],F2SP[],F3SP[],F4SP[],F5SP[],F6SP[],F7SP[];    /* graphics fn name strings */
+extern const char F8SP[],F9SP[],F10SP[],F11SP[],F12SP[],F13SP[],F14SP[];
+extern const char F15SP[],F16SP[],F17SP[],F18SP[],F19SP[],F20SP[],F21SP[];
+extern const char F22SP[],F23SP[],F24SP[],F25SP[],F26SP[],F27SP[],F28SP[];
 extern const char ABORCL_s[],CONTSP_s[], SCNTSP_s[], FSSP[], KSP[];
 extern const char LSP[], RSP[], VESP[];
 
