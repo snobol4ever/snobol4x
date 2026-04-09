@@ -487,7 +487,7 @@ const char F28SP[]="LOC";
 const char ABORCL_s[] = "ABORT";     const char CONTSP_s[] = "CONTINUE";
 const char SCNTSP_s[] = "SCONTINUE"; const char FSSP[]   = "F";
 const char KSP[]    = "K";           const char LSP[]    = "L";
-const char RSP[]    = "R";           const char VESP[]   = "V";
+const char RSP[]    = "R";           const char CSP[]    = "C";
 const char VEESP[]  = "V";           const char TRLABP[] = "LABEL";
 const char TRFRSP[] = "CALL";        const char TRKYSP[] = "KEYWORD";
 const char STFCSP_kv[] = "STFCOUNT"; const char LSTNSP_kv[] = "LASTNO";

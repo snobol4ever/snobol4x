@@ -708,7 +708,7 @@ extern const char F8SP[],F9SP[],F10SP[],F11SP[],F12SP[],F13SP[],F14SP[];
 extern const char F15SP[],F16SP[],F17SP[],F18SP[],F19SP[],F20SP[],F21SP[];
 extern const char F22SP[],F23SP[],F24SP[],F25SP[],F26SP[],F27SP[],F28SP[];
 extern const char ABORCL_s[],CONTSP_s[], SCNTSP_s[], FSSP[], KSP[];
-extern const char LSP[], RSP[], VESP[];
+extern const char LSP[], RSP[], CSP[];
 extern const char ABORSP[],ANYSP[],APLYSP[],ARBSP[],ARBNSP[],ARGSP[],BACKSP[];
 extern const char BALSP[],BRKSP[],BRKXSP[],CASESP[],CHARSP[],REMSP[],STPTSP[];
 extern const char BLOKSP[],BLKSSP[],BKGNSP[],NOBLSP[];
