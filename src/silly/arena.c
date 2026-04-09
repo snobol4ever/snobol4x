@@ -14,6 +14,7 @@
  * Milestone: M2
  */
 
+#define _GNU_SOURCE
 #include <sys/mman.h>
 #include <string.h>
 #include <stdio.h>
@@ -383,6 +384,7 @@ void GCM_fn(int32_t blk_off)
 int32_t GC_fn(int32_t required)
 {
     D_A(GCTMCL) = 0; /* Record GC start time (MSTIME GCTMCL) — use 0 for now */
+    madvise(arena_base, ARENA_SIZE, MADV_RANDOM); /* XCALLC vm_gc_advise,(1) [PLB54] */
     { /* ── Pass 1 (GCT): mark all live blocks via PRMPTR root table ────── */
         int32_t bkdxu = D_A(PRMDX);
         while (bkdxu > 0) {
