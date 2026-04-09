@@ -393,7 +393,7 @@ int32_t GC_fn(int32_t required)
         }
     }
     { /* ── GCBA1/GCBA2: mark live strings reachable via symbol table bins */
-        int32_t bkptr = D_A(OBEND) - DESCR; /* SETAC BKPTR,OBLIST-DESCR */
+        int32_t bkptr = D_A(OBPTR) - DESCR; /* SETAC BKPTR,OBLIST-DESCR: OBPTR.a = OBLIST base */
         int32_t obend = D_A(OBEND);
         while (bkptr < obend) {
             bkptr += DESCR;
