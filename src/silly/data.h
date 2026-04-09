@@ -605,7 +605,7 @@ extern const char OPNLIT[];  /* "Unclosed literal"                        */
 /* ── Format strings — verbatim from v311.sil ─────────────────────────── */
 
 extern const char ALOCFL[];  /* "Insufficient storage for initialization\n" */
-extern const char ARTHN0[];  /* "%d Arithmetic operations performed\n"    */
+extern const char ARTHNO[];  /* "%d Arithmetic operations performed\n"    */
 extern const char CMTIME[];  /* "%.3f ms. Compilation time\n"             */
 extern const char EJECTF[];  /* "\f"                                      */
 extern const char ERRCF[];   /* "ERRORS DETECTED IN SOURCE PROGRAM\n\n"  */

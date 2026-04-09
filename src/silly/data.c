@@ -366,7 +366,7 @@ const char OPNLIT[] = "Unclosed literal";
 /* ── Format strings — verbatim from v311.sil [PLB10][PLB38] ─────────── */
 
 const char ALOCFL[] = "Insufficient storage for initialization\n";
-const char ARTHN0[] = "%d Arithmetic operations performed\n";
+const char ARTHNO[] = "%d Arithmetic operations performed\n";
 const char CMTIME[] = "%.3f ms. Compilation time\n";
 const char EJECTF[] = "\f";
 const char ERRCF[]  = "ERRORS DETECTED IN SOURCE PROGRAM\n\n";
