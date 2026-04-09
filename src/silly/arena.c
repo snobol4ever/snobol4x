@@ -385,6 +385,14 @@ int32_t GC_fn(int32_t required)
 {
     D_A(GCTMCL) = 0; /* Record GC start time (MSTIME GCTMCL) — use 0 for now */
     madvise(arena_base, ARENA_SIZE, MADV_RANDOM); /* XCALLC vm_gc_advise,(1) [PLB54] */
+    /* POP GCREQ — caller pushed required space; the C parameter IS that value */
+    D_A(GCREQ) = required; D_F(GCREQ) = D_V(GCREQ) = 0;
+    /* PSTACK BLOCL — post current stack pointer position */
+    D_A(BLOCL) = D_A(STKPTR); D_F(BLOCL) = D_V(BLOCL) = 0;
+    /* SUBTRT BLOCL,BLOCL,STKPTR — compute stack length used (top - base) */
+    D_A(BLOCL) -= D_A(STKPTR);
+    /* SETSIZ STKPTR,BLOCL — store stack length into value field at STKPTR */
+    ((DESCR_t *)A2P(D_A(STKPTR)))->v = (int16_t)D_A(BLOCL);
     { /* ── Pass 1 (GCT): mark all live blocks via PRMPTR root table ────── */
         int32_t bkdxu = D_A(PRMDX);
         while (bkdxu > 0) {
