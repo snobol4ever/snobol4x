@@ -738,7 +738,6 @@ DESCR_t ERRTYX = {.a={.i=0},.f=0,.v=0};
 DESCR_t XOCSVC = {.a={.i=0},.f=0,.v=0};
 DESCR_t XOCICL = {.a={.i=0},.f=0,.v=0};
 DESCR_t XOCBSC = {.a={.i=0},.f=0,.v=0};
-DESCR_t XSTNO  = {.a={.i=0},.f=0,.v=0};
 DESCR_t XLNNOC = {.a={.i=0},.f=0,.v=0};
 DESCR_t XLSFLN = {.a={.i=0},.f=0,.v=0};
 DESCR_t XLSLNC = {.a={.i=0},.f=0,.v=0};
@@ -1334,6 +1333,20 @@ void init_syntab(void)
     PRMTBL[0].a.i = P2A(PRMTBL); PRMTBL[0].f = TTL|MARK; PRMTBL[0].v = 18*DESCR;
     /* DTEND: single DESCR, A=EFFCL ptr [v311.sil line 11990] */
     DTEND.a.i = P2A(&EFFCL);
+    /* GCXTTL / GCBLK [v311.sil 11132+11155]: GCBLK.A must point to a 2-DESCR TTL+MARK buffer.
+     * GCM uses GCBLK to mark individual string structures (GCBA4 path in GC_fn).
+     * Oracle: res.gcblk.A = GCXTTL; res.gcxttl = {GCXTTL, TTL+MARK, DESCR}.
+     * Allocate a 2-DESCR arena block (title + 1 body slot) and wire GCBLK to it. */
+    {
+        int32_t gcxttl_off = BLOCK_fn(DESCR, 0); /* 1-body-DESCR block; BLOCK_fn prepends TTL */
+        if (gcxttl_off) {
+            DESCR_t *gcxttl = (DESCR_t *)A2P(gcxttl_off);
+            gcxttl->a.i = gcxttl_off;  /* self-ptr (oracle: D_A(gcxttl)=GCXTTL) */
+            gcxttl->f   = TTL | MARK;
+            gcxttl->v   = DESCR;        /* 1 body slot */
+            GCBLK.a.i   = gcxttl_off;
+        }
+    }
     /* Trace/literal fn DESCRs: fn-ptr fills (LABTR_fn etc are defined in trace.c/asgn.c) */
     extern RESULT_t LABTR_fn(void), VALTR_fn(void), LIT_fn(void), KEYTR_fn(void), INIT_fn(void), GOTO_fn(void);
     extern RESULT_t GOTG_fn(void), GOTL_fn(void), FENTR_fn(void), FNEXTR_fn(void);
