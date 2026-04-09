@@ -572,7 +572,7 @@ extern DESCR_t STRPAT;    /* STARPT pattern (unevaluated expression)      */
 
 /* ── Permanent block pointer table (for GC root marking) ─────────────── */
 
-extern DESCR_t PRMTBL[8];  /* PRMTBL array — all live block roots       */
+extern DESCR_t PRMTBL[19]; /* PRMTBL(8)+STKHED(11) GC roots [v311.sil 11997+12005] */
 extern DESCR_t FTABLE;     /* procedure descriptor table (stub)            */
 extern DESCR_t OPTBL;      /* operator procedure descriptor table (stub)   */
 extern DESCR_t DTEND;      /* end-of-data-table marker (A=EFFCL)           */

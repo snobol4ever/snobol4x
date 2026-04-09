@@ -290,7 +290,7 @@ DESCR_t STRPAT  = D0;    /* STARPT arena offset */
 
 /* ── Permanent block table ────────────────────────────────────────────── */
 
-DESCR_t PRMTBL[8];          /* filled in data_init                  */
+DESCR_t PRMTBL[19];         /* header + 18 GC roots: PRMTBL(8)+STKHED(11) [v311.sil 11997+12005] */
 DESCR_t FTABLE  = D0;    /* procedure descriptor table header    */
 DESCR_t OPTBL   = D0;    /* operator procedure descriptor table   */
 DESCR_t DTEND   = D0;    /* end-of-data-table marker: A=EFFCL    */

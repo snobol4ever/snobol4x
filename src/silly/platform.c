@@ -1353,6 +1353,20 @@ void init_syntab(void)
     PRMTBL[5].a.i = P2A(&KNLIST);
     PRMTBL[6].a.i = P2A(&KVLIST);
     PRMTBL[7].a.i = P2A(&OPTBL);
+    /* STKHED block [v311.sil 12005]: 11 more GC roots appended after OPTBL */
+    PRMTBL[8].a.i  = P2A(&STKHED);  /* interpreter stack                  */
+    PRMTBL[9].a.i  = P2A(&INLIST);  /* input association pair list        */
+    PRMTBL[10].a.i = P2A(&OTLIST);  /* output association pair list       */
+    PRMTBL[11].a.i = P2A(&INSATL);  /* input block list                   */
+    PRMTBL[12].a.i = P2A(&OTSATL);  /* output block list                  */
+    PRMTBL[13].a.i = P2A(TFENPL);   /* call trace pair list               */
+    PRMTBL[14].a.i = P2A(TFEXPL);   /* return trace pair list             */
+    PRMTBL[15].a.i = P2A(TKEYPL);   /* keyword trace pair list            */
+    PRMTBL[16].a.i = P2A(TLABPL);   /* label trace pair list              */
+    PRMTBL[17].a.i = P2A(&TRLIST);  /* trace pair list                    */
+    PRMTBL[18].a.i = P2A(TVALPL);   /* value trace pair list              */
+    /* PRMDX = PRMSIZ = 18*DESCR (slots 1..18 of PRMTBL) [oracle data_init.h line 725] */
+    D_A(PRMDX) = 18 * DESCR;
     /* Trace pair-list self-ptrs [v311.sil §24: each DESCR X,TTL+MARK,2*DESCR] */
     TVALPL[0].a.i = P2A(TVALPL);
     TLABPL[0].a.i = P2A(TLABPL);
