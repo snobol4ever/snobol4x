@@ -143,8 +143,7 @@ RESULT_t EXPVAL_fn(void)
              * else (EXPEVL entry) → SCL=3, ZPTR=XPTR (RTZPTR) */
             SCL.a.i = saved_scl;
             if (SCL.a.i != 0) {
-                SCL.a.i = 2; /* EXPV6: deref_name not needed — XPTR is already the value */
-                deref_name(&XPTR);
+                SCL.a.i = 2; /* EXPV6: XPTR already holds value — no deref (oracle goes direct to EXPV6, not EXPV4) */
             } else {
                 ZPTR = XPTR;
                 SCL.a.i = 3;
@@ -162,8 +161,10 @@ expv11:
             case FAIL: SCL.a.i = 1; break;
             default:   SCL.a.i = 2; break;
             }
-        } else { /* EXPV4 / EXPV6: deref */
+        } else if (SCL.a.i != 0) { /* INSW==0 or no assoc → EXPV4: deref name */
             deref_name(&XPTR);
+            SCL.a.i = 2;
+        } else { /* SCL==0 (EXPEVL) → EXPV6: no deref, just set SCL=2 */
             SCL.a.i = 2;
         }
     }
