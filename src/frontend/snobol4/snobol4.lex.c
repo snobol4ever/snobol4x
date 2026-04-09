@@ -1217,12 +1217,12 @@ case 14:
 /* rule 14 can match eol */
 YY_RULE_SETUP
 #line 182 "snobol4.l"
-{ lineno++; /* blank line after label-only line */ BEGIN(INITIAL); return T_STMT_END; }
+{ lineno++; BEGIN(INITIAL); return T_STMT_END; }
 	YY_BREAK
 case 15:
 YY_RULE_SETUP
 #line 183 "snobol4.l"
-{ BEGIN(INITIAL); return T_STMT_END; }
+{ yyless(0); BEGIN(INITIAL); return T_STMT_END; }
 	YY_BREAK
 case 16:
 YY_RULE_SETUP

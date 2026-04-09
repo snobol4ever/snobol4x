@@ -178,8 +178,8 @@ G       ({WS}|{CONT})*
     /* ---- LABEL_DONE: after a label-only line (label ended with \n) ----
      * Must emit T_STMT_END, then re-dispatch at col-1 for the next line. */
 <LABEL_DONE>[ \t]          { BEGIN(INITIAL); return T_STMT_END; }
-<LABEL_DONE>\n             { lineno++; /* blank line after label-only line */ BEGIN(INITIAL); return T_STMT_END; }
-<LABEL_DONE>[*!|;]         { BEGIN(INITIAL); return T_STMT_END; }
+<LABEL_DONE>\n             { lineno++; BEGIN(INITIAL); return T_STMT_END; }
+<LABEL_DONE>[*!|;]         { yyless(0); BEGIN(INITIAL); return T_STMT_END; }
 <LABEL_DONE>[^ \t\n*!|;]  { yyless(0); BEGIN(INITIAL); return T_STMT_END; }
 <LABEL_DONE><<EOF>>        { BEGIN(INITIAL); return T_STMT_END; }
 

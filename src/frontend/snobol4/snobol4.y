@@ -172,6 +172,8 @@ expr17     : T_LPAREN expr0 T_RPAREN                                            
 %%
 int snobol4_lex(YYSTYPE *yylval_param, void *yyparse_param) {
     (void)yyparse_param; Token t=lex_next(g_lx); yylval_param->tok=t;
+    if (getenv("SNO_TOK_TRACE"))
+        fprintf(stderr,"[TOK %d sval=%s ival=%ld]\n",t.kind,t.sval?t.sval:"",t.ival);
     return t.kind;
 }
 void snobol4_error(void *p,const char *msg){(void)p;sno_error(g_lx?g_lx->lineno:0,"parse error: %s",msg);}
