@@ -204,8 +204,11 @@ RESULT_t INIT_fn(void)
     INCRA(EXNOCL, 1); /* &STCOUNT */
 init_done:
     if (D_A(TRAPCL) > 0) { /* &TRACE checks */
-        int32_t assoc = locapt_fn(D_A(TKEYL), &STNOKY); /* Check for breakpoint  XCALLC chk_break — stub */
-        if (assoc) { SETAC(ATPTR, assoc); TRPHND_fn(ATPTR); }
+        int32_t assoc;
+        if (chk_break(0)) { /* XCALLC chk_break,(0),INIT1 [PLB113] */
+            assoc = locapt_fn(D_A(TKEYL), &STNOKY);
+            if (assoc) { SETAC(ATPTR, assoc); TRPHND_fn(ATPTR); }
+        }
         assoc = locapt_fn(D_A(TKEYL), &STCTKY);
         if (assoc) { SETAC(ATPTR, assoc); TRPHND_fn(ATPTR); }
     }

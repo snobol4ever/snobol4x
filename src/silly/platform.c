@@ -1525,6 +1525,7 @@ void XCALL_OUTPUT_fmt(DESCR_t unit, const char *fmt, ...)
 }
 
 /*====================================================================================================================*/
+int  chk_break(int x)        { (void)x; return 1; } /* PLB113: always "hit" → proceed to STNOKY locapt */
 void XCALL_chk_break(int x)  { (void)x; }
 
 /* I/O stubs */
