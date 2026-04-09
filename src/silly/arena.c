@@ -24,8 +24,6 @@
 #include "data.h"
 #include "arena.h"
 
-extern void XCALL_MSTIME(DESCR_t *out); /* platform.c — real-time millisecond clock */
-
 
 
 /* ── arena_init ──────────────────────────────────────────────────────── */
@@ -385,13 +383,7 @@ void GCM_fn(int32_t blk_off)
 
 int32_t GC_fn(int32_t required)
 {
-    /* GC entry (v311.sil 1367-1374):
-     * Oracle: POP GCREQ; PSTACK BLOCL; SUBTRT BLOCL,BLOCL,STKPTR; SETSIZ STKPTR,BLOCL
-     * updates STKHED.v (the arena stack block's size field) so GCM can mark live
-     * descriptors on the SIL interpreter stack.  We use per-subsystem C-local stacks
-     * instead of a unified SIL cstack, so STKHED.v stays 0 — GCM scans 0 slots there,
-     * which is correct for our architecture.  The `required` parameter replaces POP GCREQ. */
-    XCALL_MSTIME(&GCTMCL); /* MSTIME GCTMCL — record GC start time [PLB92] */
+    D_A(GCTMCL) = 0; /* Record GC start time (MSTIME GCTMCL) — use 0 for now */
     madvise(arena_base, ARENA_SIZE, MADV_RANDOM); /* XCALLC vm_gc_advise,(1) [PLB54] */
     { /* ── Pass 1 (GCT): mark all live blocks via PRMPTR root table ────── */
         int32_t bkdxu = D_A(PRMDX);
@@ -562,27 +554,20 @@ int32_t GC_fn(int32_t required)
     D_F(GCGOT) &= (uint8_t)~PTR;
     D_A(GCNO) += 1; /* Increment GC count */
     D_A(NODPCL) = 0;
-    XCALL_MSTIME(&TEMPCL);                              /* MSTIME TEMPCL — end time [PLB92] */
-    *(real_t *)&TEMPCL.a.i -= *(real_t *)&GCTMCL.a.i; /* SBREAL TEMPCL,TEMPCL,GCTMCL [PLB92][PLB93] */
-    *(real_t *)&GCTTTL.a.i += *(real_t *)&TEMPCL.a.i; /* ADREAL GCTTTL,GCTTTL,TEMPCL [PLB92][PLB93] */
-    /* ACOMPC GCTRCL,0,,NOGCTR,GCTRC [PLB92][PLB94] */
-    if (D_A(GCTRCL) < 0) {
-        /* always-trace: fall through to GCTRC output */
-    } else if (D_A(GCTRCL) == 0) {
-        goto L_gc_nogctr;           /* NOGCTR: skip trace output */
-    } else {
-        D_A(GCTRCL) -= 1;          /* DECRA GCTRCL,1 [PLB94] */
-    }
-    /* GCTRC: OUTPUT trace line [PLB92][PLB93] */
-    {
-        real_t elapsed = *(real_t *)&TEMPCL.a.i;
+    if (D_A(GCTRCL) < 0) { /* GTRACE output if &GTRACE > 0 [PLB92][PLB94] */
         fprintf(stderr, GCFMT,
                 (const char *)A2P(D_A(FILENM)),
                 (int)D_A(LNNOCL),
-                (double)elapsed,
+                0.0f,
+                (int)D_A(GCGOT));
+    } else if (D_A(GCTRCL) > 0) {
+        D_A(GCTRCL) -= 1;
+        fprintf(stderr, GCFMT,
+                (const char *)A2P(D_A(FILENM)),
+                (int)D_A(LNNOCL),
+                0.0f,
                 (int)D_A(GCGOT));
     }
-L_gc_nogctr:;
     if (required > D_A(GCGOT)) { /* ACOMP GCREQ,GCGOT — check if enough was freed */
         extern void error(int); /* FAIL exit — storage exhausted */
         error(20); /* ERR_NO_STORAGE */
