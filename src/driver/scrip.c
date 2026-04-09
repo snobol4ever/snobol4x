@@ -382,7 +382,9 @@ static DESCR_t call_user_function(const char *fname, DESCR_t *args, int nargs)
                 if (s->subject) {
                     if (s->subject->kind == E_VAR && s->subject->sval) {
                         subj_name = s->subject->sval;
-                        subj_val  = NV_GET_fn(subj_name);
+                        /* Only read value when needed for pattern match */
+                        if (s->pattern)
+                            subj_val = NV_GET_fn(subj_name);
                     } else {
                         subj_val = interp_eval(s->subject);
                     }
@@ -607,9 +609,13 @@ static DESCR_t interp_eval(EXPR_t *e)
             DESCR_t _vr = NV_GET_fn(e->sval);
             if (!IS_NULL(_vr)) return _vr;
             /* Zero-arg builtin (ARB, REM, FAIL, SUCCEED, etc.) stored as
-               function, not variable — try calling with no args. */
-            DESCR_t _fr = APPLY_fn(e->sval, NULL, 0);
-            if (!IS_NULL(_fr)) return _fr;
+               function, not variable — only try if name is a registered fn.
+               Guard prevents unset ordinary variables from spuriously calling
+               APPLY_fn and triggering Error 5. */
+            if (FNCEX_fn(e->sval)) {
+                DESCR_t _fr = APPLY_fn(e->sval, NULL, 0);
+                if (!IS_NULL(_fr)) return _fr;
+            }
             return _vr; /* unset variable */
         }
         return NULVCL;
@@ -1469,7 +1475,12 @@ static void execute_program(Program *prog)
         if (s->subject) {
             if (s->subject->kind == E_VAR && s->subject->sval) {
                 subj_name = s->subject->sval;
-                subj_val  = NV_GET_fn(subj_name);
+                /* Only read the value when we need to match against it.
+                 * Pure assignment (has_eq, no pattern) only needs the name —
+                 * calling NV_GET_fn on a function name triggers a spurious
+                 * zero-arg call (APPLY_fn → g_user_call_hook), causing Error 5. */
+                if (s->pattern)
+                    subj_val = NV_GET_fn(subj_name);
             } else {
                 subj_val = interp_eval(s->subject);
             }
