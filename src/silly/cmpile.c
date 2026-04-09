@@ -399,9 +399,14 @@ static void cdiag_inner(void)
       if (D_A(EMSGCL) != 0) memcpy(&emsg_sp, A2P(D_A(EMSGCL)), sizeof(SPEC_t));
       int32_t off = GENVAR_fn(&emsg_sp);
       if (off) { SETAC(ERRTXT, off); SETVC(ERRTXT, S); } }
-    if (!AEQLC(UNIT, 0) && !AEQLC(BRTYPE, EOSTYP)) { /* Skip to end of statement if not at EOS */
+    /* CDIAG4: oracle AEQLC UNIT,0,,RTN1 then AEQLC BRTYPE,EOSTYP,,RTN3 then STREAM/DIAGRN loop.
+     * cdiag_inner() is void; callers always goto stmt_done, so RTN1/RTN3 are no-ops here.
+     * Still honour the two skip-guards so STREAM is not called when UNIT==0 or already at EOS. */
+    if (AEQLC(UNIT, 0)) { /* oracle: UNIT==0 → RTN1 (return success — skip STREAM) */ }
+    else if (AEQLC(BRTYPE, EOSTYP)) { /* oracle: BRTYPE==EOSTYP → RTN3 (already at EOS) */ }
+    else { /* advance past end-of-statement token */
         SPEC_t xsp; int stype;
-        STREAM_fn(&xsp, &TEXTSP, &EOSTB, &stype);
+        STREAM_fn(&xsp, &TEXTSP, &EOSTB, &stype); /* ST_ERROR/ST_STOP results ignored — caller exits */
     }
 }
 
