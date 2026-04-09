@@ -137,7 +137,7 @@ RESULT_t GOTL_fn(void)
         if (AEQLC(XOCBSC, 0)) { cnterr(); return FAIL; }
         MOVD(ERRTYP, XERRTY); MOVD(FILENM, XFILEN);
         MOVD(LNNOCL, XLNNOC); MOVD(STNOCL, XSTNOC);
-        SETAC(ERRTYP, 255); return FAIL; /* FTLEND path — fatal termination */
+        FTLEND_fn(); return FAIL; /* BRANCH FTLEND — fatal end with restored XERRTY */
     }
     if (deql(XPTR, SCNTCL)) {
         if (!AEQLC(FATLCL, 0)) { cfterr(); return FAIL; }  /* IP-3: FATLCL!=0 → CFTERR */
