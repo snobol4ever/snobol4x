@@ -711,7 +711,7 @@ extern DESCR_t ANYCFN,ATOPFN,CHRFN,BRKCFN,BRXCFN,BRFCFN,DNMEFN,DNMIFN;
 extern DESCR_t ENMEFN,ENMIFN,FNMEFN,LNTHFN,NMEFN,NNYCFN,POSIFN,RPSIFN;
 extern DESCR_t SCFLFN,SCONFN,SPNCFN,TBFN,FNCFFN;
 /* Scan fn DESCRs — fn-ptr group (init_syntab fills A-field) */
-extern DESCR_t INITFN,KEYTFN,LABTFN,LITFN,VLTRFN;
+extern DESCR_t GOTOFN,INITFN,KEYTFN,LABTFN,LITFN,VLTRFN;
 
 /* ── Control-card command SPEC_t globals (v311.sil STRING directives) ── */
 /* Backed by static char literals; .a/.l filled by data_init()       */
