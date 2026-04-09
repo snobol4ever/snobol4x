@@ -621,7 +621,7 @@ extern const char NRMEND[];  /* "Normal termination at level %d\n"        */
 extern const char NVARF[];   /* "Natural variables\n\n"                   */
 extern const char PKEYF[];   /* "\nUnprotected keywords\n\n"              */
 extern const char PRTOVF[];  /* "***PRINT REQUEST TOO LONG***\n"          */
-extern const char READN0[];  /* "%d Reads performed\n"                    */
+extern const char READNO[];  /* "%d Reads performed\n"                    */
 extern const char SCANNO[];  /* "%d Pattern matches performed\n"          */
 extern const char SOURCF[];  /* "    Bell Telephone Laboratories...\n\n"  */
 extern const char STATHD[];  /* "SNOBOL4 statistics summary-\n"           */
