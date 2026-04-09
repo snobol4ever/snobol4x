@@ -318,6 +318,7 @@ extern DESCR_t TLABPL[3];    /* label trace pair list                        */
 extern DESCR_t TFENPL[3];    /* call trace pair list                         */
 extern DESCR_t TFEXPL[3];    /* return trace pair list                       */
 extern DESCR_t TKEYPL[3];    /* keyword trace pair list                      */
+extern DESCR_t VALBLK[7];    /* value-type discriminator block [v311.sil §24 line 12141] */
 extern DESCR_t INATL;     /* input attribute list                         */
 extern DESCR_t OUTATL;    /* output attribute list                        */
 extern DESCR_t TVALL;     /* value trace list head                        */

@@ -1359,6 +1359,7 @@ void init_syntab(void)
     TFENPL[0].a.i = P2A(TFENPL);
     TFEXPL[0].a.i = P2A(TFEXPL);
     TKEYPL[0].a.i = P2A(TKEYPL);
+    VALBLK[0].a.i = P2A(VALBLK);
 
     /* Primitive pattern node self-ptrs + fn-code slot ptrs [v311.sil §24] */
     /* FAILPT: [0]=self-ptr, [1].a=P2A(&SALFFN) */
@@ -2001,6 +2002,19 @@ DESCR_t TLABPL[3] = { {.a={.i=0},.f=TTL|MARK,.v=2*DESCR}, {0}, {0} };
 DESCR_t TFENPL[3] = { {.a={.i=0},.f=TTL|MARK,.v=2*DESCR}, {0}, {0} };
 DESCR_t TFEXPL[3] = { {.a={.i=0},.f=TTL|MARK,.v=2*DESCR}, {0}, {0} };
 DESCR_t TKEYPL[3] = { {.a={.i=0},.f=TTL|MARK,.v=2*DESCR}, {0}, {0} };
+
+/* VALBLK — value-type discriminator: 6*DESCR body (7 slots) [v311.sil §24 line 12141] */
+/* [1].v=S (STRING=1), [3].v=N (NAME=9), [5].v=K (KEYWORD=10); evens are 0-offsets   */
+DESCR_t VALBLK[7] = {
+    {.a={.i=0}, .f=TTL|MARK, .v=6*DESCR},  /* [0] hdr: self-ptr filled at init */
+    {.a={.i=0}, .f=0,        .v=S},         /* [1] STRING type code             */
+    {.a={.i=0}, .f=0,        .v=0},         /* [2] 0 offset                     */
+    {.a={.i=0}, .f=0,        .v=N},         /* [3] NAME type code               */
+    {.a={.i=0}, .f=0,        .v=0},         /* [4] 0 offset                     */
+    {.a={.i=0}, .f=0,        .v=K},         /* [5] KEYWORD (NAME) type code     */
+    {.a={.i=0}, .f=0,        .v=0},         /* [6] 0 offset                     */
+};
+
 /* BALPT — BAL: 9*DESCR body (10 slots total) [v311.sil line 12080]         */
 /* Slots [5],[8]: A=6*DESCR (relative link offset within node)               */
 DESCR_t BALPT[10] = {
