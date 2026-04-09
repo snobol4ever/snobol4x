@@ -90,16 +90,20 @@ goto_label_expr
 opt_goto   : goto_label_expr                                  { $$=$1; }
            | T_GOTO_S goto_label_expr T_GOTO_F goto_label_expr {
                $$=sgoto_new();
-               $$->onsuccess=$2->uncond; free($2);
-               $$->onfailure=$4->uncond; free($4);
+               $$->onsuccess=$2->uncond; $$->computed_success_expr=$2->computed_uncond_expr; free($2);
+               $$->onfailure=$4->uncond; $$->computed_failure_expr=$4->computed_uncond_expr; free($4);
              }
-           | T_GOTO_S goto_label_expr                         { $$=sgoto_new(); $$->onsuccess=$2->uncond; free($2); }
+           | T_GOTO_S goto_label_expr {
+               $$=sgoto_new(); $$->onsuccess=$2->uncond; $$->computed_success_expr=$2->computed_uncond_expr; free($2);
+             }
            | T_GOTO_F goto_label_expr T_GOTO_S goto_label_expr {
                $$=sgoto_new();
-               $$->onfailure=$2->uncond; free($2);
-               $$->onsuccess=$4->uncond; free($4);
+               $$->onfailure=$2->uncond; $$->computed_failure_expr=$2->computed_uncond_expr; free($2);
+               $$->onsuccess=$4->uncond; $$->computed_success_expr=$4->computed_uncond_expr; free($4);
              }
-           | T_GOTO_F goto_label_expr                         { $$=sgoto_new(); $$->onfailure=$2->uncond; free($2); }
+           | T_GOTO_F goto_label_expr {
+               $$=sgoto_new(); $$->onfailure=$2->uncond; $$->computed_failure_expr=$2->computed_uncond_expr; free($2);
+             }
            | /* empty */                                       { $$=NULL; }
            ;
 

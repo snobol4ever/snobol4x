@@ -517,10 +517,20 @@ static DESCR_t call_user_function(const char *fname, DESCR_t *args, int nargs)
                 if (s->go) {
                     if (s->go->uncond && *s->go->uncond)
                         target = s->go->uncond;
-                    else if (succeeded && s->go->onsuccess && *s->go->onsuccess)
+                    else if (s->go->computed_uncond_expr) {
+                        DESCR_t cv = interp_eval(s->go->computed_uncond_expr);
+                        target = (cv.v == DT_S && cv.s) ? cv.s : NULL;
+                    } else if (succeeded && s->go->onsuccess && *s->go->onsuccess)
                         target = s->go->onsuccess;
-                    else if (!succeeded && s->go->onfailure && *s->go->onfailure)
+                    else if (succeeded && s->go->computed_success_expr) {
+                        DESCR_t cv = interp_eval(s->go->computed_success_expr);
+                        target = (cv.v == DT_S && cv.s) ? cv.s : NULL;
+                    } else if (!succeeded && s->go->onfailure && *s->go->onfailure)
                         target = s->go->onfailure;
+                    else if (!succeeded && s->go->computed_failure_expr) {
+                        DESCR_t cv = interp_eval(s->go->computed_failure_expr);
+                        target = (cv.v == DT_S && cv.s) ? cv.s : NULL;
+                    }
                 }
 
                 if (target) {
@@ -1615,10 +1625,20 @@ static void execute_program(Program *prog)
         if (s->go) {
             if (s->go->uncond && *s->go->uncond)
                 target = s->go->uncond;
-            else if (succeeded && s->go->onsuccess && *s->go->onsuccess)
+            else if (s->go->computed_uncond_expr) {
+                DESCR_t cv = interp_eval(s->go->computed_uncond_expr);
+                target = (cv.v == DT_S && cv.s) ? cv.s : NULL;
+            } else if (succeeded && s->go->onsuccess && *s->go->onsuccess)
                 target = s->go->onsuccess;
-            else if (!succeeded && s->go->onfailure && *s->go->onfailure)
+            else if (succeeded && s->go->computed_success_expr) {
+                DESCR_t cv = interp_eval(s->go->computed_success_expr);
+                target = (cv.v == DT_S && cv.s) ? cv.s : NULL;
+            } else if (!succeeded && s->go->onfailure && *s->go->onfailure)
                 target = s->go->onfailure;
+            else if (!succeeded && s->go->computed_failure_expr) {
+                DESCR_t cv = interp_eval(s->go->computed_failure_expr);
+                target = (cv.v == DT_S && cv.s) ? cv.s : NULL;
+            }
         }
 
         do_goto:
@@ -1756,6 +1776,9 @@ static void ir_print_stmt(STMT_t *st, FILE *f) {
         if (g->uncond)    fprintf(f, " :go %s",  g->uncond);
         if (g->onsuccess) fprintf(f, " :goS %s", g->onsuccess);
         if (g->onfailure) fprintf(f, " :goF %s", g->onfailure);
+        if (g->computed_uncond_expr)  { fprintf(f, " :go $(");  ir_print_node(g->computed_uncond_expr,  f); fprintf(f, ")"); }
+        if (g->computed_success_expr) { fprintf(f, " :goS $("); ir_print_node(g->computed_success_expr, f); fprintf(f, ")"); }
+        if (g->computed_failure_expr) { fprintf(f, " :goF $("); ir_print_node(g->computed_failure_expr, f); fprintf(f, ")"); }
     }
     fprintf(f, ")\n");
 }
