@@ -321,11 +321,11 @@ extern DESCR_t TKEYPL[3];    /* keyword trace pair list                      */
 extern DESCR_t VALBLK[7];    /* value-type discriminator block [v311.sil §24 line 12141] */
 extern DESCR_t INATL;     /* input attribute list                         */
 extern DESCR_t OUTATL;    /* output attribute list                        */
-extern DESCR_t TVALL;     /* value trace list head                        */
-extern DESCR_t TLABL;     /* label trace list head                        */
+extern DESCR_t TVALL[2];  /* value trace list head+default — SIL 10948-10949 */
+extern DESCR_t TLABL[2];  /* label trace list head+default — SIL 10950-10951 */
 extern DESCR_t TFENTL[2]; /* call trace list head+default — SIL 10952-10953 */
 extern DESCR_t TFEXTL[2]; /* return trace list head+default — SIL 10954-10955 */
-extern DESCR_t TKEYL;     /* keyword trace list head                      */
+extern DESCR_t TKEYL[2];  /* keyword trace list head+default — SIL 10956-10957 */
 extern DESCR_t ATPTR;     /* attribute trace pointer                      */
 
 /* ── Data type pairs (for ARITH dispatch) ────────────────────────────── */

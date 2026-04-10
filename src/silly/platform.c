@@ -616,7 +616,8 @@ int32_t NMOVER = 0;   /* name list end (byte count) */
 
 /* Trace working */
 DESCR_t TVAL   = {.a={.i=0},.f=0,.v=0};
-DESCR_t TVALL  = {.a={.i=0},.f=0,.v=0};
+/* TVALL[2]: [0]=value trace list head, [1]=default value trace fn — SIL 10948-10949 */
+DESCR_t TVALL[2] = { {.a={.i=0},.f=0,.v=0}, {.a={.i=0},.f=FNC,.v=2} };
 DESCR_t NVAL   = {.a={.i=0},.f=0,.v=0};
 DESCR_t VVAL   = {.a={.i=0},.f=0,.v=0};
 DESCR_t VVALL  = {.a={.i=0},.f=0,.v=0};
@@ -687,7 +688,7 @@ DESCR_t FALKY  = {.a={.i=0},.f=TTL|MARK,.v=0};
 
 /* Pattern-valued globals */
 DESCR_t PATND  = {.a={.i=0},.f=0,.v=0};   /* SIL: DESCR 0,0,0 — node type set at runtime */
-DESCR_t FNCPL  = {.a={.i=0},.f=FNC,.v=0};
+DESCR_t FNCPL  = {.a={.i=0},.f=0,.v=0};   /* SIL: DESCR FNLIST,0,0 — A set at runtime */
 
 /* Trace data */
 DESCR_t TRCSP_d = {.a={.i=0},.f=0,.v=0};
@@ -757,8 +758,10 @@ DESCR_t DTATL  = {.a={.i=0},.f=0,.v=0};          /* SIL: DESCR DTLIST,0,0 */
 DESCR_t DTLIST = {.a={.i=0},.f=TTL|MARK,.v=0};
 DESCR_t TRLVLIST = {.a={.i=0},.f=0,.v=0};
 DESCR_t TKRL   = {.a={.i=0},.f=0,.v=0};
-DESCR_t TKEYL  = {.a={.i=0},.f=0,.v=0};
-DESCR_t TLABL  = {.a={.i=0},.f=0,.v=0};
+/* TKEYL[2]: [0]=keyword trace list head, [1]=default keyword trace fn — SIL 10956-10957 */
+DESCR_t TKEYL[2] = { {.a={.i=0},.f=0,.v=0}, {.a={.i=0},.f=FNC,.v=1} };
+/* TLABL[2]: [0]=label trace list head, [1]=default label trace fn — SIL 10950-10951 */
+DESCR_t TLABL[2] = { {.a={.i=0},.f=0,.v=0}, {.a={.i=0},.f=FNC,.v=1} };
 /* TFENTL[2]: [0]=call trace list head, [1]=default call trace fn — SIL 10952-10953 */
 DESCR_t TFENTL[2] = { {.a={.i=0},.f=0,.v=0}, {.a={.i=0},.f=FNC,.v=2} };
 /* TFEXTL[2]: [0]=return trace list head, [1]=default return trace fn — SIL 10954-10955 */
@@ -1718,7 +1721,7 @@ DESCR_t ANYCCL  = {{.i=0}, 0x40, 3};   /* ANY pattern class */
 DESCR_t POSICL  = {{.i=0}, 0x40, 0};   /* POS pattern class */
 DESCR_t RPSICL  = {{.i=0}, 0x40, 0};   /* RPOS pattern class */
 DESCR_t RTBCL   = {{.i=0}, 0x40, 0};   /* RTAB pattern class */
-DESCR_t TBCL    = {{.i=0}, 0x40, 0};   /* TAB pattern class */
+DESCR_t TBCL    = {{.i=0}, FNC, 3};    /* SIL: DESCR TBFN,FNC,3 — TAB fn descriptor, A set at runtime */
 DESCR_t ARBACK  = {{.i=0}, 0, P};      /* ARB backtrack node */
 
 /* SPECs missing from data.c */
