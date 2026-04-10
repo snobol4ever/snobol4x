@@ -773,7 +773,16 @@ static DESCR_t interp_eval(EXPR_t *e)
                 }
                 acc = pat_cat(acc, nxt);
             } else {
-                acc = CONCAT_fn(acc, nxt);
+                /* SPITBOL rule: if either operand is null string, return the
+                 * other operand UNCHANGED (no type coercion). Spec §concat:
+                 * "if either operand is the null string, the other operand is
+                 *  returned unchanged. It is not coerced into the string type." */
+                if (acc.v == DT_SNUL)
+                    acc = nxt;
+                else if (nxt.v == DT_SNUL)
+                    { /* acc unchanged */ }
+                else
+                    acc = CONCAT_fn(acc, nxt);
             }
             if (IS_FAIL_fn(acc)) return FAILDESCR;
         }
@@ -1014,6 +1023,44 @@ static DESCR_t interp_eval(EXPR_t *e)
                 return r;
             }
         }
+        /* IDENT/DIFFER: per SPITBOL spec, arguments must have SAME data type AND value.
+         * IDENT(3, '3') FAILS (integer vs string). IDENT(S) succeeds iff S is null string.
+         * DIFFER(S,T) succeeds iff they differ in type OR value. DIFFER(S) succeeds iff S != ''.
+         * Both return NULVCL on success. */
+        if (strcasecmp(e->sval, "IDENT") == 0) {
+            if (nargs == 1) {
+                /* IDENT(S) — succeed if S is null string */
+                return IS_NULL_fn(args[0]) ? NULVCL : FAILDESCR;
+            }
+            if (nargs >= 2) {
+                /* Normalize: treat DT_SNUL and DT_S("") as same null type for comparison */
+                int a_null = IS_NULL_fn(args[0]), b_null = IS_NULL_fn(args[1]);
+                if (a_null && b_null) return NULVCL;   /* both null → identical */
+                if (a_null || b_null) return FAILDESCR; /* one null, one not → differ */
+                /* Same non-null type AND same string value */
+                if (args[0].v != args[1].v) return FAILDESCR;
+                const char *sa = VARVAL_fn(args[0]);
+                const char *sb = VARVAL_fn(args[1]);
+                if (!sa) sa = ""; if (!sb) sb = "";
+                return strcmp(sa, sb) == 0 ? NULVCL : FAILDESCR;
+            }
+        }
+        if (strcasecmp(e->sval, "DIFFER") == 0) {
+            if (nargs == 1) {
+                return IS_NULL_fn(args[0]) ? FAILDESCR : NULVCL;
+            }
+            if (nargs >= 2) {
+                int a_null = IS_NULL_fn(args[0]), b_null = IS_NULL_fn(args[1]);
+                if (a_null && b_null) return FAILDESCR;  /* both null → identical → DIFFER fails */
+                if (a_null || b_null) return NULVCL;     /* one null, one not → differ */
+                if (args[0].v != args[1].v) return NULVCL;
+                const char *sa = VARVAL_fn(args[0]);
+                const char *sb = VARVAL_fn(args[1]);
+                if (!sa) sa = ""; if (!sb) sb = "";
+                return strcmp(sa, sb) != 0 ? NULVCL : FAILDESCR;
+            }
+        }
+
         /* No body label → builtin or unknown. APPLY_fn handles both. */
         if (FNCEX_fn(e->sval)) {
             DESCR_t bres = APPLY_fn(e->sval, args, nargs);
