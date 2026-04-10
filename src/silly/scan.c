@@ -862,6 +862,9 @@ static void do_ATP(void)
     GETD_BLK(XPTR, PATBCL, PATICL);
 atp1:
     if (D_V(XPTR) == E) {
+        /* ATPEXN: RCALL XPTR,EXPEVL,XPTR,(TSALF,ATP1,SCNEMO)
+         * exit1=FAIL→TSALF, exit2=OK→ATP1, exit3=name→SCNEMO(error8).
+         * EXPEVL_fn returns FAIL or OK only; exit3 (name result) not yet handled. */
         if (EXPEVL_fn() == FAIL) GOTO_TSALF;
         goto atp1;
     }
@@ -972,13 +975,13 @@ static void do_CHR(void)
 {
     INCRA(PATICL, DESCR);
     GETD_BLK(YPTR, PATBCL, PATICL);
-    sp_setfrom_descr(&TSP, YPTR);
+    sp_setfrom_descr(&TSP, YPTR);      /* CHR1: LOCSP TSP,YPTR */
     {
         SPEC_t vsp, tsub;
-        sp_remsp(&vsp, XSP, TXSP);
-        if (!sp_subsp(&tsub, TSP, vsp)) GOTO_TSALT;
-        if (sp_lexcmp(tsub, TSP) != 0) GOTO_TSALF;
-        sp_addlg(&TXSP, YPTR);
+        sp_remsp(&vsp, XSP, TXSP);     /* CHR2: REMSP VSP,XSP,TXSP */
+        if (!sp_subsp(&tsub, TSP, vsp)) GOTO_TSALT; /* SUBSP VSP,TSP,VSP,TSALT */
+        if (sp_lexcmp(tsub, TSP) != 0) GOTO_TSALF;  /* LEXCMP */
+        sp_addlg_c(&TXSP, TSP.l);      /* GETLG YPTR,TSP + ADDLG TXSP,YPTR */
         GOTO_TSCOK;
     }
 }
@@ -1031,7 +1034,8 @@ starp:
             YCL=opop(); XCL=opop(); PATICL=opop(); PATBCL=opop(); MAXLEN=opop();
             if (rtnul) GOTO_SCOK; /* SC-25: case 3 → SCOK */
             if (rc) {
-                if (AEQLC(LENFCL, 0)) GOTO_TSALT;
+                /* STARP3: AEQLC LENFCL,0,TSALT — arg3=false: LENFCL!=0→TSALT */
+                if (D_A(LENFCL) != 0) GOTO_TSALT;
                 GOTO_SALF;
             }
         }
