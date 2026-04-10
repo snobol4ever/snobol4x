@@ -1459,6 +1459,15 @@ void init_syntab(void)
     ARBPT[1].a.i = P2A(&SCOKFN);
     ARBPT[4].a.i = P2A(&SCOKFN);
     ARBPT[7].a.i = P2A(&FARBFN);
+    /* SIL: ARBACK DESCR ARBAK,0,P  — A=ARBAK, F=0, V=P */
+    ARBACK.a.i = P2A(ARBAK);
+    ARBACK.v   = P;
+    /* SIL: ARHEAD DESCR ARHED,0,P  — A=ARHED, F=0, V=P */
+    ARHEAD.a.i = P2A(ARHED);
+    ARHEAD.v   = P;
+    /* SIL: ARTAIL DESCR ARTAL,0,P  — A=ARTAL, F=0, V=P */
+    ARTAIL.a.i = P2A(ARTAL);
+    ARTAIL.v   = P;
     /* ARBAK: [0]=self-ptr, [1]=ONARFN, [4]=ONRFFN */
     ARBAK[0].a.i = P2A(ARBAK);
     ARBAK[1].a.i = P2A(&ONARFN);
