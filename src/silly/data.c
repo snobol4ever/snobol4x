@@ -165,7 +165,7 @@ DESCR_t ESAICL = D0;
 
 /* ── GC working storage ──────────────────────────────────────────────── */
 
-DESCR_t GCMPTR = D0, GCREQ = D0, GCGOT = D0, GCBLK = D0;
+DESCR_t GCMPTR = D0, GCREQ = D0, GCGOT = D(0,0,I), GCBLK = D0;
 DESCR_t GCTMCL = D0, TEMPCL = D0;
 DESCR_t BKDX = D0, BKDXU = D0, BKPTR = D0;
 DESCR_t ST1PTR = D0, ST2PTR = D0;
@@ -205,6 +205,7 @@ DESCR_t LNODSZ = D0;    /* NODESZ+DESCR                                   */
 DESCR_t NODSIZ = D0;    /* NODESZ                                         */
 DESCR_t OCALIM = D0;    /* OCASIZ*DESCR                                   */
 DESCR_t ONECL  = D(1, 0, 0);
+DESCR_t TWOCL  = D(2*8, 0, B);  /* v311.sil 11149: 2*DESCR,0,B — block-size constant */
 DESCR_t OUTBLK = D0;    /* set in data_init to &OUTPUT - DESCR        */
 DESCR_t ERRBLK = D0;    /* set in data_init to &PUNCH  - DESCR        */
 DESCR_t SIZLMT = D(0x7fffffff, 0, 0);

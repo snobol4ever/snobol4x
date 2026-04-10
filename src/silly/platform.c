@@ -1331,6 +1331,8 @@ void init_syntab(void)
 
     /* PRMTBL: header + 18 GC roots [v311.sil §24 lines 11997+12005] */
     PRMTBL[0].a.i = P2A(PRMTBL); PRMTBL[0].f = TTL|MARK; PRMTBL[0].v = 18*DESCR;
+    /* PRMPTR [v311.sil 11143]: DESCR PRMTBL,0,0 — A must point to PRMTBL for GC root walk */
+    PRMPTR.a.i = P2A(PRMTBL);
     /* DTEND: single DESCR, A=EFFCL ptr [v311.sil line 11990] */
     DTEND.a.i = P2A(&EFFCL);
     /* GCXTTL / GCBLK [v311.sil 11132+11155]: GCBLK.A must point to a 2-DESCR TTL+MARK buffer.
