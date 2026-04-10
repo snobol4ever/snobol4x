@@ -215,7 +215,7 @@ DESCR_t SIZLMT = D(0x7fffffff, 0, 0);
 /* SNODSZ: defined in platform.c */
 DESCR_t STARSZ = D0;    /* 11*DESCR                                       */
 DESCR_t ZEROCL = D0;
-DESCR_t TRSKELS = D0;
+DESCR_t TRSKEL  = D0;    /* trace skeleton pointer (A=TRCBLK — set in data_init) */
 DESCR_t COMDCT = D0;    /* 15*DESCR [PLB58]                               */
 DESCR_t COMREG = D0;
 DESCR_t OBEND  = D0;    /* OBLIST + DESCR*OBOFF — set in arena_init  */
@@ -553,6 +553,7 @@ void data_init(void)
     STARSZ.a.i = (int_t)(11 * DESCR); STARSZ.v = P;
     COMDCT.a.i = (int_t)(15 * DESCR);
     COMREG.a.i = P2A(&ELEMND);   /* SIL: COMREG DESCR ELEMND,0,0 — A=ELEMND */
+    TRSKEL.a.i = P2A(TRCBLK);    /* SIL: TRSKEL DESCR TRCBLK,0,0 — A=TRCBLK */
     SIZLMT.a.i = (int_t)(0x7fffffff);
     /* OBEND and OBPTR set by arena_init() — OBLIST now lives in arena */
     OUTBLK.a.i = P2A(&OUTPUT) - DESCR; /* OUTBLK = OUTPUT - DESCR  (pointer arithmetic on unit DESCRs) */

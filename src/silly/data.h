@@ -144,7 +144,7 @@ extern DESCR_t NVAL;      /* value scratch N (used in scan/argval)        */
 extern DESCR_t VVAL;      /* value scratch V (used in scan/naming)        */
 extern DESCR_t STARSZ;    /* EXPRESSION pattern size = 11*DESCR           */
 extern DESCR_t ZEROCL;    /* constant zero                                */
-extern DESCR_t TRSKELS;   /* trace skeleton pointer                       */
+extern DESCR_t TRSKEL;    /* trace skeleton pointer (SIL: TRSKEL DESCR TRCBLK,0,0) */
 extern DESCR_t COMDCT;    /* compiler descriptor count = 15*DESCR [PLB58] */
 extern DESCR_t COMREG;    /* pointer to compiler descriptors              */
 extern DESCR_t OBEND;     /* end of bin list                              */
