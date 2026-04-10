@@ -1049,11 +1049,12 @@ static void do_DSAR(void)
 {
     INCRA(PATICL, DESCR);
     GETD_BLK(YPTR, PATBCL, PATICL);
-    if (D_V(YPTR) != P) {
-        /* S or I type: oracle → STARP3: if LENFCL!=0→TSALT; else SALF */
-        if (!AEQLC(LENFCL, 0)) { GOTO_TSALT; } /* SC-27: !=0→TSALT */
+    if (D_V(YPTR) == S || D_V(YPTR) == I) {
+        /* STARP3: AEQLC LENFCL,0,TSALT — arg3=false: LENFCL!=0→TSALT */
+        if (D_A(LENFCL) != 0) GOTO_TSALT;
         GOTO_SALF;
     }
+    if (D_V(YPTR) != P) scan_error(SCAN_ERR_ILLEGAL_TYPE); /* else→SCDTER */
     {
         int32_t nval = !AEQLC(FULLCL, 0) ? 0 : D_A(YCL); /* SC-28: FULLCL!=0→0; ==0→YCL */
         nval = D_A(MAXLEN) - nval;
@@ -1070,8 +1071,8 @@ static void do_DSAR(void)
             YCL=opop(); XCL=opop(); PATICL=opop(); PATBCL=opop(); MAXLEN=opop();
             if (rtnul) GOTO_SCOK; /* SC-29: case 3→RTNUL3→SCOK */
             if (rc == 2) GOTO_SCOK; /* SC-29: case 2 (STARP2) = success */
-            if (rc) {  /* case 1 = fail */
-                if (AEQLC(LENFCL, 0)) { GOTO_TSALT; }
+            if (rc) {  /* case 1 = fail (STARP5 → STARP3) */
+                if (D_A(LENFCL) != 0) GOTO_TSALT; /* STARP3: LENFCL!=0→TSALT */
                 GOTO_SALF;
             }
         }
@@ -1084,7 +1085,7 @@ static void do_DSAR(void)
 static void do_FNCE(void)
 {
     INCRA(PDLPTR, 3*DESCR);
-    if (D_A(PDLPTR) >= D_A(PDLEND)) GOTO_FAIL;
+    if (D_A(PDLPTR) > D_A(PDLEND)) scan_error(SCAN_ERR_ILLEGAL_TYPE); /* ACOMP PDLPTR,PDLEND,INTR31 */
     { DESCR_t cv; sp_getlg(&cv, TXSP);
       PUTDC_BLK(PDLPTR, DESCR,   FNCFCL);  /* slot 1 */
       PUTDC_BLK(PDLPTR, 2*DESCR, cv);       /* slot 2 */
@@ -1098,7 +1099,7 @@ static void do_FNCE(void)
 static void do_NME(void)
 {
     INCRA(PDLPTR, 3*DESCR);
-    if (D_A(PDLPTR) >= D_A(PDLEND)) GOTO_FAIL;
+    if (D_A(PDLPTR) > D_A(PDLEND)) scan_error(SCAN_ERR_ILLEGAL_TYPE); /* ACOMP > not >= */
     { DESCR_t cv; sp_getlg(&cv, TXSP);
       PUTDC_BLK(PDLPTR, DESCR,   FNMECL);  /* SC-30: slot 1 */
       PUTDC_BLK(PDLPTR, 2*DESCR, cv);
@@ -1113,7 +1114,8 @@ static void do_NME(void)
 static void do_FNME(void) { TVAL = opop(); do_FNME_inner(); }
 static void do_FNME_inner(void)
 {
-    if (AEQLC(LENFCL, 0)) GOTO_TSALT;
+    /* FNME1: AEQLC LENFCL,0,TSALT — arg3=false: LENFCL!=0→TSALT */
+    if (D_A(LENFCL) != 0) GOTO_TSALT;
     GOTO_TSALF;
 }
 
@@ -1151,7 +1153,7 @@ static void do_ENME(void)
 static void do_ENME3(void)
 {
     INCRA(PDLPTR, 3*DESCR);
-    if (D_A(PDLPTR) >= D_A(PDLEND)) GOTO_FAIL;
+    if (D_A(PDLPTR) > D_A(PDLEND)) scan_error(SCAN_ERR_ILLEGAL_TYPE); /* ACOMP > not >= */
     { DESCR_t cv; sp_getlg(&cv, TXSP);
       MOVV(cv, YCL);
       PUTDC_BLK(PDLPTR, DESCR,   DNMECL);  /* SC-30: slot 1 */
