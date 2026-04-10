@@ -1436,7 +1436,9 @@ void init_syntab(void)
     SUCCPT[1].a.i = P2A(&SUCFFN);
     SUCFCL.a.i    = P2A(&SUCFFN); /* SUCFCL = DESCR SUCFFN,FNC,2 (v311.sil 10800) */
     /* STRPAT: arena offset of STARPT template (used by SJSR/ASGN for *X wrapping) */
+    /* SIL: STRPAT DESCR STARPT,0,P  — A=STARPT, F=0, V=P */
     STRPAT.a.i = P2A(STARPT);
+    STRPAT.v   = P;
     /* BALPT: [0]=self-ptr, [1].a=P2A(&SCOKFN), [4].a=P2A(&BALFN), [7].a=P2A(&BALFFN) */
     BALPT[0].a.i = P2A(BALPT);
     BALPT[1].a.i = P2A(&SCOKFN);
