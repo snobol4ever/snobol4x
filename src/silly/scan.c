@@ -33,6 +33,7 @@
 #include "strings.h"
 #include "arena.h"
 #include "symtab.h"
+#include "errors.h"
 
 /* ── External stubs: runtime functions not yet implemented ───────────── */
 /* These are declared here so scan.c compiles (-c); they will be     */
@@ -200,6 +201,7 @@ static void pdl_push3(DESCR_t d0, DESCR_t d1, DESCR_t d2)
 static void scan_error(int32_t code)
 {
     SETAC(ERRTYP, code);
+    SCERST_fn(); /* RCALL ,SCERST — sets SCERCL=1, calls FTERST_fn */
     GOTO_TSALF;
 }
 
