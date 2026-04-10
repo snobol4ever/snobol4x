@@ -96,6 +96,7 @@ extern DESCR_t NERRCL;    /* NOERROR switch (init=1) [PLB9]               */
 extern DESCR_t SCERCL;    /* error branch switch                          */
 extern DESCR_t SPITCL;    /* SPITBOL features (init=1) [PLB32][PLB33]     */
 extern DESCR_t STATCL;    /* display statistics [PLB12][PLB33]            */
+extern DESCR_t BLOKCL;    /* SIL: BLOKCL DESCR 0,0,I — BLOCKS feature flag [PLB117] */
 extern DESCR_t INSW;      /* &INPUT (init=1)                              */
 extern DESCR_t OUTSW;     /* &OUTPUT (init=1)                             */
 extern DESCR_t FULLCL;    /* &FULLSCAN                                    */

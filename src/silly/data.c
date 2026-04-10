@@ -84,6 +84,7 @@ DESCR_t NERRCL = D(1, 0, 0);   /* NOERROR = 1 [PLB9]                    */
 DESCR_t SCERCL = D0;
 DESCR_t SPITCL = D(1, 0, I);   /* SPITBOL features = 1 [PLB32]          */
 DESCR_t STATCL = D0;
+DESCR_t BLOKCL = D(0, 0, I);   /* SIL: BLOKCL DESCR 0,0,I — BLOCKS feature flag (skipped but data present) */
 DESCR_t INSW   = D(1, 0, I);   /* &INPUT = 1                            */
 DESCR_t OUTSW  = D(1, 0, I);   /* &OUTPUT = 1                           */
 DESCR_t FULLCL = D0;
