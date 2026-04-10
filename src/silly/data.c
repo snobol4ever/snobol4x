@@ -174,7 +174,9 @@ DESCR_t BLOCL = D0, ARG1CL = D0, BK1CL = D0, NODPCL = D0, PRMDX = D0;
 
 /* ── BLOCK/GENVAR working storage ────────────────────────────────────── */
 
-DESCR_t BUKPTR = D0, LSTPTR = D0, LCPTR = D0;
+DESCR_t BUKPTR = {.a={.i=0},.f=PTR,.v=S}, /* SIL: DESCR 0,PTR,S */
+        LSTPTR = {.a={.i=0},.f=PTR,.v=S}, /* SIL: DESCR 0,PTR,S */
+        LCPTR  = D0;
 
 /* ── Compiler working storage ────────────────────────────────────────── */
 
