@@ -663,7 +663,7 @@ DESCR_t SIGNCL = {.a={.i=0},.f=0,.v=0};
 DESCR_t ETMCL  = {.a={.i=0},.f=0,.v=0};
 /* EOSCL in data.c */
 DESCR_t UNSCL  = {.a={.i=0},.f=0,.v=0};
-DESCR_t SCFLCL = {.a={.i=0},.f=0,.v=0};
+DESCR_t SCFLCL = {.a={.i=0},.f=FNC,.v=2};  /* SIL: DESCR SCFLFN,FNC,2 */
 DESCR_t DFLFST = {.a={.i=0},.f=0,.v=0};
 DESCR_t PRMTBL2[8];   /* second copy of PRMTBL for GENVAR */
 DESCR_t ODPSIZ = {.a={.i=0},.f=0,.v=0};
@@ -704,9 +704,9 @@ DESCR_t FUNTCL = {.a={.i=0},.f=0,.v=0};   /* SIL: DESCR 0,0,0 — zero init, fil
 DESCR_t FRNCL  = {.a={.i=0},.f=0,.v=0};
 /* GOBRCL in data.c */
 DESCR_t GOGOCL = {.a={.i=0},.f=0,.v=0};
-DESCR_t GOTLCL = {.a={.i=0},.f=0,.v=0};
-DESCR_t GOTGCL = {.a={.i=0},.f=0,.v=0};
-DESCR_t GOTOCL = {.a={.i=0},.f=0,.v=0};  /* GOTO fn DESCR FNC v311.sil 10784 */
+DESCR_t GOTLCL = {.a={.i=0},.f=FNC,.v=1};  /* SIL: DESCR GOTLFN,FNC,1 */
+DESCR_t GOTGCL = {.a={.i=0},.f=FNC,.v=1};  /* SIL: DESCR GOTGFN,FNC,1 */
+DESCR_t GOTOCL = {.a={.i=0},.f=FNC,.v=1};  /* SIL: DESCR GOTOFN,FNC,1 */
 
 /* Sizes */
 DESCR_t TBSIZ  = {.a={.i=0},.f=0,.v=0};
@@ -724,7 +724,7 @@ DESCR_t UNDEF  = {.a={.i=0},.f=0,.v=S};   /* UNDFC */
 DESCR_t UNDFCL = {.a={.i=0},.f=0,.v=S};
 DESCR_t UNSCCL = {.a={.i=0},.f=0,.v=0};
 DESCR_t SCANCL = {.a={.i=0},.f=FNC,.v=2};
-DESCR_t SJSRCL = {.a={.i=0},.f=FNC,.v=0};
+DESCR_t SJSRCL = {.a={.i=0},.f=FNC,.v=3};  /* SIL: DESCR SJSRFN,FNC,3 */
 DESCR_t NNOCL  = {.a={.i=0},.f=0,.v=0};
 DESCR_t NNYCCL = {.a={.i=0},.f=FNC,.v=3};
 DESCR_t ANYCL2 = {.a={.i=0},.f=FNC,.v=3};
@@ -770,7 +770,7 @@ DESCR_t TFNCLP = {.a={.i=0},.f=0,.v=0};
 DESCR_t TFNRLP = {.a={.i=0},.f=0,.v=0};
 DESCR_t ERRMSG = {.a={.i=0},.f=0,.v=0};
 DESCR_t EMSGCL = {.a={.i=0},.f=0,.v=0};
-DESCR_t LNTHCL = {.a={.i=0},.f=0,.v=0};
+DESCR_t LNTHCL = {.a={.i=0},.f=FNC,.v=3};  /* SIL: DESCR LNTHFN,FNC,3 */
 DESCR_t NNYCL2 = {.a={.i=0},.f=FNC,.v=3};
 DESCR_t DT1CL  = {.a={.i=0},.f=0,.v=0};
 
@@ -779,7 +779,7 @@ DESCR_t DT1CL  = {.a={.i=0},.f=0,.v=0};
 /* ICLBLK in data.c */
 DESCR_t FNCEKYX= {.a={.i=0},.f=FNC,.v=2};
 DESCR_t FNMEBLK= {.a={.i=0},.f=FNC,.v=0};
-DESCR_t FNMECL = {.a={.i=0},.f=FNC,.v=0};
+DESCR_t FNMECL = {.a={.i=0},.f=FNC,.v=2};  /* SIL: DESCR FNMEFN,FNC,2 */
 DESCR_t PSTACK = {.a={.i=0},.f=0,.v=0};
 
 /* ── 6. DESCR_t wrappers for scan tables (used via P2A) ──────────────── */
@@ -1711,16 +1711,16 @@ DESCR_t INCL    = {{.i=0}, 0, 0};
 DESCR_t INCSTK2 = {{.i=0}, 0, 0};  /* include stack */
 
 /* Compiler object-code node descriptors */
-DESCR_t LITCL   = {{.i=0}, 0x40, 1};   /* literal fn code node */
-DESCR_t ITEMCL  = {{.i=0}, 0x40, 0};   /* item code node */
+DESCR_t LITCL   = {{.i=0}, FNC, 0};    /* SIL: DESCR LITFN,FNC,0  (arity incremented at runtime) */
+DESCR_t ITEMCL  = {{.i=0}, FNC, 0};    /* SIL: DESCR AREFN,FNC,0 */
 DESCR_t EXOPCL  = {{.i=0}, 0, 0};      /* expression operand code */
-DESCR_t INITCL  = {{.i=0}, 0, 0};      /* INIT code cell */
+DESCR_t INITCL  = {{.i=0}, FNC, 1};    /* SIL: DESCR INITFN,FNC,1 */
 
 /* Pattern primitives */
-DESCR_t ANYCCL  = {{.i=0}, 0x40, 3};   /* ANY pattern class */
-DESCR_t POSICL  = {{.i=0}, 0x40, 0};   /* POS pattern class */
-DESCR_t RPSICL  = {{.i=0}, 0x40, 0};   /* RPOS pattern class */
-DESCR_t RTBCL   = {{.i=0}, 0x40, 0};   /* RTAB pattern class */
+DESCR_t ANYCCL  = {{.i=0}, FNC, 3};    /* SIL: DESCR ANYCFN,FNC,3 */
+DESCR_t POSICL  = {{.i=0}, FNC, 3};    /* SIL: DESCR POSIFN,FNC,3 */
+DESCR_t RPSICL  = {{.i=0}, FNC, 3};    /* SIL: DESCR RPSIFN,FNC,3 */
+DESCR_t RTBCL   = {{.i=0}, FNC, 3};    /* SIL: DESCR RTBFN,FNC,3 */
 DESCR_t TBCL    = {{.i=0}, FNC, 3};    /* SIL: DESCR TBFN,FNC,3 — TAB fn descriptor, A set at runtime */
 DESCR_t ARBACK  = {{.i=0}, 0, P};      /* ARB backtrack node */
 

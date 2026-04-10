@@ -260,7 +260,7 @@ DESCR_t DNMECL = D(0, FNC, 2);   DESCR_t DNMICL = D(0, FNC, 2);
 DESCR_t ENDCL  = D(0, FNC, 0);   DESCR_t ENMECL = D(0, FNC, 3);
 DESCR_t ENMICL = D(0, FNC, 3);   DESCR_t ERORCL = D(0, FNC, 1);
 DESCR_t FNCFCL = D(0, FNC, 2);   DESCR_t LITFN  = D(0, 0, 1);
-DESCR_t LIT1CL = D(0, FNC, 1);   DESCR_t NMECL  = D(0, FNC, 3);
+DESCR_t LIT1CL = D(0, FNC, 1);   DESCR_t NMECL  = D(0, FNC, 2);  /* SIL: DESCR NMEFN,FNC,2 */
 /* NNYCCL: defined in platform.c */ DESCR_t SCONCL = D(0, FNC, 2);
 DESCR_t SCOKCL = D(0, FNC, 2);   /* SALICL: no oracle counterpart — removed */
 /* STARCCL, DSARCL: no oracle counterpart — removed */
