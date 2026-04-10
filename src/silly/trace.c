@@ -223,8 +223,9 @@ static RESULT_t fentr_common(void)
     while (1) {
         INCRA(WCL, 1);
         RESULT_t rc = ARGINT_fn(WPTR, WCL);
-        if (rc == FAIL) break;
-        GETDC_B(ZPTR, ZPTR, DESCR); /* SIL: GETDC ZPTR,ZPTR,DESCR — source is ZPTR not XPTR */
+        if (rc == FAIL) break;                /* FENTR4: no more args */
+        MOVD(ZPTR, XPTR);                     /* RCALL ZPTR,ARGINT — result lands in XPTR, move to ZPTR */
+        GETDC_B(ZPTR, ZPTR, DESCR); /* SIL: GETDC ZPTR,ZPTR,DESCR — get value from arg descriptor */
         SPEC_t vsp;
         switch (D_V(ZPTR)) {
         case S: /* DEFTV: wrap string in quotes */
