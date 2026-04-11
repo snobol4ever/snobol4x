@@ -35,7 +35,7 @@ extern void       XCALL_MSTIME(DESCR_t *out);
 extern void       XCALL_SBREAL(DESCR_t *out, DESCR_t a, DESCR_t b);
 extern void       XCALL_RPLACE(SPEC_t *dst, SPEC_t *tbl, SPEC_t *rep);
 extern void       XCALL_REVERSE(SPEC_t *dst, SPEC_t *src);
-extern void       XCALL_XSUBSTR(SPEC_t *dst, SPEC_t *src, int32_t off);
+extern void       XCALL_XSUBSTR(SPEC_t *dst, SPEC_t *src, int32_t off, int32_t len);
 extern void       STPRNT_fn(int32_t key, DESCR_t blk, SPEC_t *sp);
 /* ICNVTA_fn, CNVTA_fn, CNVAT_fn — TABLE↔ARRAY conversions — in arrays.c */
 
@@ -213,7 +213,7 @@ RESULT_t SUBSTR_fn(void)
     if (!soff) return FAIL;
     SETAC(ZPTR, soff); SETVC(ZPTR, S);
     LOCSP_fn(&TSP, &ZPTR);
-    XCALL_XSUBSTR(&TSP, &XSP, D_A(YPTR));
+    XCALL_XSUBSTR(&TSP, &XSP, D_A(YPTR), D_A(ZPTR));
     return genvsz(&TSP);
 }
 
