@@ -338,7 +338,7 @@ RESULT_t APPLY_fn(void)
     if (VARVUP_fn() == FAIL) { fn_top--; return FAIL; }
     XCL = fn_pop();
     int32_t assoc = locapv_fn(D_A(FNCPL), &XPTR);
-    if (!assoc) return FAIL; /* UNDF */
+    if (!assoc) { UNDF_fn(); return FAIL; } /* UNDF — undefined function */
     SETAC(XPTR, assoc);
     GETDC_B(INCL, XPTR, DESCR);
     D_V(INCL) = D_A(XCL); /* SETVA INCL,XCL — insert actual arg count */
