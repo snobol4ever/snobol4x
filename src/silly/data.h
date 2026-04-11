@@ -255,13 +255,13 @@ extern DESCR_t UCASVL;    /* &UCASE        [PLB18]                        */
 extern DESCR_t PARMVL;    /* &PARM         [PLB39]                        */
 extern DESCR_t DIGSVL;    /* &DIGITS       [PLB105]                       */
 extern DESCR_t EXN2CL;    /* &STEXEC       [PLB107]                       */
-extern DESCR_t GCTTTL;    /* &GCTIME       [PLB107]                       */
+extern DESCR_t GCTTTL;    /* &GCTIME real DESCR  [PLB107]                 */
+extern DESCR_t MAXICL;    /* &MAXINT value cell  [PLB108][PLB116]         */
 extern DESCR_t FATLCL;    /* &FATAL        [PLB128]                       */
 
 /* ── Real-valued keywords ────────────────────────────────────────────── */
 
 extern real_t  PI_val;    /* &PI = 3.14159... [PLB106] — real_t PI_val    */
-extern real_t  GCTTTL_val;/* &GCTIME accumulator (real)                   */
 extern DESCR_t   RZERCL;   /* real constant 0.0  [PLB104]                  */
 extern DESCR_t   R1MCL;    /* real constant 1e6  [PLB107]                  */
 
@@ -500,7 +500,6 @@ extern DESCR_t FALKY;    /* &STFCOUNT keyword descriptor for trace       */
 /* M20/M21: errors / main */
 extern DESCR_t FCL;      /* real-number scratch (stats)                  */
 /* MSGNO already declared as const char *MSGNO[] in data.h          */
-extern DESCR_t GCTTTL;   /* GC total time (&GCTIME)                      */
 extern DESCR_t SIGNCL;   /* terminating signal for SYSCUT [PLB47]        */
 extern DESCR_t FATLCL;   /* &FATAL flag (non-zero = fatal in progress)   */
 extern DESCR_t ERRTKY;   /* error-type keyword key (ERRTSP) for trace    */
