@@ -645,6 +645,7 @@ SPEC_t  AMPSP   = {0};
 SPEC_t  COLSP   = {0};
 SPEC_t  BLNSP   = {0};
 SPEC_t  BLEQSP  = {0};
+SPEC_t  DMPSP   = {0};  /* SIL: DMPSP — dump output buffer specifier */
 SPEC_t  BLSP    = {0};
 SPEC_t  EQLSP   = {0};
 SPEC_t  LPRNSP  = {0};
@@ -749,8 +750,7 @@ DESCR_t XERRTY = {.a={.i=0},.f=0,.v=0};
 
 /* INATLM / OTSAT etc. (I/O block lists) */
 DESCR_t INATL  = {.a={.i=0},.f=0,.v=0};         /* SIL: DESCR INLIST,0,0  — A set at runtime */
-DESCR_t INSATL = {.a={.i=0},.f=TTL|MARK,.v=0};  /* SIL: DESCR INSATL,TTL+MARK,2*DESCR */
-DESCR_t OTSATL = {.a={.i=0},.f=TTL|MARK,.v=0};  /* SIL: DESCR OTSATL,TTL+MARK,4*DESCR */
+/* INSATL and OTSATL defined in data.c — do not redefine here */
 DESCR_t OUTATL = {.a={.i=0},.f=0,.v=0};         /* SIL: DESCR OTLIST,0,0  — A set at runtime */
 DESCR_t KNATL  = {.a={.i=0},.f=0,.v=0};          /* SIL: DESCR KNLIST,0,0 */
 DESCR_t KVATL  = {.a={.i=0},.f=0,.v=0};          /* SIL: DESCR KVLIST,0,0 */
