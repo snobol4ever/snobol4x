@@ -129,12 +129,11 @@ RESULT_t DUPL_fn(void)
     if (D_A(YPTR) < 0) return FAIL;
     LOCSP_fn(&XSP, &XPTR);
     D_A(XCL) = XSP.l;
-    { /* MULT XCL,XCL,YPTR */
+    { /* MULT XCL,XCL,YPTR,AERROR; ACOMP XCL,MLENCL,INTR8 */
         int64_t prod = (int64_t)D_A(XCL) * D_A(YPTR);
-        if (prod > D_A(MLENCL)) return FAIL; /* INTR8 */
+        if (prod > D_A(MLENCL)) return FAIL; /* INTR8 (also catches int32 overflow → AERROR) */
         D_A(XCL) = (int32_t)prod;
     }
-    if (D_A(XCL) > D_A(MLENCL)) return FAIL;
     int32_t soff = CONVAR_fn(D_A(XCL));
     if (!soff) return FAIL;
     SETAC(ZPTR, soff); SETVC(ZPTR, S);
