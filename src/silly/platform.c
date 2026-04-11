@@ -1968,9 +1968,6 @@ void PAD_fn(int32_t dir, SPEC_t *out, SPEC_t *subj, SPEC_t *pad)
 /* KEYT_fn */
 RESULT_t KEYT_fn(void) { return FAIL; }
 
-/* ARGINT_fn */
-RESULT_t ARGINT_fn(DESCR_t fn, DESCR_t n) { (void)fn; (void)n; return FAIL; }
-
 /* SHORTN_fn */
 void SHORTN_fn(SPEC_t *sp, int32_t n) { if (sp->l > n) sp->l = n; }
 

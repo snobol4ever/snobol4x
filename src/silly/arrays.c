@@ -36,6 +36,10 @@ extern void       VPXPTR_fn2(void);
 #define PUTD_B(base_d, off_d, src) \
     memcpy((char*)A2P(D_A(base_d)) + D_A(off_d), &(src), sizeof(DESCR_t))
 
+/* SIL 10850: DATCL DESCR DEFDAT,FNC,0 — defined-data procedure sentinel */
+/* Used as type-check sentinel in arg2() — .a=0 is fine, not a dispatch target */
+DESCR_t DATCL = {.a={.i=0}, .f=FNC, .v=0};
+
 static inline int deql(DESCR_t a, DESCR_t b)
 {
     return D_A(a) == D_A(b) && D_V(a) == D_V(b);
