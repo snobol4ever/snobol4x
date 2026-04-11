@@ -100,6 +100,9 @@ RESULT_t ASGN_fn(void)
                     DESCR_t zptr; SETAC(zptr, assoc);
                     GETDC_B(zptr, zptr, DESCR);
                     RESULT_t rc = PUTIN_fn(zptr, YPTR);
+                    /* BUG-ASGN-PUTIN: SIL case2→ASGNVV (PUTIN set YPTR), case0→ASGNV1 (GETDC needed).
+                     * Our PUTIN_fn always returns OK and has already done PUTDC internally.
+                     * TODO: split PUTIN into two phases to match oracle case0/case2. */
                     if (rc == OK) goto asgnvv;
                 } /* FAIL from PUTIN: fall to ASGNV1 */
             }
