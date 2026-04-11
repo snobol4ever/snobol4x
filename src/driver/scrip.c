@@ -212,6 +212,7 @@ static void prescan_defines(Program *prog)
 static DESCR_t  interp_eval(EXPR_t *e);      /* forward */
 static DESCR_t  interp_eval_pat(EXPR_t *e);  /* forward — pattern context */
 static DESCR_t *interp_eval_ref(EXPR_t *e);  /* forward — lvalue → DESCR_t* (SIL NAME ptr) */
+static inline void set_and_trace(const char *name, DESCR_t val); /* forward */
 
 /* NAME_DEREF: dereference a DT_N.
  * IS_NAMEPTR (slen=1) -> interior ptr, dereference directly.
@@ -228,7 +229,7 @@ static inline DESCR_t NAME_DEREF(DESCR_t d) {
 static inline int NAME_SET(DESCR_t nd, DESCR_t val) {
     if (IS_NAME(nd)) {
         if (IS_NAMEPTR(nd)) { NAME_DEREF_PTR(nd) = val; return 1; }
-        if (IS_NAMEVAL(nd)) { NV_SET_fn(nd.s, val);     return 1; }
+        if (IS_NAMEVAL(nd)) { set_and_trace(nd.s, val); return 1; }
     }
     return 0;
 }
@@ -239,7 +240,7 @@ static inline int NAME_SET(DESCR_t nd, DESCR_t val) {
  * names registered via TRACE(var,'VALUE'), never on &-keywords. */
 static inline void set_and_trace(const char *name, DESCR_t val) {
     NV_SET_fn(name, val);
-    /* comm_var already called by NV_SET_fn — no extra call needed */
+    if (name && name[0] != '&' && trace_is_active(name)) comm_var(name, val);
 }
 
 /* DYN-57: E_FNC names that always yield a pattern value.
@@ -447,8 +448,8 @@ static DESCR_t call_user_function(const char *fname, DESCR_t *args, int nargs)
                                 && FUNC_NPARAMS_fn(subj_name) == 0) {
                             DESCR_t fres = call_user_function(subj_name, NULL, 0);
                             if (NAME_SET(fres, repl_val)) { succeeded = 1; }
-                            else { NV_SET_fn(subj_name, repl_val); succeeded = 1; }
-                        } else { NV_SET_fn(subj_name, repl_val); succeeded = 1; }
+                            else { set_and_trace(subj_name, repl_val); succeeded = 1; }
+                        } else { set_and_trace(subj_name, repl_val); succeeded = 1; }
                     }
                 } else if (s->has_eq && s->subject && s->subject->kind == E_KEYWORD && s->subject->sval) {
                     DESCR_t repl_val = s->replacement ? interp_eval(s->replacement) : NULVCL;
@@ -531,7 +532,7 @@ static DESCR_t call_user_function(const char *fname, DESCR_t *args, int nargs)
                                 if (IS_NAMEPTR(named)) {
                                     NAME_DEREF_PTR(named) = repl_val; succeeded = 1;
                                 } else {
-                                    NV_SET_fn(nm, repl_val); succeeded = 1;
+                                    set_and_trace(nm, repl_val); succeeded = 1;
                                 }
                             }
                         }
@@ -1619,7 +1620,7 @@ static void execute_program(Program *prog)
             if (IS_FAIL_fn(repl_val)) {
                 succeeded = 0;
             } else {
-                NV_SET_fn(subj_name, repl_val);
+                set_and_trace(subj_name, repl_val);
                 succeeded = 1;
             }
 
@@ -1670,7 +1671,7 @@ static void execute_program(Program *prog)
                 if (IS_FAIL_fn(repl_val)) {
                     succeeded = 0;
                 } else {
-                    NV_SET_fn(nm, repl_val);
+                    set_and_trace(nm, repl_val);
                     succeeded = 1;
                 }
             }

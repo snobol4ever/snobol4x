@@ -821,7 +821,12 @@ static DESCR_t _TRACE_(DESCR_t *a, int n) {
     if (!varname || !*varname) return FAILDESCR;
     /* arg[1] = type string; default to 'VALUE' if omitted */
     const char *type = (n >= 2) ? VARVAL_fn(a[1]) : "VALUE";
-    if (type && (strcmp(type,"VALUE")==0 || strcmp(type,"value")==0))
+    /* Only register into C trace_set when no SNOBOL4 callback is provided.
+     * 4-arg TRACE(var,type,tag,fn): arg[3] non-empty means MONVAL/MONCALL
+     * handles the event via the SNOBOL4 path; comm_var must stay silent. */
+    const char *cbfn = (n >= 4) ? VARVAL_fn(a[3]) : "";
+    if (type && (strcmp(type,"VALUE")==0 || strcmp(type,"value")==0)
+            && (!cbfn || !*cbfn))
         trace_register(varname);
     /* return the variable name (SNOBOL4 spec: TRACE returns first arg) */
     return STRVAL(GC_strdup(varname));
