@@ -1632,9 +1632,14 @@ int  chk_break(int x)        { (void)x; return 1; } /* PLB113: always "hit" → 
 void XCALL_chk_break(int x)  { (void)x; }
 
 /* I/O stubs */
-void XCALL_IO_OPENI(DESCR_t u, SPEC_t *sp)  { (void)u; (void)sp; }
-void XCALL_IO_OPENO(DESCR_t u, SPEC_t *sp)  { (void)u; (void)sp; }
-void XCALL_IO_SEEK(DESCR_t u, DESCR_t n)    { (void)u; (void)n; }
+/* Signatures match io.c extern declarations (SIL §15 IO_OPENI/IO_OPENO/IO_SEEK).
+ * No real file unit table yet — accept args, return OK so callers continue. */
+RESULT_t XCALL_IO_OPENI(DESCR_t u, SPEC_t *fname, SPEC_t *opts, DESCR_t *recl_out)
+    { (void)u; (void)fname; (void)opts; recl_out->a.i=0; recl_out->f=0; recl_out->v=0; return OK; }
+RESULT_t XCALL_IO_OPENO(DESCR_t u, SPEC_t *fname, SPEC_t *fmt)
+    { (void)u; (void)fname; (void)fmt; return OK; }
+RESULT_t XCALL_IO_SEEK(DESCR_t u, DESCR_t off, DESCR_t whence)
+    { (void)u; (void)off; (void)whence; return FAIL; }
 void XCALL_IO_PAD(SPEC_t *sp, int32_t w)    { (void)sp; (void)w; }
 RESULT_t XCALL_IO_FILE(DESCR_t u, SPEC_t *sp) { (void)u; sp->l=0; return FAIL; }
 void XCALL_BKSPCE(DESCR_t u)  { (void)u; }
