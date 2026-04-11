@@ -408,6 +408,7 @@ extern DESCR_t ZSPPTR;   /* pointer-to-ZSP scratch (mirrors XSPPTR)      */
 /* ── M12: func globals ───────────────────────────────────────────── */
 extern DESCR_t DTATL;    /* data-type attribute list head                 */
 extern DESCR_t INCL;     /* global function descriptor (APPLY)           */
+extern DESCR_t A1PTR;    /* scratch pointer A1 (SORT comparator)         */
 extern DESCR_t A2PTR;    /* scratch pointer A2 (DT proc)                 */
 extern DESCR_t A3PTR;    /* scratch pointer A3 (DT proc)                 */
 extern DESCR_t DEFCL;    /* defined-function sentinel (ARG/LOCAL)        */

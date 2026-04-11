@@ -10,9 +10,11 @@
  */
 
 #include <string.h>
+#include <math.h>
 
 #include "types.h"
 #include "data.h"
+#include "errors.h"
 #include "arena.h"
 #include "strings.h"
 #include "arrays.h"
@@ -607,11 +609,459 @@ RESULT_t FIELD_fn(void)
 }
 
 /*====================================================================================================================*/
-/* ── RSORT / SORT — stubs ────────────────────────────────────────────── */
-/* Shell-sort requires A4PTR..A7PTR, LPTR, NANCHK, RCOMP, INTRL etc.
- * Stubbed until M19+ infrastructure is in place.                        */
-RESULT_t RSORT_fn(void) { return FAIL; }
-RESULT_t SORT_fn(void)  { return FAIL; }
+/* ── RSORT / SORT — v311.sil §14 lines 5004–5271 ────────────────────── */
+/*
+ * Three-way sync: v311.sil 5004, snobol4.c L_RSORT/L_SORT, this file.
+ *
+ * RSORT sets SCL=1 (reverse); SORT sets SCL=0 (forward), both fall into SORT1.
+ * SORT1: get first arg (array or table). Table → convert to array via ICNVTA_fn.
+ * Build index table of row-pointers at tail of new array, shell-sort the index,
+ * then unravel into new array. Return new sorted array via XPTR.
+ *
+ * Register map (mirrors snobol4.c exactly):
+ *   SCL   = 1/0 RSORT/SORT flag
+ *   WCL   = arg count (from INCL), later col-index scratch
+ *   WPTR  = copy of first-arg DESCR (to detect table vs array)
+ *   XPTR  = array (new on array path, converted on table path)
+ *   YPTR  = pointer to first data element − 1 (base of rows)
+ *   ZPTR  = pointer to sort-column first element
+ *   YCL   = number of columns (1 for vector)
+ *   ZCL   = number of rows  (address units = count * DESCR)
+ *   XCL   = scratch / dimension count
+ *   TCL   = K swap-flag / scratch
+ *   TPTR  = index table − 1 (in new array tail)
+ *   A3PTR = field-block pointer (0 if none)
+ *   A4PTR = column advance (rows for arrays, −DESCR for tables)
+ *   A5PTR = offset: sort-element → first element in row
+ *   A6PTR = G (shell gap), then column counter during unravel
+ *   A7PTR = I (inner-loop index)
+ *   LPTR  = J (= I + G), then row counter during unravel
+ *   F1PTR, F2PTR = index-table entry pointers during compare/swap
+ *   A1PTR, A2PTR = actual element values being compared
+ *   DTCL  = data-type pair for fast dispatch
+ */
+
+/* ── Inline helpers ──────────────────────────────────────────────────── */
+
+/* INTRL dst,src — convert INTEGER DESCR to REAL in-place (v311.sil INTRL) */
+#define SORT_INTRL(d) do { D_R(d) = (float)D_A(d); D_F(d) = 0; D_V(d) = R; } while(0)
+
+/* NANCHK x,yes,no — jump to yes if x is NaN, else no.
+ * In our code we use isnan(D_R(d)) directly.                            */
+
+/* GETSIZ dst,blk — dst = data-body size of block at blk */
+#define SORT_GETSIZ(dst, blk_d) \
+    do { D_A(dst) = x_bkdata(D_A(blk_d)); D_F(dst) = D_V(dst) = 0; } while(0)
+
+/* MOVBLK dst_off, src_off, nbytes — raw arena block copy */
+#define SORT_MOVBLK(dst_off, src_off, nbytes) \
+    memcpy(A2P(dst_off), A2P(src_off), (size_t)(nbytes))
+
+/* MOVDIC dst_d, dst_off, src_d, src_off — copy one DESCR between arena cells */
+#define SORT_MOVDIC(dst_d, dst_off_i, src_d, src_off_i) \
+    memcpy((char*)A2P(D_A(dst_d))+(dst_off_i), \
+           (char*)A2P(D_A(src_d))+(src_off_i), sizeof(DESCR_t))
+
+/* RESETF d,flag — clear flag bit */
+#define SORT_RESETF(d, flag) do { D_F(d) &= (uint8_t)~(flag); } while(0)
+
+/* PCOMP a,b,gt,eq,lt — pointer (offset) three-way: D_A compare */
+/* Used inline as conditional gotos below. */
+
+/* RCOMP a,b,gt,eq,lt — real three-way compare (NaN already handled above) */
+/* Used inline as conditional gotos below. */
+
+/* ── rlint for SORT3A — real → integer, overflow → INTR30 ───────────── */
+static RESULT_t sort_rlint(DESCR_t *dp)
+{
+    float f = D_R(*dp);
+    if (f >= 2147483648.0f || f < -2147483648.0f) { INTR30_fn(); return FAIL; }
+    D_A(*dp) = (int32_t)f;
+    D_F(*dp) = 0;
+    D_V(*dp) = I;
+    return OK;
+}
+
+/* ── Main entry: RSORT ───────────────────────────────────────────────── */
+static RESULT_t sort_body(int reverse);  /* forward decl */
+
+RESULT_t RSORT_fn(void) { return sort_body(1); }
+RESULT_t SORT_fn(void)  { return sort_body(0); }
+
+static RESULT_t sort_body(int reverse)
+{
+    /* RSORT: SCL=1; SORT: SCL=0 */
+    D_A(SCL) = reverse ? 1 : 0; D_F(SCL) = D_V(SCL) = 0;
+
+/* ── SORT1: get arg count, first argument ────────────────────────────── */
+    /* SETAV WCL,INCL — get arg count from INCL.v */
+    SETAV(WCL, INCL);
+    /* PUSH (WCL,SCL) */
+    ar_push(WCL); ar_push(SCL);
+    /* RCALL XPTR,ARGVAL,,FAIL */
+    if (ARGVAL_fn() == FAIL) { ar_top -= 2; return FAIL; }
+    /* MOVD WPTR,XPTR */
+    MOVD(WPTR, XPTR);
+    /* VEQLC XPTR,A,,SORT2 */
+    if (VEQLC(XPTR, A)) goto sort2;
+    /* VEQLC XPTR,T,NONARY */
+    if (!VEQLC(XPTR, T)) { ar_top -= 2; INTR30_fn(); return FAIL; } /* NONARY */
+    /* RCALL XPTR,ICNVTA,XPTR,(FAIL) — convert table to array */
+    MOVD(ZPTR, XPTR); /* ICNVTA expects table in ZPTR */
+    if (ICNVTA_fn() == FAIL) { ar_top -= 2; return FAIL; }
+    /* fall into SORT2 */
+
+/* ── SORT2: unpack dimensions ────────────────────────────────────────── */
+sort2:;
+    /* POP (SCL,WCL) */
+    SCL = ar_pop(); WCL = ar_pop();
+    /* GETDC XCL,XPTR,2*DESCR — number of dimensions */
+    GETDC_B(XCL, XPTR, 2*DESCR);
+    /* MULTC YPTR,XCL,DESCR — convert to address units */
+    D_A(YPTR) = D_A(XCL) * DESCR; D_F(YPTR) = D_V(YPTR) = 0;
+    /* SUM YPTR,XPTR,YPTR */
+    SUM(YPTR, XPTR, YPTR);
+    /* INCRA YPTR,2*DESCR */
+    INCRA(YPTR, 2*DESCR);
+    /* MOVD YCL,ONECL — assume vector: 1 column */
+    MOVD(YCL, ONECL);
+    /* ACOMPC XCL,2,INTR30,,SORT3 — if ndim<2 jump SORT3; if >2 INTR30 */
+    if (D_A(XCL) < 2)  goto sort3;
+    if (D_A(XCL) > 2)  { INTR30_fn(); return FAIL; }
+    /* 2-d: GETDC YCL,XPTR,3*DESCR; SETAV YCL,YCL */
+    GETDC_B(YCL, XPTR, 3*DESCR);
+    D_A(YCL) = D_V(YCL); D_F(YCL) = D_V(YCL) = 0;
+
+/* ── SORT3: get column length ────────────────────────────────────────── */
+sort3:;
+    /* GETDC ZCL,YPTR,0; SETAV ZCL,ZCL */
+    GETDC_B(ZCL, YPTR, 0);
+    D_A(ZCL) = D_V(ZCL); D_F(ZCL) = D_V(ZCL) = 0;
+    /* MULTC ZCL,ZCL,DESCR */
+    D_A(ZCL) *= DESCR;
+    /* MOVD ZPTR,YPTR — default: sort column = first column */
+    MOVD(ZPTR, YPTR);
+    /* ACOMPC WCL,2,ARGNER,,SORT5 — if arg count < 2 jump SORT5 */
+    if (D_A(WCL) < 2) goto sort5;
+    if (D_A(WCL) > 2) { INTR30_fn(); return FAIL; } /* ARGNER */
+    /* 2 args: save everything, get second argument */
+    ar_push(WPTR); ar_push(XPTR); ar_push(YPTR); ar_push(ZPTR);
+    ar_push(XCL);  ar_push(YCL);  ar_push(ZCL);  ar_push(SCL);
+    if (ARGVAL_fn() == FAIL) {
+        ar_top -= 8; return FAIL;
+    }
+    SCL  = ar_pop(); ZCL  = ar_pop(); YCL  = ar_pop(); XCL  = ar_pop();
+    ZPTR = ar_pop(); YPTR = ar_pop(); XPTR = ar_pop(); WPTR = ar_pop();
+    /* MOVD A3PTR,ZEROCL — assume no Field arg */
+    MOVD(A3PTR, ZEROCL);
+    /* Dispatch on type of second arg: I→SORT3C, S→SORT3B, R→SORT3A, else INTR30 */
+    if (VEQLC(WCL, I)) goto sort3c;
+    if (VEQLC(WCL, S)) goto sort3b;
+    if (VEQLC(WCL, R)) goto sort3a;
+    INTR30_fn(); return FAIL;
+
+sort3a:; /* SORT3A: RLINT WCL — real → int */
+    if (sort_rlint(&WCL) == FAIL) return FAIL;
+    goto sort3c;
+
+sort3b:; /* SORT3B: string — try int, try real, else field function */
+    LOCSP_fn(&XSP, &WCL);
+    if (SPCINT_fn(&WCL, &XSP) == OK) goto sort3c;
+    if (SPREAL_fn(&WCL, &XSP) == OK) goto sort3a;
+    /* Possible field function — must be 1-d array */
+    if (D_A(XCL) != 1) { INTR30_fn(); return FAIL; }
+    /* LOCAPV WCL,FNCPL,WCL,INTR30 — find in function pair list */
+    { int32_t fp = locapv_fn(D_A(FNCPL), &WCL);
+      if (!fp) { INTR30_fn(); return FAIL; }
+      D_A(WCL) = fp; D_F(WCL) = D_V(WCL) = 0; }
+    /* GETDC WCL,WCL,DESCR — function descriptor */
+    GETDC_B(WCL, WCL, DESCR);
+    /* GETDC TCL,WCL,0 — procedure definition */
+    GETDC_B(TCL, WCL, 0);
+    /* AEQL TCL,FLDCL,INTR30 — must be field function */
+    if (!DEQL(TCL, FLDCL)) { INTR30_fn(); return FAIL; }
+    /* GETDC A3PTR,WCL,DESCR — field block */
+    GETDC_B(A3PTR, WCL, DESCR);
+    /* MOVD WCL,ONECL — sort on column 1 */
+    MOVD(WCL, ONECL);
+
+sort3c:; /* SORT3C: validate column index */
+    /* AEQLC XCL,1,SORT4, — if 2-d jump SORT4 */
+    if (D_A(XCL) != 1) goto sort4;
+    /* 1-d: second arg must equal 1 */
+    if (D_A(WCL) == 1) goto sort5;
+    INTR30_fn(); return FAIL;
+
+sort4:; /* SORT4: subtract lower bound of 2nd dimension */
+    { DESCR_t tcl_tmp; GETDC_B(tcl_tmp, XPTR, 3*DESCR);
+      D_A(WCL) -= D_A(tcl_tmp); }
+    /* SORT4A: range-check column offset */
+    if (D_A(WCL) < 0)           { INTR30_fn(); return FAIL; }
+    if (D_A(WCL) >= D_A(YCL))   { INTR30_fn(); return FAIL; }
+    /* MULT WCL,WCL,ZCL — offset * column length */
+    { int64_t prod = (int64_t)D_A(WCL) * D_A(ZCL);
+      if (prod > 2147483647LL || prod < -2147483648LL) { INTR30_fn(); return FAIL; }
+      D_A(WCL) = (int32_t)prod; }
+    /* SUM ZPTR,YPTR,WCL — ptr to sort column */
+    SUM(ZPTR, YPTR, WCL);
+
+/* ── SORT5: build index table ────────────────────────────────────────── */
+sort5:;
+    D_A(XCL) = 0; D_F(XCL) = D_V(XCL) = 0;
+    if (VEQLC(WPTR, A)) goto sorta;
+
+    /* ── Table path ──────────────────────────────────────────────────── */
+    /* GETSIZ TCL,XPTR */
+    SORT_GETSIZ(TCL, XPTR);
+    /* SUM TPTR,XPTR,TCL */
+    SUM(TPTR, XPTR, TCL);
+    /* SUBTRT TPTR,TPTR,ZCL */
+    SUBTRT(TPTR, TPTR, ZCL);
+    /* SETAC A4PTR,-DESCR */
+    D_A(A4PTR) = (int32_t)(-DESCR); D_F(A4PTR) = D_V(A4PTR) = 0;
+    /* SETAC A5PTR,0 */
+    D_A(A5PTR) = 0; D_F(A5PTR) = D_V(A5PTR) = 0;
+    /* AEQL ZPTR,YPTR,,SORTT1 — if sorting on column 1 */
+    if (D_A(ZPTR) == D_A(YPTR)) goto sortt1;
+    /* SORT(Table,2): A5PTR = -DESCR */
+    D_A(A5PTR) = (int32_t)(-DESCR);
+
+sortt1:;
+    /* GETSIZ WCL,WPTR — size of next table extent */
+    SORT_GETSIZ(WCL, WPTR);
+    /* DECRA WCL,2*DESCR */
+    DECRA(WCL, 2*DESCR);
+    /* SUM WCL,WPTR,WCL — end-of-extent pointer */
+    SUM(WCL, WPTR, WCL);
+
+sortt2:;
+    { DESCR_t tcl_val; GETDC_B(tcl_val, WPTR, DESCR); /* GETDC TCL,WPTR,DESCR — value entry */
+      if (!DEQL(tcl_val, NULVCL)) {           /* DEQL TCL,NULVCL,,SORTT3 — skip null */
+          INCRA(XCL, DESCR);                  /* INCRA XCL,DESCR */
+          /* SUM A6PTR,WPTR,A5PTR; INCRA A6PTR,2*DESCR */
+          D_A(A6PTR) = D_A(WPTR) + D_A(A5PTR); D_F(A6PTR) = D_V(A6PTR) = 0;
+          INCRA(A6PTR, 2*DESCR);
+          /* PUTD TPTR,XCL,A6PTR — store index entry */
+          PUTD_B(TPTR, XCL, A6PTR);
+          /* AEQL XCL,ZCL,,SORTGO */
+          if (D_A(XCL) == D_A(ZCL)) goto sortgo;
+      }
+    }
+    /* SORTT3: INCRA WPTR,2*DESCR */
+    INCRA(WPTR, 2*DESCR);
+    /* AEQL WCL,WPTR,SORTT2 — more in extent? */
+    if (D_A(WCL) != D_A(WPTR)) goto sortt2;
+    /* GETDC WPTR,WCL,2*DESCR — link to next extent */
+    GETDC_B(WPTR, WCL, 2*DESCR);
+    goto sortt1;
+
+sorta:; /* ── Array path ─────────────────────────────────────────────── */
+    /* GETSIZ WCL,WPTR; SETVC WCL,A */
+    SORT_GETSIZ(WCL, WPTR);
+    D_V(WCL) = A;
+    /* RCALL XPTR,BLOCK,WCL — allocate new array of same size */
+    ar_push(WCL);
+    { int32_t blk = BLOCK_fn(D_A(WCL), A);
+      (void)ar_pop();
+      if (!blk) { INTR30_fn(); return FAIL; }
+      D_A(XPTR) = blk; D_F(XPTR) = 0; D_V(XPTR) = A; }
+    /* SETAC A4PTR,4*DESCR; MOVBLK XPTR,WPTR,A4PTR — copy 4-DESCR header */
+    D_A(A4PTR) = 4*DESCR; D_F(A4PTR) = D_V(A4PTR) = 0;
+    SORT_MOVBLK(D_A(XPTR), D_A(WPTR), 4*DESCR);
+    /* SUM TPTR,XPTR,WCL */
+    SUM(TPTR, XPTR, WCL);
+    /* SUBTRT TPTR,TPTR,ZCL */
+    SUBTRT(TPTR, TPTR, ZCL);
+    /* SUBTRT A5PTR,ZPTR,YPTR; RESETF A5PTR,PTR */
+    SUBTRT(A5PTR, ZPTR, YPTR);
+    SORT_RESETF(A5PTR, PTR);
+    /* MOVA A4PTR,ZCL — column advance = no. rows */
+    MOVA(A4PTR, ZCL);
+
+sorta1:;
+    INCRA(XCL, DESCR);          /* INCRA XCL,DESCR */
+    INCRA(ZPTR, DESCR);         /* INCRA ZPTR,DESCR */
+    PUTD_B(TPTR, XCL, ZPTR);   /* PUTD TPTR,XCL,ZPTR */
+    if (D_A(XCL) != D_A(ZCL)) goto sorta1;
+
+/* ── SORTGO / SORT6: shell-sort the index table ──────────────────────── */
+sortgo:;
+    MOVA(A6PTR, ZCL);  /* G = N (in address units) */
+
+sort6:;
+    if (D_A(A6PTR) <= DESCR) goto sort12;          /* done if G <= DESCR */
+    D_A(A6PTR) /= D_A(TWOCL);                      /* G = G / 2 */
+    D_A(A6PTR) *= DESCR; D_F(A6PTR) = D_V(A6PTR) = 0;
+    /* XCL = M = N - G */
+    D_A(XCL) = D_A(ZCL) - D_A(A6PTR); D_F(XCL) = D_V(XCL) = 0;
+
+sort7:;
+    MOVD(TCL, ZEROCL);                              /* K = 0 */
+    D_A(A7PTR) = DESCR; D_F(A7PTR) = D_V(A7PTR) = 0;  /* I = DESCR */
+
+sort8:;
+    /* J = I + G */
+    D_A(LPTR) = D_A(A7PTR) + D_A(A6PTR); D_F(LPTR) = D_V(LPTR) = 0;
+    /* F1PTR = index[I], F2PTR = index[J] */
+    GETD_B(F1PTR, TPTR, A7PTR);
+    GETD_B(F2PTR, TPTR, LPTR);
+    /* A1PTR = *F1PTR, A2PTR = *F2PTR */
+    { DESCR_t tmp; memcpy(&tmp, A2P(D_A(F1PTR)), sizeof(DESCR_t)); A1PTR = tmp; }
+    { DESCR_t tmp; memcpy(&tmp, A2P(D_A(F2PTR)), sizeof(DESCR_t)); A2PTR = tmp; }
+
+sort9:; /* Compare A1PTR and A2PTR */
+    /* SETAV DTCL,A1PTR; MOVV DTCL,A2PTR */
+    SETAV(DTCL, A1PTR);
+    MOVV(DTCL, A2PTR);
+    if (DEQL(DTCL, VVDTP)) goto cvv;
+    if (DEQL(DTCL, IIDTP)) goto cii;
+    if (DEQL(DTCL, RIDTP)) goto cri;
+    if (DEQL(DTCL, IRDTP)) goto cirx;
+    if (DEQL(DTCL, RRDTP)) goto crr;
+    goto coth;
+
+cvv:; /* STRING vs STRING — LEXCMP */
+    LOCSP_fn(&XSP, &A1PTR);
+    LOCSP_fn(&YSP, &A2PTR);
+    { int cmp = LEXCMP_fn(&XSP, &YSP);
+      if (cmp < 0)  goto cmplt;
+      if (cmp == 0) goto cmpeq;
+      goto cmpgt; }
+
+cirx:; /* INTEGER / REAL — convert int to real, then CRR */
+    SORT_INTRL(A1PTR);
+    goto crr;
+
+cri:; /* REAL / INTEGER — convert int to real, then CRR */
+    SORT_INTRL(A2PTR);
+    goto crr;
+
+cii:; /* INTEGER / INTEGER */
+    if (D_A(A1PTR) < D_A(A2PTR)) goto cmplt;
+    if (D_A(A1PTR) == D_A(A2PTR)) goto cmpeq;
+    goto cmpgt;
+
+crr:; /* REAL / REAL */
+    if (isnan(D_R(A1PTR))) goto crr1;
+    if (isnan(D_R(A2PTR))) goto cmplt;   /* R1 OK, R2 NaN → R1 < R2 */
+    if (D_R(A1PTR) < D_R(A2PTR)) goto cmplt;
+    if (D_R(A1PTR) == D_R(A2PTR)) goto cmpeq;
+    goto cmpgt;
+
+crr1:; /* R1 NaN — check R2 */
+    if (isnan(D_R(A2PTR))) goto cmpeq;
+    goto cmpgt;
+
+cmpeq:; /* Elements equal — compare array position (ascending always) */
+    if (D_A(F1PTR) <= D_A(F2PTR)) goto cmpnxt;
+    goto swap;
+
+cmpgt:; /* A1 > A2 */
+    if (D_A(SCL) == 0) goto swap;   /* SORT: swap when gt */
+    goto cmpnxt;                     /* RSORT: keep when gt */
+
+cmplt:; /* A1 < A2 */
+    if (D_A(SCL) == 0) goto cmpnxt; /* SORT: keep when lt */
+    /* RSORT: fall into swap */
+
+swap:;
+    PUTD_B(TPTR, A7PTR, F2PTR);
+    PUTD_B(TPTR, LPTR,  F1PTR);
+    D_A(TCL)++;                      /* K++ */
+
+cmpnxt:;
+    if (D_A(A7PTR) >= D_A(XCL)) goto sort11;
+    INCRA(A7PTR, DESCR);
+    goto sort8;
+
+sort11:;
+    if (D_A(TCL) == 0) goto sort6;
+    goto sort7;
+
+coth:; /* Other / mixed data types — check field block */
+    if (D_A(A3PTR) == 0) goto coth2;
+    /* VCOMPC A1PTR,DATSTA,,,COTH0 — if A1 not user type, try A2 */
+    if (D_V(A1PTR) < DATSTA) goto coth0;
+    { D_V(DT1CL) = D_V(A1PTR);
+      int32_t assoc = locapt_fn(D_A(A3PTR), &DT1CL);
+      if (!assoc) { INTR1_fn(); return FAIL; }
+      /* GETDC ZPTR,ZPTR,2*DESCR — offset in data structure */
+      DT1CL.a.i = assoc; DT1CL.f = 0; DT1CL.v = 0;
+      GETDC_B(ZPTR, DT1CL, 2*DESCR);
+      D_A(A1PTR) += D_A(ZPTR);
+      { DESCR_t tmp; memcpy(&tmp, (char*)A2P(D_A(A1PTR)) + DESCR, sizeof(DESCR_t)); A1PTR = tmp; }
+      goto sort9; }
+
+coth0:;
+    if (D_V(A2PTR) < DATSTA) goto coth2;
+    { D_V(DT1CL) = D_V(A2PTR);
+      int32_t assoc = locapt_fn(D_A(A3PTR), &DT1CL);
+      if (!assoc) { INTR1_fn(); return FAIL; }
+      DT1CL.a.i = assoc; DT1CL.f = 0; DT1CL.v = 0;
+      GETDC_B(ZPTR, DT1CL, 2*DESCR);
+      D_A(A2PTR) += D_A(ZPTR);
+      { DESCR_t tmp; memcpy(&tmp, (char*)A2P(D_A(A2PTR)) + DESCR, sizeof(DESCR_t)); A2PTR = tmp; }
+      goto sort9; }
+
+coth2:; /* Types differ or both non-user: compare types as integers */
+    if (D_V(A1PTR) == D_V(A2PTR)) goto coth1;
+    D_A(A1PTR) = D_V(A1PTR); D_F(A1PTR) = D_V(A1PTR) = 0;
+    D_A(A2PTR) = D_V(A2PTR); D_F(A2PTR) = D_V(A2PTR) = 0;
+coth1:; /* PCOMP — compare addresses */
+    if (D_A(A1PTR) < D_A(A2PTR)) goto cmplt;
+    if (D_A(A1PTR) == D_A(A2PTR)) goto cmpeq;
+    goto cmpgt;
+
+/* ── SORT12: unravel index table into new array ──────────────────────── */
+sort12:;
+    /* GETDC XCL,XPTR,2*DESCR — ndim */
+    GETDC_B(XCL, XPTR, 2*DESCR);
+    /* MULTC WPTR,XCL,DESCR */
+    D_A(WPTR) = D_A(XCL) * DESCR; D_F(WPTR) = D_V(WPTR) = 0;
+    /* SUM WPTR,XPTR,WPTR */
+    SUM(WPTR, XPTR, WPTR);
+    D_F(WPTR) = D_F(XPTR); D_V(WPTR) = D_V(XPTR);
+    /* INCRA WPTR,3*DESCR — skip header + first row */
+    INCRA(WPTR, 3*DESCR);
+    /* MOVD LPTR,ONECL; MULTC LPTR,LPTR,DESCR */
+    MOVD(LPTR, ONECL);
+    D_A(LPTR) *= DESCR; D_F(LPTR) = D_V(LPTR) = 0;
+
+sort13:;
+    /* GETD ZPTR,TPTR,LPTR — source sort element pointer */
+    GETD_B(ZPTR, TPTR, LPTR);
+    /* SUBTRT ZPTR,ZPTR,A5PTR — first element in row */
+    SUBTRT(ZPTR, ZPTR, A5PTR);
+    /* MOVD YPTR,WPTR */
+    MOVD(YPTR, WPTR);
+    /* MOVA A6PTR,YCL; MULTC A6PTR,A6PTR,DESCR */
+    MOVA(A6PTR, YCL);
+    D_A(A6PTR) *= DESCR; D_F(A6PTR) = D_V(A6PTR) = 0;
+
+sort14:; /* Move all elements in this row */
+    /* MOVDIC YPTR,0,ZPTR,0 */
+    SORT_MOVDIC(YPTR, 0, ZPTR, 0);
+    /* SUM ZPTR,ZPTR,A4PTR — advance source by column-stride */
+    SUM(ZPTR, ZPTR, A4PTR);
+    /* SUM YPTR,YPTR,ZCL — advance dest by no. rows */
+    SUM(YPTR, YPTR, ZCL);
+    /* DECRA A6PTR,DESCR; AEQLC A6PTR,0,SORT14, */
+    DECRA(A6PTR, DESCR);
+    if (D_A(A6PTR) != 0) goto sort14;
+
+    INCRA(WPTR, DESCR);          /* INCRA WPTR,DESCR — next row in new array */
+    INCRA(LPTR, DESCR);          /* INCRA LPTR,DESCR */
+    /* PCOMP LPTR,ZCL,,SORT13,SORT13 — while LPTR <= ZCL */
+    if (D_A(LPTR) <= D_A(ZCL)) goto sort13;
+
+    /* Clear scratch pointers — PUSH/POP ZEROCL×4 into YPTR,ZPTR,F1PTR,F2PTR */
+    MOVD(YPTR,  ZEROCL);
+    MOVD(ZPTR,  ZEROCL);
+    MOVD(F1PTR, ZEROCL);
+    MOVD(F2PTR, ZEROCL);
+    /* BRANCH RTXPTR — return XPTR (new sorted array) */
+    return OK;
+}
 
 /*====================================================================================================================*/
 /* ── ICNVTA (SIL 6606) — initial TABLE→ARRAY scan ───────────────────────

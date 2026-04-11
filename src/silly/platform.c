@@ -604,7 +604,14 @@ DESCR_t IO4PTR = {.a={.i=0},.f=0,.v=0};
 /* IOSP is SPEC_t in data.h */
 
 /* Misc missing */
+DESCR_t A1PTR  = {.a={.i=0},.f=0,.v=0};
 DESCR_t A2PTR  = {.a={.i=0},.f=0,.v=0};
+DESCR_t A4PTR  = {.a={.i=0},.f=0,.v=0};
+DESCR_t A5PTR  = {.a={.i=0},.f=0,.v=0};
+DESCR_t A6PTR  = {.a={.i=0},.f=0,.v=0};
+DESCR_t A7PTR  = {.a={.i=0},.f=0,.v=0};
+DESCR_t F1PTR  = {.a={.i=0},.f=0,.v=0};
+DESCR_t F2PTR  = {.a={.i=0},.f=0,.v=0};
 DESCR_t A3PTR  = {.a={.i=0},.f=0,.v=0};
 DESCR_t ATPTR  = {.a={.i=0},.f=0,.v=0};
 DESCR_t LPTR   = {.a={.i=0},.f=0,.v=0};
