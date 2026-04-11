@@ -15,6 +15,7 @@
 #include "func.h"
 #include "argval.h"
 #include "arena.h"
+#include "arrays.h"
 #include "strings.h"
 #include "symtab.h"
 #include "errors.h" /* ARGNER_fn, INTR1_fn, LENERR_fn */
@@ -25,6 +26,7 @@ extern RESULT_t INTVAL_fn(void);
 extern RESULT_t XYARGS_fn(void);
 /* GC_fn declared in arena.h as int32_t(int32_t) */
 /* FINDEX_fn declared in symtab.h as int32_t(DESCR_t*) */
+static int spec_eq(SPEC_t a, SPEC_t b); /* defined below, used by CNVRT_fn + OPSYN_fn */
 /* DTREP_fn declared in symtab.h as SPEC_t*(DESCR_t*) */
 extern void       CODSKP_fn(int32_t n);  /* declared in symtab.h */
 extern RESULT_t EXPR_fn(void);
@@ -587,8 +589,77 @@ L_DMPK1: {
 /* ── CONVERT(X,T) / CODE(S) — stubs ─────────────────────────────────
  * Require compiler re-entry (CMPILE, EXPR, TREPUB) and type-conversion
  * infrastructure. Stubbed until M19 (interpreter/compiler). */
-RESULT_t CNVRT_fn(void) { return FAIL; }
-RESULT_t CODER_fn(void) { return FAIL; }
+/* ── CNVRT_fn — CONVERT(X,T) dispatcher ─────────────────────────────
+ * v311.sil §19 lines 6457–6530  ·  snobol4.c CNVRT() lines 8780–8840
+ *
+ * Dispatches to conversion helpers based on (source-type, target-type) pair.
+ * CODE/EXPRESSION conversions (RECOMP/CONVEX paths) require compiler
+ * re-entry — stubbed as FAIL until M19.
+ */
+RESULT_t CNVRT_fn(void)
+{
+    /* RCALL ZPTR,ARGVAL,,FAIL — get object */
+    if (ARGVAL_fn() == FAIL) return FAIL;
+    MOVD(ZPTR, XPTR);
+    fn_push(ZPTR);
+
+    /* RCALL YPTR,VARVUP,,FAIL — get target type name */
+    if (VARVUP_fn() == FAIL) { fn_top--; return FAIL; }
+    MOVD(YPTR, XPTR);
+    ZPTR = fn_pop();
+
+    /* LOCAPV XPTR,DTATL,YPTR — look up type code in data-type list */
+    int32_t pair = locapv_fn(D_A(DTATL), &YPTR);
+    if (!pair) goto L_CNV1;
+
+    /* GETDC XPTR,XPTR,DESCR — get type code descriptor from pair+DESCR */
+    memcpy(&XPTR, A2P(pair + DESCR), sizeof(DESCR_t));
+
+    /* SETAV DTCL,ZPTR: .a = D_V(ZPTR) (source type) */
+    D_A(DTCL) = (int32_t)D_V(ZPTR);
+    D_F(DTCL) = D_V(DTCL) = 0;
+    /* MOVV DTCL,XPTR: .v = D_V(XPTR) (target type code) */
+    D_V(DTCL) = D_V(XPTR);
+
+    /* Dispatch on (source,target) pair */
+    if (DEQL(DTCL, IVDTP)) return CNVIV_fn();   /* INTEGER→STRING  */
+    if (DEQL(DTCL, VCDTP)) return FAIL;          /* STRING→CODE   (TODO M19) */
+    if (DEQL(DTCL, VEDTP)) return FAIL;          /* STRING→EXPR   (TODO M19) */
+    if (DEQL(DTCL, VRDTP)) return CONVR_fn();   /* STRING→REAL     */
+    if (DEQL(DTCL, RIDTP)) return CONRI_fn();   /* REAL→INTEGER    */
+    if (DEQL(DTCL, IRDTP)) return CONIR_fn();   /* INTEGER→REAL    */
+    if (DEQL(DTCL, VIDTP)) return CNVVI_fn();   /* STRING→INTEGER  */
+    if (DEQL(DTCL, ATDTP)) return CNVAT_fn();   /* ARRAY→TABLE     */
+    if (DEQL(DTCL, TADTP)) return CNVTA_fn();   /* TABLE→ARRAY     */
+    /* VEQL ZPTR,XPTR,,RTZPTR — idem-conversion (same type) */
+    if ((int32_t)D_V(ZPTR) == (int32_t)D_V(XPTR)) { MOVD(XPTR, ZPTR); return OK; }
+    /* VEQLC XPTR,S,FAIL,CNVRTS — if target is STRING, get repr */
+    if ((int32_t)D_V(XPTR) == S) return CNVRTS_fn();
+    return FAIL;
+
+L_CNV1: /* target type not in DTATL — check for "NUMERIC" */
+    {   SPEC_t ysp; LOCSP_fn(&ysp, &YPTR);
+        /* LEXCMP YSP,NUMSP,INTR1,,INTR1 — compare against literal "NUMERIC" */
+        /* NUMSP is a C string (const char[]), not arena-resident: compare directly */
+        int32_t numlen = (int32_t)strlen(NUMSP);
+        const char *yptr_str = (const char *)A2P(ysp.a) + ysp.o;
+        if (ysp.l != numlen || memcmp(yptr_str, NUMSP, (size_t)numlen) != 0)
+            { INTR1_fn(); return FAIL; }
+        /* NUMERIC target: I and R pass as-is; S → try parse */
+        if (D_V(ZPTR) == I) { MOVD(XPTR, ZPTR); return OK; }
+        if (D_V(ZPTR) == R) { MOVD(XPTR, ZPTR); return OK; }
+        if (D_V(ZPTR) != S) return FAIL;
+        SPEC_t zsp; LOCSP_fn(&zsp, &ZPTR);
+        if (SPCINT_fn(&ZPTR, &zsp) == OK) { MOVD(XPTR, ZPTR); return OK; }
+        if (SPREAL_fn(&ZPTR, &zsp) == OK) { MOVD(XPTR, ZPTR); return OK; }
+        return FAIL;
+    }
+}
+
+/* ── CODER_fn — CODE(S) ──────────────────────────────────────────────
+ * v311.sil §19 CODER (line 6530): VARVAL the argument then fall into RECOMP.
+ * RECOMP requires compiler re-entry (CMPILE/EXPR/TREPUB). TODO M19. */
+RESULT_t CODER_fn(void) { return FAIL; /* TODO M19: compiler re-entry */ }
 
 /* ── OPSYN(F1,F2,N) ─────────────────────────────────────────────────
  * v311.sil §19 lines 6805–6927  ·  snobol4.c OPSYN() lines 9348–9534
