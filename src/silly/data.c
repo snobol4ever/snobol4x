@@ -87,7 +87,9 @@ DESCR_t STATCL = D0;
 DESCR_t BLOKCL = D(0, 0, I);   /* SIL: BLOKCL DESCR 0,0,I — BLOCKS feature flag (skipped but data present) */
 DESCR_t INSW   = D(1, 0, I);   /* &INPUT = 1                            */
 DESCR_t OUTSW  = D(1, 0, I);   /* &OUTPUT = 1                           */
-DESCR_t FULLCL = D0;
+DESCR_t FULLCL = D(0, 0, I);           /* &FULLSCAN = 0                 */
+/* SIL: BKGNCL DESCR 0,0,0 — &FILL [BLOCKS] */
+DESCR_t BKGNCL = D0;                   /* &FILL = 0,0,0 [BLOCKS]        */
 DESCR_t CONVSW = D0;
 
 /* ── KNLIST — writable keywords ──────────────────────────────────────── */

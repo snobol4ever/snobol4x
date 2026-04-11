@@ -100,6 +100,7 @@ extern DESCR_t BLOKCL;    /* SIL: BLOKCL DESCR 0,0,I — BLOCKS feature flag [PL
 extern DESCR_t INSW;      /* &INPUT (init=1)                              */
 extern DESCR_t OUTSW;     /* &OUTPUT (init=1)                             */
 extern DESCR_t FULLCL;    /* &FULLSCAN                                    */
+extern DESCR_t BKGNCL;    /* &FILL [BLOCKS]                               */
 extern DESCR_t CONVSW;    /* GENVAR conversion switch                     */
 
 /* ── Constants (DESCR-valued) ───────────────────────────────────────── */
