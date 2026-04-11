@@ -367,9 +367,9 @@ static RESULT_t arg2(void)
     ZCL  = fn_pop();               /* restore proc-type-check indicator */
     ALCL = fn_pop();               /* restore entry indicator */
     if (D_A(YCL) != D_A(ZCL)) { INTR30_fn(); return FAIL; } /* AEQL YCL,ZCL,INTR30 */
-    D_A(XCL) *= DESCR;            /* MULTC XCL,XCL,DESCR — offset in units */
+    D_A(XCL) *= DESCR; D_F(XCL) = D_V(XCL) = 0; /* MULTC XCL,XCL,DESCR */
     D_A(XCL) += 2*DESCR;          /* INCRA XCL,2*DESCR — skip prototype */
-    D_A(YCL)  = D_V(YCL);        /* SETAV YCL,YCL — arg count from V-field */
+    D_A(YCL)  = D_V(YCL); D_F(YCL) = D_V(YCL) = 0; /* SETAV YCL,YCL — arg count from V-field */
     D_A(YCL) *= DESCR;            /* MULTC YCL,YCL,DESCR */
     if (D_A(ALCL) == 0) {
         /* ARG4: defined function path */
