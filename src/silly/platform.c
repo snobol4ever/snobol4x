@@ -28,6 +28,7 @@
 #include "types.h"
 #include "data.h"
 #include "arena.h"
+#include "symtab.h"   /* DTREP_fn */
 
 /* ── I/O read EOF/ERR flag (set by STREAD_fn, read by callers) ───────── */
 /* 1 = EOF (oracle IO_EOF → XLATIN/FILCHK), 0 = I/O error (oracle IO_ERR → COMP1) */
@@ -1662,7 +1663,21 @@ void XCALL_SBREAL(DESCR_t *res, DESCR_t a, DESCR_t b)
 /*====================================================================================================================*/
 void XCALL_RPLACE(SPEC_t *dst, SPEC_t *src, SPEC_t *rep)
 {
-    (void)dst; (void)src; (void)rep; /* stub */
+    /* Build 256-entry identity translation table, then override with src→rep pairs */
+    unsigned char table[256];
+    int i;
+    for (i = 0; i < 256; i++) table[i] = (unsigned char)i;
+
+    int l2 = src->l, l3 = rep->l;
+    const unsigned char *cp2 = (const unsigned char *)A2P(src->a) + src->o;
+    const unsigned char *cp3 = (const unsigned char *)A2P(rep->a) + rep->o;
+    while (l2-- > 0 && l3-- > 0)
+        table[*cp2++] = *cp3++;
+
+    /* Translate dst in place */
+    int l1 = dst->l;
+    unsigned char *cp1 = (unsigned char *)A2P(dst->a) + dst->o;
+    while (l1-- > 0) { *cp1 = table[*cp1]; cp1++; }
 }
 /*====================================================================================================================*/
 void XCALL_XSUBSTR(SPEC_t *res, SPEC_t *src, int32_t start, int32_t len)
@@ -1846,11 +1861,34 @@ void cpypat_fn(int32_t dst_off, int32_t src_off, int32_t n)
 }
 
 /*====================================================================================================================*/
-/* getbal_fn — balanced-string scanner (stub: return full spec) */
+/* getbal_fn — balanced-string scanner
+ * Faithful translation of lib/bal.c getbal().
+ * sp->l = chars already matched (scan starts here); maxlen = chars remaining.
+ * Scans forward counting '(' and ')'; stops when count drops to 0 (balanced).
+ * On success: sp->l += matched length, returns matched length (>0).
+ * On failure (unbalanced or exhausted): returns 0.
+ */
 int32_t getbal_fn(SPEC_t *sp, int32_t maxlen)
 {
-    if (sp->l > maxlen) sp->l = maxlen;
-    return sp->l;
+    const char *cp = (const char *)A2P(sp->a) + sp->o + sp->l;
+    int32_t len = maxlen;
+    int count = 0;
+    int32_t j = 1;
+
+    while (len > 0) {
+        if (*cp == '(') count++;
+        if (*cp == ')') {
+            --count;
+            if (count < 0) return 0;   /* unbalanced close — fail */
+        }
+        if (count == 0) break;         /* balanced — stop */
+        len--;
+        cp++;
+        j++;
+    }
+    if (len == 0) return 0;            /* exhausted without balance — fail */
+    sp->l += j;
+    return j;                          /* success: return matched length */
 }
 
 /*====================================================================================================================*/
@@ -1932,21 +1970,29 @@ int xany_fn(const SPEC_t *sp, const DESCR_t *dp)
 DESCR_t CONTIN = {{.i=(int_t)AC_CONTIN}, 0, 0};
 DESCR_t STOPSH = {{.i=(int_t)AC_STOPSH}, 0, 0};
 
-/* DTREP_fn2/3 — format a DESCR as type-name string (stub) */
+/* DTREP_fn2/3 — format a DESCR as type-name string
+ * v311.sil DTREP (line 1135): RRTURN DPSPTR,1 — returns pointer-to-SPEC.
+ * These variants store the result pointer into *out for callers that use
+ * GETSPC out,ptr,0 to retrieve the specifier.
+ * Both fn2 and fn3 are identical in behaviour — different call sites only. */
 RESULT_t DTREP_fn2(DESCR_t *out, DESCR_t obj)
 {
-    (void)obj;
-    static char buf[] = "?";
-    out->a.i = P2A(buf); out->f = 0; out->v = S;
+    SPEC_t *sp = DTREP_fn(&obj);   /* delegate to full implementation */
+    if (!sp) return FAIL;
+    out->a.i = P2A(sp);            /* RRTURN DPSPTR,1 — pointer to SPEC */
+    out->f   = 0;
+    out->v   = 0;
     return OK;
 }
 
 /*====================================================================================================================*/
 RESULT_t DTREP_fn3(DESCR_t *out, DESCR_t obj)
 {
-    (void)obj;
-    static char buf[] = "?";
-    out->a.i = P2A(buf); out->f = 0; out->v = S;
+    SPEC_t *sp = DTREP_fn(&obj);
+    if (!sp) return FAIL;
+    out->a.i = P2A(sp);
+    out->f   = 0;
+    out->v   = 0;
     return OK;
 }
 
