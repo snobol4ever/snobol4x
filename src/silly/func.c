@@ -36,7 +36,7 @@ extern void       XCALL_RPLACE(SPEC_t *dst, SPEC_t *tbl, SPEC_t *rep);
 extern void       XCALL_REVERSE(SPEC_t *dst, SPEC_t *src);
 extern void       XCALL_XSUBSTR(SPEC_t *dst, SPEC_t *src, int32_t off);
 extern void       STPRNT_fn(int32_t key, void *blk, SPEC_t *sp);
-extern RESULT_t ICNVTA_fn(DESCR_t tbl);
+/* ICNVTA_fn, CNVTA_fn, CNVAT_fn — TABLE↔ARRAY conversions — in arrays.c */
 
 #define GETDC_B(dst, base_d, off_i) \
     memcpy(&(dst), (char*)A2P(D_A(base_d)) + (off_i), sizeof(DESCR_t))
@@ -471,3 +471,95 @@ RESULT_t OPSYN_fn(void) { return FAIL; }
  * v311.sil §19 CONVE (used by EVAL_fn in argval.c).
  * Requires compiler re-entry. Stubbed until M19. */
 RESULT_t CONVE_fn(void) { return FAIL; }
+
+/*====================================================================================================================*/
+/* ── CONVR (SIL 6546) — STRING → REAL (or INTEGER) conversion ────────
+ * v311.sil:
+ *   CONVR  LOCSP   ZSP,ZPTR        Get specifier
+ *          SPCINT  ZPTR,ZSP,,CONIR  Try conversion to INTEGER first
+ *          SPREAL  ZPTR,ZSP,FAIL,RTZPTR
+ * snobol4.c: X_LOCSP(ZSP,ZPTR); SPCINT→CONIR; SPREAL→RTZPTR else FAIL  */
+RESULT_t CONVR_fn(void)
+{
+    SPEC_t zsp;
+    LOCSP_fn(&zsp, &ZPTR);                        /* LOCSP ZSP,ZPTR        */
+    if (SPCINT_fn(&ZPTR, &zsp) == OK) {           /* SPCINT ZPTR,ZSP,,CONIR */
+        /* CONIR: INTRL ZPTR,ZPTR — convert integer to real */
+        ZPTR.a.f = (float)ZPTR.a.i;              /* INTRL: int → real     */
+        ZPTR.f   = 0;
+        ZPTR.v   = R;
+        return OK;                                /* BRANCH RTZPTR         */
+    }
+    if (SPREAL_fn(&ZPTR, &zsp) == OK) return OK; /* SPREAL ZPTR,ZSP,FAIL,RTZPTR */
+    return FAIL;
+}
+
+/* ── CONIR (SIL 6551) — INTEGER → REAL ───────────────────────────────
+ * v311.sil:
+ *   CONIR  INTRL   ZPTR,ZPTR       Convert INTEGER to REAL
+ *          BRANCH  RTZPTR
+ * snobol4.c: D_RV(ZPTR)=(real_t)D_A(ZPTR); D_F=0; D_V=R; BRANCH RTZPTR */
+RESULT_t CONIR_fn(void)
+{
+    ZPTR.a.f = (float)ZPTR.a.i;                  /* INTRL ZPTR,ZPTR       */
+    ZPTR.f   = 0;
+    ZPTR.v   = R;
+    return OK;                                    /* BRANCH RTZPTR         */
+}
+
+/* ── CONRI (SIL 6554) — REAL → INTEGER ───────────────────────────────
+ * v311.sil:
+ *   CONRI  RLINT   ZPTR,ZPTR,FAIL,RTZPTR
+ * snobol4.c: CLR_MATH_ERROR; cast; if MATH_ERROR →FAIL; else →RTZPTR   */
+RESULT_t CONRI_fn(void)
+{
+    float f = ZPTR.a.f;
+    if (f >= 2147483648.0f || f < -2147483648.0f) return FAIL; /* RLINT overflow */
+    ZPTR.a.i = (int32_t)f;
+    ZPTR.f   = 0;
+    ZPTR.v   = I;
+    return OK;                                    /* BRANCH RTZPTR         */
+}
+
+/* ── CNVIV (SIL 6557) — INTEGER → STRING ─────────────────────────────
+ * v311.sil:
+ *   CNVIV  RCALL   ZPTR,GNVARI,ZPTR,RTZPTR
+ * snobol4.c: SAVSTK; PUSH(ZPTR); GNVARI(ZPTR)==1 →RTZPTR               */
+RESULT_t CNVIV_fn(void)
+{
+    int32_t off = GNVARI_fn(ZPTR.a.i);           /* RCALL ZPTR,GNVARI,ZPTR */
+    if (!off) return FAIL;
+    SETAC(ZPTR, off);
+    SETVC(ZPTR, S);
+    return OK;                                    /* BRANCH RTZPTR         */
+}
+
+/* ── CNVVI (SIL 6560) — STRING → INTEGER (or REAL→INTEGER via CONRI) ──
+ * v311.sil:
+ *   CNVVI  LOCSP   ZSP,ZPTR        Get specifier
+ *          SPCINT  ZPTR,ZSP,,RTZPTR  Convert STRING to INTEGER
+ *          SPREAL  ZPTR,ZSP,FAIL,CONRI  Try conversion to REAL
+ * snobol4.c: X_LOCSP; SPCINT→RTZPTR; SPREAL→CONRI else FAIL            */
+RESULT_t CNVVI_fn(void)
+{
+    SPEC_t zsp;
+    LOCSP_fn(&zsp, &ZPTR);                        /* LOCSP ZSP,ZPTR        */
+    if (SPCINT_fn(&ZPTR, &zsp) == OK) return OK;  /* SPCINT →RTZPTR        */
+    if (SPREAL_fn(&ZPTR, &zsp) == OK) return CONRI_fn(); /* SPREAL →CONRI  */
+    return FAIL;
+}
+
+/* ── CNVRTS (SIL 6564) — get data type representation as string ───────
+ * v311.sil:
+ *   CNVRTS RCALL   XPTR,DTREP,ZPTR   Get data type representation
+ *          GETSPC  ZSP,XPTR,0         Get specifier
+ *          BRANCH  GENVRZ             Go generate variable
+ * snobol4.c: SAVSTK;PUSH(ZPTR);DTREP(XPTR); _SPEC(ZSP)=_SPEC(D_A(XPTR)); BRANCH GENVRZ */
+RESULT_t CNVRTS_fn(void)
+{
+    SPEC_t *sp = DTREP_fn(&ZPTR);                 /* RCALL XPTR,DTREP,ZPTR */
+    if (!sp) return FAIL;
+    XPTR.a.i = P2A(sp);
+    ZSP = *sp;                                    /* GETSPC ZSP,XPTR,0     */
+    return genvrz();                              /* BRANCH GENVRZ          */
+}
