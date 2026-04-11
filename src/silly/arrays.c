@@ -13,6 +13,8 @@
 
 #include "types.h"
 #include "data.h"
+#include "arena.h"
+#include "strings.h"
 #include "arrays.h"
 #include "argval.h"
 #include "arena.h"
@@ -366,3 +368,255 @@ RESULT_t FIELD_fn(void)
  * Stubbed until M19+ infrastructure is in place.                        */
 RESULT_t RSORT_fn(void) { return FAIL; }
 RESULT_t SORT_fn(void)  { return FAIL; }
+
+/*====================================================================================================================*/
+/* ── ICNVTA (SIL 6606) — initial TABLE→ARRAY scan ───────────────────────
+ *
+ * v311.sil:
+ *   ICNVTA PROC    CNVRT
+ *          POP     YPTR              — get table pointer from stack
+ *          MOVD    YCL,ZEROCL        — zero item count
+ *   CNVTA7 GETSIZ  XCL,YPTR         — XCL = data size of table extent
+ *          MOVD    ZCL,XCL
+ *          DECRA   XCL,3*DESCR       — skip 3-DESCR header: point at last item
+ *   CNVTA1 GETD    WCL,YPTR,XCL     — read item at offset XCL
+ *          DEQL    WCL,NULVCL,,CNVTA2 — if not null, count it
+ *          INCRA   YCL,1
+ *   CNVTA2 AEQLC   XCL,DESCR,,CNVTA6 — if at bottom, go follow chain
+ *          DECRA   XCL,2*DESCR       — step back one key/value pair
+ *          BRANCH  CNVTA1
+ *   CNVTA6 GETD    YPTR,YPTR,ZCL    — follow chain pointer
+ *          AEQLC   YPTR,1,CNVTA7,   — if not end (==1 means end-sentinel), loop
+ *          AEQLC   YCL,0,,FAIL       — fail on empty table
+ *          ... build prototype "N,2", GENVAR, BLOCK, install heading, RRTURN ZPTR,2
+ *
+ * snobol4.c confirms: POP(YPTR); D(YCL)=D(ZEROCL); loop over extents counting
+ * non-null values; build "N,2" prototype string; GENVAR; BLOCK; MOVBLK heading;
+ * RETURN(2) with ZPTR = new array block.
+ *
+ * Side effect on return: YCL = item count (used by caller CNVTA).       */
+RESULT_t ICNVTA_fn(void)
+{
+    /* POP YPTR — table pointer was pushed by CNVTA before RCALL */
+    YPTR = ZPTR; /* caller puts table ptr in ZPTR before the call */
+
+    /* MOVD YCL,ZEROCL — zero item count */
+    MOVD(YCL, ZEROCL);
+
+cnvta7:;
+    /* GETSIZ XCL,YPTR — get data size of this table extent */
+    int32_t data_sz = x_bkdata(D_A(YPTR));
+    SETAC(XCL, data_sz); D_F(XCL) = 0; D_V(XCL) = 0;
+    MOVD(ZCL, XCL);                               /* ZCL = size (for chain follow) */
+    D_A(XCL) -= 3 * DESCR;                        /* DECRA XCL,3*DESCR: skip header */
+
+cnvta1:;
+    /* GETD WCL,YPTR,XCL — read descriptor at YPTR+XCL */
+    memcpy(&WCL, (char*)A2P(D_A(YPTR)) + D_A(XCL), sizeof(DESCR_t));
+    if (!deql(WCL, NULVCL))                       /* DEQL WCL,NULVCL,,CNVTA2 */
+        D_A(YCL)++;                                /* INCRA YCL,1 */
+
+    /* CNVTA2: AEQLC XCL,DESCR,,CNVTA6 */
+    if (D_A(XCL) == DESCR) goto cnvta6;
+    D_A(XCL) -= 2 * DESCR;                        /* DECRA XCL,2*DESCR */
+    goto cnvta1;
+
+cnvta6:;
+    /* GETD YPTR,YPTR,ZCL — follow chain: read descriptor at YPTR+ZCL */
+    memcpy(&YPTR, (char*)A2P(D_A(YPTR)) + D_A(ZCL), sizeof(DESCR_t));
+    /* AEQLC YPTR,1,CNVTA7, — if not end sentinel (1), loop */
+    if (D_A(YPTR) != 1) goto cnvta7;
+
+    /* AEQLC YCL,0,,FAIL */
+    if (D_A(YCL) == 0) return FAIL;
+
+    /* Build prototype string "N,2" for GENVAR —
+     * SIL: MULTC XCL,YCL,2*DESCR; INTSPC YSP,YCL; SETLC PROTSP,0;
+     *      APDSP PROTSP,YSP; APDSP PROTSP,CMASP; WCL=2; INTSPC XSP,WCL;
+     *      APDSP PROTSP,XSP; SETSP XSP,PROTSP;
+     *      RCALL TPTR,GENVAR,XSPPTR, */
+    D_A(XCL) = D_A(YCL) * 2 * DESCR;             /* MULTC XCL,YCL,2*DESCR */
+    D_F(XCL) = D_V(XCL) = 0;
+
+    SPEC_t ysp; INTSPC_fn(&ysp, &YCL);            /* INTSPC YSP,YCL */
+    PROTSP.l = 0;                                  /* SETLC PROTSP,0 */
+    APDSP_fn(&PROTSP, &ysp);                       /* APDSP PROTSP,YSP */
+    APDSP_fn(&PROTSP, &CMASP);                     /* APDSP PROTSP,CMASP */
+    DESCR_t wcl2 = ZEROCL; D_A(wcl2) = 2;
+    SPEC_t xsp2; INTSPC_fn(&xsp2, &wcl2);         /* INTSPC XSP,WCL (WCL=2) */
+    APDSP_fn(&PROTSP, &xsp2);                      /* APDSP PROTSP,XSP */
+    SPEC_t proto = PROTSP;                         /* SETSP XSP,PROTSP */
+
+    /* RCALL TPTR,GENVAR,XSPPTR — intern prototype string */
+    int32_t toff = GENVAR_fn(&proto);
+    if (!toff) return FAIL;
+    SETAC(TPTR, toff); SETVC(TPTR, S);
+
+    MOVD(ZCL, XCL);                               /* MOVD ZCL,XCL — save size */
+    D_A(XCL) += 4 * DESCR;                        /* INCRA XCL,4*DESCR — heading */
+
+    /* RCALL ZPTR,BLOCK,XCL — allocate array block */
+    int32_t blk = BLOCK_fn(D_A(XCL), 0);
+    if (!blk) return FAIL;
+    SETAC(ZPTR, blk); D_F(ZPTR) = 0; SETVC(ZPTR, A); /* SETVC ZPTR,A */
+
+    /* MOVD ATPRCL,TPTR; SETVA ATEXCL,YCL — install prototype and first dim */
+    MOVD(ATPRCL[0], TPTR);
+    D_V(ATEXCL) = D_A(YCL);
+
+    /* MOVBLK ZPTR,ATRHD,FRDSCL — copy 4*DESCR of heading from ATRHD into ZPTR */
+    memcpy(A2P(D_A(ZPTR)), A2P(D_A(ATRHD)), (size_t)D_A(FRDSCL));
+
+    /* RRTURN ZPTR,2 — return with ZPTR = new array block, case 2 */
+    return OK;  /* caller (CNVTA) receives ZPTR */
+}
+
+/* ── CNVTA (SIL 6568) — TABLE → ARRAY ────────────────────────────────
+ *
+ * v311.sil:
+ *   CNVTA  MOVD    WPTR,ZPTR         — save table pointer
+ *          RCALL   ZPTR,ICNVTA,ZPTR,(FAIL) — allocate array, YCL=count
+ *          MOVD    YPTR,ZPTR         — save array block pointer
+ *          MULTC   YCL,YCL,DESCR     — YCL = count * DESCR (address units)
+ *          INCRA   YPTR,5*DESCR      — skip array heading (5 slots)
+ *          SUM     TPTR,YPTR,YCL     — TPTR = second half (value column)
+ *   CNVTA8 GETSIZ  WCL,WPTR
+ *          DECRA   WCL,2*DESCR
+ *          SUM     WCL,WPTR,WCL      — WCL = ptr to last key slot
+ *   CNVTA3 GETDC   TCL,WPTR,DESCR    — read key at WPTR+DESCR
+ *          DEQL    TCL,NULVCL,,CNVTA5 — skip null entries
+ *          PUTDC   TPTR,0,TCL         — store key in second half
+ *          MOVDIC  YPTR,0,WPTR,2*DESCR — copy value to first half
+ *          INCRA   YPTR,DESCR
+ *          INCRA   TPTR,DESCR
+ *   CNVTA5 INCRA   WPTR,2*DESCR      — next table slot
+ *          AEQL    WCL,WPTR,CNVTA3   — if not at end, loop
+ *          GETDC   WPTR,WCL,2*DESCR  — follow chain
+ *          AEQLC   WPTR,1,CNVTA8,    — if more extents, loop
+ *          SETAC   TPTR,0            — clear second-half pointer
+ *          BRANCH  RTZPTR
+ *
+ * snobol4.c confirms the above exactly.                                  */
+RESULT_t CNVTA_fn(void)
+{
+    MOVD(WPTR, ZPTR);                              /* save table pointer */
+    if (ICNVTA_fn() == FAIL) return FAIL;          /* RCALL ZPTR,ICNVTA,ZPTR */
+    MOVD(YPTR, ZPTR);                              /* save array block */
+    D_A(YCL) *= DESCR;                             /* MULTC YCL,YCL,DESCR */
+    D_F(YCL) = D_V(YCL) = 0;
+    D_A(YPTR) += 5 * DESCR;                        /* INCRA YPTR,5*DESCR */
+    TPTR = YPTR;
+    D_A(TPTR) += D_A(YCL);                         /* SUM TPTR,YPTR,YCL */
+
+cnvta8:;
+    int32_t data_sz = x_bkdata(D_A(WPTR));
+    SETAC(WCL, data_sz); D_F(WCL) = D_V(WCL) = 0; /* GETSIZ WCL,WPTR */
+    D_A(WCL) -= 2 * DESCR;                         /* DECRA WCL,2*DESCR */
+    D_A(WCL) = D_A(WPTR) + D_A(WCL);              /* SUM WCL,WPTR,WCL */
+    D_F(WCL) = D_F(WPTR); D_V(WCL) = D_V(WPTR);
+
+cnvta3:;
+    memcpy(&TCL, (char*)A2P(D_A(WPTR)) + DESCR, sizeof(DESCR_t)); /* GETDC TCL,WPTR,DESCR */
+    if (deql(TCL, NULVCL)) goto cnvta5;            /* DEQL TCL,NULVCL,,CNVTA5 */
+    /* PUTDC TPTR,0,TCL — store key */
+    memcpy(A2P(D_A(TPTR)), &TCL, sizeof(DESCR_t));
+    /* MOVDIC YPTR,0,WPTR,2*DESCR — copy value */
+    DESCR_t val; memcpy(&val, (char*)A2P(D_A(WPTR)) + 2*DESCR, sizeof(DESCR_t));
+    memcpy(A2P(D_A(YPTR)), &val, sizeof(DESCR_t));
+    D_A(YPTR) += DESCR;                            /* INCRA YPTR,DESCR */
+    D_A(TPTR) += DESCR;                            /* INCRA TPTR,DESCR */
+
+cnvta5:;
+    D_A(WPTR) += 2 * DESCR;                        /* INCRA WPTR,2*DESCR */
+    if (D_A(WCL) != D_A(WPTR)) goto cnvta3;        /* AEQL WCL,WPTR,CNVTA3 */
+    /* GETDC WPTR,WCL,2*DESCR — follow chain */
+    memcpy(&WPTR, (char*)A2P(D_A(WCL)) + 2*DESCR, sizeof(DESCR_t));
+    if (D_A(WPTR) != 1) goto cnvta8;               /* AEQLC WPTR,1,CNVTA8, */
+    D_A(TPTR) = 0;                                  /* SETAC TPTR,0 */
+    return OK;                                      /* BRANCH RTZPTR */
+}
+
+/* ── CNVAT (SIL 6642) — Nx2 ARRAY → TABLE ────────────────────────────
+ *
+ * v311.sil:
+ *   CNVAT  GETDC   XCL,ZPTR,2*DESCR  — get dimensionality
+ *          MOVD    YPTR,ZPTR
+ *          AEQLC   XCL,2,FAIL,        — must be 2-dimensional
+ *          GETDC   XCL,ZPTR,3*DESCR   — get second dimension
+ *          VEQLC   XCL,2,FAIL,        — second dim must be 2
+ *          GETSIZ  XCL,ZPTR           — get data size
+ *          DECRA   XCL,2*DESCR
+ *          RCALL   XPTR,BLOCK,XCL,    — allocate table block
+ *          SETVC   XPTR,T
+ *          GETDC   YCL,ZPTR,4*DESCR   — get first dimension (row count)
+ *          MOVD    ZPTR,XPTR
+ *          PUTD    XPTR,XCL,ONECL     — end sentinel at tail
+ *          DECRA   XCL,DESCR
+ *          MOVD    TCL,EXTVAL; INCRA TCL,2*DESCR
+ *          PUTD    XPTR,XCL,TCL       — install extension descriptor
+ *          SETAV   YCL,YCL; MULTC YCL,YCL,DESCR
+ *          INCRA   YPTR,5*DESCR       — skip heading
+ *          SUM     WPTR,YPTR,YCL,,    — WPTR = second half (keys)
+ *   CNVAT2 MOVDIC  XPTR,DESCR,WPTR,0 — copy key
+ *          MOVDIC  XPTR,2*DESCR,YPTR,0 — copy value
+ *          DECRA   YCL,DESCR
+ *          AEQLC   YCL,0,,RTZPTR
+ *          INCRA   XPTR,2*DESCR; INCRA WPTR,DESCR; INCRA YPTR,DESCR
+ *          BRANCH  CNVAT2
+ *
+ * snobol4.c confirms exactly.                                            */
+RESULT_t CNVAT_fn(void)
+{
+    /* GETDC XCL,ZPTR,2*DESCR — dimensionality */
+    memcpy(&XCL, (char*)A2P(D_A(ZPTR)) + 2*DESCR, sizeof(DESCR_t));
+    MOVD(YPTR, ZPTR);
+    if (D_A(XCL) != 2) return FAIL;                /* AEQLC XCL,2,FAIL, */
+
+    /* GETDC XCL,ZPTR,3*DESCR — second dimension */
+    memcpy(&XCL, (char*)A2P(D_A(ZPTR)) + 3*DESCR, sizeof(DESCR_t));
+    if (D_V(XCL) != 2) return FAIL;                /* VEQLC XCL,2,FAIL, */
+
+    /* GETSIZ XCL,ZPTR; DECRA XCL,2*DESCR */
+    D_A(XCL) = x_bkdata(D_A(ZPTR));
+    D_F(XCL) = D_V(XCL) = 0;
+    D_A(XCL) -= 2 * DESCR;
+
+    /* RCALL XPTR,BLOCK,XCL — allocate table block */
+    int32_t blk = BLOCK_fn(D_A(XCL), T);
+    if (!blk) return FAIL;
+    SETAC(XPTR, blk); D_F(XPTR) = 0; SETVC(XPTR, T); /* SETVC XPTR,T */
+
+    /* GETDC YCL,ZPTR,4*DESCR — first dimension (row count) */
+    memcpy(&YCL, (char*)A2P(D_A(ZPTR)) + 4*DESCR, sizeof(DESCR_t));
+    MOVD(ZPTR, XPTR);
+
+    /* PUTD XPTR,XCL,ONECL — end sentinel */
+    memcpy((char*)A2P(D_A(XPTR)) + D_A(XCL), &ONECL, sizeof(DESCR_t));
+    D_A(XCL) -= DESCR;
+
+    /* MOVD TCL,EXTVAL; INCRA TCL,2*DESCR; PUTD XPTR,XCL,TCL */
+    MOVD(TCL, EXTVAL); D_A(TCL) += 2 * DESCR;
+    memcpy((char*)A2P(D_A(XPTR)) + D_A(XCL), &TCL, sizeof(DESCR_t));
+
+    /* SETAV YCL,YCL; MULTC YCL,YCL,DESCR */
+    D_A(YCL) = D_V(YCL); D_F(YCL) = D_V(YCL) = 0;
+    D_A(YCL) *= DESCR; D_F(YCL) = D_V(YCL) = 0;
+
+    D_A(YPTR) += 5 * DESCR;                        /* INCRA YPTR,5*DESCR */
+    WPTR = YPTR; D_A(WPTR) += D_A(YCL);            /* SUM WPTR,YPTR,YCL */
+
+cnvat2:;
+    /* MOVDIC XPTR,DESCR,WPTR,0 — copy key from second half */
+    DESCR_t key; memcpy(&key, A2P(D_A(WPTR)), sizeof(DESCR_t));
+    memcpy((char*)A2P(D_A(XPTR)) + DESCR, &key, sizeof(DESCR_t));
+    /* MOVDIC XPTR,2*DESCR,YPTR,0 — copy value from first half */
+    DESCR_t val; memcpy(&val, A2P(D_A(YPTR)), sizeof(DESCR_t));
+    memcpy((char*)A2P(D_A(XPTR)) + 2*DESCR, &val, sizeof(DESCR_t));
+
+    D_A(YCL) -= DESCR;                             /* DECRA YCL,DESCR */
+    if (D_A(YCL) == 0) return OK;                  /* AEQLC YCL,0,,RTZPTR */
+    D_A(XPTR) += 2 * DESCR;                        /* INCRA XPTR,2*DESCR */
+    D_A(WPTR) += DESCR;                            /* INCRA WPTR,DESCR */
+    D_A(YPTR) += DESCR;                            /* INCRA YPTR,DESCR */
+    goto cnvat2;
+}

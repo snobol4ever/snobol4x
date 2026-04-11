@@ -22,6 +22,9 @@ RESULT_t DEFDAT_fn(void);   /* create defined data object              */
 RESULT_t FIELD_fn(void);    /* field accessor procedure                */
 RESULT_t RSORT_fn(void);    /* RSORT(T,C)  — reverse sort (stub)      */
 RESULT_t SORT_fn(void);     /* SORT(T,C)   — sort (stub)              */
+RESULT_t ICNVTA_fn(void);   /* initial TABLE→ARRAY conversion (SIL 6606) */
+RESULT_t CNVTA_fn(void);    /* TABLE→ARRAY (SIL 6568)                 */
+RESULT_t CNVAT_fn(void);    /* ARRAY→TABLE (SIL 6642)                 */
 
 /* Internal: ASSOCE — initialise a new table extent */
 RESULT_t ASSOCE_fn(DESCR_t size, DESCR_t ext);
