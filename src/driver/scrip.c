@@ -50,6 +50,8 @@ extern Program *sno_parse(FILE *f, const char *filename);
 #include "../frontend/snocone/snocone_driver.h"
 #include "../frontend/prolog/prolog_driver.h"
 #include "../frontend/prolog/prolog_interp.h"
+#include "../frontend/icon/icon_driver.h"
+#include "../frontend/icon/icon_interp.h"
 
 /* ir_print_node — from src/ir/ir_print.c (linked via Makefile) */
 extern void ir_print_node   (const EXPR_t *e, FILE *f);
@@ -2210,9 +2212,11 @@ int main(int argc, char **argv)
     { const char *dot = strrchr(input_path, '.'); if (dot && strcmp(dot, ".sc") == 0) lang_snocone = 1; }
     int lang_prolog = 0;
     { const char *dot = strrchr(input_path, '.'); if (dot && strcmp(dot, ".pl") == 0) lang_prolog = 1; }
+    int lang_icon = 0;
+    { const char *dot = strrchr(input_path, '.'); if (dot && strcmp(dot, ".icn") == 0) lang_icon = 1; }
 
     Program *prog = NULL;
-    if (lang_snocone || lang_prolog) {
+    if (lang_snocone || lang_prolog || lang_icon) {
         /* Read whole file into buffer */
         fseek(f, 0, SEEK_END); long flen = ftell(f); rewind(f);
         char *src = malloc(flen + 1);
@@ -2220,6 +2224,7 @@ int main(int argc, char **argv)
         fread(src, 1, flen, f); src[flen] = '\0'; fclose(f);
         if (opt_bench) clock_gettime(CLOCK_MONOTONIC, &_t1);
         prog = lang_prolog ? prolog_compile(src, input_path)
+                           : lang_icon   ? icon_compile(src, input_path)
                            : snocone_compile(src, input_path);
         free(src);
     } else if (dump_parse || dump_parse_flat || dump_ir) {
@@ -2394,6 +2399,8 @@ int main(int argc, char **argv)
         sm_prog_free(sm);
     } else if (lang_prolog) {
         pl_execute_program(prog);
+    } else if (lang_icon) {
+        icon_execute_program(prog);
     } else {
         execute_program(prog);
     }
