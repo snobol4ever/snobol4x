@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run_crosscheck_asm_corpus.sh — compile each corpus .sno via scrip-cc -asm,
+# run_crosscheck_asm_corpus.sh — compile each corpus .sno via scrip -asm,
 #   assemble, link, run, diff against .ref
 #
 # Mirrors run_crosscheck.sh but uses the ASM backend instead of C.
@@ -55,7 +55,7 @@ run_test() {
 
     # Compile SNOBOL4 → ASM
     if ! "$SCRIP_CC" -asm "$sno" > "$s_file" 2>/dev/null; then
-        echo -e "${RED}FAIL${RESET} $name  [scrip-cc error]"
+        echo -e "${RED}FAIL${RESET} $name  [scrip error]"
         FAIL=$((FAIL+1))
         [[ "$STOP_ON_FAIL" == "1" ]] && exit 1
         return

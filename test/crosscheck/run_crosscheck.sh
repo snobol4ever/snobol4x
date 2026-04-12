@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run_crosscheck.sh — compile each corpus .sno via scrip-cc, run, diff against .ref
+# run_crosscheck.sh — compile each corpus .sno via scrip, run, diff against .ref
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -41,7 +41,7 @@ run_test() {
     [[ ! -f "$ref" ]] && { echo -e "${YELLOW}SKIP${RESET} $name"; SKIP=$((SKIP+1)); return 0; }
     local c="$TMPDIR_RUN/$name.c" bin="$TMPDIR_RUN/$name"
     if ! "$SCRIP_CC" -trampoline "$sno" > "$c" 2>/dev/null; then
-        echo -e "${RED}FAIL${RESET} $name  [scrip-cc]"; FAIL=$((FAIL+1))
+        echo -e "${RED}FAIL${RESET} $name  [scrip]"; FAIL=$((FAIL+1))
         [[ "$STOP_ON_FAIL" == "1" ]] && summary && exit 1; return 1
     fi
     if ! gcc -O0 -g "$c" "$RTLIB" \

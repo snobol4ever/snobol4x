@@ -1,5 +1,5 @@
 #!/bin/bash
-# icon_jvm_runner.sh — compile .icn → JVM bytecode via scrip-cc -jvm, run with java
+# icon_jvm_runner.sh — compile .icn → JVM bytecode via scrip -jvm, run with java
 # Usage: icon_jvm_runner.sh <file.icn>
 # Used by old-format rung scripts (run_rung01.sh, run_rung03.sh).
 set -e

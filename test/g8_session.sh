@@ -6,9 +6,9 @@
 #
 # What this script does:
 #   VERIFY   — confirms build is clean and baseline invariants hold
-#   DIAGNOSE — identifies all scrip-cc statics that need resetting between files
+#   DIAGNOSE — identifies all scrip statics that need resetting between files
 #   FIX      — patches snoc_reset() to cover all statics
-#   TEST     — confirms scrip-cc -asm *.sno (152 files) no longer crashes
+#   TEST     — confirms scrip -asm *.sno (152 files) no longer crashes
 #   BASELINE — generates emit_baseline/ snapshot (committed to repo)
 #   CHECK    — runs emit-diff check to confirm all 152×3 match baseline
 #   TIMING   — reports wall time (target: <5s for all three backends)
@@ -22,7 +22,7 @@
 #   git commit -m "G-8: M-G-INV-EMIT-FIX ✅ — in-process batch + emit baseline"
 #
 # Milestones closed by this script:
-#   M-G-INV-EMIT-FIX  — scrip-cc processes all corpus files in one invocation
+#   M-G-INV-EMIT-FIX  — scrip processes all corpus files in one invocation
 #   M-G-INV-EMIT      — emit-diff harness green, baseline committed
 #
 # Authors: Claude Sonnet 4.6 (G-8 session, 2026-03-29)
@@ -109,7 +109,7 @@ if [[ $SKIP_FIX -eq 0 && $ONLY_BASELINE -eq 0 ]]; then
   info "  uid_ctr — resets within emit_program dry-run but may carry over?"
   echo ""
   info "APPROACH:"
-  info "  1. Run: gcc -fsanitize=address,undefined -g scrip-cc to get exact crash location"
+  info "  1. Run: gcc -fsanitize=address,undefined -g scrip to get exact crash location"
   info "  2. Read the stack trace — it names the exact static"
   info "  3. Add that static to snoc_reset() in lex.c"
   info "  4. Re-run this script to verify"
@@ -117,7 +117,7 @@ if [[ $SKIP_FIX -eq 0 && $ONLY_BASELINE -eq 0 ]]; then
 
   # Try to build with ASan for better crash diagnosis
   info "Building with AddressSanitizer for crash diagnosis..."
-  ASAN_BIN="$ROOT/scrip-cc_asan"
+  ASAN_BIN="$ROOT/scrip_asan"
   if (cd "$ROOT/src" && make -j4 -s CFLAGS="-Wall -Wno-unused-function -g -O0 -I. -Ifrontend/snobol4 -Ifrontend/snocone -Ifrontend/prolog -Ifrontend/icon -Ibackend -Ibackend/x64 -fsanitize=address,undefined" 2>/dev/null && cp "$ROOT/scrip" "$ASAN_BIN") 2>/dev/null; then
     ok "ASan binary: $ASAN_BIN"
     info "Running crash pair under ASan..."

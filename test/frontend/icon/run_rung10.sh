@@ -1,6 +1,6 @@
 #!/bin/bash
 # run_rung10.sh — rung10_augop JVM corpus runner
-# Usage: ./run_rung10.sh [scrip-cc_path]
+# Usage: ./run_rung10.sh [scrip_path]
 
 set -euo pipefail
 

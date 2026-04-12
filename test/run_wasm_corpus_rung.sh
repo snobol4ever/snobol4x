@@ -9,7 +9,7 @@
 #   CORPUS=/home/claude/corpus bash test/run_wasm_corpus_rung.sh rungW01
 #
 # Pipeline per test:
-#   scrip-cc -wasm <stem>.sno  > <work>/<stem>.wat
+#   scrip -wasm <stem>.sno  > <work>/<stem>.wat
 #   wat2wasm --enable-tail-call <work>/<stem>.wat -o <work>/<stem>.wasm
 #   node test/wasm/run_wasm.js <work>/<stem>.wasm  > <work>/<stem>.got
 #   diff <stem>.ref <work>/<stem>.got
@@ -66,7 +66,7 @@ for sno in "$RUNG_DIR"/*.sno; do
 
     # Step 1: compile to WAT (explicit -o → work dir; never writes alongside corpus source)
     if ! "$SCRIP_CC" -wasm -o "$wat" "$sno" 2>"$err"; then
-        echo -e "  ${RED}FAIL${RESET}  $base  (scrip-cc error)"
+        echo -e "  ${RED}FAIL${RESET}  $base  (scrip error)"
         [[ -s "$err" ]] && sed 's/^/        /' "$err"
         (( fail++ )) || true
         continue

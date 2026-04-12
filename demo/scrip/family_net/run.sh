@@ -3,7 +3,7 @@
 # Three languages, real EXPORT/IMPORT linkage, no funny linkage.
 #
 # Usage: bash run.sh
-# Requires: scrip-cc, jasmin.jar, java, ByrdBoxLinkage.j
+# Requires: scrip, jasmin.jar, java, ByrdBoxLinkage.j
 set -e
 
 REPO="$(cd "$(dirname "$0")/../../.." && pwd)"

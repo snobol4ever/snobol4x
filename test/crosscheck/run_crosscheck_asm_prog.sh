@@ -17,9 +17,9 @@ PASS=0; FAIL=0; SKIP=0
 WORK=$(mktemp -d); trap "rm -rf $WORK" EXIT
 
 # Compile beauty.sno via -asm
-echo "Compiling beauty.sno via scrip-cc -asm ..."
+echo "Compiling beauty.sno via scrip -asm ..."
 "$SCRIP_CC" -asm -I"$INC" "$BEAUTY" > "$WORK/beauty.s" 2>&1 || {
-    echo -e "${RED}FAIL${RESET} scrip-cc -asm beauty.sno failed"
+    echo -e "${RED}FAIL${RESET} scrip -asm beauty.sno failed"
     cat "$WORK/beauty.s" | head -20
     exit 1
 }

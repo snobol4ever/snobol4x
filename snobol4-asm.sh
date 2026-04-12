@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# snobol4-asm — compile + run a .sno file via scrip-cc ASM backend
+# snobol4-asm — compile + run a .sno file via scrip ASM backend
 # Usage: snobol4-asm <file.sno>
 # MONITOR_FIFO env var: if set, trace events written there via comm_var()
 set -euo pipefail

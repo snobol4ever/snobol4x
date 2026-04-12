@@ -1,6 +1,6 @@
 #!/bin/bash
 # run_rung07.sh — rung07_control JVM corpus runner
-# Usage: ./run_rung07.sh [scrip-cc_path]
+# Usage: ./run_rung07.sh [scrip_path]
 
 set -euo pipefail
 

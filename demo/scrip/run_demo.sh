@@ -17,8 +17,8 @@
 #   ICONT     path to icont binary     (default: icont)
 #
 # Environment overrides (snobol4ever JVM frontends):
-#   SCRIP_CC         path to scrip-cc binary       (default: auto-detect)
-#   SCRIP_CC   path to scrip-cc binary  (default: auto-detect)
+#   SCRIP_CC         path to scrip binary       (default: auto-detect)
+#   SCRIP_CC   path to scrip binary  (default: auto-detect)
 #   JASMIN        path to jasmin.jar          (default: auto-detect)
 #
 set -euo pipefail
@@ -77,13 +77,13 @@ done
 SCRIP_CC="${SCRIP_CC:-}"
 if [ -z "$SCRIP_CC" ]; then
     if [ -x "$SNOBOL4X/scrip" ]; then SCRIP_CC="$SNOBOL4X/scrip"
-    elif command -v scrip-cc &>/dev/null; then SCRIP_CC="scrip"; fi
+    elif command -v scrip &>/dev/null; then SCRIP_CC="scrip"; fi
 fi
 
 SCRIP_CC="${SCRIP_CC:-}"
 if [ -z "$SCRIP_CC" ]; then
     if [ -x "/tmp/scrip" ]; then SCRIP_CC="/tmp/scrip"
-    elif command -v scrip-cc &>/dev/null; then SCRIP_CC="scrip"; fi
+    elif command -v scrip &>/dev/null; then SCRIP_CC="scrip"; fi
 fi
 
 JASMIN="${JASMIN:-}"
@@ -169,7 +169,7 @@ run_jvm_backend() {
     case "$label" in
         SCRIP_CC-JVM)
             if [ -z "$SCRIP_CC" ]; then
-                skip "$label  (scrip-cc not found)"
+                skip "$label  (scrip not found)"
                 SKIP_COUNT=$((SKIP_COUNT+1))
                 return
             fi
@@ -177,7 +177,7 @@ run_jvm_backend() {
             ;;
         ICON-JVM)
             if [ -z "$SCRIP_CC" ]; then
-                skip "$label  (scrip-cc not found)"
+                skip "$label  (scrip not found)"
                 SKIP_COUNT=$((SKIP_COUNT+1))
                 return
             fi
@@ -185,7 +185,7 @@ run_jvm_backend() {
             ;;
         PROLOG-JVM)
             if [ -z "$SCRIP_CC" ]; then
-                skip "$label  (scrip-cc not found)"
+                skip "$label  (scrip not found)"
                 SKIP_COUNT=$((SKIP_COUNT+1))
                 return
             fi

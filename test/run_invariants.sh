@@ -12,7 +12,7 @@
 #   bash test/run_invariants.sh [--serial] [--verbose]
 #
 # Environment overrides:
-#   SCRIP_CC      path to scrip-cc binary           (default: <root>/scrip)
+#   SCRIP_CC      path to scrip binary           (default: <root>/scrip)
 #   CORPUS        path to corpus root               (default: <root>/../corpus)
 #   JASMIN        path to jasmin.jar                (default: <root>/src/backend/jasmin.jar)
 #   RT_CACHE      path to persistent archive cache  (default: <root>/out/rt_cache)
@@ -655,7 +655,7 @@ run_icon_wasm() {
     local wasm="$W/${base}.wasm"
     local got="$W/${base}.got"
 
-    # compile: scrip-cc -icn -wasm → .wat
+    # compile: scrip -icn -wasm → .wat
     if ! "$SCRIP_CC" -icn -wasm -o "$wat" "$icn" 2>/dev/null; then
       fail=$((fail+1)); echo "  FAIL $cell $base [compile]"; continue
     fi

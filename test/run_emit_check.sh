@@ -81,7 +81,7 @@ fi
 
 GREEN='\033[0;32m'; RED='\033[0;31m'; BOLD='\033[1m'; RESET='\033[0m'
 
-# ── Tool bootstrap (run_emit_check needs: scrip-cc only) ─────────────────────
+# ── Tool bootstrap (run_emit_check needs: scrip only) ─────────────────────
 # Preflight — verify tools present (no installs; run SESSION_SETUP.sh first):
 #   TOKEN=ghp_xxx bash /home/claude/.github/SESSION_SETUP.sh
 _need() {
@@ -103,16 +103,16 @@ mapfile -t PRO_FILES < <(find "$TEST_PRO" -name "*.pl"  2>/dev/null | while read
 mapfile -t REB_FILES < <(find "$TEST_REB" -name "*.reb" 2>/dev/null | while read -r f; do [[ -f "${f%.reb}.s" ]] && echo "$f"; done | sort)
 
 if [[ $UPDATE -eq 1 ]]; then
-  # scrip-cc gcc-style: when given a source file with no -o, it writes the
+  # scrip gcc-style: when given a source file with no -o, it writes the
   # output alongside the source with the appropriate extension replaced.
-  # e.g.  scrip-cc -asm foo/bar.sno  →  foo/bar.s  (side by side, always)
-  # regen_one simply invokes scrip-cc with the right backend flag and no -o.
+  # e.g.  scrip -asm foo/bar.sno  →  foo/bar.s  (side by side, always)
+  # regen_one simply invokes scrip with the right backend flag and no -o.
   # Only non-empty output is kept (compile errors leave no file).
   regen_one() {
     local src="$1" backend="$2"
-    # Let scrip-cc derive the output path itself — same directory, ext replaced.
+    # Let scrip derive the output path itself — same directory, ext replaced.
     "$SCRIP_CC" "$backend" "$src" 2>/dev/null
-    # scrip-cc exits non-zero on error and writes nothing (or an empty file).
+    # scrip exits non-zero on error and writes nothing (or an empty file).
     # If it left an empty output file, remove it so stale oracles aren't created.
     local ext
     case "$backend" in

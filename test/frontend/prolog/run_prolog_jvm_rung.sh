@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # run_prolog_jvm_rung.sh — Prolog JVM backend corpus ladder driver
 #
-# Compiles each .pro in a given directory via scrip-cc -pl -jvm, assembles
+# Compiles each .pro in a given directory via scrip -pl -jvm, assembles
 # with jasmin.jar, runs with java, diffs vs .expected oracle.
 #
 # Usage:
 #   bash test/frontend/prolog/run_prolog_jvm_rung.sh <dir> [dir2 ...]
 #
 # Environment overrides:
-#   SCRIP_CC        — path to scrip-cc binary       (default: ./scrip)
+#   SCRIP_CC        — path to scrip binary       (default: ./scrip)
 #   JASMIN       — path to jasmin.jar          (default: src/backend/jasmin.jar)
 #   STOP_ON_FAIL — stop at first failure       (default: 0)
 #   TIMEOUT      — per-test timeout in seconds (default: 10)
@@ -29,7 +29,7 @@ if [[ $# -eq 0 ]]; then
     echo "Usage: $0 <corpus-dir> [dir2 ...]"
     exit 1
 fi
-if [[ ! -x "$SCRIP_CC" ]]; then echo "ERROR: scrip-cc not found at $SCRIP_CC"; exit 1; fi
+if [[ ! -x "$SCRIP_CC" ]]; then echo "ERROR: scrip not found at $SCRIP_CC"; exit 1; fi
 if [[ ! -f "$JASMIN" ]]; then echo "ERROR: jasmin.jar not found at $JASMIN"; exit 1; fi
 
 WORK=$(mktemp -d); trap "rm -rf $WORK" EXIT
@@ -53,9 +53,9 @@ run_test() {
     local jfile="$classdir/${base}.j"
 
     # Compile .pro -> .j
-    if ! "$SCRIP_CC" -pl -jvm "$pro" > "$jfile" 2>"$WORK/${base}.scrip-cc_err"; then
-        echo -e "${RED}FAIL${RESET} $base  [scrip-cc error]"
-        head -3 "$WORK/${base}.scrip-cc_err"
+    if ! "$SCRIP_CC" -pl -jvm "$pro" > "$jfile" 2>"$WORK/${base}.scrip_err"; then
+        echo -e "${RED}FAIL${RESET} $base  [scrip error]"
+        head -3 "$WORK/${base}.scrip_err"
         FAIL=$((FAIL+1)); [[ "$STOP_ON_FAIL" == "1" ]] && exit 1; return 0
     fi
 

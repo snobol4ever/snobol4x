@@ -1,6 +1,6 @@
 #!/bin/bash
 # run_rung05.sh — rung05_scan JVM corpus runner
-# Usage: ./run_rung05.sh [scrip-cc_path]
+# Usage: ./run_rung05.sh [scrip_path]
 # Oracle: JVM backend (icon_emit_jvm.c) vs expected files
 
 set -euo pipefail

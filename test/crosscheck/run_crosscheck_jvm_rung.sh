@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # run_crosscheck_jvm_rung.sh — JVM backend corpus ladder driver
 #
-# Compiles each .sno in a given directory via scrip-cc -jvm, assembles with
+# Compiles each .sno in a given directory via scrip -jvm, assembles with
 # jasmin.jar, runs with java, diffs vs .ref oracle.
 #
 # Usage:
 #   bash test/crosscheck/run_crosscheck_jvm_rung.sh <dir> [dir2 ...]
 #
 # Environment overrides:
-#   SCRIP_CC        — path to scrip-cc binary     (default: ./scrip)
+#   SCRIP_CC        — path to scrip binary     (default: ./scrip)
 #   INC          — SNOBOL4 include dir      (default: demo/inc)
 #   JASMIN       — path to jasmin.jar       (default: src/backend/jasmin.jar)
 #   STOP_ON_FAIL — stop at first failure    (default: 0)
@@ -32,7 +32,7 @@ if [[ $# -eq 0 ]]; then
 fi
 
 if [[ ! -x "$SCRIP_CC" ]]; then
-    echo "ERROR: scrip-cc not found at $SCRIP_CC"; exit 1
+    echo "ERROR: scrip not found at $SCRIP_CC"; exit 1
 fi
 
 if [[ ! -f "$JASMIN" ]]; then
@@ -61,9 +61,9 @@ run_test() {
     local jfile="$classdir/${base}.j"
 
     # Compile .sno → .j
-    if ! "$SCRIP_CC" -jvm -I"$INC" -o "$jfile" "$sno" 2>"$WORK/${base}.scrip-cc_err"; then
-        echo -e "${RED}FAIL${RESET} $base  [scrip-cc error]"
-        head -3 "$WORK/${base}.scrip-cc_err"
+    if ! "$SCRIP_CC" -jvm -I"$INC" -o "$jfile" "$sno" 2>"$WORK/${base}.scrip_err"; then
+        echo -e "${RED}FAIL${RESET} $base  [scrip error]"
+        head -3 "$WORK/${base}.scrip_err"
         FAIL=$((FAIL+1)); [[ "$STOP_ON_FAIL" == "1" ]] && exit 1; return 0
     fi
 

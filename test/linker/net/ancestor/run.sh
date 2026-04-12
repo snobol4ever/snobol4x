@@ -1,7 +1,7 @@
 #!/bin/bash
 # test/linker/net/ancestor/run.sh — M-LINK-NET-5 acceptance test
 # Cross-language: SNOBOL4 → Prolog ANCESTOR via .NET Byrd-box ABI.
-# Uses GENERATED ancestor.il (from scrip-cc -pl -net ancestor.pl).
+# Uses GENERATED ancestor.il (from scrip -pl -net ancestor.pl).
 # Expected output: ann
 set -e
 

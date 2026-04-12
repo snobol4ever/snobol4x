@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # run_crosscheck_net_rung.sh — NET backend corpus ladder driver
 #
-# Compiles each .sno in a given directory via scrip-cc -net, assembles with
+# Compiles each .sno in a given directory via scrip -net, assembles with
 # ilasm, runs under mono, diffs vs .ref oracle.
 #
 # SPEED: ilasm and mono are both slow to start (~400ms each). This script
@@ -19,7 +19,7 @@
 #       /path/to/corpus/output
 #
 # Environment overrides:
-#   SCRIP_CC        — path to scrip-cc binary  (default: ./scrip)
+#   SCRIP_CC        — path to scrip binary  (default: ./scrip)
 #   STOP_ON_FAIL — 1 = stop at first failure (default: 0)
 #   CACHE_DIR    — where to cache .il/.exe (default: /tmp/one4all_net_cache)
 
@@ -72,7 +72,7 @@ for dir in "$@"; do
         exe="$CACHE_DIR/${rung}_${base}.exe"
         stamp="$CACHE_DIR/${rung}_${base}.stamp"
 
-        # Always re-emit .il (scrip-cc is fast — ~1ms)
+        # Always re-emit .il (scrip is fast — ~1ms)
         "$SCRIP_CC" -net "$sno" > "$il" 2>/dev/null
 
         # Only re-assemble if .il changed (ilasm is slow — ~400ms)

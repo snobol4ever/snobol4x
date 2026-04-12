@@ -9,7 +9,7 @@
 #   3.  Runtime libs: libgc.so, snobol4lib.dll, snobol4run.dll
 #   4.  inject_traces.py and normalize_trace.py present + executable
 #   5.  tracepoints.conf present
-#   6.  scrip-cc present and responds
+#   6.  scrip present and responds
 #   7.  Corpus INC dir present
 #   SMOKE TESTS (null program through each participant):
 #   8.  CSNOBOL4:  null.sno → exit 0, output empty
@@ -104,19 +104,19 @@ for f in \
 done
 
 echo ""
-echo "── Section 3: scrip-cc sanity ────────────────────────────"
+echo "── Section 3: scrip sanity ────────────────────────────"
 
-if "$DIR/scrip" -asm "$NULL_SNO" > "$TMP/scrip-cc_null.s" 2>/dev/null && [[ -s "$TMP/scrip-cc_null.s" ]]; then
+if "$DIR/scrip" -asm "$NULL_SNO" > "$TMP/scrip_null.s" 2>/dev/null && [[ -s "$TMP/scrip_null.s" ]]; then
     green "scrip -asm null.sno produces output"
 else
     red   "scrip -asm null.sno failed or empty output"
 fi
-if "$DIR/scrip" -jvm "$NULL_SNO" > "$TMP/scrip-cc_null.j" 2>/dev/null && [[ -s "$TMP/scrip-cc_null.j" ]]; then
+if "$DIR/scrip" -jvm "$NULL_SNO" > "$TMP/scrip_null.j" 2>/dev/null && [[ -s "$TMP/scrip_null.j" ]]; then
     green "scrip -jvm null.sno produces output"
 else
     red   "scrip -jvm null.sno failed or empty output"
 fi
-if "$DIR/scrip" -net "$NULL_SNO" > "$TMP/scrip-cc_null.il" 2>/dev/null && [[ -s "$TMP/scrip-cc_null.il" ]]; then
+if "$DIR/scrip" -net "$NULL_SNO" > "$TMP/scrip_null.il" 2>/dev/null && [[ -s "$TMP/scrip_null.il" ]]; then
     green "scrip -net null.sno produces output"
 else
     red   "scrip -net null.sno failed or empty output"
