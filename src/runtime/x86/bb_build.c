@@ -834,8 +834,10 @@ static bb_box_fn bb_nme_emit_binary(PATND_t *p)
                          : bb_build_binary_node(NULL);  /* eps */
     if (!child_fn) return NULL;
 
-    const char *varname = (p->var.v == DT_S && p->var.s) ? p->var.s : NULL;
-    void       *var_ptr = (p->var.v == DT_N && p->var.ptr)
+    const char *varname = (p->var.v == DT_S && p->var.s) ? p->var.s :
+                          /* NAMEVAL: DT_N with slen==0 carries name string in .s */
+                          (p->var.v == DT_N && p->var.slen == 0 && p->var.s) ? p->var.s : NULL;
+    void       *var_ptr = (p->var.v == DT_N && p->var.slen == 1 && p->var.ptr)
                           ? (void *)p->var.ptr : NULL;
 
     capture_t_bin *z = bb_capture_new(child_fn, NULL, varname, var_ptr, 0 /*immediate=0*/);
@@ -870,8 +872,9 @@ static bb_box_fn bb_fnme_emit_binary(PATND_t *p)
                          : bb_build_binary_node(NULL);
     if (!child_fn) return NULL;
 
-    const char *varname = (p->var.v == DT_S && p->var.s) ? p->var.s : NULL;
-    void       *var_ptr = (p->var.v == DT_N && p->var.ptr)
+    const char *varname = (p->var.v == DT_S && p->var.s) ? p->var.s :
+                          (p->var.v == DT_N && p->var.slen == 0 && p->var.s) ? p->var.s : NULL;
+    void       *var_ptr = (p->var.v == DT_N && p->var.slen == 1 && p->var.ptr)
                           ? (void *)p->var.ptr : NULL;
 
     capture_t_bin *z = bb_capture_new(child_fn, NULL, varname, var_ptr, 1 /*immediate=1*/);

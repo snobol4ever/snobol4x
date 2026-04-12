@@ -322,7 +322,22 @@ DESCR_t eval_node(EXPR_t *e)
         if (IS_FAIL_fn(pat)) return FAILDESCR;
         pat = PATVAL_fn(pat);
         if (IS_FAIL_fn(pat)) return FAILDESCR;
-        DESCR_t name = eval_node(e->children[1]);
+        /* When capture target is E_INDIRECT (e.g. REM . $'$B'), resolve the
+         * variable name without dereferencing — return NAME_fn(resolved_name)
+         * so bb_nme_emit_binary gets varname="$B", not the value of $B. */
+        DESCR_t name;
+        EXPR_t *tgt = e->children[1];
+        if (tgt && tgt->kind == E_INDIRECT && tgt->nchildren > 0) {
+            EXPR_t *ic = tgt->children[0];
+            const char *nm = NULL;
+            if (ic->kind == E_QLIT && ic->sval)        nm = ic->sval;
+            else if (ic->kind == E_VAR  && ic->sval) { DESCR_t xv = NV_GET_fn(ic->sval); nm = VARVAL_fn(xv); }
+            else                                      { DESCR_t nd = eval_node(ic);        nm = VARVAL_fn(nd); }
+            if (!nm) return FAILDESCR;
+            name = NAME_fn(nm);
+        } else {
+            name = eval_node(tgt);
+        }
         if (IS_FAIL_fn(name)) return FAILDESCR;
         return pat_assign_cond(pat, name);
     }
@@ -334,7 +349,20 @@ DESCR_t eval_node(EXPR_t *e)
         if (IS_FAIL_fn(pat)) return FAILDESCR;
         pat = PATVAL_fn(pat);
         if (IS_FAIL_fn(pat)) return FAILDESCR;
-        DESCR_t name = eval_node(e->children[1]);
+        /* Same E_INDIRECT target resolution as E_CAPT_COND_ASGN above. */
+        DESCR_t name;
+        EXPR_t *tgt = e->children[1];
+        if (tgt && tgt->kind == E_INDIRECT && tgt->nchildren > 0) {
+            EXPR_t *ic = tgt->children[0];
+            const char *nm = NULL;
+            if (ic->kind == E_QLIT && ic->sval)        nm = ic->sval;
+            else if (ic->kind == E_VAR  && ic->sval) { DESCR_t xv = NV_GET_fn(ic->sval); nm = VARVAL_fn(xv); }
+            else                                      { DESCR_t nd = eval_node(ic);        nm = VARVAL_fn(nd); }
+            if (!nm) return FAILDESCR;
+            name = NAME_fn(nm);
+        } else {
+            name = eval_node(tgt);
+        }
         if (IS_FAIL_fn(name)) return FAILDESCR;
         return pat_assign_imm(pat, name);
     }
