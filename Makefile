@@ -42,9 +42,9 @@ INC          ?= $(CORPUS)/programs/inc
 JVM_CACHE    := /tmp/scrip_jvm_cache
 NET_CACHE    := /tmp/scrip_net_cache
 JASMIN       := $(SRC)/backend/jasmin.jar
-SCRIP_CC_BIN := $(ROOT)/scrip-cc
+SCRIP_BIN := $(ROOT)/scrip
 
-.PHONY: all scrip scrip-interp scrip-cc setup \
+.PHONY: all scrip scrip-interp setup \
         test test-ir test-all \
         monitor-ipc \
         run run-ir run-jvm run-net \
@@ -56,7 +56,7 @@ all: scrip
 
 # ── scrip — unified driver (all modes, all frontends) ────────────────────────
 # WASM removed from scrip build (2026-04-08): --jit-emit --wasm / emit_wasm.c
-# dropped. Use scrip-cc legacy driver if WASM emission is ever needed.
+
 
 scrip:
 	@mkdir -p $(OBJ)
@@ -91,11 +91,8 @@ scrip:
 scrip-interp: scrip
 	@ln -sf scrip scrip-interp
 
-# ── scrip-cc (legacy compiler driver — kept until all --jit-emit targets land)
 
-scrip-cc:
 	$(MAKE) -C $(SRC)
-	@echo "Built: scrip-cc (legacy)"
 
 # ── monitor_ipc.so ────────────────────────────────────────────────────────────
 
@@ -128,15 +125,14 @@ run: scrip
 run-ir: scrip
 	./scrip --ir-run $(SNO)
 
-# Legacy JVM runner — uses old scrip-cc text emitter until M-JITEM-JVM lands
-run-jvm: scrip-cc
+run-jvm: scrip
 	@mkdir -p $(JVM_CACHE); \
 	base=$$(basename $(SNO) .sno); \
 	hash=$$(echo $(SNO) | md5sum | cut -c1-8); \
 	key=$${base}_$${hash}; \
 	jfile=$(JVM_CACHE)/$${key}.j; \
 	stamp=$(JVM_CACHE)/$${key}.stamp; \
-	$(SCRIP_CC_BIN) -jvm $(SNO) > $$jfile; \
+	$(SCRIP_BIN) -jvm $(SNO) > $$jfile; \
 	classname=$$(grep '\.class' $$jfile | head -1 | awk '{print $$NF}'); \
 	j_md5=$$(md5sum $$jfile | cut -d' ' -f1); \
 	cached_md5=$$(cat $$stamp 2>/dev/null || echo ''); \
@@ -146,8 +142,7 @@ run-jvm: scrip-cc
 	fi; \
 	java -cp $(JVM_CACHE) $$classname
 
-# Legacy .NET runner — uses old scrip-cc text emitter until M-JITEM-NET lands
-run-net: scrip-cc
+run-net: scrip
 	@mkdir -p $(NET_CACHE); \
 	base=$$(basename $(SNO) .sno); \
 	hash=$$(echo $(SNO) | md5sum | cut -c1-8); \
@@ -155,7 +150,7 @@ run-net: scrip-cc
 	il=$(NET_CACHE)/$${key}.il; \
 	exe=$(NET_CACHE)/$${key}.exe; \
 	stamp=$(NET_CACHE)/$${key}.stamp; \
-	$(SCRIP_CC_BIN) -net $(SNO) > $$il; \
+	$(SCRIP_BIN) -net $(SNO) > $$il; \
 	il_md5=$$(md5sum $$il | cut -d' ' -f1); \
 	cached_md5=$$(cat $$stamp 2>/dev/null || echo ''); \
 	if [ "$$il_md5" != "$$cached_md5" ] || [ ! -f $$exe ]; then \

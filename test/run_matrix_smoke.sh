@@ -11,8 +11,8 @@
 #
 # What's tested:
 #   SNOBOL4 × x64 ASM   — sc_corpus (hello, assign, output)
-#   SNOBOL4 × JVM       — sc_corpus via scrip-cc -jvm + jasmin + java
-#   SNOBOL4 × .NET      — sc_corpus via scrip-cc -net + ilasm + mono  (skipped if no mono)
+#   SNOBOL4 × JVM       — sc_corpus via scrip -jvm + jasmin + java
+#   SNOBOL4 × .NET      — sc_corpus via scrip -net + ilasm + mono  (skipped if no mono)
 #   Icon    × x64 ASM   — rungs 01-35 via run_icon_x64_rung.sh     (skipped if no icont)
 #   Icon    × JVM       — run_crosscheck_jvm_rung.sh sc_corpus     (skipped if no jasmin)
 #   Prolog  × x64 ASM   — rung scripts via run_prolog_x64_rung.sh  (skipped if no nasm)

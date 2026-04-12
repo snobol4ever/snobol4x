@@ -1,11 +1,11 @@
 #!/bin/bash
 # test/linker/net/ancestor/run.sh — M-LINK-NET-5 acceptance test
 # Cross-language: SNOBOL4 → Prolog ANCESTOR via .NET Byrd-box ABI.
-# Uses GENERATED ancestor.il (from scrip-cc -pl -net ancestor.pl).
+# Uses GENERATED ancestor.il (from scrip -pl -net ancestor.pl).
 # Expected output: ann
 set -e
 
-SCRIP_CC=../../../../src/driver/scrip-cc
+SCRIP=../../../../src/driver/scrip
 RUNTIME=../../../../src/runtime/net
 OUT=./out
 mkdir -p "$OUT"
@@ -14,13 +14,13 @@ cp "$RUNTIME"/snobol4lib.dll "$OUT"/
 cp "$RUNTIME"/snobol4run.dll "$OUT"/
 
 echo "--- generating ancestor.il from ancestor.pl ---"
-"$SCRIP_CC" -pl -net ancestor.pl > "$OUT"/ancestor.il
+"$SCRIP" -pl -net ancestor.pl > "$OUT"/ancestor.il
 
 echo "--- assembling ancestor.dll ---"
 ilasm "$OUT"/ancestor.il /dll /output:"$OUT"/ancestor.dll
 
 echo "--- compiling ancestor_main.sno ---"
-"$SCRIP_CC" -net ancestor_main.sno > "$OUT"/ancestor_main.il
+"$SCRIP" -net ancestor_main.sno > "$OUT"/ancestor_main.il
 
 echo "--- assembling ancestor_main.exe ---"
 ilasm "$OUT"/ancestor_main.il /exe /output:"$OUT"/ancestor_main.exe

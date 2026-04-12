@@ -9,7 +9,7 @@
 #   CORPUS=/home/claude/corpus bash test/run_wasm_corpus_rung.sh rungW01
 #
 # Pipeline per test:
-#   scrip-cc -wasm <stem>.sno  > <work>/<stem>.wat
+#   scrip -wasm <stem>.sno  > <work>/<stem>.wat
 #   wat2wasm --enable-tail-call <work>/<stem>.wat -o <work>/<stem>.wasm
 #   node test/wasm/run_wasm.js <work>/<stem>.wasm  > <work>/<stem>.got
 #   diff <stem>.ref <work>/<stem>.got
@@ -19,7 +19,7 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SCRIP_CC="${SCRIP_CC:-$ROOT/scrip-cc}"
+SCRIP="${SCRIP:-$ROOT/scrip}"
 CORPUS="${CORPUS:-$(cd "$ROOT/../corpus" 2>/dev/null && pwd || echo "")}"
 RUNNER="$ROOT/test/wasm/run_wasm.js"
 WORK="${WORK:-/tmp/wasm_rung_$$}"
@@ -33,7 +33,7 @@ die() { echo -e "${RED}ERROR${RESET}: $*" >&2; exit 2; }
 [[ $# -ge 1 ]] || die "usage: $0 <rung_dir_name>"
 RUNG_NAME="$1"
 
-command -v "$SCRIP_CC"  &>/dev/null || die "scrip-cc not found at $SCRIP_CC — run SESSION_SETUP.sh"
+command -v "$SCRIP"  &>/dev/null || die "scrip not found at $SCRIP — run SESSION_SETUP.sh"
 command -v wat2wasm     &>/dev/null || die "wat2wasm not found — run SESSION_SETUP.sh"
 command -v node         &>/dev/null || die "node not found — run SESSION_SETUP.sh"
 [[ -f "$RUNNER" ]]                  || die "run_wasm.js not found at $RUNNER"
@@ -65,8 +65,8 @@ for sno in "$RUNG_DIR"/*.sno; do
     err="$WORK/${base}.err"
 
     # Step 1: compile to WAT (explicit -o → work dir; never writes alongside corpus source)
-    if ! "$SCRIP_CC" -wasm -o "$wat" "$sno" 2>"$err"; then
-        echo -e "  ${RED}FAIL${RESET}  $base  (scrip-cc error)"
+    if ! "$SCRIP" -wasm -o "$wat" "$sno" 2>"$err"; then
+        echo -e "  ${RED}FAIL${RESET}  $base  (scrip error)"
         [[ -s "$err" ]] && sed 's/^/        /' "$err"
         (( fail++ )) || true
         continue

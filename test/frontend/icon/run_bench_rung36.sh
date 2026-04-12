@@ -7,7 +7,7 @@
 #   t01 primes, t27 queens, t28 genqueen, t39 concord,
 #   t54 sieve, t66 cxprimes, t70 sorting
 
-DRIVER="${1:-/tmp/scrip-cc}"
+DRIVER="${1:-/tmp/scrip}"
 JASMIN="$(dirname $0)/../../../src/backend/jasmin.jar"
 CORPUS="$(dirname $0)/corpus/rung36_jcon"
 TMPJ=/tmp/icon_bench_$$.j

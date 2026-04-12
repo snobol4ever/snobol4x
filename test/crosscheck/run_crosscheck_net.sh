@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # test/crosscheck/run_crosscheck_net.sh — NET backend full corpus runner
 #
-# Runs corpus crosscheck rungs against the scrip-cc -net backend via
+# Runs corpus crosscheck rungs against the scrip -net backend via
 # the harness adapter (adapters/tiny_net/run.sh).
 #
 # Usage:

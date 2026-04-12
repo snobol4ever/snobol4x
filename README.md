@@ -10,8 +10,8 @@ Part of the [snobol4ever](https://github.com/snobol4ever) organization.
 
 ## What This Is
 
-`one4all` (the **scrip-cc** compiler) is a from-scratch SNOBOL4 compiler: one frontend
-pipeline (`scrip-cc`) feeding five independent backend emitters. Write SNOBOL4 once.
+`one4all` (the **scrip** compiler) is a from-scratch SNOBOL4 compiler: one frontend
+pipeline (`scrip`) feeding five independent backend emitters. Write SNOBOL4 once.
 Run it anywhere.
 
 | Flag | Output | Status |
@@ -91,27 +91,27 @@ SNOBOL4, Icon, and Prolog are three syntaxes for one execution machine.
 # Dependencies
 apt-get install -y libgc-dev nasm default-jdk
 
-# Build scrip-cc
+# Build scrip
 make -C src
 
 # C backend (default)
-./scrip-cc program.sno > prog.c && gcc prog.c -lgc -o prog && ./prog
+./scrip program.sno > prog.c && gcc prog.c -lgc -o prog && ./prog
 
 # ASM backend
-./scrip-cc -asm program.sno > prog.s
+./scrip -asm program.sno > prog.s
 nasm -f elf64 prog.s -o prog.o && gcc prog.o -lgc -o prog && ./prog
 
 # JVM backend
-./scrip-cc -jvm program.sno > prog.j
+./scrip -jvm program.sno > prog.j
 java -jar src/backend/jasmin.jar prog.j -d .
 java -cp . Prog
 
 # NET backend
-./scrip-cc -net program.sno > prog.il
+./scrip -net program.sno > prog.il
 ilasm prog.il && mono prog.exe
 
 # WASM backend
-./scrip-cc -wasm -o prog.wat program.sno
+./scrip -wasm -o prog.wat program.sno
 wat2wasm --enable-tail-call prog.wat -o prog.wasm
 node test/wasm/run_wasm.js prog.wasm
 ```
@@ -159,7 +159,7 @@ JASMIN=src/backend/jasmin.jar
 PDIR=../corpus/crosscheck/patterns
 for sno in $PDIR/*.sno; do
   base=$(basename $sno .sno); TMPD=$(mktemp -d)
-  ./scrip-cc -jvm "$sno" > $TMPD/p.j 2>/dev/null
+  ./scrip -jvm "$sno" > $TMPD/p.j 2>/dev/null
   java -jar $JASMIN $TMPD/p.j -d $TMPD/ 2>/dev/null
   cls=$(ls $TMPD/*.class 2>/dev/null | head -1 | xargs basename 2>/dev/null | sed 's/.class//')
   got=$(java -cp $TMPD $cls 2>/dev/null); exp=$(cat "${sno%.sno}.ref" 2>/dev/null)
@@ -206,7 +206,7 @@ src/
     jvm/              JVM Jasmin emitter (emit_byrd_jvm.c 4,051 lines · jasmin.jar)
     net/              .NET CIL emitter (emit_byrd_net.c 1,934 lines)
   driver/
-    main.c            scrip-cc entry point — flag dispatch
+    main.c            scrip entry point — flag dispatch
   runtime/
     asm/              NASM macro library + runtime helpers
 test/
@@ -260,7 +260,7 @@ JVM OUTPUT fast-path hook and NET emitter hook in progress — M-MONITOR-IPC-5WA
 
 ```bash
 # JS backend
-./scrip-cc -js program.sno -o prog.js
+./scrip -js program.sno -o prog.js
 SNO_RUNTIME=src/runtime/js/sno_runtime.js node prog.js
 ```
 
@@ -374,7 +374,7 @@ Sprint state lives in [snobol4ever/.github](https://github.com/snobol4ever/.gith
 
 - **Lon Jones Cherryholmes** — compiler architecture, all backends, one4all lead
 - **Jeffrey Cooper, M.D.** — snobol4dotnet, .NET MSIL target
-- **Claude Sonnet 4.6** — scrip-cc co-author; every sprint, every Byrd box,
+- **Claude Sonnet 4.6** — scrip co-author; every sprint, every Byrd box,
   every labeled goto — written in session, committed, pushed
 
 

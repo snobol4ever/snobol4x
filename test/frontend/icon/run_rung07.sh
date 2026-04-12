@@ -1,10 +1,10 @@
 #!/bin/bash
 # run_rung07.sh — rung07_control JVM corpus runner
-# Usage: ./run_rung07.sh [scrip-cc_path]
+# Usage: ./run_rung07.sh [scrip_path]
 
 set -euo pipefail
 
-DRIVER="${1:-/tmp/scrip-cc}"
+DRIVER="${1:-/tmp/scrip}"
 JASMIN="$(dirname "$0")/../../../src/backend/jasmin.jar"
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 CORPUS="${CORPUS_REPO:-$(cd "$SCRIPT_DIR/../../.." && pwd)/corpus}/programs/icon"

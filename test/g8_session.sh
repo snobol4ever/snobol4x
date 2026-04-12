@@ -6,9 +6,9 @@
 #
 # What this script does:
 #   VERIFY   — confirms build is clean and baseline invariants hold
-#   DIAGNOSE — identifies all scrip-cc statics that need resetting between files
+#   DIAGNOSE — identifies all scrip statics that need resetting between files
 #   FIX      — patches snoc_reset() to cover all statics
-#   TEST     — confirms scrip-cc -asm *.sno (152 files) no longer crashes
+#   TEST     — confirms scrip -asm *.sno (152 files) no longer crashes
 #   BASELINE — generates emit_baseline/ snapshot (committed to repo)
 #   CHECK    — runs emit-diff check to confirm all 152×3 match baseline
 #   TIMING   — reports wall time (target: <5s for all three backends)
@@ -22,14 +22,14 @@
 #   git commit -m "G-8: M-G-INV-EMIT-FIX ✅ — in-process batch + emit baseline"
 #
 # Milestones closed by this script:
-#   M-G-INV-EMIT-FIX  — scrip-cc processes all corpus files in one invocation
+#   M-G-INV-EMIT-FIX  — scrip processes all corpus files in one invocation
 #   M-G-INV-EMIT      — emit-diff harness green, baseline committed
 #
 # Authors: Claude Sonnet 4.6 (G-8 session, 2026-03-29)
 
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SCRIP_CC="$ROOT/scrip-cc"
+SCRIP="$ROOT/scrip"
 CORPUS="${CORPUS:-$(cd "$ROOT/../corpus" 2>/dev/null && pwd || echo "")}"
 BASELINE="$ROOT/test/emit_baseline"
 
@@ -55,11 +55,11 @@ echo ""
 if [[ $SKIP_VERIFY -eq 0 ]]; then
   echo -e "${BOLD}VERIFY — build + corpus path${RESET}"
 
-  if [[ ! -x "$SCRIP_CC" ]]; then
-    info "scrip-cc not built — building now..."
-    (cd "$ROOT/src" && make -j4 -s) && ok "scrip-cc built" || { fail "build failed"; exit 1; }
+  if [[ ! -x "$SCRIP" ]]; then
+    info "scrip not built — building now..."
+    (cd "$ROOT/src" && make -j4 -s) && ok "scrip built" || { fail "build failed"; exit 1; }
   else
-    ok "scrip-cc exists: $SCRIP_CC"
+    ok "scrip exists: $SCRIP"
   fi
 
   if [[ -z "$CORPUS" || ! -d "$CORPUS/crosscheck" ]]; then
@@ -84,7 +84,7 @@ if [[ $SKIP_FIX -eq 0 && $ONLY_BASELINE -eq 0 ]]; then
   F013="$CORPUS/crosscheck/assign/013_assign_overwrite.sno"
   F014="$CORPUS/crosscheck/assign/014_assign_indirect_dollar.sno"
   if [[ -f "$F013" && -f "$F014" ]]; then
-    "$SCRIP_CC" -asm "$F013" "$F014" > /dev/null 2>&1 && \
+    "$SCRIP" -asm "$F013" "$F014" > /dev/null 2>&1 && \
       ok "Pair 013+014: PASS (already fixed!)" || \
       fail "Pair 013+014: SIGSEGV (still broken — fix needed)"
     rm -f "${F013%.sno}.s" "${F014%.sno}.s" 2>/dev/null || true
@@ -109,7 +109,7 @@ if [[ $SKIP_FIX -eq 0 && $ONLY_BASELINE -eq 0 ]]; then
   info "  uid_ctr — resets within emit_program dry-run but may carry over?"
   echo ""
   info "APPROACH:"
-  info "  1. Run: gcc -fsanitize=address,undefined -g scrip-cc to get exact crash location"
+  info "  1. Run: gcc -fsanitize=address,undefined -g scrip to get exact crash location"
   info "  2. Read the stack trace — it names the exact static"
   info "  3. Add that static to snoc_reset() in lex.c"
   info "  4. Re-run this script to verify"
@@ -117,8 +117,8 @@ if [[ $SKIP_FIX -eq 0 && $ONLY_BASELINE -eq 0 ]]; then
 
   # Try to build with ASan for better crash diagnosis
   info "Building with AddressSanitizer for crash diagnosis..."
-  ASAN_BIN="$ROOT/scrip-cc_asan"
-  if (cd "$ROOT/src" && make -j4 -s CFLAGS="-Wall -Wno-unused-function -g -O0 -I. -Ifrontend/snobol4 -Ifrontend/snocone -Ifrontend/prolog -Ifrontend/icon -Ibackend -Ibackend/x64 -fsanitize=address,undefined" 2>/dev/null && cp "$ROOT/scrip-cc" "$ASAN_BIN") 2>/dev/null; then
+  ASAN_BIN="$ROOT/scrip_asan"
+  if (cd "$ROOT/src" && make -j4 -s CFLAGS="-Wall -Wno-unused-function -g -O0 -I. -Ifrontend/snobol4 -Ifrontend/snocone -Ifrontend/prolog -Ifrontend/icon -Ibackend -Ibackend/x64 -fsanitize=address,undefined" 2>/dev/null && cp "$ROOT/scrip" "$ASAN_BIN") 2>/dev/null; then
     ok "ASan binary: $ASAN_BIN"
     info "Running crash pair under ASan..."
     ASAN_OPTIONS=abort_on_error=0 "$ASAN_BIN" -asm "$F013" "$F014" > /dev/null 2>&1 || true
@@ -142,7 +142,7 @@ info "Testing multi-file mode ($NSNO files × 3 backends)..."
 PASS_COUNT=0
 for backend in -asm -jvm -net; do
   ext=$(echo $backend | sed 's/-asm/.s/;s/-jvm/.j/;s/-net/.il/')
-  OUT=$(find "$CORPUS/crosscheck" -name "*.sno" | tr '\n' '\0' | xargs -0 "$SCRIP_CC" $backend 2>&1); RC=$?
+  OUT=$(find "$CORPUS/crosscheck" -name "*.sno" | tr '\n' '\0' | xargs -0 "$SCRIP" $backend 2>&1); RC=$?
   WRITTEN=$(find "$CORPUS/crosscheck" -name "*$ext" 2>/dev/null | wc -l)
   find "$CORPUS/crosscheck" -name "*$ext" | xargs rm -f 2>/dev/null || true
   if [[ $WRITTEN -eq $NSNO ]]; then
@@ -208,12 +208,12 @@ echo -e "${BOLD}═════════════════════�
 echo -e "${BOLD}BONUS — verify Icon/Prolog multi-file (should work already)${RESET}"
 ICN_FILES=$(find "$ROOT/test/frontend/icon/corpus" -name "*.icn" 2>/dev/null | head -10 | tr '\n' ' ')
 if [[ -n "$ICN_FILES" ]]; then
-  eval "$SCRIP_CC -asm $ICN_FILES" > /dev/null 2>&1 && ok "Icon x86 multi-file: OK" || fail "Icon x86 multi-file: CRASH"
+  eval "$SCRIP -asm $ICN_FILES" > /dev/null 2>&1 && ok "Icon x86 multi-file: OK" || fail "Icon x86 multi-file: CRASH"
   find "$ROOT/test/frontend/icon/corpus" -name "*.s" | xargs rm -f 2>/dev/null || true
 fi
 PRO_FILES=$(find "$ROOT/test/frontend/prolog/corpus" -name "*.pro" -o -name "*.pl" 2>/dev/null | head -10 | tr '\n' ' ')
 if [[ -n "$PRO_FILES" ]]; then
-  eval "$SCRIP_CC -asm $PRO_FILES" > /dev/null 2>&1 && ok "Prolog x86 multi-file: OK" || fail "Prolog x86 multi-file: CRASH"
+  eval "$SCRIP -asm $PRO_FILES" > /dev/null 2>&1 && ok "Prolog x86 multi-file: OK" || fail "Prolog x86 multi-file: CRASH"
   find "$ROOT/test/frontend/prolog/corpus" -name "*.s" | xargs rm -f 2>/dev/null || true
 fi
 echo ""

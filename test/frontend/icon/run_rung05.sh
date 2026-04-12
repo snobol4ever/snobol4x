@@ -1,11 +1,11 @@
 #!/bin/bash
 # run_rung05.sh — rung05_scan JVM corpus runner
-# Usage: ./run_rung05.sh [scrip-cc_path]
+# Usage: ./run_rung05.sh [scrip_path]
 # Oracle: JVM backend (icon_emit_jvm.c) vs expected files
 
 set -euo pipefail
 
-DRIVER="${1:-/tmp/scrip-cc}"
+DRIVER="${1:-/tmp/scrip}"
 JASMIN="$(dirname "$0")/../../../src/backend/jasmin.jar"
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 CORPUS="${CORPUS_REPO:-$(cd "$SCRIPT_DIR/../../.." && pwd)/corpus}/programs/icon"

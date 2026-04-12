@@ -36,14 +36,14 @@ artifacts/
 
 ## asm/beauty_prog.s — PRIMARY ARTIFACT
 
-The canonical output of `scrip-cc -asm` on `beauty.sno`. This is what M-ASM-BEAUTIFUL was declared on.
+The canonical output of `scrip -asm` on `beauty.sno`. This is what M-ASM-BEAUTIFUL was declared on.
 Every session that changes the ASM backend must regenerate and commit this file.
 
 **Update:**
 ```bash
 INC=/home/claude/corpus/programs/inc
 BEAUTY=/home/claude/corpus/programs/beauty/beauty.sno
-src/scrip-cc/scrip-cc -asm -I$INC $BEAUTY > artifacts/asm/beauty_prog.s
+src/scrip/scrip -asm -I$INC $BEAUTY > artifacts/asm/beauty_prog.s
 nasm -f elf64 -I src/runtime/asm/ artifacts/asm/beauty_prog.s -o /dev/null  # must be clean
 git add artifacts/asm/beauty_prog.s && git commit
 ```
@@ -114,7 +114,7 @@ Sprint: J1 complete → M-JVM-LIT ✅. Active bug: none. Next: J2 (assign/ + ari
 ```bash
 for icn in artifacts/icon/samples/*.icn; do
     base="${icn%.icn}"
-    /tmp/scrip-cc -jvm "$icn" -o "${base}.j" 2>/dev/null
+    /tmp/scrip -jvm "$icn" -o "${base}.j" 2>/dev/null
 done
 ```
 
@@ -135,7 +135,7 @@ done
 ```bash
 for pro in artifacts/prolog/samples/*.pro; do
     base="${pro%.pro}"
-    ./scrip-cc -pl -jvm "$pro" > "${base}.j" 2>/dev/null
+    ./scrip -pl -jvm "$pro" > "${base}.j" 2>/dev/null
 done
 ```
 
@@ -151,31 +151,31 @@ INC=demo/inc
 mkdir -p /tmp/art_out
 
 # --- SNOBOL4 × JVM (touch emit_byrd_jvm.c) ---
-./scrip-cc -jvm -I$INC demo/roman.sno    > artifacts/jvm/samples/roman.j
-./scrip-cc -jvm -I$INC demo/wordcount.sno > artifacts/jvm/samples/wordcount.j
-printf "        OUTPUT = 'HELLO WORLD'\nEND\n" | ./scrip-cc -jvm -I$INC /dev/stdin > artifacts/jvm/hello.j
+./scrip -jvm -I$INC demo/roman.sno    > artifacts/jvm/samples/roman.j
+./scrip -jvm -I$INC demo/wordcount.sno > artifacts/jvm/samples/wordcount.j
+printf "        OUTPUT = 'HELLO WORLD'\nEND\n" | ./scrip -jvm -I$INC /dev/stdin > artifacts/jvm/hello.j
 
 # --- SNOBOL4 × ASM (touch emit_byrd_asm.c) ---
-./scrip-cc -asm -I$INC demo/roman.sno     > artifacts/asm/samples/roman.s
-./scrip-cc -asm -I$INC demo/wordcount.sno > artifacts/asm/samples/wordcount.s
-./scrip-cc -asm -I$INC demo/beauty.sno    > artifacts/asm/beauty_prog.s
+./scrip -asm -I$INC demo/roman.sno     > artifacts/asm/samples/roman.s
+./scrip -asm -I$INC demo/wordcount.sno > artifacts/asm/samples/wordcount.s
+./scrip -asm -I$INC demo/beauty.sno    > artifacts/asm/beauty_prog.s
 
 # --- SNOBOL4 × NET (touch emit_byrd_net.c) ---
-./scrip-cc -net -I$INC demo/roman.sno     > artifacts/net/samples/roman.il
-./scrip-cc -net -I$INC demo/wordcount.sno > artifacts/net/samples/wordcount.il
+./scrip -net -I$INC demo/roman.sno     > artifacts/net/samples/roman.il
+./scrip -net -I$INC demo/wordcount.sno > artifacts/net/samples/wordcount.il
 
 # --- Icon × JVM (touch icon_emit_jvm.c) ---
-# Build scrip-cc first: gcc ... -o /tmp/scrip-cc (see SESSION-scrip-jvm.md §BUILD)
+# Build scrip first: gcc ... -o /tmp/scrip (see SESSION-scrip-jvm.md §BUILD)
 for icn in artifacts/icon/samples/*.icn; do
     base="${icn%.icn}"
-    /tmp/scrip-cc -jvm "$icn" -o "${base}.j" 2>/dev/null
+    /tmp/scrip -jvm "$icn" -o "${base}.j" 2>/dev/null
     java -jar $JASMIN "${base}.j" -d /tmp/art_out/ 2>&1 | grep -i error | grep -v Picked && echo "FAIL ${base}.j" || echo "OK   ${base}.j"
 done
 
 # --- Prolog × JVM (touch prolog_emit_jvm.c) ---
 for pro in artifacts/prolog/samples/*.pro; do
     base="${pro%.pro}"
-    ./scrip-cc -pl -jvm "$pro" > "${base}.j" 2>/dev/null
+    ./scrip -pl -jvm "$pro" > "${base}.j" 2>/dev/null
     java -jar $JASMIN "${base}.j" -d /tmp/art_out/ 2>&1 | grep -i error | grep -v Picked && echo "FAIL ${base}.j" || echo "OK   ${base}.j"
 done
 

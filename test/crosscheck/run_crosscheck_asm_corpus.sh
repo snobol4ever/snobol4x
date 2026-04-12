@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run_crosscheck_asm_corpus.sh — compile each corpus .sno via scrip-cc -asm,
+# run_crosscheck_asm_corpus.sh — compile each corpus .sno via scrip -asm,
 #   assemble, link, run, diff against .ref
 #
 # Mirrors run_crosscheck.sh but uses the ASM backend instead of C.
@@ -15,9 +15,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TINY="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CORPUS="${CORPUS:-$(cd "$TINY/../corpus/crosscheck" && pwd)}"
-SCRIP_CC="$TINY/scrip-cc"
+SCRIP="$TINY/scrip"
 RT="$TINY/src/runtime"
-SCRIP_CC_INC="$TINY/src/frontend/snobol4"
+SCRIP_INC="$TINY/src/frontend/snobol4"
 STOP_ON_FAIL="${STOP_ON_FAIL:-0}"
 FILTER="${FILTER:-}"
 TIMEOUT=5
@@ -29,11 +29,11 @@ WORK=$(mktemp -d); trap "rm -rf $WORK" EXIT
 PASS=0; FAIL=0; SKIP=0; NASM_FAIL=0; TIMEOUT_COUNT=0
 
 # ── Precompile runtime once ───────────────────────────────────────────────────
-gcc -O0 -g -c "$RT/x86/snobol4_stmt_rt.c"    -I"$RT/x86" -I"$RT" -I"$SCRIP_CC_INC" -w -o "$WORK/stmt_rt.o"
-gcc -O0 -g -c "$RT/x86/snobol4.c"         -I"$RT/x86" -I"$RT" -I"$SCRIP_CC_INC" -w -o "$WORK/snobol4.o"
-gcc -O0 -g -c "$RT/mock/mock_includes.c"       -I"$RT/x86" -I"$RT" -I"$SCRIP_CC_INC" -w -o "$WORK/mock_includes.o"
-gcc -O0 -g -c "$RT/x86/snobol4_pattern.c" -I"$RT/x86" -I"$RT" -I"$SCRIP_CC_INC" -w -o "$WORK/snobol4_pattern.o"
-gcc -O0 -g -c "$RT/mock/mock_engine.c"         -I"$RT/x86" -I"$RT" -I"$SCRIP_CC_INC" -w -o "$WORK/mock_engine.o"
+gcc -O0 -g -c "$RT/x86/snobol4_stmt_rt.c"    -I"$RT/x86" -I"$RT" -I"$SCRIP_INC" -w -o "$WORK/stmt_rt.o"
+gcc -O0 -g -c "$RT/x86/snobol4.c"         -I"$RT/x86" -I"$RT" -I"$SCRIP_INC" -w -o "$WORK/snobol4.o"
+gcc -O0 -g -c "$RT/mock/mock_includes.c"       -I"$RT/x86" -I"$RT" -I"$SCRIP_INC" -w -o "$WORK/mock_includes.o"
+gcc -O0 -g -c "$RT/x86/snobol4_pattern.c" -I"$RT/x86" -I"$RT" -I"$SCRIP_INC" -w -o "$WORK/snobol4_pattern.o"
+gcc -O0 -g -c "$RT/mock/mock_engine.c"         -I"$RT/x86" -I"$RT" -I"$SCRIP_INC" -w -o "$WORK/mock_engine.o"
 gcc -O0 -g -c "$RT/x86/blk_alloc.c"            -I"$RT/x86"                              -w -o "$WORK/blk_alloc.o"
 gcc -O0 -g -c "$RT/x86/blk_reloc.c"            -I"$RT/x86"                              -w -o "$WORK/blk_reloc.o"
 
@@ -54,8 +54,8 @@ run_test() {
     local bin="$WORK/${name}"
 
     # Compile SNOBOL4 → ASM
-    if ! "$SCRIP_CC" -asm "$sno" > "$s_file" 2>/dev/null; then
-        echo -e "${RED}FAIL${RESET} $name  [scrip-cc error]"
+    if ! "$SCRIP" -asm "$sno" > "$s_file" 2>/dev/null; then
+        echo -e "${RED}FAIL${RESET} $name  [scrip error]"
         FAIL=$((FAIL+1))
         [[ "$STOP_ON_FAIL" == "1" ]] && exit 1
         return

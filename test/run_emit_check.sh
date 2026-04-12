@@ -22,13 +22,13 @@
 #   (combine with spaces: CELLS="snobol4_x86 icon_x86")
 #   Omit CELLS or CELLS="" → all backends (cross-session shared gate)
 #
-# Environment: SCRIP_CC (default: <root>/scrip-cc), JOBS (default: nproc), CELLS
+# Environment: SCRIP (default: <root>/scrip), JOBS (default: nproc), CELLS
 
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SCRIP_CC="${SCRIP_CC:-$ROOT/scrip-cc}"
-export SCRIP_CC
+SCRIP="${SCRIP:-$ROOT/scrip}"
+export SCRIP
 JOBS="${JOBS:-$(nproc 2>/dev/null || echo 4)}"
 # Source locations: post-corpus-migration (M-G0-CORPUS-AUDIT) sources live in the
 # corpus repo.  CORPUS env var must be set (e.g. CORPUS=/home/claude/corpus).
@@ -81,7 +81,7 @@ fi
 
 GREEN='\033[0;32m'; RED='\033[0;31m'; BOLD='\033[1m'; RESET='\033[0m'
 
-# ── Tool bootstrap (run_emit_check needs: scrip-cc only) ─────────────────────
+# ── Tool bootstrap (run_emit_check needs: scrip only) ─────────────────────
 # Preflight — verify tools present (no installs; run SESSION_SETUP.sh first):
 #   TOKEN=ghp_xxx bash /home/claude/.github/SESSION_SETUP.sh
 _need() {
@@ -93,7 +93,7 @@ _need() {
     exit 2
   fi
 }
-_need "scrip-cc" "$([[ -x "$SCRIP_CC" && -s "$SCRIP_CC" ]] && echo 1 || echo 0)"
+_need "scrip" "$([[ -x "$SCRIP" && -s "$SCRIP" ]] && echo 1 || echo 0)"
 _need "gcc"      "$(command -v gcc  &>/dev/null && echo 1 || echo 0)"
 echo -e "${GREEN}  [tools] all required tools present ✓${RESET}"
 
@@ -103,16 +103,16 @@ mapfile -t PRO_FILES < <(find "$TEST_PRO" -name "*.pl"  2>/dev/null | while read
 mapfile -t REB_FILES < <(find "$TEST_REB" -name "*.reb" 2>/dev/null | while read -r f; do [[ -f "${f%.reb}.s" ]] && echo "$f"; done | sort)
 
 if [[ $UPDATE -eq 1 ]]; then
-  # scrip-cc gcc-style: when given a source file with no -o, it writes the
+  # scrip gcc-style: when given a source file with no -o, it writes the
   # output alongside the source with the appropriate extension replaced.
-  # e.g.  scrip-cc -asm foo/bar.sno  →  foo/bar.s  (side by side, always)
-  # regen_one simply invokes scrip-cc with the right backend flag and no -o.
+  # e.g.  scrip -asm foo/bar.sno  →  foo/bar.s  (side by side, always)
+  # regen_one simply invokes scrip with the right backend flag and no -o.
   # Only non-empty output is kept (compile errors leave no file).
   regen_one() {
     local src="$1" backend="$2"
-    # Let scrip-cc derive the output path itself — same directory, ext replaced.
-    "$SCRIP_CC" "$backend" "$src" 2>/dev/null
-    # scrip-cc exits non-zero on error and writes nothing (or an empty file).
+    # Let scrip derive the output path itself — same directory, ext replaced.
+    "$SCRIP" "$backend" "$src" 2>/dev/null
+    # scrip exits non-zero on error and writes nothing (or an empty file).
     # If it left an empty output file, remove it so stale oracles aren't created.
     local ext
     case "$backend" in
@@ -122,7 +122,7 @@ if [[ $UPDATE -eq 1 ]]; then
     local out="${src%.*}.$ext"
     [[ -f "$out" && ! -s "$out" ]] && rm -f "$out"
   }
-  export -f regen_one; export SCRIP_CC
+  export -f regen_one; export SCRIP
 
   # ALL_SNO: every .sno in the corpus — not just those with an existing .s.
   # Every clean compile drops its output next to the source automatically.
@@ -178,7 +178,7 @@ check_one() {
   label="$(basename "$dir")/$name"
   expected="$dir/$name.$ext"
   local tmp; tmp=$(mktemp)
-  "$SCRIP_CC" "$backend" -o /dev/stdout "$src" > "$tmp" 2>/dev/null
+  "$SCRIP" "$backend" -o /dev/stdout "$src" > "$tmp" 2>/dev/null
   if [[ ! -f "$expected" ]]; then
     rm -f "$tmp"; echo "SKIP $backend $label.$ext" >> "$FAIL_LOG"; return
   fi
@@ -194,7 +194,7 @@ check_one() {
   fi
   rm -f "$tmp"
 }
-export -f check_one; export SCRIP_CC FAIL_LOG CSV
+export -f check_one; export SCRIP FAIL_LOG CSV
 export TEST_REB
 
 [[ $_want_sno_asm  -eq 1 && ${#SNO_FILES[@]} -gt 0 ]] && printf '%s\n' "${SNO_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -asm s'    _ {}

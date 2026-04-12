@@ -72,7 +72,7 @@ for src in "$RT/x86/snobol4_stmt_rt.c" "$RT/x86/snobol4.c" \
         -I"$DIR/src/frontend/snobol4" -w \
         -o "$TMP/$(basename "$src" .c).o" 2>/dev/null
 done
-"$DIR/scrip-cc" -asm -I"$INC" "$TMP/instr.sno" > "$TMP/prog.s" 2>/dev/null
+"$DIR/scrip" -asm -I"$INC" "$TMP/instr.sno" > "$TMP/prog.s" 2>/dev/null
 nasm -f elf64 -I"$RT/x86/" "$TMP/prog.s" -o "$TMP/prog.o" 2>/dev/null
 gcc -no-pie "$TMP/prog.o" \
     "$TMP/snobol4_stmt_rt.o" "$TMP/snobol4.o" "$TMP/mock_includes.o" \
@@ -88,7 +88,7 @@ for dll in snobol4lib.dll snobol4run.dll; do
 done
 il="$NET_CACHE/${base}_${dh}.il"; exe="$NET_CACHE/${base}_${dh}.exe"
 stamp="$NET_CACHE/${base}_${dh}.stamp"
-"$DIR/scrip-cc" -net -I"$INC" "$TMP/instr.sno" > "$il" 2>/dev/null
+"$DIR/scrip" -net -I"$INC" "$TMP/instr.sno" > "$il" 2>/dev/null
 il_md5="$(md5sum "$il" | cut -d' ' -f1)"
 if [[ "$(cat "$stamp" 2>/dev/null)" != "$il_md5" ]] || [[ ! -f "$exe" ]]; then
     ilasm "$il" /output:"$exe" >/dev/null 2>&1 && echo "$il_md5" > "$stamp"
@@ -99,7 +99,7 @@ JASMIN="${JASMIN:-$DIR/src/backend/jasmin.jar}"
 JVM_CACHE="${JVM_CACHE:-/tmp/one4all_jvm_cache}"
 mkdir -p "$JVM_CACHE"
 jfile="$JVM_CACHE/${base}_${dh}.j"; jstamp="$JVM_CACHE/${base}_${dh}.jstamp"
-"$DIR/scrip-cc" -jvm -I"$INC" "$SNO" > "$jfile" 2>/dev/null
+"$DIR/scrip" -jvm -I"$INC" "$SNO" > "$jfile" 2>/dev/null
 classname=$(grep '\.class' "$jfile" | head -1 | awk '{print $NF}')
 j_md5="$(md5sum "$jfile" | cut -d' ' -f1)"
 if [[ "$(cat "$jstamp" 2>/dev/null)" != "$j_md5" ]] || \

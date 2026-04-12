@@ -1,7 +1,7 @@
 #!/bin/bash
 # run_rung17.sh — rung17_real_arith JVM corpus runner
 set -euo pipefail
-DRIVER="${1:-/tmp/scrip-cc}"
+DRIVER="${1:-/tmp/scrip}"
 JASMIN="$(dirname "$0")/../../../src/backend/jasmin.jar"
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 CORPUS="${CORPUS_REPO:-$(cd "$SCRIPT_DIR/../../.." && pwd)/corpus}/programs/icon"

@@ -7,7 +7,7 @@ RUNG_DIR="${CORPUS_REPO:-$(cd "$SCRIPT_DIR/../../.." && pwd)/corpus}/programs/ic
 for icn in "$RUNG_DIR"/rung31_sort_*.icn; do
   base="${icn%.icn}"; exp="$base.expected"; [ -f "$exp" ] || continue
   [ -f "$base.xfail" ] && { XFAIL=$((XFAIL+1)); echo "XFAIL: $(basename $icn)"; continue; }
-  ${1:-/tmp/scrip-cc} -jvm "$icn" -o /tmp/t31.j 2>/dev/null
+  ${1:-/tmp/scrip} -jvm "$icn" -o /tmp/t31.j 2>/dev/null
   # compile main class
   timeout 30 java -jar src/backend/jasmin.jar /tmp/t31.j -d /tmp/ 2>/dev/null
   # compile any record inner classes

@@ -3,7 +3,7 @@
 #
 # For each .sno in crosscheck/patterns/ and crosscheck/capture/:
 #   1. Extract subject string (from "X = '...'" line) and pattern (.sno file)
-#   2. Compile body-only .s via scrip-cc -asm-body
+#   2. Compile body-only .s via scrip -asm-body
 #   3. Assemble + link with snobol4_asm_harness.o
 #   4. Run with subject string as argv[1]
 #   5. Compare: for capture tests stdout must match .ref;
@@ -12,7 +12,7 @@
 # Usage: bash test/crosscheck/run_crosscheck_asm.sh [--stop-on-fail]
 #
 # Environment:
-#   SCRIP_CC     path to scrip-cc (default: scrip-cc)
+#   SCRIP     path to scrip (default: scrip)
 #   HARNESS_O path to harness object (default: src/runtime/asm/snobol4_asm_harness.o)
 #   CORPUS    path to crosscheck dir (default: /home/corpus/crosscheck)
 
@@ -21,7 +21,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TINY="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-SCRIP_CC="${SCRIP_CC:-$TINY/scrip-cc}"
+SCRIP="${SCRIP:-$TINY/scrip}"
 HARNESS_O="${HARNESS_O:-src/runtime/asm/snobol4_asm_harness.o}"
 CORPUS="${CORPUS:-$(cd "$TINY/../corpus/crosscheck" && pwd)}"
 
@@ -71,7 +71,7 @@ is_capture_test() {
     grep -qE '\.\s+[A-Z]|\$\s*[A-Z]' "$1"
 }
 
-# ── build_bare_sno: produce minimal .sno for scrip-cc -asm-body ─────────────────
+# ── build_bare_sno: produce minimal .sno for scrip -asm-body ─────────────────
 build_bare_sno() {
     local sno="$1" out="$2"
     local star_vars
@@ -134,10 +134,10 @@ run_one() {
     local bare="$WORK/${tag}_bare.sno"
     build_bare_sno "$sno" "$bare"
 
-    # scrip-cc -asm-body
+    # scrip -asm-body
     local body_s="$WORK/${tag}_body.s"
-    if ! "$SCRIP_CC" -asm-body "$bare" > "$body_s" 2>"$WORK/${tag}_scrip-cc.err"; then
-        fail "$tag (scrip-cc error: $(cat $WORK/${tag}_scrip-cc.err))"
+    if ! "$SCRIP" -asm-body "$bare" > "$body_s" 2>"$WORK/${tag}_scrip.err"; then
+        fail "$tag (scrip error: $(cat $WORK/${tag}_scrip.err))"
         ((failed++)) || true
         [[ $STOP_ON_FAIL -eq 1 ]] && exit 1
         return
@@ -202,7 +202,7 @@ run_one() {
 
 # ── main ─────────────────────────────────────────────────────────────────────
 echo "ASM crosscheck — Sprint A9"
-echo "SCRIP_CC:    $SCRIP_CC"
+echo "SCRIP:    $SCRIP"
 echo "HARNESS:  $HARNESS_O"
 echo "CORPUS:   $CORPUS"
 echo ""

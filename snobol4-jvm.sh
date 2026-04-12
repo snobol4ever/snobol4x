@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# snobol4-jvm — compile + run a .sno file via scrip-cc JVM backend
+# snobol4-jvm — compile + run a .sno file via scrip JVM backend
 # Usage: snobol4-jvm <file.sno>
 # MONITOR_FIFO env var: if set, trace events written there via JVM runtime
 set -euo pipefail
 
 SNO="${1:?Usage: snobol4-jvm <file.sno>}"
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCRIP_CC="${SCRIP_CC_JVM:-/home/claude/scrip-cc_jvm}"
+SCRIP="${SCRIP_JVM:-/home/claude/scrip_jvm}"
 JASMIN="${JASMIN:-$DIR/src/backend/jasmin.jar}"
 JVM_CACHE="${JVM_CACHE:-/tmp/scrip_cc_jvm_cache}"
 
@@ -18,7 +18,7 @@ key="${base}_${dir_hash}"
 jfile="$JVM_CACHE/${key}.j"
 stamp="$JVM_CACHE/${key}.stamp"
 
-"$SCRIP_CC" -jvm "$SNO" > "$jfile" 2>/dev/null
+"$SCRIP" -jvm "$SNO" > "$jfile" 2>/dev/null
 
 # Extract classname from first .j line: ".class public <name>"
 classname=$(grep '\.class' "$jfile" | head -1 | awk '{print $NF}')

@@ -1,6 +1,6 @@
 #!/bin/bash
 # run_rung32.sh — rung32_strretval JVM corpus runner
-DRIVER="${1:-/tmp/scrip-cc}"
+DRIVER="${1:-/tmp/scrip}"
 JASMIN="$(dirname "$0")/../../../src/backend/jasmin.jar"
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 CORPUS="${CORPUS_REPO:-$(cd "$SCRIPT_DIR/../../.." && pwd)/corpus}/programs/icon"

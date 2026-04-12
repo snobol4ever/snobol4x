@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # run_beauty_sc_subsystem.sh — run one Snocone BEAUTY subsystem test
 #
-# Compiles driver.sc via scrip-cc -sc -asm, assembles, links, runs,
+# Compiles driver.sc via scrip -sc -asm, assembles, links, runs,
 # diffs against driver.ref (SNOBOL4 golden output).
 #
 # Usage:
@@ -13,7 +13,7 @@
 #
 # Environment:
 #   CORPUS       — path to corpus root (required)
-#   SCRIP_CC     — path to scrip-cc binary (default: ./scrip-cc)
+#   SCRIP     — path to scrip binary (default: ./scrip)
 #   STOP_ON_FAIL — 1 to stop at first fail (default: 0)
 #
 # Must be run from one4all root.
@@ -22,7 +22,7 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TINY="$(cd "$SCRIPT_DIR/../.." && pwd)"
-SCRIP_CC="${SCRIP_CC:-$TINY/scrip-cc}"
+SCRIP="${SCRIP:-$TINY/scrip}"
 RT="$TINY/src/runtime"
 CORPUS="${CORPUS:-}"
 
@@ -38,8 +38,8 @@ if [[ -z "$CORPUS" ]]; then
     exit 1
 fi
 
-if [[ ! -x "$SCRIP_CC" ]]; then
-    echo "ERROR: scrip-cc not found at $SCRIP_CC" >&2
+if [[ ! -x "$SCRIP" ]]; then
+    echo "ERROR: scrip not found at $SCRIP" >&2
     exit 1
 fi
 
@@ -105,8 +105,8 @@ run_subsystem() {
     local bin="$WORK/${subsys}_bin"
 
     # Compile
-    if ! timeout 15 "$SCRIP_CC" -sc -asm "$driver_sc" -o "$s_file" 2>"$WORK/${subsys}.scrip_err"; then
-        echo -e "${RED}FAIL${RESET}  $subsys  [scrip-cc error/timeout]"
+    if ! timeout 15 "$SCRIP" -sc -asm "$driver_sc" -o "$s_file" 2>"$WORK/${subsys}.scrip_err"; then
+        echo -e "${RED}FAIL${RESET}  $subsys  [scrip error/timeout]"
         cat "$WORK/${subsys}.scrip_err" | head -5
         FAIL=$((FAIL+1)); return
     fi

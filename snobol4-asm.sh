@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# snobol4-asm — compile + run a .sno file via scrip-cc ASM backend
+# snobol4-asm — compile + run a .sno file via scrip ASM backend
 # Usage: snobol4-asm <file.sno>
 # MONITOR_FIFO env var: if set, trace events written there via comm_var()
 set -euo pipefail
@@ -8,7 +8,7 @@ SNO="${1:?Usage: snobol4-asm <file.sno>}"
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RT="$DIR/src/runtime"
 INC="${INC:-/home/claude/corpus/programs/inc}"
-SCRIP_CC="${SCRIP_CC:-$DIR/scrip-cc}"
+SCRIP="${SCRIP:-$DIR/scrip}"
 WORK=$(mktemp -d /tmp/snobol4_asm_XXXXXX)
 trap 'rm -rf "$WORK"' EXIT
 
@@ -21,7 +21,7 @@ gcc -O0 -g -c "$RT/engine/engine.c"            -I"$RT/snobol4" -I"$RT" -I"$DIR/s
 gcc -O0 -g -c "$RT/asm/blk_alloc.c"            -I"$RT/asm"                                            -w -o "$WORK/blk_alloc.o"
 gcc -O0 -g -c "$RT/asm/blk_reloc.c"            -I"$RT/asm"                                            -w -o "$WORK/blk_reloc.o"
 
-"$SCRIP_CC" -asm -I"$INC" "$SNO" > "$WORK/prog.s" 2>/dev/null
+"$SCRIP" -asm -I"$INC" "$SNO" > "$WORK/prog.s" 2>/dev/null
 nasm -f elf64 -I"$RT/asm/" "$WORK/prog.s" -o "$WORK/prog.o" 2>/dev/null
 gcc -no-pie "$WORK/prog.o" "$WORK/stmt_rt.o" "$WORK/snobol4.o" \
     "$WORK/mock_includes.o" "$WORK/pat.o" "$WORK/eng.o" \

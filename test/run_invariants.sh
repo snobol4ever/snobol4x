@@ -12,7 +12,7 @@
 #   bash test/run_invariants.sh [--serial] [--verbose]
 #
 # Environment overrides:
-#   SCRIP_CC      path to scrip-cc binary           (default: <root>/scrip-cc)
+#   SCRIP      path to scrip binary           (default: <root>/scrip)
 #   CORPUS        path to corpus root               (default: <root>/../corpus)
 #   JASMIN        path to jasmin.jar                (default: <root>/src/backend/jasmin.jar)
 #   RT_CACHE      path to persistent archive cache  (default: <root>/out/rt_cache)
@@ -28,13 +28,13 @@ set -uo pipefail
 
 # ── Config ────────────────────────────────────────────────────────────────────
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SCRIP_CC="${SCRIP_CC:-$ROOT/scrip-cc}"
+SCRIP="${SCRIP:-$ROOT/scrip}"
 CORPUS="${CORPUS:-$(cd "$ROOT/../corpus" 2>/dev/null && pwd || echo "")}"
 export CORPUS_REPO="$CORPUS"   # rung scripts use CORPUS_REPO; M-G-INV-FAST-X86-FIX
 JASMIN="${JASMIN:-$ROOT/src/backend/jasmin.jar}"
 RT_CACHE="${RT_CACHE:-$ROOT/out/rt_cache}"
 RT="$ROOT/src/runtime"
-SCRIP_CC_INC="$ROOT/src/frontend/snobol4"
+SCRIP_INC="$ROOT/src/frontend/snobol4"
 TIMEOUT_X86="${TIMEOUT_X86:-5}"
 TIMEOUT_JVM="${TIMEOUT_JVM:-10}"
 JOBS="${JOBS:-$(nproc 2>/dev/null || echo 4)}"
@@ -80,7 +80,7 @@ _need() {
     exit 2
   fi
 }
-_need "scrip-cc"    "$([[ -x "$SCRIP_CC" && -s "$SCRIP_CC" ]] && echo 1 || echo 0)"
+_need "scrip"    "$([[ -x "$SCRIP" && -s "$SCRIP" ]] && echo 1 || echo 0)"
 
 # Determine which tool families are needed based on requested cells.
 # If no cells given, all cells run → all tools required.
@@ -141,17 +141,17 @@ ensure_sno4_archive() {
   fi
   echo -e "${YELLOW}  [cache] Building libsno4rt_asm.a...${RESET}"
   mkdir -p "$RT_CACHE" /tmp/rtbuild_sno_$$
-  gcc -O2 -c "$RT/x86/snobol4_stmt_rt.c"    -I"$RT/x86" -I"$RT" -I"$SCRIP_CC_INC" -w -o /tmp/rtbuild_sno_$$/stmt_rt.o    || return 1
-  gcc -O2 -c "$RT/x86/snobol4.c"         -I"$RT/x86" -I"$RT" -I"$SCRIP_CC_INC" -w -o /tmp/rtbuild_sno_$$/snobol4.o    || return 1
-  gcc -O2 -c "$RT/mock/mock_includes.c"       -I"$RT/x86" -I"$RT" -I"$SCRIP_CC_INC" -w -o /tmp/rtbuild_sno_$$/mock_inc.o   || return 1
-  gcc -O2 -c "$RT/x86/snobol4_pattern.c" -I"$RT/x86" -I"$RT" -I"$SCRIP_CC_INC" -w -o /tmp/rtbuild_sno_$$/pat.o        || return 1
-  gcc -O2 -c "$RT/mock/mock_engine.c"         -I"$RT/x86" -I"$RT" -I"$SCRIP_CC_INC" -w -o /tmp/rtbuild_sno_$$/mock_eng.o   || return 1
+  gcc -O2 -c "$RT/x86/snobol4_stmt_rt.c"    -I"$RT/x86" -I"$RT" -I"$SCRIP_INC" -w -o /tmp/rtbuild_sno_$$/stmt_rt.o    || return 1
+  gcc -O2 -c "$RT/x86/snobol4.c"         -I"$RT/x86" -I"$RT" -I"$SCRIP_INC" -w -o /tmp/rtbuild_sno_$$/snobol4.o    || return 1
+  gcc -O2 -c "$RT/mock/mock_includes.c"       -I"$RT/x86" -I"$RT" -I"$SCRIP_INC" -w -o /tmp/rtbuild_sno_$$/mock_inc.o   || return 1
+  gcc -O2 -c "$RT/x86/snobol4_pattern.c" -I"$RT/x86" -I"$RT" -I"$SCRIP_INC" -w -o /tmp/rtbuild_sno_$$/pat.o        || return 1
+  gcc -O2 -c "$RT/mock/mock_engine.c"         -I"$RT/x86" -I"$RT" -I"$SCRIP_INC" -w -o /tmp/rtbuild_sno_$$/mock_eng.o   || return 1
   gcc -O2 -c "$RT/x86/blk_alloc.c"            -I"$RT/x86"                               -w -o /tmp/rtbuild_sno_$$/blk_alloc.o  || return 1
   gcc -O2 -c "$RT/x86/blk_reloc.c"            -I"$RT/x86"                               -w -o /tmp/rtbuild_sno_$$/blk_reloc.o  || return 1
   # M-DYN-S1: 5-phase dynamic executor and Byrd box C layer
   local DYN="$RT/boxes"
   local DYNENG="$RT/dyn"
-  local DYNFLAGS="-I$DYN/shared -I$RT/snobol4 -I$RT -I$SCRIP_CC_INC -DDYN_ENGINE_LINKED"
+  local DYNFLAGS="-I$DYN/shared -I$RT/snobol4 -I$RT -I$SCRIP_INC -DDYN_ENGINE_LINKED"
   gcc -O2 -c "$DYN/lit/bb_lit.c"       $DYNFLAGS -w -o /tmp/rtbuild_sno_$$/bb_lit.o     || return 1
   gcc -O2 -c "$DYN/alt/bb_alt.c"       $DYNFLAGS -w -o /tmp/rtbuild_sno_$$/bb_alt.o     || return 1
   gcc -O2 -c "$DYN/seq/bb_seq.c"       $DYNFLAGS -w -o /tmp/rtbuild_sno_$$/bb_seq.o     || return 1
@@ -263,7 +263,7 @@ asm=$(printf '%q' "$asm")
 obj=$(printf '%q' "$obj")
 bin=$(printf '%q' "$bin")
 lib=$(printf '%q' "$lib")
-scrip_cc=$(printf '%q' "$SCRIP_CC")
+scrip_cc=$(printf '%q' "$SCRIP")
 rt_asm_inc=$(printf '%q' "${RT}/asm/")
 tmo=$(printf '%q' "$tmo")
 verb=$(printf '%q' "$verb")
@@ -313,7 +313,7 @@ run_snobol4_wasm() {
       local wasm="$W/${base}.wasm"
       local got="$W/${base}.got"
 
-      if ! "$SCRIP_CC" -wasm -o "$wat" "$sno" 2>/dev/null; then
+      if ! "$SCRIP" -wasm -o "$wat" "$sno" 2>/dev/null; then
         fail=$((fail+1)); echo "  FAIL $cell $base [compile]"; continue
       fi
       save_artifact "$wat" "$sno"
@@ -367,7 +367,7 @@ run_snobol4_js() {
       local js="$W/${base}.js"
       local got="$W/${base}.got"
 
-      if ! "$SCRIP_CC" -js -o "$js" "$sno" 2>/dev/null; then
+      if ! "$SCRIP" -js -o "$js" "$sno" 2>/dev/null; then
         fail=$((fail+1)); echo "  FAIL $cell $base [compile]"
         csv_row FAIL "$cell" "$base" "compile"; continue
       fi
@@ -466,7 +466,7 @@ run_snobol4_jvm() {
       local ref="${sno%.sno}.ref"; [[ -f "$ref" ]] || continue
       local input="${sno%.sno}.input"
       local jfile="$W/${base}.j"
-      if "$SCRIP_CC" -jvm -o "$jfile" "$sno" 2>/dev/null; then
+      if "$SCRIP" -jvm -o "$jfile" "$sno" 2>/dev/null; then
         save_artifact "$jfile" "$sno"
         # Extract class name — SnoHarness looks for <classname>.ref not <basename>.ref
         local classname; classname=$(grep '\.class public' "$jfile" | head -1 | awk '{print $3}')
@@ -541,7 +541,7 @@ run_icon_x86() {
   local ICN_INC="$ROOT/src/frontend/icon"
   local RT_H="$ROOT/src/runtime"
   local ICN_CORPUS="${CORPUS}/programs/icon"
-  if [[ ! -x "$SCRIP_CC" || ! -d "$ICN_CORPUS" ]]; then
+  if [[ ! -x "$SCRIP" || ! -d "$ICN_CORPUS" ]]; then
     echo "SKIP" > "$RESULTS/${cell}_status"; return
   fi
   local W="$WORK/$cell"; mkdir -p "$W"
@@ -553,7 +553,7 @@ run_icon_x86() {
     local exp="${icn%.icn}.expected"; [[ -f "$exp" ]] || continue
     [[ -f "${icn%.icn}.xfail" ]] && { pass=$((pass+1)); continue; }
     local asm="$W/${base}.s" obj="$W/${base}.o" bin="$W/${base}"
-    if "$SCRIP_CC" -icn "$icn" -o "$asm" 2>/dev/null &&
+    if "$SCRIP" -icn "$icn" -o "$asm" 2>/dev/null &&
        nasm -f elf64 "$asm" -o "$obj" 2>/dev/null &&
        gcc -nostdlib -no-pie -Wl,--no-warn-execstack \
            "$obj" "$ICN_INC/icon_runtime.c" \
@@ -596,7 +596,7 @@ run_icon_jvm() {
     local exp="${icn%.icn}.expected"; [[ -f "$exp" ]] || continue
     [[ -f "${icn%.icn}.xfail" ]] && continue
     local jfile="$W/${base}.j"
-    if "$SCRIP_CC" -jvm -o "$jfile" "$icn" 2>/dev/null; then
+    if "$SCRIP" -jvm -o "$jfile" "$icn" 2>/dev/null; then
       save_artifact "$jfile" "$icn"
       local classname; classname=$(grep '\.class public' "$jfile" | head -1 | awk '{print $3}')
       [[ -z "$classname" ]] && classname="$base"
@@ -634,7 +634,7 @@ run_icon_wasm() {
   local cell="icon_wasm"
   local pass=0 fail=0
   local ICN_CORPUS="${CORPUS}/programs/icon"
-  if [[ ! -x "$SCRIP_CC" || ! -d "$ICN_CORPUS" ]]; then
+  if [[ ! -x "$SCRIP" || ! -d "$ICN_CORPUS" ]]; then
     echo "SKIP" > "$RESULTS/${cell}_status"; return
   fi
   if ! command -v wat2wasm &>/dev/null || ! command -v node &>/dev/null; then
@@ -655,8 +655,8 @@ run_icon_wasm() {
     local wasm="$W/${base}.wasm"
     local got="$W/${base}.got"
 
-    # compile: scrip-cc -icn -wasm → .wat
-    if ! "$SCRIP_CC" -icn -wasm -o "$wat" "$icn" 2>/dev/null; then
+    # compile: scrip -icn -wasm → .wat
+    if ! "$SCRIP" -icn -wasm -o "$wat" "$icn" 2>/dev/null; then
       fail=$((fail+1)); echo "  FAIL $cell $base [compile]"; continue
     fi
     save_artifact "$wat" "$icn"
@@ -701,7 +701,7 @@ run_prolog_x86() {
     local xfail="${pl%.pl}.xfail"
     [[ -f "$xfail" ]] && { rpass=$((rpass+1)); continue; }
     local asm="$W/${base}.s" obj="$W/${base}.o" bin="$W/${base}"
-    if "$SCRIP_CC" -pl -asm -o "$asm" "$pl" 2>/dev/null &&
+    if "$SCRIP" -pl -asm -o "$asm" "$pl" 2>/dev/null &&
        nasm -f elf64 "$asm" -o "$obj" 2>/dev/null &&
        gcc -O0 -no-pie "$obj" "$PL_LIB" -lm -o "$bin" 2>/dev/null; then
       local got; got=$(timeout "$TIMEOUT_X86" "$bin" 2>/dev/null) || got="__FAIL__"
@@ -738,7 +738,7 @@ run_prolog_jvm() {
     local expected="${pl%.pl}.expected"; [[ -f "$expected" ]] || continue
     local xfail="${pl%.pl}.xfail"; [[ -f "$xfail" ]] && continue
     local jfile="$W/${base}.j"
-    if "$SCRIP_CC" -pl -jvm -o "$jfile" "$pl" 2>/dev/null; then
+    if "$SCRIP" -pl -jvm -o "$jfile" "$pl" 2>/dev/null; then
       save_artifact "$jfile" "$pl"
       local classname; classname=$(grep '\.class public' "$jfile" | head -1 | awk '{print $3}')
       [[ -z "$classname" ]] && classname="$base"
@@ -792,7 +792,7 @@ run_snocone_x86() {
     echo "SKIP" > "$RESULTS/${cell}_status"; return
   fi
   local raw stripped
-  raw=$(SCRIP_CC="$SCRIP_CC" bash "$SC_RUNNER" "${dir_args[@]}" 2>/dev/null) || true
+  raw=$(SCRIP="$SCRIP" bash "$SC_RUNNER" "${dir_args[@]}" 2>/dev/null) || true
   stripped=$(echo "$raw" | sed 's/\x1b\[[0-9;]*m//g')
   pass=$(echo "$stripped" | grep -c '^PASS' 2>/dev/null | tr -d '[:space:]'); pass=${pass:-0}
   fail=$(echo "$stripped" | grep -c '^FAIL' 2>/dev/null | tr -d '[:space:]'); fail=${fail:-0}
@@ -875,7 +875,7 @@ run_prolog_wasm() {
     [[ -f "$xfail" ]] && { pass=$((pass+1)); continue; }
     local wat="$W/${base}.wat"
     local wasm="$W/${base}.wasm"
-    if ! "$SCRIP_CC" -pl -wasm -o "$wat" "$pl" 2>/dev/null; then
+    if ! "$SCRIP" -pl -wasm -o "$wat" "$pl" 2>/dev/null; then
       fail=$((fail+1)); echo "  FAIL $cell $base [compile]"
       csv_row COMPILE_FAIL "$cell" "$base" "compile"; continue
     fi

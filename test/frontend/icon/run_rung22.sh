@@ -7,7 +7,7 @@ SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 RUNG_DIR="${CORPUS_REPO:-$(cd "$SCRIPT_DIR/../../.." && pwd)/corpus}/programs/icon"
 for icn in "$RUNG_DIR"/rung22_lists_*.icn; do
   base="${icn%.icn}"; exp="$base.expected"; [ -f "$exp" ] || continue
-  ${1:-/tmp/scrip-cc} -jvm "$icn" -o /tmp/t22.j 2>/dev/null
+  ${1:-/tmp/scrip} -jvm "$icn" -o /tmp/t22.j 2>/dev/null
   timeout 30 java -jar src/backend/jasmin.jar /tmp/t22.j -d /tmp/ 2>/dev/null
   cls=$(grep -m1 '\.class' /tmp/t22.j | awk '{print $NF}')
   got=$(timeout 5 java -cp /tmp/ "$cls" 2>/dev/null); want=$(cat "$exp")
