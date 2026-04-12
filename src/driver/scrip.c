@@ -47,6 +47,7 @@
 #include "../frontend/snobol4/scrip_cc.h"
 #include "../frontend/snobol4/CMPILE.h"
 extern Program *sno_parse(FILE *f, const char *filename);
+#include "../frontend/snocone/snocone_driver.h"
 
 /* ir_print_node — from src/ir/ir_print.c (linked via Makefile) */
 extern void ir_print_node   (const EXPR_t *e, FILE *f);
@@ -2148,9 +2149,23 @@ int main(int argc, char **argv)
     /* ── parse ──────────────────────────────────────────────────────────────
      * --dump-parse / --dump-parse-flat / --dump-ir  →  CMPILE (hand-written)
      * everything else (--ir-run, --sm-run, --dump-ir-bison)  →  sno_parse (Bison/Flex)
-     * sno_parse is the proven path: PASS=190 baseline. */
+     * sno_parse is the proven path: PASS=190 baseline.
+     * .sc extension  →  snocone_compile() (lex+parse+lower in one call) */
+    /* detect Snocone frontend by file extension */
+    int lang_snocone = 0;
+    { const char *dot = strrchr(input_path, '.'); if (dot && strcmp(dot, ".sc") == 0) lang_snocone = 1; }
+
     Program *prog = NULL;
-    if (dump_parse || dump_parse_flat || dump_ir) {
+    if (lang_snocone) {
+        /* Read whole file into buffer, pass to snocone_compile() */
+        fseek(f, 0, SEEK_END); long flen = ftell(f); rewind(f);
+        char *src = malloc(flen + 1);
+        if (!src) { fprintf(stderr, "scrip: out of memory\n"); return 1; }
+        fread(src, 1, flen, f); src[flen] = '\0'; fclose(f);
+        if (opt_bench) clock_gettime(CLOCK_MONOTONIC, &_t1);
+        prog = snocone_compile(src, input_path);
+        free(src);
+    } else if (dump_parse || dump_parse_flat || dump_ir) {
         CMPILE_t *cl = cmpile_file(f, input_path);
         fclose(f);
         if (opt_bench) clock_gettime(CLOCK_MONOTONIC, &_t1);
