@@ -57,7 +57,7 @@ for src in "$RT/x86/snobol4_stmt_rt.c" "$RT/x86/snobol4.c" \
         -I"$DIR/src/frontend/snobol4" -w \
         -o "$TMP/$(basename "$src" .c).o" 2>/dev/null
 done
-"$DIR/scrip" -asm -I"$INC" "$TMP/instr.sno" > "$TMP/prog.s" 2>/dev/null
+"$DIR/scrip" -x86 -I"$INC" "$TMP/instr.sno" > "$TMP/prog.s" 2>/dev/null
 nasm -f elf64 -I"$RT/x86/" "$TMP/prog.s" -o "$TMP/prog.o" 2>/dev/null
 gcc -no-pie "$TMP/prog.o" \
     "$TMP/snobol4_stmt_rt.o" "$TMP/snobol4.o" "$TMP/mock_includes.o" \

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# run_crosscheck_asm_corpus.sh — compile each corpus .sno via scrip -asm,
+# run_crosscheck_x86_corpus.sh — compile each corpus .sno via scrip -x86,
 #   assemble, link, run, diff against .ref
 #
 # Mirrors run_crosscheck.sh but uses the ASM backend instead of C.
 #
-# Usage: bash test/crosscheck/run_crosscheck_asm_corpus.sh
+# Usage: bash test/crosscheck/run_crosscheck_x86_corpus.sh
 #
 # Environment:
 #   STOP_ON_FAIL=1   stop after first failure (default: 0)
@@ -54,7 +54,7 @@ run_test() {
     local bin="$WORK/${name}"
 
     # Compile SNOBOL4 → ASM
-    if ! "$SCRIP_CC" -asm "$sno" > "$s_file" 2>/dev/null; then
+    if ! "$SCRIP_CC" -x86 "$sno" > "$s_file" 2>/dev/null; then
         echo -e "${RED}FAIL${RESET} $name  [scrip error]"
         FAIL=$((FAIL+1))
         [[ "$STOP_ON_FAIL" == "1" ]] && exit 1

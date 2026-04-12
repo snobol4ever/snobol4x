@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # run_beauty_sc_subsystem.sh — run one Snocone BEAUTY subsystem test
 #
-# Compiles driver.sc via scrip -sc -asm, assembles, links, runs,
+# Compiles driver.sc via scrip -sc -x86, assembles, links, runs,
 # diffs against driver.ref (SNOBOL4 golden output).
 #
 # Usage:
@@ -105,7 +105,7 @@ run_subsystem() {
     local bin="$WORK/${subsys}_bin"
 
     # Compile
-    if ! timeout 15 "$SCRIP_CC" -sc -asm "$driver_sc" -o "$s_file" 2>"$WORK/${subsys}.scrip_err"; then
+    if ! timeout 15 "$SCRIP_CC" -sc -x86 "$driver_sc" -o "$s_file" 2>"$WORK/${subsys}.scrip_err"; then
         echo -e "${RED}FAIL${RESET}  $subsys  [scrip error/timeout]"
         cat "$WORK/${subsys}.scrip_err" | head -5
         FAIL=$((FAIL+1)); return

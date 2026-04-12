@@ -2,7 +2,7 @@
 # setup.sh — one-time environment bootstrap for snobol4ever development
 #
 # Idempotent: safe to run multiple times.
-# After running: snobol4, spitbol, scrip, snobol4-asm, snobol4-jvm all work.
+# After running: snobol4, spitbol, scrip, snobol4-x86, snobol4-jvm all work.
 #
 # Usage: bash setup.sh [--skip-csnobol4] [--skip-spitbol] [--skip-scrip]
 set -euo pipefail
@@ -137,7 +137,7 @@ ok "monitor_ipc.so present"
 
 # ── 7. Corpus smoke test ─────────────────────────────────────────────────────
 step "ASM corpus invariant (106/106)"
-result=$(bash "$SNOBOL4X/test/crosscheck/run_crosscheck_asm_corpus.sh" 2>&1 | tail -3)
+result=$(bash "$SNOBOL4X/test/crosscheck/run_crosscheck_x86_corpus.sh" 2>&1 | tail -3)
 echo "$result"
 echo "$result" | grep -q "ALL PASS" || fail "ASM corpus invariant broken — do not proceed"
 ok "106/106 ALL PASS"

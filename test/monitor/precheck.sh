@@ -106,10 +106,10 @@ done
 echo ""
 echo "── Section 3: scrip sanity ────────────────────────────"
 
-if "$DIR/scrip" -asm "$NULL_SNO" > "$TMP/scrip_null.s" 2>/dev/null && [[ -s "$TMP/scrip_null.s" ]]; then
-    green "scrip -asm null.sno produces output"
+if "$DIR/scrip" -x86 "$NULL_SNO" > "$TMP/scrip_null.s" 2>/dev/null && [[ -s "$TMP/scrip_null.s" ]]; then
+    green "scrip -x86 null.sno produces output"
 else
-    red   "scrip -asm null.sno failed or empty output"
+    red   "scrip -x86 null.sno failed or empty output"
 fi
 if "$DIR/scrip" -jvm "$NULL_SNO" > "$TMP/scrip_null.j" 2>/dev/null && [[ -s "$TMP/scrip_null.j" ]]; then
     green "scrip -jvm null.sno produces output"
@@ -146,7 +146,7 @@ else
 fi
 
 # ── 4c: ASM null ────────────────────────────────────────────────────────
-"$DIR/scrip" -asm "$NULL_SNO" > "$TMP/null.s" 2>/dev/null
+"$DIR/scrip" -x86 "$NULL_SNO" > "$TMP/null.s" 2>/dev/null
 gcc -O0 -g -c "$RT/x86/snobol4_stmt_rt.c"    -I"$RT/x86" -I"$RT" -I"$DIR/src/frontend/snobol4" -w -o "$TMP/stmt_rt.o" 2>/dev/null
 gcc -O0 -g -c "$RT/x86/snobol4.c"         -I"$RT/x86" -I"$RT" -I"$DIR/src/frontend/snobol4" -w -o "$TMP/snobol4.o" 2>/dev/null
 gcc -O0 -g -c "$RT/mock/mock_includes.c"       -I"$RT/x86" -I"$RT" -I"$DIR/src/frontend/snobol4" -w -o "$TMP/mock.o" 2>/dev/null
@@ -219,7 +219,7 @@ fi
 
 # ── 5c: ASM IPC ─────────────────────────────────────────────────────────
 # Rebuild ASM binary from hello.sno (section 4 left prog_asm as null program)
-"$DIR/scrip" -asm "$HELLO_SNO" > "$TMP/hello.s" 2>/dev/null
+"$DIR/scrip" -x86 "$HELLO_SNO" > "$TMP/hello.s" 2>/dev/null
 nasm -f elf64 -I"$RT/x86/" "$TMP/hello.s" -o "$TMP/hello_asm.o" 2>/dev/null
 gcc -no-pie "$TMP/hello_asm.o" "$TMP/stmt_rt.o" "$TMP/snobol4.o" "$TMP/mock.o" \
     "$TMP/pat.o" "$TMP/eng.o" -lgc -lm -o "$TMP/prog_asm_hello" 2>/dev/null

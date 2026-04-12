@@ -105,7 +105,7 @@ mapfile -t REB_FILES < <(find "$TEST_REB" -name "*.reb" 2>/dev/null | while read
 if [[ $UPDATE -eq 1 ]]; then
   # scrip gcc-style: when given a source file with no -o, it writes the
   # output alongside the source with the appropriate extension replaced.
-  # e.g.  scrip -asm foo/bar.sno  →  foo/bar.s  (side by side, always)
+  # e.g.  scrip -x86 foo/bar.sno  →  foo/bar.s  (side by side, always)
   # regen_one simply invokes scrip with the right backend flag and no -o.
   # Only non-empty output is kept (compile errors leave no file).
   regen_one() {
@@ -116,7 +116,7 @@ if [[ $UPDATE -eq 1 ]]; then
     # If it left an empty output file, remove it so stale oracles aren't created.
     local ext
     case "$backend" in
-      -asm)  ext=s  ;; -jvm)  ext=j  ;; -net)  ext=il ;;
+      -x86)  ext=s  ;; -jvm)  ext=j  ;; -net)  ext=il ;;
       -wasm) ext=wat;; -js)   ext=js  ;; *)     ext=out;;
     esac
     local out="${src%.*}.$ext"
@@ -133,16 +133,16 @@ if [[ $UPDATE -eq 1 ]]; then
 
   echo "Regenerating: ${#ALL_SNO[@]} SNOBOL4×5 + ${#ALL_ICN[@]} Icon×2 + ${#ALL_PRO[@]} Prolog×2 + ${#ALL_REB[@]} Rebus×3 (side-by-side, clean compiles only)..."
 
-  [[ $_want_sno_asm  -eq 1 ]] && printf '%s\n' "${ALL_SNO[@]}" | xargs -P"$JOBS" -I{} bash -c 'regen_one "$1" -asm'  _ {}
+  [[ $_want_sno_asm  -eq 1 ]] && printf '%s\n' "${ALL_SNO[@]}" | xargs -P"$JOBS" -I{} bash -c 'regen_one "$1" -x86'  _ {}
   [[ $_want_sno_jvm  -eq 1 ]] && printf '%s\n' "${ALL_SNO[@]}" | xargs -P"$JOBS" -I{} bash -c 'regen_one "$1" -jvm'  _ {}
   [[ $_want_sno_net  -eq 1 ]] && printf '%s\n' "${ALL_SNO[@]}" | xargs -P"$JOBS" -I{} bash -c 'regen_one "$1" -net'  _ {}
   [[ $_want_sno_js   -eq 1 ]] && printf '%s\n' "${ALL_SNO[@]}" | xargs -P"$JOBS" -I{} bash -c 'regen_one "$1" -js'   _ {}
   [[ $_want_sno_wasm -eq 1 ]] && printf '%s\n' "${ALL_SNO[@]}" | xargs -P"$JOBS" -I{} bash -c 'regen_one "$1" -wasm' _ {}
-  [[ ${#ALL_ICN[@]} -gt 0 && $_want_icn_asm -eq 1 ]] && printf '%s\n' "${ALL_ICN[@]}" | xargs -P"$JOBS" -I{} bash -c 'regen_one "$1" -asm' _ {}
+  [[ ${#ALL_ICN[@]} -gt 0 && $_want_icn_asm -eq 1 ]] && printf '%s\n' "${ALL_ICN[@]}" | xargs -P"$JOBS" -I{} bash -c 'regen_one "$1" -x86' _ {}
   [[ ${#ALL_ICN[@]} -gt 0 && $_want_icn_jvm -eq 1 ]] && printf '%s\n' "${ALL_ICN[@]}" | xargs -P"$JOBS" -I{} bash -c 'regen_one "$1" -jvm' _ {}
-  [[ ${#ALL_PRO[@]} -gt 0 && $_want_pro_asm -eq 1 ]] && printf '%s\n' "${ALL_PRO[@]}" | xargs -P"$JOBS" -I{} bash -c 'regen_one "$1" -asm' _ {}
+  [[ ${#ALL_PRO[@]} -gt 0 && $_want_pro_asm -eq 1 ]] && printf '%s\n' "${ALL_PRO[@]}" | xargs -P"$JOBS" -I{} bash -c 'regen_one "$1" -x86' _ {}
   [[ ${#ALL_PRO[@]} -gt 0 && $_want_pro_jvm -eq 1 ]] && printf '%s\n' "${ALL_PRO[@]}" | xargs -P"$JOBS" -I{} bash -c 'regen_one "$1" -jvm' _ {}
-  [[ ${#ALL_REB[@]} -gt 0 && $_want_reb_asm -eq 1 ]] && printf '%s\n' "${ALL_REB[@]}" | xargs -P"$JOBS" -I{} bash -c 'regen_one "$1" -asm' _ {}
+  [[ ${#ALL_REB[@]} -gt 0 && $_want_reb_asm -eq 1 ]] && printf '%s\n' "${ALL_REB[@]}" | xargs -P"$JOBS" -I{} bash -c 'regen_one "$1" -x86' _ {}
   [[ ${#ALL_REB[@]} -gt 0 && $_want_reb_jvm -eq 1 ]] && printf '%s\n' "${ALL_REB[@]}" | xargs -P"$JOBS" -I{} bash -c 'regen_one "$1" -jvm' _ {}
   [[ ${#ALL_REB[@]} -gt 0 && $_want_reb_net -eq 1 ]] && printf '%s\n' "${ALL_REB[@]}" | xargs -P"$JOBS" -I{} bash -c 'regen_one "$1" -net' _ {}
 
@@ -197,16 +197,16 @@ check_one() {
 export -f check_one; export SCRIP_CC FAIL_LOG CSV
 export TEST_REB
 
-[[ $_want_sno_asm  -eq 1 && ${#SNO_FILES[@]} -gt 0 ]] && printf '%s\n' "${SNO_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -asm s'    _ {}
+[[ $_want_sno_asm  -eq 1 && ${#SNO_FILES[@]} -gt 0 ]] && printf '%s\n' "${SNO_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -x86 s'    _ {}
 [[ $_want_sno_jvm  -eq 1 && ${#SNO_FILES[@]} -gt 0 ]] && printf '%s\n' "${SNO_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -jvm j'    _ {}
 [[ $_want_sno_net  -eq 1 && ${#SNO_FILES[@]} -gt 0 ]] && printf '%s\n' "${SNO_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -net il'   _ {}
 [[ $_want_sno_js   -eq 1 && ${#SNO_FILES[@]} -gt 0 ]] && printf '%s\n' "${SNO_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -js  js'   _ {}
 [[ $_want_sno_wasm -eq 1 && ${#SNO_FILES[@]} -gt 0 ]] && printf '%s\n' "${SNO_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -wasm wat' _ {}
-[[ $_want_icn_asm -eq 1 && ${#ICN_FILES[@]} -gt 0 ]] && printf '%s\n' "${ICN_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -asm s' _ {}
+[[ $_want_icn_asm -eq 1 && ${#ICN_FILES[@]} -gt 0 ]] && printf '%s\n' "${ICN_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -x86 s' _ {}
 [[ $_want_icn_jvm -eq 1 && ${#ICN_FILES[@]} -gt 0 ]] && printf '%s\n' "${ICN_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -jvm j' _ {}
-[[ $_want_pro_asm -eq 1 && ${#PRO_FILES[@]} -gt 0 ]] && printf '%s\n' "${PRO_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -asm s' _ {}
+[[ $_want_pro_asm -eq 1 && ${#PRO_FILES[@]} -gt 0 ]] && printf '%s\n' "${PRO_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -x86 s' _ {}
 [[ $_want_pro_jvm -eq 1 && ${#PRO_FILES[@]} -gt 0 ]] && printf '%s\n' "${PRO_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -jvm j' _ {}
-[[ $_want_reb_asm -eq 1 && ${#REB_FILES[@]} -gt 0 ]] && printf '%s\n' "${REB_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -asm s'  _ {}
+[[ $_want_reb_asm -eq 1 && ${#REB_FILES[@]} -gt 0 ]] && printf '%s\n' "${REB_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -x86 s'  _ {}
 [[ $_want_reb_jvm -eq 1 && ${#REB_FILES[@]} -gt 0 ]] && printf '%s\n' "${REB_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -jvm j'  _ {}
 [[ $_want_reb_net -eq 1 && ${#REB_FILES[@]} -gt 0 ]] && printf '%s\n' "${REB_FILES[@]}" | xargs -P"$JOBS" -I{} bash -c 'check_one "$1" -net il' _ {}
 

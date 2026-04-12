@@ -267,7 +267,7 @@ scrip_cc=$(printf '%q' "$SCRIP_CC")
 rt_asm_inc=$(printf '%q' "${RT}/asm/")
 tmo=$(printf '%q' "$tmo")
 verb=$(printf '%q' "$verb")
-"\$scrip_cc" -asm -o "\$asm" "\$sno" 2>/dev/null || { echo "COMPILE_FAIL \$base"; printf 'COMPILE_FAIL,snobol4_x86,%s,,\n' "\$base" >> "$CSV"; exit 0; }
+"\$scrip_cc" -x86 -o "\$asm" "\$sno" 2>/dev/null || { echo "COMPILE_FAIL \$base"; printf 'COMPILE_FAIL,snobol4_x86,%s,,\n' "\$base" >> "$CSV"; exit 0; }
 cp -f "\$asm" "\$(dirname "\$sno")/\$base.s" 2>/dev/null || true
 nasm -f elf64 -I"\$rt_asm_inc" "\$asm" -o "\$obj" 2>/dev/null || { echo "ASM_FAIL \$base"; printf 'ASM_FAIL,snobol4_x86,%s,,\n' "\$base" >> "$CSV"; exit 0; }
 gcc -O0 -no-pie "\$obj" "\$lib" -lgc -lm -o "\$bin" 2>/dev/null || { echo "LINK_FAIL \$base"; printf 'LINK_FAIL,snobol4_x86,%s,,\n' "\$base" >> "$CSV"; exit 0; }
@@ -701,7 +701,7 @@ run_prolog_x86() {
     local xfail="${pl%.pl}.xfail"
     [[ -f "$xfail" ]] && { rpass=$((rpass+1)); continue; }
     local asm="$W/${base}.s" obj="$W/${base}.o" bin="$W/${base}"
-    if "$SCRIP_CC" -pl -asm -o "$asm" "$pl" 2>/dev/null &&
+    if "$SCRIP_CC" -pl -x86 -o "$asm" "$pl" 2>/dev/null &&
        nasm -f elf64 "$asm" -o "$obj" 2>/dev/null &&
        gcc -O0 -no-pie "$obj" "$PL_LIB" -lm -o "$bin" 2>/dev/null; then
       local got; got=$(timeout "$TIMEOUT_X86" "$bin" 2>/dev/null) || got="__FAIL__"

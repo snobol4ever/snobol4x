@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# test/crosscheck/run_crosscheck_asm.sh — Sprint A9: ASM backend crosscheck
+# test/crosscheck/run_crosscheck_x86.sh — Sprint A9: ASM backend crosscheck
 #
 # For each .sno in crosscheck/patterns/ and crosscheck/capture/:
 #   1. Extract subject string (from "X = '...'" line) and pattern (.sno file)
-#   2. Compile body-only .s via scrip -asm-body
+#   2. Compile body-only .s via scrip -x86-body
 #   3. Assemble + link with snobol4_asm_harness.o
 #   4. Run with subject string as argv[1]
 #   5. Compare: for capture tests stdout must match .ref;
 #               for match/no-match tests exit code must match expected
 #
-# Usage: bash test/crosscheck/run_crosscheck_asm.sh [--stop-on-fail]
+# Usage: bash test/crosscheck/run_crosscheck_x86.sh [--stop-on-fail]
 #
 # Environment:
 #   SCRIP_CC     path to scrip (default: scrip)
@@ -71,7 +71,7 @@ is_capture_test() {
     grep -qE '\.\s+[A-Z]|\$\s*[A-Z]' "$1"
 }
 
-# ── build_bare_sno: produce minimal .sno for scrip -asm-body ─────────────────
+# ── build_bare_sno: produce minimal .sno for scrip -x86-body ─────────────────
 build_bare_sno() {
     local sno="$1" out="$2"
     local star_vars
@@ -134,9 +134,9 @@ run_one() {
     local bare="$WORK/${tag}_bare.sno"
     build_bare_sno "$sno" "$bare"
 
-    # scrip -asm-body
+    # scrip -x86-body
     local body_s="$WORK/${tag}_body.s"
-    if ! "$SCRIP_CC" -asm-body "$bare" > "$body_s" 2>"$WORK/${tag}_scrip.err"; then
+    if ! "$SCRIP_CC" -x86-body "$bare" > "$body_s" 2>"$WORK/${tag}_scrip.err"; then
         fail "$tag (scrip error: $(cat $WORK/${tag}_scrip.err))"
         ((failed++)) || true
         [[ $STOP_ON_FAIL -eq 1 ]] && exit 1

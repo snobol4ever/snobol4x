@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# run_crosscheck_asm_prog.sh — Sprint A10: compile beauty.sno via -asm, run on corpus
-# Usage: bash test/crosscheck/run_crosscheck_asm_prog.sh
+# run_crosscheck_x86_prog.sh — Sprint A10: compile beauty.sno via -x86, run on corpus
+# Usage: bash test/crosscheck/run_crosscheck_x86_prog.sh
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -16,10 +16,10 @@ PASS=0; FAIL=0; SKIP=0
 
 WORK=$(mktemp -d); trap "rm -rf $WORK" EXIT
 
-# Compile beauty.sno via -asm
-echo "Compiling beauty.sno via scrip -asm ..."
-"$SCRIP_CC" -asm -I"$INC" "$BEAUTY" > "$WORK/beauty.s" 2>&1 || {
-    echo -e "${RED}FAIL${RESET} scrip -asm beauty.sno failed"
+# Compile beauty.sno via -x86
+echo "Compiling beauty.sno via scrip -x86 ..."
+"$SCRIP_CC" -x86 -I"$INC" "$BEAUTY" > "$WORK/beauty.s" 2>&1 || {
+    echo -e "${RED}FAIL${RESET} scrip -x86 beauty.sno failed"
     cat "$WORK/beauty.s" | head -20
     exit 1
 }

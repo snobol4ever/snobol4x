@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# run_crosscheck_asm_rung.sh — ASM backend corpus ladder driver
+# run_crosscheck_x86_rung.sh — ASM backend corpus ladder driver
 #
-# Compiles each .sno in a given directory via scrip -asm, assembles,
+# Compiles each .sno in a given directory via scrip -x86, assembles,
 # links against stmt_rt + snobol4 runtime, runs, diffs vs .ref oracle.
 #
 # Usage:
-#   bash test/crosscheck/run_crosscheck_asm_rung.sh <dir> [dir2 ...]
+#   bash test/crosscheck/run_crosscheck_x86_rung.sh <dir> [dir2 ...]
 #
 # Examples:
-#   bash test/crosscheck/run_crosscheck_asm_rung.sh /home/claude/corpus/crosscheck/hello
-#   bash test/crosscheck/run_crosscheck_asm_rung.sh \
+#   bash test/crosscheck/run_crosscheck_x86_rung.sh /home/claude/corpus/crosscheck/hello
+#   bash test/crosscheck/run_crosscheck_x86_rung.sh \
 #       /home/claude/corpus/crosscheck/hello \
 #       /home/claude/corpus/crosscheck/output
 #
@@ -72,8 +72,8 @@ run_test() {
     local o_file="$WORK/${base}.o"
     local bin="$WORK/${base}_bin"
 
-    # scrip -asm
-    if ! "$SCRIP_CC" -asm -I"$INC" "$sno" > "$s_file" 2>"$WORK/${base}.scrip_err"; then
+    # scrip -x86
+    if ! "$SCRIP_CC" -x86 -I"$INC" "$sno" > "$s_file" 2>"$WORK/${base}.scrip_err"; then
         echo -e "${RED}FAIL${RESET} $base  [scrip error]"
         cat "$WORK/${base}.scrip_err" | head -3
         FAIL=$((FAIL+1))

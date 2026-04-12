@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# run_sc_corpus_rung.sh — SC corpus ladder driver (-sc -asm pipeline)
+# run_sc_corpus_rung.sh — SC corpus ladder driver (-sc -x86 pipeline)
 #
-# Compiles each .sc in a given directory via scrip -sc -asm, assembles,
+# Compiles each .sc in a given directory via scrip -sc -x86, assembles,
 # links against stmt_rt + snobol4 runtime, runs, diffs vs .ref oracle.
 #
 # Usage:
@@ -122,8 +122,8 @@ run_test() {
         local o_file="$WORK/${base}.o"
         bin="$WORK/${base}_bin"
 
-        # scrip -sc -asm (timeout guards against hangs on unimplemented constructs)
-        if ! timeout 15 "$SCRIP_CC" -sc -asm "$sc" -o "$s_file" 2>"$WORK/${base}.scrip_err"; then
+        # scrip -sc -x86 (timeout guards against hangs on unimplemented constructs)
+        if ! timeout 15 "$SCRIP_CC" -sc -x86 "$sc" -o "$s_file" 2>"$WORK/${base}.scrip_err"; then
             echo -e "${RED}FAIL${RESET} $base  [scrip error/timeout]"
             cat "$WORK/${base}.scrip_err" | head -3
             FAIL=$((FAIL+1))
