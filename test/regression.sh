@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
-# test/regression.sh — scrip regression: all known-good programs vs .ref
-# Usage: CORPUS=/home/claude/corpus bash test/regression.sh
+# test/regression.sh — scrip regression: full corpus vs .ref, all modes
+# Usage: CORPUS=/home/claude/corpus bash test/regression.sh [--mode MODE]
 # From:  /home/claude/one4all/
 #
-# Sections:
+# Modes: sm-run (default interpreter), ir-run, x86, jvm, net, wasm
+# With no --mode flag runs sm-run only. Specify --mode to test other backends.
+#
+# Sections (sm-run mode):
 #   1. crosscheck corpus (patterns, capture, assign, arith, control, etc.)
 #   2. beauty library drivers (19 subsystems)
 #   3. demo programs
@@ -11,14 +14,25 @@
 #   5. FENCE crosscheck tests (10 tests)
 
 set -uo pipefail
-INTERP="${INTERP:-./scrip}"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIP="${SCRIP:-$ROOT/scrip}"
 CORPUS="${CORPUS:-/home/claude/corpus}"
+JASMIN="${JASMIN:-$ROOT/src/backend/jasmin.jar}"
 TIMEOUT="${TIMEOUT:-15}"
 INC="${INC:-$CORPUS/programs/snobol4/demo/inc}"
 BEAUTY="${BEAUTY:-$CORPUS/programs/snobol4/beauty}"
 DEMO="${DEMO:-$CORPUS/programs/snobol4/demo}"
 SUITE="${SUITE:-$CORPUS/programs/csnobol4-suite}"
 FENCE="${FENCE:-$CORPUS/crosscheck/patterns}"
+MODE="${MODE:-sm-run}"
+
+# Parse --mode flag
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --mode) MODE="$2"; shift 2 ;;
+        *) shift ;;
+    esac
+done
 
 PASS=0; FAIL=0
 FAILURES=""
@@ -44,19 +58,56 @@ else:
 PY
 }
 
+# Run a .sno file under the selected mode, capture stdout
+run_sno() {
+    local sno="$1" stdin_data="${2:-}"
+    case "$MODE" in
+        sm-run)
+            if [ -n "$stdin_data" ]; then
+                SNO_LIB="$INC" timeout "$TIMEOUT" "$SCRIP" "$sno" <<< "$stdin_data" 2>/dev/null || true
+            else
+                SNO_LIB="$INC" timeout "$TIMEOUT" "$SCRIP" "$sno" 2>/dev/null || true
+            fi ;;
+        ir-run)
+            SNO_LIB="$INC" timeout "$TIMEOUT" "$SCRIP" --ir-run "$sno" 2>/dev/null || true ;;
+        x86)
+            local t; t=$(mktemp -d)
+            "$SCRIP" --jit-emit --x64 "$sno" > "$t/p.s" 2>/dev/null &&
+            nasm -f elf64 "$t/p.s" -o "$t/p.o" 2>/dev/null &&
+            gcc "$t/p.o" -lgc -lm -o "$t/p" 2>/dev/null &&
+            timeout "$TIMEOUT" "$t/p" 2>/dev/null || true
+            rm -rf "$t" ;;
+        jvm)
+            local t; t=$(mktemp -d)
+            "$SCRIP" --jit-emit --jvm "$sno" > "$t/p.j" 2>/dev/null
+            if grep -q "^.class" "$t/p.j" 2>/dev/null; then
+                java -jar "$JASMIN" -d "$t" "$t/p.j" 2>/dev/null &&
+                timeout "$TIMEOUT" java -cp "$t" Main 2>/dev/null || true
+            fi
+            rm -rf "$t" ;;
+        net)
+            local t; t=$(mktemp -d)
+            "$SCRIP" --jit-emit --net "$sno" > "$t/p.il" 2>/dev/null &&
+            ilasm "$t/p.il" /output:"$t/p.exe" 2>/dev/null &&
+            timeout "$TIMEOUT" mono "$t/p.exe" 2>/dev/null || true
+            rm -rf "$t" ;;
+        *) echo "Unknown mode: $MODE" >&2; exit 1 ;;
+    esac
+}
+
 run_test() {
     local label="$1" sno="$2" ref="$3"
     [ -f "$ref" ] || return
     local got exp name
     name=$(basename "$sno" .sno)
-    if is_stdin_test "$name"; then
+    if is_stdin_test "$name" && [ "$MODE" = "sm-run" ]; then
         local pt st
         pt=$(mktemp /tmp/scrip_prog_XXXXXX.sno); st=$(mktemp /tmp/scrip_stdin_XXXXXX)
         split_at_end "$sno" "$pt" "$st"
-        got=$(SNO_LIB="$INC" timeout "$TIMEOUT" $INTERP "$pt" < "$st" 2>/dev/null || true)
+        got=$(run_sno "$pt" "$(cat "$st")")
         rm -f "$pt" "$st"
     else
-        got=$(SNO_LIB="$INC" timeout "$TIMEOUT" $INTERP "$sno" 2>/dev/null || true)
+        got=$(run_sno "$sno")
     fi
     exp=$(cat "$ref")
     if [ "$got" = "$exp" ]; then
@@ -67,7 +118,7 @@ run_test() {
     fi
 }
 
-echo "=== scrip regression ==="
+echo "=== scrip regression (mode: $MODE) ==="
 echo ""
 
 # 1. crosscheck corpus
