@@ -49,7 +49,6 @@
 extern Program *sno_parse(FILE *f, const char *filename);
 #include "../frontend/snocone/snocone_driver.h"
 #include "../frontend/prolog/prolog_driver.h"
-#include "../frontend/prolog/prolog_interp.h"
 
 /* ir_print_node — from src/ir/ir_print.c (linked via Makefile) */
 extern void ir_print_node   (const EXPR_t *e, FILE *f);
@@ -2392,8 +2391,6 @@ int main(int argc, char **argv)
             if (st.pc >= sm->count) break;
         }
         sm_prog_free(sm);
-    } else if (lang_prolog) {
-        pl_execute_program(prog);
     } else {
         execute_program(prog);
     }
