@@ -22,7 +22,7 @@
 
 set -uo pipefail
 
-INTERP="${INTERP:-/home/claude/one4all/scrip-interp}"
+INTERP="${INTERP:-/home/claude/one4all/scrip}"
 CORPUS="${CORPUS:-/home/claude/corpus}"
 SNO_LIB="${SNO_LIB:-${CORPUS}/lib}"
 OUT=/tmp/cmpile_vs_bison

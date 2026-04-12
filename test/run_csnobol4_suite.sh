@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run_csnobol4_suite.sh — CSNOBOL4 test suite regression for scrip-interp
+# run_csnobol4_suite.sh — CSNOBOL4 test suite regression for scrip
 #
 # Runs 116 Budne-suite tests + 10 FENCE crosscheck tests = 126 total.
 # Usage: CORPUS=/home/claude/corpus bash test/run_csnobol4_suite.sh
@@ -7,12 +7,12 @@
 #
 # Stdin tests (data embedded below END in .sno):
 #   atn crlf longrec rewind1 sudoku trim0 trim1 uneval2
-#   — split at END line, pipe tail as stdin to scrip-interp.
+#   — split at END line, pipe tail as stdin to scrip.
 #
 # Excluded (8): bench breakline genc k ndbm sleep time line2
 
 set -uo pipefail
-INTERP="${INTERP:-./scrip-interp}"
+INTERP="${INTERP:-./scrip}"
 CORPUS="${CORPUS:-/home/claude/corpus}"
 TIMEOUT="${TIMEOUT:-15}"
 SUITE="${SUITE:-$CORPUS/programs/csnobol4-suite}"

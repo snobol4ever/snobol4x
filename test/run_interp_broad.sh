@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# run_interp_broad.sh — scrip-interp regression: crosscheck + beauty drivers + demos
+# run_interp_broad.sh — scrip regression: crosscheck + beauty drivers + demos
 # Usage: bash test/run_interp_broad.sh
 # From: /home/claude/one4all/
 
 set -uo pipefail
-INTERP="${INTERP:-./scrip-interp}"
+INTERP="${INTERP:-./scrip}"
 CORPUS="${CORPUS:-/home/claude/corpus}"
 TIMEOUT="${TIMEOUT:-10}"
 INC="${INC:-$CORPUS/programs/snobol4/demo/inc}"
