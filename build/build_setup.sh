@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# setup.sh — one-time environment bootstrap for snobol4ever development
+# build_setup.sh — one-time environment bootstrap for snobol4ever development
 #
 # Idempotent: safe to run multiple times.
 # After running: snobol4, spitbol, scrip, snobol4-x86, snobol4-jvm all work.
 #
-# Usage: bash setup.sh [--skip-csnobol4] [--skip-spitbol] [--skip-scrip]
+# Usage: bash build_setup.sh [--skip-csnobol4] [--skip-spitbol] [--skip-scrip]
 set -euo pipefail
 
 SNOBOL4X="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -112,7 +112,7 @@ else
     ok "scrip built"
 fi
 [ -x "$SNOBOL4X/scrip" ] || fail "scrip not found after build"
-# scrip_jvm symlink (snobol4-jvm script expects scrip_jvm in $HOME)
+# scrip_jvm symlink (build_snobol4_jvm.sh script expects scrip_jvm in $HOME)
 [ -e "$HOME/scrip_jvm" ] || ln -sf "$SNOBOL4X/scrip" "$HOME/scrip_jvm"
 ok "scrip ready"
 

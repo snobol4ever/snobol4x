@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# snobol4-net — compile + run a .sno file via scrip-cc NET backend
-# Usage: snobol4-net <file.sno>
+# build_snobol4_net.sh — compile + run a .sno file via scrip-cc NET backend
+# Usage: build_snobol4_net.sh <file.sno>
 # MONITOR_FIFO env var: if set, trace events written there via NET runtime
 set -euo pipefail
 
-SNO="${1:?Usage: snobol4-net <file.sno>}"
+SNO="${1:?Usage: build_snobol4_net.sh <file.sno>}"
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIP_CC="${SCRIP_CC_NET:-/home/claude/scrip-cc_net}"
 NET_CACHE="${NET_CACHE:-/tmp/scrip_cc_net_cache}"

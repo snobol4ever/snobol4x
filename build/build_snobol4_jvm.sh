@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# snobol4-jvm — compile + run a .sno file via scrip-cc JVM backend
-# Usage: snobol4-jvm <file.sno>
+# build_snobol4_jvm.sh — compile + run a .sno file via scrip-cc JVM backend
+# Usage: build_snobol4_jvm.sh <file.sno>
 # MONITOR_FIFO env var: if set, trace events written there via JVM runtime
 set -euo pipefail
 
-SNO="${1:?Usage: snobol4-jvm <file.sno>}"
+SNO="${1:?Usage: build_snobol4_jvm.sh <file.sno>}"
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIP_CC="${SCRIP_CC_JVM:-/home/claude/scrip-cc_jvm}"
 JASMIN="${JASMIN:-$DIR/src/backend/jasmin.jar}"

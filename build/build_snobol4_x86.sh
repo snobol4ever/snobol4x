@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# snobol4-x86 — compile + run a .sno file via scrip ASM backend
-# Usage: snobol4-x86 <file.sno>
+# build_snobol4_x86.sh — compile + run a .sno file via scrip ASM backend
+# Usage: build_snobol4_x86.sh <file.sno>
 # MONITOR_FIFO env var: if set, trace events written there via comm_var()
 set -euo pipefail
 
-SNO="${1:?Usage: snobol4-x86 <file.sno>}"
+SNO="${1:?Usage: build_snobol4_x86.sh <file.sno>}"
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RT="$DIR/src/runtime"
 INC="${INC:-/home/claude/corpus/programs/inc}"
