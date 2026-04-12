@@ -1,138 +1,25 @@
 #!/usr/bin/env bash
-# build_setup.sh — one-time environment bootstrap for snobol4ever development
+# build_setup.sh — full environment bootstrap for snobol4ever development
 #
-# Idempotent: safe to run multiple times.
-# After running: snobol4, spitbol, scrip, snobol4-x86, snobol4-jvm all work.
+# Runs all build_*.sh scripts in dependency order for a complete environment.
+# Each script is idempotent — safe to run multiple times.
+# For goal-specific builds, run only the scripts listed in the REPO file.
 #
-# Usage: bash build_setup.sh [--skip-csnobol4] [--skip-spitbol] [--skip-scrip]
+# Usage: bash build/build_setup.sh
 set -euo pipefail
+BUILD="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-SNOBOL4X="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ROOT="$(cd "$SNOBOL4X/.." && pwd)"
-CORPUS="$ROOT/corpus"
-X64="$ROOT/x64"
-GREEN='\033[0;32m'; YELLOW='\033[0;33m'; RED='\033[0;31m'; RESET='\033[0m'
-ok()   { echo -e "${GREEN}OK${RESET}  $*"; }
-skip() { echo -e "${YELLOW}SKIP${RESET} $*"; }
-fail() { echo -e "${RED}FAIL${RESET} $*"; exit 1; }
-step() { echo -e "\n── $* ──"; }
+run() { echo ""; echo "════ $1 ════"; bash "$BUILD/$1"; }
 
-# ── 1. System packages ────────────────────────────────────────────────────────
-step "System packages"
-PKGS="build-essential libgmp-dev m4 nasm libgc-dev wabt"
-MISSING=""
-for p in $PKGS; do
-    dpkg -s "$p" &>/dev/null || MISSING="$MISSING $p"
-done
-if [ -n "$MISSING" ]; then
-    apt-get install -y $MISSING 2>&1 | tail -3
-    ok "installed:$MISSING"
-else
-    skip "all packages already installed"
-fi
+run build_packages.sh
+run build_csnobol4.sh
+run build_spitbol.sh
+run build_scrip.sh
+run build_java.sh
+run build_monitor_ipc.sh
 
-# ── 2. CSNOBOL4 2.3.3 ────────────────────────────────────────────────────────
-# Built from snobol4ever/csnobol4 repo via build_csnobol4.sh.
-# All patches (FENCE(P), STNO trace) are baked into the committed source.
-# No tarball. No sed patches. No configure. Just make -f Makefile2 xsnobol4.
-step "CSNOBOL4 2.3.3"
-CSNOBOL4="$ROOT/csnobol4"
-if [ -x "$CSNOBOL4/snobol4" ] && "$CSNOBOL4/snobol4" /dev/null 2>/dev/null; then
-    skip "csnobol4 already built at $CSNOBOL4/snobol4"
-elif [ ! -d "$CSNOBOL4/.git" ]; then
-    fail "clone snobol4ever/csnobol4 to $CSNOBOL4 first"
-else
-    bash "$(dirname "${BASH_SOURCE[0]}")/build_csnobol4.sh"
-    ok "csnobol4 built"
-fi
-# Smoke test
-printf "        OUTPUT = 'csnobol4-ok'\nEND\n" > /tmp/_setup_smoke.sno
-out=$(/usr/local/bin/snobol4 /tmp/_setup_smoke.sno 2>/dev/null)
-[ "$out" = "csnobol4-ok" ] || fail "snobol4 smoke test failed (got: $out)"
-ok "snobol4 smoke test passed"
-
-# ── 3. SPITBOL x64 ───────────────────────────────────────────────────────────
-step "SPITBOL x64"
-if [ -x /usr/local/bin/spitbol ]; then
-    skip "spitbol already installed"
-else
-    [ -d "$X64" ] || fail "x64 repo not found: $X64"
-    # systm.c patch — nanoseconds → milliseconds
-    cat > "$X64/osint/systm.c" << 'PATCH'
-#include "port.h"
-#include "time.h"
-int zystm() {
-    struct timespec tim;
-    clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &tim);
-    long etime = (long)(tim.tv_sec * 1000) + (long)(tim.tv_nsec / 1000000);
-    SET_IA(etime);
-    return NORMAL_RETURN;
-}
-PATCH
-    cd "$X64"
-    make 2>&1 | tail -3
-    cp "$X64/sbl" /usr/local/bin/spitbol
-    chmod +x /usr/local/bin/spitbol
-    cd "$SNOBOL4X"
-    ok "spitbol installed"
-fi
-# bootsbl symlink (monitor uses this name)
-[ -e "$X64/bootsbl" ] || ln -sf "$X64/sbl" "$X64/bootsbl"
-# Smoke test — spitbol exits 139 in sandbox (segfault on exit) but output is correct
-out=$(spitbol -b /tmp/_setup_smoke.sno 2>/dev/null || true)
-# Reuse hello for spitbol
-printf "        OUTPUT = 'spitbol-ok'\nEND\n" > /tmp/_setup_spitbol.sno
-out=$(spitbol -b /tmp/_setup_spitbol.sno 2>/dev/null || true)
-[ "$out" = "spitbol-ok" ] || fail "spitbol smoke test failed (got: $out)"
-ok "spitbol smoke test passed (exit code ignored — sandbox segfault-on-exit is expected)"
-
-# ── 4. scrip compiler ────────────────────────────────────────────────────────
-step "scrip compiler"
-if [ -x "$SNOBOL4X/scrip" ]; then
-    skip "scrip already built"
-else
-    cd "$SNOBOL4X/src"
-    make -j4 2>&1 | tail -3
-    cd "$SNOBOL4X"
-    ok "scrip built"
-fi
-[ -x "$SNOBOL4X/scrip" ] || fail "scrip not found after build"
-# scrip_jvm symlink (build_snobol4_jvm.sh script expects scrip_jvm in $HOME)
-[ -e "$HOME/scrip_jvm" ] || ln -sf "$SNOBOL4X/scrip" "$HOME/scrip_jvm"
-ok "scrip ready"
-
-# ── 5. Java / Jasmin ─────────────────────────────────────────────────────────
-step "Java / Jasmin (JVM backend)"
-which java  &>/dev/null || fail "java not found — install openjdk"
-which javac &>/dev/null || { apt-get install -y openjdk-21-jdk-headless 2>&1 | tail -2; which javac &>/dev/null || fail "javac not found after install"; }
-[ -f "$SNOBOL4X/src/backend/jasmin.jar" ] || fail "jasmin.jar missing"
-ok "java $(java -version 2>&1 | grep -o 'version "[^"]*"' || echo 'found')"
-ok "jasmin.jar present"
-
-# ── 6. monitor_ipc.so ────────────────────────────────────────────────────────
-step "monitor_ipc.so"
-MDIR="$SNOBOL4X/test/monitor"
-if [ -f "$MDIR/monitor_ipc.so" ]; then
-    skip "monitor_ipc.so already built"
-else
-    gcc -shared -fPIC -o "$MDIR/monitor_ipc.so" "$MDIR/monitor_ipc.c" 2>&1
-    ok "monitor_ipc.so built"
-fi
-ok "monitor_ipc.so present"
-
-# ── 7. Corpus smoke test ─────────────────────────────────────────────────────
-step "ASM corpus invariant (106/106)"
-result=$(bash "$SNOBOL4X/test/crosscheck/run_crosscheck_x86_corpus.sh" 2>&1 | tail -3)
-echo "$result"
-echo "$result" | grep -q "ALL PASS" || fail "ASM corpus invariant broken — do not proceed"
-ok "106/106 ALL PASS"
-
-# ── Done ──────────────────────────────────────────────────────────────────────
 echo ""
-echo -e "${GREEN}Setup complete.${RESET} Environment ready for monitor + beauty sprint."
-echo "  snobol4:  $(which snobol4)"
-echo "  spitbol:  $(which spitbol)"
-echo "  scrip:    $SNOBOL4X/scrip"
-echo "  monitor:  $MDIR/run_monitor.sh"
-echo "  corpus:   $CORPUS"
-rm -f /tmp/_setup_smoke.sno /tmp/_setup_spitbol.sno
+echo "Setup complete. All components built."
+echo "  csnobol4: $(cd "$BUILD/../../csnobol4" && pwd)/snobol4"
+echo "  spitbol:  $(cd "$BUILD/../../x64" && pwd)/bin/sbl"
+echo "  scrip:    $(cd "$BUILD/.." && pwd)/scrip"
