@@ -21,45 +21,9 @@
 #include <gc/gc.h>
 
 /* ============================================================
- * Value type
+ * Value type — defined in descr.h (shared with bb_box.h)
  * ============================================================ */
-
-typedef enum {
-    DT_SNUL =  0,   /* our null sentinel — empty/unset                    */
-    DT_S    =  1,   /* STRING  — char* (GC-managed)                       */
-    DT_P    =  3,   /* PATTERN — PATND_t* (GC-managed)                      */
-    DT_A    =  4,   /* DT_A   — ARBLK_t* (GC-managed)                      */
-    DT_T    =  5,   /* TABLE   — TBBLK_t* (GC-managed)                      */
-    DT_I    =  6,   /* INTEGER — int64_t                                   */
-    DT_R    =  7,   /* REAL    — double                                    */
-    DT_C    =  8,   /* CODE    — compiled code block                       */
-    DT_N    =  9,   /* NAME    — l-value reference                         */
-    DT_K    = 10,   /* KEYWORD — protected variable                        */
-    DT_E    = 11,   /* EXPRESSION — unevaluated                            */
-    DT_FAIL = 99,   /* failure sentinel — drives :F branch (our invention) */
-    DT_DATA = 100,  /* first user-defined DT_DATA type — v >= DT_DATA            */
-} DTYPE_t;
-
-struct _TREEBLK_t;
-struct _ARBLK_t;
-struct _TBBLK_t;
-struct _DATINST_t;
-
-struct _PATND_t;  /* defined in snobol4_patnd.h — included below */
-typedef struct DESCR_t {
-    DTYPE_t v;             /* type tag — SIL v field (DTYPE_t enum) */
-    uint32_t slen;         /* binary string byte length; 0 = use strlen (fits in padding) */
-    union {              /* value   — SIL a field               */
-        char             *s;   /* S    — string pointer (GC)    */
-        int64_t           i;   /* I    — integer                */
-        double            r;   /* R    — real                   */
-        struct _PATND_t    *p;   /* P    — pattern node           */
-        struct _ARBLK_t    *arr; /* A    — array block            */
-        struct _TBBLK_t    *tbl; /* T    — table block            */
-        struct _DATINST_t  *u;   /* DT_DATA — user DT_DATA instance     */
-        void             *ptr; /* generic GC pointer            */
-    };
-} DESCR_t;
+#include "descr.h"   /* DTYPE_t, DESCR_t, FAILDESCR, IS_FAIL_fn — U-5 */
 
 #include "snobol4_patnd.h"  /* XKIND_t + PATND_t — requires DESCR_t */
 
@@ -82,17 +46,9 @@ static inline size_t descr_slen(DESCR_t d) {
 #define BSTRVAL(s_, len_) ((DESCR_t){ .v = DT_S, .slen = (uint32_t)(len_), .s = (s_) })
 #define INTVAL(i_) ((DESCR_t){ .v = DT_I,  .i = (i_) })
 #define REALVAL(r_)((DESCR_t){ .v = DT_R, .r = (r_) })
-#define FAILDESCR    ((DESCR_t){ .v = DT_FAIL, .i = 0 })   /* P002/P003 */
-/* NAME descriptor — SIL semantics: value field is DESCR_t* pointing to the live cell.
- * Read:  if (d.v==DT_N) return *d.ptr;
- * Write: if (d.v==DT_N) *d.ptr = val;
- * Mirrors SIL ARYA10/ASSCR/FIELD: SETVC XPTR,N keeps interior pointer as value. */
-#define NAMEPTR(dp_) ((DESCR_t){ .v = DT_N, .slen = 1, .ptr = (void*)(dp_) })  /* interior ptr: slen=1 */
-/* Legacy string-name compat — do not use for new code */
-#define NAMEVAL(s_)  ((DESCR_t){ .v = DT_N, .slen = 0, .s = (char *)(s_) })  /* name string: slen=0 */
+#define NAMEPTR(dp_) ((DESCR_t){ .v = DT_N, .slen = 1, .ptr = (void*)(dp_) })
+#define NAMEVAL(s_)  ((DESCR_t){ .v = DT_N, .slen = 0, .s = (char *)(s_) })
 #define STYPE(v_)    ((v_).v)
-
-static inline int IS_FAIL_fn(DESCR_t v) { return v.v == DT_FAIL; }
 
 /* ============================================================
  * String operations

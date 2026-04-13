@@ -33,6 +33,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include "descr.h"   /* DESCR_t, DTYPE_t, FAILDESCR, IS_FAIL_fn — U-5 */
 
 /* ── str_t — the universal value type ──────────────────────────────────── */
 /*
@@ -102,7 +103,7 @@ static inline void *bb_enter(void **ζζ, size_t size) {
  *   BoxName_λ:  if (is_empty(BoxName))            goto BoxName_ω;
  *               else                              goto BoxName_γ;
  */
-typedef spec_t (*bb_box_fn)(void *zeta, int entry);
+typedef DESCR_t (*bb_box_fn)(void *zeta, int entry);   /* U-5: was spec_t — now unified with icn_box_fn */
 
 /* bb_node_t — a built box instance (fn + allocated state) */
 typedef struct {
@@ -141,16 +142,15 @@ typedef struct { int done; const char *varname; }     atp_t;
 struct _PATND_t;  /* forward declaration */
 bb_node_t bb_build(struct _PATND_t *p);
 
-/* ── U-1: universal box function type and broker mode ───────────────────── */
+/* U-1: universal box function type and broker mode ───────────────────── */
 /*
  * univ_box_fn — the one true box signature for all five languages.
  * Returns DESCR_t (16 bytes, rax:rdx) — subsumes spec_t (also 16 bytes).
  * SNOBOL4 boxes currently return spec_t via bb_box_fn; they migrate to
  * univ_box_fn at step U-5. Icon boxes (icn_box_fn) already return DESCR_t.
- * Declared here as forward reference; DESCR_t defined in snobol4.h.
+ * DESCR_t defined in descr.h (included above).
  */
-struct DESCR_t;   /* forward declaration — defined in snobol4.h */
-typedef struct DESCR_t (*univ_box_fn)(void *zeta, int entry);
+typedef DESCR_t (*univ_box_fn)(void *zeta, int entry);
 
 /* BrokerMode — selects drive behaviour in bb_broker() (added U-3).
  *   BB_SCAN: SNOBOL4 mode — scan cursor positions 0..Ω, stop on first match.

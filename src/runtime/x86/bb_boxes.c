@@ -3,6 +3,7 @@
  * AUTHORS: Lon Jones Cherryholmes · Jeffrey Cooper M.D. · Claude Sonnet 4.6
  */
 #include "bb_box.h"
+#include "bb_convert.h"
 #include "snobol4.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,7 +13,7 @@
 /* _XCHR     LIT         literal string match */
 
 
-spec_t bb_lit(void *zeta, int entry)
+DESCR_t bb_lit(void *zeta, int entry)
 {
     lit_t *ζ = zeta;
     spec_t LIT;
@@ -22,8 +23,8 @@ spec_t bb_lit(void *zeta, int entry)
                     if (memcmp(Σ+Δ, ζ->lit, (size_t)ζ->len) != 0)               goto LIT_ω;
                     LIT = spec(Σ+Δ, ζ->len); Δ += ζ->len;                       goto LIT_γ;
     LIT_β:          Δ -= ζ->len;                                                goto LIT_ω;
-    LIT_γ:                                                                      return LIT;
-    LIT_ω:                                                                      return spec_empty;
+    LIT_γ:                                                                      return descr_from_spec(LIT);
+    LIT_ω:                                                                      return FAILDESCR;
 }
 
 lit_t *bb_lit_new(const char *lit, int len)
@@ -36,30 +37,30 @@ lit_t *bb_lit_new(const char *lit, int len)
 typedef struct { bb_box_fn fn; void *state; } bb_child_t;
 typedef struct { bb_child_t left; bb_child_t right; spec_t matched; } seq_t;
 
-spec_t bb_seq(void *zeta, int entry)
+DESCR_t bb_seq(void *zeta, int entry)
 {
     seq_t *ζ = zeta;
     spec_t SEQ; spec_t lr; spec_t rr;
     if (entry==α)                                                               goto SEQ_α;
     if (entry==β)                                                               goto SEQ_β;
     SEQ_α:          ζ->matched=spec(Σ+Δ,0);                                     
-                    lr=ζ->left.fn(ζ->left.state,α);                             
+                    lr=spec_from_descr(ζ->left.fn(ζ->left.state,α));                             
                     if (spec_is_empty(lr))                                      goto left_ω;
                                                                                 goto left_γ;
-    SEQ_β:          rr=ζ->right.fn(ζ->right.state,β);                           
+    SEQ_β:          rr=spec_from_descr(ζ->right.fn(ζ->right.state,β));                           
                     if (spec_is_empty(rr))                                      goto right_ω;
                                                                                 goto right_γ;
     left_γ:         ζ->matched=spec_cat(ζ->matched,lr);                         
-                    rr=ζ->right.fn(ζ->right.state,α);                           
+                    rr=spec_from_descr(ζ->right.fn(ζ->right.state,α));                           
                     if (spec_is_empty(rr))                                      goto right_ω;
                                                                                 goto right_γ;
     left_ω:                                                                     goto SEQ_ω;
     right_γ:        SEQ=spec_cat(ζ->matched,rr);                                goto SEQ_γ;
-    right_ω:        lr=ζ->left.fn(ζ->left.state,β);                             
+    right_ω:        lr=spec_from_descr(ζ->left.fn(ζ->left.state,β));                             
                     if (spec_is_empty(lr))                                      goto left_ω;
                                                                                 goto left_γ;
-    SEQ_γ:                                                                      return SEQ;
-    SEQ_ω:                                                                      return spec_empty;
+    SEQ_γ:                                                                      return descr_from_spec(SEQ);
+    SEQ_ω:                                                                      return FAILDESCR;
 }
 
 seq_t *bb_seq_new(bb_box_fn lf, void *ls, bb_box_fn rf, void *rs)
@@ -73,29 +74,29 @@ seq_t *bb_seq_new(bb_box_fn lf, void *ls, bb_box_fn rf, void *rs)
 typedef struct { bb_box_fn fn; void *state; } bb_altchild_t;
 typedef struct { int n; bb_altchild_t children[BB_ALT_MAX]; int current; int position; spec_t result; } alt_t;
 
-spec_t bb_alt(void *zeta, int entry)
+DESCR_t bb_alt(void *zeta, int entry)
 {
     alt_t *ζ = zeta;
     spec_t cr;
     if (entry==α)                                                               goto ALT_α;
     if (entry==β)                                                               goto ALT_β;
     ALT_α:          ζ->position=Δ; ζ->current=1;                                
-                    cr=ζ->children[0].fn(ζ->children[0].state,α);               
+                    cr=spec_from_descr(ζ->children[0].fn(ζ->children[0].state,α));               
                     if (spec_is_empty(cr))                                      goto child_α_ω;
                                                                                 goto child_α_γ;
-    ALT_β:          cr=ζ->children[ζ->current-1].fn(ζ->children[ζ->current-1].state,β);
+    ALT_β:          cr=spec_from_descr(ζ->children[ζ->current-1].fn(ζ->children[ζ->current-1].state,β));
                     if (spec_is_empty(cr))                                      goto ALT_ω;
                                                                                 goto child_β_γ;
     child_α_γ:      ζ->result=cr;                                               goto ALT_γ;
     child_α_ω:      ζ->current++;                                               
                     if (ζ->current > ζ->n)                                      goto ALT_ω;
                     Δ=ζ->position;                                              
-                    cr=ζ->children[ζ->current-1].fn(ζ->children[ζ->current-1].state,α);
+                    cr=spec_from_descr(ζ->children[ζ->current-1].fn(ζ->children[ζ->current-1].state,α));
                     if (spec_is_empty(cr))                                      goto child_α_ω;
                                                                                 goto child_α_γ;
     child_β_γ:      ζ->result=cr;                                               goto ALT_γ;
-    ALT_γ:                                                                      return ζ->result;
-    ALT_ω:                                                                      return spec_empty;
+    ALT_γ:                                                                      return descr_from_spec(ζ->result);
+    ALT_ω:                                                                      return FAILDESCR;
 }
 
 alt_t *bb_alt_new(int n, bb_box_fn *fns)
@@ -105,7 +106,7 @@ alt_t *bb_alt_new(int n, bb_box_fn *fns)
 /* _XFARB    ARB         match 0..n chars lazily; β extends by 1 */
 
 
-spec_t bb_arb(void *zeta, int entry)
+DESCR_t bb_arb(void *zeta, int entry)
 {
     arb_t *ζ = zeta;
     spec_t ARB;
@@ -115,8 +116,8 @@ spec_t bb_arb(void *zeta, int entry)
     ARB_β:          ζ->count++;                                                 
                     if (ζ->start+ζ->count > Ω)                                  goto ARB_ω;
                     Δ=ζ->start; ARB=spec(Σ+Δ,ζ->count); Δ+=ζ->count;            goto ARB_γ;
-    ARB_γ:                                                                      return ARB;
-    ARB_ω:                                                                      return spec_empty;
+    ARB_γ:                                                                      return descr_from_spec(ARB);
+    ARB_ω:                                                                      return FAILDESCR;
 }
 
 arb_t *bb_arb_new(void)
@@ -130,7 +131,7 @@ arb_t *bb_arb_new(void)
 typedef struct { spec_t matched; int start; } arbno_frame_t;
 typedef struct { bb_box_fn fn; void *state; int depth; arbno_frame_t stack[ARBNO_STACK_MAX]; } arbno_t;
 
-spec_t bb_arbno(void *zeta, int entry)
+DESCR_t bb_arbno(void *zeta, int entry)
 {
     arbno_t *ζ = zeta;
     spec_t ARBNO; spec_t br; arbno_frame_t *fr;
@@ -138,7 +139,7 @@ spec_t bb_arbno(void *zeta, int entry)
     if (entry==β)                                                               goto ARBNO_β;
     ARBNO_α:        ζ->depth=0; fr=&ζ->stack[0];                                
                     fr->matched=spec(Σ+Δ,0); fr->start=Δ;                       
-    ARBNO_try:      br=ζ->fn(ζ->state,α);                                       
+    ARBNO_try:      br=spec_from_descr(ζ->fn(ζ->state,α));                                       
                     if (spec_is_empty(br))                                      goto body_ω;
                                                                                 goto body_γ;
     ARBNO_β:        if (ζ->depth<=0)                                            goto ARBNO_ω;
@@ -151,8 +152,8 @@ spec_t bb_arbno(void *zeta, int entry)
                         fr->matched=ARBNO; fr->start=Δ; }                       goto ARBNO_try;
     body_ω:         ARBNO=ζ->stack[ζ->depth].matched;                           goto ARBNO_γ;
     ARBNO_γ_now:    ARBNO=ζ->stack[ζ->depth].matched;                           goto ARBNO_γ;
-    ARBNO_γ:                                                                    return ARBNO;
-    ARBNO_ω:                                                                    return spec_empty;
+    ARBNO_γ:                                                                    return descr_from_spec(ARBNO);
+    ARBNO_ω:                                                                    return FAILDESCR;
 }
 
 arbno_t *bb_arbno_new(bb_box_fn fn, void *state)
@@ -162,7 +163,7 @@ arbno_t *bb_arbno_new(bb_box_fn fn, void *state)
 /* _XANYC    ANY         match one char if in set */
 
 
-spec_t bb_any(void *zeta, int entry)
+DESCR_t bb_any(void *zeta, int entry)
 {
     any_t *ζ = zeta;
     spec_t ANY;
@@ -171,8 +172,8 @@ spec_t bb_any(void *zeta, int entry)
     ANY_α:          if (Δ>=Ω || !strchr(ζ->chars,Σ[Δ]))                         goto ANY_ω;
                     ANY = spec(Σ+Δ,1); Δ++;                                     goto ANY_γ;
     ANY_β:          Δ--;                                                        goto ANY_ω;
-    ANY_γ:                                                                      return ANY;
-    ANY_ω:                                                                      return spec_empty;
+    ANY_γ:                                                                      return descr_from_spec(ANY);
+    ANY_ω:                                                                      return FAILDESCR;
 }
 
 any_t *bb_any_new(const char *chars)
@@ -182,7 +183,7 @@ any_t *bb_any_new(const char *chars)
 /* _XNNYC    NOTANY      match one char if NOT in set */
 
 
-spec_t bb_notany(void *zeta, int entry)
+DESCR_t bb_notany(void *zeta, int entry)
 {
     notany_t *ζ = zeta;
     spec_t NOTANY;
@@ -191,8 +192,8 @@ spec_t bb_notany(void *zeta, int entry)
     NOTANY_α:       if (Δ>=Ω || strchr(ζ->chars,Σ[Δ]))                          goto NOTANY_ω;
                     NOTANY = spec(Σ+Δ,1); Δ++;                                  goto NOTANY_γ;
     NOTANY_β:       Δ--;                                                        goto NOTANY_ω;
-    NOTANY_γ:                                                                   return NOTANY;
-    NOTANY_ω:                                                                   return spec_empty;
+    NOTANY_γ:                                                                   return descr_from_spec(NOTANY);
+    NOTANY_ω:                                                                   return FAILDESCR;
 }
 
 notany_t *bb_notany_new(const char *chars)
@@ -202,7 +203,7 @@ notany_t *bb_notany_new(const char *chars)
 /* _XSPNC    SPAN        longest prefix of chars in set (≥1) */
 
 
-spec_t bb_span(void *zeta, int entry)
+DESCR_t bb_span(void *zeta, int entry)
 {
     span_t *ζ = zeta;
     spec_t SPAN;
@@ -213,8 +214,8 @@ spec_t bb_span(void *zeta, int entry)
                     if (ζ->δ <= 0)                                              goto SPAN_ω;
                     SPAN = spec(Σ+Δ, ζ->δ); Δ += ζ->δ;                          goto SPAN_γ;
     SPAN_β:         Δ -= ζ->δ;                                                  goto SPAN_ω;
-    SPAN_γ:                                                                     return SPAN;
-    SPAN_ω:                                                                     return spec_empty;
+    SPAN_γ:                                                                     return descr_from_spec(SPAN);
+    SPAN_ω:                                                                     return FAILDESCR;
 }
 
 span_t *bb_span_new(const char *chars)
@@ -224,7 +225,7 @@ span_t *bb_span_new(const char *chars)
 /* _XBRKC    BRK         scan to first char in set (may be zero-width) */
 
 
-spec_t bb_brk(void *zeta, int entry)
+DESCR_t bb_brk(void *zeta, int entry)
 {
     brk_t *ζ = zeta;
     spec_t BRK;
@@ -235,8 +236,8 @@ spec_t bb_brk(void *zeta, int entry)
                     if (Δ+ζ->δ >= Ω)                                            goto BRK_ω;
                     BRK = spec(Σ+Δ,ζ->δ); Δ += ζ->δ;                            goto BRK_γ;
     BRK_β:          Δ -= ζ->δ;                                                  goto BRK_ω;
-    BRK_γ:                                                                      return BRK;
-    BRK_ω:                                                                      return spec_empty;
+    BRK_γ:                                                                      return descr_from_spec(BRK);
+    BRK_ω:                                                                      return FAILDESCR;
 }
 
 brk_t *bb_brk_new(const char *chars)
@@ -246,7 +247,7 @@ brk_t *bb_brk_new(const char *chars)
 /* _XBRKX    BREAKX      like BRK but fails on zero advance */
 
 
-spec_t bb_breakx(void *zeta, int entry)
+DESCR_t bb_breakx(void *zeta, int entry)
 {
     brkx_t *ζ = zeta;
     spec_t BREAKX;
@@ -257,8 +258,8 @@ spec_t bb_breakx(void *zeta, int entry)
                     if (ζ->δ==0 || Δ+ζ->δ>=Ω)                                   goto BREAKX_ω;
                     BREAKX = spec(Σ+Δ,ζ->δ); Δ += ζ->δ;                         goto BREAKX_γ;
     BREAKX_β:       Δ -= ζ->δ;                                                  goto BREAKX_ω;
-    BREAKX_γ:                                                                   return BREAKX;
-    BREAKX_ω:                                                                   return spec_empty;
+    BREAKX_γ:                                                                   return descr_from_spec(BREAKX);
+    BREAKX_ω:                                                                   return FAILDESCR;
 }
 
 brkx_t *bb_breakx_new(const char *chars)
@@ -268,7 +269,7 @@ brkx_t *bb_breakx_new(const char *chars)
 /* _XLNTH    LEN         match exactly n characters */
 
 
-spec_t bb_len(void *zeta, int entry)
+DESCR_t bb_len(void *zeta, int entry)
 {
     len_t *ζ = zeta;
     spec_t LEN;
@@ -277,8 +278,8 @@ spec_t bb_len(void *zeta, int entry)
     LEN_α:          if (Δ + ζ->n > Ω)                                           goto LEN_ω;
                     LEN = spec(Σ+Δ, ζ->n); Δ += ζ->n;                           goto LEN_γ;
     LEN_β:          Δ -= ζ->n;                                                  goto LEN_ω;
-    LEN_γ:                                                                      return LEN;
-    LEN_ω:                                                                      return spec_empty;
+    LEN_γ:                                                                      return descr_from_spec(LEN);
+    LEN_ω:                                                                      return FAILDESCR;
 }
 
 len_t *bb_len_new(int n)
@@ -288,7 +289,7 @@ len_t *bb_len_new(int n)
 /* _XPOSI    POS         assert cursor == n (zero-width) */
 
 
-spec_t bb_pos(void *zeta, int entry)
+DESCR_t bb_pos(void *zeta, int entry)
 {
     pos_t *ζ = zeta;
     spec_t POS;
@@ -297,8 +298,8 @@ spec_t bb_pos(void *zeta, int entry)
     POS_α:          if (Δ != ζ->n)                                              goto POS_ω;
                     POS = spec(Σ+Δ,0);                                          goto POS_γ;
     POS_β:                                                                      goto POS_ω;
-    POS_γ:                                                                      return POS;
-    POS_ω:                                                                      return spec_empty;
+    POS_γ:                                                                      return descr_from_spec(POS);
+    POS_ω:                                                                      return FAILDESCR;
 }
 
 pos_t *bb_pos_new(int n)
@@ -308,7 +309,7 @@ pos_t *bb_pos_new(int n)
 /* _XTB      TAB         advance cursor TO absolute position n */
 
 
-spec_t bb_tab(void *zeta, int entry)
+DESCR_t bb_tab(void *zeta, int entry)
 {
     tab_t *ζ = zeta;
     spec_t TAB;
@@ -317,8 +318,8 @@ spec_t bb_tab(void *zeta, int entry)
     TAB_α:          if (Δ > ζ->n)                                               goto TAB_ω;
                     ζ->advance=ζ->n-Δ; TAB=spec(Σ+Δ,ζ->advance); Δ=ζ->n;        goto TAB_γ;
     TAB_β:          Δ -= ζ->advance;                                            goto TAB_ω;
-    TAB_γ:                                                                      return TAB;
-    TAB_ω:                                                                      return spec_empty;
+    TAB_γ:                                                                      return descr_from_spec(TAB);
+    TAB_ω:                                                                      return FAILDESCR;
 }
 
 tab_t *bb_tab_new(int n)
@@ -328,7 +329,7 @@ tab_t *bb_tab_new(int n)
 /* _XSTAR    REM         match entire remainder; no backtrack */
 
 
-spec_t bb_rem(void *zeta, int entry)
+DESCR_t bb_rem(void *zeta, int entry)
 {
     (void)zeta;
     spec_t REM;
@@ -336,8 +337,8 @@ spec_t bb_rem(void *zeta, int entry)
     if (entry==β)                                                               goto REM_β;
     REM_α:          REM = spec(Σ+Δ, Ω-Δ); Δ = Ω;                                goto REM_γ;
     REM_β:                                                                      goto REM_ω;
-    REM_γ:                                                                      return REM;
-    REM_ω:                                                                      return spec_empty;
+    REM_γ:                                                                      return descr_from_spec(REM);
+    REM_ω:                                                                      return FAILDESCR;
 }
 
 rem_t *bb_rem_new(void)
@@ -347,7 +348,7 @@ rem_t *bb_rem_new(void)
 /* _XEPS     EPS         zero-width success once; done flag prevents double-γ */
 
 
-spec_t bb_eps(void *zeta, int entry)
+DESCR_t bb_eps(void *zeta, int entry)
 {
     eps_t *ζ = zeta;
     spec_t EPS;
@@ -356,8 +357,8 @@ spec_t bb_eps(void *zeta, int entry)
     EPS_α:          if (ζ->done)                                                goto EPS_ω;
                     ζ->done=1; EPS=spec(Σ+Δ,0);                                 goto EPS_γ;
     EPS_β:                                                                      goto EPS_ω;
-    EPS_γ:                                                                      return EPS;
-    EPS_ω:                                                                      return spec_empty;
+    EPS_γ:                                                                      return descr_from_spec(EPS);
+    EPS_ω:                                                                      return FAILDESCR;
 }
 
 eps_t *bb_eps_new(void)
@@ -368,11 +369,11 @@ eps_t *bb_eps_new(void)
 
 typedef struct { int δ; int start; }  bal_t;
 
-spec_t bb_bal(void *zeta, int entry)
+DESCR_t bb_bal(void *zeta, int entry)
 {
     (void)zeta; (void)entry;
     fprintf(stderr,"bb_bal: unimplemented — ω\n");
-    return spec_empty;
+    return FAILDESCR;
 }
 
 bal_t *bb_bal_new(void)
@@ -382,14 +383,14 @@ bal_t *bb_bal_new(void)
 /* _XABRT    ABORT       always ω — force match failure */
 
 
-spec_t bb_abort(void *zeta, int entry)
+DESCR_t bb_abort(void *zeta, int entry)
 {
     (void)zeta; (void)entry;
     if (entry==α)                                                               goto ABORT_α;
     if (entry==β)                                                               goto ABORT_β;
     ABORT_α:                                                                    goto ABORT_ω;
     ABORT_β:                                                                    goto ABORT_ω;
-    ABORT_ω:                                                                    return spec_empty;
+    ABORT_ω:                                                                    return FAILDESCR;
 }
 
 abort_t *bb_abort_new(void)
@@ -404,19 +405,19 @@ abort_t *bb_abort_new(void)
  *   β: unconditional NOT_ω — negation succeeds at most once per position */
 typedef struct { bb_box_fn fn; void *state; int start; } not_t;
 
-spec_t bb_not(void *zeta, int entry)
+DESCR_t bb_not(void *zeta, int entry)
 {
     not_t *ζ = zeta;
     spec_t cr;
     if (entry==α)                                                               goto NOT_α;
     if (entry==β)                                                               goto NOT_β;
     NOT_α:          ζ->start=Δ;                                                 \
-                    cr=ζ->fn(ζ->state,α);                                       \
+                    cr=spec_from_descr(ζ->fn(ζ->state,α));                                       \
                     if (!spec_is_empty(cr))                                     goto NOT_ω;
                     Δ=ζ->start;                                                 goto NOT_γ;
     NOT_β:                                                                      goto NOT_ω;
-    NOT_γ:                                                                      return spec(Σ+Δ,0);
-    NOT_ω:                                                                      return spec_empty;
+    NOT_γ:                                                                      return descr_from_spec(spec(Σ+Δ,0));
+    NOT_ω:                                                                      return FAILDESCR;
 }
 
 not_t *bb_not_new(bb_box_fn fn, void *state)
@@ -431,19 +432,19 @@ not_t *bb_not_new(bb_box_fn fn, void *state)
  * β: unconditional ω — interrogation succeeds at most once. */
 typedef struct { bb_box_fn fn; void *state; int start; } interr_t;
 
-spec_t bb_interr(void *zeta, int entry)
+DESCR_t bb_interr(void *zeta, int entry)
 {
     interr_t *ζ = zeta;
     spec_t cr;
     if (entry==α)                                                               goto INT_α;
     if (entry==β)                                                               goto INT_β;
     INT_α:          ζ->start=Δ;                                                 \
-                    cr=ζ->fn(ζ->state,α);                                       \
+                    cr=spec_from_descr(ζ->fn(ζ->state,α));                                       \
                     if (spec_is_empty(cr))                                      goto INT_ω;
                     Δ=ζ->start;                                                 goto INT_γ;
     INT_β:                                                                      goto INT_ω;
-    INT_γ:                                                                      return spec(Σ+Δ,0);
-    INT_ω:                                                                      return spec_empty;
+    INT_γ:                                                                      return descr_from_spec(spec(Σ+Δ,0));
+    INT_ω:                                                                      return FAILDESCR;
 }
 
 interr_t *bb_interr_new(bb_box_fn fn, void *state)
@@ -457,16 +458,16 @@ typedef struct {
     int immediate; spec_t pending; int has_pending;
 } capture_t;
 
-spec_t bb_capture(void *zeta, int entry)
+DESCR_t bb_capture(void *zeta, int entry)
 {
     capture_t *ζ = zeta;
     spec_t cr;
     if (entry==α)                                                               goto CAP_α;
     if (entry==β)                                                               goto CAP_β;
-    CAP_α:          cr=ζ->fn(ζ->state,α);                                       
+    CAP_α:          cr=spec_from_descr(ζ->fn(ζ->state,α));                                       
                     if (spec_is_empty(cr))                                      goto CAP_ω;
                                                                                 goto CAP_γ_core;
-    CAP_β:          cr=ζ->fn(ζ->state,β);                                       
+    CAP_β:          cr=spec_from_descr(ζ->fn(ζ->state,β));                                       
                     if (spec_is_empty(cr))                                      goto CAP_ω;
                                                                                 goto CAP_γ_core;
     CAP_γ_core:     if (ζ->varname && *ζ->varname && ζ->immediate) {            
@@ -476,15 +477,15 @@ spec_t bb_capture(void *zeta, int entry)
                         NV_SET_fn(ζ->varname,v);                                
                     } else if (ζ->varname && *ζ->varname) {                     
                         ζ->pending=cr; ζ->has_pending=1; }                      
-                                                                                return cr;
-    CAP_ω:          ζ->has_pending=0;                                           return spec_empty;
+                                                                                return descr_from_spec(cr);
+    CAP_ω:          ζ->has_pending=0;                                           return FAILDESCR;
 }
 
 /* ───── atp ───── */
 /* _XATP     ATP         @var — write cursor Δ as DT_I into varname; no backtrack */
 
 
-spec_t bb_atp(void *zeta, int entry)
+DESCR_t bb_atp(void *zeta, int entry)
 {
     atp_t *ζ = zeta;
     spec_t ATP;
@@ -496,8 +497,8 @@ spec_t bb_atp(void *zeta, int entry)
                         NV_SET_fn(ζ->varname, v); }                             
                     ATP = spec(Σ+Δ,0);                                          goto ATP_γ;
     ATP_β:                                                                      goto ATP_ω;
-    ATP_γ:                                                                      return ATP;
-    ATP_ω:                                                                      return spec_empty;
+    ATP_γ:                                                                      return descr_from_spec(ATP);
+    ATP_ω:                                                                      return FAILDESCR;
 }
 
 atp_t *bb_atp_new(const char *varname)
@@ -508,7 +509,7 @@ atp_t *bb_atp_new(const char *varname)
 
 typedef struct { const char *name; bb_box_fn child_fn; void *child_state; size_t child_size; } dvar_t;
 
-spec_t bb_deferred_var(void *zeta, int entry)
+DESCR_t bb_deferred_var(void *zeta, int entry)
 {
     dvar_t *ζ = zeta;
     spec_t DVAR;
@@ -528,15 +529,15 @@ spec_t bb_deferred_var(void *zeta, int entry)
                           &&ζ->child_fn!=(bb_box_fn)bb_lit)                     
                           memset(ζ->child_state,0,ζ->child_size); }             
                     if (!ζ->child_fn)                                           goto DVAR_ω;
-                    DVAR=ζ->child_fn(ζ->child_state,α);                         
+                    DVAR=spec_from_descr(ζ->child_fn(ζ->child_state,α));                         
                     if (spec_is_empty(DVAR))                                    goto DVAR_ω;
                                                                                 goto DVAR_γ;
     DVAR_β:         if (!ζ->child_fn)                                           goto DVAR_ω;
-                    DVAR=ζ->child_fn(ζ->child_state,β);                         
+                    DVAR=spec_from_descr(ζ->child_fn(ζ->child_state,β));                         
                     if (spec_is_empty(DVAR))                                    goto DVAR_ω;
                                                                                 goto DVAR_γ;
-    DVAR_γ:                                                                     return DVAR;
-    DVAR_ω:                                                                     return spec_empty;
+    DVAR_γ:                                                                     return descr_from_spec(DVAR);
+    DVAR_ω:                                                                     return FAILDESCR;
 }
 
 dvar_t *bb_dvar_new(const char *name)
@@ -546,15 +547,15 @@ dvar_t *bb_dvar_new(const char *name)
 /* _XFNCE    FENCE       succeed once; β cuts (no retry) */
 
 
-spec_t bb_fence(void *zeta, int entry)
+DESCR_t bb_fence(void *zeta, int entry)
 {
     fence_t *ζ = zeta;
     if (entry==α)                                                               goto FENCE_α;
     if (entry==β)                                                               goto FENCE_β;
     FENCE_α:        ζ->fired=1;                                                 goto FENCE_γ;
     FENCE_β:                                                                    goto FENCE_ω;
-    FENCE_γ:                                                                    return spec(Σ+Δ,0);
-    FENCE_ω:                                                                    return spec_empty;
+    FENCE_γ:                                                                    return descr_from_spec(spec(Σ+Δ,0));
+    FENCE_ω:                                                                    return FAILDESCR;
 }
 
 fence_t *bb_fence_new(void)
@@ -564,10 +565,10 @@ fence_t *bb_fence_new(void)
 /* _XFAIL    FAIL        always ω — force backtrack */
 
 
-spec_t bb_fail(void *zeta, int entry)
+DESCR_t bb_fail(void *zeta, int entry)
 {
     (void)zeta; (void)entry;
-    return spec_empty;
+    return FAILDESCR;
 }
 
 fail_t *bb_fail_new(void)
@@ -577,7 +578,7 @@ fail_t *bb_fail_new(void)
 /* _XRPSI    RPOS        assert cursor == Ω-n (zero-width) */
 
 
-spec_t bb_rpos(void *zeta, int entry)
+DESCR_t bb_rpos(void *zeta, int entry)
 {
     rpos_t *ζ = zeta;
     spec_t RPOS;
@@ -586,8 +587,8 @@ spec_t bb_rpos(void *zeta, int entry)
     RPOS_α:         if (Δ != Ω-ζ->n)                                            goto RPOS_ω;
                     RPOS = spec(Σ+Δ,0);                                         goto RPOS_γ;
     RPOS_β:                                                                     goto RPOS_ω;
-    RPOS_γ:                                                                     return RPOS;
-    RPOS_ω:                                                                     return spec_empty;
+    RPOS_γ:                                                                     return descr_from_spec(RPOS);
+    RPOS_ω:                                                                     return FAILDESCR;
 }
 
 rpos_t *bb_rpos_new(int n)
@@ -597,7 +598,7 @@ rpos_t *bb_rpos_new(int n)
 /* _XRTB     RTAB        advance cursor TO position Ω-n */
 
 
-spec_t bb_rtab(void *zeta, int entry)
+DESCR_t bb_rtab(void *zeta, int entry)
 {
     rtab_t *ζ = zeta;
     spec_t RTAB;
@@ -606,8 +607,8 @@ spec_t bb_rtab(void *zeta, int entry)
     RTAB_α:         if (Δ > Ω-ζ->n)                                             goto RTAB_ω;
                     ζ->advance=(Ω-ζ->n)-Δ; RTAB=spec(Σ+Δ,ζ->advance); Δ=Ω-ζ->n; goto RTAB_γ;
     RTAB_β:         Δ -= ζ->advance;                                            goto RTAB_ω;
-    RTAB_γ:                                                                     return RTAB;
-    RTAB_ω:                                                                     return spec_empty;
+    RTAB_γ:                                                                     return descr_from_spec(RTAB);
+    RTAB_ω:                                                                     return FAILDESCR;
 }
 
 rtab_t *bb_rtab_new(int n)
@@ -617,10 +618,10 @@ rtab_t *bb_rtab_new(int n)
 /* _XSUCF    SUCCEED     always γ zero-width; outer loop retries */
 
 
-spec_t bb_succeed(void *zeta, int entry)
+DESCR_t bb_succeed(void *zeta, int entry)
 {
     (void)zeta; (void)entry;
-    return spec(Σ+Δ,0);
+    return descr_from_spec(spec(Σ+Δ,0));
 }
 
 succeed_t *bb_succeed_new(void)

@@ -77,6 +77,7 @@ extern DESCR_t (*g_user_call_hook)(const char *name, DESCR_t *args, int nargs);
  * We must NOT include bb_box.h after snobol4.h (spec_t conflict).
  * Instead we redeclare bb_box.h's types manually here. */
 #include "snobol4.h"
+#include "bb_convert.h" /* spec_from_descr / descr_from_spec — U-5 */
 #include "sil_macros.h"   /* SIL macro translations — RT + SM axes */
 #include "bb_build.h"
 #include "../x86/bb_flat.h"     /* bb_lit_emit_binary — M-DYN-B1 */
@@ -138,7 +139,7 @@ typedef struct { const char *name; bb_box_fn child_fn; void *child_state; size_t
 static int g_dvar_depth = 0;  /* global recursion depth — caps mutual recursion */
 #define DVAR_MAX_DEPTH 64
 /* bb_deferred_var() defined after bb_build (needs bb_node_t) */
-static spec_t bb_deferred_var(void *zeta, int entry);
+static DESCR_t bb_deferred_var(void *zeta, int entry);
 
 /* ── CAPTURE box (wraps child; on γ writes capture to named variable) ───── */
 /*
@@ -176,10 +177,10 @@ static spec_t bb_capture(void *zeta, int entry)
 
     CAP_α:        if (!ζ->immediate)
                       register_capture(ζ);
-                  child_r = ζ->fn(ζ->state, α);
+                  child_r = spec_from_descr(ζ->fn(ζ->state, α));
                   if (spec_is_empty(child_r))                 goto CAP_ω;
                                                               goto CAP_γ_core;
-    CAP_β:        child_r = ζ->fn(ζ->state, β);
+    CAP_β:        child_r = spec_from_descr(ζ->fn(ζ->state, β));
                   if (spec_is_empty(child_r))                 goto CAP_ω;
                                                               goto CAP_γ_core;
 
@@ -544,11 +545,11 @@ static spec_t bb_callcap(void *zeta, int entry)
                ζ->registered = 1;
                g_callcap_list[g_callcap_count++] = ζ;
            }
-           child_r = ζ->child_fn(ζ->child_state, α);
+           child_r = spec_from_descr(ζ->child_fn(ζ->child_state, α));
            if (spec_is_empty(child_r)) goto CC_ω;
            goto CC_γ_core;
 
-    CC_β:  child_r = ζ->child_fn(ζ->child_state, β);
+    CC_β:  child_r = spec_from_descr(ζ->child_fn(ζ->child_state, β));
            if (spec_is_empty(child_r)) goto CC_ω;
            goto CC_γ_core;
 
@@ -1075,7 +1076,7 @@ bb_node_t bb_build(PATND_t *p)
  * β path: delegate to child_fn if built, else ω (can't backtrack a
  * not-yet-matched box).
  */
-static spec_t bb_deferred_var(void *zeta, int entry)
+static DESCR_t bb_deferred_var(void *zeta, int entry)
 {
     deferred_var_t *ζ = zeta;
 
@@ -1155,7 +1156,7 @@ static spec_t bb_deferred_var(void *zeta, int entry)
                         dvar_ev_snap[_ci] = g_cc_events[_ci];
                     g_callcap_count  = 0;
                     g_cc_event_count = 0;
-                    DVAR = ζ->child_fn(ζ->child_state, α);
+                    DVAR = spec_from_descr(ζ->child_fn(ζ->child_state, α));
                     g_dvar_depth--;
                     if (spec_is_empty(DVAR)) {
                         /* Failure: discard inner, restore outer */
@@ -1198,16 +1199,16 @@ static spec_t bb_deferred_var(void *zeta, int entry)
                     goto DVAR_γ;
 
     DVAR_β:         if (!ζ->child_fn)                         goto DVAR_ω;
-                    DVAR = ζ->child_fn(ζ->child_state, β);
+                    DVAR = spec_from_descr(ζ->child_fn(ζ->child_state, β));
                     if (spec_is_empty(DVAR))                  goto DVAR_ω;
                                                               goto DVAR_γ;
 
-    DVAR_γ:                                                   return DVAR;
-    DVAR_ω:                                                   return spec_empty;
+    DVAR_γ:                                                   return descr_from_spec(DVAR);
+    DVAR_ω:                                                   return FAILDESCR;
 }
 
 /* M-DYN-B10: expose bb_deferred_var + ctor for bb_build_bin.c trampolines */
-spec_t bb_deferred_var_exported(void *zeta, int entry) { return bb_deferred_var(zeta, entry); }
+DESCR_t bb_deferred_var_exported(void *zeta, int entry) { return bb_deferred_var(zeta, entry); }
 
 deferred_var_t *bb_dvar_bin_new(const char *name)
 {
@@ -1406,7 +1407,7 @@ int exec_stmt(const char  *subj_name,
             g_capture_list[i]->has_pending = 0;
         NAM_discard(nam_cookie);   /* RT-4: roll back pushes from prior scan */
         Δ = scan;
-        spec_t result = root.fn(root.ζ, α);
+        spec_t result = spec_from_descr(root.fn(root.ζ, α));
         if (!spec_is_empty(result)) {
             match_start = scan;
             match_end   = Δ;
@@ -1608,14 +1609,14 @@ int deferred_var_test(void)
     /* First alpha — will resolve via NV_GET_fn. Since test stub returns SNUL,
      * child becomes epsilon (always matches zero-width).  What we verify is
      * that the re-resolve branch runs without crash and returns a valid spec. */
-    spec_t r1 = dvar.fn(dvar.ζ, α);
+    spec_t r1 = spec_from_descr(dvar.fn(dvar.ζ, α));
     /* epsilon matches → non-empty spec at position 0 */
     ok &= !spec_is_empty(r1) ? 1 : 0;   /* epsilon always succeeds */
 
     /* Second alpha on same box — re-resolve must run again (not skip) */
     /* Reset Δ */
     Δ = 0;
-    spec_t r2 = dvar.fn(dvar.ζ, α);
+    spec_t r2 = spec_from_descr(dvar.fn(dvar.ζ, α));
     ok &= !spec_is_empty(r2) ? 1 : 0;
 
     printf("  deferred_var: r1=%s r2=%s (both non-empty = re-resolve ran)\n",

@@ -19,6 +19,7 @@
 
 #include "frontend/prolog/pl_broker.h"
 #include "frontend/prolog/pl_interp.h"   /* g_pl_trail, pl_env_new, pl_unified_term_from_expr */
+#include "runtime/x86/bb_convert.h"      /* spec_from_descr — U-5: bb_box_fn now returns DESCR_t */
 
 /*----------------------------------------------------------------------------------------------------------------------
  * Internal γ sentinel — non-empty spec; extent ignored by all Prolog boxes.
@@ -37,8 +38,8 @@ static inline spec_t pl_gamma(void) { return spec(&s_pl_gamma_byte, 1); }
  *====================================================================================================================*/
 int pl_exec_goal(Pl_GoalBox root) {
     if (pl_goalbox_is_null(root)) return 0;
-    spec_t r = root.fn(root.zeta, α);
-    return !spec_is_empty(r);
+    DESCR_t r = root.fn(root.zeta, α);
+    return !IS_FAIL_fn(r);
 }
 
 /*======================================================================================================================
@@ -119,24 +120,24 @@ typedef struct { Pl_GoalBox left; Pl_GoalBox right; } pl_cat_t;
 
 static spec_t pl_cat_fn(void *zeta, int entry) {
     pl_cat_t *ζ = zeta;
-    spec_t lr, rr;
+    DESCR_t lr, rr;
 
     if (entry == α)                                 goto CAT_α;
     /* entry == β */                                goto CAT_β;
 
 CAT_α:  lr = ζ->left.fn(ζ->left.zeta, α);
-        if (spec_is_empty(lr))                      goto left_ω;
+        if (IS_FAIL_fn(lr))                      goto left_ω;
                                                     goto left_γ;
 CAT_β:  rr = ζ->right.fn(ζ->right.zeta, β);
-        if (spec_is_empty(rr))                      goto right_ω;
+        if (IS_FAIL_fn(rr))                      goto right_ω;
                                                     goto right_γ;
 left_γ: rr = ζ->right.fn(ζ->right.zeta, α);
-        if (spec_is_empty(rr))                      goto right_ω;
+        if (IS_FAIL_fn(rr))                      goto right_ω;
                                                     goto right_γ;
 left_ω:                                             return spec_empty;
 right_γ:                                            return pl_gamma();
 right_ω: lr = ζ->left.fn(ζ->left.zeta, β);
-        if (spec_is_empty(lr))                      goto left_ω;
+        if (IS_FAIL_fn(lr))                      goto left_ω;
                                                     goto left_γ;
 }
 
@@ -372,11 +373,11 @@ typedef struct {
 
 static spec_t pl_choice_fn(void *zeta, int entry) {
     pl_choice_t *ζ = zeta;
-    spec_t r;
+    DESCR_t r;
 
     if (entry == β && ζ->cur_active) {
         r = ζ->cur.fn(ζ->cur.zeta, β);
-        if (!spec_is_empty(r)) return pl_gamma();
+        if (!IS_FAIL_fn(r)) return pl_gamma();
         trail_unwind(&g_pl_trail, ζ->trail_mark);
         ζ->ci++;
         ζ->cur_active = 0;
@@ -393,7 +394,7 @@ static spec_t pl_choice_fn(void *zeta, int entry) {
         ζ->cur        = pl_box_clause(ec, ζ->caller_args, ζ->arity);
         ζ->cur_active = 1;
         r = ζ->cur.fn(ζ->cur.zeta, α);
-        if (!spec_is_empty(r)) return pl_gamma();
+        if (!IS_FAIL_fn(r)) return pl_gamma();
         ζ->ci++;
         ζ->cur_active = 0;
     }
