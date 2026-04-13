@@ -1665,6 +1665,19 @@ static DESCR_t interp_eval(EXPR_t *e)
          * IDENT(3, '3') FAILS (integer vs string). IDENT(S) succeeds iff S is null string.
          * DIFFER(S,T) succeeds iff they differ in type OR value. DIFFER(S) succeeds iff S != ''.
          * Both return NULVCL on success. */
+        /* EVAL/CODE: binary _EVAL_/_CODE_ are stubs; route through our full impl. */
+        if (strcasecmp(e->sval, "EVAL") == 0) {
+            if (nargs < 1) return FAILDESCR;
+            extern DESCR_t EVAL_fn(DESCR_t);
+            DESCR_t _er = EVAL_fn(args[0]);
+            return _er;
+        }
+        if (strcasecmp(e->sval, "CODE") == 0) {
+            if (nargs < 1) return FAILDESCR;
+            const char *_cs = VARVAL_fn(args[0]);
+            extern DESCR_t code(const char *);
+            return (_cs && *_cs) ? code(_cs) : FAILDESCR;
+        }
         if (strcasecmp(e->sval, "IDENT") == 0) {
             if (nargs == 1) {
                 /* IDENT(S) — succeed if S is null string */
@@ -2591,6 +2604,25 @@ static DESCR_t _builtin_DIFFER(DESCR_t *args, int nargs) {
     return FAILDESCR;
 }
 
+/* ── EVAL/CODE wrappers ─────────────────────────────────────────────────────
+ * EVAL and CODE are not registered in the binary APPLY_fn table.
+ * FNCEX_fn("EVAL")=0 so _usercall_hook falls through to call_user_function
+ * which finds no body → returns NULVCL (STRING) instead of DT_P.
+ * Fix: register wrappers so FNCEX_fn("EVAL")=1 → APPLY_fn dispatches here
+ * → EVAL_fn → CONVE_fn → EXPVAL_fn → correct DT_P for pattern expressions. */
+extern DESCR_t EVAL_fn(DESCR_t);
+extern DESCR_t code(const char *);
+static DESCR_t _builtin_EVAL(DESCR_t *args, int nargs) {
+    if (nargs < 1) return FAILDESCR;
+    return EVAL_fn(args[0]);
+}
+static DESCR_t _builtin_CODE(DESCR_t *args, int nargs) {
+    if (nargs < 1) return FAILDESCR;
+    const char *s = VARVAL_fn(args[0]);
+    if (!s || !*s) return FAILDESCR;
+    return code(s);
+}
+
 int main(int argc, char **argv)
 {
     /* ── flag parsing ─────────────────────────────────────────────────── */
@@ -2865,6 +2897,8 @@ int main(int argc, char **argv)
      * at match time (used by *IDENT(x) / *DIFFER(x) in pattern position). */
     register_fn("IDENT",  _builtin_IDENT,  1, 2);
     register_fn("DIFFER", _builtin_DIFFER, 1, 2);
+    register_fn("EVAL",   _builtin_EVAL,   1, 1);
+    register_fn("CODE",   _builtin_CODE,   1, 1);
 
     /* Wire user-function dispatch hook (wrapper defined above main) */
     extern DESCR_t (*g_user_call_hook)(const char *, DESCR_t *, int);

@@ -1664,6 +1664,8 @@ static DESCR_t eval_via_cmpile(const char *s) {
 
 DESCR_t EVAL_fn(DESCR_t expr) {
     /* RT-8: SIL EVAL — full type dispatch matching SIL EVAL/EVAL1.
+    fprintf(stderr, "EVAL_fn: v=%d s=%s\n", (int)expr.v,
+            (expr.v==5||expr.v==0) && expr.s ? expr.s : "(non-str)");
      *
      * DT_E  → EXPVAL_fn (execute frozen EXPR_t* with save/restore)
      * DT_I  → idempotent (return as-is)
@@ -1710,21 +1712,16 @@ DESCR_t EVAL_fn(DESCR_t expr) {
         if (endp && *endp == '\0') return REALVAL(rv);
     }
 
-    /* Quoted string literal ('...' or "..."): return inner string value */
-    {
-        size_t sl = strlen(s);
-        if (sl >= 2 && (s[0] == '\'' || s[0] == '"') && s[sl-1] == s[0]) {
-            char *inner = GC_malloc(sl - 1);
-            memcpy(inner, s + 1, sl - 2);
-            inner[sl - 2] = '\0';
-            return STRVAL(inner);
-        }
-    }
+    /* Quoted string literal ('...' or "..."): do NOT short-circuit.
+     * EVAL('BREAK(nl)') must evaluate as SNOBOL4 source → PATTERN, not STRING.
+     * Fall through to CONVE_fn to parse and execute the full expression. */
 
     /* General string: compile to DT_E (RT-7 CONVE_fn) then execute (RT-6) */
     DESCR_t compiled = CONVE_fn(expr);
-    if (IS_FAIL_fn(compiled)) return FAILDESCR;
-    return EXPVAL_fn(compiled);
+
+    if (IS_FAIL_fn(compiled)) { fprintf(stderr, "DBG IS_FAIL true!\n"); return FAILDESCR; }
+    DESCR_t _ev2 = EXPVAL_fn(compiled);
+    return _ev2;
 }
 
 /* opsyn — OPSYN(new, old, type)
