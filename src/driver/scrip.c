@@ -51,6 +51,7 @@
 #include <sys/stat.h>
 #include <ctype.h>
 #include <setjmp.h>
+#include <ucontext.h>
 #include <time.h>
 #include <gc.h>
 
@@ -205,24 +206,93 @@ static int         icn_scan_pos   = 0;
 static struct { const char *subj; int pos; } icn_scan_stack[ICN_SCAN_STACK_MAX];
 static int         icn_scan_depth = 0;
 static int         icn_loop_break = 0; /* E_LOOP_BREAK signal for repeat/while/until */
+
+/* S-11: ucontext-based coroutine for suspend/resume.
+ * Each generator proc call gets its own stack via makecontext/swapcontext.
+ * The generator swapcontext's back to the caller on each yield, and the caller
+ * swapcontext's back to resume. No stack-smash risk — each side has its own stack. */
+#define ICN_CORO_STACK  (256*1024)   /* 256KB stack per generator */
+#define ICN_CORO_MAX    32
+typedef struct {
+    EXPR_t         *call_node;       /* E_FNC call node — unique key per call site */
+    ucontext_t      gen_ctx;         /* generator's execution context */
+    ucontext_t      caller_ctx;      /* caller's context (restored on yield) */
+    char           *stack;           /* generator stack (GC_malloc'd) */
+    DESCR_t         yielded;         /* value from generator → caller */
+    int             exhausted;       /* 1 = generator finished */
+    int             active;          /* 1 = slot in use */
+    /* Current args/proc for the trampoline */
+    EXPR_t         *proc;
+    DESCR_t         args[ICN_SLOT_MAX];
+    int             nargs;
+} Icn_coro_entry;
+static Icn_coro_entry icn_coro_table[ICN_CORO_MAX];
+static int            icn_coro_count = 0;
+static Icn_coro_entry *icn_cur_coro  = NULL; /* coro currently running */
+
+static Icn_coro_entry *icn_coro_find(EXPR_t *call_node) {
+    for (int i = 0; i < icn_coro_count; i++)
+        if (icn_coro_table[i].call_node == call_node && icn_coro_table[i].active)
+            return &icn_coro_table[i];
+    return NULL;
+}
+static void icn_coro_clear(EXPR_t *call_node) {
+    for (int i = 0; i < icn_coro_count; i++)
+        if (icn_coro_table[i].call_node == call_node) { icn_coro_table[i].active = 0; return; }
+}
+
+static int icn_has_suspend(EXPR_t *e) {
+    if (!e) return 0;
+    if (e->kind == E_SUSPEND) return 1;
+    for (int i = 0; i < e->nchildren; i++) if (icn_has_suspend(e->children[i])) return 1;
+    return 0;
+}
+static int icn_has_suspend_call(EXPR_t *e) {
+    if (!e) return 0;
+    if (e->kind == E_FNC && e->nchildren >= 1 && e->children[0] && e->children[0]->sval) {
+        const char *fn = e->children[0]->sval;
+        for (int i = 0; i < icn_proc_count; i++)
+            if (strcmp(icn_proc_table[i].name, fn) == 0 && icn_has_suspend(icn_proc_table[i].proc))
+                return 1;
+    }
+    for (int i = 0; i < e->nchildren; i++) if (icn_has_suspend_call(e->children[i])) return 1;
+    return 0;
+}
+
 static DESCR_t icn_call_proc(EXPR_t *proc, DESCR_t *args, int nargs); /* forward */
-static DESCR_t  interp_eval(EXPR_t *e); /* forward — needed by icn_drive */
-static Term    *pl_unified_term_from_expr(EXPR_t *e, Term **env); /* forward — needed by E_UNIFY in interp_eval */
-static Term   **pl_env_new(int n); /* forward — needed by E_CHOICE in interp_eval */
+static DESCR_t  interp_eval(EXPR_t *e); /* forward — needed by icn_drive + trampoline */
+static Term    *pl_unified_term_from_expr(EXPR_t *e, Term **env); /* forward */
+static Term   **pl_env_new(int n); /* forward */
 static EXPR_t  *pl_pred_table_lookup(Pl_PredTable *pt, const char *key); /* forward */
 static int      is_pl_user_call(EXPR_t *goal); /* forward */
 static int      pl_unified_exec_goal(EXPR_t *goal, Term **env, Pl_PredTable *pt, Trail *trail, int *cut_flag); /* forward */
-static int     pl_unified_exec_goal(EXPR_t *goal, Term **env, Pl_PredTable *pt, Trail *trail, int *cut_flag); /* forward */
 
-/* ── Prolog global execution state (mirrors icn_proc_table pattern) ────────
- * Initialised by pl_execute_program_unified() at program start.
- * Read/written by interp_eval() E_CHOICE/E_CLAUSE/E_UNIFY/E_CUT/E_TRAIL_* cases.
- * g_pl_active gates Prolog dispatch inside interp_eval. */
+/* ── Prolog global execution state ─────────────────────────────────────────
+ * Initialised by pl_execute_program_unified() at program start. */
 static Pl_PredTable g_pl_pred_table;
 static Trail        g_pl_trail;
-static int          g_pl_cut_flag = 0;    /* set by E_CUT */
-static Term       **g_pl_env      = NULL; /* current clause variable env */
-static int          g_pl_active   = 0;    /* 1 when executing Prolog */
+static int          g_pl_cut_flag = 0;
+static Term       **g_pl_env      = NULL;
+static int          g_pl_active   = 0;
+
+/* Trampoline: entry point for generator coroutine stack */
+static void icn_coro_trampoline(void) {
+    Icn_coro_entry *ce = icn_cur_coro;
+    int nparams = (int)ce->proc->ival, bs = 1+nparams, nb = ce->proc->nchildren-bs;
+    for (int i = 0; i < nparams && i < ICN_SLOT_MAX; i++) {
+        EXPR_t *pn = ce->proc->children[1+i];
+        if (pn && pn->sval) NV_SET_fn(pn->sval, (i < ce->nargs) ? ce->args[i] : NULVCL);
+    }
+    int saved_ret = icn_returning; icn_returning = 0;
+    for (int i = 0; i < nb && !icn_returning; i++) {
+        EXPR_t *st = ce->proc->children[bs+i];
+        if (!st || st->kind == E_GLOBAL) continue;
+        interp_eval(st);
+    }
+    icn_returning = saved_ret;
+    ce->exhausted = 1;
+    swapcontext(&ce->gen_ctx, &ce->caller_ctx);
+}
 
 /* icn_drive: drive generators embedded in e, re-executing root each tick.
  * Returns tick count. Mirrors icn_exec_driven in icon_interp.c but uses DESCR_t. */
@@ -388,6 +458,7 @@ static void icn_execute_program_unified(Program *prog) {
     icn_gen_depth = 0;
     icn_scan_subj = NULL; icn_scan_pos = 0; icn_scan_depth = 0;
     icn_loop_break = 0; g_icn_root = NULL;
+    icn_coro_count = 0; icn_cur_coro = NULL;
 
     /* Build procedure table from STMT_t subjects */
     for (STMT_t *st = prog->head; st; st = st->next) {
@@ -1367,6 +1438,34 @@ static DESCR_t interp_eval(EXPR_t *e)
             /* User Icon procedure */
             for (int i = 0; i < icn_proc_count; i++) {
                 if (strcmp(icn_proc_table[i].name, fn) == 0) {
+                    EXPR_t *proc = icn_proc_table[i].proc;
+                    /* S-11: generator proc — use ucontext coroutine */
+                    if (icn_has_suspend(proc)) {
+                        Icn_coro_entry *ce = icn_coro_find(e);
+                        if (!ce) {
+                            /* Allocate new coro slot */
+                            if (icn_coro_count >= ICN_CORO_MAX) return FAILDESCR;
+                            ce = &icn_coro_table[icn_coro_count++];
+                            ce->call_node = e; ce->active = 1; ce->exhausted = 0;
+                            ce->proc = proc; ce->nargs = nargs;
+                            for (int j = 0; j < nargs && j < ICN_SLOT_MAX; j++)
+                                ce->args[j] = interp_eval(e->children[j+1]);
+                            /* Set up new stack and context */
+                            ce->stack = GC_malloc(ICN_CORO_STACK);
+                            getcontext(&ce->gen_ctx);
+                            ce->gen_ctx.uc_stack.ss_sp   = ce->stack;
+                            ce->gen_ctx.uc_stack.ss_size  = ICN_CORO_STACK;
+                            ce->gen_ctx.uc_link           = NULL;
+                            makecontext(&ce->gen_ctx, icn_coro_trampoline, 0);
+                        }
+                        if (ce->exhausted) { icn_coro_clear(e); return FAILDESCR; }
+                        /* Switch into generator */
+                        Icn_coro_entry *prev = icn_cur_coro; icn_cur_coro = ce;
+                        swapcontext(&ce->caller_ctx, &ce->gen_ctx);
+                        icn_cur_coro = prev;
+                        if (ce->exhausted) { icn_coro_clear(e); return FAILDESCR; }
+                        return ce->yielded;
+                    }
                     DESCR_t icn_args[ICN_SLOT_MAX];
                     for (int j = 0; j < nargs && j < ICN_SLOT_MAX; j++)
                         icn_args[j] = interp_eval(e->children[j+1]);
@@ -1776,6 +1875,17 @@ static DESCR_t interp_eval(EXPR_t *e)
             for (long i=lo_d.i; i<=hi_d.i && !icn_returning; i++) interp_eval(body);
             return NULVCL;
         }
+        /* S-11: check if gen tree contains a suspend-based generator proc call.
+         * If so, loop calling interp_eval(gen) until it returns FAILDESCR. */
+        int has_gen = icn_has_suspend_call(gen);
+        if (has_gen) {
+            while (!icn_returning && !icn_loop_break) {
+                DESCR_t v = interp_eval(gen);
+                if (IS_FAIL_fn(v)) break;
+                if (body) interp_eval(body);
+            }
+            return NULVCL;
+        }
         int ticks = icn_drive(gen, gen);
         if (!ticks) interp_eval(gen);
         return NULVCL;
@@ -1882,8 +1992,20 @@ static DESCR_t interp_eval(EXPR_t *e)
         return FAILDESCR;
     }
 
-    case E_SUSPEND:
-        return (e->nchildren > 0) ? interp_eval(e->children[0]) : NULVCL;
+    case E_SUSPEND: {
+        /* S-11: yield to caller via swapcontext. icn_cur_coro must be set. */
+        if (!icn_cur_coro) {
+            return (e->nchildren > 0) ? interp_eval(e->children[0]) : NULVCL;
+        }
+        DESCR_t val = (e->nchildren > 0) ? interp_eval(e->children[0]) : NULVCL;
+        if (IS_FAIL_fn(val)) { icn_cur_coro->exhausted = 1; swapcontext(&icn_cur_coro->gen_ctx, &icn_cur_coro->caller_ctx); return FAILDESCR; }
+        icn_cur_coro->yielded = val;
+        /* Yield to caller; resume here when caller swapcontext's back */
+        swapcontext(&icn_cur_coro->gen_ctx, &icn_cur_coro->caller_ctx);
+        /* Resumed — run 'do body' if present */
+        if (e->nchildren > 1) interp_eval(e->children[1]);
+        return NULVCL;
+    }
 
     /* ── Prolog IR nodes — S-1C-2/3 ───────────────────────────────────────
      * Only reached when g_pl_active is set.
