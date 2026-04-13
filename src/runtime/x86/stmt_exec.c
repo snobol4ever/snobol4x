@@ -78,6 +78,7 @@ extern DESCR_t (*g_user_call_hook)(const char *name, DESCR_t *args, int nargs);
  * Instead we redeclare bb_box.h's types manually here. */
 #include "snobol4.h"
 #include "bb_convert.h" /* spec_from_descr / descr_from_spec — U-5 */
+#include "bb_broker.h"  /* bb_broker, BB_SCAN — U-9 */
 #include "sil_macros.h"   /* SIL macro translations — RT + SM axes */
 #include "bb_build.h"
 #include "../x86/bb_flat.h"     /* bb_lit_emit_binary — M-DYN-B1 */
@@ -1271,6 +1272,24 @@ static void flush_pending_captures(void)
     g_capture_count = 0;
 }
 
+/*----------------------------------------------------------------------------------------------------------------------------
+ * U-9: scan_body_fn_u9 — body callback for bb_broker BB_SCAN in Phase 3.
+ * Called once on the first successful match. Records match_start and match_end
+ * into the scan_result_t passed as arg. match_start is recovered from the scan
+ * position at which bb_broker set Δ before calling the box; match_end is Δ
+ * after the box advanced the cursor.
+ * The val DESCR_t carries the matched spec (DT_S: s=ptr, slen=length).
+ * match_start = scan position = Δ - slen; match_end = Δ.
+ *--------------------------------------------------------------------------------------------------------------------------*/
+typedef struct { int start; int end; } scan_result_t;
+
+static void scan_body_fn_u9(DESCR_t val, void *arg) {
+    scan_result_t *r = (scan_result_t *)arg;
+    spec_t sp = spec_from_descr(val);
+    r->end   = Δ;
+    r->start = Δ - sp.δ;   /* scan position = end − match length */
+}
+
 /*
  * exec_stmt — execute one SNOBOL4 statement dynamically.
  *
@@ -1398,27 +1417,31 @@ int exec_stmt(const char  *subj_name,
     int match_start = -1;
     int match_end   = -1;
 
-    int scan_limit = kw_anchor ? 0 : Ω;
-    int nam_cookie = NAM_save();   /* RT-4: NHEDCL baseline before all scans */
+    /* U-9: drive root box via bb_broker BB_SCAN.
+     * RT-4: save NAM cookie before scan; discard on each attempt; commit on success.
+     * kw_anchor: temporarily clamp Ω to 0 so bb_broker only tries position 0. */
+    typedef struct { int start; int end; } scan_result_t;
+    scan_result_t scan_res = { -1, -1 };
 
-    for (int scan = 0; scan <= scan_limit; scan++) {
-        /* reset stale pending captures from previous scan position */
-        for (int i = 0; i < g_capture_count; i++)
-            g_capture_list[i]->has_pending = 0;
-        NAM_discard(nam_cookie);   /* RT-4: roll back pushes from prior scan */
-        Δ = scan;
-        spec_t result = spec_from_descr(root.fn(root.ζ, α));
-        if (!spec_is_empty(result)) {
-            match_start = scan;
-            match_end   = Δ;
+    /* RT-4: reset stale pending captures before the scan sweep */
+    for (int i = 0; i < g_capture_count; i++) g_capture_list[i]->has_pending = 0;
+    int nam_cookie = NAM_save();
+    NAM_discard(nam_cookie);
+
+    int saved_Ω = Ω;
+    if (kw_anchor) Ω = 0;   /* clamp: bb_broker BB_SCAN tries 0..Ω */
+    int ticks = bb_broker(root, BB_SCAN, scan_body_fn_u9, &scan_res);
+    Ω = saved_Ω;
+
+    if (ticks > 0) {
+        match_start = scan_res.start;
+        match_end   = scan_res.end;
                                                               goto Phase4;
-        }
-        if (scan == scan_limit) break;
     }
 
     /* match failed → :F */
-    NAM_discard(nam_cookie);       /* RT-4: clear naming-list entries */
-    NAM_pop(nam_cookie);           /* RT-4: pop frame (frame-stack design) */
+    NAM_discard(nam_cookie);
+    NAM_pop(nam_cookie);
                                                               return 0;
 
 Phase4:
