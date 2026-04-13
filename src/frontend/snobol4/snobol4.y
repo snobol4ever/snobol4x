@@ -238,7 +238,7 @@ static void sno4_stmt_commit_go(void *param,Token lbl,EXPR_t *subj,EXPR_t *pat,i
      * subject=first_child, pattern=rest. Grammar puts everything in opt_subject. */
     if(!pat && subj && (subj->kind==E_SEQ) && subj->nchildren>=2) {
         EXPR_t *first = subj->children[0];
-        if(first->kind==E_VAR || first->kind==E_KEYWORD || first->kind==E_QLIT) {
+        if(first->kind==E_VAR || first->kind==E_KEYWORD || first->kind==E_QLIT || first->kind==E_INDIRECT) {
             int nc = subj->nchildren - 1;
             EXPR_t *rest;
             if(nc == 1) {

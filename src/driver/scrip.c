@@ -429,9 +429,9 @@ static DESCR_t call_user_function(const char *fname, DESCR_t *args, int nargs)
                             DESCR_t nd = interp_eval(ic);
                             subj_name = VARVAL_fn(nd);
                         }
-                        if (subj_name && s->pattern)
+                        if (subj_name && s->pattern) {
                             subj_val = NV_GET_fn(subj_name);
-                        else if (!subj_name)
+                        } else if (!subj_name)
                             subj_val = interp_eval(s->subject);
                     } else {
                         subj_val = interp_eval(s->subject);
@@ -1638,9 +1638,9 @@ static void execute_program(Program *prog)
                     DESCR_t nd = interp_eval(ic);
                     subj_name = VARVAL_fn(nd);
                 }
-                if (subj_name && s->pattern)
+                if (subj_name && s->pattern) {
                     subj_val = NV_GET_fn(subj_name);
-                else if (!subj_name)
+                } else if (!subj_name)
                     subj_val = interp_eval(s->subject);
             } else {
                 subj_val = interp_eval(s->subject);
