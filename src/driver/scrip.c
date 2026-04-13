@@ -3065,6 +3065,100 @@ static DESCR_t _builtin_DATA(DESCR_t *args, int nargs) {
     return NULVCL;
 }
 
+/*============================================================================================================================
+ * parse_scrip_polyglot — parse a fenced polyglot .scrip/.md file into one Program*  (U-13)
+ *
+ * Scans the source for fenced code blocks:
+ *   ```SNOBOL4  ...  ```
+ *   ```Icon     ...  ```
+ *   ```Prolog   ...  ```
+ * Each block is compiled with its own frontend.  All resulting STMT_t chains
+ * are appended in source order into one Program*, with st->lang already set
+ * by each frontend (U-12).  Unrecognised fence languages are skipped silently.
+ *============================================================================================================================*/
+static Program *parse_scrip_polyglot(const char *src, const char *filename)
+{
+    Program *result = calloc(1, sizeof(Program));
+    if (!result) return NULL;
+
+    const char *p = src;
+
+    while (*p) {
+        /* Find next ``` fence open */
+        const char *fence = strstr(p, "```");
+        if (!fence) break;
+
+        /* Read the language tag on the same line as the fence open */
+        const char *tag_start = fence + 3;
+        const char *tag_end   = tag_start;
+        while (*tag_end && *tag_end != '\n' && *tag_end != '\r') tag_end++;
+
+        /* Trim trailing whitespace from tag */
+        while (tag_end > tag_start && (tag_end[-1] == ' ' || tag_end[-1] == '\t')) tag_end--;
+
+        int tag_len = (int)(tag_end - tag_start);
+
+        /* Advance past the fence-open line */
+        p = tag_end;
+        while (*p && *p != '\n') p++;
+        if (*p == '\n') p++;
+
+        /* Detect language (case-insensitive) */
+        int lang = -1;
+        if      (tag_len == 7 && strncasecmp(tag_start, "SNOBOL4", 7) == 0) lang = LANG_SNO;
+        else if (tag_len == 4 && strncasecmp(tag_start, "Icon",    4) == 0) lang = LANG_ICN;
+        else if (tag_len == 6 && strncasecmp(tag_start, "Prolog",  6) == 0) lang = LANG_PL;
+
+        /* Find the matching fence close ``` */
+        const char *block_start = p;
+        const char *close = strstr(p, "```");
+        if (!close) break;   /* unterminated block — stop */
+
+        /* Extract block text */
+        int   blen = (int)(close - block_start);
+        char *block = malloc(blen + 1);
+        if (!block) { p = close + 3; continue; }
+        memcpy(block, block_start, blen);
+        block[blen] = '\0';
+
+        /* Advance past fence close */
+        p = close + 3;
+        while (*p && *p != '\n') p++;
+        if (*p == '\n') p++;
+
+        if (lang < 0) { free(block); continue; }   /* unknown language — skip */
+
+        /* Compile block with the appropriate frontend */
+        Program *sub = NULL;
+        if (lang == LANG_SNO) {
+            sub = sno_parse_string(block);
+            /* sno_parse_string sets lang=LANG_SNO=0 via calloc — already correct */
+        } else if (lang == LANG_ICN) {
+            sub = icon_compile(block, filename);
+            /* icon_driver.c sets st->lang=LANG_ICN (U-12) */
+        } else if (lang == LANG_PL) {
+            sub = prolog_compile(block, filename);
+            /* prolog_lower.c sets st->lang=LANG_PL (U-12) */
+        }
+        free(block);
+
+        if (!sub || !sub->head) { free(sub); continue; }
+
+        /* Append sub's STMT_t chain to result */
+        if (!result->head) {
+            result->head = sub->head;
+            result->tail = sub->tail;
+        } else {
+            result->tail->next = sub->head;
+            result->tail       = sub->tail;
+        }
+        result->nstmts += sub->nstmts;
+        free(sub);   /* free the wrapper, not the STMT_t chain */
+    }
+
+    return result;
+}
+
 int main(int argc, char **argv)
 {
     /* ── flag parsing ─────────────────────────────────────────────────── */
@@ -3240,9 +3334,21 @@ int main(int argc, char **argv)
     { const char *dot = strrchr(input_path, '.'); if (dot && strcmp(dot, ".pl") == 0) lang_prolog = 1; }
     int lang_icon = 0;
     { const char *dot = strrchr(input_path, '.'); if (dot && strcmp(dot, ".icn") == 0) lang_icon = 1; }
+    int lang_polyglot = 0;  /* U-13: .scrip or .md → fenced polyglot */
+    { const char *dot = strrchr(input_path, '.');
+      if (dot && (strcmp(dot, ".scrip") == 0 || strcmp(dot, ".md") == 0)) lang_polyglot = 1; }
 
     Program *prog = NULL;
-    if (lang_snocone || lang_prolog || lang_icon) {
+    if (lang_polyglot) {
+        /* U-13: read whole file, split fenced blocks, compile each, merge into one Program* */
+        fseek(f, 0, SEEK_END); long flen = ftell(f); rewind(f);
+        char *src = malloc(flen + 1);
+        if (!src) { fprintf(stderr, "scrip: out of memory\n"); return 1; }
+        fread(src, 1, flen, f); src[flen] = '\0'; fclose(f);
+        if (opt_bench) clock_gettime(CLOCK_MONOTONIC, &_t1);
+        prog = parse_scrip_polyglot(src, input_path);
+        free(src);
+    } else if (lang_snocone || lang_prolog || lang_icon) {
         /* Read whole file into buffer */
         fseek(f, 0, SEEK_END); long flen = ftell(f); rewind(f);
         char *src = malloc(flen + 1);
@@ -3430,6 +3536,8 @@ int main(int argc, char **argv)
         pl_execute_program_unified(prog);
     } else if (lang_icon) {
         icn_execute_program_unified(prog);   /* unified IR interpreter — one interp_eval */
+    } else if (lang_polyglot) {
+        execute_program(prog);   /* U-13: polyglot — SNO path for now; U-15 adds per-stmt dispatch */
     } else {
         execute_program(prog);
     }
