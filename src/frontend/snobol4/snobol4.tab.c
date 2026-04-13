@@ -2140,3 +2140,31 @@ Program *parse_program(LineArray *lines){(void)lines;return calloc(1,sizeof(Prog
 EXPR_t *parse_expr_from_str(const char *src){
     if(!src||!*src) return NULL;Lex lx={0};lex_open_str(&lx,src,(int)strlen(src),0);return parse_expr(&lx);
 }
+
+/* parse_expr_pat_from_str — parse a bare expression string using the bison
+ * parser by wrapping it as a pattern slot: "_SNO4PAT_ src"
+ * The bison grammar parses the RHS as a pattern EXPR_t in pattern context.
+ * Returns EXPR_t* (shared IR) or NULL on parse failure.
+ * Used by _eval_str_impl_fn in scrip.c to replace the CMPILE path. */
+EXPR_t *parse_expr_pat_from_str(const char *src) {
+    if (!src || !*src) return NULL;
+    /* Wrap as "_SNO_DUMMY_ <src>" — bison sees a subject (_SNO_DUMMY_)
+     * followed by a pattern expression (src), placing src in s->pattern.
+     * This is the only way to get the bison parser to parse a bare
+     * expression string; parse_expr_from_str returns subject only and
+     * fails on standalone pattern expressions. */
+    char buf[8192];
+    int n = snprintf(buf, sizeof buf, "_SNO_DUMMY_ %s", src);
+    if (n <= 0 || n >= (int)sizeof buf) return NULL;
+    Lex lx = {0};
+    lex_open_str(&lx, buf, n, 0);
+    Program *prog = calloc(1, sizeof *prog);
+    PP p = {prog, NULL};
+    g_lx = &lx;
+    snobol4_parse(&p);
+    if (!prog->head) return NULL;
+    STMT_t *s = prog->head;
+    /* Pattern slot has our expression; subject is the dummy var */
+    if (s->pattern) return s->pattern;
+    return NULL;
+}

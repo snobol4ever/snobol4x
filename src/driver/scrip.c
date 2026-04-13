@@ -2464,6 +2464,15 @@ static void execute_program(Program *prog)
  * main
  * ══════════════════════════════════════════════════════════════════════════ */
 
+/* _eval_str_impl_fn — EVAL(string) hook for pattern-context strings.
+ * Uses bison parse_expr_pat_from_str (snobol4.tab.c) which produces
+ * EXPR_t with correct EKind values directly — no CMPILE/CMPND_t bridge. */
+static DESCR_t _eval_str_impl_fn(const char *s) {
+    EXPR_t *tree = parse_expr_pat_from_str(s);
+    if (!tree) return FAILDESCR;
+    return interp_eval_pat(tree);
+}
+
 static DESCR_t _eval_pat_impl_fn(DESCR_t pat) {
     /* Run DT_P pattern against empty subject — used by EVAL_fn for *func() patterns.
      * If function fails at match time, EVAL fails. */
@@ -2943,6 +2952,13 @@ int main(int argc, char **argv)
     {
         extern DESCR_t (*g_eval_pat_hook)(DESCR_t pat);
         g_eval_pat_hook = _eval_pat_impl_fn;
+    }
+
+    /* Wire DT_S eval hook: EVAL(string) containing complex operators
+     * (E_DEFER, cursor-assign) routes through interp_eval_pat. */
+    {
+        extern DESCR_t (*g_eval_str_hook)(const char *s);
+        g_eval_str_hook = _eval_str_impl_fn;
     }
 
     /* ── Set diagnostic globals ─────────────────────────────────────── */

@@ -172,6 +172,7 @@ void     sno_add_include_dir(const char *d);
 void     sno_reset(void);          /* reset per-file state between multi-file compilations */
 Program *sno_parse(FILE *f, const char *filename);
 EXPR_t  *parse_expr_from_str(const char *src);
+EXPR_t  *parse_expr_pat_from_str(const char *src); /* bison: bare expr -> EXPR_t, pattern slot */
 void     c_emit(Program *prog, FILE *out);
 
 /* emit_byrd.c interface now internal to emit_byrd_c.c */

@@ -23,6 +23,12 @@
 #include "../../frontend/snobol4/scrip_cc.h"
 #include "../../frontend/snobol4/CMPILE.c"
 
+/* Hook for scrip.c to route EVAL(string) through interp_eval_pat.
+ * When set, EVAL_fn calls this instead of CONVE_fn→EXPVAL_fn for string args.
+ * This handles E_DEFER (*func), $ (cursor-assign), and all other operators
+ * that eval_node in eval_code.c does not support. */
+DESCR_t (*g_eval_str_hook)(const char *s) = NULL;
+
 /* =========================================================================
  * PATND_t — lazy pattern node
  * ===================================================================== */
@@ -1715,6 +1721,12 @@ DESCR_t EVAL_fn(DESCR_t expr) {
     /* Quoted string literal ('...' or "..."): do NOT short-circuit.
      * EVAL('BREAK(nl)') must evaluate as SNOBOL4 source → PATTERN, not STRING.
      * Fall through to CONVE_fn to parse and execute the full expression. */
+
+    /* String hook: if scrip.c has wired interp_eval_pat for string->pattern routing,
+     * use it -- handles E_DEFER (*func), $ (cursor-assign), and all operators
+     * that eval_node in eval_code.c does not support (e.g. EVAL(omega) where
+     * omega contains *T8Trace(...) or $ tz). */
+    if (g_eval_str_hook) return g_eval_str_hook(s);
 
     /* General string: compile to DT_E (RT-7 CONVE_fn) then execute (RT-6) */
     DESCR_t compiled = CONVE_fn(expr);
