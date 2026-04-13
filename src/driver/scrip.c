@@ -300,16 +300,46 @@ static int icn_drive(EXPR_t *root, EXPR_t *e) {
     if (!e) return 0;
     if (icn_gen_active(e)) return 0;
     if (e->kind == E_TO && e->nchildren >= 2) {
-        DESCR_t lo_d = interp_eval(e->children[0]);
-        DESCR_t hi_d = interp_eval(e->children[1]);
-        if (IS_FAIL_fn(lo_d)||IS_FAIL_fn(hi_d)) return 0;
-        long lo=lo_d.i, hi=hi_d.i; int ticks=0;
-        for(long i=lo;i<=hi&&!icn_returning;i++){
-            icn_gen_push(e,i,NULL);
-            int inner=icn_drive(root,root);
-            if(!inner) interp_eval(root);
-            icn_gen_pop(); ticks++;
-            if(icn_returning) break;
+        int ticks = 0;
+        /* Both lo and hi may be generators — collect all values, cross-product. */
+        EXPR_t *lo_node = e->children[0];
+        EXPR_t *hi_node = e->children[1];
+        long lo_vals[256]; int nlo = 0;
+        long hi_vals[256]; int nhi = 0;
+        /* Collect lo values */
+        if (lo_node->kind == E_TO && lo_node->nchildren >= 2) {
+            DESCR_t llo = interp_eval(lo_node->children[0]);
+            DESCR_t lhi = interp_eval(lo_node->children[1]);
+            if (!IS_FAIL_fn(llo) && !IS_FAIL_fn(lhi))
+                for (long v = llo.i; v <= lhi.i && nlo < 256; v++) lo_vals[nlo++] = v;
+        } else {
+            DESCR_t lo_d = interp_eval(lo_node);
+            if (!IS_FAIL_fn(lo_d)) lo_vals[nlo++] = lo_d.i;
+        }
+        /* Collect hi values */
+        if (hi_node->kind == E_TO && hi_node->nchildren >= 2) {
+            DESCR_t hlo = interp_eval(hi_node->children[0]);
+            DESCR_t hhi = interp_eval(hi_node->children[1]);
+            if (!IS_FAIL_fn(hlo) && !IS_FAIL_fn(hhi))
+                for (long v = hlo.i; v <= hhi.i && nhi < 256; v++) hi_vals[nhi++] = v;
+        } else {
+            DESCR_t hi_d = interp_eval(hi_node);
+            if (!IS_FAIL_fn(hi_d)) hi_vals[nhi++] = hi_d.i;
+        }
+        if (nlo == 0 || nhi == 0) return 0;
+        /* Cross-product: for each lo tick, for each hi tick, iterate lo..hi */
+        for (int li = 0; li < nlo && !icn_returning; li++) {
+            long lo = lo_vals[li];
+            for (int hi_idx = 0; hi_idx < nhi && !icn_returning; hi_idx++) {
+                long hi = hi_vals[hi_idx];
+                for (long i = lo; i <= hi && !icn_returning; i++) {
+                    icn_gen_push(e, i, NULL);
+                    int inner = icn_drive(root, root);
+                    if (!inner) interp_eval(root);
+                    icn_gen_pop(); ticks++;
+                    if (icn_returning) break;
+                }
+            }
         }
         return ticks;
     }
@@ -1961,6 +1991,15 @@ static DESCR_t interp_eval(EXPR_t *e)
         if (IS_FAIL_fn(result)) return FAILDESCR;
         if (lhs->kind == E_VAR && lhs->sval) NV_SET_fn(lhs->sval, result);
         return result;
+    }
+
+    case E_ALTERNATE: {
+        /* Icon | — value alternation: try left, if FAIL try right */
+        for (int i = 0; i < e->nchildren; i++) {
+            DESCR_t v = interp_eval(e->children[i]);
+            if (!IS_FAIL_fn(v)) return v;
+        }
+        return FAILDESCR;
     }
 
     case E_SCAN: {
