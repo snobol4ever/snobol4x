@@ -389,9 +389,7 @@ def make_alias(name):
     """Make a safe SNOBOL4 variable alias for indirect names like $B, #L, @S."""
     return 'SNB' + re.sub(r'[^A-Za-z0-9]', 'x', name)
 
-# Assert helper — defined once per test, absorbs all label noise.
-# SNBassert(actual, expected, n): compares, outputs FAIL n on mismatch, else silent.
-# After all SNBassert calls, OUTPUT = 'PASS' if nothing failed.
+
 ASSERT_HELPER = """        DEFINE('SNBassert(SNBav,SNBev,SNBn)')    :(SNBaEnd)
 SNBassert
         IDENT(SNBav, SNBev)                        :S(RETURN)
@@ -400,17 +398,65 @@ SNBassert
 SNBaEnd"""
 
 
+def build_ssa_chain(subexprs):
+    """
+    Build SSA-style temp variable chain from ordered sub-expressions.
+    Each sub-expression gets a temp T1..Tn.
+    Each Tn's RHS replaces any prior sub-expression text with its temp name,
+    so we use already-computed temps instead of re-evaluating.
+
+    Returns list of (temp_name, rhs_expr, original_expr) tuples.
+    """
+    chain = []         # (temp, rhs, original)
+    sub_to_temp = {}   # original_expr -> temp_name
+
+    for i, sub in enumerate(subexprs):
+        temp = f'SNBt{i+1}'
+        # Build RHS: replace any previously seen sub-expression with its temp.
+        # Replace longest matches first to avoid partial substitutions.
+        rhs = sub
+        for prev_sub, prev_temp in sorted(sub_to_temp.items(),
+                                           key=lambda x: -len(x[0])):
+            rhs = rhs.replace(prev_sub, prev_temp)
+        chain.append((temp, rhs, sub))
+        sub_to_temp[sub] = temp
+
+    return chain
+
+
 def emit_snippet(out_dir, test_name, scalars, subexprs, expr_vals,
                  source_file, line_no, raw_line, driver_src, stlimit):
     """
-    Emit in-context regression test: driver runs to stlimit=N,
-    then one SNBassert() call per sub-expression (single line each).
-    Helper defined once at top of assert block — no label clutter per assert.
+    Emit in-context regression test with SSA-style temp chain.
+
+    Structure:
+      [driver to stlimit=N]
+      [assert helper SNBassert defined once]
+      T1 = innermost_expr          :F(SNBf1)
+      T2 = expr_using_T1           :F(SNBf2)
+      ...
+      Tn = full_expr_using_Tn-1    :F(SNBfn)
+      SNBassert(T1, oracle1, 1)
+      SNBassert(DATATYPE(T2), oracle2, 2)
+      ...
+      OUTPUT = 'PASS'              :(SNBend)
+      SNBf1  OUTPUT = 'FAIL T1 FAILED'   :(SNBend)
+      SNBf2  OUTPUT = 'FAIL T2 FAILED'   :(SNBend)
+      ...
+      SNBend
+    END
     """
     safe_driver = '\n'.join(
         line for line in driver_src.splitlines()
         if not any(ci in line for ci in CRASH_INCLUDES)
     )
+
+    # Build SSA chain from sub-expressions that have oracle values
+    # Only include sub-expressions we actually captured oracle values for
+    probed = [s for s in subexprs if s in expr_vals]
+    if not probed: return False
+
+    chain = build_ssa_chain(probed)
 
     lines = [
         f"* In-context snippet: {Path(source_file).name} line {line_no}",
@@ -420,35 +466,39 @@ def emit_snippet(out_dir, test_name, scalars, subexprs, expr_vals,
         f"        &TRIM = 1",
         safe_driver,
         f"        &STLIMIT = 10000000",
-        f"* ── assert helper ──",
         ASSERT_HELPER,
-        f"* ── asserts: one line per sub-expression ──",
+        f"* ── SSA temps (innermost first, each with fail branch) ──",
     ]
 
-    n = 1
-    has_assert = False
+    # Temp assignments with fail gotos
+    for temp, rhs, orig in chain:
+        lines.append(f"        {temp} = ({rhs})   :F(SNBf_{temp})")
 
-    for sub in subexprs:
-        entry = expr_vals.get(sub)
+    lines.append(f"* ── asserts ──")
+
+    # Assert block using temps
+    for n, (temp, rhs, orig) in enumerate(chain, 1):
+        entry = expr_vals.get(orig)
         if entry is None: continue
         kind, val = entry
-
         if kind == '__TYPE__':
-            # Assert DATATYPE(expr) = type string
-            lines.append(
-                f"        SNBassert(DATATYPE({sub}), '{val}', {n})"
-            )
+            lines.append(f"        SNBassert(DATATYPE({temp}), '{val}', {n})")
         else:
             safe_val = val.replace("'", "''")
-            lines.append(
-                f"        SNBassert(({sub}), '{safe_val}', {n})"
-            )
-        n += 1
-        has_assert = True
+            lines.append(f"        SNBassert({temp}, '{safe_val}', {n})")
 
-    if not has_assert: return False
+    lines.append(f"        OUTPUT = 'PASS'   :(SNBend)")
 
-    lines += ["        OUTPUT = 'PASS'", "END"]
+    # Fail labels at bottom
+    lines.append(f"* ── fail labels ──")
+    for temp, rhs, orig in chain:
+        short = orig[:40].replace("'", "")
+        lines.append(
+            f"SNBf_{temp}   OUTPUT = 'FAIL {temp} FAILED [{short}]'   :(SNBend)"
+        )
+
+    lines += [f"SNBend", "END"]
+
     sno = '\n'.join(lines) + '\n'
     Path(out_dir, f'{test_name}.sno').write_text(sno)
     Path(out_dir, f'{test_name}.ref').write_text('PASS\n')
