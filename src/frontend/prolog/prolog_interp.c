@@ -413,67 +413,203 @@ static int pl_exec_clause(EXPR_t *ec, int n_args, Term **call_args,
  *   that a subsequent longjmp finds no more clauses and pops.
  *=========================================================================*/
 
-/* Called by pl_exec_body when the continuation after a user call fails.
- * Longjmps to the innermost CP on the stack. */
+
+/*===========================================================================
+ * pl_exec_body / pl_call — CP-stack four-port dispatcher
+ *
+ * ARCHITECTURE (mirrors prolog_emit.c emit_body exactly):
+ *
+ * The emitter compiles each predicate to a _r function.  Inside emit_body,
+ * for a user call U followed by suffix S:
+ *
+ *   retry_N:
+ *     trail_unwind(..., mark);
+ *     _cr = U_r(args, &_trail, _cs);       ← tries one clause of U
+ *     if (_cr < 0) goto outer_ω;
+ *     _cs = _cr + 1;
+ *     <S goals inlined here, with ω = retry_N>   ← suffix ON THE STACK
+ *
+ * The key: S is inlined after the call, so its ω jumps back to retry_N.
+ * The C call stack naturally handles recursion: each recursive U call has
+ * its own retry_N on its own stack frame.
+ *
+ * The interpreter mirrors this via a CONTINUATION parameter:
+ *   pl_exec_body_k(goals, ngoals, env, pt, trail, cut_flag, cont)
+ *
+ * cont is a Cont_t — a function pointer + closure called when the goal
+ * list succeeds.  For user calls, the suffix becomes the continuation.
+ * On failure, longjmp pops back to the innermost CP.
+ *
+ * This keeps the inner member CP live while the suffix (write,nl,fail)
+ * executes — because the suffix is called INSIDE the inner while-loop,
+ * not after it returns.
+ *=========================================================================*/
+
+/* Longjmp to innermost CP on failure. */
 static void pl_fail_to_cp(void) {
-    if (cp_top == 0) return;   /* no choice points — caller handles ω */
+    if (cp_top == 0) return;
     longjmp(cp_stack[cp_top-1].jb, 1);
 }
 
-/*===========================================================================
- * pl_exec_body — mirrors emit_body() Proebsting retry chain
- *=========================================================================*/
-static int pl_exec_body(EXPR_t **goals, int ngoals, Term **env,
-                        PredTable *pt, Trail *trail, int *cut_flag) {
-    if (ngoals==0) return 1;
-    EXPR_t *g=goals[0];
+/* ---- Continuation type ---- */
+typedef struct Cont_t Cont_t;
+struct Cont_t {
+    int (*fn)(Cont_t *self);  /* call this when goals succeed */
+    /* payload follows in subclasses (struct embedding) */
+};
+
+/* Terminal continuation: just return 1 (γ). */
+static int cont_done_fn(Cont_t *self) { (void)self; return 1; }
+static Cont_t cont_done_val = { cont_done_fn };
+static Cont_t *cont_done = &cont_done_val;
+
+/* ---- Forward declarations ---- */
+static int pl_exec_body_k(EXPR_t **goals, int ngoals, Term **env,
+                          PredTable *pt, Trail *trail, int *cut_flag,
+                          Cont_t *cont);
+
+/* ---- Body continuation: run a goal list then invoke outer cont ---- */
+typedef struct {
+    Cont_t      base;
+    EXPR_t    **goals;
+    int         ngoals;
+    Term      **env;
+    PredTable  *pt;
+    Trail      *trail;
+    int        *cut_flag;
+    Cont_t     *next;        /* outer continuation */
+} Body_cont;
+
+static int body_cont_fn(Cont_t *self) {
+    Body_cont *bc = (Body_cont *)self;
+    return pl_exec_body_k(bc->goals, bc->ngoals, bc->env,
+                          bc->pt, bc->trail, bc->cut_flag, bc->next);
+}
+
+/*---------------------------------------------------------------------------
+ * pl_exec_body_k — execute goal list, call cont on success.
+ *
+ * For user calls at goals[0]: push CP, setjmp, loop over clauses.
+ * Each clause attempt: unify head, run body with a Body_cont that chains
+ * into (goals+1, cont) — keeping THIS CP live while the entire suffix runs.
+ * On failure from anywhere inside, longjmp re-enters the setjmp, advancing
+ * to the next clause.
+ *-------------------------------------------------------------------------*/
+static int pl_exec_body_k(EXPR_t **goals, int ngoals, Term **env,
+                          PredTable *pt, Trail *trail, int *cut_flag,
+                          Cont_t *cont) {
+    if (ngoals == 0) return cont->fn(cont);
+
+    EXPR_t *g = goals[0];
 
     if (is_user_call(g)) {
-        const char *fn=g->sval; int arity=g->nchildren;
-        char key[256]; snprintf(key,sizeof key,"%s/%d",fn,arity);
-        int mark=trail_mark(trail), start=0;
-        for (;;) {
-            trail_unwind(trail,mark);
-            /* Rebuild args from env each retry — trail unwind resets bound vars */
-            Term **args=malloc(arity*sizeof(Term*));
-            for (int i=0;i<arity;i++) args[i]=pl_term_from_expr(g->children[i],env);
-            int r=pl_call(pt,key,arity,args,trail,start);
+        const char *fn = g->sval; int arity = g->nchildren;
+        char key[256]; snprintf(key, sizeof key, "%s/%d", fn, arity);
+        EXPR_t *choice = pred_table_lookup(pt, key);
+        if (!choice) { fprintf(stderr, "prolog: undefined predicate %s\n", key); return 0; }
+        int nclauses = choice->nchildren;
+
+        if (cp_top >= CP_STACK_MAX) { fprintf(stderr, "prolog: CP stack overflow\n"); return 0; }
+        ChoicePoint *cp = &cp_stack[cp_top++];
+        cp->pt          = pt;
+        cp->key         = key;
+        cp->arity       = arity;
+        cp->trail       = trail;
+        cp->trail_mark  = trail_mark(trail);
+        cp->next_clause = 0;
+        cp->cut         = 0;
+
+        /* setjmp re-entry point — longjmp from suffix failure lands here */
+        setjmp(cp->jb);
+
+        int result = 0;
+        while (!cp->cut && cp->next_clause < nclauses) {
+            int ci = cp->next_clause;
+            trail_unwind(trail, cp->trail_mark);
+
+            /* Rebuild call args — trail unwind reset var bindings */
+            Term **args = malloc(arity * sizeof(Term *));
+            for (int i = 0; i < arity; i++) args[i] = pl_term_from_expr(g->children[i], env);
+            cp->next_clause = ci + 1;
+
+            EXPR_t *ec = choice->children[ci];
+            if (!ec || ec->kind != E_CLAUSE) { free(args); continue; }
+
+            /* Unify head args into fresh clause env */
+            int n_vars = (int)ec->ival;
+            Term **cenv = env_new(n_vars);
+            int head_mark = trail_mark(trail);
+            int head_ok = 1;
+            for (int i = 0; i < arity && i < ec->nchildren; i++) {
+                Term *ha = pl_term_from_expr(ec->children[i], cenv);
+                if (!unify(args[i], ha, trail)) { head_ok = 0; break; }
+            }
             free(args);
-            if (r<0) return 0;
-            start=r+1;
-            int cut2=0;
-            int ok=pl_exec_body(goals+1,ngoals-1,env,pt,trail,&cut2);
-            if (cut2) { if (cut_flag)*cut_flag=1; return ok; }
-            if (ok) return 1;
-            /* rest failed — loop back, trail_unwind resets bindings, retry */
+            if (!head_ok) { trail_unwind(trail, head_mark); free(cenv); continue; }
+
+            /* Build continuation: clause body → (goals+1 in caller env) → cont */
+            /* The suffix (goals+1) runs in the CALLER's env.                   */
+            Body_cont suffix_bc;
+            suffix_bc.base.fn = body_cont_fn;
+            suffix_bc.goals   = goals + 1;
+            suffix_bc.ngoals  = ngoals - 1;
+            suffix_bc.env     = env;         /* caller env for suffix */
+            suffix_bc.pt      = pt;
+            suffix_bc.trail   = trail;
+            suffix_bc.cut_flag = cut_flag;
+            suffix_bc.next    = cont;
+
+            /* Execute clause body in clause env; suffix is the continuation  */
+            int nbody = ec->nchildren - arity;
+            EXPR_t **body = ec->children + arity;
+            int clause_cut = 0;
+            int ok;
+            if (nbody == 0) {
+                ok = suffix_bc.base.fn(&suffix_bc.base);
+            } else {
+                ok = pl_exec_body_k(body, nbody, cenv, pt, trail, &clause_cut,
+                                    &suffix_bc.base);
+            }
+            free(cenv);
+            if (clause_cut) { if (cut_flag) *cut_flag = 1; result = ok; break; }
+            if (ok) { result = 1; break; }
+            /* Continuation failed — loop (or longjmp re-enters setjmp above) */
         }
+
+        cp_top--;
+        return result;
     }
 
-    if (!pl_exec_goal(g,env,pt,trail,cut_flag)) return 0;
-    /* cut_flag may now be set — continue body; cut stops retry not forward exec */
-    return pl_exec_body(goals+1,ngoals-1,env,pt,trail,cut_flag);
+    /* Deterministic goal */
+    if (!pl_exec_goal(g, env, pt, trail, cut_flag)) return 0;
+    return pl_exec_body_k(goals + 1, ngoals - 1, env, pt, trail, cut_flag, cont);
 }
 
-/*===========================================================================
- * pl_call — resumable four-port predicate dispatcher (mirrors _r functions)
- *   returns clause_idx >= 0 on γ,  -1 on ω
- *=========================================================================*/
+/* Public wrappers matching original signatures */
+static int pl_exec_body(EXPR_t **goals, int ngoals, Term **env,
+                        PredTable *pt, Trail *trail, int *cut_flag) {
+    return pl_exec_body_k(goals, ngoals, env, pt, trail, cut_flag, cont_done);
+}
+
+/* pl_call — single-shot predicate call, no suffix continuation.
+ * Used by pl_exec_goal for user calls inside builtins (\\+, etc.). */
 static int pl_call(PredTable *pt, const char *key, int arity,
                    Term **args, Trail *trail, int start) {
-    EXPR_t *choice=pred_table_lookup(pt,key);
-    if (!choice) { fprintf(stderr,"prolog: undefined predicate %s\n",key); return -1; }
-    int nclauses=choice->nchildren;
-    int mark=trail_mark(trail);
-    for (int ci=start;ci<nclauses;ci++) {
-        if (ci>start) trail_unwind(trail,mark);
-        EXPR_t *ec=choice->children[ci]; if (!ec) continue;
-        int clause_cut=0;  /* cut is LOCAL to this predicate call — never escapes */
-        if (pl_exec_clause(ec,arity,args,pt,trail,&clause_cut)) return ci;
-        if (clause_cut) break;  /* cut: stop trying further clauses, but don't propagate */
+    EXPR_t *choice = pred_table_lookup(pt, key);
+    if (!choice) { fprintf(stderr, "prolog: undefined predicate %s\n", key); return -1; }
+    int nclauses = choice->nchildren;
+    int mark = trail_mark(trail);
+    for (int ci = start; ci < nclauses; ci++) {
+        if (ci > start) trail_unwind(trail, mark);
+        EXPR_t *ec = choice->children[ci]; if (!ec) continue;
+        int clause_cut = 0;
+        if (pl_exec_clause(ec, arity, args, pt, trail, &clause_cut)) return ci;
+        if (clause_cut) break;
     }
-    trail_unwind(trail,mark);
+    trail_unwind(trail, mark);
     return -1;
 }
+
 
 /*===========================================================================
  * pl_execute_program — entry point
@@ -481,12 +617,12 @@ static int pl_call(PredTable *pt, const char *key, int arity,
 void pl_execute_program(Program *prog) {
     if (!prog) return;
     prolog_atom_init();
-    PredTable pt; memset(&pt,0,sizeof pt);
-    for (STMT_t *s=prog->head;s;s=s->next) {
-        EXPR_t *subj=s->subject;
-        if (subj&&(subj->kind==E_CHOICE||subj->kind==E_CLAUSE)&&subj->sval)
-            pred_table_insert(&pt,subj->sval,subj);
+    PredTable pt; memset(&pt, 0, sizeof pt);
+    for (STMT_t *s = prog->head; s; s = s->next) {
+        EXPR_t *subj = s->subject;
+        if (subj && (subj->kind == E_CHOICE || subj->kind == E_CLAUSE) && subj->sval)
+            pred_table_insert(&pt, subj->sval, subj);
     }
     Trail trail; trail_init(&trail);
-    pl_call(&pt,"main/0",0,NULL,&trail,0);
+    pl_call(&pt, "main/0", 0, NULL, &trail, 0);
 }
