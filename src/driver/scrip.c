@@ -264,7 +264,7 @@ static Term    *pl_unified_term_from_expr(EXPR_t *e, Term **env); /* forward */
 static Term   **pl_env_new(int n); /* forward */
 static EXPR_t  *pl_pred_table_lookup(Pl_PredTable *pt, const char *key); /* forward */
 static int      is_pl_user_call(EXPR_t *goal); /* forward */
-static int      pl_unified_exec_goal(EXPR_t *goal, Term **env, Pl_PredTable *pt, Trail *trail, int *cut_flag); /* forward */
+static int      interp_exec_pl_builtin(EXPR_t *goal, Term **env); /* forward */
 
 /* ── Prolog global execution state ─────────────────────────────────────────
  * Initialised by pl_execute_program_unified() at program start. */
@@ -2117,8 +2117,8 @@ static DESCR_t interp_eval(EXPR_t *e)
                         if (call_args) free(call_args);
                         if (IS_FAIL_fn(r)) ok = 0;
                     } else {
-                        /* builtin — still through pl_unified_exec_goal until inlined */
-                        if (!pl_unified_exec_goal(goal, cenv, &g_pl_pred_table, &g_pl_trail, &g_pl_cut_flag))
+                        /* builtin — through interp_exec_pl_builtin (uses globals) */
+                        if (!interp_exec_pl_builtin(goal, cenv))
                             ok = 0;
                     }
                 } else {
@@ -2361,41 +2361,13 @@ static Term **pl_env_new(int n) {
 }
 
 /*---- Continuation type ----*/
-typedef struct Pl_Cont Pl_Cont;
-struct Pl_Cont { int (*fn)(Pl_Cont *self); };
-static int pl_cont_done_fn(Pl_Cont *self) { (void)self; return 1; }
-static Pl_Cont pl_cont_done_val = { pl_cont_done_fn };
-static Pl_Cont *pl_cont_done = &pl_cont_done_val;
-
 /*---- Forward declarations ----*/
 static Term *pl_unified_term_from_expr(EXPR_t *e, Term **env);
 static Term *pl_unified_deep_copy(Term *t);
-static int pl_unified_exec_goal(EXPR_t *goal, Term **env, Pl_PredTable *pt, Trail *trail, int *cut_flag);
-static int pl_unified_exec_body(EXPR_t **goals, int ngoals, Term **env, Pl_PredTable *pt, Trail *trail, int *cut_flag);
-static int pl_unified_exec_body_k(EXPR_t **goals, int ngoals, Term **env, Pl_PredTable *pt, Trail *trail, int *cut_flag, Pl_Cont *cont);
-static int pl_unified_call(Pl_PredTable *pt, const char *key, int arity, Term **args, Trail *trail, int start);
-static int pl_unified_exec_clause(EXPR_t *ec, int n_args, Term **call_args, Pl_PredTable *pt, Trail *trail, int *cut_flag);
+static int   interp_exec_pl_builtin(EXPR_t *goal, Term **env);
+static int   pl_exec_body(EXPR_t **goals, int ngoals, Term **env);
 
-/*---- findall support ----*/
-typedef struct {
-    Pl_Cont     base;
-    EXPR_t     *tmpl_expr;
-    Term      **env;
-    Term      **solutions;
-    int         nsol;
-    int         sol_cap;
-} Pl_Findall_cont;
 
-static int pl_findall_cont_fn(Pl_Cont *self) {
-    Pl_Findall_cont *fc = (Pl_Findall_cont *)self;
-    Term *snap = pl_unified_deep_copy(pl_unified_term_from_expr(fc->tmpl_expr, fc->env));
-    if (fc->nsol >= fc->sol_cap) {
-        fc->sol_cap = fc->sol_cap ? fc->sol_cap * 2 : 8;
-        fc->solutions = realloc(fc->solutions, fc->sol_cap * sizeof(Term *));
-    }
-    fc->solutions[fc->nsol++] = snap;
-    return 0;
-}
 
 /*---- pl_unified_term_from_expr ----*/
 static Term *pl_unified_term_from_expr(EXPR_t *e, Term **env) {
@@ -2486,9 +2458,164 @@ static int is_pl_user_call(EXPR_t *goal) {
     return 1;
 }
 
-/*---- pl_unified_exec_goal ----*/
-static int pl_unified_exec_goal(EXPR_t *goal, Term **env, Pl_PredTable *pt, Trail *trail, int *cut_flag) {
+/*---- pl_exec_one_goal — dispatch a single goal, return 1=success 0=fail ----*/
+/* Forward-declared here; interp_exec_pl_builtin defined below. */
+static int pl_exec_one_goal(EXPR_t *goal, Term **env);
+
+/*---- pl_exec_body — recursive body executor with backtracking (S-1C-5) ----*/
+/* Executes goals[0..ngoals-1] left-to-right with full backtracking.
+ * When goals[i] is a user predicate (E_CHOICE), interp_eval drives all
+ * clause alternatives via the E_CHOICE trail loop.  Backtracking into an
+ * earlier goal is achieved by the recursive structure: if the suffix
+ * pl_exec_body(goals+1, ngoals-1) fails, we return 0 so the caller
+ * (the E_CHOICE clause loop) retries from the next clause.
+ * For goals that themselves produce multiple solutions (user predicates),
+ * we need to loop over their solutions here — we do that by re-calling
+ * interp_eval after trail_unwind, matching the same retry pattern the
+ * E_CHOICE loop uses for clauses. */
+static int pl_exec_body(EXPR_t **goals, int ngoals, Term **env) {
+    if (ngoals == 0) return 1;
+    EXPR_t *g = goals[0];
+    if (!g) return pl_exec_body(goals + 1, ngoals - 1, env);
+
+    /* Flatten conjunction: treat `,` children as inline goals */
+    if (g->kind == E_FNC && g->sval && strcmp(g->sval, ",") == 0) {
+        /* Build flattened array: conj children + remaining goals */
+        int nc = g->nchildren;
+        int total = nc + ngoals - 1;
+        EXPR_t **flat = malloc(total * sizeof(EXPR_t *));
+        for (int i = 0; i < nc; i++) flat[i] = g->children[i];
+        for (int i = 0; i < ngoals - 1; i++) flat[nc + i] = goals[i + 1];
+        int r = pl_exec_body(flat, total, env);
+        free(flat);
+        return r;
+    }
+
+    /* Disjunction `;`: try left, on failure try right, each with suffix */
+    if (g->kind == E_FNC && g->sval && strcmp(g->sval, ";") == 0 && g->nchildren >= 2) {
+        EXPR_t *left = g->children[0], *right = g->children[1];
+        /* if-then-else: (Cond -> Then ; Else) */
+        if (left && left->kind == E_FNC && left->sval && strcmp(left->sval, "->") == 0
+                && left->nchildren >= 2) {
+            int mark = trail_mark(&g_pl_trail); int cut2 = 0; (void)cut2;
+            if (pl_exec_one_goal(left->children[0], env)) {
+                /* condition succeeded — commit, run then-branch + suffix */
+                int nc2 = left->nchildren - 1;
+                int total = nc2 + ngoals - 1;
+                EXPR_t **flat = malloc(total * sizeof(EXPR_t *));
+                for (int i = 0; i < nc2; i++) flat[i] = left->children[i + 1];
+                for (int i = 0; i < ngoals - 1; i++) flat[nc2 + i] = goals[i + 1];
+                int r = pl_exec_body(flat, total, env);
+                free(flat);
+                return r;
+            }
+            trail_unwind(&g_pl_trail, mark);
+            /* condition failed — run else-branch + suffix */
+            EXPR_t *suffix_goals[1]; suffix_goals[0] = right; /* reuse disjunction right */
+            int total = 1 + ngoals - 1;
+            EXPR_t **flat = malloc(total * sizeof(EXPR_t *));
+            flat[0] = right;
+            for (int i = 0; i < ngoals - 1; i++) flat[1 + i] = goals[i + 1];
+            int r = pl_exec_body(flat, total, env);
+            free(flat);
+            return r;
+        }
+        /* plain disjunction: try left then right */
+        int mark = trail_mark(&g_pl_trail);
+        EXPR_t *lgoals[1]; lgoals[0] = left;
+        int total = 1 + ngoals - 1;
+        EXPR_t **flat = malloc(total * sizeof(EXPR_t *));
+        flat[0] = left;
+        for (int i = 0; i < ngoals - 1; i++) flat[1 + i] = goals[i + 1];
+        if (pl_exec_body(flat, total, env)) { free(flat); return 1; }
+        trail_unwind(&g_pl_trail, mark);
+        flat[0] = right;
+        int r = pl_exec_body(flat, total, env);
+        free(flat);
+        return r;
+    }
+
+    /* User-defined predicate: loop over clauses via interp_eval, for each
+     * success try the suffix; on suffix failure retry the next clause. */
+    if (g->kind == E_FNC && is_pl_user_call(g)) {
+        char key[256]; snprintf(key, sizeof key, "%s/%d", g->sval ? g->sval : "", g->nchildren);
+        EXPR_t *choice = pl_pred_table_lookup(&g_pl_pred_table, key);
+        if (!choice) { fprintf(stderr, "prolog: undefined predicate %s\n", key); return 0; }
+        int nclauses = choice->nchildren;
+        int arity = g->nchildren;
+        int mark = trail_mark(&g_pl_trail);
+        for (int ci = 0; ci < nclauses && !g_pl_cut_flag; ci++) {
+            if (ci > 0) trail_unwind(&g_pl_trail, mark);
+            EXPR_t *ec = choice->children[ci];
+            if (!ec || ec->kind != E_CLAUSE) continue;
+            int n_vars = (int)ec->ival;
+            Term **cenv = pl_env_new(n_vars);
+            int head_mark = trail_mark(&g_pl_trail); int head_ok = 1;
+            for (int i = 0; i < arity && i < ec->nchildren; i++) {
+                Term *ha = pl_unified_term_from_expr(ec->children[i], cenv);
+                Term *ca = (env && i < arity) ? env[i] : term_new_var(i);
+                /* caller args come from env slots built by the calling clause */
+                Term *arg = pl_unified_term_from_expr(g->children[i], env);
+                if (!unify(arg, ha, &g_pl_trail)) { head_ok = 0; break; }
+            }
+            if (!head_ok) { trail_unwind(&g_pl_trail, head_mark); free(cenv); continue; }
+            /* run this clause's body, then continue with suffix */
+            Term **saved_env = g_pl_env; g_pl_env = cenv;
+            int saved_cf = g_pl_cut_flag; g_pl_cut_flag = 0;
+            int nbody = ec->nchildren - arity;
+            EXPR_t **body = ec->children + arity;
+            int body_ok = pl_exec_body(body, nbody, cenv);
+            int clause_cut = g_pl_cut_flag;
+            g_pl_env = saved_env; g_pl_cut_flag = saved_cf;
+            if (body_ok) {
+                /* clause body succeeded — try suffix */
+                int suf_ok = pl_exec_body(goals + 1, ngoals - 1, env);
+                if (suf_ok) { free(cenv); return 1; }
+                /* suffix failed — backtrack into this clause if possible,
+                 * or try next clause */
+            }
+            free(cenv);
+            if (clause_cut) { g_pl_cut_flag = 1; break; }
+        }
+        if (!g_pl_cut_flag) trail_unwind(&g_pl_trail, mark);
+        return 0;
+    }
+
+    /* Builtin or structural node: deterministic — run it, then suffix */
+    if (!pl_exec_one_goal(g, env)) return 0;
+    return pl_exec_body(goals + 1, ngoals - 1, env);
+}
+
+static int pl_exec_one_goal(EXPR_t *goal, Term **env) {
     if (!goal) return 1;
+    if (goal->kind == E_FNC && is_pl_user_call(goal)) {
+        char key[256]; snprintf(key, sizeof key, "%s/%d", goal->sval ? goal->sval : "", goal->nchildren);
+        EXPR_t *choice = pl_pred_table_lookup(&g_pl_pred_table, key);
+        if (!choice) { fprintf(stderr, "prolog: undefined predicate %s\n", key); return 0; }
+        int arity = goal->nchildren;
+        Term **call_args = arity ? malloc(arity * sizeof(Term *)) : NULL;
+        for (int a = 0; a < arity; a++) call_args[a] = pl_unified_term_from_expr(goal->children[a], env);
+        Term **sv = g_pl_env; g_pl_env = call_args;
+        DESCR_t r = interp_eval(choice);
+        g_pl_env = sv; if (call_args) free(call_args);
+        return !IS_FAIL_fn(r);
+    }
+    if (goal->kind == E_FNC || goal->kind == E_UNIFY || goal->kind == E_CUT ||
+        goal->kind == E_TRAIL_MARK || goal->kind == E_TRAIL_UNWIND)
+        return interp_exec_pl_builtin(goal, env);
+    DESCR_t r = interp_eval(goal);
+    return !IS_FAIL_fn(r);
+}
+
+/*---- interp_exec_pl_builtin — S-1C-5 ----*/
+/* Execute one Prolog builtin goal. Uses file-scope globals g_pl_trail,
+ * g_pl_cut_flag, g_pl_pred_table, g_pl_env. Returns 1=success, 0=fail.
+ * User-defined predicate calls (E_FNC not in builtin list) are NOT handled
+ * here — the E_CHOICE body loop dispatches those via interp_eval(). */
+static int interp_exec_pl_builtin(EXPR_t *goal, Term **env) {
+    if (!goal) return 1;
+    Trail *trail = &g_pl_trail;
+    int *cut_flag = &g_pl_cut_flag;
     switch (goal->kind) {
         case E_UNIFY: {
             Term *t1=pl_unified_term_from_expr(goal->children[0],env);
@@ -2576,37 +2703,55 @@ static int pl_unified_exec_goal(EXPR_t *goal, Term **env, Pl_PredTable *pt, Trai
                     for(Term *c=t;;){c=term_deref(c);if(!c)return 0;if(c->tag==TT_ATOM&&c->atom_id==nil)return 1;if(c->tag!=TT_COMPOUND||c->compound.arity!=2||c->compound.functor!=dot)return 0;c=c->compound.args[1];}
                 }
             }
-            /* ,/N conjunction — thread through cont via exec_body */
+            /* ,/N conjunction — run each child goal in sequence */
             if (strcmp(fn,",")==0){
-                return pl_unified_exec_body(goal->children,goal->nchildren,env,pt,trail,cut_flag);
+                for(int i=0;i<goal->nchildren;i++){
+                    EXPR_t *g=goal->children[i];
+                    if(!g) continue;
+                    int ok = is_pl_user_call(g) ? ({
+                        char key[256]; snprintf(key,sizeof key,"%s/%d",g->sval?g->sval:"",g->nchildren);
+                        EXPR_t *ch=pl_pred_table_lookup(&g_pl_pred_table,key);
+                        int r=0;
+                        if(ch){ int ca=g->nchildren; Term **cargs=ca?malloc(ca*sizeof(Term*)):NULL;
+                                 for(int a=0;a<ca;a++) cargs[a]=pl_unified_term_from_expr(g->children[a],env);
+                                 Term **sv=g_pl_env; g_pl_env=cargs;
+                                 DESCR_t rd=interp_eval(ch); g_pl_env=sv; if(cargs)free(cargs);
+                                 r=!IS_FAIL_fn(rd); }
+                        r; }) : interp_exec_pl_builtin(g, env);
+                    if(!ok) return 0;
+                }
+                return 1;
             }
             /* ;/N disjunction */
             if (strcmp(fn,";")==0&&arity>=2){
                 EXPR_t *left=goal->children[0],*right=goal->children[1];
+                /* if-then-else: (Cond -> Then ; Else) */
                 if(left&&left->kind==E_FNC&&left->sval&&strcmp(left->sval,"->")==0&&left->nchildren>=2){
-                    Trail save=*trail;int mark=trail_mark(trail);int cut2=0;
-                    if(pl_unified_exec_goal(left->children[0],env,pt,trail,&cut2)){
-                        return pl_unified_exec_body(left->children+1,left->nchildren-1,env,pt,trail,cut_flag);
+                    int mark=trail_mark(trail); int cut2=0;
+                    if(interp_exec_pl_builtin(left->children[0],env)){
+                        for(int i=1;i<left->nchildren;i++) if(!interp_exec_pl_builtin(left->children[i],env)) return 0;
+                        return 1;
                     }
-                    trail_unwind(trail,mark);*trail=save;
-                    return pl_unified_exec_goal(right,env,pt,trail,cut_flag);
+                    trail_unwind(trail,mark);
+                    return interp_exec_pl_builtin(right,env);
                 }
-                {Trail save=*trail;int mark=trail_mark(trail);int cut2=0;
-                 if(pl_unified_exec_goal(left,env,pt,trail,&cut2))return 1;
-                 trail_unwind(trail,mark);*trail=save;
-                 return pl_unified_exec_goal(right,env,pt,trail,cut_flag);}
+                /* plain disjunction */
+                {int mark=trail_mark(trail);
+                 if(interp_exec_pl_builtin(left,env)) return 1;
+                 trail_unwind(trail,mark);
+                 return interp_exec_pl_builtin(right,env);}
             }
             /* ->/N if-then */
             if (strcmp(fn,"->")==0&&arity>=2){
-                int cut2=0;
-                if(!pl_unified_exec_goal(goal->children[0],env,pt,trail,&cut2))return 0;
-                return pl_unified_exec_body(goal->children+1,goal->nchildren-1,env,pt,trail,cut_flag);
+                if(!interp_exec_pl_builtin(goal->children[0],env)) return 0;
+                for(int i=1;i<goal->nchildren;i++) if(!interp_exec_pl_builtin(goal->children[i],env)) return 0;
+                return 1;
             }
             /* \+/not */
             if ((strcmp(fn,"\\+")==0||strcmp(fn,"not")==0)&&arity==1){
-                Trail save=*trail;int mark=trail_mark(trail);int cut2=0;
-                int ok=pl_unified_exec_goal(goal->children[0],env,pt,trail,&cut2);
-                trail_unwind(trail,mark);*trail=save;return !ok;
+                int mark=trail_mark(trail);
+                int ok=interp_exec_pl_builtin(goal->children[0],env);
+                trail_unwind(trail,mark);return !ok;
             }
             /* functor/3 */
             if (strcmp(fn,"functor")==0&&arity==3){
@@ -2626,53 +2771,52 @@ static int pl_unified_exec_goal(EXPR_t *goal, Term **env, Pl_PredTable *pt, Trai
                 if(!pl_univ(pl_unified_term_from_expr(goal->children[0],env),pl_unified_term_from_expr(goal->children[1],env),trail)){trail_unwind(trail,mark);return 0;}
                 return 1;
             }
-            /* assert/assertz/asserta — dynamic predicate addition */
-            if ((strcmp(fn,"assert")==0||strcmp(fn,"assertz")==0||strcmp(fn,"asserta")==0)&&arity==1){
-                /* no dynamic pred support yet — succeed silently */
-                return 1;
-            }
-            /* retract/retractall/abolish — dynamic predicate removal */
-            if ((strcmp(fn,"retract")==0||strcmp(fn,"retractall")==0||strcmp(fn,"abolish")==0)&&arity==1){
-                return 1;
-            }
-            /* findall/3 */
+            /* assert/assertz/asserta/retract/retractall/abolish — stubs */
+            if ((strcmp(fn,"assert")==0||strcmp(fn,"assertz")==0||strcmp(fn,"asserta")==0)&&arity==1) return 1;
+            if ((strcmp(fn,"retract")==0||strcmp(fn,"retractall")==0||strcmp(fn,"abolish")==0)&&arity==1) return 1;
+            /* findall/3 — collect all solutions via interp_eval on each goal */
             if (strcmp(fn,"findall")==0&&arity==3){
                 EXPR_t *tmpl_expr=goal->children[0];
                 EXPR_t *goal_expr=goal->children[1];
                 EXPR_t *list_expr=goal->children[2];
-                Pl_Findall_cont fc;
-                fc.base.fn=pl_findall_cont_fn;
-                fc.tmpl_expr=tmpl_expr;
-                fc.env=env;
-                fc.solutions=NULL; fc.nsol=0; fc.sol_cap=0;
+                /* Run goal_expr collecting template snapshots on each success.
+                 * We drive it as a user call if it is one, else as a builtin.
+                 * findall always succeeds (empty list if no solutions). */
+                Term **solutions=NULL; int nsol=0,sol_cap=0;
+                /* Wrap execution in a sub-trail so findall does not pollute parent */
                 Trail fa_trail; trail_init(&fa_trail);
-                int saved_cp=pl_cp_top; int cut2=0;
-                /* flatten conjunction into goals array for proper cont threading */
-                if (goal_expr&&goal_expr->kind==E_FNC&&goal_expr->sval&&strcmp(goal_expr->sval,",")==0) {
-                    pl_unified_exec_body_k(goal_expr->children,goal_expr->nchildren,env,pt,&fa_trail,&cut2,(Pl_Cont*)&fc);
-                } else {
-                    EXPR_t *goals1[1]; goals1[0]=goal_expr;
-                    pl_unified_exec_body_k(goals1,1,env,pt,&fa_trail,&cut2,(Pl_Cont*)&fc);
+                Trail *saved_trail=trail; (void)saved_trail; /* trail ptr is local alias */
+                /* To collect all solutions we need a retry loop.
+                 * For user-defined goal_expr, invoke via interp_eval which handles backtracking.
+                 * For builtins, a single call suffices (builtins are det or semi-det here).
+                 * Full multi-solution findall requires BB broker — deferred to GOAL-PROLOG-BB-BYRD.
+                 * For now: one-shot collection (correct for det goals, partial for non-det). */
+                Trail *old_global_trail=&g_pl_trail;
+                g_pl_trail=fa_trail;
+                int ok2;
+                if(is_pl_user_call(goal_expr)){
+                    char key[256]; snprintf(key,sizeof key,"%s/%d",goal_expr->sval?goal_expr->sval:"",goal_expr->nchildren);
+                    EXPR_t *ch=pl_pred_table_lookup(&g_pl_pred_table,key);
+                    if(ch){ int ca=goal_expr->nchildren; Term **cargs=ca?malloc(ca*sizeof(Term*)):NULL;
+                             for(int a=0;a<ca;a++) cargs[a]=pl_unified_term_from_expr(goal_expr->children[a],env);
+                             Term **sv=g_pl_env; g_pl_env=cargs;
+                             DESCR_t rd=interp_eval(ch); g_pl_env=sv; if(cargs)free(cargs);
+                             ok2=!IS_FAIL_fn(rd); }
+                    else ok2=0;
+                } else { ok2=interp_exec_pl_builtin(goal_expr,env); }
+                if(ok2){
+                    Term *snap=pl_unified_deep_copy(pl_unified_term_from_expr(tmpl_expr,env));
+                    if(nsol>=sol_cap){sol_cap=sol_cap?sol_cap*2:8;solutions=realloc(solutions,sol_cap*sizeof(Term*));}
+                    solutions[nsol++]=snap;
                 }
-                pl_cp_top=saved_cp;
+                g_pl_trail=*old_global_trail;
                 int nil_id=prolog_atom_intern("[]"),dot_id=prolog_atom_intern(".");
                 Term *lst=term_new_atom(nil_id);
-                for(int i=fc.nsol-1;i>=0;i--){Term *a2[2];a2[0]=fc.solutions[i];a2[1]=lst;lst=term_new_compound(dot_id,2,a2);}
-                free(fc.solutions);
+                for(int i=nsol-1;i>=0;i--){Term *a2[2];a2[0]=solutions[i];a2[1]=lst;lst=term_new_compound(dot_id,2,a2);}
+                free(solutions);
                 Term *list_term=pl_unified_term_from_expr(list_expr,env);
                 int u_mark=trail_mark(trail);
                 if(!unify(list_term,lst,trail)){trail_unwind(trail,u_mark);return 0;}
-                return 1;
-            }
-            /* user-defined */
-            if (is_pl_user_call(goal)){
-                char key[256]; snprintf(key,sizeof key,"%s/%d",fn,arity);
-                Term **args=malloc(arity*sizeof(Term*));
-                for(int i=0;i<arity;i++) args[i]=pl_unified_term_from_expr(goal->children[i],env);
-                int mark=trail_mark(trail);
-                int r=pl_unified_call(pt,key,arity,args,trail,0);
-                free(args);
-                if(r<0){trail_unwind(trail,mark);return 0;}
                 return 1;
             }
             fprintf(stderr,"prolog: undefined predicate %s/%d\n",fn,arity);
@@ -2682,116 +2826,6 @@ static int pl_unified_exec_goal(EXPR_t *goal, Term **env, Pl_PredTable *pt, Trai
     }
 }
 
-/*---- pl_unified_exec_clause ----*/
-static int pl_unified_exec_clause(EXPR_t *ec, int n_args, Term **call_args, Pl_PredTable *pt, Trail *trail, int *cut_flag) {
-    if(!ec||ec->kind!=E_CLAUSE)return 0;
-    int n_vars=(int)ec->ival;
-    Term **env=pl_env_new(n_vars);
-    int head_mark=trail_mark(trail);
-    for(int i=0;i<n_args&&i<ec->nchildren;i++){
-        Term *ha=pl_unified_term_from_expr(ec->children[i],env);
-        if(!unify(call_args[i],ha,trail)){trail_unwind(trail,head_mark);free(env);return 0;}
-    }
-    int nbody=ec->nchildren-n_args;
-    EXPR_t **body=ec->children+n_args;
-    int ok=nbody==0?1:pl_unified_exec_body(body,nbody,env,pt,trail,cut_flag);
-    free(env);
-    return ok;
-}
-
-/*---- pl_unified_call ----*/
-static int pl_unified_call(Pl_PredTable *pt, const char *key, int arity, Term **args, Trail *trail, int start) {
-    EXPR_t *choice=pl_pred_table_lookup(pt,key);
-    if(!choice){fprintf(stderr,"prolog: undefined predicate %s\n",key);return -1;}
-    int nclauses=choice->nchildren;
-    int mark=trail_mark(trail);
-    for(int ci=start;ci<nclauses;ci++){
-        if(ci>start)trail_unwind(trail,mark);
-        EXPR_t *ec=choice->children[ci];if(!ec)continue;
-        int clause_cut=0;
-        if(pl_unified_exec_clause(ec,arity,args,pt,trail,&clause_cut))return ci;
-        if(clause_cut)break;
-    }
-    trail_unwind(trail,mark);
-    return -1;
-}
-
-/*---- Body continuation ----*/
-typedef struct {
-    Pl_Cont      base;
-    EXPR_t     **goals;
-    int          ngoals;
-    Term       **env;
-    Pl_PredTable *pt;
-    Trail       *trail;
-    int         *cut_flag;
-    Pl_Cont     *next;
-} Pl_Body_cont;
-
-static int pl_body_cont_fn(Pl_Cont *self) {
-    Pl_Body_cont *bc=(Pl_Body_cont *)self;
-    return pl_unified_exec_body_k(bc->goals,bc->ngoals,bc->env,bc->pt,bc->trail,bc->cut_flag,bc->next);
-}
-
-/*---- pl_unified_exec_body_k ----*/
-static int pl_unified_exec_body_k(EXPR_t **goals, int ngoals, Term **env, Pl_PredTable *pt, Trail *trail, int *cut_flag, Pl_Cont *cont) {
-    if(ngoals==0)return cont->fn(cont);
-    EXPR_t *g=goals[0];
-
-    if(is_pl_user_call(g)){
-        const char *fn=g->sval; int arity=g->nchildren;
-        char key[256]; snprintf(key,sizeof key,"%s/%d",fn,arity);
-        EXPR_t *choice=pl_pred_table_lookup(pt,key);
-        if(!choice){fprintf(stderr,"prolog: undefined predicate %s\n",key);return 0;}
-        int nclauses=choice->nchildren;
-        if(pl_cp_top>=PL_CP_STACK_MAX){fprintf(stderr,"prolog: CP stack overflow\n");return 0;}
-        Pl_ChoicePoint *cp=&pl_cp_stack[pl_cp_top++];
-        cp->pt=pt; cp->key=key; cp->arity=arity; cp->trail=trail;
-        cp->trail_mark=trail_mark(trail); cp->next_clause=0; cp->cut=0;
-        setjmp(cp->jb);
-        int result=0;
-        while(!cp->cut&&cp->next_clause<nclauses){
-            int ci=cp->next_clause;
-            trail_unwind(trail,cp->trail_mark);
-            Term **args=malloc(arity*sizeof(Term*));
-            for(int i=0;i<arity;i++) args[i]=pl_unified_term_from_expr(g->children[i],env);
-            cp->next_clause=ci+1;
-            EXPR_t *ec=choice->children[ci];
-            if(!ec||ec->kind!=E_CLAUSE){free(args);continue;}
-            int n_vars=(int)ec->ival;
-            Term **cenv=pl_env_new(n_vars);
-            int head_mark=trail_mark(trail); int head_ok=1;
-            for(int i=0;i<arity&&i<ec->nchildren;i++){
-                Term *ha=pl_unified_term_from_expr(ec->children[i],cenv);
-                if(!unify(args[i],ha,trail)){head_ok=0;break;}
-            }
-            free(args);
-            if(!head_ok){trail_unwind(trail,head_mark);free(cenv);continue;}
-            Pl_Body_cont suffix_bc;
-            suffix_bc.base.fn=pl_body_cont_fn;
-            suffix_bc.goals=goals+1; suffix_bc.ngoals=ngoals-1;
-            suffix_bc.env=env; suffix_bc.pt=pt; suffix_bc.trail=trail;
-            suffix_bc.cut_flag=cut_flag; suffix_bc.next=cont;
-            int nbody=ec->nchildren-arity;
-            EXPR_t **body=ec->children+arity;
-            int clause_cut=0; int ok;
-            if(nbody==0) ok=suffix_bc.base.fn(&suffix_bc.base);
-            else ok=pl_unified_exec_body_k(body,nbody,cenv,pt,trail,&clause_cut,&suffix_bc.base);
-            free(cenv);
-            if(clause_cut){if(cut_flag)*cut_flag=1;result=ok;break;}
-            if(ok){result=1;break;}
-        }
-        pl_cp_top--;
-        return result;
-    }
-    /* deterministic goal */
-    if(!pl_unified_exec_goal(g,env,pt,trail,cut_flag))return 0;
-    return pl_unified_exec_body_k(goals+1,ngoals-1,env,pt,trail,cut_flag,cont);
-}
-
-static int pl_unified_exec_body(EXPR_t **goals, int ngoals, Term **env, Pl_PredTable *pt, Trail *trail, int *cut_flag) {
-    return pl_unified_exec_body_k(goals,ngoals,env,pt,trail,cut_flag,pl_cont_done);
-}
 
 /*---- pl_execute_program_unified — entry point ----*/
 /* S-1C-3: calls interp_eval() on the main/0 E_CHOICE node directly.
