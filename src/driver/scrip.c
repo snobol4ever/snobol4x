@@ -1897,15 +1897,8 @@ static DESCR_t interp_eval(EXPR_t *e)
         if (e->nchildren < 1) return NULVCL;
         EXPR_t *gen  = e->children[0];
         EXPR_t *body = (e->nchildren > 1) ? e->children[1] : NULL;
-        if (body && gen->kind == E_TO && gen->nchildren >= 2) {
-            DESCR_t lo_d = interp_eval(gen->children[0]);
-            DESCR_t hi_d = interp_eval(gen->children[1]);
-            if (IS_FAIL_fn(lo_d)||IS_FAIL_fn(hi_d)) return NULVCL;
-            for (long i=lo_d.i; i<=hi_d.i && !icn_returning; i++) interp_eval(body);
-            return NULVCL;
-        }
-        /* S-11: check if gen tree contains a suspend-based generator proc call.
-         * If so, loop calling interp_eval(gen) until it returns FAILDESCR. */
+        /* S-11: if gen tree contains a suspend-based generator proc call,
+         * loop calling interp_eval(gen) until FAILDESCR. */
         int has_gen = icn_has_suspend_call(gen);
         if (has_gen) {
             while (!icn_returning && !icn_loop_break) {
