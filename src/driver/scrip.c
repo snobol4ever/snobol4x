@@ -264,7 +264,7 @@ static Term    *pl_unified_term_from_expr(EXPR_t *e, Term **env); /* forward */
 static Term   **pl_env_new(int n); /* forward */
 static EXPR_t  *pl_pred_table_lookup(Pl_PredTable *pt, const char *key); /* forward */
 static int      is_pl_user_call(EXPR_t *goal); /* forward */
-static int      interp_exec_pl_builtin(EXPR_t *goal, Term **env); /* forward */
+int             interp_exec_pl_builtin(EXPR_t *goal, Term **env); /* forward — defined below, declared in prolog_builtin.h */
 
 /* ── Prolog global execution state ─────────────────────────────────────────
  * Initialised by pl_execute_program_unified() at program start. */
@@ -2364,7 +2364,7 @@ static Term **pl_env_new(int n) {
 /*---- Forward declarations ----*/
 static Term *pl_unified_term_from_expr(EXPR_t *e, Term **env);
 static Term *pl_unified_deep_copy(Term *t);
-static int   interp_exec_pl_builtin(EXPR_t *goal, Term **env);
+int          interp_exec_pl_builtin(EXPR_t *goal, Term **env); /* non-static — also declared in prolog_builtin.h */
 static int   pl_exec_body(EXPR_t **goals, int ngoals, Term **env);
 
 
@@ -2612,7 +2612,7 @@ static int pl_exec_one_goal(EXPR_t *goal, Term **env) {
  * g_pl_cut_flag, g_pl_pred_table, g_pl_env. Returns 1=success, 0=fail.
  * User-defined predicate calls (E_FNC not in builtin list) are NOT handled
  * here — the E_CHOICE body loop dispatches those via interp_eval(). */
-static int interp_exec_pl_builtin(EXPR_t *goal, Term **env) {
+int interp_exec_pl_builtin(EXPR_t *goal, Term **env) {
     if (!goal) return 1;
     Trail *trail = &g_pl_trail;
     int *cut_flag = &g_pl_cut_flag;

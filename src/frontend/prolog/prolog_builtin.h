@@ -46,3 +46,12 @@ int pl_var(Term *t);
 int pl_nonvar(Term *t);
 int pl_compound(Term *t);
 int pl_callable(Term *t);
+
+/* interp_exec_pl_builtin — execute one Prolog builtin goal node.
+ * Defined in scrip.c. Returns 1=success, 0=failure. (S-BB-2) */
+#ifndef EXPR_T_DEFINED
+struct EXPR_t;
+typedef struct EXPR_t EXPR_t;
+#define EXPR_T_DEFINED 1
+#endif
+int interp_exec_pl_builtin(EXPR_t *goal, Term **env);
