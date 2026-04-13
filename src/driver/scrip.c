@@ -65,7 +65,6 @@ extern Program *sno_parse(FILE *f, const char *filename);
 #include "../frontend/prolog/prolog_builtin.h"
 #include "../frontend/prolog/term.h"
 #include "../frontend/icon/icon_driver.h"
-#include "../frontend/icon/icon_interp.h"
 #include "../frontend/icon/icon_lex.h"    /* IcnTkKind — TK_AUG* for E_AUGOP in unified interp */
 
 /* ir_print_node — from src/ir/ir_print.c (linked via Makefile) */
