@@ -259,8 +259,13 @@ static EXPR_t *lower_node(const IcnNode *n) {
         expr_add_child(e, lower_node(n->children[0]));
         return e;
 
-    case ICN_GLOBAL:
-        return leaf_sval(E_GLOBAL, n->val.sval);   /* NEW: global decl */
+    case ICN_GLOBAL: {
+        /* Local/global decl: children are ICN_VAR nodes naming the vars.
+         * Lower to E_GLOBAL with E_VAR children so icn_call can read them. */
+        e = expr_new(E_GLOBAL);
+        lower_children(e, n);  /* copies ICN_VAR children as E_VAR nodes */
+        return e;
+    }
 
     /* ----- Procedure / call ---------------------------------------------- */
     case ICN_PROC: {

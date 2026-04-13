@@ -486,9 +486,66 @@ static int icn_exec(EXPR_t *e, IcnVal *env, int nenv, IcnVal *out) {
             /* Simplified: for lists not yet implemented, just fail */
             *out = icn_null(); return 0;
         }
+        /* E_IF: if cond then E2 [else E3] — cond is a goal (succeeds/fails) */
+        case E_IF: {
+            if (e->nchildren < 1) { *out=icn_null(); return 1; }
+            EXPR_t *cond  = e->children[0];
+            EXPR_t *thenb = (e->nchildren>1) ? e->children[1] : NULL;
+            EXPR_t *elseb = (e->nchildren>2) ? e->children[2] : NULL;
+            IcnVal cv;
+            if (icn_exec(cond, env, nenv, &cv)) {
+                if (thenb) return icn_exec(thenb, env, nenv, out);
+                *out=cv; return 1;
+            } else {
+                if (elseb) return icn_exec(elseb, env, nenv, out);
+                *out=icn_null(); return 0;
+            }
+        }
+        /* E_GLOBAL: local/global decl — no-op at runtime */
+        case E_GLOBAL:
+            *out=icn_null(); return 1;
+        /* E_KEYWORD: &subject, &pos */
+        case E_KEYWORD: {
+            if (!e->sval){*out=icn_null();return 1;}
+            if (strcmp(e->sval,"subject")==0) { *out=icn_str(g_scan_subj?g_scan_subj:""); return 1; }
+            if (strcmp(e->sval,"pos")==0)     { *out=icn_int(g_scan_pos); return 1; }
+            *out=icn_null(); return 1;
+        }
         default:
             *out=icn_null(); return 1;
     }
+}
+
+/* =========================================================================
+ * Scope: name→slot map for a single procedure frame.
+ * Built once per call from param names + local decl names found in body.
+ * ========================================================================= */
+#define SCOPE_MAX 64
+typedef struct { const char *name; int slot; } ScopeEntry;
+typedef struct { ScopeEntry e[SCOPE_MAX]; int n; } Scope;
+
+static int scope_add(Scope *sc, const char *name) {
+    if (!name) return -1;
+    for (int i=0;i<sc->n;i++) if(strcmp(sc->e[i].name,name)==0) return sc->e[i].slot;
+    if (sc->n >= SCOPE_MAX) return -1;
+    int slot = sc->n;
+    sc->e[sc->n].name = name; sc->e[sc->n].slot = slot; sc->n++;
+    return slot;
+}
+static int scope_get(const Scope *sc, const char *name) {
+    if (!name) return -1;
+    for (int i=0;i<sc->n;i++) if(strcmp(sc->e[i].name,name)==0) return sc->e[i].slot;
+    return -1;
+}
+static void scope_patch(Scope *sc, EXPR_t *e) {
+    if (!e) return;
+    if (e->kind == E_GLOBAL) {
+        for (int i=0;i<e->nchildren;i++) if(e->children[i]&&e->children[i]->sval)
+            scope_add(sc, e->children[i]->sval);
+        return;
+    }
+    if (e->kind == E_VAR && e->sval) { int s=scope_get(sc,e->sval); if(s>=0) e->ival=s; }
+    for (int i=0;i<e->nchildren;i++) scope_patch(sc, e->children[i]);
 }
 
 /* =========================================================================
@@ -501,11 +558,36 @@ static int icn_call(EXPR_t *proc, IcnVal *args, int nargs, IcnVal *out) {
     IcnVal env[ICN_ENV_MAX]; int nenv=ICN_ENV_MAX;
     memset(env,0,sizeof env);
     int nparams=(int)proc->ival;
-    for(int i=0;i<nparams&&i<nargs&&i<ICN_ENV_MAX;i++) env[i]=args[i];
+
+    /* Build name→slot scope: params first, then locals from E_GLOBAL decls */
+    Scope sc; sc.n=0;
+    for(int i=0;i<nparams&&i<ICN_ENV_MAX;i++) {
+        EXPR_t *pn=proc->children[1+i];
+        if(pn&&pn->sval) scope_add(&sc, pn->sval);
+    }
     int body_start=1+nparams;
     int nbody=proc->nchildren-body_start;
+    for(int i=0;i<nbody;i++) {
+        EXPR_t *stmt=proc->children[body_start+i];
+        if(stmt&&stmt->kind==E_GLOBAL)
+            for(int j=0;j<stmt->nchildren;j++) if(stmt->children[j]&&stmt->children[j]->sval)
+                scope_add(&sc, stmt->children[j]->sval);
+    }
+    for(int i=0;i<nbody;i++) scope_patch(&sc, proc->children[body_start+i]);
+
+    /* Load param values */
+    for(int i=0;i<nparams&&i<nargs&&i<ICN_ENV_MAX;i++) env[i]=args[i];
+
+    /* Execute body; stop on return — mirrors emit_choice proc body α/β */
     IcnVal v=icn_null();
-    for(int i=0;i<nbody;i++) icn_exec(proc->children[body_start+i],env,nenv,&v);
+    int prev_returning=g_returning; g_returning=0;
+    for(int i=0;i<nbody;i++) {
+        EXPR_t *stmt=proc->children[body_start+i];
+        if(stmt&&stmt->kind==E_GLOBAL) continue;
+        icn_exec(stmt,env,nenv,&v);
+        if (g_returning) { v=g_return_val; g_returning=0; break; }
+    }
+    g_returning=prev_returning;
     *out=v; return 1;
 }
 
