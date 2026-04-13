@@ -128,7 +128,7 @@ extern int snobol4_debug;
 #if ! defined SNOBOL4_STYPE && ! defined SNOBOL4_STYPE_IS_DECLARED
 union SNOBOL4_STYPE
 {
-#line 20 "snobol4.y"
+#line 32 "snobol4.y"
  EXPR_t *expr; Token tok; SnoGoto *go; 
 
 #line 135 "snobol4.tab.h"

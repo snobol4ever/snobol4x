@@ -63,7 +63,36 @@ extern struct EXPR_t *cmpnd_to_expr(CMPND_t *n);
 /* scrip_cc.h provides Program, STMT_t, EXPR_t types used by exec_code() */
 #include "../../frontend/snobol4/scrip_cc.h"
 /* sno_parse retired — code() now uses cmpile_string + cmpile_lower (RT-121 fix) */
-extern Program *cmpile_lower(CMPILE_t *cl);
+/* cmpile_lower: CMPILE_t list → Program* IR (formerly in scrip.c) */
+static Program *cmpile_lower(CMPILE_t *cl) {
+    if (!cl) return NULL;
+    Program *prog = GC_malloc(sizeof *prog);
+    prog->head = prog->tail = NULL;
+    for (CMPILE_t *s = cl; s; s = s->next) {
+        STMT_t *st = GC_malloc(sizeof *st);
+        memset(st, 0, sizeof *st);
+        st->label = s->label ? GC_strdup(s->label) : NULL;
+        if (s->subject) {
+            st->subject = cmpnd_to_expr(s->subject);
+        } else if (s->label && !s->is_end && (s->replacement || s->pattern || s->has_eq)) {
+            EXPR_t *sv = GC_malloc(sizeof *sv); memset(sv, 0, sizeof *sv);
+            sv->kind = E_VAR; sv->sval = GC_strdup(s->label); st->subject = sv;
+        }
+        st->pattern     = s->pattern     ? cmpnd_to_expr(s->pattern)     : NULL;
+        st->replacement = s->replacement ? cmpnd_to_expr(s->replacement) : NULL;
+        st->has_eq = s->has_eq; st->is_end = s->is_end;
+        if (s->go_s || s->go_f || s->go_u) {
+            SnoGoto *sg = GC_malloc(sizeof *sg); memset(sg, 0, sizeof *sg);
+            sg->onsuccess = s->go_s ? GC_strdup(s->go_s) : NULL;
+            sg->onfailure = s->go_f ? GC_strdup(s->go_f) : NULL;
+            sg->uncond    = s->go_u ? GC_strdup(s->go_u) : NULL;
+            st->go = sg;
+        }
+        if (!prog->head) prog->head = st; else prog->tail->next = st;
+        prog->tail = st;
+    }
+    return prog;
+}
 
 /* exec_stmt — the five-phase executor */
 extern int exec_stmt(const char  *subj_name,

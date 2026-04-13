@@ -13,6 +13,18 @@ static void     sno4_stmt_commit_go(void*,Token,EXPR_t*,EXPR_t*,int,EXPR_t*,SnoG
 static void     fixup_val(EXPR_t*);
 static int      is_pat(EXPR_t*);
 static EXPR_t  *parse_expr(Lex*);
+/* pat_prim_kind: map pattern primitive name → typed IR kind; E_VAR = not a prim */
+static EKind pat_prim_kind(const char *s) {
+    if (!s) return E_VAR;
+    static const struct { const char *n; EKind k; } m[] = {
+        {"ANY",E_ANY},{"NOTANY",E_NOTANY},{"SPAN",E_SPAN},{"BREAK",E_BREAK},{"BREAKX",E_BREAKX},
+        {"LEN",E_LEN},{"POS",E_POS},{"RPOS",E_RPOS},{"TAB",E_TAB},{"RTAB",E_RTAB},
+        {"ARB",E_ARB},{"ARBNO",E_ARBNO},{"REM",E_REM},{"FAIL",E_FAIL},{"SUCCEED",E_SUCCEED},
+        {"FENCE",E_FENCE},{"ABORT",E_ABORT},{"BAL",E_BAL},{NULL,E_VAR}
+    };
+    for (int i = 0; m[i].n; i++) if (strcasecmp(s, m[i].n) == 0) return m[i].k;
+    return E_VAR;
+}
 }
 %define api.prefix {snobol4_}
 %define api.pure full
@@ -182,8 +194,8 @@ exprlist_ne: exprlist_ne T_COMMA expr0                                          
 expr17     : T_LPAREN expr0 T_RPAREN                                                            { $$=$2; }
            | T_LPAREN expr0 T_COMMA exprlist_ne T_RPAREN                                       { EXPR_t*a=expr_new(E_ALT);expr_add_child(a,$2);for(int i=0;i<$4->nchildren;i++)expr_add_child(a,$4->children[i]);free($4->children);free($4);$$=a; }
            | T_LPAREN T_RPAREN                                                                  { $$=expr_new(E_NUL); }
-           | T_FUNCTION T_LPAREN exprlist T_RPAREN                                             { EXPR_t*e=expr_new(E_FNC);e->sval=(char*)$1.sval;for(int i=0;i<$3->nchildren;i++)expr_add_child(e,$3->children[i]);free($3->children);free($3);$$=e; }
-           | T_IDENT                                                                              { EXPR_t*e=expr_new(E_VAR);    e->sval=(char*)$1.sval;$$=e; }
+           | T_FUNCTION T_LPAREN exprlist T_RPAREN                                             { EKind _k=pat_prim_kind($1.sval);EXPR_t*e=expr_new(_k==E_VAR?E_FNC:_k);if(_k==E_VAR)e->sval=(char*)$1.sval;for(int i=0;i<$3->nchildren;i++)expr_add_child(e,$3->children[i]);free($3->children);free($3);$$=e; }
+           | T_IDENT                                                                              { EKind _k=pat_prim_kind($1.sval);EXPR_t*e=expr_new(_k);e->sval=(char*)$1.sval;$$=e; }
            | T_END                                                                                { EXPR_t*e=expr_new(E_VAR);    e->sval=(char*)$1.sval;$$=e; }
            | T_KEYWORD                                                                            { EXPR_t*e=expr_new(E_KEYWORD);e->sval=(char*)$1.sval;$$=e; }
            | T_STR                                                                                { EXPR_t*e=expr_new(E_QLIT);   e->sval=(char*)$1.sval;$$=e; }

@@ -6,9 +6,9 @@
  * Usage:
  *   scrip [mode] [bb] [target] [options] <file> [-- program-args...]
  *
- * Execution modes (default: --sm-run):
- *   --ir-run         interpret via IR tree-walk (correctness reference)
- *   --sm-run         interpret SM_Program via dispatch loop  [DEFAULT]
+ * Execution modes (default: --ir-run):
+ *   --ir-run         interpret via IR tree-walk (correctness reference) [DEFAULT]
+ *   --sm-run         interpret SM_Program via dispatch loop
  *   --jit-run        lower SM_Program to x86 bytes -> mmap slab -> jump in
  *   --jit-emit       lower SM_Program -> emit to file (target selects format)
  *
@@ -26,6 +26,17 @@
  *   --dump-bb        print BB-GRAPH for each statement
  *   --trace          MONITOR trace output (for two-way diff vs SPITBOL)
  *   --bench          print wall-clock time after execution
+ *   --dump-parse     dump CMPILE parse tree (CMPILE hand-written parser; diagnostic only)
+ *   --dump-parse-flat  same, one line per stmt
+ *   --dump-ir        print IR after frontend (uses CMPILE path)
+ *   --dump-ir-bison  print IR after frontend (uses Bison/Flex path — matches execution)
+ *
+ * Parser note:
+ *   Execution (--ir-run, --sm-run, --jit-run, --jit-emit) uses sno_parse()
+ *   — the Bison/Flex generated parser (snobol4.tab.c / snobol4.lex.c).
+ *   CMPILE (hand-written recursive descent) is used only for --dump-parse
+ *   and --dump-ir. Pattern primitives (E_ANY, E_SPAN, etc.) are emitted
+ *   as typed IR nodes by the Bison parser; CMPILE still emits E_FNC.
  *
  * Frontend inferred from extension:
  *   .sno=SNOBOL4  .icn=Icon  .pl=Prolog  .sc=Snocone  .reb=Rebus  .spt=SPITBOL
@@ -45,7 +56,6 @@
 
 /* ── frontend ─────────────────────────────────────────────────────────── */
 #include "../frontend/snobol4/scrip_cc.h"
-#include "../frontend/snobol4/CMPILE.h"
 extern Program *sno_parse(FILE *f, const char *filename);
 #include "../frontend/snocone/snocone_driver.h"
 #include "../frontend/prolog/prolog_driver.h"
@@ -1937,7 +1947,9 @@ static DESCR_t interp_eval(EXPR_t *e)
     case E_REM:     return pat_rem();
     case E_FAIL:    return pat_fail();
     case E_SUCCEED: return pat_succeed();
-    case E_FENCE:   return pat_fence();
+    case E_FENCE:
+        if (e->nchildren >= 1) { DESCR_t inner = interp_eval(e->children[0]); return pat_fence_p(inner); }
+        return pat_fence();
     case E_ABORT:   return pat_abort();
     case E_BAL:     return pat_bal();
 
@@ -2517,65 +2529,6 @@ static DESCR_t _usercall_hook(const char *name, DESCR_t *args, int nargs) {
     return call_user_function(name, args, nargs);
 }
 
-/* ── cmpile_lower: CMPILE_t list → Program* IR ───────────────────────
- * Walks the CMPILE_t linked list from cmpile_file() and builds the
- * Program* / STMT_t IR that execute_program() expects.
- * Bridge that makes CMPILE.c the authoritative top-level parser.
- * --------------------------------------------------------------------- */
-Program *cmpile_lower(CMPILE_t *cl)
-{
-    if (!cl) return NULL;
-    Program *prog = GC_malloc(sizeof *prog);
-    prog->head = prog->tail = NULL;
-
-    for (CMPILE_t *s = cl; s; s = s->next) {
-        STMT_t *st = GC_malloc(sizeof *st);
-        memset(st, 0, sizeof *st);
-
-        /* ── label + subject wiring ─────────────────────────────────────
-         * CMPILE LBLTB always puts the column-1 identifier into s->label
-         * and leaves s->subject NULL.  In SNOBOL4, a column-1 label IS a
-         * valid variable name: "OUTPUT = 'x'" has label="OUTPUT", subj=NULL,
-         * and the assignment target is the variable OUTPUT.
-         * STMT_t needs BOTH: label kept for goto resolution AND a synthesised
-         * E_VAR subject so the execution loop can find subj_name.
-         * Rule: if s->subject is NULL and s->label is set and there is a body
-         * (replacement, pattern, or has_eq), synthesise subject from label.
-         * Bare label lines (no body) and END: subject stays NULL. */
-        st->label = s->label ? GC_strdup(s->label) : NULL;
-        if (s->subject) {
-            st->subject = cmpnd_to_expr(s->subject);
-        } else if (s->label && !s->is_end
-                   && (s->replacement || s->pattern || s->has_eq)) {
-            EXPR_t *sv = GC_malloc(sizeof *sv);
-            memset(sv, 0, sizeof *sv);
-            sv->kind = E_VAR;
-            sv->sval = GC_strdup(s->label);
-            st->subject = sv;
-        } else {
-            st->subject = NULL;
-        }
-        st->pattern     = s->pattern     ? cmpnd_to_expr(s->pattern)     : NULL;
-        st->replacement = s->replacement ? cmpnd_to_expr(s->replacement) : NULL;
-        st->has_eq      = s->has_eq;
-        st->is_end      = s->is_end;
-        /* Wire goto: CMPILE_t has go_s/go_f/go_u; STMT_t uses SnoGoto */
-        if (s->go_s || s->go_f || s->go_u) {
-            SnoGoto *sg = GC_malloc(sizeof *sg);
-            memset(sg, 0, sizeof *sg);
-            sg->onsuccess = s->go_s ? GC_strdup(s->go_s) : NULL;
-            sg->onfailure = s->go_f ? GC_strdup(s->go_f) : NULL;
-            sg->uncond    = s->go_u ? GC_strdup(s->go_u) : NULL;
-            st->go = sg;
-        }
-        st->next        = NULL;
-
-        if (!prog->head) prog->head = st;
-        else             prog->tail->next = st;
-        prog->tail = st;
-    }
-    return prog;
-}
 
 /* ── ir_print_stmt — print one STMT_t as IR sexp for comparison sweep ──────
  * Emits: (STMT [:lbl L] [:subj EXPR] [:pat EXPR] [:repl EXPR] [:go*])
@@ -2665,9 +2618,9 @@ int main(int argc, char **argv)
 {
     /* ── flag parsing ─────────────────────────────────────────────────── */
 
-    /* Execution modes — mutually exclusive (default: --sm-run) */
-    int mode_ir_run        = 0;  /* --ir-run   : interpret via IR tree-walk (correctness ref) */
-    int mode_sm_run        = 0;  /* --sm-run   : interpret SM_Program via dispatch loop [DEFAULT] */
+    /* Execution modes — mutually exclusive (default: --ir-run) */
+    int mode_ir_run        = 0;  /* --ir-run   : interpret via IR tree-walk (correctness ref) [DEFAULT] */
+    int mode_sm_run        = 0;  /* --sm-run   : interpret SM_Program via dispatch loop */
     int mode_jit_run       = 0;  /* --jit-run  : SM_Program -> x86 bytes -> mmap slab -> jump in */
     int mode_jit_emit      = 0;  /* --jit-emit : SM_Program -> emit to file (target selects format) */
 
@@ -2722,9 +2675,9 @@ int main(int argc, char **argv)
         else break;
     }
 
-    /* Default execution mode: --sm-run */
+    /* Default execution mode: --ir-run */
     if (!mode_ir_run && !mode_sm_run && !mode_jit_run && !mode_jit_emit)
-        mode_sm_run = 1;
+        mode_ir_run = 1;
 
     /* Default BB mode: --bb-driver unless --bb-live explicitly set */
     if (!bb_driver && !bb_live) bb_driver = 1;
@@ -2746,9 +2699,9 @@ int main(int argc, char **argv)
         fprintf(stderr,
             "usage: scrip [mode] [bb] [target] [options] <file> [-- program-args...]\n"
             "\n"
-            "Execution modes (default: --sm-run):\n"
-            "  --ir-run         interpret via IR tree-walk (correctness reference)\n"
-            "  --sm-run         interpret SM_Program via dispatch loop  [DEFAULT]\n"
+            "Execution modes (default: --ir-run):\n"
+            "  --ir-run         interpret via IR tree-walk (correctness reference)  [DEFAULT]\n"
+            "  --sm-run         interpret SM_Program via dispatch loop\n"
             "  --jit-run        SM_Program -> x86 bytes -> mmap slab -> jump in\n"
             "  --jit-emit       SM_Program -> emit to file (target selects format)\n"
             "\n"
@@ -2821,49 +2774,14 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    /* ── parse ──────────────────────────────────────────────────────────
-     * --dump-parse / --dump-parse-flat: use CMPILE path, emit, exit.
-     * Normal execution: sno_parse() (proven path, PASS=190 baseline).
-     * cmpile_lower() wiring for execution is RT-105 step 2 — requires
-     * cmpnd_to_expr() coverage audit before it can replace sno_parse().
-     * ----------------------------------------------------------------- */
-    cmpile_init();
-    /* Mirror the same include dirs used by sno_add_include_dir above */
-    {
-        char dirbuf2[4096];
-        strncpy(dirbuf2, input_path, sizeof dirbuf2 - 1);
-        dirbuf2[sizeof dirbuf2 - 1] = '\0';
-        char *sl2 = strrchr(dirbuf2, '/');
-        if (sl2) { *sl2 = '\0'; cmpile_add_include(dirbuf2); }
-        else      { cmpile_add_include("."); }
-        const char *sno_lib2 = getenv("SNO_LIB");
-        if (sno_lib2 && *sno_lib2) cmpile_add_include(sno_lib2);
-        /* corpus root auto-detect */
-        char walk2[4096];
-        strncpy(walk2, input_path, sizeof walk2 - 1);
-        walk2[sizeof walk2 - 1] = '\0';
-        char *p2 = strrchr(walk2, '/');
-        while (p2) {
-            *p2 = '\0';
-            char probe2[4096];
-            snprintf(probe2, sizeof probe2, "%s/lib", walk2);
-            struct stat st2;
-            if (stat(probe2, &st2) == 0 && S_ISDIR(st2.st_mode)) {
-                cmpile_add_include(walk2);
-                break;
-            }
-            p2 = strrchr(walk2, '/');
-        }
-        cmpile_add_include(".");
-    }
     struct timespec _t0, _t1, _t2, _t3;
     if (opt_bench) clock_gettime(CLOCK_MONOTONIC, &_t0);
 
     /* ── parse ──────────────────────────────────────────────────────────────
-     * --dump-parse / --dump-parse-flat / --dump-ir  →  CMPILE (hand-written)
-     * everything else (--ir-run, --sm-run, --dump-ir-bison)  →  sno_parse (Bison/Flex)
-     * sno_parse is the proven path: PASS=190 baseline.
-     * .sc extension  →  snocone_compile() (lex+parse+lower in one call) */
+     * --dump-parse / --dump-parse-flat / --dump-ir  →  sno_parse (Bison/Flex)
+     * --dump-ir-bison / --ir-run / --sm-run / etc.  →  sno_parse (Bison/Flex)
+     * sno_parse is the execution path. Pattern prims emit typed IR nodes (E_ANY etc).
+     * .sc extension  →  snocone_compile()  .pl  →  prolog_compile()  .icn  →  icon_compile() */
     /* detect Snocone frontend by file extension */
     int lang_snocone = 0;
     { const char *dot = strrchr(input_path, '.'); if (dot && strcmp(dot, ".sc") == 0) lang_snocone = 1; }
@@ -2885,29 +2803,21 @@ int main(int argc, char **argv)
                            : snocone_compile(src, input_path);
         free(src);
     } else if (dump_parse || dump_parse_flat || dump_ir) {
-        CMPILE_t *cl = cmpile_file(f, input_path);
-        fclose(f);
-        if (opt_bench) clock_gettime(CLOCK_MONOTONIC, &_t1);
-        if (dump_parse || dump_parse_flat) {
-            int oneline = dump_parse_flat ? 1 : 0;
-            int idx = 0;
-            for (CMPILE_t *s = cl; s; s = s->next)
-                cmpile_print(s, stdout, oneline, idx++);
-            cmpile_free(cl);
-            return 0;
-        }
-        /* dump_ir */
-        Program *cprog = cmpile_lower(cl);
-        cmpile_free(cl);
-        ir_dump_program(cprog, stdout);
-        return 0;
-    } else {
         fclose(f);
         if (opt_bench) clock_gettime(CLOCK_MONOTONIC, &_t1);
         FILE *f2 = fopen(input_path, "r");
         if (!f2) { fprintf(stderr, "scrip: cannot re-open '%s'\n", input_path); return 1; }
         prog = sno_parse(f2, input_path);
         fclose(f2);
+        if (prog) { ir_dump_program(prog, stdout); }
+        return 0;
+    } else {
+        fclose(f);
+        if (opt_bench) clock_gettime(CLOCK_MONOTONIC, &_t1);
+        FILE *f3 = fopen(input_path, "r");
+        if (!f3) { fprintf(stderr, "scrip: cannot re-open '%s'\n", input_path); return 1; }
+        prog = sno_parse(f3, input_path);
+        fclose(f3);
         if (dump_ir_bison) { ir_dump_program(prog, stdout); return 0; }
     }
 
