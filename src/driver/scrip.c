@@ -159,24 +159,20 @@ static int        call_depth = 0;
 static Program *g_prog = NULL;
 
 /* ── Icon unified interpreter state ────────────────────────────────────────
- * Icon procedures use slot-indexed locals (e->ival on E_VAR nodes).
- * When interp_eval is running inside an Icon procedure call, icn_env points
- * to the current frame's slot array. E_VAR case checks icn_env first.
- * icn_env_n is the slot count. Both are NULL/0 when in SNOBOL4 context.
+ * Icon procedures use name-based NV store, same as SNOBOL4.
+ * On procedure entry each param/local name is saved from NV and replaced;
+ * on exit all are restored. No slot arrays, no icn_env.
  *
  * Icon procedure table: built from Program* at execute_program time.
  * Each entry maps procname → the E_FNC node (from STMT_t subject).
  * ────────────────────────────────────────────────────────────────────────── */
-#define ICN_SLOT_MAX   64
+#define ICN_SLOT_MAX   64   /* max params+locals per procedure */
 #define ICN_PROC_MAX  256
 typedef struct { const char *name; EXPR_t *proc; } IcnProcEntry;
 static IcnProcEntry icn_proc_table[ICN_PROC_MAX];
 static int          icn_proc_count = 0;
-static DESCR_t     *icn_env        = NULL;  /* current Icon frame slot array */
-static int          icn_env_n      = 0;     /* slot count */
 static int          icn_returning  = 0;     /* 1 = Icon return in progress */
 static DESCR_t      icn_return_val;         /* value being returned */
-static int          g_lang         = 0;     /* 0=SNOBOL4 1=Icon */
 static EXPR_t      *g_icn_root     = NULL;  /* current Icon drive root */
 
 /* Generator substitution stack for E_EVERY/E_TO β re-entry (DESCR_t version).
@@ -198,8 +194,8 @@ static int         icn_scan_pos   = 0;
 static struct { const char *subj; int pos; } icn_scan_stack[ICN_SCAN_STACK_MAX];
 static int         icn_scan_depth = 0;
 static int         icn_loop_break = 0; /* E_LOOP_BREAK signal for repeat/while/until */
-static DESCR_t icn_interp_eval(EXPR_t *root, EXPR_t *e); /* forward */
 static DESCR_t icn_call_proc(EXPR_t *proc, DESCR_t *args, int nargs); /* forward */
+static DESCR_t interp_eval(EXPR_t *e); /* forward — needed by icn_drive */
 
 /* icn_drive: drive generators embedded in e, re-executing root each tick.
  * Returns tick count. Mirrors icn_exec_driven in icon_interp.c but uses DESCR_t. */
@@ -207,39 +203,39 @@ static int icn_drive(EXPR_t *root, EXPR_t *e) {
     if (!e) return 0;
     if (icn_gen_active(e)) return 0;
     if (e->kind == E_TO && e->nchildren >= 2) {
-        DESCR_t lo_d = icn_interp_eval(root, e->children[0]);
-        DESCR_t hi_d = icn_interp_eval(root, e->children[1]);
+        DESCR_t lo_d = interp_eval(e->children[0]);
+        DESCR_t hi_d = interp_eval(e->children[1]);
         if (IS_FAIL_fn(lo_d)||IS_FAIL_fn(hi_d)) return 0;
         long lo=lo_d.i, hi=hi_d.i; int ticks=0;
         for(long i=lo;i<=hi&&!icn_returning;i++){
             icn_gen_push(e,i,NULL);
             int inner=icn_drive(root,root);
-            if(!inner) icn_interp_eval(root,root);
+            if(!inner) interp_eval(root);
             icn_gen_pop(); ticks++;
             if(icn_returning) break;
         }
         return ticks;
     }
     if (e->kind == E_TO_BY && e->nchildren >= 3) {
-        DESCR_t lo_d=icn_interp_eval(root,e->children[0]);
-        DESCR_t hi_d=icn_interp_eval(root,e->children[1]);
-        DESCR_t st_d=icn_interp_eval(root,e->children[2]);
+        DESCR_t lo_d=interp_eval(e->children[0]);
+        DESCR_t hi_d=interp_eval(e->children[1]);
+        DESCR_t st_d=interp_eval(e->children[2]);
         if(IS_FAIL_fn(lo_d)||IS_FAIL_fn(hi_d)||IS_FAIL_fn(st_d)) return 0;
         long lo=lo_d.i,hi=hi_d.i,st=st_d.i?st_d.i:1; int ticks=0;
-        if(st>0){for(long i=lo;i<=hi&&!icn_returning;i+=st){icn_gen_push(e,i,NULL);int inner=icn_drive(root,root);if(!inner)icn_interp_eval(root,root);icn_gen_pop();ticks++;if(icn_returning)break;}}
-        else    {for(long i=lo;i>=hi&&!icn_returning;i+=st){icn_gen_push(e,i,NULL);int inner=icn_drive(root,root);if(!inner)icn_interp_eval(root,root);icn_gen_pop();ticks++;if(icn_returning)break;}}
+        if(st>0){for(long i=lo;i<=hi&&!icn_returning;i+=st){icn_gen_push(e,i,NULL);int inner=icn_drive(root,root);if(!inner)interp_eval(root);icn_gen_pop();ticks++;if(icn_returning)break;}}
+        else    {for(long i=lo;i>=hi&&!icn_returning;i+=st){icn_gen_push(e,i,NULL);int inner=icn_drive(root,root);if(!inner)interp_eval(root);icn_gen_pop();ticks++;if(icn_returning)break;}}
         return ticks;
     }
     /* S-6: E_ITERATE (!str) — generate each character of a string */
     if (e->kind == E_ITERATE && e->nchildren >= 1) {
-        DESCR_t sv_d = icn_interp_eval(root, e->children[0]);
+        DESCR_t sv_d = interp_eval(e->children[0]);
         if (IS_FAIL_fn(sv_d) || !IS_STR_fn(sv_d)) return 0;
         const char *str = sv_d.s ? sv_d.s : "";
         long len = (long)strlen(str); int ticks = 0;
         for (long i = 0; i < len && !icn_returning; i++) {
             icn_gen_push(e, i, str);
             int inner = icn_drive(root, root);
-            if (!inner) icn_interp_eval(root, root);
+            if (!inner) interp_eval(root);
             icn_gen_pop(); ticks++;
             if (icn_returning) break;
         }
@@ -250,8 +246,8 @@ static int icn_drive(EXPR_t *root, EXPR_t *e) {
     if (e->kind == E_FNC && e->nchildren>=3
         && e->children[0] && e->children[0]->sval
         && strcmp(e->children[0]->sval,"find")==0) {
-        DESCR_t s1 = icn_interp_eval(root, e->children[1]);
-        DESCR_t s2 = icn_interp_eval(root, e->children[2]);
+        DESCR_t s1 = interp_eval(e->children[1]);
+        DESCR_t s2 = interp_eval(e->children[2]);
         if (IS_FAIL_fn(s1)||IS_FAIL_fn(s2)) return 0;
         const char *needle = VARVAL_fn(s1), *hay = VARVAL_fn(s2);
         if (!needle||!hay) return 0;
@@ -263,7 +259,7 @@ static int icn_drive(EXPR_t *root, EXPR_t *e) {
             long pos1 = (long)(hit - hay) + 1;  /* 1-based */
             icn_gen_push(e, pos1, NULL);
             int inner = icn_drive(root, root);
-            if (!inner) icn_interp_eval(root, root);
+            if (!inner) interp_eval(root);
             icn_gen_pop(); ticks++;
             if (icn_returning) break;
             p = hit + (nlen > 0 ? nlen : 1);    /* advance past this match */
@@ -274,470 +270,85 @@ static int icn_drive(EXPR_t *root, EXPR_t *e) {
     return 0;
 }
 
-/* icn_interp_eval: evaluate one Icon IR node, returning DESCR_t.
- * FAILDESCR = Icon fail. NULVCL = null/void result.
- * Uses icn_env[slot] for E_VAR, icn_gen_stack for E_TO substitution. */
+/* icn_interp_eval: thin delegator — all Icon evaluation now in interp_eval. */
 static DESCR_t icn_interp_eval(EXPR_t *root, EXPR_t *e) {
-    (void)root;
-    if (!e) return NULVCL;
-    switch (e->kind) {
-
-    case E_ILIT: return INTVAL(e->ival);
-    case E_FLIT: return REALVAL(e->dval);
-    case E_QLIT: return e->sval ? STRVAL(e->sval) : NULVCL;
-    case E_CSET: return e->sval ? STRVAL(e->sval) : NULVCL;
-    case E_NUL:  return NULVCL;
-
-    case E_VAR: {
-        int slot = (int)e->ival;
-        if (slot >= 0 && slot < icn_env_n && icn_env) return icn_env[slot];
-        return NULVCL;
-    }
-
-    case E_ASSIGN: {
-        if (e->nchildren < 2) return NULVCL;
-        DESCR_t val = icn_interp_eval(root, e->children[1]);
-        if (IS_FAIL_fn(val)) return FAILDESCR;
-        EXPR_t *lhs = e->children[0];
-        if (lhs && lhs->kind == E_VAR) {
-            int slot = (int)lhs->ival;
-            if (slot >= 0 && slot < icn_env_n && icn_env) icn_env[slot] = val;
-        }
-        return val;
-    }
-
-    case E_MNS: {
-        if (e->nchildren < 1) return FAILDESCR;
-        DESCR_t v = icn_interp_eval(root, e->children[0]);
-        if (IS_FAIL_fn(v)) return FAILDESCR;
-        return INTVAL(-v.i);
-    }
-
-    case E_ADD: case E_SUB: case E_MUL: case E_DIV:
-    case E_LT:  case E_LE:  case E_GT:  case E_GE:
-    case E_EQ:  case E_NE: {
-        if (e->nchildren < 2) return FAILDESCR;
-        DESCR_t l = icn_interp_eval(root, e->children[0]);
-        DESCR_t r = icn_interp_eval(root, e->children[1]);
-        if (IS_FAIL_fn(l)||IS_FAIL_fn(r)) return FAILDESCR;
-        long li = IS_INT_fn(l)?l.i:(long)l.r, ri = IS_INT_fn(r)?r.i:(long)r.r;
-        switch(e->kind){
-            case E_ADD: return INTVAL(li+ri);
-            case E_SUB: return INTVAL(li-ri);
-            case E_MUL: return INTVAL(li*ri);
-            case E_DIV: return ri?INTVAL(li/ri):FAILDESCR;
-            case E_LT:  return li< ri?r:FAILDESCR;
-            case E_LE:  return li<=ri?r:FAILDESCR;
-            case E_GT:  return li> ri?r:FAILDESCR;
-            case E_GE:  return li>=ri?r:FAILDESCR;
-            case E_EQ:  return li==ri?r:FAILDESCR;
-            case E_NE:  return li!=ri?r:FAILDESCR;
-            default:    return FAILDESCR;
-        }
-    }
-
-    case E_CAT: case E_LCONCAT: {
-        if (e->nchildren < 2) return NULVCL;
-        DESCR_t l = icn_interp_eval(root, e->children[0]);
-        DESCR_t r = icn_interp_eval(root, e->children[1]);
-        if (IS_FAIL_fn(l)||IS_FAIL_fn(r)) return FAILDESCR;
-        const char *ls = VARVAL_fn(l), *rs = VARVAL_fn(r);
-        if (!ls) ls=""; if (!rs) rs="";
-        size_t ll=strlen(ls), rl=strlen(rs);
-        char *buf = GC_malloc(ll+rl+1);
-        memcpy(buf,ls,ll); memcpy(buf+ll,rs,rl); buf[ll+rl]='\0';
-        return STRVAL(buf);
-    }
-
-    /* E_TO: in scalar context return lo; in driven context return substituted cur */
-    case E_TO: case E_TO_BY: {
-        long cur;
-        if (icn_gen_lookup(e, &cur)) return INTVAL(cur);
-        if (e->nchildren < 1) return NULVCL;
-        return icn_interp_eval(root, e->children[0]);
-    }
-
-    case E_EVERY: {
-        if (e->nchildren < 1) return NULVCL;
-        EXPR_t *gen  = e->children[0];
-        EXPR_t *body = (e->nchildren > 1) ? e->children[1] : NULL;
-        if (body) {
-            /* Two-child form: every gen do body */
-            if (gen->kind == E_TO && gen->nchildren >= 2) {
-                DESCR_t lo_d = icn_interp_eval(root, gen->children[0]);
-                DESCR_t hi_d = icn_interp_eval(root, gen->children[1]);
-                if (IS_FAIL_fn(lo_d)||IS_FAIL_fn(hi_d)) return NULVCL;
-                long lo=lo_d.i, hi=hi_d.i;
-                for(long i=lo;i<=hi&&!icn_returning;i++) icn_interp_eval(root,body);
-                return NULVCL;
-            }
-        }
-        /* One-child form: every expr — drive embedded generator */
-        int ticks = icn_drive(gen, gen);
-        if (!ticks) icn_interp_eval(root, gen);
-        return NULVCL;
-    }
-
-    case E_WHILE: {
-        int saved_brk = icn_loop_break; icn_loop_break = 0;
-        DESCR_t cv;
-        while (!icn_returning && !icn_loop_break &&
-               !IS_FAIL_fn(cv = icn_interp_eval(root, e->children[0]))) {
-            if (e->nchildren > 1) icn_interp_eval(root, e->children[1]);
-        }
-        icn_loop_break = saved_brk;
-        return NULVCL;
-    }
-
-    case E_UNTIL: {
-        int saved_brk = icn_loop_break; icn_loop_break = 0;
-        DESCR_t cv;
-        while (!icn_returning && !icn_loop_break) {
-            cv = (e->nchildren > 0) ? icn_interp_eval(root, e->children[0]) : FAILDESCR;
-            if (!IS_FAIL_fn(cv)) break;
-            if (e->nchildren > 1) icn_interp_eval(root, e->children[1]);
-        }
-        icn_loop_break = saved_brk;
-        return NULVCL;
-    }
-
-    case E_REPEAT: {
-        int saved_brk = icn_loop_break; icn_loop_break = 0;
-        while (!icn_returning && !icn_loop_break) {
-            if (e->nchildren > 0) icn_interp_eval(root, e->children[0]);
-        }
-        icn_loop_break = saved_brk;
-        return NULVCL;
-    }
-
-    case E_SEQ: {
-        DESCR_t v = NULVCL;
-        for (int i = 0; i < e->nchildren && !icn_returning; i++)
-            v = icn_interp_eval(root, e->children[i]);
-        return v;
-    }
-
-    case E_IF: {
-        if (e->nchildren < 1) return NULVCL;
-        DESCR_t cv = icn_interp_eval(root, e->children[0]);
-        if (!IS_FAIL_fn(cv))
-            return (e->nchildren > 1) ? icn_interp_eval(root, e->children[1]) : cv;
-        return (e->nchildren > 2) ? icn_interp_eval(root, e->children[2]) : FAILDESCR;
-    }
-
-    case E_NOT: {
-        DESCR_t v = (e->nchildren > 0) ? icn_interp_eval(root, e->children[0]) : FAILDESCR;
-        return IS_FAIL_fn(v) ? NULVCL : FAILDESCR;
-    }
-
-    case E_RETURN: {
-        icn_return_val = (e->nchildren > 0)
-            ? icn_interp_eval(root, e->children[0]) : NULVCL;
-        icn_returning = 1;
-        return icn_return_val;
-    }
-
-    case E_AUGOP: {
-        if (e->nchildren < 2) return NULVCL;
-        EXPR_t *lhs = e->children[0];
-        DESCR_t lv = icn_interp_eval(root, lhs);
-        DESCR_t rv = icn_interp_eval(root, e->children[1]);
-        if (IS_FAIL_fn(lv)||IS_FAIL_fn(rv)) return FAILDESCR;
-        long li=IS_INT_fn(lv)?lv.i:(long)lv.r, ri=IS_INT_fn(rv)?rv.i:(long)rv.r;
-        DESCR_t result = NULVCL;
-        switch((IcnTkKind)e->ival){
-            case TK_AUGPLUS:   result=INTVAL(li+ri); break;
-            case TK_AUGMINUS:  result=INTVAL(li-ri); break;
-            case TK_AUGSTAR:   result=INTVAL(li*ri); break;
-            case TK_AUGSLASH:  result=ri?INTVAL(li/ri):FAILDESCR; break;
-            case TK_AUGMOD:    result=ri?INTVAL(li%ri):FAILDESCR; break;
-            case TK_AUGCONCAT: {
-                const char *ls=VARVAL_fn(lv),*rs=VARVAL_fn(rv);
-                if(!ls)ls="";if(!rs)rs="";
-                size_t ll=strlen(ls),rl=strlen(rs);
-                char *buf=GC_malloc(ll+rl+1);
-                memcpy(buf,ls,ll);memcpy(buf+ll,rs,rl);buf[ll+rl]='\0';
-                result=STRVAL(buf); break;
-            }
-            default: result=INTVAL(li+ri); break;
-        }
-        if (IS_FAIL_fn(result)) return FAILDESCR;
-        if (lhs->kind == E_VAR) {
-            int slot=(int)lhs->ival;
-            if(slot>=0&&slot<icn_env_n&&icn_env) icn_env[slot]=result;
-        }
-        return result;
-    }
-
-    /* String relational operators */
-    case E_LEQ: case E_LNE: case E_LLT: case E_LLE: case E_LGT: case E_LGE: {
-        if (e->nchildren < 2) return FAILDESCR;
-        DESCR_t l = icn_interp_eval(root, e->children[0]);
-        DESCR_t r = icn_interp_eval(root, e->children[1]);
-        if (IS_FAIL_fn(l)||IS_FAIL_fn(r)) return FAILDESCR;
-        const char *ls = IS_INT_fn(l)?NULL:VARVAL_fn(l);
-        const char *rs = IS_INT_fn(r)?NULL:VARVAL_fn(r);
-        if (!ls) ls=""; if (!rs) rs="";
-        int cmp = strcmp(ls, rs);
-        int ok;
-        switch(e->kind){
-            case E_LEQ: ok=(cmp==0);  break;
-            case E_LNE: ok=(cmp!=0);  break;
-            case E_LLT: ok=(cmp<0);   break;
-            case E_LLE: ok=(cmp<=0);  break;
-            case E_LGT: ok=(cmp>0);   break;
-            case E_LGE: ok=(cmp>=0);  break;
-            default:    ok=0;
-        }
-        return ok ? r : FAILDESCR;
-    }
-
-    /* E_LOOP_BREAK: break from repeat/while/until — use icn_loop_break flag */
-    case E_LOOP_BREAK: {
-        icn_loop_break = 1;
-        return (e->nchildren > 0) ? icn_interp_eval(root, e->children[0]) : NULVCL;
-    }
-
-    /* E_SCAN: s ? expr — string scanning context */
-    case E_SCAN: {
-        if (e->nchildren < 1) return FAILDESCR;
-        DESCR_t subj_d = icn_interp_eval(root, e->children[0]);
-        if (IS_FAIL_fn(subj_d)) return FAILDESCR;
-        const char *subj_s = VARVAL_fn(subj_d);
-        if (!subj_s) subj_s = "";
-        if (icn_scan_depth < ICN_SCAN_STACK_MAX) {
-            icn_scan_stack[icn_scan_depth].subj = icn_scan_subj;
-            icn_scan_stack[icn_scan_depth].pos  = icn_scan_pos;
-            icn_scan_depth++;
-        }
-        icn_scan_subj = subj_s; icn_scan_pos = 1;
-        DESCR_t r = (e->nchildren >= 2)
-            ? icn_interp_eval(root, e->children[1]) : NULVCL;
-        if (icn_scan_depth > 0) {
-            icn_scan_depth--;
-            icn_scan_subj = icn_scan_stack[icn_scan_depth].subj;
-            icn_scan_pos  = icn_scan_stack[icn_scan_depth].pos;
-        }
-        return r;
-    }
-
-    /* E_KEYWORD: &subject, &pos */
-    case E_KEYWORD: {
-        if (!e->sval) return NULVCL;
-        if (strcmp(e->sval,"subject")==0)
-            return icn_scan_subj ? STRVAL(icn_scan_subj) : NULVCL;
-        if (strcmp(e->sval,"pos")==0) return INTVAL(icn_scan_pos);
-        return NULVCL;
-    }
-    case E_ITERATE: {
-        /* S-6: !str — when driven, return single-char string at current position */
-        long cur; const char *str;
-        if (icn_gen_lookup_sv(e, &cur, &str) && str) {
-            char *ch = GC_malloc(2); ch[0] = str[cur]; ch[1] = '\0';
-            return STRVAL(ch);
-        }
-        return FAILDESCR;
-    }
-    case E_SUSPEND: /* simplified: return value (S-11 adds setjmp) */
-        return (e->nchildren > 0) ? icn_interp_eval(root, e->children[0]) : NULVCL;
-
-    case E_FNC: {
-        /* Icon E_FNC: children[0] = E_VAR(name), children[1..] = args.
-         * sval may be NULL — always read name from children[0]->sval. */
-        if (e->nchildren < 1) return NULVCL;
-        const char *fn = e->children[0]->sval;
-        if (!fn) return NULVCL;
-        int nargs = e->nchildren - 1;  /* children[1..nchildren-1] are args */
-
-        /* Builtins */
-        if (!strcmp(fn,"write")) {
-            if (nargs == 0) { printf("\n"); return NULVCL; }
-            DESCR_t a = icn_interp_eval(root, e->children[1]);
-            if (IS_FAIL_fn(a)) return FAILDESCR;
-            if (IS_INT_fn(a)) printf("%lld\n",(long long)a.i);
-            else if (IS_REAL_fn(a)) printf("%g\n",a.r);
-            else { const char *s=VARVAL_fn(a); printf("%s\n",s?s:""); }
-            return a;
-        }
-        if (!strcmp(fn,"writes")) {
-            if (nargs == 0) return NULVCL;
-            DESCR_t a = icn_interp_eval(root, e->children[1]);
-            if (IS_INT_fn(a)) printf("%lld",(long long)a.i);
-            else if (IS_REAL_fn(a)) printf("%g",a.r);
-            else { const char *s=VARVAL_fn(a); printf("%s",s?s:""); }
-            return a;
-        }
-        if (!strcmp(fn,"read"))  return NULVCL;
-        if (!strcmp(fn,"stop"))  { exit(0); }
-
-        /* Scan-context builtins — mirror icon_interp.c */
-        if (!strcmp(fn,"any") && nargs >= 1 && icn_scan_pos > 0) {
-            DESCR_t cs = icn_interp_eval(root, e->children[1]);
-            const char *s=icn_scan_subj, *cv=VARVAL_fn(cs);
-            int p=icn_scan_pos-1;
-            if (!s||!cv||p>=(int)strlen(s)||!strchr(cv,s[p])) return FAILDESCR;
-            icn_scan_pos++; return INTVAL(icn_scan_pos);
-        }
-        if (!strcmp(fn,"many") && nargs >= 1 && icn_scan_pos > 0) {
-            DESCR_t cs = icn_interp_eval(root, e->children[1]);
-            const char *s=icn_scan_subj, *cv=VARVAL_fn(cs);
-            int p=icn_scan_pos-1;
-            if (!s||!cv||p>=(int)strlen(s)||!strchr(cv,s[p])) return FAILDESCR;
-            while(p<(int)strlen(s)&&strchr(cv,s[p])) p++;
-            icn_scan_pos=p+1; return INTVAL(icn_scan_pos);
-        }
-        if (!strcmp(fn,"upto") && nargs >= 1 && icn_scan_pos > 0) {
-            DESCR_t cs = icn_interp_eval(root, e->children[1]);
-            const char *s=icn_scan_subj, *cv=VARVAL_fn(cs);
-            if (!s||!cv) return FAILDESCR;
-            int p=icn_scan_pos-1;
-            while(p<(int)strlen(s)&&!strchr(cv,s[p])) p++;
-            if(p>=(int)strlen(s)) return FAILDESCR;
-            icn_scan_pos=p+1; return INTVAL(icn_scan_pos);
-        }
-        if (!strcmp(fn,"move") && nargs >= 1 && icn_scan_pos > 0) {
-            DESCR_t nv = icn_interp_eval(root, e->children[1]);
-            int newp = icn_scan_pos+(int)nv.i;
-            if (!icn_scan_subj||newp<1||newp>(int)strlen(icn_scan_subj)+1) return FAILDESCR;
-            int old=icn_scan_pos; icn_scan_pos=newp;
-            size_t len=(size_t)nv.i;
-            char *buf=GC_malloc(len+1); memcpy(buf,icn_scan_subj+old-1,len); buf[len]='\0';
-            return STRVAL(buf);
-        }
-        if (!strcmp(fn,"tab") && nargs >= 1 && icn_scan_pos > 0) {
-            DESCR_t nv = icn_interp_eval(root, e->children[1]);
-            int newp=(int)nv.i;
-            if (!icn_scan_subj||newp<icn_scan_pos||newp>(int)strlen(icn_scan_subj)+1) return FAILDESCR;
-            int old=icn_scan_pos; icn_scan_pos=newp;
-            size_t len=(size_t)(newp-old);
-            char *buf=GC_malloc(len+1); memcpy(buf,icn_scan_subj+old-1,len); buf[len]='\0';
-            return STRVAL(buf);
-        }
-        if (!strcmp(fn,"match") && nargs >= 1 && icn_scan_pos > 0) {
-            DESCR_t sv = icn_interp_eval(root, e->children[1]);
-            const char *needle=VARVAL_fn(sv), *hay=icn_scan_subj?icn_scan_subj:"";
-            if (!needle) return FAILDESCR;
-            int p=icn_scan_pos-1, nl=(int)strlen(needle);
-            if (strncmp(hay+p,needle,nl)!=0) return FAILDESCR;
-            icn_scan_pos+=nl; return INTVAL(icn_scan_pos);
-        }
-
-        /* find(pat,str) — generator via icn_drive; scalar fallback for non-driven context */
-        if (!strcmp(fn,"find") && nargs >= 2) {
-            long pos1; if (icn_gen_lookup(e, &pos1)) return INTVAL(pos1);
-            DESCR_t s1 = icn_interp_eval(root, e->children[1]);
-            DESCR_t s2 = icn_interp_eval(root, e->children[2]);
-            const char *needle=VARVAL_fn(s1), *hay=VARVAL_fn(s2);
-            if (!needle||!hay) return FAILDESCR;
-            char *p = strstr(hay, needle);
-            return p ? INTVAL((long long)(p-hay)+1) : FAILDESCR;
-        }
-
-        /* User Icon procedure lookup */
-        for (int i = 0; i < icn_proc_count; i++) {
-            if (strcmp(icn_proc_table[i].name, fn) == 0) {
-                DESCR_t args[ICN_SLOT_MAX];
-                for (int j = 0; j < nargs && j < ICN_SLOT_MAX; j++)
-                    args[j] = icn_interp_eval(root, e->children[j+1]);
-                return icn_call_proc(icn_proc_table[i].proc, args, nargs);
-            }
-        }
-        return NULVCL;
-    }
-
-    default: return NULVCL;
-    }
+    g_icn_root = root;
+    return interp_eval(e);
 }
 
-/* icn_scope_add/patch: mirror of scope_add/scope_patch in icon_interp.c.
- * Assigns slot indices to E_VAR nodes by name, in-place on the AST. */
-typedef struct { const char *name; int slot; } IcnScopeEnt;
-typedef struct { IcnScopeEnt e[ICN_SLOT_MAX]; int n; } IcnScope;
-
-static int icn_scope_add(IcnScope *sc, const char *name) {
-    if (!name) return -1;
-    for (int i=0;i<sc->n;i++) if(strcmp(sc->e[i].name,name)==0) return sc->e[i].slot;
-    if (sc->n >= ICN_SLOT_MAX) return -1;
-    int slot = sc->n;
-    sc->e[sc->n].name=name; sc->e[sc->n].slot=slot; sc->n++;
-    return slot;
-}
-static int icn_scope_get(IcnScope *sc, const char *name) {
-    if (!name) return -1;
-    for (int i=0;i<sc->n;i++) if(strcmp(sc->e[i].name,name)==0) return sc->e[i].slot;
-    return -1;
-}
-static void icn_scope_patch(IcnScope *sc, EXPR_t *e) {
-    if (!e) return;
-    if (e->kind == E_GLOBAL) {
-        for (int i=0;i<e->nchildren;i++)
-            if(e->children[i]&&e->children[i]->sval) icn_scope_add(sc, e->children[i]->sval);
-        return;
-    }
+/* icn_collect_names: walk proc body to collect all E_VAR names into names[].
+ * Returns count. Used by icn_call_proc to build save/restore list. */
+static int icn_collect_names(EXPR_t *e, const char **names, int *n, int max) {
+    if (!e) return 0;
     if (e->kind == E_VAR && e->sval) {
-        /* Add var to scope if not already present (handles undeclared vars) */
-        int s = icn_scope_add(sc, e->sval);
-        if (s >= 0) e->ival = s;
+        for (int i = 0; i < *n; i++) if (strcmp(names[i], e->sval) == 0) return 0;
+        if (*n < max) names[(*n)++] = e->sval;
     }
-    for (int i=0;i<e->nchildren;i++) icn_scope_patch(sc, e->children[i]);
+    for (int i = 0; i < e->nchildren; i++) icn_collect_names(e->children[i], names, n, max);
+    return 0;
 }
 
-/* icn_call_proc: call an Icon procedure node (E_FNC with body children).
- * Mirrors icn_call() in icon_interp.c exactly, but uses DESCR_t and icn_env. */
+/* icn_call_proc: call an Icon procedure using name-based NV store.
+ * Saves NV values for all params/locals, installs new values, executes body,
+ * then restores saved values. No slot arrays — pure name/NV. */
 static DESCR_t icn_call_proc(EXPR_t *proc, DESCR_t *args, int nargs) {
-    int nparams = (int)proc->ival;
+    int nparams    = (int)proc->ival;
     int body_start = 1 + nparams;
-    int nbody = proc->nchildren - body_start;
+    int nbody      = proc->nchildren - body_start;
 
-    /* Build name→slot scope: params first, then locals from E_GLOBAL decls */
-    IcnScope sc; sc.n = 0;
+    /* Collect all variable names used in this procedure */
+    const char *names[ICN_SLOT_MAX];
+    int nnames = 0;
+
+    /* Params first (in order) */
     for (int i = 0; i < nparams && i < ICN_SLOT_MAX; i++) {
         EXPR_t *pn = proc->children[1+i];
-        if (pn && pn->sval) icn_scope_add(&sc, pn->sval);
+        if (pn && pn->sval) {
+            int dup = 0;
+            for (int j = 0; j < nnames; j++) if (strcmp(names[j], pn->sval)==0) { dup=1; break; }
+            if (!dup) names[nnames++] = pn->sval;
+        }
     }
+    /* Locals from E_GLOBAL decls, then any undeclared vars in body */
     for (int i = 0; i < nbody; i++) {
         EXPR_t *st = proc->children[body_start+i];
-        if (st && st->kind == E_GLOBAL)
+        if (!st) continue;
+        if (st->kind == E_GLOBAL)
             for (int j = 0; j < st->nchildren; j++)
-                if (st->children[j] && st->children[j]->sval)
-                    icn_scope_add(&sc, st->children[j]->sval);
+                if (st->children[j] && st->children[j]->sval) {
+                    const char *nm = st->children[j]->sval;
+                    int dup = 0;
+                    for (int k = 0; k < nnames; k++) if (strcmp(names[k],nm)==0){dup=1;break;}
+                    if (!dup && nnames < ICN_SLOT_MAX) names[nnames++] = nm;
+                }
+        icn_collect_names(st, names, &nnames, ICN_SLOT_MAX);
     }
-    /* Patch E_VAR.ival with slot indices throughout body.
-     * scope_patch also adds any undeclared vars it encounters to sc,
-     * so sc.n after patching is the true slot count. */
-    for (int i = 0; i < nbody; i++)
-        icn_scope_patch(&sc, proc->children[body_start+i]);
 
-    /* nslots = total slots assigned (params + locals + any undeclared vars) */
-    int nslots = sc.n > 0 ? sc.n : (nparams > 0 ? nparams : ICN_SLOT_MAX);
-    if (nslots > ICN_SLOT_MAX) nslots = ICN_SLOT_MAX;
+    /* Save current NV values for all names */
+    DESCR_t saved[ICN_SLOT_MAX];
+    for (int i = 0; i < nnames; i++) saved[i] = NV_GET_fn(names[i]);
 
-    /* Allocate fresh slot array, load params */
-    DESCR_t frame[ICN_SLOT_MAX];
-    memset(frame, 0, sizeof frame);
-    for (int i = 0; i < nparams && i < nargs && i < ICN_SLOT_MAX; i++)
-        frame[i] = args[i];
+    /* Install params; zero-init locals */
+    for (int i = 0; i < nnames; i++) {
+        DESCR_t val = (i < nparams && i < nargs) ? args[i] : NULVCL;
+        NV_SET_fn(names[i], val);
+    }
 
-    /* Save caller's env, install this frame */
-    DESCR_t *saved_env   = icn_env;
-    int       saved_n    = icn_env_n;
-    int       saved_ret  = icn_returning;
-    icn_env      = frame;
-    icn_env_n    = nslots;
+    /* Save/reset return state */
+    int saved_ret = icn_returning;
     icn_returning = 0;
 
-    /* Execute body statements */
+    /* Execute body */
     DESCR_t result = NULVCL;
     for (int i = 0; i < nbody && !icn_returning; i++) {
         EXPR_t *st = proc->children[body_start+i];
         if (!st || st->kind == E_GLOBAL) continue;
-        result = icn_interp_eval(st, st);
+        result = interp_eval(st);
     }
     if (icn_returning) result = icn_return_val;
 
-    /* Restore caller's env */
-    icn_env       = saved_env;
-    icn_env_n     = saved_n;
+    /* Restore all saved NV values */
+    for (int i = 0; i < nnames; i++) NV_SET_fn(names[i], saved[i]);
     icn_returning = saved_ret;
     return result;
 }
@@ -746,10 +357,10 @@ static DESCR_t icn_call_proc(EXPR_t *proc, DESCR_t *args, int nargs) {
  * Replaces icon_execute_program. Builds proc table, calls main/0. */
 static void icn_execute_program_unified(Program *prog) {
     icn_proc_count = 0;
-    icn_env = NULL; icn_env_n = 0; icn_returning = 0;
+    icn_returning = 0;
     icn_gen_depth = 0;
     icn_scan_subj = NULL; icn_scan_pos = 0; icn_scan_depth = 0;
-    icn_loop_break = 0; g_lang = 1; g_icn_root = NULL;
+    icn_loop_break = 0; g_icn_root = NULL;
 
     /* Build procedure table from STMT_t subjects */
     for (STMT_t *st = prog->head; st; st = st->next) {
@@ -1308,7 +919,11 @@ static DESCR_t interp_eval(EXPR_t *e)
 
     case E_KEYWORD: {
         if (!e->sval || !*e->sval) return NULVCL;
-        /* Keywords stored without & prefix in NV store */
+        /* Icon scan keywords live in icn_scan globals, not the NV store */
+        if (strcmp(e->sval,"subject")==0)
+            return icn_scan_subj ? STRVAL(icn_scan_subj) : NULVCL;
+        if (strcmp(e->sval,"pos")==0) return INTVAL(icn_scan_pos);
+        /* All other keywords stored without & prefix in NV store */
         return NV_GET_fn(e->sval);
     }
 
@@ -1641,6 +1256,91 @@ static DESCR_t interp_eval(EXPR_t *e)
     }
 
     case E_FNC: {
+        /* Icon E_FNC: sval is NULL; name is in children[0]->sval. */
+        if (!e->sval && e->nchildren >= 1 && e->children[0] && e->children[0]->sval) {
+            const char *fn = e->children[0]->sval;
+            int nargs = e->nchildren - 1;
+            if (!strcmp(fn,"write")) {
+                if (nargs == 0) { printf("\n"); return NULVCL; }
+                DESCR_t a = interp_eval(e->children[1]);
+                if (IS_FAIL_fn(a)) return FAILDESCR;
+                if (IS_INT_fn(a)) printf("%lld\n",(long long)a.i);
+                else if (IS_REAL_fn(a)) printf("%g\n",a.r);
+                else { const char *s=VARVAL_fn(a); printf("%s\n",s?s:""); }
+                return a;
+            }
+            if (!strcmp(fn,"writes")) {
+                if (nargs == 0) return NULVCL;
+                DESCR_t a = interp_eval(e->children[1]);
+                if (IS_INT_fn(a)) printf("%lld",(long long)a.i);
+                else if (IS_REAL_fn(a)) printf("%g",a.r);
+                else { const char *s=VARVAL_fn(a); printf("%s",s?s:""); }
+                return a;
+            }
+            if (!strcmp(fn,"read"))  return NULVCL;
+            if (!strcmp(fn,"stop"))  { exit(0); }
+            if (!strcmp(fn,"any") && nargs >= 1 && icn_scan_pos > 0) {
+                DESCR_t cs = interp_eval(e->children[1]);
+                const char *s=icn_scan_subj, *cv=VARVAL_fn(cs); int p=icn_scan_pos-1;
+                if (!s||!cv||p>=(int)strlen(s)||!strchr(cv,s[p])) return FAILDESCR;
+                icn_scan_pos++; return INTVAL(icn_scan_pos);
+            }
+            if (!strcmp(fn,"many") && nargs >= 1 && icn_scan_pos > 0) {
+                DESCR_t cs = interp_eval(e->children[1]);
+                const char *s=icn_scan_subj, *cv=VARVAL_fn(cs); int p=icn_scan_pos-1;
+                if (!s||!cv||p>=(int)strlen(s)||!strchr(cv,s[p])) return FAILDESCR;
+                while(p<(int)strlen(s)&&strchr(cv,s[p])) p++;
+                icn_scan_pos=p+1; return INTVAL(icn_scan_pos);
+            }
+            if (!strcmp(fn,"upto") && nargs >= 1 && icn_scan_pos > 0) {
+                DESCR_t cs = interp_eval(e->children[1]);
+                const char *s=icn_scan_subj, *cv=VARVAL_fn(cs); if (!s||!cv) return FAILDESCR;
+                int p=icn_scan_pos-1;
+                while(p<(int)strlen(s)&&!strchr(cv,s[p])) p++;
+                if(p>=(int)strlen(s)) return FAILDESCR;
+                icn_scan_pos=p+1; return INTVAL(icn_scan_pos);
+            }
+            if (!strcmp(fn,"move") && nargs >= 1 && icn_scan_pos > 0) {
+                DESCR_t nv = interp_eval(e->children[1]); int newp=icn_scan_pos+(int)nv.i;
+                if (!icn_scan_subj||newp<1||newp>(int)strlen(icn_scan_subj)+1) return FAILDESCR;
+                int old=icn_scan_pos; icn_scan_pos=newp; size_t len=(size_t)nv.i;
+                char *buf=GC_malloc(len+1); memcpy(buf,icn_scan_subj+old-1,len); buf[len]='\0';
+                return STRVAL(buf);
+            }
+            if (!strcmp(fn,"tab") && nargs >= 1 && icn_scan_pos > 0) {
+                DESCR_t nv = interp_eval(e->children[1]); int newp=(int)nv.i;
+                if (!icn_scan_subj||newp<icn_scan_pos||newp>(int)strlen(icn_scan_subj)+1) return FAILDESCR;
+                int old=icn_scan_pos; icn_scan_pos=newp; size_t len=(size_t)(newp-old);
+                char *buf=GC_malloc(len+1); memcpy(buf,icn_scan_subj+old-1,len); buf[len]='\0';
+                return STRVAL(buf);
+            }
+            if (!strcmp(fn,"match") && nargs >= 1 && icn_scan_pos > 0) {
+                DESCR_t sv = interp_eval(e->children[1]);
+                const char *needle=VARVAL_fn(sv), *hay=icn_scan_subj?icn_scan_subj:"";
+                if (!needle) return FAILDESCR;
+                int p=icn_scan_pos-1, nl=(int)strlen(needle);
+                if (strncmp(hay+p,needle,nl)!=0) return FAILDESCR;
+                icn_scan_pos+=nl; return INTVAL(icn_scan_pos);
+            }
+            if (!strcmp(fn,"find") && nargs >= 2) {
+                long pos1; if (icn_gen_lookup(e, &pos1)) return INTVAL(pos1);
+                DESCR_t s1=interp_eval(e->children[1]), s2=interp_eval(e->children[2]);
+                const char *needle=VARVAL_fn(s1), *hay=VARVAL_fn(s2);
+                if (!needle||!hay) return FAILDESCR;
+                char *p = strstr(hay, needle);
+                return p ? INTVAL((long long)(p-hay)+1) : FAILDESCR;
+            }
+            /* User Icon procedure */
+            for (int i = 0; i < icn_proc_count; i++) {
+                if (strcmp(icn_proc_table[i].name, fn) == 0) {
+                    DESCR_t icn_args[ICN_SLOT_MAX];
+                    for (int j = 0; j < nargs && j < ICN_SLOT_MAX; j++)
+                        icn_args[j] = interp_eval(e->children[j+1]);
+                    return icn_call_proc(icn_proc_table[i].proc, icn_args, nargs);
+                }
+            }
+            return NULVCL;
+        }
         if (!e->sval || !*e->sval) return FAILDESCR;
 
         /* DEFINE('spec'[,'entry']) — register user function.
@@ -1906,7 +1606,7 @@ static DESCR_t interp_eval(EXPR_t *e)
         double lv = (l.v==DT_R) ? l.r : (double)(l.v==DT_I ? l.i : 0); \
         double rv = (r.v==DT_R) ? r.r : (double)(r.v==DT_I ? r.i : 0); \
         if (!(lv op rv)) return FAILDESCR; \
-        return l; \
+        return r; \
     } while(0)
     case E_LT: NUMREL(<);
     case E_LE: NUMREL(<=);
@@ -2017,6 +1717,139 @@ static DESCR_t interp_eval(EXPR_t *e)
         DESCR_t inner = interp_eval(e->children[0]);
         return pat_arbno(inner);
     }
+
+    /* ── Icon-only nodes ────────────────────────────────────────────────────
+     * These opcodes are emitted only by the Icon frontend. Variable access
+     * uses the NV store by name — icn_call_proc saves/restores NV around calls. */
+
+    case E_CSET:
+        return e->sval ? STRVAL(e->sval) : NULVCL;
+
+    case E_TO: case E_TO_BY: {
+        long cur;
+        if (icn_gen_lookup(e, &cur)) return INTVAL(cur);
+        return (e->nchildren >= 1) ? interp_eval(e->children[0]) : NULVCL;
+    }
+
+    case E_EVERY: {
+        if (e->nchildren < 1) return NULVCL;
+        EXPR_t *gen  = e->children[0];
+        EXPR_t *body = (e->nchildren > 1) ? e->children[1] : NULL;
+        if (body && gen->kind == E_TO && gen->nchildren >= 2) {
+            DESCR_t lo_d = interp_eval(gen->children[0]);
+            DESCR_t hi_d = interp_eval(gen->children[1]);
+            if (IS_FAIL_fn(lo_d)||IS_FAIL_fn(hi_d)) return NULVCL;
+            for (long i=lo_d.i; i<=hi_d.i && !icn_returning; i++) interp_eval(body);
+            return NULVCL;
+        }
+        int ticks = icn_drive(gen, gen);
+        if (!ticks) interp_eval(gen);
+        return NULVCL;
+    }
+
+    case E_WHILE: {
+        int sb = icn_loop_break; icn_loop_break = 0;
+        while (!icn_returning && !icn_loop_break &&
+               !IS_FAIL_fn(interp_eval(e->children[0])))
+            if (e->nchildren > 1) interp_eval(e->children[1]);
+        icn_loop_break = sb; return NULVCL;
+    }
+
+    case E_UNTIL: {
+        int sb = icn_loop_break; icn_loop_break = 0;
+        while (!icn_returning && !icn_loop_break) {
+            DESCR_t cv = (e->nchildren > 0) ? interp_eval(e->children[0]) : FAILDESCR;
+            if (!IS_FAIL_fn(cv)) break;
+            if (e->nchildren > 1) interp_eval(e->children[1]);
+        }
+        icn_loop_break = sb; return NULVCL;
+    }
+
+    case E_REPEAT: {
+        int sb = icn_loop_break; icn_loop_break = 0;
+        while (!icn_returning && !icn_loop_break)
+            if (e->nchildren > 0) interp_eval(e->children[0]);
+        icn_loop_break = sb; return NULVCL;
+    }
+
+    case E_IF: {
+        if (e->nchildren < 1) return NULVCL;
+        DESCR_t cv = interp_eval(e->children[0]);
+        if (!IS_FAIL_fn(cv))
+            return (e->nchildren > 1) ? interp_eval(e->children[1]) : cv;
+        return (e->nchildren > 2) ? interp_eval(e->children[2]) : FAILDESCR;
+    }
+
+    case E_RETURN: {
+        icn_return_val = (e->nchildren > 0) ? interp_eval(e->children[0]) : NULVCL;
+        icn_returning = 1; return icn_return_val;
+    }
+
+    case E_LOOP_BREAK: {
+        icn_loop_break = 1;
+        return (e->nchildren > 0) ? interp_eval(e->children[0]) : NULVCL;
+    }
+
+    case E_AUGOP: {
+        if (e->nchildren < 2) return NULVCL;
+        EXPR_t *lhs = e->children[0];
+        DESCR_t lv = interp_eval(lhs);
+        DESCR_t rv = interp_eval(e->children[1]);
+        if (IS_FAIL_fn(lv)||IS_FAIL_fn(rv)) return FAILDESCR;
+        long li=IS_INT_fn(lv)?lv.i:(long)lv.r, ri=IS_INT_fn(rv)?rv.i:(long)rv.r;
+        DESCR_t result = NULVCL;
+        switch((IcnTkKind)e->ival){
+            case TK_AUGPLUS:   result=INTVAL(li+ri); break;
+            case TK_AUGMINUS:  result=INTVAL(li-ri); break;
+            case TK_AUGSTAR:   result=INTVAL(li*ri); break;
+            case TK_AUGSLASH:  result=ri?INTVAL(li/ri):FAILDESCR; break;
+            case TK_AUGMOD:    result=ri?INTVAL(li%ri):FAILDESCR; break;
+            case TK_AUGCONCAT: {
+                const char *ls=VARVAL_fn(lv),*rs=VARVAL_fn(rv);
+                if(!ls)ls="";if(!rs)rs="";
+                size_t ll=strlen(ls),rl=strlen(rs);
+                char *buf=GC_malloc(ll+rl+1);
+                memcpy(buf,ls,ll);memcpy(buf+ll,rs,rl);buf[ll+rl]='\0';
+                result=STRVAL(buf); break;
+            }
+            default: result=INTVAL(li+ri); break;
+        }
+        if (IS_FAIL_fn(result)) return FAILDESCR;
+        if (lhs->kind == E_VAR && lhs->sval) NV_SET_fn(lhs->sval, result);
+        return result;
+    }
+
+    case E_SCAN: {
+        if (e->nchildren < 1) return FAILDESCR;
+        DESCR_t subj_d = interp_eval(e->children[0]);
+        if (IS_FAIL_fn(subj_d)) return FAILDESCR;
+        const char *subj_s = VARVAL_fn(subj_d); if (!subj_s) subj_s = "";
+        if (icn_scan_depth < ICN_SCAN_STACK_MAX) {
+            icn_scan_stack[icn_scan_depth].subj = icn_scan_subj;
+            icn_scan_stack[icn_scan_depth].pos  = icn_scan_pos;
+            icn_scan_depth++;
+        }
+        icn_scan_subj = subj_s; icn_scan_pos = 1;
+        DESCR_t r = (e->nchildren >= 2) ? interp_eval(e->children[1]) : NULVCL;
+        if (icn_scan_depth > 0) {
+            icn_scan_depth--;
+            icn_scan_subj = icn_scan_stack[icn_scan_depth].subj;
+            icn_scan_pos  = icn_scan_stack[icn_scan_depth].pos;
+        }
+        return r;
+    }
+
+    case E_ITERATE: {
+        long cur; const char *str;
+        if (icn_gen_lookup_sv(e, &cur, &str) && str) {
+            char *ch = GC_malloc(2); ch[0] = str[cur]; ch[1] = '\0';
+            return STRVAL(ch);
+        }
+        return FAILDESCR;
+    }
+
+    case E_SUSPEND:
+        return (e->nchildren > 0) ? interp_eval(e->children[0]) : NULVCL;
 
     default:
         return NULVCL;
@@ -2202,7 +2035,6 @@ static DESCR_t interp_eval_pat(EXPR_t *e)
 static void execute_program(Program *prog)
 {
     label_table_build(prog);
-    g_lang = 0;  /* SNOBOL4 mode */
     prescan_defines(prog);
 
     STMT_t *s = prog->head;
