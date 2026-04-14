@@ -571,6 +571,29 @@ static void lower_stmt(SM_Program *p, LabelTable *lt, const STMT_t *s)
         return;
     }
 
+    /* OE-9: language-aware dispatch — ICN and PL stmts use BB opcodes.
+     * LANG_SNO (0) falls through to the existing SNOBOL4 lowering path. */
+    if (s->lang == LANG_ICN) {
+        /* Icon statement: lower subject expression, emit SM_BB_PUMP.
+         * bb_broker(BB_PUMP) drives the generator to exhaustion. */
+        if (s->subject)
+            lower_expr(p, lt, s->subject);
+        else
+            sm_emit(p, SM_PUSH_NULL);
+        sm_emit(p, SM_BB_PUMP);
+        goto emit_gotos;
+    }
+    if (s->lang == LANG_PL) {
+        /* Prolog statement: lower subject (E_CHOICE/E_CLAUSE tree),
+         * emit SM_BB_ONCE. bb_broker(BB_ONCE) finds one solution. */
+        if (s->subject)
+            lower_expr(p, lt, s->subject);
+        else
+            sm_emit(p, SM_PUSH_NULL);
+        sm_emit(p, SM_BB_ONCE);
+        goto emit_gotos;
+    }
+
     /*
      * 2. Pattern match statement:
      *      subject  pattern  [= replacement]  :(goto)
