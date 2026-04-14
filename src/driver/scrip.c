@@ -214,8 +214,7 @@ static const char *icn_scan_subj  = NULL;
 static int         icn_scan_pos   = 0;
 static struct { const char *subj; int pos; } icn_scan_stack[ICN_SCAN_STACK_MAX];
 static int         icn_scan_depth = 0;
-static DESCR_t icn_interp_eval(EXPR_t *e); /* forward — OE-2: root param removed */
-static DESCR_t interp_eval(EXPR_t *e);     /* forward — OE-5: needed by icn_interp_eval redirect */
+static DESCR_t interp_eval(EXPR_t *e);     /* forward */
 static DESCR_t icn_call_proc(EXPR_t *proc, DESCR_t *args, int nargs); /* forward */
 
 /* U-23: Icon global variable names -- bridge to SNO NV store.
@@ -301,39 +300,39 @@ static int icn_drive(EXPR_t *e) {
     if (icn_gen_active(e)) return 0;
     EXPR_t *root = ICN_CUR.body_root;
     if (e->kind == E_TO && e->nchildren >= 2) {
-        DESCR_t lo_d = icn_interp_eval(e->children[0]);
-        DESCR_t hi_d = icn_interp_eval(e->children[1]);
+        DESCR_t lo_d = interp_eval(e->children[0]);
+        DESCR_t hi_d = interp_eval(e->children[1]);
         if (IS_FAIL_fn(lo_d)||IS_FAIL_fn(hi_d)) return 0;
         long lo=lo_d.i, hi=hi_d.i; int ticks=0;
         for(long i=lo;i<=hi&&!ICN_CUR.returning;i++){
             icn_gen_push(e,i,NULL);
             int inner=icn_drive(root);
-            if(!inner) icn_interp_eval(ICN_CUR.body_root);
+            if(!inner) interp_eval(ICN_CUR.body_root);
             icn_gen_pop(); ticks++;
             if(ICN_CUR.returning) break;
         }
         return ticks;
     }
     if (e->kind == E_TO_BY && e->nchildren >= 3) {
-        DESCR_t lo_d=icn_interp_eval(e->children[0]);
-        DESCR_t hi_d=icn_interp_eval(e->children[1]);
-        DESCR_t st_d=icn_interp_eval(e->children[2]);
+        DESCR_t lo_d=interp_eval(e->children[0]);
+        DESCR_t hi_d=interp_eval(e->children[1]);
+        DESCR_t st_d=interp_eval(e->children[2]);
         if(IS_FAIL_fn(lo_d)||IS_FAIL_fn(hi_d)||IS_FAIL_fn(st_d)) return 0;
         long lo=lo_d.i,hi=hi_d.i,st=st_d.i?st_d.i:1; int ticks=0;
-        if(st>0){for(long i=lo;i<=hi&&!ICN_CUR.returning;i+=st){icn_gen_push(e,i,NULL);int inner=icn_drive(root);if(!inner)icn_interp_eval(ICN_CUR.body_root);icn_gen_pop();ticks++;if(ICN_CUR.returning)break;}}
-        else    {for(long i=lo;i>=hi&&!ICN_CUR.returning;i+=st){icn_gen_push(e,i,NULL);int inner=icn_drive(root);if(!inner)icn_interp_eval(ICN_CUR.body_root);icn_gen_pop();ticks++;if(ICN_CUR.returning)break;}}
+        if(st>0){for(long i=lo;i<=hi&&!ICN_CUR.returning;i+=st){icn_gen_push(e,i,NULL);int inner=icn_drive(root);if(!inner)interp_eval(ICN_CUR.body_root);icn_gen_pop();ticks++;if(ICN_CUR.returning)break;}}
+        else    {for(long i=lo;i>=hi&&!ICN_CUR.returning;i+=st){icn_gen_push(e,i,NULL);int inner=icn_drive(root);if(!inner)interp_eval(ICN_CUR.body_root);icn_gen_pop();ticks++;if(ICN_CUR.returning)break;}}
         return ticks;
     }
     /* S-6: E_ITERATE (!str) — generate each character of a string */
     if (e->kind == E_ITERATE && e->nchildren >= 1) {
-        DESCR_t sv_d = icn_interp_eval(e->children[0]);
+        DESCR_t sv_d = interp_eval(e->children[0]);
         if (IS_FAIL_fn(sv_d) || !IS_STR_fn(sv_d)) return 0;
         const char *str = sv_d.s ? sv_d.s : "";
         long len = (long)strlen(str); int ticks = 0;
         for (long i = 0; i < len && !ICN_CUR.returning; i++) {
             icn_gen_push(e, i, str);
             int inner = icn_drive(root);
-            if (!inner) icn_interp_eval(ICN_CUR.body_root);
+            if (!inner) interp_eval(ICN_CUR.body_root);
             icn_gen_pop(); ticks++;
             if (ICN_CUR.returning) break;
         }
@@ -343,8 +342,8 @@ static int icn_drive(EXPR_t *e) {
     if (e->kind == E_FNC && e->nchildren>=3
         && e->children[0] && e->children[0]->sval
         && strcmp(e->children[0]->sval,"find")==0) {
-        DESCR_t s1 = icn_interp_eval(e->children[1]);
-        DESCR_t s2 = icn_interp_eval(e->children[2]);
+        DESCR_t s1 = interp_eval(e->children[1]);
+        DESCR_t s2 = interp_eval(e->children[2]);
         if (IS_FAIL_fn(s1)||IS_FAIL_fn(s2)) return 0;
         const char *needle = VARVAL_fn(s1), *hay = VARVAL_fn(s2);
         if (!needle||!hay) return 0;
@@ -356,7 +355,7 @@ static int icn_drive(EXPR_t *e) {
             long pos1 = (long)(hit - hay) + 1;
             icn_gen_push(e, pos1, NULL);
             int inner = icn_drive(root);
-            if (!inner) icn_interp_eval(ICN_CUR.body_root);
+            if (!inner) interp_eval(ICN_CUR.body_root);
             icn_gen_pop(); ticks++;
             if (ICN_CUR.returning) break;
             p = hit + (nlen > 0 ? nlen : 1);
@@ -367,11 +366,6 @@ static int icn_drive(EXPR_t *e) {
     return 0;
 }
 
-
-/* icn_interp_eval: OE-5 — redirect to unified interp_eval.
- * interp_eval handles Icon EKinds via icn_frame_depth > 0 guard.
- * Forwarder remains until OE-6 updates all call sites directly. */
-static DESCR_t icn_interp_eval(EXPR_t *e) { return interp_eval(e); }
 
 /* icn_scope_add/patch: mirror of scope_add/scope_patch in icon_interp.c.
  * Assigns slot indices to E_VAR nodes by name, in-place on the AST. */
@@ -450,7 +444,7 @@ static DESCR_t icn_call_proc(EXPR_t *proc, DESCR_t *args, int nargs) {
         EXPR_t *st = proc->children[body_start+i];
         if (!st || st->kind == E_GLOBAL) continue;
         ICN_CUR.body_root = st;   /* OE-2: drive root for this statement */
-        result = icn_interp_eval(st);
+        result = interp_eval(st);
     }
     if (ICN_CUR.returning) result = ICN_CUR.return_val;
 
@@ -467,9 +461,9 @@ static DESCR_t icn_call_proc(EXPR_t *proc, DESCR_t *args, int nargs) {
  *   E_TO_BY     → icn_bb_to_by   (icn_to_by_state_t: lo/hi/step/cur)
  *   E_ITERATE   → icn_bb_iterate  (icn_iterate_state_t: str/len/pos)
  *   E_FNC (user proc) → icn_bb_suspend (coroutine wrapping icn_call_proc)
- *   fallback    → one-shot box returning icn_interp_eval(e,e)
+ *   fallback    → one-shot box returning interp_eval(e)
  *
- * Visible here: icn_interp_eval, icn_call_proc, icn_proc_table, icn_proc_count.
+ * Visible here: interp_eval, icn_call_proc, icn_proc_table, icn_proc_count.
  *============================================================================================================================*/
 
 /* One-shot fallback box state — holds a pre-evaluated DESCR_t, fires γ once then ω. */
@@ -508,8 +502,8 @@ bb_node_t icn_eval_gen(EXPR_t *e) {
 
     /* ── E_TO: (lo to hi) ────────────────────────────────────────────────── */
     if (e->kind == E_TO && e->nchildren >= 2) {
-        DESCR_t lo_d = icn_interp_eval(e->children[0]);
-        DESCR_t hi_d = icn_interp_eval(e->children[1]);
+        DESCR_t lo_d = interp_eval(e->children[0]);
+        DESCR_t hi_d = interp_eval(e->children[1]);
         icn_to_state_t *z = calloc(1, sizeof(*z));
         z->lo = IS_FAIL_fn(lo_d) ? 0 : lo_d.i;
         z->hi = IS_FAIL_fn(hi_d) ? 0 : hi_d.i;
@@ -518,9 +512,9 @@ bb_node_t icn_eval_gen(EXPR_t *e) {
 
     /* ── E_TO_BY: (lo to hi by step) ─────────────────────────────────────── */
     if (e->kind == E_TO_BY && e->nchildren >= 3) {
-        DESCR_t lo_d   = icn_interp_eval(e->children[0]);
-        DESCR_t hi_d   = icn_interp_eval(e->children[1]);
-        DESCR_t step_d = icn_interp_eval(e->children[2]);
+        DESCR_t lo_d   = interp_eval(e->children[0]);
+        DESCR_t hi_d   = interp_eval(e->children[1]);
+        DESCR_t step_d = interp_eval(e->children[2]);
         icn_to_by_state_t *z = calloc(1, sizeof(*z));
         z->lo   = IS_FAIL_fn(lo_d)   ? 0 : lo_d.i;
         z->hi   = IS_FAIL_fn(hi_d)   ? 0 : hi_d.i;
@@ -530,7 +524,7 @@ bb_node_t icn_eval_gen(EXPR_t *e) {
 
     /* ── E_ITERATE: (!str) ───────────────────────────────────────────────── */
     if (e->kind == E_ITERATE && e->nchildren >= 1) {
-        DESCR_t sv = icn_interp_eval(e->children[0]);
+        DESCR_t sv = interp_eval(e->children[0]);
         icn_iterate_state_t *z = calloc(1, sizeof(*z));
         if (!IS_FAIL_fn(sv) && sv.s) {
             z->str = sv.s;
@@ -548,7 +542,7 @@ bb_node_t icn_eval_gen(EXPR_t *e) {
             /* Build args array */
             DESCR_t *args = nargs > 0 ? calloc(nargs, sizeof(DESCR_t)) : NULL;
             for (int j = 0; j < nargs; j++)
-                args[j] = icn_interp_eval(e->children[1+j]);
+                args[j] = interp_eval(e->children[1+j]);
             /* Allocate suspend state + stack */
             icn_suspend_state_t *ss = calloc(1, sizeof(*ss));
             ss->stack       = malloc(256 * 1024);
@@ -563,9 +557,9 @@ bb_node_t icn_eval_gen(EXPR_t *e) {
         }
     }
 
-    /* ── Fallback: one-shot box wrapping icn_interp_eval ─────────────────── */
+    /* ── Fallback: one-shot box wrapping interp_eval ─────────────────────── */
     icn_oneshot_state_t *z = calloc(1, sizeof(*z));
-    z->val = icn_interp_eval(e);
+    z->val = interp_eval(e);
     return (bb_node_t){ icn_oneshot_box, z, 0 };
 }
 
