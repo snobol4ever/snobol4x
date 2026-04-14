@@ -283,6 +283,42 @@ int is_pl_user_call(EXPR_t *goal) {
     return 1;
 }
 
+/*---- term_order_cmp — ISO standard order: var < number < atom < compound ----*/
+static int term_order_cmp(Term *a, Term *b) {
+    a = term_deref(a); b = term_deref(b);
+    if (!a && !b) return 0;
+    if (!a) return -1;
+    if (!b) return  1;
+    /* Type rank: var=0, number=1, atom=2, compound=3 */
+    int ra = (a->tag==TT_VAR)?0:(a->tag==TT_INT||a->tag==TT_FLOAT)?1:(a->tag==TT_ATOM)?2:3;
+    int rb = (b->tag==TT_VAR)?0:(b->tag==TT_INT||b->tag==TT_FLOAT)?1:(b->tag==TT_ATOM)?2:3;
+    if (ra != rb) return ra - rb;
+    switch (a->tag) {
+        case TT_VAR:   return (int)(a - b);  /* address order for unbound vars */
+        case TT_INT:   return (a->ival < b->ival) ? -1 : (a->ival > b->ival) ? 1 : 0;
+        case TT_FLOAT: return (a->fval < b->fval) ? -1 : (a->fval > b->fval) ? 1 : 0;
+        case TT_ATOM: {
+            const char *sa = prolog_atom_name(a->atom_id);
+            const char *sb = prolog_atom_name(b->atom_id);
+            return strcmp(sa ? sa : "", sb ? sb : "");
+        }
+        case TT_COMPOUND: {
+            /* arity first, then functor name, then args left-to-right */
+            if (a->compound.arity != b->compound.arity) return a->compound.arity - b->compound.arity;
+            const char *fa = prolog_atom_name(a->compound.functor);
+            const char *fb = prolog_atom_name(b->compound.functor);
+            int c = strcmp(fa ? fa : "", fb ? fb : "");
+            if (c) return c;
+            for (int i = 0; i < a->compound.arity; i++) {
+                c = term_order_cmp(a->compound.args[i], b->compound.args[i]);
+                if (c) return c;
+            }
+            return 0;
+        }
+        default: return 0;
+    }
+}
+
 /*---- interp_exec_pl_builtin — execute one Prolog builtin goal ----*/
 /* Uses file-scope globals g_pl_trail, g_pl_cut_flag, g_pl_pred_table, g_pl_env.
  * Returns 1=success, 0=fail. Called by pl_box_builtin in pl_broker.c. */
@@ -577,6 +613,60 @@ int interp_exec_pl_builtin(EXPR_t *goal, Term **env) {
                     if(!unify(a,res,trail)){trail_unwind(trail,mark);return 0;}
                     return 1;
                 }
+            }
+            /*---- term ordering: @</2, @>/2, @=</2, @>=/2, compare/3 (PL-5) ----*/
+            if (arity==2&&(strcmp(fn,"@<")==0||strcmp(fn,"@>")==0||strcmp(fn,"@=<")==0||strcmp(fn,"@>=")==0)) {
+                Term *a=term_deref(pl_unified_term_from_expr(goal->children[0],env));
+                Term *b=term_deref(pl_unified_term_from_expr(goal->children[1],env));
+                int c=term_order_cmp(a,b);
+                if (strcmp(fn,"@<")==0)  return c<0;
+                if (strcmp(fn,"@>")==0)  return c>0;
+                if (strcmp(fn,"@=<")==0) return c<=0;
+                if (strcmp(fn,"@>=")==0) return c>=0;
+            }
+            if (strcmp(fn,"compare")==0&&arity==3) {
+                Term *order=pl_unified_term_from_expr(goal->children[0],env);
+                Term *a=term_deref(pl_unified_term_from_expr(goal->children[1],env));
+                Term *b=term_deref(pl_unified_term_from_expr(goal->children[2],env));
+                int c=term_order_cmp(a,b);
+                const char *os=c<0?"<":c>0?">":"=";
+                Term *ot=term_new_atom(prolog_atom_intern(os));
+                int mark=trail_mark(trail);
+                if(!unify(order,ot,trail)){trail_unwind(trail,mark);return 0;}
+                return 1;
+            }
+            /*---- sort/2 and msort/2 (PL-5) ----*/
+            if ((strcmp(fn,"sort")==0||strcmp(fn,"msort")==0)&&arity==2) {
+                int do_dedup=(strcmp(fn,"sort")==0);
+                Term *lst=term_deref(pl_unified_term_from_expr(goal->children[0],env));
+                Term *out=pl_unified_term_from_expr(goal->children[1],env);
+                /* collect list into array */
+                Term *elems[4096]; int n=0;
+                Term *cur=lst;
+                int nil_id=prolog_atom_intern("[]"),dot_id=prolog_atom_intern(".");
+                while(cur&&cur->tag==TT_COMPOUND&&cur->compound.arity==2) {
+                    if(n<4096) elems[n++]=term_deref(cur->compound.args[0]);
+                    cur=term_deref(cur->compound.args[1]);
+                }
+                /* insertion sort (small lists; good enough for ladder) */
+                for(int i=1;i<n;i++){
+                    Term *key=elems[i]; int j=i-1;
+                    while(j>=0&&term_order_cmp(elems[j],key)>0){elems[j+1]=elems[j];j--;}
+                    elems[j+1]=key;
+                }
+                /* dedup for sort/2 */
+                if(do_dedup&&n>0){
+                    int w=0;
+                    for(int i=0;i<n;i++)
+                        if(i==0||term_order_cmp(elems[i-1],elems[i])!=0) elems[w++]=elems[i];
+                    n=w;
+                }
+                /* build result list */
+                Term *res=term_new_atom(nil_id);
+                for(int i=n-1;i>=0;i--){Term *a2[2];a2[0]=elems[i];a2[1]=res;res=term_new_compound(dot_id,2,a2);}
+                int mark=trail_mark(trail);
+                if(!unify(out,res,trail)){trail_unwind(trail,mark);return 0;}
+                return 1;
             }
             /* U-23: nv_get(+Name, -Val) / nv_set(+Name, +Val) -- SNO NV store bridge */
             if (strcmp(fn,"nv_get")==0&&arity==2) {
