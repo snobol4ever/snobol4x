@@ -13,6 +13,7 @@
 #define INTERP_H
 
 #include <stdint.h>
+#include <setjmp.h>
 #include "frontend/snobol4/scrip_cc.h"  /* EXPR_t, STMT_t, Program, DESCR_t */
 
 /* ── Diagnostic flags (set in main, read by execute_program / sm_interp) ── */
@@ -56,7 +57,13 @@ void    prescan_defines(Program *prog);
 DESCR_t interp_eval    (EXPR_t *e);
 DESCR_t interp_eval_pat(EXPR_t *e);
 void    execute_program(Program *prog);
+void    execute_program_steps(Program *prog, int n);  /* IM-3: step-limited run */
 void    ir_dump_program(Program *prog, FILE *f);
+
+/* IM-3: IR step-limit globals */
+extern int     g_ir_step_limit;
+extern int     g_ir_steps_done;
+extern jmp_buf g_ir_step_jmp;
 
 /* ── Hook functions registered in main() ──────────────────────────────── */
 DESCR_t _builtin_IDENT  (DESCR_t *args, int nargs);

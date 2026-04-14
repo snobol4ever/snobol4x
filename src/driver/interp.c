@@ -144,6 +144,11 @@ int g_polyglot = 0; /* U-23: 1 when running a fenced polyglot .scrip file */
 int g_opt_trace   = 0;  /* --trace:   print STMT N on each statement */
 int g_opt_dump_bb = 0;  /* --dump-bb: print PATND tree before each match */
 
+/* IM-3: IR step-limit for in-process sync monitor */
+int      g_ir_step_limit = 0;   /* 0 = unlimited; N = stop after N stmts */
+int      g_ir_steps_done = 0;
+jmp_buf  g_ir_step_jmp;
+
 /* ── Extract DEFINE spec string from E_FNC("DEFINE",...) subject node ── */
 static const char *define_spec_from_expr(EXPR_t *subj)
 {
@@ -2137,6 +2142,10 @@ void execute_program(Program *prog)
         if (s->is_end) break;  /* U-23: polyglot multi-section dispatch handles remaining modules */
         comm_stno(++stno);
 
+        /* IM-3: step-limit — stop after exactly g_ir_step_limit statements */
+        if (g_ir_step_limit > 0 && g_ir_steps_done++ >= g_ir_step_limit)
+            longjmp(g_ir_step_jmp, 1);
+
         /* ── --trace: print statement number to stderr ─────────────── */
         if (g_opt_trace)
             fprintf(stderr, "TRACE stmt %d\n", stno);
@@ -2572,6 +2581,17 @@ DESCR_t _usercall_hook(const char *name, DESCR_t *args, int nargs) {
     return call_user_function(name, args, nargs);
 }
 
+
+/* IM-3: execute_program_steps — run at most N statements then return.
+ * Sets up g_ir_step_jmp so the step-limit longjmp lands here safely. */
+void execute_program_steps(Program *prog, int n) {
+    g_ir_step_limit = n;
+    g_ir_steps_done = 0;
+    if (setjmp(g_ir_step_jmp) == 0)
+        execute_program(prog);
+    g_ir_step_limit = 0;
+    g_ir_steps_done = 0;
+}
 
 /* ── ir_print_stmt — print one STMT_t as IR sexp for comparison sweep ──────
  * Emits: (STMT [:lbl L] [:subj EXPR] [:pat EXPR] [:repl EXPR] [:go*])
