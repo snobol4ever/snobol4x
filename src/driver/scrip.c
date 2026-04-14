@@ -72,6 +72,7 @@ extern void ir_print_node_nl(const EXPR_t *e, FILE *f);
 #include "../runtime/x86/sm_prog.h"
 #include "../runtime/x86/bb_build.h"    /* M-BB-LIVE-WIRE: bb_mode_t, g_bb_mode */
 #include "../runtime/x86/sm_codegen.h"  /* M-JIT-RUN: sm_codegen, sm_jit_run */
+#include "sync_monitor.h"               /* IM-7: --monitor in-process comparator */
 #include "../runtime/x86/sm_image.h"    /* M-JIT-RUN: sm_image_init */
 
 /* pat_at_cursor not exposed in snobol4.h — forward-declare here */
@@ -110,6 +111,7 @@ int main(int argc, char **argv)
     int mode_ir_run        = 0;  /* --ir-run   : interpret via IR tree-walk (correctness ref) */
     int mode_sm_run        = 0;  /* --sm-run   : interpret SM_Program via dispatch loop [DEFAULT] */
     int mode_jit_run       = 0;  /* --jit-run  : SM_Program -> x86 bytes -> mmap slab -> jump in */
+    int mode_monitor       = 0;  /* --monitor  : in-process sync comparator (IR vs SM vs JIT) */
 
     /* Byrd Box pattern mode — independent switch (default: --bb-driver) */
     int bb_driver          = 0;  /* --bb-driver : pattern matching via driver/broker */
@@ -133,6 +135,7 @@ int main(int argc, char **argv)
         if      (strcmp(argv[argi], "--ir-run")        == 0) { mode_ir_run        = 1; argi++; }
         else if (strcmp(argv[argi], "--sm-run")        == 0) { mode_sm_run        = 1; argi++; }
         else if (strcmp(argv[argi], "--jit-run")       == 0) { mode_jit_run       = 1; argi++; }
+        else if (strcmp(argv[argi], "--monitor")       == 0) { mode_monitor       = 1; argi++; }
         /* BB pattern mode */
         else if (strcmp(argv[argi], "--bb-driver")     == 0) { bb_driver          = 1; argi++; }
         else if (strcmp(argv[argi], "--bb-live")       == 0) { bb_live            = 1; argi++; }
@@ -148,8 +151,8 @@ int main(int argc, char **argv)
         else break;
     }
 
-    /* Default execution mode: --sm-run */
-    if (!mode_ir_run && !mode_sm_run && !mode_jit_run)
+    /* Default execution mode: --sm-run (not when --monitor) */
+    if (!mode_ir_run && !mode_sm_run && !mode_jit_run && !mode_monitor)
         mode_sm_run = 1;
 
     /* Default BB mode: --bb-driver unless --bb-live explicitly set */
@@ -169,6 +172,7 @@ int main(int argc, char **argv)
             "  --ir-run         interpret via IR tree-walk (correctness reference)\n"
             "  --sm-run         interpret SM_Program via dispatch loop  [DEFAULT]\n"
             "  --jit-run        SM_Program -> x86 bytes -> mmap slab -> jump in\n"
+            "  --monitor        in-process sync comparator (IR vs SM vs JIT)\n"
             "\n"
             "Byrd Box pattern mode (default: --bb-driver):\n"
             "  --bb-driver      pattern matching via driver/broker\n"
@@ -369,7 +373,21 @@ int main(int argc, char **argv)
         return 0;
     }
 
-    if (lang_polyglot) {
+    if (mode_monitor) {
+        /* IM-7: --monitor — in-process sync comparator.
+         * Runs IR, SM, and JIT step-by-step over the same Program,
+         * snapshot/restoring state between each run.
+         * Returns 0 if all three agree; exits non-zero on first divergence. */
+        label_table_build(prog);
+        prescan_defines(prog);
+        g_sno_err_active = 1;
+        int div_stmt = sync_monitor_run(prog, 1 /* verbose */);
+        if (div_stmt != 0) {
+            fprintf(stderr, "scrip --monitor: DIVERGE at stmt %d\n", div_stmt);
+            return 1;
+        }
+        return 0;
+    } else if (lang_polyglot) {
         polyglot_execute(prog);   /* OE-7: polyglot takes priority — SM layer not yet polyglot-aware (OE-9/10/11) */
     } else if (mode_sm_run) {
         /* --sm-run: SM-LOWER path — IR → SM_Program → sm_interp_run.

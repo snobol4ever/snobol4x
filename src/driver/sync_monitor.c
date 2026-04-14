@@ -201,9 +201,11 @@ int sync_monitor_run(void *prog_arg, int verbose) {
         int ir_jit = snap_diff(&ir_snap,  "IR",  &jit_snap, "JIT", 0);
 
         if (ir_sm || ir_jit) {
-            /* Find label for this statement */
-            const char *lbl = (prog->stmts && n <= nstmts && prog->stmts[n-1].label)
-                              ? prog->stmts[n-1].label : "-";
+            /* Find label for this statement by walking the linked list */
+            const char *lbl = "-";
+            { int wi = 1; STMT_t *ws = prog->head;
+              for (; ws && wi < n; ws = ws->next, wi++) {}
+              if (ws && ws->label) lbl = ws->label; }
             fprintf(stderr, "DIVERGE at stmt %d [label: %s]\n", n, lbl);
             if (ir_sm) {
                 fprintf(stderr, "  IR vs SM (%d var(s) differ):\n", ir_sm);

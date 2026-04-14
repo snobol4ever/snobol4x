@@ -84,6 +84,7 @@ PL_RUNTIME = \
 DRIVER = \
     driver/interp.c \
     driver/polyglot.c \
+    driver/sync_monitor.c \
     driver/scrip.c
 
 SRCS = $(FRONTEND_SNO) $(FRONTEND_PROLOG) $(FRONTEND_SNOCONE) $(FRONTEND_REBUS) \
