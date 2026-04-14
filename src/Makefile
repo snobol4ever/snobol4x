@@ -73,9 +73,7 @@ RUNTIME_X86 = \
 FRONTEND_RAKU = \
     frontend/raku/raku.tab.c \
     frontend/raku/raku.lex.c \
-    frontend/raku/raku_ast.c \
-    frontend/raku/raku_driver.c \
-    frontend/raku/raku_lower.c
+    frontend/raku/raku_driver.c
 
 DRIVER = \
     driver/scrip.c

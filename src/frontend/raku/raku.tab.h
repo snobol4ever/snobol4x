@@ -58,19 +58,20 @@ extern int raku_yydebug;
 /*
  * raku.y — Tiny-Raku Bison grammar
  *
- * Phase 1 subset: literals, $scalar/@array vars, my, say, print,
- * arithmetic, string concat (~), comparisons, range (..), for,
- * if/else, while, sub, gather, take, return.
- *
- * Produces RakuNode* AST. raku_ast.h defines all node types.
+ * FI-3: builds EXPR_t/STMT_t directly — no intermediate RakuNode AST.
  *
  * AUTHORS: Lon Jones Cherryholmes · Claude Sonnet 4.6
  */
-/* %code requires is emitted into raku.tab.h — makes RakuNode/RakuList
- * available to any file that includes the generated header. */
-#include "raku_ast.h"
+#include "../../ir/ir.h"
+#include "../snobol4/scrip_cc.h"
 
-#line 74 "raku.tab.h"
+typedef struct ExprList {
+    EXPR_t **items;
+    int      count;
+    int      cap;
+} ExprList;
+
+#line 75 "raku.tab.h"
 
 /* Token kinds.  */
 #ifndef RAKU_YYTOKENTYPE
@@ -126,15 +127,15 @@ extern int raku_yydebug;
 #if ! defined RAKU_YYSTYPE && ! defined RAKU_YYSTYPE_IS_DECLARED
 union RAKU_YYSTYPE
 {
-#line 36 "raku.y"
+#line 141 "raku.y"
 
-    long       ival;
-    double     dval;
-    char      *sval;
-    RakuNode  *node;
-    RakuList  *list;
+    long      ival;
+    double    dval;
+    char     *sval;
+    EXPR_t   *node;
+    ExprList *list;
 
-#line 138 "raku.tab.h"
+#line 139 "raku.tab.h"
 
 };
 typedef union RAKU_YYSTYPE RAKU_YYSTYPE;

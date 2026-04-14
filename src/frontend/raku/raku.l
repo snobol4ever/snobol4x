@@ -12,7 +12,6 @@
  *
  * AUTHORS: Lon Jones Cherryholmes · Claude Sonnet 4.6
  */
-#include "raku_ast.h"
 #include "raku.tab.h"
 #include <stdio.h>
 #include <stdlib.h>
