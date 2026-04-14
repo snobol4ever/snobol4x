@@ -1120,10 +1120,9 @@ static void polyglot_init(Program *prog)
 
         if (!s->subject) continue;
 
-        if (s->lang == LANG_ICN) {
-            /* Icon: collect E_FNC procedure definitions.
-             * icon_lower stores proc name in proc->sval (and also children[0]->sval).
-             * Use proc->sval as the authoritative source. */
+        if (s->lang == LANG_ICN || s->lang == LANG_RAKU) {
+            /* Icon / Raku: collect E_FNC procedure definitions.
+             * raku_lower produces same E_FNC shape; share icn_proc_table (RK-6). */
             EXPR_t *proc = s->subject;
             /* U-23: collect global variable names from E_GLOBAL decl stmts */
             if (proc->kind == E_GLOBAL) {
@@ -3038,8 +3037,8 @@ static void execute_program(Program *prog)
         }
 
         /* ── U-15: per-statement dispatch by st->lang ─────────────── */
-        if (s->lang == LANG_ICN) {
-            /* Icon STMT_t nodes are procedure definitions — already registered
+        if (s->lang == LANG_ICN || s->lang == LANG_RAKU) {
+            /* Icon / Raku STMT_t nodes are procedure definitions — already registered
              * in icn_proc_table by polyglot_init.  Skip inline; main() is
              * called once after the SNO/PL statement loop completes. */
             s = s->next; continue;
@@ -3314,7 +3313,7 @@ static void execute_program(Program *prog)
          * Only ICN and PL need to be dispatched here; SNO already ran. */
         for (int _mi = 0; _mi < g_registry.nmod; _mi++) {
             ScripModule *_m = &g_registry.mods[_mi];
-            if (_m->lang == LANG_ICN) {
+            if (_m->lang == LANG_ICN || _m->lang == LANG_RAKU) {
                 int _pend = _m->icn_proc_start + _m->icn_proc_count;
                 int _found = 0;
                 for (int _pi = _m->icn_proc_start; _pi < _pend && _pi < icn_proc_count; _pi++) {
@@ -3826,15 +3825,10 @@ int main(int argc, char **argv)
         if (!src) { fprintf(stderr, "scrip: out of memory\n"); return 1; }
         fread(src, 1, flen, f); src[flen] = '\0'; fclose(f);
         if (opt_bench) clock_gettime(CLOCK_MONOTONIC, &_t1);
-        if (lang_raku) {
-            /* Phase 1: direct AST eval — no IR yet */
-            int rc = raku_run_string(src);
-            free(src);
-            return rc;
-        }
-        prog = lang_prolog ? prolog_compile(src, input_path)
-                           : lang_icon   ? icon_compile(src, input_path)
-                           : snocone_compile(src, input_path);
+        prog = lang_raku   ? raku_compile(src, input_path)
+             : lang_prolog ? prolog_compile(src, input_path)
+             : lang_icon   ? icon_compile(src, input_path)
+             :               snocone_compile(src, input_path);
         free(src);
     } else if (dump_parse || dump_parse_flat || dump_ir) {
         /* --dump-parse / --dump-parse-flat / --dump-ir: bison path (CMPILE removed) */

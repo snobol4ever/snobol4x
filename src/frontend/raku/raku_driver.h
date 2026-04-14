@@ -22,4 +22,10 @@ int raku_eval_direct(RakuNode *program);
  * Used for .raku files before IR lowering is wired. */
 int raku_run_string(const char *src);
 
+/* Full pipeline: parse → lower → wrap → Program*.
+ * Sets st->lang = LANG_RAKU on each STMT_t.
+ * Returns NULL on parse failure. */
+#include "../snobol4/scrip_cc.h"
+Program *raku_compile(const char *src, const char *filename);
+
 #endif /* RAKU_DRIVER_H */

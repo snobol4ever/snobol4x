@@ -13,6 +13,8 @@
  */
 #include "raku_driver.h"
 #include "raku_ast.h"
+#include "raku_lower.h"
+#include "../snobol4/scrip_cc.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -344,4 +346,52 @@ int raku_run_string(const char *src) {
     RakuNode *prog = raku_parse_string(src);
     if (!prog) { fprintf(stderr, "raku: parse failed\n"); return 1; }
     return raku_eval_direct(prog);
+}
+
+/*============================================================
+ * raku_compile — full pipeline: parse → lower → Program*
+ *
+ * Mirrors icon_compile() exactly.
+ * Sets st->lang = LANG_RAKU on every STMT_t.
+ *============================================================*/
+Program *raku_compile(const char *src, const char *filename) {
+    if (!filename) filename = "<stdin>";
+
+    /* Parse */
+    RakuNode *parse_root = raku_parse_string(src);
+    if (!parse_root) {
+        fprintf(stderr, "raku: parse error in %s\n", filename);
+        return NULL;
+    }
+
+    /* Collect top-level statements from the root RK_BLOCK */
+    RakuNode **stmts = NULL;
+    int count = 0;
+    if (parse_root->kind == RK_BLOCK && parse_root->children) {
+        count = parse_root->children->count;
+        stmts = parse_root->children->items;
+    }
+
+    /* Lower RakuNode** → EXPR_t** */
+    int lcount = 0;
+    EXPR_t **lowered = raku_lower_file(stmts, count, &lcount);
+
+    /* Wrap each EXPR_t* as a STMT_t → Program* */
+    Program *prog = calloc(1, sizeof(Program));
+    for (int i = 0; i < lcount; i++) {
+        if (!lowered[i]) continue;
+        STMT_t *st = calloc(1, sizeof(STMT_t));
+        st->subject = lowered[i];
+        st->lineno  = 0;
+        st->lang    = LANG_RAKU;
+        if (!prog->head) prog->head = prog->tail = st;
+        else           { prog->tail->next = st; prog->tail = st; }
+        prog->nstmts++;
+    }
+
+    free(lowered);
+    /* Note: RakuNode tree shares pointers into the source string;
+     * we leave parse_root for now (no raku_node_free yet). */
+
+    return prog;
 }

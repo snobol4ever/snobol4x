@@ -76,9 +76,23 @@ static EXPR_t *var_node(const char *name) {
     return leaf_sval(E_VAR, strip_sigil(name));
 }
 
-/* fnc_node — E_FNC leaf with name; caller adds children. */
+/* fnc_node — E_FNC with name in sval; caller adds children.
+ * NOTE: For call nodes (not proc defs), children[0] must be a name E_VAR
+ * node — icn_interp_eval reads fn name from children[0]->sval.
+ * Use make_call() for calls; use fnc_node()+manual layout for proc defs. */
 static EXPR_t *fnc_node(const char *name) {
     return leaf_sval(E_FNC, name);
+}
+
+/* make_call — build E_FNC call node with correct icon_lower layout:
+ *   sval=name, children[0]=E_VAR(name), children[1..]=args.
+ * icn_interp_eval reads fn name from children[0]->sval. */
+static EXPR_t *make_call(const char *name) {
+    EXPR_t *e = leaf_sval(E_FNC, name);
+    EXPR_t *nnode = expr_new(E_VAR);
+    nnode->sval = intern(name);
+    expr_add_child(e, nnode);   /* children[0] = name node */
+    return e;
 }
 
 /* lower_block_children — lower every statement in an RK_BLOCK into dst. */
@@ -171,15 +185,15 @@ static EXPR_t *lower_node(const RakuNode *n) {
 
     /*-- say / print -------------------------------------------------------*/
     case RK_SAY: {
-        /* say expr → E_FNC("write", [expr]) — reuses Icon write builtin */
-        e = fnc_node("write");
-        expr_add_child(e, lower_node(n->left));
+        /* say expr → E_FNC call: children[0]=E_VAR("write"), children[1]=expr */
+        e = make_call("write");
+        expr_add_child(e, lower_node(n->left));   /* children[1] = arg */
         return e;
     }
     case RK_PRINT: {
-        /* print expr → E_FNC("writes", [expr]) — no newline */
-        e = fnc_node("writes");
-        expr_add_child(e, lower_node(n->left));
+        /* print expr → E_FNC call: children[0]=E_VAR("writes"), children[1]=expr */
+        e = make_call("writes");
+        expr_add_child(e, lower_node(n->left));   /* children[1] = arg */
         return e;
     }
 
@@ -201,42 +215,70 @@ static EXPR_t *lower_node(const RakuNode *n) {
         return expr_unary(E_ITERATE, body);
     }
 
-    /*-- for RANGE -> $v body  →  E_EVERY(E_TO(lo,hi), body) --------------
-     * for @arr -> $v body     →  E_EVERY(E_ITERATE(E_VAR(arr)), body)
+    /*-- for RANGE -> $v body  →  explicit while-loop with counter ----------
      *
-     * The pointy-block variable binding is expressed as an E_ASSIGN of
-     * $_ / $v around the body — we wrap body in an E_SEQ_EXPR that first
-     * assigns the iteration variable then runs the original body stmts.   */
+     * icn_interp_eval's E_EVERY(E_TO) path iterates but never assigns the
+     * loop counter to an env slot — so $v would always read zero.
+     * We lower to an explicit while-loop instead:
+     *
+     *   for lo..hi -> $v { body }
+     *   →
+     *   E_SEQ_EXPR(
+     *     E_ASSIGN($v, lo),
+     *     E_WHILE(E_LE($v, hi),
+     *       E_SEQ_EXPR(body_stmts..., E_ASSIGN($v, E_ADD($v, 1))))
+     *   )
+     *
+     * This uses only E_ASSIGN/E_WHILE/E_LE/E_ADD — all handled by
+     * icn_interp_eval — and gives the body correct $v at each iteration.
+     *
+     * for @arr -> $v: emit E_EVERY(E_ITERATE(arr), body) as before;
+     * array iteration variable binding is a Phase 2 enhancement.          */
     case RK_FOR: {
         const RakuNode *iter = n->left;        /* range or array expr */
         const char     *var  = n->sval;        /* "$v" or NULL → "$_" */
         const RakuNode *body = n->extra;       /* body block */
         if (!var) var = "$_";
+        /* strip sigil for env slot name */
+        const char *vname = (var[0]=='$'||var[0]=='@') ? var+1 : var;
 
-        /* Build the generator expression */
-        EXPR_t *gen;
         if (iter && (iter->kind == RK_RANGE || iter->kind == RK_RANGE_EX)) {
-            gen = expr_binary(E_TO, lower_node(iter->left), lower_node(iter->right));
-        } else if (iter && (iter->kind == RK_VAR_ARRAY || iter->kind == RK_VAR_SCALAR)) {
+            /* Explicit counting while-loop */
+            EXPR_t *lo_expr = lower_node(iter->left);
+            EXPR_t *hi_expr = lower_node(iter->right);
+
+            /* E_ASSIGN($v, lo) — initialise counter */
+            EXPR_t *init = expr_binary(E_ASSIGN, leaf_sval(E_VAR, vname), lo_expr);
+
+            /* E_LE($v, hi) — loop condition */
+            EXPR_t *cond = expr_binary(E_LE, leaf_sval(E_VAR, vname), hi_expr);
+
+            /* loop body: original stmts + increment */
+            EXPR_t *wbody = expr_new(E_SEQ_EXPR);
+            lower_block_children(wbody, body);
+            /* E_ASSIGN($v, E_ADD($v, 1)) — increment */
+            EXPR_t *one  = expr_new(E_ILIT); one->ival = 1;
+            EXPR_t *incr = expr_binary(E_ADD, leaf_sval(E_VAR, vname), one);
+            expr_add_child(wbody, expr_binary(E_ASSIGN, leaf_sval(E_VAR, vname), incr));
+
+            EXPR_t *wloop = expr_binary(E_WHILE, cond, wbody);
+
+            /* Wrap init + while in E_SEQ_EXPR */
+            EXPR_t *seq = expr_new(E_SEQ_EXPR);
+            expr_add_child(seq, init);
+            expr_add_child(seq, wloop);
+            return seq;
+        }
+
+        /* for @arr -> $v: use E_EVERY(E_ITERATE) — variable binding Phase 2 */
+        EXPR_t *gen;
+        if (iter && (iter->kind == RK_VAR_ARRAY || iter->kind == RK_VAR_SCALAR)) {
             gen = expr_unary(E_ITERATE, var_node(iter->sval));
         } else {
             gen = lower_node(iter);
         }
-
-        /* Build loop body: assign iter var from $_, then execute stmts.
-         * We wrap in E_SEQ_EXPR: [assign($v, $_), ...body stmts...] */
         EXPR_t *loop_body = expr_new(E_SEQ_EXPR);
-        /* bind the iteration variable — the runtime sets $_ each iteration;
-         * we bind the named var from $_ so the body can use it.           */
-        if (strcmp(var, "$_") != 0) {
-            EXPR_t *bind = expr_binary(E_ASSIGN,
-                                       var_node(var),
-                                       var_node("$_"));
-            expr_add_child(loop_body, bind);
-        }
         lower_block_children(loop_body, body);
-
-        /* E_EVERY drives the generator to exhaustion (BB_PUMP semantics) */
         return expr_binary(E_EVERY, gen, loop_body);
     }
 
@@ -261,17 +303,27 @@ static EXPR_t *lower_node(const RakuNode *n) {
     case RK_EXPR_STMT:
         return lower_node(n->left);
 
-    /*-- sub name(params) body  →  E_FNC(name, body) ----------------------
-     * Parameters are not yet wired (Phase 1 scope); body lowered as-is.  */
+    /*-- sub name(params) body  →  E_FNC matching icon_lower layout -------
+     * Layout (must match icn_call_proc in scrip.c):
+     *   e->sval=name, e->ival=nparams(0), children[0]=E_VAR name-node,
+     *   children[1..]: body statements directly (NOT wrapped in E_SEQ_EXPR). */
     case RK_SUBDEF: {
-        e = fnc_node(n->sval ? n->sval : "<anon>");
-        expr_add_child(e, lower_block(n->right));   /* body */
+        const char *sname = n->sval ? n->sval : "<anon>";
+        e = fnc_node(sname);
+        e->ival = 0;   /* nparams: Phase 1 — no param wiring yet */
+        /* children[0]: name node */
+        EXPR_t *sname_node = expr_new(E_VAR);
+        sname_node->sval = intern(sname);
+        expr_add_child(e, sname_node);
+        /* children[1..]: body statements directly */
+        lower_block_children(e, n->right);
         return e;
     }
 
-    /*-- name(args)  →  E_FNC(name, args...) ------------------------------*/
+    /*-- name(args)  →  E_FNC call layout: children[0]=name-node, [1..]=args */
     case RK_CALL: {
-        e = fnc_node(n->sval ? n->sval : "<unknown>");
+        const char *cname = n->sval ? n->sval : "<unknown>";
+        e = make_call(cname);   /* adds children[0] = E_VAR(name) */
         if (n->children) {
             for (int i = 0; i < n->children->count; i++)
                 expr_add_child(e, lower_node(n->children->items[i]));
@@ -326,15 +378,19 @@ EXPR_t **raku_lower_file(RakuNode **stmts, int count, int *out_count) {
         result[out++] = lower_node(stmts[i]);
     }
 
-    /* Wrap non-sub statements in synthetic "main" */
+    /* Wrap non-sub statements in synthetic "main" E_FNC.
+     * Must match icon_lower E_FNC layout (icn_call_proc expects):
+     *   sval="main", ival=0, children[0]=E_VAR("main"), children[1..]=stmts */
     if (has_main) {
         EXPR_t *main_fnc = fnc_node("main");
-        EXPR_t *body = expr_new(E_SEQ_EXPR);
-        for (int i = 0; i < count; i++) {
+        main_fnc->ival = 0;
+        EXPR_t *mname_node = expr_new(E_VAR);
+        mname_node->sval = intern("main");
+        expr_add_child(main_fnc, mname_node);   /* children[0]: name node */
+        for (int i = 0; i < count; i++) {       /* children[1..]: body stmts */
             if (!stmts[i] || stmts[i]->kind == RK_SUBDEF) continue;
-            expr_add_child(body, lower_node(stmts[i]));
+            expr_add_child(main_fnc, lower_node(stmts[i]));
         }
-        expr_add_child(main_fnc, body);
         result[out++] = main_fnc;
     }
 
