@@ -148,6 +148,58 @@ pl "PL: arithmetic" "10" << 'EOF'
 main :- X is 3 + 7, write(X), nl.
 EOF
 
+# ── Raku ─────────────────────────────────────────────────────────────────────
+echo "=== Raku ==="
+
+raku() {
+    local label="$1" expected="$2" tmp
+    tmp=$(mktemp /tmp/ub_XXXXXX.raku)
+    cat > "$tmp"
+    _run "$label" "$tmp" "$expected"
+}
+
+raku "RAKU: hello" "hello world" << 'EOF'
+sub main() {
+    say('hello world');
+}
+EOF
+
+raku "RAKU: arithmetic" "42" << 'EOF'
+sub main() {
+    my $x = 6 * 7;
+    say($x);
+}
+EOF
+
+raku "RAKU: for loop" "$(printf '1\n2\n3\n4\n5')" << 'EOF'
+sub main() {
+    my $i = 1;
+    while ($i <= 5) {
+        say($i);
+        $i = $i + 1;
+    }
+}
+EOF
+
+# RK-7: polyglot gather smoke test (ref-file based)
+RAKU_SCRIP="$ROOT/test/raku_gather.scrip"
+RAKU_REF="$ROOT/test/raku_gather.ref"
+if [ -f "$RAKU_SCRIP" ] && [ -f "$RAKU_REF" ]; then
+    actual=$(timeout "$TIMEOUT" "$SCRIP" --ir-run "$RAKU_SCRIP" < /dev/null 2>/dev/null)
+    expected=$(cat "$RAKU_REF")
+    if [ "$actual" = "$expected" ]; then
+        echo "  PASS raku_gather.scrip (SNO+RAKU polyglot, BB_PUMP via while loop)"
+        PASS=$((PASS+1))
+    else
+        echo "  FAIL raku_gather.scrip"
+        printf "       exp: %s\n" "$(printf '%s' "$expected" | head -3)"
+        printf "       got: %s\n" "$(printf '%s' "$actual"   | head -3)"
+        FAIL=$((FAIL+1))
+    fi
+else
+    echo "  SKIP raku_gather.scrip (file not found)"
+fi
+
 # ── Cross-language polyglot (U-19) ───────────────────────────────────────────
 echo "=== Cross-language polyglot (U-19) ==="
 

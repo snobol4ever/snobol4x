@@ -3704,6 +3704,7 @@ static Program *parse_scrip_polyglot(const char *src, const char *filename)
         if      (tag_len == 7 && strncasecmp(tag_start, "SNOBOL4", 7) == 0) lang = LANG_SNO;
         else if (tag_len == 4 && strncasecmp(tag_start, "Icon",    4) == 0) lang = LANG_ICN;
         else if (tag_len == 6 && strncasecmp(tag_start, "Prolog",  6) == 0) lang = LANG_PL;
+        else if (tag_len == 4 && strncasecmp(tag_start, "Raku",    4) == 0) lang = LANG_RAKU; /* RK-5 */
         else if (tag_len == 5 && strncasecmp(tag_start, "Scrip",   5) == 0) lang = LANG_SCRIP; /* U-23: shared constants */
         else if (tag_len == 6 && strncasecmp(tag_start, "SCRIP",   5) == 0) lang = LANG_SCRIP;
 
@@ -3739,6 +3740,9 @@ static Program *parse_scrip_polyglot(const char *src, const char *filename)
         } else if (lang == LANG_PL) {
             sub = prolog_compile(block, filename);
             /* prolog_lower.c sets st->lang=LANG_PL (U-12) */
+        } else if (lang == LANG_RAKU) {
+            sub = raku_compile(block, filename);
+            /* raku_driver.c sets st->lang=LANG_RAKU (RK-5) */
         }
         free(block);
 
