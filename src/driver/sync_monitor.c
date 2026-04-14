@@ -81,6 +81,37 @@ void exec_snapshot_free(ExecSnapshot *s) {
     free(s->nv_pairs);
     s->nv_pairs = NULL;
     s->nv_count = 0;
+    free(s->label_path);
+    s->label_path     = NULL;
+    s->label_path_n   = 0;
+    s->label_path_cap = 0;
+}
+
+/*------------------------------------------------------------------------
+ * IM-9: label_path_append — record one label entry into a snapshot
+ *----------------------------------------------------------------------*/
+static void label_path_append(ExecSnapshot *s, const char *lbl) {
+    if (s->label_path_n >= s->label_path_cap) {
+        int newcap = s->label_path_cap ? s->label_path_cap * 2 : 16;
+        s->label_path = realloc(s->label_path, (size_t)newcap * sizeof(const char *));
+        s->label_path_cap = newcap;
+    }
+    s->label_path[s->label_path_n++] = lbl;
+}
+
+/*------------------------------------------------------------------------
+ * IM-9: label_path_print — print path as [A] → [B] → ... to stderr
+ *----------------------------------------------------------------------*/
+static void label_path_print(const char *tag, const ExecSnapshot *s) {
+    fprintf(stderr, "  %-4s path:", tag);
+    int printed = 0;
+    for (int i = 0; i < s->label_path_n; i++) {
+        if (!s->label_path[i]) continue;
+        fprintf(stderr, "%s[%s]", printed ? " \u2192 " : " ", s->label_path[i]);
+        printed++;
+    }
+    if (!printed) fprintf(stderr, " (no labels reached)");
+    fprintf(stderr, "\n");
 }
 
 /*------------------------------------------------------------------------
@@ -138,7 +169,7 @@ static int snap_diff(const ExecSnapshot *a, const char *a_name,
 }
 
 /*------------------------------------------------------------------------
- * IM-6: sync_monitor_run — compare IR / SM / JIT statement by statement.
+ * IM-6 + IM-9: sync_monitor_run — compare IR / SM / JIT statement by statement.
  *
  * For each statement N = 1..nstmts:
  *   - restore baseline
@@ -148,6 +179,9 @@ static int snap_diff(const ExecSnapshot *a, const char *a_name,
  *   - restore baseline
  *   - run JIT to N, snapshot jit_snap
  *   - compare all three; on first divergence print report and return N
+ *
+ * IM-9: label_path accumulated across iterations (one entry per stmt).
+ *   On diverge, the full path to stmt N is printed for each executor.
  *
  * Returns 0 if all three agree throughout.
  * Returns statement number of first divergence (1-based) otherwise.
@@ -174,8 +208,18 @@ int sync_monitor_run(void *prog_arg, int verbose) {
     ExecSnapshot baseline = {0};
     exec_snapshot_take(&baseline);
 
-    int diverge_at = 0;
+    /* IM-9: build IR label index — walk linked list once to array */
     int nstmts = prog->nstmts;
+    const char **ir_labels = calloc((size_t)(nstmts + 1), sizeof(const char *));
+    { int i = 1; for (STMT_t *s = prog->head; s && i <= nstmts; s = s->next, i++)
+        ir_labels[i] = (s->label && s->label[0]) ? s->label : NULL; }
+
+    /* IM-9: persistent label path accumulators (grow as we step) */
+    ExecSnapshot ir_path  = {0};
+    ExecSnapshot sm_path  = {0};
+    ExecSnapshot jit_path = {0};
+
+    int diverge_at = 0;
 
     for (int n = 1; n <= nstmts; n++) {
         ExecSnapshot ir_snap  = {0};
@@ -186,7 +230,6 @@ int sync_monitor_run(void *prog_arg, int verbose) {
         exec_snapshot_restore(&baseline);
         execute_program_steps(prog, n);
         exec_snapshot_take(&ir_snap);
-        /* IR last_ok: not yet exposed as a global; leave as -1 */
 
         /* ── SM run to step n ── */
         exec_snapshot_restore(&baseline);
@@ -202,27 +245,37 @@ int sync_monitor_run(void *prog_arg, int verbose) {
         exec_snapshot_take(&jit_snap);
         jit_snap.last_ok = jit_st.last_ok;
 
+        /* IM-9: append label for stmt n to each executor's path accumulator.
+         * All three share the same source labels (same Program / SM_Program). */
+        const char *lbl_n = (n <= sm_prog->stno_count) ? sm_prog->stno_labels[n] : NULL;
+        label_path_append(&ir_path,  ir_labels[n]);
+        label_path_append(&sm_path,  lbl_n);
+        label_path_append(&jit_path, lbl_n);
+
         /* ── Compare ── */
-        int ir_sm  = snap_diff(&ir_snap,  "IR",  &sm_snap,  "SM",  0);
-        int ir_jit = snap_diff(&ir_snap,  "IR",  &jit_snap, "JIT", 0);
+        int ir_sm      = snap_diff(&ir_snap, "IR", &sm_snap,  "SM",  0);
+        int ir_jit     = snap_diff(&ir_snap, "IR", &jit_snap, "JIT", 0);
         int ok_diverge = (sm_snap.last_ok != jit_snap.last_ok);
 
         if (ir_sm || ir_jit || ok_diverge) {
             /* IM-8: rich diverge header — stmt, label, line */
-            const char *lbl = "-";
+            const char *hdr_lbl = ir_labels[n] ? ir_labels[n] : "-";
             int lineno = 0;
             { int wi = 1; STMT_t *ws = prog->head;
               for (; ws && wi < n; ws = ws->next, wi++) {}
-              if (ws) { if (ws->label) lbl = ws->label; lineno = ws->lineno; } }
-            fprintf(stderr, "DIVERGE at stmt %d [label: %s, line %d]\n", n, lbl, lineno);
+              if (ws) lineno = ws->lineno; }
+            fprintf(stderr, "DIVERGE at stmt %d [label: %s, line %d]\n", n, hdr_lbl, lineno);
 
-            /* IM-8: per-executor last_ok + variable summary */
+            /* IM-9: label paths */
+            label_path_print("IR",  &ir_path);
+            label_path_print("SM",  &sm_path);
+            label_path_print("JIT", &jit_path);
+
+            /* IM-8: per-executor last_ok */
             auto void print_exec_line(const char *tag, const ExecSnapshot *s);
             void print_exec_line(const char *tag, const ExecSnapshot *s) {
-                if (s->last_ok < 0)
-                    fprintf(stderr, "  %-4s last_ok=?\n", tag);
-                else
-                    fprintf(stderr, "  %-4s last_ok=%d\n", tag, s->last_ok);
+                if (s->last_ok < 0) fprintf(stderr, "  %-4s last_ok=?\n", tag);
+                else                fprintf(stderr, "  %-4s last_ok=%d\n", tag, s->last_ok);
             }
             print_exec_line("IR",  &ir_snap);
             print_exec_line("SM",  &sm_snap);
@@ -257,6 +310,10 @@ int sync_monitor_run(void *prog_arg, int verbose) {
     if (!diverge_at && verbose >= 1)
         fprintf(stderr, "sync_monitor: all %d statements agree across IR/SM/JIT\n", nstmts);
 
+    free(ir_labels);
+    exec_snapshot_free(&ir_path);
+    exec_snapshot_free(&sm_path);
+    exec_snapshot_free(&jit_path);
     exec_snapshot_free(&baseline);
     sm_prog_free(sm_prog);
     return diverge_at;

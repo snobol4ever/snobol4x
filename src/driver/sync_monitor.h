@@ -35,6 +35,14 @@ typedef struct {
 
     /* IM-8: last statement success/fail flag (-1 = unknown/IR) */
     int      last_ok;
+
+    /* IM-9: sequence of source labels reached, one entry per statement executed.
+     * label_path[i] = label of the (i+1)th statement executed, or NULL if unlabelled.
+     * label_path_n  = number of entries (= steps executed by this executor).
+     * Strings are not owned — they point into STMT_t / SM_Program storage. */
+    const char **label_path;
+    int          label_path_n;
+    int          label_path_cap;
 } ExecSnapshot;
 
 /*------------------------------------------------------------------------

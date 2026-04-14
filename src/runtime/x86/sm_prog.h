@@ -136,9 +136,15 @@ typedef struct {
 /* ── Program (flat array of instructions) ───────────────────────────── */
 
 typedef struct {
-    SM_Instr *instrs;
-    int       count;
-    int       cap;
+    SM_Instr    *instrs;
+    int          count;
+    int          cap;
+    /* IM-9: per-statement source label (1-based; stno_labels[0] unused).
+     * stno_labels[n] = source label of statement n, or NULL if unlabelled.
+     * Populated by sm_lower(); strings are interned (not owned). */
+    const char **stno_labels;
+    int          stno_labels_cap;   /* allocated slots (indices 0..cap-1) */
+    int          stno_count;        /* number of statements lowered */
 } SM_Program;
 
 /* ── Builder helpers ────────────────────────────────────────────────── */
@@ -160,6 +166,9 @@ int sm_label(SM_Program *p);
 
 /* Patch a jump target: set a[0].i of instr at `jump_idx` to `target_label` */
 void sm_patch_jump(SM_Program *p, int jump_idx, int target_label);
+
+/* IM-9: record source label string for statement stno (1-based); NULL = unlabelled */
+void sm_stno_label_record(SM_Program *p, int stno, const char *label);
 void sm_prog_print(const SM_Program *p, FILE *out);
 
 /* Opcode name for diagnostics */

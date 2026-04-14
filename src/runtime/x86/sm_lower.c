@@ -938,8 +938,12 @@ SM_Program *sm_lower(const Program *prog)
     lt_init(&lt);
 
     /* First pass: lower all statements */
-    for (const STMT_t *s = prog->head; s; s = s->next)
+    int stno = 0;
+    for (const STMT_t *s = prog->head; s; s = s->next) {
         lower_stmt(p, &lt, s);
+        /* IM-9: record source label for this statement (1-based, matches IR stno) */
+        sm_stno_label_record(p, ++stno, (s->label && s->label[0]) ? s->label : NULL);
+    }
 
     /* Implicit HALT at end if not already there */
     if (p->count == 0 || p->instrs[p->count - 1].op != SM_HALT)

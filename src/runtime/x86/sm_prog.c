@@ -12,6 +12,10 @@ SM_Program *sm_prog_new(void)
     SM_Program *p = calloc(1, sizeof *p);
     p->cap    = 64;
     p->instrs = calloc((size_t)p->cap, sizeof(SM_Instr));
+    /* IM-9: stno_labels[0] unused; pre-allocate 64 statement slots */
+    p->stno_labels_cap = 64;
+    p->stno_labels     = calloc((size_t)p->stno_labels_cap, sizeof(const char *));
+    p->stno_count      = 0;
     return p;
 }
 
@@ -19,6 +23,7 @@ void sm_prog_free(SM_Program *p)
 {
     if (!p) return;
     free(p->instrs);
+    free(p->stno_labels);
     free(p);
 }
 
@@ -104,6 +109,23 @@ int sm_label(SM_Program *p)
 void sm_patch_jump(SM_Program *p, int jump_idx, int target_label)
 {
     p->instrs[jump_idx].a[0].i = (int64_t)target_label;
+}
+
+/* IM-9: record source label for statement stno (1-based).
+ * label may be NULL (unlabelled statement). String is not copied — caller
+ * owns the lifetime (interned in STMT_t which lives for the program). */
+void sm_stno_label_record(SM_Program *p, int stno, const char *label)
+{
+    if (stno <= 0) return;
+    if (stno >= p->stno_labels_cap) {
+        int newcap = p->stno_labels_cap * 2;
+        while (newcap <= stno) newcap *= 2;
+        p->stno_labels = realloc(p->stno_labels, (size_t)newcap * sizeof(const char *));
+        for (int i = p->stno_labels_cap; i < newcap; i++) p->stno_labels[i] = NULL;
+        p->stno_labels_cap = newcap;
+    }
+    p->stno_labels[stno] = label;
+    if (stno > p->stno_count) p->stno_count = stno;
 }
 
 static const char *opnames[SM_OPCODE_COUNT] = {
