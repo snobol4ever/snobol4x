@@ -1104,7 +1104,7 @@ static void polyglot_init(Program *prog)
             EXPR_t *proc = s->subject;
             if (proc->kind == E_FNC && proc->sval && *proc->sval) {
                 const char *name = proc->sval;
-                printf("DBG: registering ICN proc '%s'\n", name);
+
                 if (icn_proc_count < ICN_PROC_MAX) {
                     icn_proc_table[icn_proc_count].name = name;
                     icn_proc_table[icn_proc_count].proc = proc;
@@ -3335,7 +3335,7 @@ static DESCR_t _usercall_hook(const char *name, DESCR_t *args, int nargs) {
                 for (int _i = 0; _i < nargs; _i++)
                     pl_args[_i] = pl_unified_term_from_expr(
                         /* wrap DESCR_t as a literal EXPR_t leaf */
-                        (args[_i].type == DT_S)
+                        (args[_i].v == DT_S)
                             ? &(EXPR_t){ .kind = E_QLIT, .sval = (char*)args[_i].s }
                             : &(EXPR_t){ .kind = E_ILIT, .ival = (long)args[_i].s },
                         NULL);
