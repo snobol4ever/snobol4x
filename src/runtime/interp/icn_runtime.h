@@ -66,6 +66,7 @@ extern int          icn_frame_depth;
 #define ICN_CUR (icn_frame_stack[icn_frame_depth - 1])
 
 extern const char  *icn_scan_subj;
+extern icn_suspend_state_t *icn_active_ss;
 extern int          icn_scan_pos;
 typedef struct { const char *subj; int pos; } IcnScanEntry;
 extern IcnScanEntry icn_scan_stack[ICN_SCAN_STACK_MAX];

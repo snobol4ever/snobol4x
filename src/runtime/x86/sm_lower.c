@@ -704,13 +704,6 @@ static void lower_expr(SM_Program *p, LabelTable *lt, const EXPR_t *e)
         sm_emit_si(p, SM_CALL, "FIELD_GET", 2);
         return;
 
-    /* ── scan augmented op e ? pat op:= val ────────────────────────────── */
-    case E_SCAN_AUGOP:
-        lower_expr(p, lt, e->nchildren > 0 ? e->children[0] : NULL);
-        sm_emit_ptr(p, SM_PUSH_EXPR, (void *)e);
-        sm_emit(p, SM_BB_ONCE);
-        return;
-
     /* ── declarative / init nodes — no runtime action at expression level ─ */
     case E_GLOBAL:
     case E_INITIAL:

@@ -108,7 +108,7 @@ public enum IrKind
     // Icon control flow
     E_SEQ_EXPR, E_EVERY, E_WHILE, E_UNTIL, E_REPEAT,
     E_IF, E_CASE, E_RETURN, E_LOOP_BREAK, E_LOOP_NEXT,
-    E_SCAN_AUGOP, E_BANG_BINARY,
+    E_BANG_BINARY,
 }
 
 // ── IrNode — mirrors EXPR_t from ir.h ──────────────────────────────────────

@@ -77,6 +77,10 @@ int         icn_scan_pos   = 0;
 IcnScanEntry icn_scan_stack[ICN_SCAN_STACK_MAX];
 int         icn_scan_depth = 0;
 
+/* Active coroutine suspend state — set by trampoline before calling icn_call_proc,
+ * so icn_call_proc can swapcontext back on E_SUSPEND. NULL when not in a coroutine. */
+icn_suspend_state_t *icn_active_ss = NULL;
+
 /* U-23: Icon global variable names -- bridge to SNO NV store.
  * Names declared `global X` in an Icon block are stored here.
  * icn_scope_patch skips slot assignment for these; E_VAR read/write
@@ -344,6 +348,18 @@ DESCR_t icn_call_proc(EXPR_t *proc, DESCR_t *args, int nargs) {
         if (!st || st->kind == E_GLOBAL) continue;
         ICN_CUR.body_root = st;   /* OE-2: drive root for this statement */
         result = interp_eval(st);
+        /* Suspend: yield value to coroutine caller, then resume here on β */
+        while (ICN_CUR.suspending && icn_active_ss) {
+            icn_suspend_state_t *ss = icn_active_ss;
+            ss->yielded       = ICN_CUR.suspend_val;
+            ICN_CUR.suspending = 0;
+            swapcontext(&ss->gen_ctx, &ss->caller_ctx);
+            /* Resumed by β — re-evaluate the same statement (for loops) or advance */
+            if (st->kind == E_WHILE || st->kind == E_REPEAT || st->kind == E_UNTIL) {
+                result = interp_eval(st);   /* re-enter the loop */
+            }
+            /* If still suspending after re-entry, the while loop above catches it */
+        }
     }
     /* Icon semantics: explicit return → return the value; fall off end → fail. */
     if (ICN_CUR.returning) result = ICN_CUR.return_val;
@@ -419,7 +435,9 @@ static Icn_coro_stage_t icn_coro_stage;   /* staging area — set before makecon
 
 static void icn_proc_trampoline(void) {
     Icn_coro_stage_t st = icn_coro_stage;        /* copy before first yield */
+    icn_active_ss = st.ss;                        /* expose to icn_call_proc */
     DESCR_t result = icn_call_proc(st.proc, st.args, st.nargs);
+    icn_active_ss = NULL;
     /* proc finished — store final value if not fail, mark exhausted, yield back */
     st.ss->yielded   = IS_FAIL_fn(result) ? FAILDESCR : result;
     st.ss->exhausted = 1;

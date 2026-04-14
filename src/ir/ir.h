@@ -196,7 +196,6 @@ typedef enum EKind {
     E_LOOP_BREAK,   /* break [E]          — exit innermost loop
                      * NOTE: distinct from E_BREAK = SNOBOL4 BREAK(S)      */
     E_LOOP_NEXT,    /* next               — restart innermost loop          */
-    E_SCAN_AUGOP,   /* E ?:= body         — augmented scan                 */
     E_BANG_BINARY,  /* E1 ! E2            — invoke E1 with list E2         */
 
     /* --- Icon: Structure / Declarations ---------------------------------- */
@@ -361,7 +360,6 @@ static const char * const ekind_name[E_KIND_COUNT] = {
     [E_RETURN]       = "E_RETURN",
     [E_LOOP_BREAK]   = "E_LOOP_BREAK",
     [E_LOOP_NEXT]    = "E_LOOP_NEXT",
-    [E_SCAN_AUGOP]   = "E_SCAN_AUGOP",
     [E_BANG_BINARY]  = "E_BANG_BINARY",
     /* Icon structure */
     [E_SECTION]      = "E_SECTION",
