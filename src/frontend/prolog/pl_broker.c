@@ -255,34 +255,52 @@ static DESCR_t pl_head_unify_fn(void *zeta, int entry) {
 static int pl_is_builtin_goal(EXPR_t *g);                              /* forward */
 static bb_node_t pl_box_alt(bb_node_t left, bb_node_t right);       /* forward */
 
-static bb_node_t pl_box_goal_from_ir(EXPR_t *g, Term **env) {
+bb_node_t pl_box_goal_from_ir(EXPR_t *g, Term **env) {
     if (!g) return pl_box_true();
     if (g->kind == E_CUT)   return pl_box_cut();
     if (g->kind == E_UNIFY) return pl_box_unify(g, env);
     if (g->kind == E_FNC) {
         if (g->sval && strcmp(g->sval, "true") == 0) return pl_box_true();
         if (g->sval && strcmp(g->sval, "fail") == 0) return pl_box_fail();
-        /* `,/2` — conjunction: CAT-box of two sub-goals */
-        if (g->sval && strcmp(g->sval, ",") == 0 && g->nchildren == 2)
-            return pl_box_cat(pl_box_goal_from_ir(g->children[0], env),
-                              pl_box_goal_from_ir(g->children[1], env));
-        /* `;/2` — disjunction or if-then-else */
-        if (g->sval && strcmp(g->sval, ";") == 0 && g->nchildren == 2) {
-            EXPR_t *lc = g->children[0];
-            /* if-then-else: (Cond -> Then ; Else) */
-            if (lc && lc->kind == E_FNC && lc->sval &&
-                strcmp(lc->sval, "->") == 0 && lc->nchildren == 2)
-                return pl_box_alt(
-                    pl_box_cat(pl_box_goal_from_ir(lc->children[0], env),
-                               pl_box_goal_from_ir(lc->children[1], env)),
-                    pl_box_goal_from_ir(g->children[1], env));
-            return pl_box_alt(pl_box_goal_from_ir(g->children[0], env),
-                              pl_box_goal_from_ir(g->children[1], env));
+        /* `,/N` — conjunction: lowerer produces n-ary node; fold into CAT chain */
+        if (g->sval && strcmp(g->sval, ",") == 0 && g->nchildren >= 2) {
+            bb_node_t *goals = malloc(g->nchildren * sizeof(bb_node_t));
+            for (int i = 0; i < g->nchildren; i++)
+                goals[i] = pl_box_goal_from_ir(g->children[i], env);
+            bb_node_t result = pl_box_cat_list(goals, g->nchildren);
+            free(goals);
+            return result;
         }
-        /* `->/2` standalone: CAT(cond, then) */
-        if (g->sval && strcmp(g->sval, "->") == 0 && g->nchildren == 2)
-            return pl_box_cat(pl_box_goal_from_ir(g->children[0], env),
-                              pl_box_goal_from_ir(g->children[1], env));
+        /* `;/N` — disjunction or if-then-else; lowerer may produce n-ary node */
+        if (g->sval && strcmp(g->sval, ";") == 0 && g->nchildren >= 2) {
+            /* if-then-else: first child is (Cond -> Then), second is Else */
+            EXPR_t *lc = g->children[0];
+            if (lc && lc->kind == E_FNC && lc->sval &&
+                strcmp(lc->sval, "->") == 0 && lc->nchildren >= 2) {
+                /* Build Cond CAT Then from n-ary -> node */
+                bb_node_t *then_goals = malloc(lc->nchildren * sizeof(bb_node_t));
+                for (int i = 0; i < lc->nchildren; i++)
+                    then_goals[i] = pl_box_goal_from_ir(lc->children[i], env);
+                bb_node_t ite_left = pl_box_cat_list(then_goals, lc->nchildren);
+                free(then_goals);
+                bb_node_t ite_right = pl_box_goal_from_ir(g->children[1], env);
+                return pl_box_alt(ite_left, ite_right);
+            }
+            /* Plain disjunction: fold right into ALT chain */
+            bb_node_t acc = pl_box_goal_from_ir(g->children[g->nchildren - 1], env);
+            for (int i = g->nchildren - 2; i >= 0; i--)
+                acc = pl_box_alt(pl_box_goal_from_ir(g->children[i], env), acc);
+            return acc;
+        }
+        /* `->/N` standalone if-then: CAT chain of all children */
+        if (g->sval && strcmp(g->sval, "->") == 0 && g->nchildren >= 2) {
+            bb_node_t *goals = malloc(g->nchildren * sizeof(bb_node_t));
+            for (int i = 0; i < g->nchildren; i++)
+                goals[i] = pl_box_goal_from_ir(g->children[i], env);
+            bb_node_t result = pl_box_cat_list(goals, g->nchildren);
+            free(goals);
+            return result;
+        }
         if (pl_is_builtin_goal(g)) return pl_box_builtin(g, env);
         return pl_box_choice_call(g, env);   /* user predicate — S-BB-5 */
     }
@@ -309,7 +327,7 @@ static int pl_is_builtin_goal(EXPR_t *g) {
 
 /*----------------------------------------------------------------------------------------------------------------------
 /* Forward declaration — defined after pl_is_builtin_goal */
-static bb_node_t pl_box_goal_from_ir(EXPR_t *g, Term **env);
+bb_node_t pl_box_goal_from_ir(EXPR_t *g, Term **env);  /* forward */
 
 /*----------------------------------------------------------------------------------------------------------------------
  * pl_box_deferred_env — wraps a body goal box whose env is not yet known at

@@ -3107,42 +3107,26 @@ int interp_exec_pl_builtin(EXPR_t *goal, Term **env) {
                 NV_SET_fn(nm_str, dv);
                 return 1;
             }
-            /* findall/3 — collect all solutions via interp_eval on each goal */
+            /* findall/3 — collect ALL solutions via bb_broker retry loop */
             if (strcmp(fn,"findall")==0&&arity==3){
                 EXPR_t *tmpl_expr=goal->children[0];
                 EXPR_t *goal_expr=goal->children[1];
                 EXPR_t *list_expr=goal->children[2];
-                /* Run goal_expr collecting template snapshots on each success.
-                 * We drive it as a user call if it is one, else as a builtin.
-                 * findall always succeeds (empty list if no solutions). */
                 Term **solutions=NULL; int nsol=0,sol_cap=0;
-                /* Wrap execution in a sub-trail so findall does not pollute parent */
+                /* Isolate in sub-trail so bindings don't leak to parent */
                 Trail fa_trail; trail_init(&fa_trail);
-                Trail *saved_trail=trail; (void)saved_trail; /* trail ptr is local alias */
-                /* To collect all solutions we need a retry loop.
-                 * For user-defined goal_expr, invoke via interp_eval which handles backtracking.
-                 * For builtins, a single call suffices (builtins are det or semi-det here).
-                 * Full multi-solution findall requires BB broker — deferred to GOAL-PROLOG-BB-BYRD.
-                 * For now: one-shot collection (correct for det goals, partial for non-det). */
-                Trail *old_global_trail=&g_pl_trail;
+                Trail saved_global_trail=g_pl_trail;  /* save by value — NOT pointer (self-alias bug) */
                 g_pl_trail=fa_trail;
-                int ok2;
-                if(is_pl_user_call(goal_expr)){
-                    char key[256]; snprintf(key,sizeof key,"%s/%d",goal_expr->sval?goal_expr->sval:"",goal_expr->nchildren);
-                    EXPR_t *ch=pl_pred_table_lookup(&g_pl_pred_table,key);
-                    if(ch){ int ca=goal_expr->nchildren; Term **cargs=ca?malloc(ca*sizeof(Term*)):NULL;
-                             for(int a=0;a<ca;a++) cargs[a]=pl_unified_term_from_expr(goal_expr->children[a],env);
-                             Term **sv=g_pl_env; g_pl_env=cargs;
-                             DESCR_t rd=interp_eval(ch); g_pl_env=sv; if(cargs)free(cargs);
-                             ok2=!IS_FAIL_fn(rd); }
-                    else ok2=0;
-                } else { ok2=interp_exec_pl_builtin(goal_expr,env); }
-                if(ok2){
+                /* Build a box for the goal and drive α/β to exhaustion */
+                bb_node_t goal_box=pl_box_goal_from_ir(goal_expr,env);
+                DESCR_t fa_r=goal_box.fn(goal_box.ζ,α);
+                while(!IS_FAIL_fn(fa_r)){
                     Term *snap=pl_unified_deep_copy(pl_unified_term_from_expr(tmpl_expr,env));
                     if(nsol>=sol_cap){sol_cap=sol_cap?sol_cap*2:8;solutions=realloc(solutions,sol_cap*sizeof(Term*));}
                     solutions[nsol++]=snap;
+                    fa_r=goal_box.fn(goal_box.ζ,β);
                 }
-                g_pl_trail=*old_global_trail;
+                g_pl_trail=saved_global_trail;  /* restore parent trail */
                 int nil_id=prolog_atom_intern("[]"),dot_id=prolog_atom_intern(".");
                 Term *lst=term_new_atom(nil_id);
                 for(int i=nsol-1;i>=0;i--){Term *a2[2];a2[0]=solutions[i];a2[1]=lst;lst=term_new_compound(dot_id,2,a2);}

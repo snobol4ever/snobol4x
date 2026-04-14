@@ -46,6 +46,9 @@ bb_node_t pl_box_builtin(EXPR_t *goal, Term **env);
 /* pl_box_cat — AND-box: left γ → right α; right ω → left β; mirrors bb_seq */
 bb_node_t pl_box_cat(bb_node_t left, bb_node_t right);
 
+/* pl_box_goal_from_ir — build a bb_node_t for any goal IR node (E_FNC, E_UNIFY, E_CUT, ...) */
+bb_node_t pl_box_goal_from_ir(EXPR_t *g, Term **env);
+
 /* pl_box_cat_list — fold goals[0..n-1] into a left-associative CAT chain. */
 bb_node_t pl_box_cat_list(bb_node_t *goals, int n);
 
