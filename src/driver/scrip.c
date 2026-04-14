@@ -563,22 +563,6 @@ bb_node_t icn_eval_gen(EXPR_t *e) {
     return (bb_node_t){ icn_oneshot_box, z, 0 };
 }
 
-/* icn_execute_program_unified: entry point for Icon via unified interpreter.
- * Replaces icon_execute_program. Builds proc table, calls main/0. */
-static void icn_execute_program_unified(Program *prog) {
-    polyglot_init(prog);   /* U-14: one pass, all three runtime tables */
-    g_lang = 1;            /* Icon top-level mode */
-
-    /* Find and call main */
-    for (int i = 0; i < icn_proc_count; i++) {
-        if (strcmp(icn_proc_table[i].name, "main") == 0) {
-            icn_call_proc(icn_proc_table[i].proc, NULL, 0);
-            return;
-        }
-    }
-    fprintf(stderr, "icon: no main procedure\n");
-}
-
 /* ── Diagnostic flags (set in main, read by execute_program / sm_interp) ── */
 int g_opt_trace   = 0;  /* --trace:   print STMT N on each statement */
 int g_opt_dump_bb = 0;  /* --dump-bb: print PATND tree before each match */
@@ -3028,27 +3012,6 @@ int interp_exec_pl_builtin(EXPR_t *goal, Term **env) {
 }
 
 
-/*---- pl_execute_program_unified — entry point ----*/
-/* S-BB-7: top-level dispatch now routes main/0 through the Byrd box broker.
- * pl_box_choice(main_choice, NULL, 0) builds the OR-box; bb_broker(BB_ONCE) drives it.
- * The old interp_eval(main_choice) call is removed from the top-level entry.
- * Body goals within clauses still use the old interp_eval path until S-BB-8. */
-static void pl_execute_program_unified(Program *prog) {
-    if (!prog) return;
-    polyglot_init(prog);   /* U-14: one pass, all three runtime tables */
-    g_pl_active   = 1;
-    /* S-1C-3 restored: main/0 dispatches through interp_eval() — the ONE interpreter.
-     * E_CHOICE case in interp_eval uses pl_box_choice+bb_broker(BB_ONCE) for backtracking. */
-    EXPR_t *main_choice = pl_pred_table_lookup(&g_pl_pred_table, "main/0");
-    if (main_choice) {
-        interp_eval(main_choice);
-    } else {
-        fprintf(stderr, "prolog: no main/0 predicate\n");
-    }
-    g_pl_active = 0;
-}
-
-
 static void execute_program(Program *prog)
 {
     polyglot_init(prog);   /* U-14: one pass, all three runtime tables */
@@ -3416,15 +3379,30 @@ static void execute_program(Program *prog)
  *============================================================================================================================*/
 static void polyglot_execute(Program *prog) {
     if (!prog) return;
-    /* polyglot_init is called inside execute_program / legacy paths — do not call twice */
-    if (g_registry.nmod > 0 || g_polyglot) {
+    if (g_polyglot) {
         execute_program(prog);   /* runs SNO + U-23 ICN/PL registry dispatch */
-    } else if (icn_proc_count > 0) {
-        icn_execute_program_unified(prog);
+        return;
+    }
+    /* Single-language .icn or .pl — detect from first statement's lang field */
+    int slang = prog->head ? prog->head->lang : LANG_SNO;
+    polyglot_init(prog);
+    if (slang == LANG_ICN) {
+        g_lang = 1;
+        for (int i = 0; i < icn_proc_count; i++) {
+            if (strcmp(icn_proc_table[i].name, "main") == 0) {
+                icn_call_proc(icn_proc_table[i].proc, NULL, 0);
+                return;
+            }
+        }
+        fprintf(stderr, "icon: no main procedure\n");
+    } else if (slang == LANG_PL) {
+        g_pl_active = 1;
+        EXPR_t *main_choice = pl_pred_table_lookup(&g_pl_pred_table, "main/0");
+        if (main_choice) interp_eval(main_choice);
+        else fprintf(stderr, "prolog: no main/0 predicate\n");
+        g_pl_active = 0;
     } else {
-        EXPR_t *mc = NULL;
-        /* Probe for Prolog main before calling polyglot_init side effects */
-        pl_execute_program_unified(prog);
+        execute_program(prog);   /* SNO single-lang fallback */
     }
 }
 
@@ -4174,9 +4152,9 @@ int main(int argc, char **argv)
         }
         sm_prog_free(sm);
     } else if (lang_prolog) {
-        pl_execute_program_unified(prog);
+        polyglot_execute(prog);
     } else if (lang_icon) {
-        icn_execute_program_unified(prog);   /* unified IR interpreter — one interp_eval */
+        polyglot_execute(prog);
     } else {
         execute_program(prog);
     }
