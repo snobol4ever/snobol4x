@@ -44,12 +44,18 @@
 #include <string.h>
 #include <stdint.h>
 #include <math.h>
+#include <setjmp.h>
 
 /* ── JIT execution state (globals shared with handler functions) ──────── */
 
 static SM_Program *g_jit_prog   = NULL;
 static SM_State   *g_jit_state  = NULL;
 static int         g_jit_halted = 0;
+
+/* IM-5: JIT step-limit for in-process sync monitor */
+int      g_jit_step_limit = 0;   /* 0 = unlimited; N = stop after N stmts */
+int      g_jit_steps_done = 0;
+jmp_buf  g_jit_step_jmp;
 
 /* Pat-stack (mirrors sm_interp.c's private g_pat_stack) */
 #define JIT_PAT_STACK_MAX 128
@@ -188,7 +194,12 @@ static void h_freturn(void)  { g_jit_halted = 1; }
 static void h_nreturn(void)  { g_jit_halted = 1; }
 
 static int g_sm_stno_jit = 0;
-static void h_stno(void)     { comm_stno(++g_sm_stno_jit); }
+static void h_stno(void) {
+    comm_stno(++g_sm_stno_jit);
+    /* IM-5: step-limit — longjmp out when limit reached */
+    if (g_jit_step_limit > 0 && g_jit_steps_done++ >= g_jit_step_limit)
+        longjmp(g_jit_step_jmp, 1);
+}
 
 static void h_jump(void)   { STATE->pc = (int)CUR_INS->a[0].i; }
 static void h_jump_s(void) { if ( STATE->last_ok) STATE->pc = (int)CUR_INS->a[0].i; }
@@ -626,4 +637,18 @@ int sm_jit_run_plain(SM_Program *prog, SM_State *st)
         g_handlers[prog->instrs[st->pc - 1].op]();
     }
     return 0;
+}
+
+/* IM-5: sm_jit_run_steps — run at most n statements then return.
+ * Sets up g_jit_step_jmp so the step-limit longjmp lands here safely. */
+int sm_jit_run_steps(SM_Program *prog, SM_State *st, int n) {
+    g_jit_step_limit = n;
+    g_jit_steps_done = 0;
+    g_sm_stno_jit    = 0;
+    int rc = 0;
+    if (setjmp(g_jit_step_jmp) == 0)
+        rc = sm_jit_run(prog, st);
+    g_jit_step_limit = 0;
+    g_jit_steps_done = 0;
+    return rc;
 }

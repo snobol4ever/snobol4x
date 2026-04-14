@@ -10,6 +10,7 @@
 
 #include "sm_prog.h"
 #include "sm_interp.h"   /* SM_State */
+#include <setjmp.h>
 
 /*
  * sm_codegen — compile prog into SEG_DISPATCH + SEG_CODE.
@@ -25,5 +26,12 @@ int sm_codegen(SM_Program *prog);
  */
 int sm_jit_run(SM_Program *prog, SM_State *st);
 
-#endif /* SM_CODEGEN_H */
 int sm_jit_run_plain(SM_Program *prog, SM_State *st);
+
+/* IM-5: step-limit — run at most n statements then return */
+extern int     g_jit_step_limit;
+extern int     g_jit_steps_done;
+extern jmp_buf g_jit_step_jmp;
+int sm_jit_run_steps(SM_Program *prog, SM_State *st, int n);
+
+#endif /* SM_CODEGEN_H */
