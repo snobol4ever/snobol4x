@@ -155,7 +155,7 @@ static int      g_polyglot = 0; /* U-23: 1 when running a fenced polyglot .scrip
  * Icon procedures use slot-indexed locals (e->ival on E_VAR nodes).
  * When interp_eval is running inside an Icon procedure call, icn_env points
  * to the current frame's slot array. E_VAR case checks icn_env first.
- * icn_env_n is the slot count. Both are NULL/0 when in SNOBOL4 context.
+ * ICN_CUR.env_n is the slot count. Both are NULL/0 when in SNOBOL4 context.
  *
  * Icon procedure table: built from Program* at execute_program time.
  * Each entry maps procname → the E_FNC node (from STMT_t subject).
@@ -165,32 +165,54 @@ static int      g_polyglot = 0; /* U-23: 1 when running a fenced polyglot .scrip
 typedef struct { const char *name; EXPR_t *proc; } IcnProcEntry;
 static IcnProcEntry icn_proc_table[ICN_PROC_MAX];
 static int          icn_proc_count = 0;
-static DESCR_t     *icn_env        = NULL;  /* current Icon frame slot array */
-static int          icn_env_n      = 0;     /* slot count */
-static int          icn_returning  = 0;     /* 1 = Icon return in progress */
-static DESCR_t      icn_return_val;         /* value being returned */
 static int          g_lang         = 0;     /* 0=SNOBOL4 1=Icon */
 static EXPR_t      *g_icn_root     = NULL;  /* current Icon drive root */
 
-/* Generator substitution stack for E_EVERY/E_TO β re-entry (DESCR_t version).
- * Mirrors icn_exec_driven logic but uses DESCR_t instead of IcnVal. */
-#define ICN_GEN_MAX 16
+/* OE-1: IcnFrame — per-call context for Icon procedure invocations.
+ * Replaces the flat globals icn_env/ICN_CUR.env_n/ICN_CUR.returning/ICN_CUR.return_val/
+ * icn_gen_stack/icn_gen_depth/ICN_CUR.loop_break with a pushed/popped frame stack.
+ * ICN_CUR refers to the active frame (frame_depth must be >0 in Icon context). */
+#define ICN_GEN_MAX    16
 typedef struct { EXPR_t *node; long cur; const char *sval; } IcnGenEntry_d;
-static IcnGenEntry_d icn_gen_stack[ICN_GEN_MAX];
-static int           icn_gen_depth = 0;
-static void icn_gen_push(EXPR_t *n, long v, const char *sv) { if(icn_gen_depth<ICN_GEN_MAX){icn_gen_stack[icn_gen_depth].node=n;icn_gen_stack[icn_gen_depth].cur=v;icn_gen_stack[icn_gen_depth].sval=sv;icn_gen_depth++;} }
-static void icn_gen_pop(void)               { if(icn_gen_depth>0)icn_gen_depth--; }
-static int  icn_gen_lookup(EXPR_t *n, long *out) { for(int i=icn_gen_depth-1;i>=0;i--) if(icn_gen_stack[i].node==n){*out=icn_gen_stack[i].cur;return 1;} return 0; }
-static int  icn_gen_lookup_sv(EXPR_t *n, long *out, const char **sv) { for(int i=icn_gen_depth-1;i>=0;i--) if(icn_gen_stack[i].node==n){*out=icn_gen_stack[i].cur;*sv=icn_gen_stack[i].sval;return 1;} return 0; }
-static int  icn_gen_active(EXPR_t *n)            { for(int i=0;i<icn_gen_depth;i++) if(icn_gen_stack[i].node==n) return 1; return 0; }
+typedef struct {
+    DESCR_t       env[ICN_SLOT_MAX]; /* local variable slots */
+    int           env_n;             /* slot count */
+    int           returning;         /* 1 = return in progress */
+    DESCR_t       return_val;        /* value passed to E_RETURN */
+    IcnGenEntry_d gen[ICN_GEN_MAX];  /* generator substitution stack */
+    int           gen_depth;         /* depth of gen stack */
+    int           loop_break;        /* E_LOOP_BREAK signal */
+} IcnFrame;
+#define ICN_FRAME_MAX 256
+static IcnFrame icn_frame_stack[ICN_FRAME_MAX];
+static int      icn_frame_depth = 0;
+#define ICN_CUR (icn_frame_stack[icn_frame_depth - 1])
 
-/* Icon scan state globals */
+/* Convenience helpers that mirror the old flat-global helpers */
+static void icn_gen_push(EXPR_t *n, long v, const char *sv) {
+    IcnFrame *f = &ICN_CUR;
+    if (f->gen_depth < ICN_GEN_MAX) { f->gen[f->gen_depth].node=n; f->gen[f->gen_depth].cur=v; f->gen[f->gen_depth].sval=sv; f->gen_depth++; }
+}
+static void icn_gen_pop(void) { if (ICN_CUR.gen_depth > 0) ICN_CUR.gen_depth--; }
+static int  icn_gen_lookup(EXPR_t *n, long *out) {
+    IcnFrame *f = &ICN_CUR;
+    for (int i=f->gen_depth-1;i>=0;i--) if(f->gen[i].node==n){*out=f->gen[i].cur;return 1;} return 0;
+}
+static int  icn_gen_lookup_sv(EXPR_t *n, long *out, const char **sv) {
+    IcnFrame *f = &ICN_CUR;
+    for (int i=f->gen_depth-1;i>=0;i--) if(f->gen[i].node==n){*out=f->gen[i].cur;*sv=f->gen[i].sval;return 1;} return 0;
+}
+static int  icn_gen_active(EXPR_t *n) {
+    IcnFrame *f = &ICN_CUR;
+    for (int i=0;i<f->gen_depth;i++) if(f->gen[i].node==n) return 1; return 0;
+}
+
+/* Icon scan state globals (not per-frame: scan nesting is within one call) */
 #define ICN_SCAN_STACK_MAX 16
 static const char *icn_scan_subj  = NULL;
 static int         icn_scan_pos   = 0;
 static struct { const char *subj; int pos; } icn_scan_stack[ICN_SCAN_STACK_MAX];
 static int         icn_scan_depth = 0;
-static int         icn_loop_break = 0; /* E_LOOP_BREAK signal for repeat/while/until */
 static DESCR_t icn_interp_eval(EXPR_t *root, EXPR_t *e); /* forward */
 static DESCR_t icn_call_proc(EXPR_t *proc, DESCR_t *args, int nargs); /* forward */
 
@@ -279,12 +301,12 @@ static int icn_drive(EXPR_t *root, EXPR_t *e) {
         DESCR_t hi_d = icn_interp_eval(root, e->children[1]);
         if (IS_FAIL_fn(lo_d)||IS_FAIL_fn(hi_d)) return 0;
         long lo=lo_d.i, hi=hi_d.i; int ticks=0;
-        for(long i=lo;i<=hi&&!icn_returning;i++){
+        for(long i=lo;i<=hi&&!ICN_CUR.returning;i++){
             icn_gen_push(e,i,NULL);
             int inner=icn_drive(root,root);
             if(!inner) icn_interp_eval(root,root);
             icn_gen_pop(); ticks++;
-            if(icn_returning) break;
+            if(ICN_CUR.returning) break;
         }
         return ticks;
     }
@@ -294,8 +316,8 @@ static int icn_drive(EXPR_t *root, EXPR_t *e) {
         DESCR_t st_d=icn_interp_eval(root,e->children[2]);
         if(IS_FAIL_fn(lo_d)||IS_FAIL_fn(hi_d)||IS_FAIL_fn(st_d)) return 0;
         long lo=lo_d.i,hi=hi_d.i,st=st_d.i?st_d.i:1; int ticks=0;
-        if(st>0){for(long i=lo;i<=hi&&!icn_returning;i+=st){icn_gen_push(e,i,NULL);int inner=icn_drive(root,root);if(!inner)icn_interp_eval(root,root);icn_gen_pop();ticks++;if(icn_returning)break;}}
-        else    {for(long i=lo;i>=hi&&!icn_returning;i+=st){icn_gen_push(e,i,NULL);int inner=icn_drive(root,root);if(!inner)icn_interp_eval(root,root);icn_gen_pop();ticks++;if(icn_returning)break;}}
+        if(st>0){for(long i=lo;i<=hi&&!ICN_CUR.returning;i+=st){icn_gen_push(e,i,NULL);int inner=icn_drive(root,root);if(!inner)icn_interp_eval(root,root);icn_gen_pop();ticks++;if(ICN_CUR.returning)break;}}
+        else    {for(long i=lo;i>=hi&&!ICN_CUR.returning;i+=st){icn_gen_push(e,i,NULL);int inner=icn_drive(root,root);if(!inner)icn_interp_eval(root,root);icn_gen_pop();ticks++;if(ICN_CUR.returning)break;}}
         return ticks;
     }
     /* S-6: E_ITERATE (!str) — generate each character of a string */
@@ -304,12 +326,12 @@ static int icn_drive(EXPR_t *root, EXPR_t *e) {
         if (IS_FAIL_fn(sv_d) || !IS_STR_fn(sv_d)) return 0;
         const char *str = sv_d.s ? sv_d.s : "";
         long len = (long)strlen(str); int ticks = 0;
-        for (long i = 0; i < len && !icn_returning; i++) {
+        for (long i = 0; i < len && !ICN_CUR.returning; i++) {
             icn_gen_push(e, i, str);
             int inner = icn_drive(root, root);
             if (!inner) icn_interp_eval(root, root);
             icn_gen_pop(); ticks++;
-            if (icn_returning) break;
+            if (ICN_CUR.returning) break;
         }
         return ticks;
     }
@@ -325,7 +347,7 @@ static int icn_drive(EXPR_t *root, EXPR_t *e) {
         if (!needle||!hay) return 0;
         int nlen=(int)strlen(needle), ticks=0;
         const char *p = hay;
-        while (!icn_returning) {
+        while (!ICN_CUR.returning) {
             char *hit = strstr(p, needle);
             if (!hit) break;
             long pos1 = (long)(hit - hay) + 1;  /* 1-based */
@@ -333,7 +355,7 @@ static int icn_drive(EXPR_t *root, EXPR_t *e) {
             int inner = icn_drive(root, root);
             if (!inner) icn_interp_eval(root, root);
             icn_gen_pop(); ticks++;
-            if (icn_returning) break;
+            if (ICN_CUR.returning) break;
             p = hit + (nlen > 0 ? nlen : 1);    /* advance past this match */
         }
         return ticks;
@@ -373,7 +395,7 @@ static DESCR_t icn_interp_eval(EXPR_t *root, EXPR_t *e) {
             return NULVCL;
         }
         int slot = (int)e->ival;
-        if (slot >= 0 && slot < icn_env_n && icn_env) return icn_env[slot];
+        if (slot >= 0 && slot < ICN_CUR.env_n && icn_frame_depth > 0) return ICN_CUR.env[slot];
         /* U-23: global var -> SNO NV store fallback */
         if (slot < 0 && e->sval && e->sval[0] != '&') return NV_GET_fn(e->sval);
         return NULVCL;
@@ -386,7 +408,7 @@ static DESCR_t icn_interp_eval(EXPR_t *root, EXPR_t *e) {
         EXPR_t *lhs = e->children[0];
         if (lhs && lhs->kind == E_VAR) {
             int slot = (int)lhs->ival;
-            if (slot >= 0 && slot < icn_env_n && icn_env) icn_env[slot] = val;
+            if (slot >= 0 && slot < ICN_CUR.env_n && icn_frame_depth > 0) ICN_CUR.env[slot] = val;
             /* U-23: global var -> SNO NV store */
             else if (slot < 0 && lhs->sval && lhs->sval[0] != '&') NV_SET_fn(lhs->sval, val);
         }
@@ -463,7 +485,7 @@ static DESCR_t icn_interp_eval(EXPR_t *root, EXPR_t *e) {
                 DESCR_t hi_d = icn_interp_eval(root, gen->children[1]);
                 if (IS_FAIL_fn(lo_d)||IS_FAIL_fn(hi_d)) return NULVCL;
                 long lo=lo_d.i, hi=hi_d.i;
-                for(long i=lo;i<=hi&&!icn_returning;i++) icn_interp_eval(root,body);
+                for(long i=lo;i<=hi&&!ICN_CUR.returning;i++) icn_interp_eval(root,body);
                 return NULVCL;
             }
         }
@@ -474,34 +496,34 @@ static DESCR_t icn_interp_eval(EXPR_t *root, EXPR_t *e) {
     }
 
     case E_WHILE: {
-        int saved_brk = icn_loop_break; icn_loop_break = 0;
+        int saved_brk = ICN_CUR.loop_break; ICN_CUR.loop_break = 0;
         DESCR_t cv;
-        while (!icn_returning && !icn_loop_break &&
+        while (!ICN_CUR.returning && !ICN_CUR.loop_break &&
                !IS_FAIL_fn(cv = icn_interp_eval(root, e->children[0]))) {
             if (e->nchildren > 1) icn_interp_eval(root, e->children[1]);
         }
-        icn_loop_break = saved_brk;
+        ICN_CUR.loop_break = saved_brk;
         return NULVCL;
     }
 
     case E_UNTIL: {
-        int saved_brk = icn_loop_break; icn_loop_break = 0;
+        int saved_brk = ICN_CUR.loop_break; ICN_CUR.loop_break = 0;
         DESCR_t cv;
-        while (!icn_returning && !icn_loop_break) {
+        while (!ICN_CUR.returning && !ICN_CUR.loop_break) {
             cv = (e->nchildren > 0) ? icn_interp_eval(root, e->children[0]) : FAILDESCR;
             if (!IS_FAIL_fn(cv)) break;
             if (e->nchildren > 1) icn_interp_eval(root, e->children[1]);
         }
-        icn_loop_break = saved_brk;
+        ICN_CUR.loop_break = saved_brk;
         return NULVCL;
     }
 
     case E_REPEAT: {
-        int saved_brk = icn_loop_break; icn_loop_break = 0;
-        while (!icn_returning && !icn_loop_break) {
+        int saved_brk = ICN_CUR.loop_break; ICN_CUR.loop_break = 0;
+        while (!ICN_CUR.returning && !ICN_CUR.loop_break) {
             if (e->nchildren > 0) icn_interp_eval(root, e->children[0]);
         }
-        icn_loop_break = saved_brk;
+        ICN_CUR.loop_break = saved_brk;
         return NULVCL;
     }
 
@@ -510,14 +532,14 @@ static DESCR_t icn_interp_eval(EXPR_t *root, EXPR_t *e) {
          * Unlike E_SEQ (string concat), this is a statement block sequence.
          * Failure in intermediate statements does NOT abort the block. */
         DESCR_t v = NULVCL;
-        for (int i = 0; i < e->nchildren && !icn_returning; i++)
+        for (int i = 0; i < e->nchildren && !ICN_CUR.returning; i++)
             v = icn_interp_eval(root, e->children[i]);
         return v;
     }
 
     case E_SEQ: {
         DESCR_t v = NULVCL;
-        for (int i = 0; i < e->nchildren && !icn_returning; i++)
+        for (int i = 0; i < e->nchildren && !ICN_CUR.returning; i++)
             v = icn_interp_eval(root, e->children[i]);
         return v;
     }
@@ -536,10 +558,10 @@ static DESCR_t icn_interp_eval(EXPR_t *root, EXPR_t *e) {
     }
 
     case E_RETURN: {
-        icn_return_val = (e->nchildren > 0)
+        ICN_CUR.return_val = (e->nchildren > 0)
             ? icn_interp_eval(root, e->children[0]) : NULVCL;
-        icn_returning = 1;
-        return icn_return_val;
+        ICN_CUR.returning = 1;
+        return ICN_CUR.return_val;
     }
 
     case E_AUGOP: {
@@ -569,7 +591,7 @@ static DESCR_t icn_interp_eval(EXPR_t *root, EXPR_t *e) {
         if (IS_FAIL_fn(result)) return FAILDESCR;
         if (lhs->kind == E_VAR) {
             int slot=(int)lhs->ival;
-            if(slot>=0&&slot<icn_env_n&&icn_env) icn_env[slot]=result;
+            if(slot>=0&&slot<ICN_CUR.env_n&&icn_frame_depth>0) ICN_CUR.env[slot]=result;
         }
         return result;
     }
@@ -599,9 +621,9 @@ static DESCR_t icn_interp_eval(EXPR_t *root, EXPR_t *e) {
         return ok ? r : FAILDESCR;
     }
 
-    /* E_LOOP_BREAK: break from repeat/while/until — use icn_loop_break flag */
+    /* E_LOOP_BREAK: break from repeat/while/until — use ICN_CUR.loop_break flag */
     case E_LOOP_BREAK: {
-        icn_loop_break = 1;
+        ICN_CUR.loop_break = 1;
         return (e->nchildren > 0) ? icn_interp_eval(root, e->children[0]) : NULVCL;
     }
 
@@ -838,33 +860,25 @@ static DESCR_t icn_call_proc(EXPR_t *proc, DESCR_t *args, int nargs) {
     int nslots = sc.n > 0 ? sc.n : (nparams > 0 ? nparams : ICN_SLOT_MAX);
     if (nslots > ICN_SLOT_MAX) nslots = ICN_SLOT_MAX;
 
-    /* Allocate fresh slot array, load params */
-    DESCR_t frame[ICN_SLOT_MAX];
-    memset(frame, 0, sizeof frame);
+    /* Push a fresh IcnFrame for this call */
+    if (icn_frame_depth >= ICN_FRAME_MAX) return FAILDESCR;
+    IcnFrame *f = &icn_frame_stack[icn_frame_depth++];
+    memset(f, 0, sizeof *f);
+    f->env_n = nslots;
     for (int i = 0; i < nparams && i < nargs && i < ICN_SLOT_MAX; i++)
-        frame[i] = args[i];
-
-    /* Save caller's env, install this frame */
-    DESCR_t *saved_env   = icn_env;
-    int       saved_n    = icn_env_n;
-    int       saved_ret  = icn_returning;
-    icn_env      = frame;
-    icn_env_n    = nslots;
-    icn_returning = 0;
+        f->env[i] = args[i];
 
     /* Execute body statements */
     DESCR_t result = NULVCL;
-    for (int i = 0; i < nbody && !icn_returning; i++) {
+    for (int i = 0; i < nbody && !ICN_CUR.returning; i++) {
         EXPR_t *st = proc->children[body_start+i];
         if (!st || st->kind == E_GLOBAL) continue;
         result = icn_interp_eval(st, st);
     }
-    if (icn_returning) result = icn_return_val;
+    if (ICN_CUR.returning) result = ICN_CUR.return_val;
 
-    /* Restore caller's env */
-    icn_env       = saved_env;
-    icn_env_n     = saved_n;
-    icn_returning = saved_ret;
+    /* Pop frame — restores caller's ICN_CUR automatically */
+    icn_frame_depth--;
     return result;
 }
 
@@ -1078,10 +1092,10 @@ static void polyglot_init(Program *prog)
 
     /* ── ICN: proc table ────────────────────────────────────────────── */
     icn_proc_count = 0; icn_global_count = 0;  /* U-23: reset global name bridge */
-    icn_env = NULL; icn_env_n = 0; icn_returning = 0;
-    icn_gen_depth = 0;
+    icn_frame_depth = 0;
+    memset(icn_frame_stack, 0, sizeof icn_frame_stack);
     icn_scan_subj = NULL; icn_scan_pos = 0; icn_scan_depth = 0;
-    icn_loop_break = 0; g_icn_root = NULL;
+    g_icn_root = NULL;
 
     /* ── PL: pred table + trail ─────────────────────────────────────── */
     prolog_atom_init();
