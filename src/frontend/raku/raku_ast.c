@@ -176,6 +176,21 @@ RakuNode *raku_node_gather(RakuNode *body, int line) {
     n->left = body;
     return n;
 }
+/* RK_GIVEN: topic in left; whens list in children; deflt (may be NULL) in right */
+RakuNode *raku_node_given(RakuNode *topic, RakuList *whens, RakuNode *deflt, int line) {
+    RakuNode *n = alloc_node(RK_GIVEN, line);
+    n->left     = topic;
+    n->children = whens;
+    n->right    = deflt;  /* default block, or NULL */
+    return n;
+}
+/* RK_WHEN: match value in left; body block in right */
+RakuNode *raku_node_when(RakuNode *val, RakuNode *body, int line) {
+    RakuNode *n = alloc_node(RK_WHEN, line);
+    n->left  = val;
+    n->right = body;
+    return n;
+}
 
 /* ── Parse entry (sets up flex buffer and calls yyparse) ─────────────── */
 extern int  raku_yyparse(void);

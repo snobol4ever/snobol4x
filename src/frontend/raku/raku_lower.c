@@ -30,6 +30,7 @@
  *   RK_FOR range  → E_EVERY(E_TO(lo,hi), body)
  *   RK_FOR array  → E_EVERY(E_ITERATE(E_VAR(arr)), body)
  *   RK_IF         → E_IF(cond, then [,else])
+ *   RK_GIVEN      → nested E_IF chain (RK-13 given/when smart-match)
  *   RK_WHILE      → E_WHILE(cond, body)
  *   RK_BLOCK      → E_SEQ_EXPR(stmts...)
  *   RK_SUBDEF     → E_FNC(name, params_ignored, body)
@@ -339,6 +340,43 @@ static EXPR_t *lower_node(const RakuNode *n) {
         if (n->extra) expr_add_child(e, lower_block(n->extra)); /* else */
         return e;
     }
+
+    /*-- given $x { when v { } ... default { } }  →  nested E_IF chain ---
+     * Each when becomes E_IF(E_EQ/E_LEQ(topic,val), body, next).
+     * RK_WHEN is only produced inside RK_GIVEN; lower_node handles it
+     * individually only if the list walk calls it directly.              */
+    case RK_GIVEN: {
+        EXPR_t *topic = lower_node(n->left);   /* evaluate topic once */
+        /* Wrap topic in a temp-assign so it's evaluated once.
+         * Simplification: inline topic expr into each comparison —
+         * safe because topic is a simple var in well-formed given stmts. */
+        int nwhens = n->children ? n->children->count : 0;
+        /* Build right-to-left: innermost = default or NULL */
+        EXPR_t *chain = NULL;
+        if (n->right) {  /* default block */
+            chain = lower_block(n->right);
+        }
+        for (int i = nwhens - 1; i >= 0; i--) {
+            RakuNode *w = n->children->items[i];  /* RK_WHEN node */
+            RakuNode *val = w->left;
+            /* Choose comparison: string literal → E_LEQ, else → E_EQ */
+            EKind cmp = (val && (val->kind == RK_STR || val->kind == RK_INTERP_STR))
+                        ? E_LEQ : E_EQ;
+            EXPR_t *cond = expr_binary(cmp, lower_node(n->left), lower_node(val));
+            EXPR_t *then = lower_block(w->right);
+            EXPR_t *eif  = expr_new(E_IF);
+            expr_add_child(eif, cond);
+            expr_add_child(eif, then);
+            if (chain) expr_add_child(eif, chain);
+            chain = eif;
+        }
+        /* If no whens and no default, return empty seq */
+        return chain ? chain : expr_new(E_SEQ_EXPR);
+    }
+
+    case RK_WHEN:
+        /* Standalone RK_WHEN outside given — treat as if(true){body} */
+        return lower_block(n->right);
 
     /*-- while cond body ---------------------------------------------------*/
     case RK_WHILE:

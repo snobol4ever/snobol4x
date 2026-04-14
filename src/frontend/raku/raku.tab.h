@@ -93,26 +93,30 @@ extern int raku_yydebug;
     KW_PRINT = 267,                /* KW_PRINT  */
     KW_IF = 268,                   /* KW_IF  */
     KW_ELSE = 269,                 /* KW_ELSE  */
-    KW_WHILE = 270,                /* KW_WHILE  */
-    KW_FOR = 271,                  /* KW_FOR  */
-    KW_SUB = 272,                  /* KW_SUB  */
-    KW_GATHER = 273,               /* KW_GATHER  */
-    KW_TAKE = 274,                 /* KW_TAKE  */
-    KW_RETURN = 275,               /* KW_RETURN  */
-    OP_RANGE = 276,                /* OP_RANGE  */
-    OP_RANGE_EX = 277,             /* OP_RANGE_EX  */
-    OP_ARROW = 278,                /* OP_ARROW  */
-    OP_EQ = 279,                   /* OP_EQ  */
-    OP_NE = 280,                   /* OP_NE  */
-    OP_LE = 281,                   /* OP_LE  */
-    OP_GE = 282,                   /* OP_GE  */
-    OP_SEQ = 283,                  /* OP_SEQ  */
-    OP_SNE = 284,                  /* OP_SNE  */
-    OP_AND = 285,                  /* OP_AND  */
-    OP_OR = 286,                   /* OP_OR  */
-    OP_BIND = 287,                 /* OP_BIND  */
-    OP_DIV = 288,                  /* OP_DIV  */
-    UMINUS = 289                   /* UMINUS  */
+    KW_ELSIF = 270,                /* KW_ELSIF  */
+    KW_WHILE = 271,                /* KW_WHILE  */
+    KW_FOR = 272,                  /* KW_FOR  */
+    KW_SUB = 273,                  /* KW_SUB  */
+    KW_GATHER = 274,               /* KW_GATHER  */
+    KW_TAKE = 275,                 /* KW_TAKE  */
+    KW_RETURN = 276,               /* KW_RETURN  */
+    KW_GIVEN = 277,                /* KW_GIVEN  */
+    KW_WHEN = 278,                 /* KW_WHEN  */
+    KW_DEFAULT = 279,              /* KW_DEFAULT  */
+    OP_RANGE = 280,                /* OP_RANGE  */
+    OP_RANGE_EX = 281,             /* OP_RANGE_EX  */
+    OP_ARROW = 282,                /* OP_ARROW  */
+    OP_EQ = 283,                   /* OP_EQ  */
+    OP_NE = 284,                   /* OP_NE  */
+    OP_LE = 285,                   /* OP_LE  */
+    OP_GE = 286,                   /* OP_GE  */
+    OP_SEQ = 287,                  /* OP_SEQ  */
+    OP_SNE = 288,                  /* OP_SNE  */
+    OP_AND = 289,                  /* OP_AND  */
+    OP_OR = 290,                   /* OP_OR  */
+    OP_BIND = 291,                 /* OP_BIND  */
+    OP_DIV = 292,                  /* OP_DIV  */
+    UMINUS = 293                   /* UMINUS  */
   };
   typedef enum raku_yytokentype raku_yytoken_kind_t;
 #endif
@@ -129,7 +133,7 @@ union RAKU_YYSTYPE
     RakuNode  *node;
     RakuList  *list;
 
-#line 133 "raku.tab.h"
+#line 137 "raku.tab.h"
 
 };
 typedef union RAKU_YYSTYPE RAKU_YYSTYPE;

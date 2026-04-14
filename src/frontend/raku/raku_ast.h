@@ -14,8 +14,7 @@
 /* ── Node kinds ──────────────────────────────────────────────────────── */
 typedef enum {
     /* Literals */
-    RK_INT, RK_FLOAT, RK_STR, RK_INTERP_STR,
-    /* Variables */
+    RK_INT, RK_FLOAT, RK_STR, RK_INTERP_STR,    /* Variables */
     RK_VAR_SCALAR, RK_VAR_ARRAY, RK_IDENT,
     /* Binary operators */
     RK_ADD, RK_SUBTRACT, RK_MUL, RK_DIV, RK_MOD, RK_IDIV,
@@ -39,6 +38,9 @@ typedef enum {
     RK_WHILE,                           /* while (cond) block */
     RK_FOR,                             /* for range/arr -> $v block */
     RK_SUBDEF,                          /* sub name(params) block */
+    RK_GIVEN,                           /* given $x { when_list } */
+    RK_WHEN,                            /* when val { block } */
+    RK_DEFAULT,                         /* default { block } */
     RK_CALL,                            /* name(args) */
     RK_GATHER,                          /* gather { block } */
 } RakuKind;
@@ -108,6 +110,8 @@ RakuNode *raku_node_for(RakuNode *iter, char *var, RakuNode *body, int line);
 RakuNode *raku_node_sub(char *name, RakuList *params, RakuNode *body, int line);
 RakuNode *raku_node_call(char *name, RakuList *args, int line);
 RakuNode *raku_node_gather(RakuNode *body, int line);
+RakuNode *raku_node_given(RakuNode *topic, RakuList *whens, RakuNode *deflt, int line);
+RakuNode *raku_node_when(RakuNode *val, RakuNode *body, int line);
 
 /* ── Parse entry point ───────────────────────────────────────────────── */
 /* Call after setting up yyin or a string buffer.

@@ -47,8 +47,9 @@ RakuNode *raku_parse_result = NULL;
 %token <sval> LIT_STR LIT_INTERP_STR
 %token <sval> VAR_SCALAR VAR_ARRAY IDENT
 
-%token KW_MY KW_SAY KW_PRINT KW_IF KW_ELSE KW_WHILE KW_FOR
+%token KW_MY KW_SAY KW_PRINT KW_IF KW_ELSE KW_ELSIF KW_WHILE KW_FOR
 %token KW_SUB KW_GATHER KW_TAKE KW_RETURN
+%token KW_GIVEN KW_WHEN KW_DEFAULT
 
 %token OP_RANGE OP_RANGE_EX   /* ..  ..^ */
 %token OP_ARROW                /* ->  */
@@ -61,8 +62,8 @@ RakuNode *raku_parse_result = NULL;
 /* ── Types for non-terminals ─────────────────────────────────────────── */
 %type <node> program stmt expr atom range_expr cmp_expr add_expr
 %type <node> mul_expr unary_expr postfix_expr call_expr block
-%type <node> if_stmt while_stmt for_stmt sub_decl
-%type <list> stmt_list arg_list param_list
+%type <node> if_stmt while_stmt for_stmt sub_decl given_stmt
+%type <list> stmt_list arg_list param_list when_list
 
 /* ── Precedence (low → high) ─────────────────────────────────────────── */
 %right '='  OP_BIND
@@ -112,6 +113,7 @@ stmt
     | if_stmt          { $$ = $1; }
     | while_stmt       { $$ = $1; }
     | for_stmt         { $$ = $1; }
+    | given_stmt       { $$ = $1; }
     | sub_decl         { $$ = $1; }
     ;
 
@@ -137,6 +139,21 @@ for_stmt
         { $$ = raku_node_for($2, $4, $5, raku_get_lineno()); }
     | KW_FOR expr block
         { $$ = raku_node_for($2, NULL, $3, raku_get_lineno()); }
+    ;
+
+/* given $x { when val { } ... default { } }
+ * Scalar smart-match only: numeric == or string eq chosen by literal type. */
+given_stmt
+    : KW_GIVEN expr '{' when_list '}'
+        { $$ = raku_node_given($2, $4, NULL, raku_get_lineno()); }
+    | KW_GIVEN expr '{' when_list KW_DEFAULT block '}'
+        { $$ = raku_node_given($2, $4, $6,   raku_get_lineno()); }
+    ;
+
+when_list
+    : /* empty */               { $$ = raku_list_new(); }
+    | when_list KW_WHEN expr block
+        { $$ = raku_list_append($1, raku_node_when($3, $4, raku_get_lineno())); }
     ;
 
 sub_decl

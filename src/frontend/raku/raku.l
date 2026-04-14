@@ -51,8 +51,12 @@ WS       [ \t\r]
 "print"         { return KW_PRINT; }
 "if"            { return KW_IF; }
 "else"          { return KW_ELSE; }
+"elsif"         { return KW_ELSIF; }
 "while"         { return KW_WHILE; }
 "for"           { return KW_FOR; }
+"given"         { return KW_GIVEN; }
+"when"          { return KW_WHEN; }
+"default"       { return KW_DEFAULT; }
 "sub"           { return KW_SUB; }
 "gather"        { return KW_GATHER; }
 "take"          { return KW_TAKE; }
