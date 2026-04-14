@@ -208,6 +208,191 @@ void pl_writeln(Term *t) {
 }
 
 /* =========================================================================
+ * atom_needs_quoting — return 1 if atom name must be quoted in writeq/write_canonical
+ * Rules: must quote if empty, starts with upper/_, contains non-alnum/_, or is an op-only atom
+ * that would be ambiguous unquoted (e.g. '[]' is fine, ',' must be quoted).
+ * ======================================================================= */
+static int atom_needs_quoting(const char *name) {
+    if (!name || !name[0]) return 1;                          /* empty atom */
+    if (name[0] == '[' && strcmp(name,"[]")==0) return 0;    /* [] is fine */
+    if (name[0] == '{' && strcmp(name,"{}")==0) return 0;    /* {} is fine */
+    if (isupper((unsigned char)name[0]) || name[0] == '_') return 1;
+    /* purely graphic token: only graphic chars — leave unquoted */
+    int all_graphic = 1;
+    static const char *graphic = "#&*+-./:<=>?@\\^~";
+    for (const char *p = name; *p; p++)
+        if (!strchr(graphic, *p)) { all_graphic = 0; break; }
+    if (all_graphic) return 0;
+    /* alphanumeric token starting with lower — quote if contains non-alnum/_ */
+    if (islower((unsigned char)name[0])) {
+        for (const char *p = name+1; *p; p++)
+            if (!isalnum((unsigned char)*p) && *p != '_') return 1;
+        return 0;
+    }
+    return 1;   /* anything else */
+}
+
+/* pl_writeq_term — write term with quoting (writeq semantics) */
+static void pl_writeq_term(Term *t) {
+    t = term_deref(t);
+    if (!t) { printf("'[]'"); return; }
+    switch (t->tag) {
+        case TT_ATOM: {
+            const char *name = prolog_atom_name(t->atom_id);
+            if (!name) name = "?";
+            if (atom_needs_quoting(name)) {
+                putchar('\'');
+                for (const char *p = name; *p; p++) {
+                    if (*p == '\'') putchar('\'');
+                    putchar(*p);
+                }
+                putchar('\'');
+            } else {
+                printf("%s", name);
+            }
+            break;
+        }
+        case TT_VAR:
+            printf("_G%d", t->var_slot);
+            break;
+        case TT_INT:
+            printf("%ld", t->ival);
+            break;
+        case TT_FLOAT: {
+            double fv = t->fval;
+            if (fv == (long)fv && fv >= -1e15 && fv <= 1e15) printf("%.1f", fv);
+            else printf("%g", fv);
+            break;
+        }
+        case TT_COMPOUND: {
+            const char *fn = prolog_atom_name(t->compound.functor);
+            if (!fn) fn = "?";
+            /* '$VAR'(N) suppressed in writeq — print as var name */
+            if (strcmp(fn,"$VAR")==0 && t->compound.arity==1) {
+                Term *n = term_deref(t->compound.args[0]);
+                if (n && n->tag == TT_INT) {
+                    long num = n->ival; int letter=(int)(num%26); long suf=num/26;
+                    if (suf==0) printf("%c",'A'+letter); else printf("%c%ld",'A'+letter,suf);
+                    break;
+                }
+            }
+            /* List notation */
+            if (t->compound.functor == ATOM_DOT && t->compound.arity == 2) {
+                printf("["); pl_writeq_term(t->compound.args[0]);
+                Term *tail = term_deref(t->compound.args[1]);
+                while (tail && tail->tag==TT_COMPOUND && tail->compound.functor==ATOM_DOT && tail->compound.arity==2) {
+                    printf(","); pl_writeq_term(tail->compound.args[0]);
+                    tail = term_deref(tail->compound.args[1]);
+                }
+                if (!(tail && tail->tag==TT_ATOM && tail->atom_id==ATOM_NIL)) { printf("|"); pl_writeq_term(tail); }
+                printf("]"); break;
+            }
+            /* Operator notation (same table as pl_write) */
+            struct { const char *name; int arity; int prec; int right_assoc; } ops[] = {
+                {":-",2,1200,1},{";",2,1100,1},{"->",2,1050,1},{",",2,1000,1},
+                {"=",2,700,0},{"\\=",2,700,0},{"is",2,700,0},
+                {"=:=",2,700,0},{"=\\=",2,700,0},
+                {"<",2,700,0},{">",2,700,0},{"=<",2,700,0},{">=",2,700,0},
+                {"==",2,700,0},{"\\==",2,700,0},
+                {"@<",2,700,0},{"@>",2,700,0},{"@=<",2,700,0},{"@>=",2,700,0},
+                {"=..",2,700,0},{"+",2,500,0},{"-",2,500,0},
+                {"*",2,400,0},{"/",2,400,0},{"//",2,400,0},{"mod",2,400,0},
+                {"rem",2,400,0},{"<<",2,400,0},{">>",2,400,0},
+                {"**",2,200,1},{"^",2,200,1},
+                {"-",1,200,0},{"\\+",1,900,0},{"not",1,900,0},
+                {NULL,0,0,0}
+            };
+            int is_op = 0;
+            for (int i = 0; ops[i].name; i++) {
+                if (strcmp(fn,ops[i].name)==0 && t->compound.arity==ops[i].arity) {
+                    is_op = 1;
+                    if (ops[i].arity==2) {
+                        Term *la=term_deref(t->compound.args[0]),*ra=term_deref(t->compound.args[1]);
+                        int lp=-1,rp=-1;
+                        if(la&&la->tag==TT_COMPOUND){const char*lf=prolog_atom_name(la->compound.functor);if(lf)lp=pl_op_prec(lf,la->compound.arity);}
+                        if(ra&&ra->tag==TT_COMPOUND){const char*rf=prolog_atom_name(ra->compound.functor);if(rf)rp=pl_op_prec(rf,ra->compound.arity);}
+                        int my=ops[i].prec;
+                        if((lp>my)||(lp==my&&ops[i].right_assoc)) { printf("("); pl_writeq_term(t->compound.args[0]); printf(")"); }
+                        else pl_writeq_term(t->compound.args[0]);
+                        if(isalpha((unsigned char)fn[0])) printf(" %s ",fn); else printf("%s",fn);
+                        if((rp>my)||(rp==my&&!ops[i].right_assoc)) { printf("("); pl_writeq_term(t->compound.args[1]); printf(")"); }
+                        else pl_writeq_term(t->compound.args[1]);
+                    } else {
+                        Term *arg=term_deref(t->compound.args[0]); int ap=-1;
+                        if(arg&&arg->tag==TT_COMPOUND){const char*af=prolog_atom_name(arg->compound.functor);if(af)ap=pl_op_prec(af,arg->compound.arity);}
+                        if(isalpha((unsigned char)fn[0])) printf("%s ",fn); else printf("%s",fn);
+                        if(ap>=ops[i].prec){printf("(");pl_writeq_term(t->compound.args[0]);printf(")");}
+                        else pl_writeq_term(t->compound.args[0]);
+                    }
+                    break;
+                }
+            }
+            if (!is_op) {
+                /* quoted functor */
+                if (atom_needs_quoting(fn)) {
+                    putchar('\'');
+                    for (const char *p=fn;*p;p++){if(*p=='\'')putchar('\'');putchar(*p);}
+                    putchar('\'');
+                } else { printf("%s",fn); }
+                printf("(");
+                for (int i=0;i<t->compound.arity;i++){if(i)printf(",");pl_writeq_term(t->compound.args[i]);}
+                printf(")");
+            }
+            break;
+        }
+        default: break;
+    }
+}
+
+void pl_writeq(Term *t) { pl_writeq_term(t); }
+
+/* pl_write_canonical — always functor notation, always quoted, no operator sugar */
+static void pl_write_canonical_term(Term *t) {
+    t = term_deref(t);
+    if (!t) { printf("'[]'"); return; }
+    switch (t->tag) {
+        case TT_ATOM: {
+            const char *name = prolog_atom_name(t->atom_id);
+            if (!name) name = "?";
+            if (atom_needs_quoting(name)) {
+                putchar('\'');
+                for (const char *p=name;*p;p++){if(*p=='\'')putchar('\'');putchar(*p);}
+                putchar('\'');
+            } else printf("%s",name);
+            break;
+        }
+        case TT_VAR:  printf("_G%d",t->var_slot); break;
+        case TT_INT:  printf("%ld",t->ival); break;
+        case TT_FLOAT: {
+            double fv=t->fval;
+            if(fv==(long)fv&&fv>=-1e15&&fv<=1e15) printf("%.1f",fv);
+            else printf("%g",fv);
+            break;
+        }
+        case TT_COMPOUND: {
+            const char *fn = prolog_atom_name(t->compound.functor);
+            if (!fn) fn = "?";
+            /* No operator sugar, no list sugar — pure functor(args) */
+            if (atom_needs_quoting(fn)) {
+                putchar('\'');
+                for(const char *p=fn;*p;p++){if(*p=='\'')putchar('\'');putchar(*p);}
+                putchar('\'');
+            } else printf("%s",fn);
+            printf("(");
+            for(int i=0;i<t->compound.arity;i++){
+                if(i) printf(",");
+                pl_write_canonical_term(t->compound.args[i]);
+            }
+            printf(")");
+            break;
+        }
+        default: break;
+    }
+}
+
+void pl_write_canonical(Term *t) { pl_write_canonical_term(t); }
+
+/* =========================================================================
  * pl_functor — functor(Term, Name, Arity)
  *
  * Rung-9 builtin.  If Term is bound:
@@ -414,7 +599,7 @@ static Term *pl_eval_arith_term(Term *t) {
                _aid_float = -1, _aid_float_int = -1,
                _aid_band = -1, _aid_bor = -1, _aid_bxor = -1,
                _aid_lshift = -1, _aid_rshift = -1, _aid_bnot = -1,
-               _aid_msb = -1, _aid_pi = -1, _aid_e = -1;
+               _aid_msb = -1, _aid_sign = -1, _aid_pi = -1, _aid_e = -1;
     arith_atoms_init();
     if (_aid_pow < 0) {
         _aid_pow      = prolog_atom_intern("**");
@@ -440,6 +625,7 @@ static Term *pl_eval_arith_term(Term *t) {
         _aid_rshift   = prolog_atom_intern(">>");
         _aid_bnot     = prolog_atom_intern("\\");
         _aid_msb      = prolog_atom_intern("msb");
+        _aid_sign     = prolog_atom_intern("sign");
         _aid_pi       = prolog_atom_intern("pi");
         _aid_e        = prolog_atom_intern("e");
     }
@@ -497,6 +683,7 @@ static Term *pl_eval_arith_term(Term *t) {
                 if (f == _aid_float_int)return term_new_float(trunc(d));
                 if (f == _aid_bnot)     return term_new_int(~i);
                 if (f == _aid_msb)      return term_new_int(i>0 ? 63 - __builtin_clzl(i) : -1);
+                if (f == _aid_sign)     return (v->tag==TT_FLOAT) ? term_new_float(d>0?1.0:d<0?-1.0:0.0) : term_new_int(i>0?1:i<0?-1:0);
             }
             return term_new_int(0);
         }

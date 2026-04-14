@@ -11,6 +11,7 @@
  * AUTHORS: Lon Jones Cherryholmes · Claude Sonnet 4.6 (FI-5, 2026-04-14)
  */
 #include "pl_runtime.h"
+#include <math.h>
 #include "../../ir/ir.h"
 #include "../../frontend/snobol4/scrip_cc.h"
 #include "../../frontend/prolog/prolog_driver.h"
@@ -260,6 +261,14 @@ static long pl_unified_eval_arith(EXPR_t *e, Term **env) {
             if (strcmp(fn,"max")==0&&e->nchildren==2){long a=pl_unified_eval_arith(e->children[0],env),b=pl_unified_eval_arith(e->children[1],env);return a>b?a:b;}
             if (strcmp(fn,"min")==0&&e->nchildren==2){long a=pl_unified_eval_arith(e->children[0],env),b=pl_unified_eval_arith(e->children[1],env);return a<b?a:b;}
             if (strcmp(fn,"rem")==0&&e->nchildren==2){long d=pl_unified_eval_arith(e->children[1],env);return d?pl_unified_eval_arith(e->children[0],env)%d:0;}
+            if (strcmp(fn,"sign")==0&&e->nchildren==1){long v=pl_unified_eval_arith(e->children[0],env);return v>0?1:v<0?-1:0;}
+            if (strcmp(fn,"**")==0&&e->nchildren==2){long a=pl_unified_eval_arith(e->children[0],env),b=pl_unified_eval_arith(e->children[1],env);return (long)pow((double)a,(double)b);}
+            if (strcmp(fn,"/\\")==0&&e->nchildren==2){long a=pl_unified_eval_arith(e->children[0],env),b=pl_unified_eval_arith(e->children[1],env);return a&b;}
+            if (strcmp(fn,"\\/")==0&&e->nchildren==2){long a=pl_unified_eval_arith(e->children[0],env),b=pl_unified_eval_arith(e->children[1],env);return a|b;}
+            if (strcmp(fn,"xor")==0&&e->nchildren==2){long a=pl_unified_eval_arith(e->children[0],env),b=pl_unified_eval_arith(e->children[1],env);return a^b;}
+            if (strcmp(fn,"<<")==0&&e->nchildren==2){long a=pl_unified_eval_arith(e->children[0],env),b=pl_unified_eval_arith(e->children[1],env);return a<<b;}
+            if (strcmp(fn,">>")==0&&e->nchildren==2){long a=pl_unified_eval_arith(e->children[0],env),b=pl_unified_eval_arith(e->children[1],env);return a>>b;}
+            if (strcmp(fn,"\\")==0&&e->nchildren==1){long v=pl_unified_eval_arith(e->children[0],env);return ~v;}
             Term *t=term_deref(pl_unified_term_from_expr(e,env));
             return (t&&t->tag==TT_INT)?t->ival:0;
         }
@@ -271,7 +280,7 @@ static long pl_unified_eval_arith(EXPR_t *e, Term **env) {
 int is_pl_user_call(EXPR_t *goal) {
     if (!goal || goal->kind != E_FNC || !goal->sval) return 0;
     static const char *builtins[] = {
-        "true","fail","halt","nl","write","writeln","print","tab","is",
+        "true","fail","halt","nl","write","writeln","print","writeq","write_canonical","tab","is",
         "<",">","=<",">=","=:=","=\\=","=","\\=","==","\\==",
         "@<","@>","@=<","@>=",
         "var","nonvar","atom","integer","float","compound","atomic","callable","is_list",
@@ -348,6 +357,8 @@ int interp_exec_pl_builtin(EXPR_t *goal, Term **env) {
             if (strcmp(fn,"write")==0&&arity==1){pl_write(pl_unified_term_from_expr(goal->children[0],env));return 1;}
             if (strcmp(fn,"writeln")==0&&arity==1){pl_write(pl_unified_term_from_expr(goal->children[0],env));putchar('\n');return 1;}
             if (strcmp(fn,"print")==0&&arity==1){pl_write(pl_unified_term_from_expr(goal->children[0],env));return 1;}
+            if (strcmp(fn,"writeq")==0&&arity==1){pl_writeq(pl_unified_term_from_expr(goal->children[0],env));return 1;}
+            if (strcmp(fn,"write_canonical")==0&&arity==1){pl_write_canonical(pl_unified_term_from_expr(goal->children[0],env));return 1;}
             if (strcmp(fn,"tab")==0&&arity==1){
                 Term *t=term_deref(pl_unified_term_from_expr(goal->children[0],env));
                 long n=(t&&t->tag==TT_INT)?t->ival:0;

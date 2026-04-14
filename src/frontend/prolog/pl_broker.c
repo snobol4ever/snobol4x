@@ -311,7 +311,7 @@ bb_node_t pl_box_goal_from_ir(EXPR_t *g, Term **env) {
 static int pl_is_builtin_goal(EXPR_t *g) {
     if (!g || g->kind != E_FNC || !g->sval) return 0;
     static const char *builtins[] = {
-        "true","fail","halt","nl","write","writeln","print","tab","is",
+        "true","fail","halt","nl","write","writeln","print","writeq","write_canonical","tab","is",
         "<",">","=<",">=","=:=","=\\=","=","\\=","==","\\==",
         "@<","@>","@=<","@>=",
         "var","nonvar","atom","integer","float","compound","atomic","callable","is_list",
