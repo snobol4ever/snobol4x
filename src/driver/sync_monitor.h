@@ -50,6 +50,15 @@ typedef struct {
      * icn_locals_count = 0 when no ICN frames are active. */
     NvPair  *icn_locals;
     int      icn_locals_count;
+
+    /* IM-11: Prolog trail-bound variables.
+     * One entry per trail slot that is currently bound (tag==TT_REF).
+     * Both name and val_str are owned heap strings. */
+    struct PlLocalPair {
+        char *name;     /* "_V<saved_slot>" */
+        char *val_str;  /* stringified dereffed value */
+    } *pl_locals;
+    int      pl_locals_count;
 } ExecSnapshot;
 
 /*------------------------------------------------------------------------

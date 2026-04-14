@@ -21,6 +21,8 @@
 #include "runtime/x86/sm_image.h"
 #include "interp.h"
 #include "frontend/snobol4/scrip_cc.h"  /* Program, STMT_t */
+#include "frontend/prolog/term.h"        /* IM-11: Term, TT_REF, term_deref */
+#include "frontend/prolog/prolog_atom.h" /* IM-11: prolog_atom_name */
 
 /*------------------------------------------------------------------------
  * exec_snapshot_take — capture current mutable state
@@ -42,8 +44,45 @@ void exec_snapshot_take(ExecSnapshot *s) {
     /* Prolog trail mark */
     s->pl_trail_mark   = trail_mark(&g_pl_trail);
 
-    /* IM-8: last_ok unknown until caller sets it */
-    s->last_ok = -1;
+    /* IM-11: Prolog trail-bound variables — walk trail stack 0..top-1 */
+    s->pl_locals       = NULL;
+    s->pl_locals_count = 0;
+    {
+        int top = trail_mark(&g_pl_trail);
+        if (top > 0 && g_pl_trail.stack) {
+            s->pl_locals = malloc((size_t)top * sizeof(*s->pl_locals));
+            int out = 0;
+            for (int ti = 0; ti < top; ti++) {
+                Term *var = g_pl_trail.stack[ti];
+                if (!var) continue;
+                /* Name from saved_slot */
+                char nbuf[32];
+                snprintf(nbuf, sizeof nbuf, "_V%d", var->saved_slot);
+                /* Deref to find bound value */
+                Term *val = term_deref(var);
+                char vbuf[256];
+                if (!val || val->tag == TT_VAR) {
+                    snprintf(vbuf, sizeof vbuf, "_");
+                } else if (val->tag == TT_ATOM) {
+                    const char *aname = prolog_atom_name(val->atom_id);
+                    snprintf(vbuf, sizeof vbuf, "%s", aname ? aname : "?");
+                } else if (val->tag == TT_INT) {
+                    snprintf(vbuf, sizeof vbuf, "%ld", val->ival);
+                } else if (val->tag == TT_FLOAT) {
+                    snprintf(vbuf, sizeof vbuf, "%g", val->fval);
+                } else if (val->tag == TT_COMPOUND) {
+                    const char *fn = prolog_atom_name(val->compound.functor);
+                    snprintf(vbuf, sizeof vbuf, "%s/%d", fn ? fn : "?", val->compound.arity);
+                } else {
+                    snprintf(vbuf, sizeof vbuf, "<term>");
+                }
+                s->pl_locals[out].name    = strdup(nbuf);
+                s->pl_locals[out].val_str = strdup(vbuf);
+                out++;
+            }
+            s->pl_locals_count = out;
+        }
+    }
 
     /* IM-10: ICN frame locals — walk all active frames, collect named slots */
     s->icn_locals       = NULL;
@@ -69,6 +108,9 @@ void exec_snapshot_take(ExecSnapshot *s) {
             s->icn_locals_count = out;
         }
     }
+
+    /* IM-8: last_ok — unknown until caller sets it after step run */
+    s->last_ok = -1;
 }
 
 /*------------------------------------------------------------------------
@@ -113,6 +155,14 @@ void exec_snapshot_free(ExecSnapshot *s) {
     free(s->icn_locals);
     s->icn_locals       = NULL;
     s->icn_locals_count = 0;
+    /* IM-11: free owned Prolog local strings */
+    for (int i = 0; i < s->pl_locals_count; i++) {
+        free(s->pl_locals[i].name);
+        free(s->pl_locals[i].val_str);
+    }
+    free(s->pl_locals);
+    s->pl_locals       = NULL;
+    s->pl_locals_count = 0;
 }
 
 /*------------------------------------------------------------------------
@@ -317,6 +367,15 @@ int sync_monitor_run(void *prog_arg, int verbose) {
                     fprintf(stderr, "    %-16s = %s\n",
                             ir_snap.icn_locals[li].name, v ? v : "");
                 }
+            }
+
+            /* IM-11: Prolog trail bindings — print if trail is non-empty */
+            if (ir_snap.pl_locals_count > 0) {
+                fprintf(stderr, "  Prolog bindings (IR):\n");
+                for (int pi = 0; pi < ir_snap.pl_locals_count; pi++)
+                    fprintf(stderr, "    %-16s = %s\n",
+                            ir_snap.pl_locals[pi].name,
+                            ir_snap.pl_locals[pi].val_str);
             }
 
             if (ir_sm) {
