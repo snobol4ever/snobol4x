@@ -50,6 +50,7 @@ extern Program *sno_parse(FILE *f, const char *filename);
 #include "../frontend/prolog/prolog_builtin.h"  /* interp_exec_pl_builtin declaration */
 #include "../frontend/prolog/pl_broker.h"       /* pl_box_choice, pl_box_* — S-BB-7; pl_exec_goal removed U-11 */
 #include "../frontend/icon/icon_driver.h"
+#include "../frontend/raku/raku_driver.h"
 #include "../frontend/icon/icon_gen.h"    /* icn_bb_to/by/iterate/suspend, state types — U-17 */
 #include "../frontend/icon/icon_lex.h"    /* IcnTkKind — TK_AUG* for E_AUGOP in unified interp */
 
@@ -3695,6 +3696,8 @@ int main(int argc, char **argv)
     { const char *dot = strrchr(input_path, '.'); if (dot && strcmp(dot, ".pl") == 0) lang_prolog = 1; }
     int lang_icon = 0;
     { const char *dot = strrchr(input_path, '.'); if (dot && strcmp(dot, ".icn") == 0) lang_icon = 1; }
+    int lang_raku = 0;
+    { const char *dot = strrchr(input_path, '.'); if (dot && strcmp(dot, ".raku") == 0) lang_raku = 1; }
     int lang_polyglot = 0;  /* U-13: .scrip or .md → fenced polyglot */
     { const char *dot = strrchr(input_path, '.');
       if (dot && (strcmp(dot, ".scrip") == 0 || strcmp(dot, ".md") == 0)) lang_polyglot = 1; }
@@ -3709,13 +3712,19 @@ int main(int argc, char **argv)
         if (opt_bench) clock_gettime(CLOCK_MONOTONIC, &_t1);
         prog = parse_scrip_polyglot(src, input_path);
         free(src);
-    } else if (lang_snocone || lang_prolog || lang_icon) {
+    } else if (lang_snocone || lang_prolog || lang_icon || lang_raku) {
         /* Read whole file into buffer */
         fseek(f, 0, SEEK_END); long flen = ftell(f); rewind(f);
         char *src = malloc(flen + 1);
         if (!src) { fprintf(stderr, "scrip: out of memory\n"); return 1; }
         fread(src, 1, flen, f); src[flen] = '\0'; fclose(f);
         if (opt_bench) clock_gettime(CLOCK_MONOTONIC, &_t1);
+        if (lang_raku) {
+            /* Phase 1: direct AST eval — no IR yet */
+            int rc = raku_run_string(src);
+            free(src);
+            return rc;
+        }
         prog = lang_prolog ? prolog_compile(src, input_path)
                            : lang_icon   ? icon_compile(src, input_path)
                            : snocone_compile(src, input_path);

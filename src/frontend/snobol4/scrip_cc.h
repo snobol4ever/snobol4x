@@ -99,6 +99,7 @@ typedef struct EXPR_t EXPR_t;
 #define LANG_SNO  0   /* SNOBOL4 */
 #define LANG_ICN  1   /* Icon    */
 #define LANG_PL   2   /* Prolog  */
+#define LANG_RAKU 3   /* Raku    */
 
 /* ---- statement ---- */
 typedef struct STMT_t STMT_t;
