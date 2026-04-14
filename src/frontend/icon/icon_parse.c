@@ -1,9 +1,9 @@
 /*
- * icon_parse.c — Tiny-ICON recursive-descent parser
+ * icon_parse.c — Tiny-ICON recursive-descent parser → IR direct
  *
  * Grammar (explicit-semicolon Icon, Tier 0 + procedure shell):
  *
- *   file       := proc* EOF
+ *   file       := (proc | record | global)* EOF
  *   proc       := 'procedure' IDENT '(' params ')' stmt* 'end'
  *   params     := (IDENT (',' IDENT)*)?
  *   stmt       := expr ';'
@@ -37,16 +37,40 @@
  *   primary    := INT | REAL | STRING | CSET | IDENT
  *              |  '(' expr ')'
  *              |  '&' IDENT   (keyword)
+ *
+ * FI-2: Produces EXPR_t / STMT_t directly — IcnNode/icon_ast eliminated.
+ * Authors: Claude Sonnet 4.6 (FI-2, 2026-04-14)
  */
 
 #include "icon_parse.h"
+#include "../../ir/ir.h"
+#include "../snobol4/scrip_cc.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 #include <ctype.h>
 
 /* =========================================================================
- * Internal helpers
+ * Internal helpers — mirrors icon_lower.c helpers, now inline in parser
+ * ======================================================================= */
+
+static EXPR_t *e_leaf_sval(EKind k, const char *s, int len) {
+    EXPR_t *e = expr_new(k);
+    if (len >= 0) e->sval = intern_n(s, len);
+    else          e->sval = intern(s);
+    return e;
+}
+
+static EXPR_t *e_unary(EKind k, EXPR_t *child) {
+    return expr_unary(k, child);
+}
+
+static EXPR_t *e_binary(EKind k, EXPR_t *left, EXPR_t *right) {
+    return expr_binary(k, left, right);
+}
+
+/* =========================================================================
+ * Parser machinery
  * ======================================================================= */
 
 static void parser_error(IcnParser *p, const char *msg) {
@@ -63,9 +87,7 @@ static IcnToken advance(IcnParser *p) {
     return p->cur;
 }
 
-static int check(IcnParser *p, IcnTkKind kind) {
-    return p->cur.kind == kind;
-}
+static int check(IcnParser *p, IcnTkKind kind) { return p->cur.kind == kind; }
 
 static int match(IcnParser *p, IcnTkKind kind) {
     if (p->cur.kind == kind) { advance(p); return 1; }
@@ -83,201 +105,189 @@ static int expect(IcnParser *p, IcnTkKind kind, const char *ctx) {
 /* =========================================================================
  * Forward declarations
  * ======================================================================= */
-static IcnNode *parse_expr(IcnParser *p);
-static IcnNode *parse_stmt(IcnParser *p);
-static IcnNode *parse_do_clause(IcnParser *p);
-static IcnNode *parse_block_or_expr(IcnParser *p);
+static EXPR_t *parse_expr(IcnParser *p);
+static EXPR_t *parse_stmt(IcnParser *p);
+static EXPR_t *parse_do_clause(IcnParser *p);
+static EXPR_t *parse_block_or_expr(IcnParser *p);
 
 /* =========================================================================
- * Expression parsing (recursive descent)
+ * Append helper — add expr child to n-ary node
+ * ======================================================================= */
+static void push_child(EXPR_t *parent, EXPR_t *child) {
+    expr_add_child(parent, child);
+}
+
+/* =========================================================================
+ * Expression parsing (recursive descent) → EXPR_t direct
  * ======================================================================= */
 
-static IcnNode *parse_primary(IcnParser *p) {
+static EXPR_t *parse_primary(IcnParser *p) {
     int line = p->cur.line;
     IcnToken t = p->cur;
 
     if (t.kind == TK_INT) {
         advance(p);
-        return icn_leaf_int(line, t.val.ival);
+        EXPR_t *e = expr_new(E_ILIT);
+        e->ival = t.val.ival;
+        return e;
     }
     if (t.kind == TK_REAL) {
         advance(p);
-        return icn_leaf_real(line, t.val.fval);
+        EXPR_t *e = expr_new(E_FLIT);
+        e->dval = t.val.fval;
+        return e;
     }
     if (t.kind == TK_STRING) {
         advance(p);
-        return icn_leaf_str(ICN_STR, line, t.val.sval.data, t.val.sval.len);
+        return e_leaf_sval(E_QLIT, t.val.sval.data, (int)t.val.sval.len);
     }
     if (t.kind == TK_CSET) {
         advance(p);
-        return icn_leaf_str(ICN_CSET, line, t.val.sval.data, t.val.sval.len);
+        return e_leaf_sval(E_CSET, t.val.sval.data, (int)t.val.sval.len);
     }
     if (t.kind == TK_IDENT) {
         advance(p);
-        return icn_leaf_str(ICN_VAR, line, t.val.sval.data, t.val.sval.len);
+        return e_leaf_sval(E_VAR, t.val.sval.data, (int)t.val.sval.len);
     }
     if (t.kind == TK_AND) {
-        /* &keyword — next token may be TK_IDENT or a reserved keyword token */
+        /* &keyword */
         advance(p);
         const char *kwname = NULL;
         if (p->cur.kind == TK_IDENT) {
             kwname = p->cur.val.sval.data;
         } else {
-            /* Allow reserved words as &keyword names: &fail, &break, &next, etc. */
             kwname = icn_tk_name(p->cur.kind);
-            /* Only accept if it looks like a plain word (no special chars) */
             int ok = 1;
-            for (const char *c = kwname; *c; c++) if (!isalpha((unsigned char)*c) && *c != '_') { ok = 0; break; }
+            for (const char *c = kwname; *c; c++)
+                if (!isalpha((unsigned char)*c) && *c != '_') { ok = 0; break; }
             if (!ok) kwname = NULL;
         }
         if (!kwname) { parser_error(p, "expected keyword name after &"); return NULL; }
         char name[256]; snprintf(name, sizeof(name), "&%s", kwname);
         advance(p);
-        return icn_leaf_str(ICN_VAR, line, name, strlen(name));
+        return e_leaf_sval(E_VAR, name, -1);
     }
     if (t.kind == TK_LPAREN) {
         advance(p);
-        IcnNode *first = parse_expr(p);
+        EXPR_t *first = parse_expr(p);
         if (check(p, TK_SEMICOL)) {
-            /* (E1; E2; ...) — expression sequence, ICN_SEQ_EXPR */
-            IcnNode **children = malloc(8 * sizeof(IcnNode*));
-            int cap = 8, nc = 0;
-            children[nc++] = first;
+            /* (E1; E2; ...) — expression sequence → E_SEQ_EXPR */
+            EXPR_t *seq = expr_new(E_SEQ_EXPR);
+            push_child(seq, first);
             while (check(p, TK_SEMICOL)) {
-                advance(p); /* consume ; */
-                if (check(p, TK_RPAREN)) break; /* trailing ; allowed */
-                if (nc >= cap) { cap *= 2; children = realloc(children, cap * sizeof(IcnNode*)); }
-                children[nc++] = parse_expr(p);
+                advance(p);
+                if (check(p, TK_RPAREN)) break;
+                push_child(seq, parse_expr(p));
             }
             expect(p, TK_RPAREN, "sequence expression");
-            IcnNode *seq = calloc(1, sizeof(IcnNode));
-            seq->kind = ICN_SEQ_EXPR; seq->line = line;
-            seq->nchildren = nc; seq->children = children;
             return seq;
         }
         expect(p, TK_RPAREN, "grouped expression");
         return first;
     }
     if (t.kind == TK_LBRACK) {
-        /* [e1, e2, ...] — list constructor → ICN_MAKELIST */
+        /* [e1, e2, ...] — list constructor → E_MAKELIST */
         advance(p);
-        IcnNode **children = malloc(8 * sizeof(IcnNode*));
-        int cap = 8, nc = 0;
+        EXPR_t *lst = expr_new(E_MAKELIST);
         if (!check(p, TK_RBRACK)) {
-            children[nc++] = parse_expr(p);
+            push_child(lst, parse_expr(p));
             while (check(p, TK_COMMA)) {
                 advance(p);
                 if (check(p, TK_RBRACK)) break;
-                if (nc >= cap) { cap *= 2; children = realloc(children, cap * sizeof(IcnNode*)); }
-                children[nc++] = parse_expr(p);
+                push_child(lst, parse_expr(p));
             }
         }
         expect(p, TK_RBRACK, "list literal");
-        IcnNode *lst = calloc(1, sizeof(IcnNode));
-        lst->kind = ICN_MAKELIST; lst->line = line;
-        lst->nchildren = nc; lst->children = (nc > 0) ? children : NULL;
-        if (nc == 0) free(children);
         return lst;
     }
     if (t.kind == TK_FAIL) {
         advance(p);
-        return icn_node_new(ICN_FAIL, line, 0);
+        return expr_new(E_FAIL);
     }
     if (t.kind == TK_BREAK) {
         advance(p);
-        IcnNode *val = NULL;
+        EXPR_t *e = expr_new(E_LOOP_BREAK);
         if (!check(p, TK_SEMICOL) && !check(p, TK_RPAREN) && !check(p, TK_EOF))
-            val = parse_expr(p);
-        return icn_node_new(ICN_BREAK, line, val ? 1 : 0, val);
+            push_child(e, parse_expr(p));
+        return e;
     }
     if (t.kind == TK_NEXT) {
         advance(p);
-        return icn_node_new(ICN_NEXT, line, 0);
+        return expr_new(E_LOOP_NEXT);
     }
     if (t.kind == TK_CASE) {
-        /* Delegate to parse_expr which handles TK_CASE */
         return parse_expr(p);
     }
-    /* Compound block { stmt; ... } as expression */
     if (t.kind == TK_LBRACE) {
         return parse_block_or_expr(p);
     }
 
     parser_error(p, "expected expression");
-    advance(p); /* skip bad token */
+    advance(p);
     return NULL;
 }
 
-static IcnNode *parse_postfix(IcnParser *p) {
-    IcnNode *n = parse_primary(p);
+static EXPR_t *parse_postfix(IcnParser *p) {
+    EXPR_t *n = parse_primary(p);
     if (!n) return NULL;
     for (;;) {
-        int line = p->cur.line;
+        int line = p->cur.line; (void)line;
         if (check(p, TK_LPAREN)) {
-            /* function call: fn(arg, ...) */
             advance(p);
-            /* collect arguments */
-            IcnNode **args = NULL;
-            int nargs = 0, cap = 0;
+            /* E_FNC: child[0]=callee, child[1..]=args */
+            EXPR_t *call = expr_new(E_FNC);
+            push_child(call, n);
             if (!check(p, TK_RPAREN)) {
                 do {
-                    /* Omitted arg: f(,x) f(x,) f(x,,z) — treat as &null */
-                    IcnNode *arg;
-                    if (check(p, TK_COMMA) || check(p, TK_RPAREN)) {
-                        arg = icn_leaf_str(ICN_VAR, p->cur.line, "&null", 5);
-                    } else {
+                    EXPR_t *arg;
+                    if (check(p, TK_COMMA) || check(p, TK_RPAREN))
+                        arg = e_leaf_sval(E_VAR, "&null", -1);
+                    else {
                         arg = parse_expr(p);
                         if (!arg) break;
                     }
-                    if (nargs + 1 > cap) {
-                        cap = cap ? cap*2 : 4;
-                        args = realloc(args, cap * sizeof(IcnNode*));
-                    }
-                    args[nargs++] = arg;
+                    push_child(call, arg);
                 } while (match(p, TK_COMMA));
             }
             expect(p, TK_RPAREN, "function call");
-            /* Build ICN_CALL: children = [fn, arg1, arg2, ...] */
-            IcnNode **children = malloc((1 + nargs) * sizeof(IcnNode*));
-            children[0] = n;
-            for (int i = 0; i < nargs; i++) children[i+1] = args[i];
-            free(args);
-            IcnNode *call = calloc(1, sizeof(IcnNode));
-            call->kind = ICN_CALL; call->line = line;
-            call->nchildren = 1 + nargs;
-            call->children = children;
             n = call;
         } else if (check(p, TK_LBRACK)) {
             advance(p);
-            IcnNode *idx = parse_expr(p);
+            EXPR_t *idx = parse_expr(p);
             if (check(p, TK_COLON)) {
-                /* s[i:j] — string section */
                 advance(p);
-                IcnNode *hi = parse_expr(p);
+                EXPR_t *hi = parse_expr(p);
                 expect(p, TK_RBRACK, "section");
-                n = icn_node_new(ICN_SECTION, line, 3, n, idx, hi);
+                EXPR_t *sec = expr_new(E_SECTION);
+                push_child(sec, n); push_child(sec, idx); push_child(sec, hi);
+                n = sec;
             } else if (check(p, TK_PLUSCOLON)) {
-                /* s[i+:n] — M+:N section */
                 advance(p);
-                IcnNode *len = parse_expr(p);
+                EXPR_t *len = parse_expr(p);
                 expect(p, TK_RBRACK, "section+:");
-                n = icn_node_new(ICN_SECTION_PLUS, line, 3, n, idx, len);
+                EXPR_t *sec = expr_new(E_SECTION_PLUS);
+                push_child(sec, n); push_child(sec, idx); push_child(sec, len);
+                n = sec;
             } else if (check(p, TK_MINUSCOLON)) {
-                /* s[i-:n] — M-:N section */
                 advance(p);
-                IcnNode *len = parse_expr(p);
+                EXPR_t *len = parse_expr(p);
                 expect(p, TK_RBRACK, "section-:");
-                n = icn_node_new(ICN_SECTION_MINUS, line, 3, n, idx, len);
+                EXPR_t *sec = expr_new(E_SECTION_MINUS);
+                push_child(sec, n); push_child(sec, idx); push_child(sec, len);
+                n = sec;
             } else {
                 expect(p, TK_RBRACK, "subscript");
-                n = icn_node_new(ICN_SUBSCRIPT, line, 2, n, idx);
+                n = e_binary(E_IDX, n, idx);
             }
         } else if (check(p, TK_DOT)) {
             advance(p);
             if (p->cur.kind != TK_IDENT) { parser_error(p, "expected field name"); break; }
             IcnToken fname = p->cur; advance(p);
-            IcnNode *field = icn_leaf_str(ICN_VAR, line, fname.val.sval.data, fname.val.sval.len);
-            n = icn_node_new(ICN_FIELD, line, 2, n, field);
+            /* E_FIELD: sval=field name, child[0]=object */
+            EXPR_t *fe = expr_new(E_FIELD);
+            fe->sval = intern_n(fname.val.sval.data, (int)fname.val.sval.len);
+            push_child(fe, n);
+            n = fe;
         } else {
             break;
         }
@@ -285,159 +295,113 @@ static IcnNode *parse_postfix(IcnParser *p) {
     return n;
 }
 
-static IcnNode *parse_unary(IcnParser *p);
+static EXPR_t *parse_unary(IcnParser *p);
 
-static IcnNode *parse_limit(IcnParser *p) {
-    IcnNode *n = parse_postfix(p);
+static EXPR_t *parse_limit(IcnParser *p) {
+    EXPR_t *n = parse_postfix(p);
     if (!n) return NULL;
     if (check(p, TK_BACKSLASH)) {
-        int line = p->cur.line;
         advance(p);
-        IcnNode *lim = parse_unary(p);
-        n = icn_node_new(ICN_LIMIT, line, 2, n, lim);
+        EXPR_t *lim = parse_unary(p);
+        n = e_binary(E_LIMIT, n, lim);
     }
     return n;
 }
 
-static IcnNode *parse_unary(IcnParser *p) {
-    int line = p->cur.line;
-    if (check(p, TK_MINUS)) {
-        advance(p);
-        IcnNode *inner = parse_unary(p);
-        return icn_node_new(ICN_NEG, line, 1, inner);
-    }
-    if (check(p, TK_PLUS)) {
-        advance(p);
-        IcnNode *inner = parse_unary(p);
-        return icn_node_new(ICN_POS, line, 1, inner);
-    }
-    if (check(p, TK_BANG)) {
-        advance(p);
-        IcnNode *inner = parse_unary(p);
-        return icn_node_new(ICN_BANG, line, 1, inner);
-    }
-    if (check(p, TK_STAR)) {
-        advance(p);
-        IcnNode *inner = parse_unary(p);
-        return icn_node_new(ICN_SIZE, line, 1, inner);
-    }
-    if (check(p, TK_BACKSLASH)) {
-        advance(p);
-        IcnNode *inner = parse_unary(p);
-        return icn_node_new(ICN_NONNULL, line, 1, inner); /* \E = succeed if E succeeds */
-    }
-    if (check(p, TK_SLASH)) {
-        advance(p);
-        IcnNode *inner = parse_unary(p);
-        return icn_node_new(ICN_NULL, line, 1, inner); /* /E = succeed if E fails, yield &null */
-    }
-    if (check(p, TK_NOT)) {
-        advance(p);
-        IcnNode *inner = parse_unary(p);
-        return icn_node_new(ICN_NOT, line, 1, inner);
-    }
-    if (check(p, TK_QMARK)) {
-        advance(p);
-        IcnNode *inner = parse_unary(p);
-        return icn_node_new(ICN_RANDOM, line, 1, inner);
-    }
-    if (check(p, TK_TILDE)) {
-        advance(p);
-        IcnNode *inner = parse_unary(p);
-        return icn_node_new(ICN_COMPLEMENT, line, 1, inner);
-    }
+static EXPR_t *parse_unary(IcnParser *p) {
+    int line = p->cur.line; (void)line;
+    if (check(p, TK_MINUS))     { advance(p); return e_unary(E_MNS,        parse_unary(p)); }
+    if (check(p, TK_PLUS))      { advance(p); return e_unary(E_PLS,        parse_unary(p)); }
+    if (check(p, TK_BANG))      { advance(p); return e_unary(E_ITERATE,    parse_unary(p)); }
+    if (check(p, TK_STAR))      { advance(p); return e_unary(E_SIZE,       parse_unary(p)); }
+    if (check(p, TK_BACKSLASH)) { advance(p); return e_unary(E_NONNULL,    parse_unary(p)); }
+    if (check(p, TK_SLASH))     { advance(p); return e_unary(E_NULL,       parse_unary(p)); }
+    if (check(p, TK_NOT))       { advance(p); return e_unary(E_NOT,        parse_unary(p)); }
+    if (check(p, TK_QMARK))     { advance(p); return e_unary(E_RANDOM,     parse_unary(p)); }
+    if (check(p, TK_TILDE))     { advance(p); return e_unary(E_CSET_COMPL, parse_unary(p)); }
     if (check(p, TK_EQ)) {
         /* =E — scan match: rewrite as match(E) call */
         advance(p);
-        IcnNode *inner = parse_unary(p);
-        IcnNode *fn = icn_leaf_str(ICN_VAR, line, "match", 5);
-        return icn_node_new(ICN_CALL, line, 2, fn, inner);
+        EXPR_t *inner = parse_unary(p);
+        EXPR_t *call = expr_new(E_FNC);
+        push_child(call, e_leaf_sval(E_VAR, "match", -1));
+        push_child(call, inner);
+        return call;
     }
     return parse_limit(p);
 }
 
-/* parse_pow — right-associative ^ (exponentiation), higher precedence than * / % */
-static IcnNode *parse_pow(IcnParser *p) {
-    IcnNode *n = parse_unary(p);
+static EXPR_t *parse_pow(IcnParser *p) {
+    EXPR_t *n = parse_unary(p);
     if (!n) return NULL;
     if (check(p, TK_CARET)) {
-        int line = p->cur.line;
         advance(p);
-        IcnNode *rhs = parse_pow(p);  /* right-associative: recurse */
-        n = icn_node_new(ICN_POW, line, 2, n, rhs);
+        EXPR_t *rhs = parse_pow(p);   /* right-associative */
+        n = e_binary(E_POW, n, rhs);
     }
     return n;
 }
 
-static IcnNode *parse_mul(IcnParser *p) {
-    IcnNode *n = parse_pow(p);
+static EXPR_t *parse_mul(IcnParser *p) {
+    EXPR_t *n = parse_pow(p);
     if (!n) return NULL;
     for (;;) {
-        int line = p->cur.line;
-        IcnKind kind;
-        if      (check(p, TK_STAR))  kind = ICN_MUL;
-        else if (check(p, TK_SLASH)) kind = ICN_DIV;
-        else if (check(p, TK_MOD))   kind = ICN_MOD;
+        EKind k;
+        if      (check(p, TK_STAR))  k = E_MUL;
+        else if (check(p, TK_SLASH)) k = E_DIV;
+        else if (check(p, TK_MOD))   k = E_MOD;
         else break;
         advance(p);
-        IcnNode *rhs = parse_pow(p);
-        n = icn_node_new(kind, line, 2, n, rhs);
+        n = e_binary(k, n, parse_pow(p));
     }
     return n;
 }
 
-static IcnNode *parse_add(IcnParser *p) {
-    IcnNode *n = parse_mul(p);
+static EXPR_t *parse_add(IcnParser *p) {
+    EXPR_t *n = parse_mul(p);
     if (!n) return NULL;
     for (;;) {
-        int line = p->cur.line;
-        IcnKind kind;
-        if      (check(p, TK_PLUS))  kind = ICN_ADD;
-        else if (check(p, TK_MINUS)) kind = ICN_SUB;
+        EKind k;
+        if      (check(p, TK_PLUS))  k = E_ADD;
+        else if (check(p, TK_MINUS)) k = E_SUB;
         else break;
         advance(p);
-        IcnNode *rhs = parse_mul(p);
-        n = icn_node_new(kind, line, 2, n, rhs);
+        n = e_binary(k, n, parse_mul(p));
     }
     return n;
 }
 
-static IcnNode *parse_cset(IcnParser *p) {
-    IcnNode *n = parse_add(p);
+static EXPR_t *parse_cset(IcnParser *p) {
+    EXPR_t *n = parse_add(p);
     if (!n) return NULL;
     for (;;) {
-        int line = p->cur.line;
-        IcnKind kind;
-        if      (check(p, TK_PLUSPLUS))   kind = ICN_CSET_UNION;
-        else if (check(p, TK_MINUSMINUS)) kind = ICN_CSET_DIFF;
-        else if (check(p, TK_STARSTAR))   kind = ICN_CSET_INTER;
+        EKind k;
+        if      (check(p, TK_PLUSPLUS))   k = E_CSET_UNION;
+        else if (check(p, TK_MINUSMINUS)) k = E_CSET_DIFF;
+        else if (check(p, TK_STARSTAR))   k = E_CSET_INTER;
         else if (check(p, TK_BANG)) {
-            /* binary !: E1 ! E2  (invoke E1 with generator from E2) */
+            /* binary !: E1 ! E2 → E_BANG_BINARY */
             advance(p);
-            IcnNode *rhs = parse_add(p);
-            n = icn_node_new(ICN_BANG_BINARY, line, 2, n, rhs);
+            n = e_binary(E_BANG_BINARY, n, parse_add(p));
             continue;
         }
         else break;
         advance(p);
-        IcnNode *rhs = parse_add(p);
-        n = icn_node_new(kind, line, 2, n, rhs);
+        n = e_binary(k, n, parse_add(p));
     }
     return n;
 }
 
-static IcnNode *parse_concat(IcnParser *p) {
-    IcnNode *n = parse_cset(p);
+static EXPR_t *parse_concat(IcnParser *p) {
+    EXPR_t *n = parse_cset(p);
     if (!n) return NULL;
     for (;;) {
-        int line = p->cur.line;
-        IcnKind kind;
-        if      (check(p, TK_LCONCAT)) kind = ICN_LCONCAT;
-        else if (check(p, TK_CONCAT))  kind = ICN_CONCAT;
+        EKind k;
+        if      (check(p, TK_LCONCAT)) k = E_LCONCAT;
+        else if (check(p, TK_CONCAT))  k = E_CAT;
         else break;
         advance(p);
-        IcnNode *rhs = parse_add(p);
-        n = icn_node_new(kind, line, 2, n, rhs);
+        n = e_binary(k, n, parse_cset(p));
     }
     return n;
 }
@@ -448,77 +412,75 @@ static int is_relop(IcnTkKind k) {
            k==TK_SLT || k==TK_SLE || k==TK_SGT || k==TK_SGE ||
            k==TK_SEQ || k==TK_SNE;
 }
-static IcnKind relop_kind(IcnTkKind k) {
+
+static EKind relop_ekind(IcnTkKind k) {
     switch (k) {
-        case TK_LT:  return ICN_LT;  case TK_LE:  return ICN_LE;
-        case TK_GT:  return ICN_GT;  case TK_GE:  return ICN_GE;
-        case TK_EQ:  return ICN_EQ;  case TK_NEQ: return ICN_NE;
-        case TK_SLT: return ICN_SLT; case TK_SLE: return ICN_SLE;
-        case TK_SGT: return ICN_SGT; case TK_SGE: return ICN_SGE;
-        case TK_SEQ: return ICN_SEQ; case TK_SNE: return ICN_SNE;
-        default:     return ICN_EQ;
+        case TK_LT:  return E_LT;   case TK_LE:  return E_LE;
+        case TK_GT:  return E_GT;   case TK_GE:  return E_GE;
+        case TK_EQ:  return E_EQ;   case TK_NEQ: return E_NE;
+        case TK_SLT: return E_LLT;  case TK_SLE: return E_LLE;
+        case TK_SGT: return E_LGT;  case TK_SGE: return E_LGE;
+        case TK_SEQ: return E_LEQ;  case TK_SNE: return E_LNE;
+        default:     return E_EQ;
     }
 }
 
-static IcnNode *parse_rel(IcnParser *p) {
-    IcnNode *n = parse_concat(p);
+static EXPR_t *parse_rel(IcnParser *p) {
+    EXPR_t *n = parse_concat(p);
     if (!n) return NULL;
     while (is_relop(p->cur.kind)) {
-        int line = p->cur.line;
-        IcnKind kind = relop_kind(p->cur.kind);
+        EKind k = relop_ekind(p->cur.kind);
         advance(p);
-        IcnNode *rhs = parse_concat(p);
-        n = icn_node_new(kind, line, 2, n, rhs);
+        n = e_binary(k, n, parse_concat(p));
     }
     return n;
 }
 
-static IcnNode *parse_and(IcnParser *p) {
-    IcnNode *n = parse_rel(p);
+static EXPR_t *parse_and(IcnParser *p) {
+    EXPR_t *n = parse_rel(p);
     if (!n) return NULL;
     if (!check(p, TK_AND)) return n;
-    /* Flatten into a single n-ary ICN_AND node */
-    int line = p->cur.line;
-    IcnNode *and_node = icn_node_new(ICN_AND, line, 1, n);
+    /* n-ary E_SEQ (conjunction, same Byrd-box semantics as & in Icon) */
+    EXPR_t *seq = expr_new(E_SEQ);
+    push_child(seq, n);
     while (check(p, TK_AND)) {
         advance(p);
-        IcnNode *rhs = parse_rel(p);
-        icn_node_append(and_node, rhs);
+        push_child(seq, parse_rel(p));
     }
-    return and_node;
+    return seq;
 }
 
-static IcnNode *parse_to(IcnParser *p) {
-    IcnNode *n = parse_and(p);
+static EXPR_t *parse_to(IcnParser *p) {
+    EXPR_t *n = parse_and(p);
     if (!n) return NULL;
     while (check(p, TK_TO)) {
-        int line = p->cur.line;
         advance(p);
-        IcnNode *limit = parse_and(p);
+        EXPR_t *limit = parse_and(p);
         if (check(p, TK_BY)) {
             advance(p);
-            IcnNode *step = parse_and(p);
-            n = icn_node_new(ICN_TO_BY, line, 3, n, limit, step);
+            EXPR_t *step = parse_and(p);
+            EXPR_t *tby = expr_new(E_TO_BY);
+            push_child(tby, n); push_child(tby, limit); push_child(tby, step);
+            n = tby;
         } else {
-            n = icn_node_new(ICN_TO, line, 2, n, limit);
+            n = e_binary(E_TO, n, limit);
         }
     }
     return n;
 }
 
-static IcnNode *parse_alt(IcnParser *p) {
-    IcnNode *n = parse_to(p);
+static EXPR_t *parse_alt(IcnParser *p) {
+    EXPR_t *n = parse_to(p);
     if (!n) return NULL;
     if (!check(p, TK_BAR)) return n;
-    /* Flatten into a single n-ary ICN_ALT node */
-    int line = p->cur.line;
-    IcnNode *alt_node = icn_node_new(ICN_ALT, line, 1, n);
+    /* n-ary E_ALTERNATE */
+    EXPR_t *alt = expr_new(E_ALTERNATE);
+    push_child(alt, n);
     while (check(p, TK_BAR)) {
         advance(p);
-        IcnNode *rhs = parse_to(p);
-        icn_node_append(alt_node, rhs);
+        push_child(alt, parse_to(p));
     }
-    return alt_node;
+    return alt;
 }
 
 static int is_augop(IcnTkKind k) {
@@ -531,287 +493,271 @@ static int is_augop(IcnTkKind k) {
            k==TK_AUGSLT   || k==TK_AUGSLE  || k==TK_AUGSGT || k==TK_AUGSGE || k==TK_AUGSNE;
 }
 
-static IcnNode *parse_assign(IcnParser *p) {
-    IcnNode *n = parse_alt(p);
+static EXPR_t *parse_assign(IcnParser *p) {
+    EXPR_t *n = parse_alt(p);
     if (!n) return NULL;
-    int line = p->cur.line;
     if (check(p, TK_ASSIGN)) {
         advance(p);
-        IcnNode *rhs = parse_assign(p);
-        return icn_node_new(ICN_ASSIGN, line, 2, n, rhs);
+        return e_binary(E_ASSIGN, n, parse_assign(p));
     }
     if (check(p, TK_REVASSIGN)) {
         advance(p);
-        IcnNode *rhs = parse_assign(p);
-        return icn_node_new(ICN_ASSIGN, line, 2, n, rhs); /* treat reversible as assign for now */
+        return e_binary(E_ASSIGN, n, parse_assign(p));
     }
     if (check(p, TK_SWAP)) {
         advance(p);
-        IcnNode *rhs = parse_assign(p);
-        return icn_node_new(ICN_SWAP, line, 2, n, rhs);
+        return e_binary(E_SWAP, n, parse_assign(p));
     }
     if (check(p, TK_VALSWAP)) {
         advance(p);
-        IcnNode *rhs = parse_assign(p);
-        return icn_node_new(ICN_SWAP, line, 2, n, rhs); /* treat <-> as swap */
+        return e_binary(E_SWAP, n, parse_assign(p));
     }
     if (check(p, TK_IDENTICAL)) {
         advance(p);
-        IcnNode *rhs = parse_assign(p);
-        return icn_node_new(ICN_IDENTICAL, line, 2, n, rhs);
+        return e_binary(E_IDENTICAL, n, parse_assign(p));
     }
     if (check(p, TK_NOTIDENT)) {
         advance(p);
-        IcnNode *rhs = parse_assign(p);
-        IcnNode *id = icn_node_new(ICN_IDENTICAL, line, 2, n, rhs);
-        return icn_node_new(ICN_NOT, line, 1, id);
+        return e_unary(E_NOT, e_binary(E_IDENTICAL, n, parse_assign(p)));
     }
     if (is_augop(p->cur.kind)) {
         IcnTkKind aug = p->cur.kind; advance(p);
-        IcnNode *rhs = parse_assign(p);
-        IcnNode *op = icn_node_new(ICN_AUGOP, line, 2, n, rhs);
-        op->val.ival = (long)aug;
+        EXPR_t *rhs = parse_assign(p);
+        EXPR_t *op = expr_new(E_AUGOP);
+        op->ival = (long)aug;
+        push_child(op, n); push_child(op, rhs);
         return op;
     }
     if (check(p, TK_QMARK)) {
         advance(p);
-        IcnNode *rhs = parse_block_or_expr(p);
-        return icn_node_new(ICN_SCAN, line, 2, n, rhs);
+        return e_binary(E_SCAN, n, parse_block_or_expr(p));
     }
     return n;
 }
 
-static IcnNode *parse_expr(IcnParser *p) {
-    int line = p->cur.line;
-    /* Control expressions — valid anywhere an expression is expected */
+static EXPR_t *parse_expr(IcnParser *p) {
+    int line = p->cur.line; (void)line;
+    /* Control expressions valid anywhere */
     if (check(p, TK_RETURN)) {
         advance(p);
-        IcnNode *val = NULL;
+        EXPR_t *e = expr_new(E_RETURN);
         if (!check(p, TK_SEMICOL) && !check(p, TK_RPAREN) &&
             !check(p, TK_EOF)  && !check(p, TK_THEN) &&
             !check(p, TK_ELSE) && !check(p, TK_DO))
-            val = parse_expr(p);
-        if (val) return icn_node_new(ICN_RETURN, line, 1, val);
-        return icn_node_new(ICN_RETURN, line, 0);
+            push_child(e, parse_expr(p));
+        return e;
     }
     if (check(p, TK_FAIL)) {
         advance(p);
-        return icn_node_new(ICN_FAIL, line, 0);
+        return expr_new(E_FAIL);
     }
     if (check(p, TK_SUSPEND)) {
         advance(p);
-        IcnNode *val = parse_expr(p);
-        IcnNode *body = parse_do_clause(p);
-        if (body) return icn_node_new(ICN_SUSPEND, line, 2, val, body);
-        return icn_node_new(ICN_SUSPEND, line, 1, val);
+        EXPR_t *e = expr_new(E_SUSPEND);
+        push_child(e, parse_expr(p));
+        EXPR_t *body = parse_do_clause(p);
+        if (body) push_child(e, body);
+        return e;
     }
-    if (check(p, TK_BREAK)) { advance(p); return icn_node_new(ICN_BREAK, line, 0); }
-    if (check(p, TK_NEXT))  { advance(p); return icn_node_new(ICN_NEXT,  line, 0); }
-    /* if/every/while/until/repeat as expression-context constructs */
+    if (check(p, TK_BREAK)) { advance(p); return expr_new(E_LOOP_BREAK); }
+    if (check(p, TK_NEXT))  { advance(p); return expr_new(E_LOOP_NEXT); }
     if (check(p, TK_IF)) {
         advance(p);
-        IcnNode *cond = parse_expr(p);
-        match(p, TK_SEMICOL); /* optional ; between condition and then */
+        EXPR_t *e = expr_new(E_IF);
+        push_child(e, parse_expr(p));
+        match(p, TK_SEMICOL);
         expect(p, TK_THEN, "if/then");
-        IcnNode *thenb = parse_block_or_expr(p);
-        IcnNode *elseb = NULL;
-        match(p, TK_SEMICOL); /* optional ; before else */
-        if (match(p, TK_ELSE)) elseb = parse_block_or_expr(p);
-        if (elseb) return icn_node_new(ICN_IF, line, 3, cond, thenb, elseb);
-        return icn_node_new(ICN_IF, line, 2, cond, thenb);
+        push_child(e, parse_block_or_expr(p));
+        match(p, TK_SEMICOL);
+        if (match(p, TK_ELSE)) push_child(e, parse_block_or_expr(p));
+        return e;
     }
     if (check(p, TK_EVERY)) {
         advance(p);
-        IcnNode *gen = parse_expr(p);
-        IcnNode *body = parse_do_clause(p);
-        if (body) return icn_node_new(ICN_EVERY, line, 2, gen, body);
-        return icn_node_new(ICN_EVERY, line, 1, gen);
+        EXPR_t *e = expr_new(E_EVERY);
+        push_child(e, parse_expr(p));
+        EXPR_t *body = parse_do_clause(p);
+        if (body) push_child(e, body);
+        return e;
     }
     if (check(p, TK_WHILE)) {
         advance(p);
-        IcnNode *cond = parse_expr(p);
-        IcnNode *body = parse_do_clause(p);
-        if (body) return icn_node_new(ICN_WHILE, line, 2, cond, body);
-        return icn_node_new(ICN_WHILE, line, 1, cond);
+        EXPR_t *e = expr_new(E_WHILE);
+        push_child(e, parse_expr(p));
+        EXPR_t *body = parse_do_clause(p);
+        if (body) push_child(e, body);
+        return e;
     }
     if (check(p, TK_UNTIL)) {
         advance(p);
-        IcnNode *cond = parse_expr(p);
-        IcnNode *body = parse_do_clause(p);
-        if (body) return icn_node_new(ICN_UNTIL, line, 2, cond, body);
-        return icn_node_new(ICN_UNTIL, line, 1, cond);
+        EXPR_t *e = expr_new(E_UNTIL);
+        push_child(e, parse_expr(p));
+        EXPR_t *body = parse_do_clause(p);
+        if (body) push_child(e, body);
+        return e;
     }
     if (check(p, TK_REPEAT)) {
         advance(p);
-        IcnNode *body = parse_block_or_expr(p);
-        return icn_node_new(ICN_REPEAT, line, 1, body);
+        EXPR_t *e = expr_new(E_REPEAT);
+        push_child(e, parse_block_or_expr(p));
+        return e;
     }
     if (check(p, TK_CASE)) {
         advance(p);
-        IcnNode *disp = parse_expr(p);
+        EXPR_t *e = expr_new(E_CASE);
+        push_child(e, parse_expr(p));     /* dispatch expr */
         expect(p, TK_OF, "case expression");
         expect(p, TK_LBRACE, "case body");
-        /* Collect clauses: val: result pairs, optional default: result */
-        IcnNode **children = NULL; int nc = 0, cap = 0;
-        #define CASE_PUSH(n) do { if (nc+1>cap){cap=cap?cap*2:8;children=realloc(children,cap*sizeof(IcnNode*));} children[nc++]=(n); } while(0)
-        CASE_PUSH(disp);
         while (!check(p, TK_RBRACE) && !check(p, TK_EOF)) {
             if (check(p, TK_DEFAULT)) {
                 advance(p);
                 expect(p, TK_COLON, "case default");
-                IcnNode *res = parse_expr(p);
-                CASE_PUSH(res);   /* default result as last child, no value */
+                push_child(e, parse_expr(p));
                 match(p, TK_SEMICOL);
                 break;
             }
-            IcnNode *val = parse_expr(p);
+            push_child(e, parse_expr(p));      /* case value */
             expect(p, TK_COLON, "case clause");
-            IcnNode *res = parse_expr(p);
-            CASE_PUSH(val); CASE_PUSH(res);
+            push_child(e, parse_expr(p));      /* case result */
             match(p, TK_SEMICOL);
         }
-        #undef CASE_PUSH
         expect(p, TK_RBRACE, "case body end");
-        IcnNode *node = calloc(1, sizeof(IcnNode));
-        node->kind = ICN_CASE; node->line = line;
-        node->nchildren = nc; node->children = children;
-        return node;
+        return e;
     }
     return parse_assign(p);
+}
+
+/* =========================================================================
+ * Block / do-clause helpers
+ * ======================================================================= */
+
+static EXPR_t *parse_block_or_expr(IcnParser *p) {
+    if (!check(p, TK_LBRACE)) return parse_expr(p);
+    advance(p);
+    EXPR_t *seq = expr_new(E_SEQ_EXPR);
+    int nc = 0;
+    while (!check(p, TK_RBRACE) && !check(p, TK_EOF)) {
+        EXPR_t *s = parse_stmt(p);
+        if (!s) break;
+        push_child(seq, s);
+        nc++;
+    }
+    expect(p, TK_RBRACE, "compound block");
+    if (nc == 1) {
+        /* unwrap single-child seq — steal child, free wrapper */
+        EXPR_t *only = seq->children[0];
+        seq->nchildren = 0;
+        /* expr_free(seq) would free children too; just free the node shell */
+        free(seq);
+        return only;
+    }
+    return seq;
+}
+
+static EXPR_t *parse_do_clause(IcnParser *p) {
+    if (check(p, TK_DO)) { advance(p); return parse_block_or_expr(p); }
+    return NULL;
 }
 
 /* =========================================================================
  * Statement parsing
  * ======================================================================= */
 
-/* parse_block_or_expr — body of do/then/else/repeat.
- * If next token is '{', consume { stmt; stmt; ... } as ICN_SEQ_EXPR.
- * Otherwise fall back to a single parse_expr. */
-static IcnNode *parse_block_or_expr(IcnParser *p) {
-    if (!check(p, TK_LBRACE)) return parse_expr(p);
-    int line = p->cur.line;
-    advance(p); /* consume { */
-    IcnNode **children = malloc(8 * sizeof(IcnNode*));
-    int cap = 8, nc = 0;
-    while (!check(p, TK_RBRACE) && !check(p, TK_EOF)) {
-        IcnNode *s = parse_stmt(p);
-        if (!s) break;
-        if (nc >= cap) { cap *= 2; children = realloc(children, cap * sizeof(IcnNode*)); }
-        children[nc++] = s;
-    }
-    expect(p, TK_RBRACE, "compound block");
-    if (nc == 1) { IcnNode *only = children[0]; free(children); return only; }
-    IcnNode *seq = calloc(1, sizeof(IcnNode));
-    seq->kind = ICN_SEQ_EXPR; seq->line = line;
-    seq->nchildren = nc; seq->children = children;
-    return seq;
-}
-
-static IcnNode *parse_do_clause(IcnParser *p) {
-    if (check(p, TK_DO)) { advance(p); return parse_block_or_expr(p); }
-    return NULL;
-}
-
-static IcnNode *parse_stmt(IcnParser *p) {
-    int line = p->cur.line;
-
+static EXPR_t *parse_stmt(IcnParser *p) {
     if (check(p, TK_EVERY)) {
         advance(p);
-        IcnNode *gen = parse_expr(p);
-        IcnNode *body = parse_do_clause(p);
+        EXPR_t *e = expr_new(E_EVERY);
+        push_child(e, parse_expr(p));
+        EXPR_t *body = parse_do_clause(p);
+        if (body) push_child(e, body);
         match(p, TK_SEMICOL);
-        if (body) return icn_node_new(ICN_EVERY, line, 2, gen, body);
-        return icn_node_new(ICN_EVERY, line, 1, gen);
+        return e;
     }
     if (check(p, TK_IF)) {
         advance(p);
-        IcnNode *cond = parse_expr(p);
-        match(p, TK_SEMICOL); /* optional ; between condition and then */
-        expect(p, TK_THEN, "if/then");
-        IcnNode *thenb = parse_block_or_expr(p);
-        IcnNode *elseb = NULL;
-        match(p, TK_SEMICOL); /* optional ; before else (pre-converted corpus) */
-        if (match(p, TK_ELSE)) elseb = parse_block_or_expr(p);
+        EXPR_t *e = expr_new(E_IF);
+        push_child(e, parse_expr(p));
         match(p, TK_SEMICOL);
-        if (elseb) return icn_node_new(ICN_IF, line, 3, cond, thenb, elseb);
-        return icn_node_new(ICN_IF, line, 2, cond, thenb);
+        expect(p, TK_THEN, "if/then");
+        push_child(e, parse_block_or_expr(p));
+        match(p, TK_SEMICOL);
+        if (match(p, TK_ELSE)) push_child(e, parse_block_or_expr(p));
+        match(p, TK_SEMICOL);
+        return e;
     }
     if (check(p, TK_WHILE)) {
         advance(p);
-        IcnNode *cond = parse_expr(p);
-        IcnNode *body = parse_do_clause(p);
+        EXPR_t *e = expr_new(E_WHILE);
+        push_child(e, parse_expr(p));
+        EXPR_t *body = parse_do_clause(p);
+        if (body) push_child(e, body);
         match(p, TK_SEMICOL);
-        if (body) return icn_node_new(ICN_WHILE, line, 2, cond, body);
-        return icn_node_new(ICN_WHILE, line, 1, cond);
+        return e;
     }
     if (check(p, TK_UNTIL)) {
         advance(p);
-        IcnNode *cond = parse_expr(p);
-        IcnNode *body = parse_do_clause(p);
+        EXPR_t *e = expr_new(E_UNTIL);
+        push_child(e, parse_expr(p));
+        EXPR_t *body = parse_do_clause(p);
+        if (body) push_child(e, body);
         match(p, TK_SEMICOL);
-        if (body) return icn_node_new(ICN_UNTIL, line, 2, cond, body);
-        return icn_node_new(ICN_UNTIL, line, 1, cond);
+        return e;
     }
     if (check(p, TK_REPEAT)) {
         advance(p);
-        IcnNode *body = parse_block_or_expr(p);
+        EXPR_t *e = expr_new(E_REPEAT);
+        push_child(e, parse_block_or_expr(p));
         match(p, TK_SEMICOL);
-        return icn_node_new(ICN_REPEAT, line, 1, body);
+        return e;
     }
     if (check(p, TK_RETURN)) {
         advance(p);
-        IcnNode *val = NULL;
-        if (!check(p, TK_SEMICOL)) val = parse_expr(p);
+        EXPR_t *e = expr_new(E_RETURN);
+        if (!check(p, TK_SEMICOL)) push_child(e, parse_expr(p));
         expect(p, TK_SEMICOL, "return statement");
-        if (val) return icn_node_new(ICN_RETURN, line, 1, val);
-        return icn_node_new(ICN_RETURN, line, 0);
+        return e;
     }
     if (check(p, TK_SUSPEND)) {
         advance(p);
-        IcnNode *val = parse_expr(p);
-        IcnNode *body = parse_do_clause(p);
+        EXPR_t *e = expr_new(E_SUSPEND);
+        push_child(e, parse_expr(p));
+        EXPR_t *body = parse_do_clause(p);
+        if (body) push_child(e, body);
         expect(p, TK_SEMICOL, "suspend statement");
-        if (body) return icn_node_new(ICN_SUSPEND, line, 2, val, body);
-        return icn_node_new(ICN_SUSPEND, line, 1, val);
+        return e;
     }
     if (check(p, TK_FAIL)) {
         advance(p);
         expect(p, TK_SEMICOL, "fail statement");
-        return icn_node_new(ICN_FAIL, line, 0);
+        return expr_new(E_FAIL);
     }
     if (check(p, TK_INITIAL)) {
         advance(p);
-        IcnNode *body = parse_block_or_expr(p);
-        match(p, TK_SEMICOL); /* consume trailing ; for single-expr form */
-        return icn_node_new(ICN_INITIAL, line, body ? 1 : 0, body);
+        EXPR_t *e = expr_new(E_INITIAL);
+        push_child(e, parse_block_or_expr(p));
+        match(p, TK_SEMICOL);
+        return e;
     }
     if (check(p, TK_CASE)) {
-        /* case E of { ... } — parse via parse_expr, no trailing semicolon required */
-        IcnNode *e = parse_expr(p);
+        EXPR_t *e = parse_expr(p);
         match(p, TK_SEMICOL);
         return e;
     }
     if (check(p, TK_LOCAL) || check(p, TK_STATIC)) {
-        int line2 = p->cur.line; advance(p);
-        IcnNode **locs = NULL; int nlocs = 0, lcap = 0;
+        advance(p);
+        EXPR_t *e = expr_new(E_GLOBAL);
         while (!check(p, TK_SEMICOL) && !check(p, TK_EOF)) {
             if (p->cur.kind == TK_IDENT) {
-                IcnNode *v = icn_leaf_str(ICN_VAR, p->cur.line,
-                    p->cur.val.sval.data, p->cur.val.sval.len);
-                if (nlocs+1 > lcap) { lcap=lcap?lcap*2:4; locs=realloc(locs,lcap*sizeof(IcnNode*)); }
-                locs[nlocs++] = v; advance(p);
+                push_child(e, e_leaf_sval(E_VAR, p->cur.val.sval.data, (int)p->cur.val.sval.len));
+                advance(p);
             }
             if (!match(p, TK_COMMA)) break;
         }
         match(p, TK_SEMICOL);
-        IcnNode *ld = calloc(1, sizeof(IcnNode));
-        ld->kind = ICN_GLOBAL; ld->line = line2;
-        ld->nchildren = nlocs; ld->children = locs;
-        return ld;
+        return e;
     }
-    /* Expression statement — semicolon required, but } EOF end else then
-       also terminate implicitly */
-    IcnNode *e = parse_expr(p);
+    /* Expression statement */
+    EXPR_t *e = parse_expr(p);
     if (!check(p, TK_RBRACE) && !check(p, TK_EOF) &&
         !check(p, TK_END)    && !check(p, TK_ELSE) && !check(p, TK_THEN) &&
         !check(p, TK_RETURN) && !check(p, TK_SUSPEND))
@@ -822,106 +768,82 @@ static IcnNode *parse_stmt(IcnParser *p) {
 }
 
 /* =========================================================================
- * Record declaration parsing
+ * Record declaration
  *   record Name(field1, field2, ...)
- * Produces ICN_RECORD node:
- *   val.sval = record type name (owned)
- *   children = ICN_VAR nodes for each field name
+ * Produces E_RECORD node: sval=type name, children=E_VAR field nodes
  * ======================================================================= */
 
-static IcnNode *parse_record(IcnParser *p) {
-    int line = p->cur.line;
+static EXPR_t *parse_record(IcnParser *p) {
     expect(p, TK_RECORD, "record");
     if (p->cur.kind != TK_IDENT) { parser_error(p, "expected record name"); return NULL; }
     IcnToken name_tok = p->cur; advance(p);
-
-    IcnNode **fields = NULL; int nfields = 0, fcap = 0;
+    EXPR_t *e = expr_new(E_RECORD);
+    e->sval = intern_n(name_tok.val.sval.data, (int)name_tok.val.sval.len);
     expect(p, TK_LPAREN, "record fields");
     while (!check(p, TK_RPAREN) && !check(p, TK_EOF)) {
         if (p->cur.kind == TK_IDENT) {
-            IcnNode *fv = icn_leaf_str(ICN_VAR, p->cur.line,
-                p->cur.val.sval.data, p->cur.val.sval.len);
-            if (nfields+1 > fcap) { fcap=fcap?fcap*2:4; fields=realloc(fields,fcap*sizeof(IcnNode*)); }
-            fields[nfields++] = fv; advance(p);
+            push_child(e, e_leaf_sval(E_VAR, p->cur.val.sval.data, (int)p->cur.val.sval.len));
+            advance(p);
         }
         if (!match(p, TK_COMMA)) break;
     }
     expect(p, TK_RPAREN, "record fields");
     match(p, TK_SEMICOL);
-
-    IcnNode *rn = calloc(1, sizeof(IcnNode));
-    rn->kind = ICN_RECORD; rn->line = line;
-    /* Store record name as sval (owned copy) */
-    size_t nlen = name_tok.val.sval.len;
-    char *nm = malloc(nlen + 1);
-    memcpy(nm, name_tok.val.sval.data, nlen); nm[nlen] = '\0';
-    rn->val.sval = nm;
-    rn->nchildren = nfields;
-    rn->children = fields ? fields : NULL;
-    return rn;
+    return e;
 }
 
 /* =========================================================================
- * Procedure parsing
+ * Procedure parsing → E_FNC
+ *
+ * E_FNC layout (matches icon_lower.c ICN_PROC case, expected by icn_call_proc):
+ *   e->sval          = proc name
+ *   e->ival          = nparams
+ *   e->children[0]   = E_VAR (proc name)
+ *   e->children[1..nparams] = E_VAR param nodes
+ *   e->children[nparams+1..] = body EXPR_t statements
  * ======================================================================= */
 
-static IcnNode *parse_proc(IcnParser *p) {
-    int line = p->cur.line;
+static EXPR_t *parse_proc(IcnParser *p) {
     expect(p, TK_PROCEDURE, "procedure");
     if (p->cur.kind != TK_IDENT) { parser_error(p, "expected procedure name"); return NULL; }
     IcnToken name_tok = p->cur; advance(p);
 
-    /* params -- collect as ICN_VAR nodes */
-    IcnNode **params = NULL; int nparams = 0, pcap = 0;
+    /* params */
+    EXPR_t **params = NULL; int nparams = 0, pcap = 0;
     expect(p, TK_LPAREN, "procedure params");
     while (!check(p, TK_RPAREN) && !check(p, TK_EOF)) {
         if (p->cur.kind == TK_IDENT) {
-            IcnNode *pv = icn_leaf_str(ICN_VAR, p->cur.line,
-                p->cur.val.sval.data, p->cur.val.sval.len);
-            if (nparams+1 > pcap) { pcap=pcap?pcap*2:4; params=realloc(params,pcap*sizeof(IcnNode*)); }
-            params[nparams++] = pv; advance(p);
-            /* varargs: name[] — consume the [] and stop */
-            if (check(p, TK_LBRACK)) {
-                advance(p);
-                match(p, TK_RBRACK);
-                break; /* varargs must be last param */
-            }
+            if (nparams+1 > pcap) { pcap = pcap ? pcap*2 : 4; params = realloc(params, pcap*sizeof(EXPR_t*)); }
+            params[nparams++] = e_leaf_sval(E_VAR, p->cur.val.sval.data, (int)p->cur.val.sval.len);
+            advance(p);
+            if (check(p, TK_LBRACK)) { advance(p); match(p, TK_RBRACK); break; }
         }
         if (!match(p, TK_COMMA)) break;
     }
     expect(p, TK_RPAREN, "procedure params");
 
-    /* body: stmts until 'end' */
-    IcnNode **stmts = NULL;
-    int nstmts = 0, cap = 0;
+    /* body stmts */
+    EXPR_t **stmts = NULL; int nstmts = 0, scap = 0;
     while (!check(p, TK_END) && !check(p, TK_EOF) && !p->had_error) {
-        IcnNode *s = parse_stmt(p);
+        EXPR_t *s = parse_stmt(p);
         if (s) {
-            if (nstmts + 1 > cap) { cap = cap ? cap*2 : 8; stmts = realloc(stmts, cap * sizeof(IcnNode*)); }
+            if (nstmts+1 > scap) { scap = scap ? scap*2 : 8; stmts = realloc(stmts, scap*sizeof(EXPR_t*)); }
             stmts[nstmts++] = s;
         }
     }
     expect(p, TK_END, "end of procedure");
 
-    /* Build ICN_PROC:
-     * child[0]          = proc name (ICN_VAR)
-     * child[1..nparams] = param names (ICN_VAR)
-     * child[nparams+1..]= body stmts
-     * proc->val.ival    = nparams
-     */
-    IcnNode *proc_name = icn_leaf_str(ICN_VAR, line, name_tok.val.sval.data, name_tok.val.sval.len);
-    int total = 1 + nparams + nstmts;
-    IcnNode **children = malloc(total * sizeof(IcnNode*));
-    children[0] = proc_name;
-    for (int i = 0; i < nparams; i++) children[1+i] = params[i];
-    for (int i = 0; i < nstmts; i++) children[1+nparams+i] = stmts[i];
+    /* Build E_FNC */
+    EXPR_t *proc = expr_new(E_FNC);
+    proc->sval = intern_n(name_tok.val.sval.data, (int)name_tok.val.sval.len);
+    proc->ival = nparams;
+    /* child[0]: name node */
+    push_child(proc, e_leaf_sval(E_VAR, proc->sval, -1));
+    /* children[1..nparams]: param nodes */
+    for (int i = 0; i < nparams; i++) push_child(proc, params[i]);
+    /* children[nparams+1..]: body stmts */
+    for (int i = 0; i < nstmts; i++) push_child(proc, stmts[i]);
     free(params); free(stmts);
-
-    IcnNode *proc = calloc(1, sizeof(IcnNode));
-    proc->kind = ICN_PROC; proc->line = line;
-    proc->val.ival = nparams;
-    proc->nchildren = total;
-    proc->children = children;
     return proc;
 }
 
@@ -932,51 +854,46 @@ static IcnNode *parse_proc(IcnParser *p) {
 void icn_parse_init(IcnParser *p, IcnLexer *lex) {
     memset(p, 0, sizeof(*p));
     p->lex  = lex;
-    /* Prime the two-token window */
     p->cur  = icn_lex_next(lex);
     p->peek = icn_lex_next(lex);
 }
 
-IcnNode **icn_parse_file(IcnParser *p, int *out_count) {
-    IcnNode **procs = NULL;
-    int n = 0, cap = 0;
+Program *icn_parse_file(IcnParser *p) {
+    Program *prog = calloc(1, sizeof(Program));
     while (!check(p, TK_EOF) && !p->had_error) {
-        IcnNode *proc = NULL;
-        if (check(p, TK_PROCEDURE))
-            proc = parse_proc(p);
-        else if (check(p, TK_RECORD)) {
-            proc = parse_record(p);
+        EXPR_t *top = NULL;
+        if (check(p, TK_PROCEDURE)) {
+            top = parse_proc(p);
+        } else if (check(p, TK_RECORD)) {
+            top = parse_record(p);
         } else if (check(p, TK_GLOBAL)) {
-            int gline = p->cur.line; advance(p);
-            IcnNode **gvars = NULL; int ngv = 0, gcap = 0;
+            advance(p);
+            top = expr_new(E_GLOBAL);
             while (!check(p, TK_SEMICOL) && !check(p, TK_EOF)) {
                 if (p->cur.kind == TK_IDENT) {
-                    IcnNode *v = icn_leaf_str(ICN_VAR, p->cur.line,
-                        p->cur.val.sval.data, p->cur.val.sval.len);
-                    if (ngv+1 > gcap) { gcap = gcap ? gcap*2 : 4; gvars = realloc(gvars, gcap*sizeof(IcnNode*)); }
-                    gvars[ngv++] = v; advance(p);
+                    push_child(top, e_leaf_sval(E_VAR, p->cur.val.sval.data, (int)p->cur.val.sval.len));
+                    advance(p);
                 }
                 if (!match(p, TK_COMMA)) break;
             }
             match(p, TK_SEMICOL);
-            IcnNode *gn = calloc(1, sizeof(IcnNode));
-            gn->kind = ICN_GLOBAL; gn->line = gline;
-            gn->nchildren = ngv; gn->children = gvars;
-            if (n + 1 > cap) { cap = cap ? cap*2 : 4; procs = realloc(procs, cap * sizeof(IcnNode*)); }
-            procs[n++] = gn;
         } else {
-            parser_error(p, "expected 'procedure' or 'global'");
+            parser_error(p, "expected 'procedure', 'record', or 'global'");
             break;
         }
-        if (proc) {
-            if (n + 1 > cap) { cap = cap ? cap*2 : 4; procs = realloc(procs, cap * sizeof(IcnNode*)); }
-            procs[n++] = proc;
+        if (top) {
+            STMT_t *st = calloc(1, sizeof(STMT_t));
+            st->subject = top;
+            st->lineno  = 0;
+            st->lang    = LANG_ICN;
+            if (!prog->head) prog->head = prog->tail = st;
+            else           { prog->tail->next = st; prog->tail = st; }
+            prog->nstmts++;
         }
     }
-    *out_count = n;
-    return procs;
+    return prog;
 }
 
-IcnNode *icn_parse_expr(IcnParser *p) {
+EXPR_t *icn_parse_expr(IcnParser *p) {
     return parse_expr(p);
 }

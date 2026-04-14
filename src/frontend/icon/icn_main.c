@@ -12,10 +12,8 @@
  */
 
 #include "icon_lex.h"
-#include "icon_ast.h"
 #include "icon_parse.h"
 #include "icon_emit.h"
-#include "icon_lower.h"
 #include "scrip_cc.h"          /* ExportEntry, ImportEntry */
 #include <stdio.h>
 #include <stdlib.h>
@@ -119,20 +117,17 @@ int icn_main(int argc, char **argv) {
     IcnLexer lx;
     icn_lex_init(&lx, src);
 
-    /* Parse */
+    /* Parse (FI-2: direct IR, no IcnNode) */
     IcnParser parser;
     icn_parse_init(&parser, &lx);
-    int count = 0;
-    IcnNode **procs = icn_parse_file(&parser, &count);
+    Program *prog = icn_parse_file(&parser);
     if (parser.had_error) {
         fprintf(stderr, "parse error: %s\n", parser.errmsg);
         free(src); return 1;
     }
+    (void)prog;
 
     /* Emit */
-    FILE *out_file = stdout;
-    if (output) { out_file = fopen(output, "w"); if (!out_file) { perror(output); return 1; } }
-
     if (do_jvm) {
         fprintf(stderr, "scrip: --jvm emit archived; use --sm-run or --jit-run\n");
         return 1;
@@ -141,11 +136,6 @@ int icn_main(int argc, char **argv) {
         return 1;
     }
 
-    if (output) fclose(out_file);
-
-    /* Free AST */
-    for (int i = 0; i < count; i++) icn_node_free(procs[i]);
-    free(procs);
     free(src);
 
     /* Assemble and run */

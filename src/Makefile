@@ -40,8 +40,6 @@ FRONTEND_ICON = \
     frontend/icon/icn_main.c \
     frontend/icon/icon_lex.c \
     frontend/icon/icon_parse.c \
-    frontend/icon/icon_ast.c \
-    frontend/icon/icon_lower.c \
     frontend/icon/icon_runtime.c \
     frontend/icon/icon_driver.c \
     frontend/icon/icon_gen.c

@@ -25,7 +25,6 @@
 #ifndef ICON_EMIT_H
 #define ICON_EMIT_H
 
-#include "icon_ast.h"
 #include <stdio.h>
 
 /* -------------------------------------------------------------------------
