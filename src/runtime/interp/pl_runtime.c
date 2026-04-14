@@ -462,6 +462,122 @@ int interp_exec_pl_builtin(EXPR_t *goal, Term **env) {
                 Term *arg=pl_unified_term_from_expr(goal->children[0],env);
                 return pl_abolish_pred(arg);
             }
+            /*---- atom builtins (PL-4) ----*/
+            /* atom_length(+Atom, ?Len) */
+            if (strcmp(fn,"atom_length")==0&&arity==2) {
+                Term *a=term_deref(pl_unified_term_from_expr(goal->children[0],env));
+                Term *l=pl_unified_term_from_expr(goal->children[1],env);
+                const char *s=NULL;
+                if (a&&a->tag==TT_ATOM) s=prolog_atom_name(a->atom_id);
+                else if (a&&a->tag==TT_INT) { char buf[32]; snprintf(buf,sizeof buf,"%ld",a->ival); s=buf; }
+                if (!s) return 0;
+                Term *len=term_new_int((long)strlen(s));
+                int mark=trail_mark(trail);
+                if (!unify(l,len,trail)){trail_unwind(trail,mark);return 0;}
+                return 1;
+            }
+            /* atom_concat(+A1, +A2, ?A3)  or  atom_concat(?A1, ?A2, +A3) */
+            if (strcmp(fn,"atom_concat")==0&&arity==3) {
+                Term *a1=term_deref(pl_unified_term_from_expr(goal->children[0],env));
+                Term *a2=term_deref(pl_unified_term_from_expr(goal->children[1],env));
+                Term *a3=pl_unified_term_from_expr(goal->children[2],env);
+                /* mode: +,+,? */
+                if (a1&&a1->tag==TT_ATOM&&a2&&a2->tag==TT_ATOM) {
+                    const char *s1=prolog_atom_name(a1->atom_id);
+                    const char *s2=prolog_atom_name(a2->atom_id);
+                    size_t l1=strlen(s1),l2=strlen(s2);
+                    char *buf=malloc(l1+l2+1);
+                    memcpy(buf,s1,l1); memcpy(buf+l1,s2,l2); buf[l1+l2]='\0';
+                    Term *res=term_new_atom(prolog_atom_intern(buf)); free(buf);
+                    int mark=trail_mark(trail);
+                    if(!unify(a3,res,trail)){trail_unwind(trail,mark);return 0;}
+                    return 1;
+                }
+                /* mode: ?,?,+ — split */
+                Term *a3d=term_deref(a3);
+                if (a3d&&a3d->tag==TT_ATOM) {
+                    const char *s3=prolog_atom_name(a3d->atom_id);
+                    size_t n=strlen(s3);
+                    for (size_t i=0;i<=n;i++) {
+                        char *left=malloc(i+1); memcpy(left,s3,i); left[i]='\0';
+                        char *right=malloc(n-i+1); memcpy(right,s3+i,n-i); right[n-i]='\0';
+                        Term *tl=term_new_atom(prolog_atom_intern(left));
+                        Term *tr=term_new_atom(prolog_atom_intern(right));
+                        free(left); free(right);
+                        int mark=trail_mark(trail);
+                        if (unify(a1,tl,trail)&&unify(a2,tr,trail)) return 1;
+                        trail_unwind(trail,mark);
+                    }
+                    return 0;
+                }
+                return 0;
+            }
+            /* atom_chars(+Atom, ?Chars)  or  atom_chars(?Atom, +Chars) */
+            if (strcmp(fn,"atom_chars")==0&&arity==2) {
+                Term *a=term_deref(pl_unified_term_from_expr(goal->children[0],env));
+                Term *cl=pl_unified_term_from_expr(goal->children[1],env);
+                int nil_id=prolog_atom_intern("[]"), dot_id=prolog_atom_intern(".");
+                if (a&&a->tag==TT_ATOM) {
+                    /* +Atom → build char list */
+                    const char *s=prolog_atom_name(a->atom_id);
+                    int n=(int)strlen(s);
+                    Term *lst=term_new_atom(nil_id);
+                    for(int i=n-1;i>=0;i--){
+                        char ch[2]={s[i],'\0'};
+                        Term *args2[2]; args2[0]=term_new_atom(prolog_atom_intern(ch)); args2[1]=lst;
+                        lst=term_new_compound(dot_id,2,args2);
+                    }
+                    int mark=trail_mark(trail);
+                    if(!unify(cl,lst,trail)){trail_unwind(trail,mark);return 0;}
+                    return 1;
+                } else {
+                    /* +Chars → build atom */
+                    Term *cur=term_deref(cl); char buf[1024]; int pos=0;
+                    while(cur&&cur->tag==TT_COMPOUND&&cur->compound.arity==2){
+                        Term *hd=term_deref(cur->compound.args[0]);
+                        if(!hd||hd->tag!=TT_ATOM) return 0;
+                        const char *cs=prolog_atom_name(hd->atom_id);
+                        if(pos<1023) buf[pos++]=cs[0];
+                        cur=term_deref(cur->compound.args[1]);
+                    }
+                    buf[pos]='\0';
+                    Term *res=term_new_atom(prolog_atom_intern(buf));
+                    int mark=trail_mark(trail);
+                    if(!unify(a,res,trail)){trail_unwind(trail,mark);return 0;}
+                    return 1;
+                }
+            }
+            /* atom_codes(+Atom, ?Codes)  or  atom_codes(?Atom, +Codes) */
+            if (strcmp(fn,"atom_codes")==0&&arity==2) {
+                Term *a=term_deref(pl_unified_term_from_expr(goal->children[0],env));
+                Term *cl=pl_unified_term_from_expr(goal->children[1],env);
+                int nil_id=prolog_atom_intern("[]"), dot_id=prolog_atom_intern(".");
+                if (a&&a->tag==TT_ATOM) {
+                    const char *s=prolog_atom_name(a->atom_id);
+                    int n=(int)strlen(s);
+                    Term *lst=term_new_atom(nil_id);
+                    for(int i=n-1;i>=0;i--){
+                        Term *args2[2]; args2[0]=term_new_int((unsigned char)s[i]); args2[1]=lst;
+                        lst=term_new_compound(dot_id,2,args2);
+                    }
+                    int mark=trail_mark(trail);
+                    if(!unify(cl,lst,trail)){trail_unwind(trail,mark);return 0;}
+                    return 1;
+                } else {
+                    Term *cur=term_deref(cl); char buf[1024]; int pos=0;
+                    while(cur&&cur->tag==TT_COMPOUND&&cur->compound.arity==2){
+                        Term *hd=term_deref(cur->compound.args[0]);
+                        if(!hd||hd->tag!=TT_INT) return 0;
+                        if(pos<1023) buf[pos++]=(char)hd->ival;
+                        cur=term_deref(cur->compound.args[1]);
+                    }
+                    buf[pos]='\0';
+                    Term *res=term_new_atom(prolog_atom_intern(buf));
+                    int mark=trail_mark(trail);
+                    if(!unify(a,res,trail)){trail_unwind(trail,mark);return 0;}
+                    return 1;
+                }
+            }
             /* U-23: nv_get(+Name, -Val) / nv_set(+Name, +Val) -- SNO NV store bridge */
             if (strcmp(fn,"nv_get")==0&&arity==2) {
                 Term *nm=term_deref(pl_unified_term_from_expr(goal->children[0],env));
