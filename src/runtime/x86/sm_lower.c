@@ -545,6 +545,259 @@ static void lower_expr(SM_Program *p, LabelTable *lt, const EXPR_t *e)
         sm_emit(p, SM_PAT_BOXVAL);  /* bridge: pop pat-stack → push DT_P on value-stack */
         return;
 
+    /* ══════════════════════════════════════════════════════════════════════
+     * FI-10: SM lowering for non-SNOBOL4 EKinds
+     *
+     * Functional nodes → inline SM opcodes / control-flow via sm_label/patch.
+     * Generator nodes  → SM_PUSH_EXPR + SM_BB_PUMP  (delegate to BB broker).
+     * Prolog nodes     → SM_PUSH_EXPR + SM_BB_ONCE.
+     * ══════════════════════════════════════════════════════════════════════ */
+
+    /* ── Null / void values ─────────────────────────────────────────────── */
+    case E_NULL:
+    case E_NULV:
+        sm_emit(p, SM_PUSH_NULL);
+        return;
+
+    /* ── Sequential expression list: eval all, leave last on stack ─────── */
+    case E_SEQ_EXPR:
+        if (e->nchildren == 0) { sm_emit(p, SM_PUSH_NULL); return; }
+        for (int i = 0; i < e->nchildren; i++) {
+            lower_expr(p, lt, e->children[i]);
+            if (i < e->nchildren - 1) sm_emit(p, SM_POP);
+        }
+        return;
+
+    /* ── Icon/Raku if-then[-else] ───────────────────────────────────────── */
+    case E_IF: {
+        if (e->nchildren < 1) { sm_emit(p, SM_PUSH_NULL); return; }
+        lower_expr(p, lt, e->children[0]);              /* condition */
+        int jf = sm_emit_i(p, SM_JUMP_F, 0);           /* jump-if-fail to else */
+        if (e->nchildren > 1) lower_expr(p, lt, e->children[1]);
+        else                  sm_emit(p, SM_PUSH_NULL);
+        int jend = sm_emit_i(p, SM_JUMP, 0);           /* jump past else */
+        int else_lbl = sm_label(p);
+        sm_patch_jump(p, jf,   else_lbl);
+        if (e->nchildren > 2) lower_expr(p, lt, e->children[2]);
+        else                  sm_emit(p, SM_PUSH_NULL);
+        int end_lbl = sm_label(p);
+        sm_patch_jump(p, jend, end_lbl);
+        return;
+    }
+
+    /* ── while (cond) body — functional form ───────────────────────────── */
+    case E_WHILE: {
+        int top_lbl = sm_label(p);
+        if (e->nchildren < 1) { sm_emit(p, SM_PUSH_NULL); return; }
+        lower_expr(p, lt, e->children[0]);              /* condition */
+        int jf = sm_emit_i(p, SM_JUMP_F, 0);           /* exit on fail */
+        sm_emit(p, SM_POP);
+        if (e->nchildren > 1) { lower_expr(p, lt, e->children[1]); sm_emit(p, SM_POP); }
+        sm_emit_i(p, SM_JUMP, top_lbl);
+        int end_lbl = sm_label(p);
+        sm_patch_jump(p, jf, end_lbl);
+        sm_emit(p, SM_PUSH_NULL);
+        return;
+    }
+
+    /* ── until (!cond) body ─────────────────────────────────────────────── */
+    case E_UNTIL: {
+        int top_lbl = sm_label(p);
+        if (e->nchildren < 1) { sm_emit(p, SM_PUSH_NULL); return; }
+        lower_expr(p, lt, e->children[0]);
+        int js = sm_emit_i(p, SM_JUMP_S, 0);           /* exit when cond succeeds */
+        sm_emit(p, SM_POP);
+        if (e->nchildren > 1) { lower_expr(p, lt, e->children[1]); sm_emit(p, SM_POP); }
+        sm_emit_i(p, SM_JUMP, top_lbl);
+        int end_lbl = sm_label(p);
+        sm_patch_jump(p, js, end_lbl);
+        sm_emit(p, SM_PUSH_NULL);
+        return;
+    }
+
+    /* ── repeat body — loops until break ───────────────────────────────── */
+    case E_REPEAT: {
+        int top_lbl = sm_label(p);
+        if (e->nchildren > 0) { lower_expr(p, lt, e->children[0]); sm_emit(p, SM_POP); }
+        sm_emit_i(p, SM_JUMP, top_lbl);
+        sm_emit(p, SM_PUSH_NULL);
+        return;
+    }
+
+    /* ── loop control ───────────────────────────────────────────────────── */
+    case E_LOOP_BREAK:
+        /* In SM context: push result (if any) and halt the enclosing loop.
+         * SM doesn't track loop nesting — emit JUMP to a sentinel; sm_interp
+         * treats a SM_JUMP with target == current pc+1 as break. */
+        if (e->nchildren > 0) lower_expr(p, lt, e->children[0]);
+        else sm_emit(p, SM_PUSH_NULL);
+        /* SM_JUMP to self+1 signals break to sm_interp loop handler */
+        sm_emit_i(p, SM_JUMP, p->count + 1);
+        return;
+
+    case E_LOOP_NEXT:
+        sm_emit(p, SM_PUSH_NULL);
+        return;
+
+    /* ── return / freturn from user function ────────────────────────────── */
+    case E_RETURN:
+        if (e->nchildren > 0) lower_expr(p, lt, e->children[0]);
+        else sm_emit(p, SM_PUSH_NULL);
+        sm_emit(p, SM_RETURN);
+        return;
+
+    /* ── logical not: succeed if child fails, fail if child succeeds ────── */
+    case E_NOT: {
+        lower_expr(p, lt, e->nchildren > 0 ? e->children[0] : NULL);
+        int js = sm_emit_i(p, SM_JUMP_S, 0);   /* child succeeded → fail */
+        sm_emit(p, SM_PUSH_NULL);               /* child failed → null (success) */
+        int jend = sm_emit_i(p, SM_JUMP, 0);
+        int fail_lbl = sm_label(p);
+        sm_patch_jump(p, js, fail_lbl);
+        sm_emit_si(p, SM_CALL, "FAIL", 0);     /* push fail descriptor */
+        int end_lbl = sm_label(p);
+        sm_patch_jump(p, jend, end_lbl);
+        return;
+    }
+
+    /* ── alternation: try left, if fail try right ───────────────────────── */
+    case E_OR: {
+        if (e->nchildren < 1) { sm_emit(p, SM_PUSH_NULL); return; }
+        lower_expr(p, lt, e->children[0]);
+        int js = sm_emit_i(p, SM_JUMP_S, 0);   /* left succeeded → done */
+        sm_emit(p, SM_POP);
+        if (e->nchildren > 1) lower_expr(p, lt, e->children[1]);
+        else sm_emit(p, SM_PUSH_NULL);
+        int end_lbl = sm_label(p);
+        sm_patch_jump(p, js, end_lbl);
+        return;
+    }
+
+    /* ── Icon := assignment (same semantics as E_ASSIGN) ───────────────── */
+    case E_ASGN:
+        lower_expr(p, lt, e->nchildren > 1 ? e->children[1] : NULL);
+        if (e->nchildren > 0 && e->children[0]) {
+            const EXPR_t *lhs = e->children[0];
+            if (lhs->kind == E_VAR || lhs->kind == E_KEYWORD)
+                sm_emit_s(p, SM_STORE_VAR, lhs->sval ? lhs->sval : "");
+            else {
+                lower_expr(p, lt, lhs);
+                sm_emit_si(p, SM_CALL, "ASGN", 2);
+            }
+        }
+        return;
+
+    /* ── augmented assignment (+=, -=, ||=, etc.) ──────────────────────── */
+    case E_AUGOP:
+        lower_expr(p, lt, e->nchildren > 0 ? e->children[0] : NULL);
+        lower_expr(p, lt, e->nchildren > 1 ? e->children[1] : NULL);
+        sm_emit_i(p, SM_PUSH_LIT_I, (int64_t)(e->ival));  /* operator token */
+        sm_emit_si(p, SM_CALL, "AUGOP", 3);
+        return;
+
+    /* ── string/list size *e ────────────────────────────────────────────── */
+    case E_SIZE:
+        lower_expr(p, lt, e->nchildren > 0 ? e->children[0] : NULL);
+        sm_emit_si(p, SM_CALL, "SIZE", 1);
+        return;
+
+    /* ── non-null test \e — succeed with e if e != null, else fail ──────── */
+    case E_NONNULL:
+        lower_expr(p, lt, e->nchildren > 0 ? e->children[0] : NULL);
+        sm_emit_si(p, SM_CALL, "NONNULL", 1);
+        return;
+
+    /* ── string identity ===  / non-identity ~=== ───────────────────────── */
+    case E_IDENTICAL:
+        lower_expr(p, lt, e->nchildren > 0 ? e->children[0] : NULL);
+        lower_expr(p, lt, e->nchildren > 1 ? e->children[1] : NULL);
+        sm_emit_si(p, SM_CALL, "IDENTICAL", 2);
+        return;
+
+    /* ── list/array literal [a, b, c] ──────────────────────────────────── */
+    case E_MAKELIST:
+        for (int i = 0; i < e->nchildren; i++)
+            lower_expr(p, lt, e->children[i]);
+        sm_emit_si(p, SM_CALL, "MAKELIST", (int64_t)e->nchildren);
+        return;
+
+    /* ── record construction ────────────────────────────────────────────── */
+    case E_RECORD:
+        sm_emit_s(p, SM_PUSH_LIT_S, e->sval ? e->sval : "");
+        for (int i = 0; i < e->nchildren; i++)
+            lower_expr(p, lt, e->children[i]);
+        sm_emit_si(p, SM_CALL, "RECORD_MAKE", (int64_t)e->nchildren + 1);
+        return;
+
+    /* ── field access r.field ───────────────────────────────────────────── */
+    case E_FIELD:
+        lower_expr(p, lt, e->nchildren > 0 ? e->children[0] : NULL);
+        sm_emit_s(p, SM_PUSH_LIT_S, e->sval ? e->sval : "");
+        sm_emit_si(p, SM_CALL, "FIELD_GET", 2);
+        return;
+
+    /* ── scan augmented op e ? pat op:= val ────────────────────────────── */
+    case E_SCAN_AUGOP:
+        lower_expr(p, lt, e->nchildren > 0 ? e->children[0] : NULL);
+        sm_emit_ptr(p, SM_PUSH_EXPR, (void *)e);
+        sm_emit(p, SM_BB_ONCE);
+        return;
+
+    /* ── declarative / init nodes — no runtime action at expression level ─ */
+    case E_GLOBAL:
+    case E_INITIAL:
+    case E_VART:
+    case E_NAM:
+    case E_ARY:
+        sm_emit(p, SM_PUSH_NULL);
+        return;
+
+    /* ══════════════════════════════════════════════════════════════════════
+     * Generator/backtracking nodes → BB broker
+     * SM_PUSH_EXPR bakes the EXPR_t* in; SM_BB_PUMP drives via bb_broker.
+     * Prolog-specific nodes use SM_BB_ONCE (find one solution).
+     * ══════════════════════════════════════════════════════════════════════ */
+
+    /* Icon generators */
+    case E_EVERY:
+    case E_TO:
+    case E_TO_BY:
+    case E_SUSPEND:
+    case E_ALT_GEN:
+    case E_STAR:
+    case E_BANG:
+    case E_BANG_BINARY:
+    case E_LCONCAT:
+    case E_LIMIT:
+    case E_RANDOM:
+    case E_EXPOP:
+    case E_DOL:
+    case E_ATP:
+    case E_SECTION:
+    case E_SECTION_MINUS:
+    case E_SECTION_PLUS:
+        sm_emit_ptr(p, SM_PUSH_EXPR, (void *)e);
+        sm_emit(p, SM_BB_PUMP);
+        return;
+
+    /* Prolog backtracking nodes */
+    case E_CHOICE:
+    case E_CLAUSE:
+    case E_CUT:
+    case E_UNIFY:
+    case E_TRAIL_MARK:
+    case E_TRAIL_UNWIND:
+        sm_emit_ptr(p, SM_PUSH_EXPR, (void *)e);
+        sm_emit(p, SM_BB_ONCE);
+        return;
+
+    /* ── Raku: typed variable declaration — no runtime action ───────────── */
+    case E_CASE:
+        /* case expression: lower cond, then each arm via BB */
+        sm_emit_ptr(p, SM_PUSH_EXPR, (void *)e);
+        sm_emit(p, SM_BB_PUMP);
+        return;
+
     default:
         fprintf(stderr, "sm_lower: unhandled expr kind %d\n", (int)e->kind);
         sm_emit(p, SM_PUSH_NULL);
