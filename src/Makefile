@@ -78,11 +78,14 @@ FRONTEND_RAKU = \
 ICN_RUNTIME = \
     runtime/interp/icn_runtime.c
 
+PL_RUNTIME = \
+    runtime/interp/pl_runtime.c
+
 DRIVER = \
     driver/scrip.c
 
 SRCS = $(FRONTEND_SNO) $(FRONTEND_PROLOG) $(FRONTEND_SNOCONE) $(FRONTEND_REBUS) \
-       $(FRONTEND_ICON) $(FRONTEND_RAKU) $(ICN_RUNTIME) $(IR) $(RUNTIME_X86) $(DRIVER)
+       $(FRONTEND_ICON) $(FRONTEND_RAKU) $(ICN_RUNTIME) $(PL_RUNTIME) $(IR) $(RUNTIME_X86) $(DRIVER)
 OBJS = $(SRCS:.c=.o)
 
 .PHONY: all clean

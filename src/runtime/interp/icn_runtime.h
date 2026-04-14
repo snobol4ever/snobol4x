@@ -6,8 +6,8 @@
  *
  * AUTHORS: Lon Jones Cherryholmes · Claude Sonnet 4.6 (FI-4, 2026-04-14)
  */
-#ifndef ICN_RUNTIME_H
-#define ICN_RUNTIME_H
+#ifndef DRIVER_ICN_RUNTIME_H
+#define DRIVER_ICN_RUNTIME_H
 
 #include "../../ir/ir.h"
 #include "../../frontend/snobol4/scrip_cc.h"
@@ -87,4 +87,4 @@ void    icn_scope_patch(IcnScope *sc, EXPR_t *e);
 DESCR_t icn_call_proc(EXPR_t *proc, DESCR_t *args, int nargs);
 bb_node_t icn_eval_gen(EXPR_t *e);
 
-#endif /* ICN_RUNTIME_H */
+#endif /* DRIVER_ICN_RUNTIME_H */
