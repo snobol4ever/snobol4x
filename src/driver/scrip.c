@@ -300,6 +300,21 @@ static DESCR_t icn_interp_eval(EXPR_t *root, EXPR_t *e) {
     case E_NUL:  return NULVCL;
 
     case E_VAR: {
+        /* Icon &keywords are lowered as E_VAR with sval starting with '&' */
+        if (e->sval && e->sval[0] == '&') {
+            const char *kw = e->sval + 1;  /* strip leading & */
+            if (strcmp(kw,"subject")==0)
+                return icn_scan_subj ? STRVAL(icn_scan_subj) : NULVCL;
+            if (strcmp(kw,"pos")==0)    return INTVAL(icn_scan_pos);
+            if (strcmp(kw,"letters")==0)
+                return STRVAL("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz");
+            if (strcmp(kw,"ucase")==0)  return STRVAL("ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+            if (strcmp(kw,"lcase")==0)  return STRVAL("abcdefghijklmnopqrstuvwxyz");
+            if (strcmp(kw,"digits")==0) return STRVAL("0123456789");
+            if (strcmp(kw,"null")==0)   return NULVCL;
+            if (strcmp(kw,"fail")==0)   return FAILDESCR;
+            return NULVCL;
+        }
         int slot = (int)e->ival;
         if (slot >= 0 && slot < icn_env_n && icn_env) return icn_env[slot];
         return NULVCL;
@@ -421,6 +436,16 @@ static DESCR_t icn_interp_eval(EXPR_t *root, EXPR_t *e) {
         return NULVCL;
     }
 
+    case E_SEQ_EXPR: {
+        /* (stmt1; stmt2; ...; stmtN) — evaluate all in order, return last value.
+         * Unlike E_SEQ (string concat), this is a statement block sequence.
+         * Failure in intermediate statements does NOT abort the block. */
+        DESCR_t v = NULVCL;
+        for (int i = 0; i < e->nchildren && !icn_returning; i++)
+            v = icn_interp_eval(root, e->children[i]);
+        return v;
+    }
+
     case E_SEQ: {
         DESCR_t v = NULVCL;
         for (int i = 0; i < e->nchildren && !icn_returning; i++)
@@ -532,12 +557,29 @@ static DESCR_t icn_interp_eval(EXPR_t *root, EXPR_t *e) {
         return r;
     }
 
-    /* E_KEYWORD: &subject, &pos */
+    /* E_KEYWORD: &subject, &pos, &letters, &ucase, &lcase, &digits, &ascii */
     case E_KEYWORD: {
         if (!e->sval) return NULVCL;
-        if (strcmp(e->sval,"subject")==0)
+        /* Icon parser stores sval with & prefix (e.g. "&letters"); SNOBOL4 without */
+        const char *kw = e->sval;
+        if (*kw == '&') kw++;   /* strip leading & for uniform comparison */
+        if (strcmp(kw,"subject")==0)
             return icn_scan_subj ? STRVAL(icn_scan_subj) : NULVCL;
-        if (strcmp(e->sval,"pos")==0) return INTVAL(icn_scan_pos);
+        if (strcmp(kw,"pos")==0) return INTVAL(icn_scan_pos);
+        /* Icon cset keywords */
+        if (strcmp(kw,"letters")==0)
+            return STRVAL("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz");
+        if (strcmp(kw,"ucase")==0)
+            return STRVAL("ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+        if (strcmp(kw,"lcase")==0)
+            return STRVAL("abcdefghijklmnopqrstuvwxyz");
+        if (strcmp(kw,"digits")==0)
+            return STRVAL("0123456789");
+        if (strcmp(kw,"ascii")==0) {
+            static char ascii_all[129];
+            if (!ascii_all[0]) { for(int _i=1;_i<128;_i++) ascii_all[_i-1]=(char)_i; ascii_all[127]='\0'; }
+            return STRVAL(ascii_all);
+        }
         return NULVCL;
     }
     case E_ITERATE: {
@@ -604,7 +646,8 @@ static DESCR_t icn_interp_eval(EXPR_t *root, EXPR_t *e) {
             int p=icn_scan_pos-1;
             while(p<(int)strlen(s)&&!strchr(cv,s[p])) p++;
             if(p>=(int)strlen(s)) return FAILDESCR;
-            icn_scan_pos=p+1; return INTVAL(icn_scan_pos);
+            /* upto returns the position WITHOUT advancing — tab() does the advance */
+            return INTVAL(p+1);
         }
         if (!strcmp(fn,"move") && nargs >= 1 && icn_scan_pos > 0) {
             DESCR_t nv = icn_interp_eval(root, e->children[1]);
@@ -617,6 +660,7 @@ static DESCR_t icn_interp_eval(EXPR_t *root, EXPR_t *e) {
         }
         if (!strcmp(fn,"tab") && nargs >= 1 && icn_scan_pos > 0) {
             DESCR_t nv = icn_interp_eval(root, e->children[1]);
+            if (IS_FAIL_fn(nv)) return FAILDESCR;  /* propagate failure from arg */
             int newp=(int)nv.i;
             if (!icn_scan_subj||newp<icn_scan_pos||newp>(int)strlen(icn_scan_subj)+1) return FAILDESCR;
             int old=icn_scan_pos; icn_scan_pos=newp;
