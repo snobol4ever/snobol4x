@@ -204,6 +204,42 @@ static int      is_pl_user_call(EXPR_t *goal); /* forward */
 int             interp_exec_pl_builtin(EXPR_t *goal, Term **env); /* forward — defined in pl_ block */
 static void     polyglot_init(Program *prog); /* forward U-14 */
 
+/* ══════════════════════════════════════════════════════════════════════════
+ * ScripModule / ScripModuleRegistry — formal module concept  (U-21)
+ *
+ * Each fenced block in a .scrip file is one module: one language, one
+ * compiled Program* slice.  The registry is a parallel view on top of
+ * the existing flat tables — all existing code continues to use the flat
+ * tables directly; the registry is additive and zero-overhead when empty.
+ *
+ * Populated by polyglot_init() for polyglot Programs; stays nmod==0 for
+ * single-language programs (no behaviour change in that path).
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+#define SCRIP_MOD_MAX 64
+
+typedef struct {
+    int          lang;       /* LANG_SNO / LANG_ICN / LANG_PL */
+    const char  *name;       /* optional name tag from fence (future: ```Icon "mymod") */
+    STMT_t      *first;      /* first STMT_t in this module's slice */
+    STMT_t      *last;       /* last  STMT_t in this module's slice */
+    int          nstmts;     /* statement count in this slice */
+    /* Flat-table index ranges populated by polyglot_init: */
+    int          sno_label_start; /* label_table index of first SNO label */
+    int          sno_label_count;
+    int          icn_proc_start;  /* icn_proc_table index of first ICN proc */
+    int          icn_proc_count;
+    /* PL predicates are hash-keyed; no contiguous range — use sval scan */
+} ScripModule;
+
+typedef struct {
+    ScripModule  mods[SCRIP_MOD_MAX];
+    int          nmod;
+    int          main_mod;   /* index of module owning main/-1 if none */
+} ScripModuleRegistry;
+
+static ScripModuleRegistry g_registry;   /* zero-initialised; nmod==0 for single-lang */
+
 /* ── Prolog global execution state ──────────────────────────────────────────
  * Initialised by pl_execute_program_unified() at program start. */
 static Pl_PredTable g_pl_pred_table;
@@ -1020,9 +1056,47 @@ static void polyglot_init(Program *prog)
     g_pl_env      = NULL;
     g_pl_active   = 0;
 
-    /* ── Single pass: populate ICN proc table and PL pred table ─────── */
+    /* ── Registry reset  (U-21) ─────────────────────────────────────── */
+    memset(&g_registry, 0, sizeof g_registry);
+    g_registry.main_mod = -1;
+
+    /* ── Single pass: populate flat tables + registry  (U-14 + U-21) ── */
+    int cur_lang = -1;   /* language of the module currently being built */
+    int mod_idx  = -1;   /* index into g_registry.mods, or -1 if none open */
+
     for (STMT_t *s = prog->head; s; s = s->next) {
+
+        /* ── Registry: detect module boundary on lang change  (U-21) ── */
+        if (s->lang != cur_lang) {
+            /* Close the previous module if one is open */
+            if (mod_idx >= 0 && g_registry.mods[mod_idx].first) {
+                /* last was set on the previous iteration */
+            }
+            /* Open a new module slot */
+            if (g_registry.nmod < SCRIP_MOD_MAX) {
+                cur_lang = s->lang;
+                mod_idx  = g_registry.nmod++;
+                ScripModule *m = &g_registry.mods[mod_idx];
+                m->lang             = s->lang;
+                m->name             = NULL;   /* no name-tag syntax yet */
+                m->first            = s;
+                m->last             = s;
+                m->nstmts           = 0;
+                m->sno_label_start  = label_count;   /* labels added below */
+                m->sno_label_count  = 0;
+                m->icn_proc_start   = icn_proc_count;
+                m->icn_proc_count   = 0;
+            }
+        }
+
+        /* Update last/nstmts for the current module */
+        if (mod_idx >= 0) {
+            g_registry.mods[mod_idx].last = s;
+            g_registry.mods[mod_idx].nstmts++;
+        }
+
         if (!s->subject) continue;
+
         if (s->lang == LANG_ICN) {
             /* Icon: collect E_FNC procedure definitions */
             EXPR_t *proc = s->subject;
@@ -1032,6 +1106,10 @@ static void polyglot_init(Program *prog)
                     icn_proc_table[icn_proc_count].name = name;
                     icn_proc_table[icn_proc_count].proc = proc;
                     icn_proc_count++;
+                    if (mod_idx >= 0) g_registry.mods[mod_idx].icn_proc_count++;
+                    /* Detect main module  (U-21) */
+                    if (strcmp(name, "main") == 0 && g_registry.main_mod < 0)
+                        g_registry.main_mod = mod_idx;
                 }
             }
         } else if (s->lang == LANG_PL) {
@@ -1040,7 +1118,16 @@ static void polyglot_init(Program *prog)
                 if ((subj->kind == E_CHOICE || subj->kind == E_CLAUSE) && subj->sval) {
                 pl_pred_table_insert(&g_pl_pred_table, subj->sval, subj);
                 g_pl_active = 1;
+                /* Detect main module  (U-21) */
+                if (strcmp(subj->sval, "main/0") == 0 && g_registry.main_mod < 0)
+                    g_registry.main_mod = mod_idx;
                     }
+        } else if (s->lang == LANG_SNO) {
+            /* SNO label range tracking for registry  (U-21) */
+            if (mod_idx >= 0 && s->label && *s->label) {
+                /* label_table was already built above; count labels in this module */
+                g_registry.mods[mod_idx].sno_label_count++;
+            }
         }
     }
 }
