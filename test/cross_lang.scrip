@@ -1,0 +1,35 @@
+```SNOBOL4
+*  cross_lang.scrip — GOAL-UNIFIED-BROKER U-19
+*  Proof: all three bb_broker modes active in one polyglot --ir-run.
+*
+*  SNOBOL4 section: bb_broker(BB_SCAN) — pattern match drives subject scan.
+*  Counts matches of 'x' in a string; each iteration is one BB_SCAN tick.
+        &TRIM = 1
+        str   = 'axbxcx'
+        n     = 0
+next    str   'x' =             :F(done)
+        n     = n + 1           :(next)
+done    OUTPUT = 'SNO: ' n
+END
+```
+
+```Icon
+#  cross_lang.scrip — Icon section
+#  bb_broker(BB_PUMP) — icn_eval_gen builds a bb_node_t for (1 to 3);
+#  bb_broker drives it, yielding each integer until omega.
+procedure main()
+    every write("ICN: " || (1 to 3))
+end
+```
+
+```Prolog
+%  cross_lang.scrip — Prolog section
+%  bb_broker(BB_ONCE) — pl_box_choice + bb_broker drives each clause.
+%  Three color facts; main/0 uses fail-loop to enumerate all via backtracking.
+:- initialization(main).
+color(red).
+color(green).
+color(blue).
+main :- color(X), write('PL: '), write(X), nl, fail.
+main.
+```

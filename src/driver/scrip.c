@@ -1037,10 +1037,10 @@ static void polyglot_init(Program *prog)
         } else if (s->lang == LANG_PL) {
             /* Prolog: collect E_CHOICE / E_CLAUSE predicate definitions */
             EXPR_t *subj = s->subject;
-            if ((subj->kind == E_CHOICE || subj->kind == E_CLAUSE) && subj->sval) {
+                if ((subj->kind == E_CHOICE || subj->kind == E_CLAUSE) && subj->sval) {
                 pl_pred_table_insert(&g_pl_pred_table, subj->sval, subj);
                 g_pl_active = 1;
-            }
+                    }
         }
     }
 }
@@ -3120,6 +3120,20 @@ static void execute_program(Program *prog)
                 icn_call_proc(icn_proc_table[_i].proc, NULL, 0);
                 break;
             }
+        }
+    }
+
+    /* ── U-19: post-loop Prolog dispatch ───────────────────────────────────
+     * Prolog clause STMT_t nodes were skipped inline (registered in
+     * g_pl_pred_table by polyglot_init).  If the polyglot program has Prolog
+     * sections, call main/0 now — mirroring pl_execute_program_unified. */
+    {
+        EXPR_t *pl_main = pl_pred_table_lookup(&g_pl_pred_table, "main/0");
+        if (pl_main) {
+            int sv_pl = g_pl_active;
+            g_pl_active = 1;
+            interp_eval(pl_main);
+            g_pl_active = sv_pl;
         }
     }
 }

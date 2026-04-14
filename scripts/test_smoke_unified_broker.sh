@@ -148,6 +148,27 @@ pl "PL: arithmetic" "10" << 'EOF'
 main :- X is 3 + 7, write(X), nl.
 EOF
 
+# ── Cross-language polyglot (U-19) ───────────────────────────────────────────
+echo "=== Cross-language polyglot (U-19) ==="
+
+CROSS="$ROOT/test/cross_lang.scrip"
+REF="$ROOT/test/cross_lang.ref"
+if [ -f "$CROSS" ] && [ -f "$REF" ]; then
+    actual=$(timeout "$TIMEOUT" "$SCRIP" --ir-run "$CROSS" < /dev/null 2>/dev/null)
+    expected=$(cat "$REF")
+    if [ "$actual" = "$expected" ]; then
+        echo "  PASS cross_lang.scrip (SNO+ICN+PL all three bb_broker modes)"
+        PASS=$((PASS+1))
+    else
+        echo "  FAIL cross_lang.scrip"
+        printf "       exp: %s\n" "$(printf '%s' "$expected" | head -3)"
+        printf "       got: %s\n" "$(printf '%s' "$actual"   | head -3)"
+        FAIL=$((FAIL+1))
+    fi
+else
+    echo "  SKIP cross_lang.scrip (file not found)"
+fi
+
 # ── Result ───────────────────────────────────────────────────────────────────
 echo ""
 echo "PASS=$PASS FAIL=$FAIL"
