@@ -206,14 +206,6 @@ void prescan_defines(Program *prog)
     }
 }
 
-/* ══════════════════════════════════════════════════════════════════════════
- * polyglot_init — one pass, all three runtime tables  (U-14)
- *
- * Replaces the three separate init sequences that lived in execute_program,
- * icn_execute_program_unified, and pl_execute_program_unified.
- * Safe to call for single-language Programs — the lang-tagged tables are
- * simply empty when no statements of that language are present.
- * ══════════════════════════════════════════════════════════════════════════ */
 
 DESCR_t         interp_eval(EXPR_t *e);      /* forward */
 DESCR_t  interp_eval_pat(EXPR_t *e);  /* forward — pattern context */
@@ -2118,7 +2110,7 @@ DESCR_t interp_eval_pat(EXPR_t *e)
 
 void execute_program(Program *prog)
 {
-    polyglot_init(prog);   /* U-14: one pass, all three runtime tables */
+    polyglot_init(prog, polyglot_lang_mask(prog));   /* U-14 / FI-8: language-selective init */
     g_lang = 0;  /* SNOBOL4 mode */
 
     STMT_t *s = prog->head;

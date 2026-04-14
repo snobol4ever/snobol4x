@@ -34,39 +34,67 @@ ScripModuleRegistry g_registry;   /* zero-initialised; nmod==0 for single-lang *
 
 
 
-/* icn_drive: drive generators embedded in e, re-executing ICN_CUR.body_root each tick.
- * Returns tick count. Mirrors icn_exec_driven in icon_interp.c but uses DESCR_t.
- * OE-2: root parameter removed — body root stored in ICN_CUR.body_root. */
 /* ══════════════════════════════════════════════════════════════════════════
- * polyglot_init — one pass, all three runtime tables  (U-14)
+ * polyglot_lang_mask — compute bitmask of languages present in prog  (FI-8)
+ *
+ * Returns a uint32_t with bit (1u << LANG_X) set for each language X that
+ * appears in at least one STMT_t.lang field.  Callers pass this into
+ * polyglot_init so per-language init is skipped when not needed.
+ * ══════════════════════════════════════════════════════════════════════════ */
+uint32_t polyglot_lang_mask(Program *prog)
+{
+    uint32_t mask = 0;
+    if (!prog) return mask;
+    for (STMT_t *s = prog->head; s; s = s->next) {
+        if (s->lang >= 0 && s->lang < 32)
+            mask |= (1u << s->lang);
+    }
+    return mask;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * polyglot_init — language-selective runtime init  (U-14, FI-8)
+ *
+ * lang_mask: bitmask of languages present (compute via polyglot_lang_mask).
+ * Only inits runtimes for languages actually used — single-lang .sno programs
+ * skip Icon and Prolog init entirely.
  *
  * Replaces the three separate init sequences that lived in execute_program,
  * icn_execute_program_unified, and pl_execute_program_unified.
- * Safe to call for single-language Programs — the lang-tagged tables are
- * simply empty when no statements of that language are present.
  * ══════════════════════════════════════════════════════════════════════════ */
-void polyglot_init(Program *prog)
+
+/* FI-8: counters to verify lazy-init correctness in tests */
+int g_fi8_icn_init_count = 0;
+int g_fi8_pl_init_count  = 0;
+
+void polyglot_init(Program *prog, uint32_t lang_mask)
 {
     if (!prog) return;
 
-    /* ── SNO: label table + DEFINE prescan ─────────────────────────── */
+    /* ── SNO: label table + DEFINE prescan — always required ────────── */
     label_table_build(prog);
     prescan_defines(prog);
 
-    /* ── ICN: proc table ────────────────────────────────────────────── */
-    icn_proc_count = 0; icn_global_count = 0;  /* U-23: reset global name bridge */
-    icn_frame_depth = 0;
-    memset(icn_frame_stack, 0, sizeof icn_frame_stack);
-    icn_scan_subj = NULL; icn_scan_pos = 0; icn_scan_depth = 0;
-    g_icn_root = NULL;
+    /* ── ICN: proc table — only when Icon or Raku stmts present ─────── */
+    if (lang_mask & ((1u << LANG_ICN) | (1u << LANG_RAKU))) {
+        g_fi8_icn_init_count++;
+        icn_proc_count = 0; icn_global_count = 0;  /* U-23: reset global name bridge */
+        icn_frame_depth = 0;
+        memset(icn_frame_stack, 0, sizeof icn_frame_stack);
+        icn_scan_subj = NULL; icn_scan_pos = 0; icn_scan_depth = 0;
+        g_icn_root = NULL;
+    }
 
-    /* ── PL: pred table + trail ─────────────────────────────────────── */
-    prolog_atom_init();
-    memset(&g_pl_pred_table, 0, sizeof g_pl_pred_table);
-    trail_init(&g_pl_trail);
-    g_pl_cut_flag = 0;
-    g_pl_env      = NULL;
-    g_pl_active   = 0;
+    /* ── PL: pred table + trail — only when Prolog stmts present ────── */
+    if (lang_mask & (1u << LANG_PL)) {
+        g_fi8_pl_init_count++;
+        prolog_atom_init();
+        memset(&g_pl_pred_table, 0, sizeof g_pl_pred_table);
+        trail_init(&g_pl_trail);
+        g_pl_cut_flag = 0;
+        g_pl_env      = NULL;
+        g_pl_active   = 0;
+    }
 
     /* ── Registry reset  (U-21) ─────────────────────────────────────── */
     memset(&g_registry, 0, sizeof g_registry);
@@ -171,7 +199,8 @@ void polyglot_execute(Program *prog) {
     }
     /* Single-language .icn or .pl — detect from first statement's lang field */
     int slang = prog->head ? prog->head->lang : LANG_SNO;
-    polyglot_init(prog);
+    uint32_t mask = polyglot_lang_mask(prog);
+    polyglot_init(prog, mask);
     if (slang == LANG_ICN) {
         g_lang = 1;
         for (int i = 0; i < icn_proc_count; i++) {

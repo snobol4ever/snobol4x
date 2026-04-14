@@ -12,6 +12,7 @@
 #ifndef INTERP_H
 #define INTERP_H
 
+#include <stdint.h>
 #include "frontend/snobol4/scrip_cc.h"  /* EXPR_t, STMT_t, Program, DESCR_t */
 
 /* ── Diagnostic flags (set in main, read by execute_program / sm_interp) ── */
@@ -42,7 +43,8 @@ typedef struct {
 } ScripModuleRegistry;
 extern ScripModuleRegistry g_registry;
 /* polyglot_init declared in polyglot.h — forward ref for execute_program */
-void polyglot_init(Program *prog);
+void polyglot_init(Program *prog, uint32_t lang_mask);
+uint32_t polyglot_lang_mask(Program *prog);
 
 /* ── Label table ───────────────────────────────────────────────────────── */
 extern int label_count;     /* needed by polyglot_init for sno_label_start */
