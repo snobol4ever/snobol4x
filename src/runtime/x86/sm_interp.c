@@ -60,7 +60,16 @@ extern int exec_stmt(const char *subj_name, DESCR_t *subj_var,
 extern char    *VARVAL_fn(DESCR_t d);
 extern DESCR_t  NV_GET_fn(const char *name);
 
-/* ── Pat-stack (side stack for pattern construction) ───────────────────── */
+/* OE-10: Icon/Prolog BB opcode support */
+#include "bb_broker.h"
+extern bb_node_t icn_eval_gen(EXPR_t *e);   /* scrip.c — builds a drivable bb_node_t */
+
+/* OE-10: body_fn for BB_PUMP — print each generated Icon value to stdout */
+static void pump_print(DESCR_t val, void *arg) {
+    (void)arg;
+    char *s = VARVAL_fn(val);
+    if (s) printf("%s\n", s);
+}
 #define SM_PAT_STACK_MAX 128
 static DESCR_t g_pat_stack[SM_PAT_STACK_MAX];
 static int     g_pat_sp = 0;
@@ -464,21 +473,31 @@ int sm_interp_run(SM_Program *prog, SM_State *st)
             break;
         }
 
-        /* ── U-16: Byrd box broker opcode stubs ─────────────────────── */
-        /* SM_BB_PUMP and SM_BB_ONCE are not yet lowered to by sm_lower.   */
-        /* Stubs exist so the opcode enum is complete and sm_interp won't  */
-        /* fall through to the default error handler if they ever appear.  */
-        case SM_BB_PUMP:
-            /* Future: pop bb_node_t*, call bb_broker(BB_PUMP,body_fn,arg),
-             * push tick count. Wired by U-18 (sm_lower Icon/Prolog nodes). */
-            st->last_ok = 0;
+        /* ── OE-10/11: Byrd box broker opcodes — Icon/Prolog SM-run support ── */
+        case SM_BB_PUMP: {
+            /* Pop DT_E descriptor whose .ptr is the EXPR_t* of the Icon statement subject.
+             * Build a drivable bb_node_t via icn_eval_gen, pump all values via bb_broker. */
+            DESCR_t expr_d = sm_pop(st);
+            EXPR_t *expr   = (EXPR_t *)expr_d.ptr;
+            if (!expr) { st->last_ok = 0; break; }
+            bb_node_t node = icn_eval_gen(expr);
+            int ticks = bb_broker(node, BB_PUMP, pump_print, NULL);
+            st->last_ok = (ticks > 0);
             break;
+        }
 
-        case SM_BB_ONCE:
-            /* Future: pop bb_node_t*, call bb_broker(BB_ONCE,NULL,NULL),
-             * set st->last_ok. Wired by U-18 (sm_lower Icon/Prolog nodes). */
-            st->last_ok = 0;
+        case SM_BB_ONCE: {
+            /* Pop DT_E descriptor whose .ptr is the EXPR_t* of the Prolog statement subject.
+             * Build a bb_node_t via icn_eval_gen (shared builder handles E_CHOICE/E_CLAUSE),
+             * drive once via bb_broker(BB_ONCE). */
+            DESCR_t expr_d = sm_pop(st);
+            EXPR_t *expr   = (EXPR_t *)expr_d.ptr;
+            if (!expr) { st->last_ok = 0; break; }
+            bb_node_t node = icn_eval_gen(expr);
+            int ticks = bb_broker(node, BB_ONCE, NULL, NULL);
+            st->last_ok = (ticks > 0);
             break;
+        }
 
         /* ── Functions (stubs — wired in U3) ───────────────────────── */
 
