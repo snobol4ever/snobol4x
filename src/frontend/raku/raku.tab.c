@@ -694,13 +694,13 @@ static const yytype_int16 yyrline[] =
 {
        0,   185,   185,   215,   216,   220,   222,   224,   226,   228,
      230,   232,   234,   236,   238,   241,   244,   247,   248,   249,
-     250,   251,   252,   256,   258,   260,   265,   271,   280,   286,
-     298,   313,   314,   323,   331,   340,   341,   345,   349,   350,
-     351,   355,   356,   357,   358,   359,   360,   361,   362,   363,
-     364,   365,   369,   370,   371,   375,   376,   377,   378,   382,
-     383,   384,   385,   386,   390,   391,   392,   395,   398,   403,
-     404,   408,   409,   413,   414,   415,   416,   417,   418,   419,
-     421,   423,   425,   426
+     250,   251,   252,   256,   258,   260,   265,   271,   282,   288,
+     300,   315,   316,   325,   333,   342,   343,   347,   351,   352,
+     353,   357,   358,   359,   360,   361,   362,   363,   364,   365,
+     366,   367,   371,   372,   373,   377,   378,   379,   380,   384,
+     385,   386,   387,   388,   392,   393,   394,   397,   400,   405,
+     406,   410,   411,   415,   416,   417,   418,   419,   420,   421,
+     423,   425,   427,   428
 };
 #endif
 
@@ -1583,20 +1583,22 @@ yyreduce:
               (yyval.node) = make_for_range(iter->children[0], iter->children[1], vname, (yyvsp[0].node));
           } else {
               EXPR_t *gen=(iter->kind==E_VAR)?expr_unary(E_ITERATE,iter):iter;
+              /* RK-16: store loop-variable name in gen->sval so icn_drive can bind it */
+              gen->sval = (char *)vname;
               (yyval.node)=expr_binary(E_EVERY,gen,(yyvsp[0].node));
           } }
-#line 1589 "raku.tab.c"
+#line 1591 "raku.tab.c"
     break;
 
   case 28: /* for_stmt: KW_FOR expr block  */
-#line 281 "raku.y"
+#line 283 "raku.y"
         { EXPR_t *gen=((yyvsp[-1].node)->kind==E_VAR)?expr_unary(E_ITERATE,(yyvsp[-1].node)):(yyvsp[-1].node);
           (yyval.node)=expr_binary(E_EVERY,gen,(yyvsp[0].node)); }
-#line 1596 "raku.tab.c"
+#line 1598 "raku.tab.c"
     break;
 
   case 29: /* given_stmt: KW_GIVEN expr '{' when_list '}'  */
-#line 287 "raku.y"
+#line 289 "raku.y"
         { EXPR_t *topic=(yyvsp[-3].node); ExprList *whens=(yyvsp[-1].list); EXPR_t *chain=NULL;
           for (int i=whens->count-1;i>=0;i--) {
               EXPR_t *pair=whens->items[i];
@@ -1608,11 +1610,11 @@ yyreduce:
               if(chain) expr_add_child(eif,chain); chain=eif; }
           exprlist_free(whens);
           (yyval.node)=chain?chain:expr_new(E_SEQ_EXPR); }
-#line 1612 "raku.tab.c"
+#line 1614 "raku.tab.c"
     break;
 
   case 30: /* given_stmt: KW_GIVEN expr '{' when_list KW_DEFAULT block '}'  */
-#line 299 "raku.y"
+#line 301 "raku.y"
         { EXPR_t *topic=(yyvsp[-5].node); ExprList *whens=(yyvsp[-3].list); EXPR_t *chain=(yyvsp[-1].node);
           for (int i=whens->count-1;i>=0;i--) {
               EXPR_t *pair=whens->items[i];
@@ -1624,27 +1626,27 @@ yyreduce:
               if(chain) expr_add_child(eif,chain); chain=eif; }
           exprlist_free(whens);
           (yyval.node)=chain?chain:expr_new(E_SEQ_EXPR); }
-#line 1628 "raku.tab.c"
+#line 1630 "raku.tab.c"
     break;
 
   case 31: /* when_list: %empty  */
-#line 313 "raku.y"
+#line 315 "raku.y"
                    { (yyval.list)=exprlist_new(); }
-#line 1634 "raku.tab.c"
+#line 1636 "raku.tab.c"
     break;
 
   case 32: /* when_list: when_list KW_WHEN expr block  */
-#line 315 "raku.y"
+#line 317 "raku.y"
         { EKind cmp=((yyvsp[-1].node)->kind==E_QLIT)?E_LEQ:E_EQ;
           EXPR_t *pair=expr_new(E_SEQ_EXPR);
           pair->ival=(long)cmp;
           expr_add_child(pair,(yyvsp[-1].node)); expr_add_child(pair,(yyvsp[0].node));
           (yyval.list)=exprlist_append((yyvsp[-3].list),pair); }
-#line 1644 "raku.tab.c"
+#line 1646 "raku.tab.c"
     break;
 
   case 33: /* sub_decl: KW_SUB IDENT '(' param_list ')' block  */
-#line 324 "raku.y"
+#line 326 "raku.y"
         { ExprList *params=(yyvsp[-2].list); int np=params?params->count:0;
           EXPR_t *e=leaf_sval(E_FNC,(yyvsp[-4].sval)); e->ival=(long)np|SUB_TAG;
           EXPR_t *nn=expr_new(E_VAR); nn->sval=intern((yyvsp[-4].sval)); expr_add_child(e,nn);
@@ -1652,318 +1654,318 @@ yyreduce:
           EXPR_t *body=(yyvsp[0].node);
           for(int i=0;i<body->nchildren;i++) expr_add_child(e,body->children[i]);
           (yyval.node)=e; }
-#line 1656 "raku.tab.c"
+#line 1658 "raku.tab.c"
     break;
 
   case 34: /* sub_decl: KW_SUB IDENT '(' ')' block  */
-#line 332 "raku.y"
+#line 334 "raku.y"
         { EXPR_t *e=leaf_sval(E_FNC,(yyvsp[-3].sval)); e->ival=(long)0|SUB_TAG;
           EXPR_t *nn=expr_new(E_VAR); nn->sval=intern((yyvsp[-3].sval)); expr_add_child(e,nn);
           EXPR_t *body=(yyvsp[0].node);
           for(int i=0;i<body->nchildren;i++) expr_add_child(e,body->children[i]);
           (yyval.node)=e; }
-#line 1666 "raku.tab.c"
+#line 1668 "raku.tab.c"
     break;
 
   case 35: /* param_list: VAR_SCALAR  */
-#line 340 "raku.y"
+#line 342 "raku.y"
                              { (yyval.list)=exprlist_append(exprlist_new(),var_node((yyvsp[0].sval))); }
-#line 1672 "raku.tab.c"
+#line 1674 "raku.tab.c"
     break;
 
   case 36: /* param_list: param_list ',' VAR_SCALAR  */
-#line 341 "raku.y"
+#line 343 "raku.y"
                                 { (yyval.list)=exprlist_append((yyvsp[-2].list),var_node((yyvsp[0].sval))); }
-#line 1678 "raku.tab.c"
+#line 1680 "raku.tab.c"
     break;
 
   case 37: /* block: '{' stmt_list '}'  */
-#line 345 "raku.y"
+#line 347 "raku.y"
                          { (yyval.node)=make_seq((yyvsp[-1].list)); }
-#line 1684 "raku.tab.c"
+#line 1686 "raku.tab.c"
     break;
 
   case 38: /* expr: VAR_SCALAR '=' expr  */
-#line 349 "raku.y"
+#line 351 "raku.y"
                            { (yyval.node)=expr_binary(E_ASSIGN,var_node((yyvsp[-2].sval)),(yyvsp[0].node)); }
-#line 1690 "raku.tab.c"
+#line 1692 "raku.tab.c"
     break;
 
   case 39: /* expr: KW_GATHER block  */
-#line 350 "raku.y"
+#line 352 "raku.y"
                            { (yyval.node)=expr_unary(E_ITERATE,(yyvsp[0].node)); }
-#line 1696 "raku.tab.c"
+#line 1698 "raku.tab.c"
     break;
 
   case 40: /* expr: cmp_expr  */
-#line 351 "raku.y"
+#line 353 "raku.y"
                            { (yyval.node)=(yyvsp[0].node); }
-#line 1702 "raku.tab.c"
+#line 1704 "raku.tab.c"
     break;
 
   case 41: /* cmp_expr: cmp_expr OP_AND add_expr  */
-#line 355 "raku.y"
+#line 357 "raku.y"
                                 { (yyval.node)=expr_binary(E_SEQ,(yyvsp[-2].node),(yyvsp[0].node)); }
-#line 1708 "raku.tab.c"
+#line 1710 "raku.tab.c"
     break;
 
   case 42: /* cmp_expr: cmp_expr OP_OR add_expr  */
-#line 356 "raku.y"
+#line 358 "raku.y"
                                 { (yyval.node)=expr_binary(E_ALT,(yyvsp[-2].node),(yyvsp[0].node)); }
-#line 1714 "raku.tab.c"
+#line 1716 "raku.tab.c"
     break;
 
   case 43: /* cmp_expr: add_expr OP_EQ add_expr  */
-#line 357 "raku.y"
+#line 359 "raku.y"
                                 { (yyval.node)=expr_binary(E_EQ,(yyvsp[-2].node),(yyvsp[0].node)); }
-#line 1720 "raku.tab.c"
+#line 1722 "raku.tab.c"
     break;
 
   case 44: /* cmp_expr: add_expr OP_NE add_expr  */
-#line 358 "raku.y"
+#line 360 "raku.y"
                                 { (yyval.node)=expr_binary(E_NE,(yyvsp[-2].node),(yyvsp[0].node)); }
-#line 1726 "raku.tab.c"
+#line 1728 "raku.tab.c"
     break;
 
   case 45: /* cmp_expr: add_expr '<' add_expr  */
-#line 359 "raku.y"
+#line 361 "raku.y"
                                 { (yyval.node)=expr_binary(E_LT,(yyvsp[-2].node),(yyvsp[0].node)); }
-#line 1732 "raku.tab.c"
+#line 1734 "raku.tab.c"
     break;
 
   case 46: /* cmp_expr: add_expr '>' add_expr  */
-#line 360 "raku.y"
+#line 362 "raku.y"
                                 { (yyval.node)=expr_binary(E_GT,(yyvsp[-2].node),(yyvsp[0].node)); }
-#line 1738 "raku.tab.c"
+#line 1740 "raku.tab.c"
     break;
 
   case 47: /* cmp_expr: add_expr OP_LE add_expr  */
-#line 361 "raku.y"
+#line 363 "raku.y"
                                 { (yyval.node)=expr_binary(E_LE,(yyvsp[-2].node),(yyvsp[0].node)); }
-#line 1744 "raku.tab.c"
+#line 1746 "raku.tab.c"
     break;
 
   case 48: /* cmp_expr: add_expr OP_GE add_expr  */
-#line 362 "raku.y"
+#line 364 "raku.y"
                                 { (yyval.node)=expr_binary(E_GE,(yyvsp[-2].node),(yyvsp[0].node)); }
-#line 1750 "raku.tab.c"
+#line 1752 "raku.tab.c"
     break;
 
   case 49: /* cmp_expr: add_expr OP_SEQ add_expr  */
-#line 363 "raku.y"
+#line 365 "raku.y"
                                 { (yyval.node)=expr_binary(E_LEQ,(yyvsp[-2].node),(yyvsp[0].node)); }
-#line 1756 "raku.tab.c"
+#line 1758 "raku.tab.c"
     break;
 
   case 50: /* cmp_expr: add_expr OP_SNE add_expr  */
-#line 364 "raku.y"
+#line 366 "raku.y"
                                 { (yyval.node)=expr_binary(E_LNE,(yyvsp[-2].node),(yyvsp[0].node)); }
-#line 1762 "raku.tab.c"
+#line 1764 "raku.tab.c"
     break;
 
   case 51: /* cmp_expr: range_expr  */
-#line 365 "raku.y"
+#line 367 "raku.y"
                                { (yyval.node)=(yyvsp[0].node); }
-#line 1768 "raku.tab.c"
+#line 1770 "raku.tab.c"
     break;
 
   case 52: /* range_expr: add_expr OP_RANGE add_expr  */
-#line 369 "raku.y"
+#line 371 "raku.y"
                                     { (yyval.node)=expr_binary(E_TO,(yyvsp[-2].node),(yyvsp[0].node)); }
-#line 1774 "raku.tab.c"
+#line 1776 "raku.tab.c"
     break;
 
   case 53: /* range_expr: add_expr OP_RANGE_EX add_expr  */
-#line 370 "raku.y"
+#line 372 "raku.y"
                                     { (yyval.node)=expr_binary(E_TO,(yyvsp[-2].node),(yyvsp[0].node)); }
-#line 1780 "raku.tab.c"
+#line 1782 "raku.tab.c"
     break;
 
   case 54: /* range_expr: add_expr  */
-#line 371 "raku.y"
+#line 373 "raku.y"
                                     { (yyval.node)=(yyvsp[0].node); }
-#line 1786 "raku.tab.c"
+#line 1788 "raku.tab.c"
     break;
 
   case 55: /* add_expr: add_expr '+' mul_expr  */
-#line 375 "raku.y"
+#line 377 "raku.y"
                              { (yyval.node)=expr_binary(E_ADD,(yyvsp[-2].node),(yyvsp[0].node)); }
-#line 1792 "raku.tab.c"
+#line 1794 "raku.tab.c"
     break;
 
   case 56: /* add_expr: add_expr '-' mul_expr  */
-#line 376 "raku.y"
+#line 378 "raku.y"
                              { (yyval.node)=expr_binary(E_SUB,(yyvsp[-2].node),(yyvsp[0].node)); }
-#line 1798 "raku.tab.c"
+#line 1800 "raku.tab.c"
     break;
 
   case 57: /* add_expr: add_expr '~' mul_expr  */
-#line 377 "raku.y"
+#line 379 "raku.y"
                              { (yyval.node)=expr_binary(E_CAT,(yyvsp[-2].node),(yyvsp[0].node)); }
-#line 1804 "raku.tab.c"
+#line 1806 "raku.tab.c"
     break;
 
   case 58: /* add_expr: mul_expr  */
-#line 378 "raku.y"
+#line 380 "raku.y"
                              { (yyval.node)=(yyvsp[0].node); }
-#line 1810 "raku.tab.c"
+#line 1812 "raku.tab.c"
     break;
 
   case 59: /* mul_expr: mul_expr '*' unary_expr  */
-#line 382 "raku.y"
+#line 384 "raku.y"
                                   { (yyval.node)=expr_binary(E_MUL,(yyvsp[-2].node),(yyvsp[0].node)); }
-#line 1816 "raku.tab.c"
+#line 1818 "raku.tab.c"
     break;
 
   case 60: /* mul_expr: mul_expr '/' unary_expr  */
-#line 383 "raku.y"
+#line 385 "raku.y"
                                   { (yyval.node)=expr_binary(E_DIV,(yyvsp[-2].node),(yyvsp[0].node)); }
-#line 1822 "raku.tab.c"
+#line 1824 "raku.tab.c"
     break;
 
   case 61: /* mul_expr: mul_expr '%' unary_expr  */
-#line 384 "raku.y"
+#line 386 "raku.y"
                                   { (yyval.node)=expr_binary(E_MOD,(yyvsp[-2].node),(yyvsp[0].node)); }
-#line 1828 "raku.tab.c"
+#line 1830 "raku.tab.c"
     break;
 
   case 62: /* mul_expr: mul_expr OP_DIV unary_expr  */
-#line 385 "raku.y"
+#line 387 "raku.y"
                                   { (yyval.node)=expr_binary(E_DIV,(yyvsp[-2].node),(yyvsp[0].node)); }
-#line 1834 "raku.tab.c"
+#line 1836 "raku.tab.c"
     break;
 
   case 63: /* mul_expr: unary_expr  */
-#line 386 "raku.y"
+#line 388 "raku.y"
                                   { (yyval.node)=(yyvsp[0].node); }
-#line 1840 "raku.tab.c"
+#line 1842 "raku.tab.c"
     break;
 
   case 64: /* unary_expr: '-' unary_expr  */
-#line 390 "raku.y"
+#line 392 "raku.y"
                                    { (yyval.node)=expr_unary(E_MNS,(yyvsp[0].node)); }
-#line 1846 "raku.tab.c"
+#line 1848 "raku.tab.c"
     break;
 
   case 65: /* unary_expr: '!' unary_expr  */
-#line 391 "raku.y"
+#line 393 "raku.y"
                                    { (yyval.node)=expr_unary(E_NOT,(yyvsp[0].node)); }
-#line 1852 "raku.tab.c"
+#line 1854 "raku.tab.c"
     break;
 
   case 66: /* unary_expr: postfix_expr  */
-#line 392 "raku.y"
+#line 394 "raku.y"
                                    { (yyval.node)=(yyvsp[0].node); }
-#line 1858 "raku.tab.c"
+#line 1860 "raku.tab.c"
     break;
 
   case 67: /* postfix_expr: call_expr  */
-#line 395 "raku.y"
+#line 397 "raku.y"
                          { (yyval.node)=(yyvsp[0].node); }
-#line 1864 "raku.tab.c"
+#line 1866 "raku.tab.c"
     break;
 
   case 68: /* call_expr: IDENT '(' arg_list ')'  */
-#line 399 "raku.y"
+#line 401 "raku.y"
         { EXPR_t *e=make_call((yyvsp[-3].sval));
           ExprList *args=(yyvsp[-1].list);
           if(args){ for(int i=0;i<args->count;i++) expr_add_child(e,args->items[i]); exprlist_free(args); }
           (yyval.node)=e; }
-#line 1873 "raku.tab.c"
+#line 1875 "raku.tab.c"
     break;
 
   case 69: /* call_expr: IDENT '(' ')'  */
-#line 403 "raku.y"
+#line 405 "raku.y"
                      { (yyval.node)=make_call((yyvsp[-2].sval)); }
-#line 1879 "raku.tab.c"
+#line 1881 "raku.tab.c"
     break;
 
   case 70: /* call_expr: atom  */
-#line 404 "raku.y"
+#line 406 "raku.y"
                      { (yyval.node)=(yyvsp[0].node); }
-#line 1885 "raku.tab.c"
+#line 1887 "raku.tab.c"
     break;
 
   case 71: /* arg_list: expr  */
-#line 408 "raku.y"
+#line 410 "raku.y"
                         { (yyval.list)=exprlist_append(exprlist_new(),(yyvsp[0].node)); }
-#line 1891 "raku.tab.c"
+#line 1893 "raku.tab.c"
     break;
 
   case 72: /* arg_list: arg_list ',' expr  */
-#line 409 "raku.y"
+#line 411 "raku.y"
                         { (yyval.list)=exprlist_append((yyvsp[-2].list),(yyvsp[0].node)); }
-#line 1897 "raku.tab.c"
+#line 1899 "raku.tab.c"
     break;
 
   case 73: /* atom: LIT_INT  */
-#line 413 "raku.y"
+#line 415 "raku.y"
                       { EXPR_t *e=expr_new(E_ILIT); e->ival=(yyvsp[0].ival); (yyval.node)=e; }
-#line 1903 "raku.tab.c"
+#line 1905 "raku.tab.c"
     break;
 
   case 74: /* atom: LIT_FLOAT  */
-#line 414 "raku.y"
+#line 416 "raku.y"
                       { EXPR_t *e=expr_new(E_FLIT); e->dval=(yyvsp[0].dval); (yyval.node)=e; }
-#line 1909 "raku.tab.c"
+#line 1911 "raku.tab.c"
     break;
 
   case 75: /* atom: LIT_STR  */
-#line 415 "raku.y"
+#line 417 "raku.y"
                       { (yyval.node)=leaf_sval(E_QLIT,(yyvsp[0].sval)); }
-#line 1915 "raku.tab.c"
+#line 1917 "raku.tab.c"
     break;
 
   case 76: /* atom: LIT_INTERP_STR  */
-#line 416 "raku.y"
+#line 418 "raku.y"
                       { (yyval.node)=lower_interp_str((yyvsp[0].sval)); }
-#line 1921 "raku.tab.c"
+#line 1923 "raku.tab.c"
     break;
 
   case 77: /* atom: VAR_SCALAR  */
-#line 417 "raku.y"
+#line 419 "raku.y"
                       { (yyval.node)=var_node((yyvsp[0].sval)); }
-#line 1927 "raku.tab.c"
+#line 1929 "raku.tab.c"
     break;
 
   case 78: /* atom: VAR_ARRAY  */
-#line 418 "raku.y"
+#line 420 "raku.y"
                       { (yyval.node)=var_node((yyvsp[0].sval)); }
-#line 1933 "raku.tab.c"
+#line 1935 "raku.tab.c"
     break;
 
   case 79: /* atom: VAR_ARRAY '[' expr ']'  */
-#line 420 "raku.y"
+#line 422 "raku.y"
         { EXPR_t *c=make_call("arr_get"); expr_add_child(c,var_node((yyvsp[-3].sval))); expr_add_child(c,(yyvsp[-1].node)); (yyval.node)=c; }
-#line 1939 "raku.tab.c"
+#line 1941 "raku.tab.c"
     break;
 
   case 80: /* atom: VAR_HASH '<' IDENT '>'  */
-#line 422 "raku.y"
+#line 424 "raku.y"
         { EXPR_t *c=make_call("hash_get"); expr_add_child(c,var_node((yyvsp[-3].sval))); expr_add_child(c,leaf_sval(E_QLIT,(yyvsp[-1].sval))); (yyval.node)=c; }
-#line 1945 "raku.tab.c"
+#line 1947 "raku.tab.c"
     break;
 
   case 81: /* atom: VAR_HASH '{' expr '}'  */
-#line 424 "raku.y"
+#line 426 "raku.y"
         { EXPR_t *c=make_call("hash_get"); expr_add_child(c,var_node((yyvsp[-3].sval))); expr_add_child(c,(yyvsp[-1].node)); (yyval.node)=c; }
-#line 1951 "raku.tab.c"
+#line 1953 "raku.tab.c"
     break;
 
   case 82: /* atom: IDENT  */
-#line 425 "raku.y"
+#line 427 "raku.y"
                       { (yyval.node)=var_node((yyvsp[0].sval)); }
-#line 1957 "raku.tab.c"
+#line 1959 "raku.tab.c"
     break;
 
   case 83: /* atom: '(' expr ')'  */
-#line 426 "raku.y"
+#line 428 "raku.y"
                       { (yyval.node)=(yyvsp[-1].node); }
-#line 1963 "raku.tab.c"
+#line 1965 "raku.tab.c"
     break;
 
 
-#line 1967 "raku.tab.c"
+#line 1969 "raku.tab.c"
 
       default: break;
     }
@@ -2156,7 +2158,7 @@ yyreturnlab:
   return yyresult;
 }
 
-#line 429 "raku.y"
+#line 431 "raku.y"
 
 
 /* ── Parse entry (sets up flex buffer and calls yyparse) ─────────────── */

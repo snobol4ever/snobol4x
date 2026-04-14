@@ -275,6 +275,8 @@ for_stmt
               $$ = make_for_range(iter->children[0], iter->children[1], vname, $5);
           } else {
               EXPR_t *gen=(iter->kind==E_VAR)?expr_unary(E_ITERATE,iter):iter;
+              /* RK-16: store loop-variable name in gen->sval so icn_drive can bind it */
+              gen->sval = (char *)vname;
               $$=expr_binary(E_EVERY,gen,$5);
           } }
     | KW_FOR expr block

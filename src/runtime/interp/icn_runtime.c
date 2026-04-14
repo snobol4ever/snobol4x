@@ -17,9 +17,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <gc/gc.h>
 
 /* interp_eval lives in scrip.c */
 extern DESCR_t interp_eval(EXPR_t *e);
+
+/* NV_SET_fn lives in snobol4.c — needed by RK-16 loop-var binding */
+extern DESCR_t NV_SET_fn(const char *name, DESCR_t val);
 
 /* ── Icon unified interpreter state ────────────────────────────────────────
  * Icon procedures use slot-indexed locals (e->ival on E_VAR nodes).
@@ -117,11 +121,52 @@ int icn_drive(EXPR_t *e) {
         else    {for(long i=lo;i>=hi&&!ICN_CUR.returning;i+=st){icn_gen_push(e,i,NULL);int inner=icn_drive(root);if(!inner)interp_eval(ICN_CUR.body_root);icn_gen_pop();ticks++;if(ICN_CUR.returning)break;}}
         return ticks;
     }
-    /* S-6: E_ITERATE (!str) — generate each character of a string */
+    /* S-6 / RK-16: E_ITERATE — iterate string chars OR Raku @array elements.
+     * If the string contains \x01 (SOH) it is a Raku array: split on SOH and
+     * bind each element to the loop variable named in e->sval (if any).
+     * Otherwise fall through to character-by-character Icon iteration. */
     if (e->kind == E_ITERATE && e->nchildren >= 1) {
         DESCR_t sv_d = interp_eval(e->children[0]);
         if (IS_FAIL_fn(sv_d) || !IS_STR_fn(sv_d)) return 0;
         const char *str = sv_d.s ? sv_d.s : "";
+        const char *loopvar = e->sval;   /* loop variable name, or NULL */
+
+        /* Raku array iteration: use when loopvar is set (for @arr -> $x)
+         * OR when string contains \x01 (multi-element array). */
+        if (loopvar || strchr(str, '\x01')) {
+            /* Split on \x01 and iterate elements */
+            char *copy = GC_malloc(strlen(str) + 1);
+            strcpy(copy, str);
+            int ticks = 0;
+            char *p = copy;
+            while (!ICN_CUR.returning) {
+                char *sep = strchr(p, '\x01');
+                if (sep) *sep = '\0';
+                /* bind loop variable to the slot in the current frame */
+                if (loopvar && *loopvar) {
+                    DESCR_t elem = STRVAL(p);
+                    /* coerce to int if purely numeric */
+                    char *end;
+                    long iv = strtol(p, &end, 10);
+                    if (end != p && *end == '\0') elem = INTVAL(iv);
+                    /* try slot first, fall back to NV */
+                    int slot = icn_scope_get(&ICN_CUR.sc, loopvar);
+                    if (slot >= 0 && slot < ICN_CUR.env_n)
+                        ICN_CUR.env[slot] = elem;
+                    else
+                        NV_SET_fn(loopvar, elem);
+                }
+                icn_gen_push(e, ticks, p);
+                int inner = icn_drive(root);
+                if (!inner) interp_eval(ICN_CUR.body_root);
+                icn_gen_pop(); ticks++;
+                if (!sep || ICN_CUR.returning) break;
+                p = sep + 1;
+            }
+            return ticks;
+        }
+
+        /* Icon-style character iteration */
         long len = (long)strlen(str); int ticks = 0;
         for (long i = 0; i < len && !ICN_CUR.returning; i++) {
             icn_gen_push(e, i, str);
