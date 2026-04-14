@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# test_crosscheck_snobol4.sh — 3-mode crosscheck for SNOBOL4 (GOAL-LANG-SNOBOL4)
+# test_crosscheck_rebus.sh — 3-mode crosscheck for REBUS (GOAL-LANG-REBUS)
 #
-# Runs the snobol4 test corpus through --ir-run, --sm-run, --jit-run.
+# Runs the rebus test corpus through --ir-run, --sm-run, --jit-run.
 # Run on every major push. Mode-consistency check, not regression.
 # If .ref present alongside test file: diffs vs oracle too.
 # Exits 0 only if all three modes agree on every test.
@@ -33,31 +33,46 @@ xcheck() {
     if [ "$ok" -eq 1 ]; then echo "  PASS $label"; PASS=$((PASS+1)); else FAIL=$((FAIL+1)); fi
 }
 
-echo "=== SNOBOL4 3-mode crosscheck ==="
+echo "=== Rebus 3-mode crosscheck ==="
 
-# Smoke tests — inline
-T=$(mktemp /tmp/sno_XXXXXX.sno)
-printf "        OUTPUT = 'hello'\nEND\n" > "$T"; xcheck "output"    "$T"
-printf "        OUTPUT = 2 + 3\nEND\n"  > "$T"; xcheck "arith"     "$T"
-printf "        OUTPUT = 'ab' 'cd'\nEND\n" > "$T"; xcheck "concat" "$T"
-printf "        S = 'abc'\n        S 'b' = 'X'\n        OUTPUT = S\nEND\n" > "$T"
-xcheck "pattern_replace" "$T"
-printf "        'x' 'x' :S(HIT)\n        OUTPUT = 'miss'\n        :(END)\nHIT     OUTPUT = 'hit'\nEND\n" > "$T"
-xcheck "goto" "$T"
+T=$(mktemp /tmp/reb_XXXXXX.reb)
+cat > "$T" << 'EOF'
+function main()
+  OUTPUT := "hello"
+end
+EOF
+xcheck "output" "$T"
+
+cat > "$T" << 'EOF'
+function main()
+  OUTPUT := 3 + 4
+end
+EOF
+xcheck "arith" "$T"
+
+cat > "$T" << 'EOF'
+function main()
+  x := 42
+  OUTPUT := x
+end
+EOF
+xcheck "var" "$T"
+
+cat > "$T" << 'EOF'
+function main()
+  OUTPUT := "ab" || "cd"
+end
+EOF
+xcheck "concat" "$T"
+
 rm -f "$T"
 
-# Beauty drivers — if corpus present
-BEAUTY=/home/claude/corpus/programs/snobol4/beauty
-for driver in omega gen tdump alpha; do
-    f="$BEAUTY/beauty_${driver}_driver.sno"
-    ref="/tmp/beauty_${driver}_spitbol.ref"
-    if [ -f "$f" ]; then
-        # Generate oracle ref from SPITBOL if not cached
-        if [ ! -f "$ref" ]; then
-            SNO_LIB=$BEAUTY timeout 30 /home/claude/x64/bin/sbl -b "$f" > "$ref" 2>/dev/null || rm -f "$ref"
-        fi
-        xcheck "beauty_${driver}" "$f" "${ref}"
-    fi
+# Rebus corpus files
+RUNGS=/home/claude/one4all/test/rebus
+for f in "$RUNGS"/*.reb; do
+    [ -f "$f" ] || continue
+    ref="${f%.reb}.ref"
+    xcheck "$(basename $f .reb)" "$f" "$ref"
 done
 
 echo ""

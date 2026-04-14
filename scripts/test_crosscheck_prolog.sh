@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# test_crosscheck_snobol4.sh — 3-mode crosscheck for SNOBOL4 (GOAL-LANG-SNOBOL4)
+# test_crosscheck_prolog.sh — 3-mode crosscheck for PROLOG (GOAL-LANG-PROLOG)
 #
-# Runs the snobol4 test corpus through --ir-run, --sm-run, --jit-run.
+# Runs the prolog test corpus through --ir-run, --sm-run, --jit-run.
 # Run on every major push. Mode-consistency check, not regression.
 # If .ref present alongside test file: diffs vs oracle too.
 # Exits 0 only if all three modes agree on every test.
@@ -33,30 +33,48 @@ xcheck() {
     if [ "$ok" -eq 1 ]; then echo "  PASS $label"; PASS=$((PASS+1)); else FAIL=$((FAIL+1)); fi
 }
 
-echo "=== SNOBOL4 3-mode crosscheck ==="
+echo "=== Prolog 3-mode crosscheck ==="
 
-# Smoke tests — inline
-T=$(mktemp /tmp/sno_XXXXXX.sno)
-printf "        OUTPUT = 'hello'\nEND\n" > "$T"; xcheck "output"    "$T"
-printf "        OUTPUT = 2 + 3\nEND\n"  > "$T"; xcheck "arith"     "$T"
-printf "        OUTPUT = 'ab' 'cd'\nEND\n" > "$T"; xcheck "concat" "$T"
-printf "        S = 'abc'\n        S 'b' = 'X'\n        OUTPUT = S\nEND\n" > "$T"
-xcheck "pattern_replace" "$T"
-printf "        'x' 'x' :S(HIT)\n        OUTPUT = 'miss'\n        :(END)\nHIT     OUTPUT = 'hit'\nEND\n" > "$T"
-xcheck "goto" "$T"
+T=$(mktemp /tmp/pl_XXXXXX.pl)
+cat > "$T" << 'EOF'
+:- initialization(main).
+main :- write(hello), nl.
+EOF
+xcheck "hello" "$T"
+
+cat > "$T" << 'EOF'
+:- initialization(main).
+fact(a). fact(b). fact(c).
+main :- fact(X), write(X), nl, fail ; true.
+EOF
+xcheck "backtrack" "$T"
+
+cat > "$T" << 'EOF'
+:- initialization(main).
+main :- X is 2 + 3, write(X), nl.
+EOF
+xcheck "arith" "$T"
+
+cat > "$T" << 'EOF'
+:- initialization(main).
+count(0) :- !.
+count(N) :- N > 0, write(N), nl, N1 is N - 1, count(N1).
+main :- count(3).
+EOF
+xcheck "recursion" "$T"
+
 rm -f "$T"
 
-# Beauty drivers — if corpus present
-BEAUTY=/home/claude/corpus/programs/snobol4/beauty
-for driver in omega gen tdump alpha; do
-    f="$BEAUTY/beauty_${driver}_driver.sno"
-    ref="/tmp/beauty_${driver}_spitbol.ref"
-    if [ -f "$f" ]; then
-        # Generate oracle ref from SPITBOL if not cached
-        if [ ! -f "$ref" ]; then
-            SNO_LIB=$BEAUTY timeout 30 /home/claude/x64/bin/sbl -b "$f" > "$ref" 2>/dev/null || rm -f "$ref"
-        fi
-        xcheck "beauty_${driver}" "$f" "${ref}"
+# Rung corpus files
+RUNGS=/home/claude/corpus/programs/prolog
+for rung in rung01 rung02 rung03; do
+    dir="$RUNGS/$rung"
+    if [ -d "$dir" ]; then
+        for f in "$dir"/*.pl; do
+            [ -f "$f" ] || continue
+            ref="${f%.pl}.ref"
+            xcheck "$(basename $f .pl)" "$f" "$ref"
+        done
     fi
 done
 

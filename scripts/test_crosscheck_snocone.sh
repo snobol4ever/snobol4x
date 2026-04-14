@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# test_crosscheck_snobol4.sh — 3-mode crosscheck for SNOBOL4 (GOAL-LANG-SNOBOL4)
+# test_crosscheck_snocone.sh — 3-mode crosscheck for SNOCONE (GOAL-LANG-SNOCONE)
 #
-# Runs the snobol4 test corpus through --ir-run, --sm-run, --jit-run.
+# Runs the snocone test corpus through --ir-run, --sm-run, --jit-run.
 # Run on every major push. Mode-consistency check, not regression.
 # If .ref present alongside test file: diffs vs oracle too.
 # Exits 0 only if all three modes agree on every test.
@@ -33,31 +33,41 @@ xcheck() {
     if [ "$ok" -eq 1 ]; then echo "  PASS $label"; PASS=$((PASS+1)); else FAIL=$((FAIL+1)); fi
 }
 
-echo "=== SNOBOL4 3-mode crosscheck ==="
+echo "=== Snocone 3-mode crosscheck ==="
 
-# Smoke tests — inline
-T=$(mktemp /tmp/sno_XXXXXX.sno)
-printf "        OUTPUT = 'hello'\nEND\n" > "$T"; xcheck "output"    "$T"
-printf "        OUTPUT = 2 + 3\nEND\n"  > "$T"; xcheck "arith"     "$T"
-printf "        OUTPUT = 'ab' 'cd'\nEND\n" > "$T"; xcheck "concat" "$T"
-printf "        S = 'abc'\n        S 'b' = 'X'\n        OUTPUT = S\nEND\n" > "$T"
-xcheck "pattern_replace" "$T"
-printf "        'x' 'x' :S(HIT)\n        OUTPUT = 'miss'\n        :(END)\nHIT     OUTPUT = 'hit'\nEND\n" > "$T"
-xcheck "goto" "$T"
+T=$(mktemp /tmp/sc_XXXXXX.sc)
+cat > "$T" << 'EOF'
+OUTPUT = "hello"
+EOF
+xcheck "output" "$T"
+
+cat > "$T" << 'EOF'
+OUTPUT = 2 + 3
+EOF
+xcheck "arith" "$T"
+
+cat > "$T" << 'EOF'
+procedure Double(n) {
+    Double = n + n; return;
+}
+OUTPUT = Double(21)
+EOF
+xcheck "procedure" "$T"
+
+cat > "$T" << 'EOF'
+i = 1;
+while (LE(i, 3)) { OUTPUT = i; i = i + 1; }
+EOF
+xcheck "while" "$T"
+
 rm -f "$T"
 
-# Beauty drivers — if corpus present
-BEAUTY=/home/claude/corpus/programs/snobol4/beauty
-for driver in omega gen tdump alpha; do
-    f="$BEAUTY/beauty_${driver}_driver.sno"
-    ref="/tmp/beauty_${driver}_spitbol.ref"
-    if [ -f "$f" ]; then
-        # Generate oracle ref from SPITBOL if not cached
-        if [ ! -f "$ref" ]; then
-            SNO_LIB=$BEAUTY timeout 30 /home/claude/x64/bin/sbl -b "$f" > "$ref" 2>/dev/null || rm -f "$ref"
-        fi
-        xcheck "beauty_${driver}" "$f" "${ref}"
-    fi
+# Beauty-sc subsystems
+BEAUTY=/home/claude/one4all/test/beauty-sc
+for subsys in assign fence global arith; do
+    f="$BEAUTY/$subsys/driver.sc"
+    ref="$BEAUTY/$subsys/driver.ref"
+    [ -f "$f" ] && xcheck "beauty_$subsys" "$f" "$ref"
 done
 
 echo ""
