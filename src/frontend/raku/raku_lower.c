@@ -62,7 +62,7 @@ static EXPR_t *lower_node(const RakuNode *n);
 /* strip_sigil — return pointer past leading $ or @ in a var name.
  * If no sigil, return s unchanged.  Result points into s (no alloc). */
 static const char *strip_sigil(const char *s) {
-    if (s && (s[0] == '$' || s[0] == '@')) return s + 1;
+    if (s && (s[0] == '$' || s[0] == '@' || s[0] == '%')) return s + 1;
     return s;
 }
 
@@ -391,6 +391,23 @@ static EXPR_t *lower_node(const RakuNode *n) {
         EXPR_t *call = make_call("arr_set");
         expr_add_child(call, var_node(n->sval));    /* @arr */
         expr_add_child(call, lower_node(n->left));  /* index */
+        expr_add_child(call, lower_node(n->right)); /* value */
+        return call;
+    }
+
+    /*-- %h<key>/%h{$k}  → E_FNC("hash_get", [E_VAR(h), key]) -----------*/
+    case RK_HASH_GET: {
+        EXPR_t *call = make_call("hash_get");
+        expr_add_child(call, var_node(n->sval));   /* %h → E_VAR (sigil stripped) */
+        expr_add_child(call, lower_node(n->left)); /* key expr */
+        return call;
+    }
+
+    /*-- %h<key>=val  → E_FNC("hash_set", [E_VAR(h), key, val]) ---------*/
+    case RK_HASH_SET: {
+        EXPR_t *call = make_call("hash_set");
+        expr_add_child(call, var_node(n->sval));    /* %h */
+        expr_add_child(call, lower_node(n->left));  /* key */
         expr_add_child(call, lower_node(n->right)); /* value */
         return call;
     }

@@ -6,7 +6,7 @@
 # Runs all test/raku/*.raku files against scrip --ir-run and compares
 # output to the corresponding .expected file.
 #
-# Gate: PASS=11 FAIL=0
+# Gate: PASS=12 FAIL=0
 #
 # roast reference: github.com/Raku/roast — official Raku test suite.
 # Our hand-written corpus covers the Tiny-Raku subset only (RK-9).

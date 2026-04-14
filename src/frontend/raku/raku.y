@@ -45,7 +45,7 @@ RakuNode *raku_parse_result = NULL;
 %token <ival> LIT_INT
 %token <dval> LIT_FLOAT
 %token <sval> LIT_STR LIT_INTERP_STR
-%token <sval> VAR_SCALAR VAR_ARRAY IDENT
+%token <sval> VAR_SCALAR VAR_ARRAY VAR_HASH IDENT
 
 %token KW_MY KW_SAY KW_PRINT KW_IF KW_ELSE KW_ELSIF KW_WHILE KW_FOR
 %token KW_SUB KW_GATHER KW_TAKE KW_RETURN
@@ -96,6 +96,8 @@ stmt
         { $$ = raku_node_my_scalar($2, $4, raku_get_lineno()); }
     | KW_MY VAR_ARRAY '=' expr ';'
         { $$ = raku_node_my_array($2, $4, raku_get_lineno()); }
+    | KW_MY VAR_HASH '=' expr ';'
+        { $$ = raku_node_my_array($2, $4, raku_get_lineno()); }
     | KW_SAY expr ';'
         { $$ = raku_node_say($2, raku_get_lineno()); }
     | KW_PRINT expr ';'
@@ -110,6 +112,11 @@ stmt
         { $$ = raku_node_assign($1, $3, raku_get_lineno()); }
     | VAR_ARRAY '[' expr ']' '=' expr ';'
         { $$ = raku_node_arr_set($1, $3, $6, raku_get_lineno()); }
+    | VAR_HASH '<' IDENT '>' '=' expr ';'
+        { RakuNode *k = raku_node_str($3, raku_get_lineno());
+          $$ = raku_node_hash_set($1, k, $6, raku_get_lineno()); }
+    | VAR_HASH '{' expr '}' '=' expr ';'
+        { $$ = raku_node_hash_set($1, $3, $6, raku_get_lineno()); }
     | expr ';'
         { $$ = raku_node_expr_stmt($1, raku_get_lineno()); }
     | if_stmt          { $$ = $1; }
@@ -250,6 +257,9 @@ atom
     | VAR_SCALAR                  { $$ = raku_node_var_scalar($1, raku_get_lineno()); }
     | VAR_ARRAY                   { $$ = raku_node_var_array($1,  raku_get_lineno()); }
     | VAR_ARRAY '[' expr ']'      { $$ = raku_node_arr_get($1, $3, raku_get_lineno()); }
+    | VAR_HASH '<' IDENT '>'      { RakuNode *k = raku_node_str($3, raku_get_lineno());
+                                    $$ = raku_node_hash_get($1, k, raku_get_lineno()); }
+    | VAR_HASH '{' expr '}'       { $$ = raku_node_hash_get($1, $3, raku_get_lineno()); }
     | IDENT                       { $$ = raku_node_ident($1, raku_get_lineno()); }
     | '(' expr ')'                { $$ = $2; }
     ;

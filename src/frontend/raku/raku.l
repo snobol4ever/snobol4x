@@ -108,6 +108,7 @@ WS       [ \t\r]
 "$_"            { raku_yylval.sval = strdup("$_"); return VAR_SCALAR; }
 "$"{ALPHA}{ALNUM}*  { raku_yylval.sval = strdup(yytext); return VAR_SCALAR; }
 "@"{ALPHA}{ALNUM}*  { raku_yylval.sval = strdup(yytext); return VAR_ARRAY; }
+"%"{ALPHA}{ALNUM}*  { raku_yylval.sval = strdup(yytext); return VAR_HASH; }
 
     /* ── Identifiers (bare words — sub names, builtins) ─────────── */
 {ALPHA}{ALNUM}* { raku_yylval.sval = strdup(yytext); return IDENT; }

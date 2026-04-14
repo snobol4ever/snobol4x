@@ -206,6 +206,21 @@ RakuNode *raku_node_arr_set(char *arrname, RakuNode *idx, RakuNode *val, int lin
     n->right = val;
     return n;
 }
+/* RK_HASH_GET: %h<key> / %h{$k} — hash name in sval, key expr in left */
+RakuNode *raku_node_hash_get(char *hashname, RakuNode *key, int line) {
+    RakuNode *n = alloc_node(RK_HASH_GET, line);
+    n->sval = hashname;
+    n->left = key;
+    return n;
+}
+/* RK_HASH_SET: %h<key>=val — hash name in sval, key in left, value in right */
+RakuNode *raku_node_hash_set(char *hashname, RakuNode *key, RakuNode *val, int line) {
+    RakuNode *n = alloc_node(RK_HASH_SET, line);
+    n->sval  = hashname;
+    n->left  = key;
+    n->right = val;
+    return n;
+}
 
 /* ── Parse entry (sets up flex buffer and calls yyparse) ─────────────── */
 extern int  raku_yyparse(void);

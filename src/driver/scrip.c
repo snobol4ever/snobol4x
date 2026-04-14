@@ -1421,6 +1421,97 @@ static DESCR_t interp_eval(EXPR_t *e)
                     ICN_CUR.env[e->children[1]->ival] = STRVAL(out);
                 return STRVAL(out);
             }
+
+            /* ── RK-15: Hash builtins ───────────────────────────────────────
+             * Hashes stored as \x02-separated "key\x03value" pair strings.
+             * hash_set(h,k,v): upsert; hash_get(h,k): lookup or NULVCL;
+             * hash_exists(h,k): 1/0; hash_keys(h): \x01-sep key list;
+             * hash_values(h): \x01-sep value list.                        */
+#define HS '\x02'   /* pair separator */
+#define HK '\x03'   /* key/value separator within a pair */
+            if ((!strcmp(fn,"hash_set") && nargs == 3) ||
+                (!strcmp(fn,"hash_get") && nargs == 2) ||
+                (!strcmp(fn,"hash_exists") && nargs == 2) ||
+                (!strcmp(fn,"hash_keys") && nargs == 1) ||
+                (!strcmp(fn,"hash_values") && nargs == 1)) {
+                DESCR_t hd = interp_eval(e->children[1]);
+                const char *hs = (hd.v==DT_S||hd.v==DT_SNUL) ? (hd.s?hd.s:"") : "";
+                if (!strcmp(fn,"hash_set")) {
+                    DESCR_t kd = interp_eval(e->children[2]);
+                    DESCR_t vd = interp_eval(e->children[3]);
+                    char kb[64], vb[64];
+                    const char *ks = IS_INT_fn(kd)  ? (snprintf(kb,sizeof kb,"%lld",(long long)kd.i),kb)
+                                   : IS_REAL_fn(kd) ? (snprintf(kb,sizeof kb,"%g",kd.r),kb)
+                                   : (kd.s&&*kd.s?kd.s:"");
+                    const char *vs = IS_INT_fn(vd)  ? (snprintf(vb,sizeof vb,"%lld",(long long)vd.i),vb)
+                                   : IS_REAL_fn(vd) ? (snprintf(vb,sizeof vb,"%g",vd.r),vb)
+                                   : (vd.s&&*vd.s?vd.s:"");
+                    size_t kl=strlen(ks);
+                    char *out = GC_malloc(strlen(hs)+kl+strlen(vs)+4); out[0]='\0';
+                    const char *p = hs;
+                    while (*p) {
+                        const char *sep = strchr(p, HK); const char *end = strchr(p, HS);
+                        if (!sep) break;
+                        size_t pkl=(size_t)(sep-p);
+                        if (pkl!=kl || memcmp(p,ks,kl)!=0) {
+                            if (out[0]) { size_t ol=strlen(out); out[ol]=HS; out[ol+1]='\0'; }
+                            size_t plen=end?(size_t)(end-p):strlen(p); strncat(out,p,plen);
+                        }
+                        if (!end) break; p=end+1;
+                    }
+                    if (out[0]) { size_t ol=strlen(out); out[ol]=HS; out[ol+1]='\0'; }
+                    strcat(out,ks); { size_t ol=strlen(out); out[ol]=HK; out[ol+1]='\0'; } strcat(out,vs);
+                    if (e->children[1]->kind==E_VAR && e->children[1]->ival>=0 &&
+                        e->children[1]->ival<ICN_CUR.env_n && icn_frame_depth>0)
+                        ICN_CUR.env[e->children[1]->ival] = STRVAL(out);
+                    return STRVAL(out);
+                }
+                if (!strcmp(fn,"hash_get") || !strcmp(fn,"hash_exists")) {
+                    DESCR_t kd = interp_eval(e->children[2]);
+                    char kb[64];
+                    const char *ks = IS_INT_fn(kd)  ? (snprintf(kb,sizeof kb,"%lld",(long long)kd.i),kb)
+                                   : IS_REAL_fn(kd) ? (snprintf(kb,sizeof kb,"%g",kd.r),kb)
+                                   : (kd.s&&*kd.s?kd.s:"");
+                    size_t kl=strlen(ks);
+                    const char *p=hs;
+                    while (*p) {
+                        const char *sep=strchr(p,HK); const char *end=strchr(p,HS);
+                        if (!sep) break;
+                        size_t pkl=(size_t)(sep-p);
+                        if (pkl==kl && memcmp(p,ks,kl)==0) {
+                            if (!strcmp(fn,"hash_exists")) return INTVAL(1);
+                            const char *vs=sep+1;
+                            size_t vl=end?(size_t)(end-vs):strlen(vs);
+                            char *out=GC_malloc(vl+1); memcpy(out,vs,vl); out[vl]='\0';
+                            return STRVAL(out);
+                        }
+                        if (!end) break; p=end+1;
+                    }
+                    return !strcmp(fn,"hash_exists") ? INTVAL(0) : NULVCL;
+                }
+                if (!strcmp(fn,"hash_keys") || !strcmp(fn,"hash_values")) {
+                    if (!*hs) { char *e2=GC_malloc(1); e2[0]='\0'; return STRVAL(e2); }
+                    char *out=GC_malloc(strlen(hs)+2); out[0]='\0';
+                    const char *p=hs;
+                    while (*p) {
+                        const char *sep=strchr(p,HK); const char *end=strchr(p,HS);
+                        if (!sep) break;
+                        if (out[0]) { size_t ol=strlen(out); out[ol]='\x01'; out[ol+1]='\0'; }
+                        if (!strcmp(fn,"hash_keys")) {
+                            strncat(out,p,(size_t)(sep-p));
+                        } else {
+                            const char *vs=sep+1;
+                            size_t vl=end?(size_t)(end-vs):strlen(vs);
+                            strncat(out,vs,vl);
+                        }
+                        if (!end) break; p=end+1;
+                    }
+                    return STRVAL(out);
+                }
+            }
+#undef HS
+#undef HK
+
             return NULVCL;
         }
         default: break;
