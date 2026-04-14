@@ -668,6 +668,81 @@ int interp_exec_pl_builtin(EXPR_t *goal, Term **env) {
                 if(!unify(out,res,trail)){trail_unwind(trail,mark);return 0;}
                 return 1;
             }
+            /*---- succ/2, plus/3, format/2 (PL-6) ----*/
+            /* succ(?X, ?Y)  — Y = X+1, at least one must be bound */
+            if (strcmp(fn,"succ")==0&&arity==2) {
+                Term *a=term_deref(pl_unified_term_from_expr(goal->children[0],env));
+                Term *b=term_deref(pl_unified_term_from_expr(goal->children[1],env));
+                int mark=trail_mark(trail);
+                if (a&&a->tag==TT_INT) {
+                    if (a->ival < 0) return 0;
+                    Term *r=term_new_int(a->ival+1);
+                    if(!unify(b,r,trail)){trail_unwind(trail,mark);return 0;}
+                    return 1;
+                } else if (b&&b->tag==TT_INT) {
+                    if (b->ival <= 0) return 0;
+                    Term *r=term_new_int(b->ival-1);
+                    if(!unify(a,r,trail)){trail_unwind(trail,mark);return 0;}
+                    return 1;
+                }
+                return 0;
+            }
+            /* plus(?X, ?Y, ?Z)  — Z = X+Y, at least two must be bound */
+            if (strcmp(fn,"plus")==0&&arity==3) {
+                Term *a=term_deref(pl_unified_term_from_expr(goal->children[0],env));
+                Term *b=term_deref(pl_unified_term_from_expr(goal->children[1],env));
+                Term *c=term_deref(pl_unified_term_from_expr(goal->children[2],env));
+                int mark=trail_mark(trail);
+                int ai=(a&&a->tag==TT_INT),bi=(b&&b->tag==TT_INT),ci=(c&&c->tag==TT_INT);
+                Term *r=NULL;
+                Term *tgt=NULL;
+                if (ai&&bi)        { r=term_new_int(a->ival+b->ival); tgt=c; }
+                else if (ai&&ci)   { r=term_new_int(c->ival-a->ival); tgt=b; }
+                else if (bi&&ci)   { r=term_new_int(c->ival-b->ival); tgt=a; }
+                else return 0;
+                if(!unify(tgt,r,trail)){trail_unwind(trail,mark);return 0;}
+                return 1;
+            }
+            /* format(+Fmt, +Args) / format(+Fmt) — ~w ~a ~d ~i ~n ~N ~t~| ~` */
+            if (strcmp(fn,"format")==0&&(arity==1||arity==2)) {
+                Term *fmt_t=term_deref(pl_unified_term_from_expr(goal->children[0],env));
+                const char *fmt=NULL;
+                if (fmt_t&&fmt_t->tag==TT_ATOM) fmt=prolog_atom_name(fmt_t->atom_id);
+                if (!fmt) return 0;
+                /* Build args list */
+                Term *args_list=(arity==2)?term_deref(pl_unified_term_from_expr(goal->children[1],env)):NULL;
+                int nil_id=prolog_atom_intern("[]");
+                /* Process format string */
+                for (const char *p=fmt; *p; p++) {
+                    if (*p=='~') {
+                        p++;
+                        if (*p=='w'||*p=='a'||*p=='p') {
+                            /* ~w/~a/~p: write next arg */
+                            if (args_list&&args_list->tag==TT_COMPOUND&&args_list->compound.arity==2) {
+                                pl_write(term_deref(args_list->compound.args[0]));
+                                args_list=term_deref(args_list->compound.args[1]);
+                            }
+                        } else if (*p=='d') {
+                            if (args_list&&args_list->tag==TT_COMPOUND&&args_list->compound.arity==2) {
+                                Term *h=term_deref(args_list->compound.args[0]);
+                                if (h&&h->tag==TT_INT) printf("%ld",h->ival);
+                                args_list=term_deref(args_list->compound.args[1]);
+                            }
+                        } else if (*p=='i') {
+                            /* ~i: ignore next arg */
+                            if (args_list&&args_list->tag==TT_COMPOUND&&args_list->compound.arity==2)
+                                args_list=term_deref(args_list->compound.args[1]);
+                        } else if (*p=='n') { putchar('\n');
+                        } else if (*p=='N') { /* newline if not at start of line — approx */ putchar('\n');
+                        } else if (*p=='~') { putchar('~');
+                        } else if (*p=='t') { putchar('\t');
+                        } else if (*p=='r') { /* radix — skip for now */ }
+                    } else {
+                        putchar(*p);
+                    }
+                }
+                return 1;
+            }
             /* U-23: nv_get(+Name, -Val) / nv_set(+Name, +Val) -- SNO NV store bridge */
             if (strcmp(fn,"nv_get")==0&&arity==2) {
                 Term *nm=term_deref(pl_unified_term_from_expr(goal->children[0],env));
