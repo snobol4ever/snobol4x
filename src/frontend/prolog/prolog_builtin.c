@@ -23,6 +23,28 @@
 #include <math.h>
 
 /* =========================================================================
+ * pl_write helpers
+ * ======================================================================= */
+static int pl_op_prec(const char *name, int arity) {
+    struct { const char *n; int a; int p; } tbl[] = {
+        {":-",2,1200},{";",2,1100},{"->",2,1050},{",",2,1000},
+        {"=",2,700},{"\\=",2,700},{"is",2,700},{"=:=",2,700},{"=\\=",2,700},
+        {"<",2,700},{">",2,700},{"=<",2,700},{">=",2,700},
+        {"==",2,700},{"\\==",2,700},{"@<",2,700},{"@>",2,700},
+        {"@=<",2,700},{"@>=",2,700},{"=..",2,700},
+        {"+",2,500},{"-",2,500},
+        {"*",2,400},{"/",2,400},{"//",2,400},{"mod",2,400},
+        {"rem",2,400},{"<<",2,400},{">>",2,400},
+        {"**",2,200},{"^",2,200},
+        {"-",1,200},{"\\+",1,900},{"not",1,900},
+        {NULL,0,0}
+    };
+    for (int i = 0; tbl[i].n; i++)
+        if (tbl[i].a == arity && strcmp(tbl[i].n, name) == 0) return tbl[i].p;
+    return -1;
+}
+
+/* =========================================================================
  * pl_write — print a term to stdout
  * ======================================================================= */
 void pl_write(Term *t) {
@@ -85,27 +107,69 @@ void pl_write(Term *t) {
                 printf("]");
                 break;
             }
-            /* Operator notation for common binary/unary ops */
-            struct { const char *name; int arity; } ops[] = {
-                {"+",2},{"-",2},{"*",2},{"/",2},{"//",2},{"mod",2},
-                {"<",2},{">",2},{"=<",2},{">=",2},{"=:=",2},{"=\\=",2},
-                {"=",2},{"\\=",2},{"is",2},{":-",2},{",",2},{";",2},
-                {"-",1},{"\\+",1},
-                {NULL,0}
+            /* Operator notation for common binary/unary ops.
+             * Standard Prolog operator precedences (lower number = tighter binding).
+             * write/1 prints infix without parens unless an argument needs disambiguation. */
+            struct { const char *name; int arity; int prec; int right_assoc; } ops[] = {
+                {":-",2,1200,1}, {";",2,1100,1}, {"->",2,1050,1},
+                {",",2,1000,1},
+                {"=",2,700,0},{"\\=",2,700,0},{"is",2,700,0},
+                {"=:=",2,700,0},{"=\\=",2,700,0},
+                {"<",2,700,0},{">",2,700,0},{"=<",2,700,0},{">=",2,700,0},
+                {"==",2,700,0},{"\\==",2,700,0},
+                {"@<",2,700,0},{"@>",2,700,0},{"@=<",2,700,0},{"@>=",2,700,0},
+                {"=..",2,700,0},
+                {"+",2,500,0},{"-",2,500,0},
+                {"*",2,400,0},{"/",2,400,0},{"//",2,400,0},{"mod",2,400,0},
+                {"rem",2,400,0},{"<<",2,400,0},{">>",2,400,0},
+                {"**",2,200,1},{"^",2,200,1},
+                {"-",1,200,0},{"\\+",1,900,0},{"not",1,900,0},
+                {NULL,0,0,0}
             };
             int is_op = 0;
             for (int i = 0; ops[i].name; i++) {
                 if (strcmp(fn, ops[i].name) == 0 && t->compound.arity == ops[i].arity) {
                     is_op = 1;
                     if (ops[i].arity == 2) {
-                        printf("(");
+                        /* Left arg: needs parens if it is an op with higher prec number
+                         * (lower binding) or same prec and right-associative */
+                        Term *larg = term_deref(t->compound.args[0]);
+                        Term *rarg = term_deref(t->compound.args[1]);
+                        int lp = -1, rp = -1;
+                        if (larg && larg->tag == TT_COMPOUND) {
+                            const char *lfn = prolog_atom_name(larg->compound.functor);
+                            if (lfn) lp = pl_op_prec(lfn, larg->compound.arity);
+                        }
+                        if (rarg && rarg->tag == TT_COMPOUND) {
+                            const char *rfn = prolog_atom_name(rarg->compound.functor);
+                            if (rfn) rp = pl_op_prec(rfn, rarg->compound.arity);
+                        }
+                        int my_prec = ops[i].prec;
+                        int lneed = (lp > my_prec) || (lp == my_prec && ops[i].right_assoc);
+                        int rneed = (rp > my_prec) || (rp == my_prec && !ops[i].right_assoc);
+                        if (lneed) printf("(");
                         pl_write(t->compound.args[0]);
-                        printf("%s", fn);
+                        if (lneed) printf(")");
+                        /* Space around alphabetic operators */
+                        if (isalpha((unsigned char)fn[0])) printf(" %s ", fn);
+                        else printf("%s", fn);
+                        if (rneed) printf("(");
                         pl_write(t->compound.args[1]);
-                        printf(")");
+                        if (rneed) printf(")");
                     } else {
-                        printf("%s", fn);
+                        /* Unary prefix */
+                        Term *arg = term_deref(t->compound.args[0]);
+                        int ap = -1;
+                        if (arg && arg->tag == TT_COMPOUND) {
+                            const char *afn = prolog_atom_name(arg->compound.functor);
+                            if (afn) ap = pl_op_prec(afn, arg->compound.arity);
+                        }
+                        int aneed = (ap >= ops[i].prec);
+                        if (isalpha((unsigned char)fn[0])) printf("%s ", fn);
+                        else printf("%s", fn);
+                        if (aneed) printf("(");
                         pl_write(t->compound.args[0]);
+                        if (aneed) printf(")");
                     }
                     break;
                 }
