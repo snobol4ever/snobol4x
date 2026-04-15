@@ -173,7 +173,7 @@ typedef struct {
 /* forward decl — used in bb_capture body below */
 static void register_capture(capture_t *c);
 
-static spec_t bb_capture(void *zeta, int entry)
+static DESCR_t bb_capture(void *zeta, int entry)
 {
     capture_t *ζ = zeta;
 
@@ -214,14 +214,14 @@ static spec_t bb_capture(void *zeta, int entry)
                           ζ->has_pending = 1;
                       }
                   }
-                                                              return child_r;
+                                                              return descr_from_spec(child_r);
 
     CAP_ω:        ζ->has_pending = 0;   /* backtracked past — pending stale */
-                                                              return spec_empty;
+                                                              return FAILDESCR;
 }
 
 /* M-DYN-B7: expose bb_capture and capture_t constructor for bb_build_bin.c */
-spec_t bb_capture_exported(void *zeta, int entry) { return bb_capture(zeta, entry); }
+DESCR_t bb_capture_exported(void *zeta, int entry) { return bb_capture(zeta, entry); }
 
 capture_t *bb_capture_new(bb_box_fn child_fn, void *child_state,
                           const char *varname, DESCR_t *var_ptr, int immediate)

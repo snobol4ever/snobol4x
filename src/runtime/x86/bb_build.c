@@ -147,7 +147,7 @@ extern spec_t bb_rtab(void *zeta, int entry);
 
 /* M-DYN-B7: capture box — bb_capture is static in stmt_exec.c;
  * exposed via bb_capture_exported() thin wrapper + bb_capture_new() ctor. */
-extern spec_t bb_capture_exported(void *zeta, int entry);
+extern DESCR_t bb_capture_exported(void *zeta, int entry);
 
 /* Mirror of capture_t from stmt_exec.c — must stay in sync. */
 typedef struct {
