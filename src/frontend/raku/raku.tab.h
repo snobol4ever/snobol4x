@@ -35,8 +35,8 @@
    especially those whose name start with YY_ or yy_.  They are
    private implementation details that can be changed or removed.  */
 
-#ifndef YY_RAKU_YY_FRONTEND_RAKU_RAKU_TAB_H_INCLUDED
-# define YY_RAKU_YY_FRONTEND_RAKU_RAKU_TAB_H_INCLUDED
+#ifndef YY_RAKU_YY_RAKU_TAB_H_INCLUDED
+# define YY_RAKU_YY_RAKU_TAB_H_INCLUDED
 /* Debug traces.  */
 #ifndef RAKU_YYDEBUG
 # if defined YYDEBUG
@@ -53,7 +53,7 @@
 extern int raku_yydebug;
 #endif
 /* "%code requires" blocks.  */
-#line 3 "frontend/raku/raku.y"
+#line 3 "raku.y"
 
 /*
  * raku.y — Tiny-Raku Bison grammar
@@ -71,7 +71,7 @@ typedef struct ExprList {
     int      cap;
 } ExprList;
 
-#line 75 "frontend/raku/raku.tab.h"
+#line 75 "raku.tab.h"
 
 /* Token kinds.  */
 #ifndef RAKU_YYTOKENTYPE
@@ -129,7 +129,7 @@ typedef struct ExprList {
 #if ! defined RAKU_YYSTYPE && ! defined RAKU_YYSTYPE_IS_DECLARED
 union RAKU_YYSTYPE
 {
-#line 141 "frontend/raku/raku.y"
+#line 141 "raku.y"
 
     long      ival;
     double    dval;
@@ -137,7 +137,7 @@ union RAKU_YYSTYPE
     EXPR_t   *node;
     ExprList *list;
 
-#line 141 "frontend/raku/raku.tab.h"
+#line 141 "raku.tab.h"
 
 };
 typedef union RAKU_YYSTYPE RAKU_YYSTYPE;
@@ -152,4 +152,4 @@ extern RAKU_YYSTYPE raku_yylval;
 int raku_yyparse (void);
 
 
-#endif /* !YY_RAKU_YY_FRONTEND_RAKU_RAKU_TAB_H_INCLUDED  */
+#endif /* !YY_RAKU_YY_RAKU_TAB_H_INCLUDED  */

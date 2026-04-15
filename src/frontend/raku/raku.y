@@ -293,29 +293,35 @@ for_stmt
 
 given_stmt
     : KW_GIVEN expr '{' when_list '}'
-        { EXPR_t *topic=$2; ExprList *whens=$4; EXPR_t *chain=NULL;
-          for (int i=whens->count-1;i>=0;i--) {
+        { /* RK-18d: E_CASE[ topic, cmpnode0, val0, body0, cmpnode1, val1, body1, ... ]
+           * cmp kind stored in separate E_ILIT node (ival=EKind) to avoid corrupting val->ival. */
+          EXPR_t *ec=expr_new(E_CASE);
+          expr_add_child(ec,$2);
+          ExprList *whens=$4;
+          for(int i=0;i<whens->count;i++){
               EXPR_t *pair=whens->items[i];
               EKind cmp=(EKind)(pair->ival);
               EXPR_t *val=pair->children[0], *body=pair->children[1];
-              EXPR_t *cond=expr_binary(cmp,topic,val);
-              EXPR_t *eif=expr_new(E_IF);
-              expr_add_child(eif,cond); expr_add_child(eif,body);
-              if(chain) expr_add_child(eif,chain); chain=eif; }
+              EXPR_t *cn=expr_new(E_ILIT); cn->ival=(long)cmp;
+              expr_add_child(ec,cn); expr_add_child(ec,val); expr_add_child(ec,body);
+          }
           exprlist_free(whens);
-          $$=chain?chain:expr_new(E_SEQ_EXPR); }
+          $$=ec; }
     | KW_GIVEN expr '{' when_list KW_DEFAULT block '}'
-        { EXPR_t *topic=$2; ExprList *whens=$4; EXPR_t *chain=$6;
-          for (int i=whens->count-1;i>=0;i--) {
+        { /* RK-18d: E_CASE with default: E_NUL cmpnode + E_NUL val + body at end. */
+          EXPR_t *ec=expr_new(E_CASE);
+          expr_add_child(ec,$2);
+          ExprList *whens=$4;
+          for(int i=0;i<whens->count;i++){
               EXPR_t *pair=whens->items[i];
               EKind cmp=(EKind)(pair->ival);
               EXPR_t *val=pair->children[0], *body=pair->children[1];
-              EXPR_t *cond=expr_binary(cmp,topic,val);
-              EXPR_t *eif=expr_new(E_IF);
-              expr_add_child(eif,cond); expr_add_child(eif,body);
-              if(chain) expr_add_child(eif,chain); chain=eif; }
+              EXPR_t *cn=expr_new(E_ILIT); cn->ival=(long)cmp;
+              expr_add_child(ec,cn); expr_add_child(ec,val); expr_add_child(ec,body);
+          }
           exprlist_free(whens);
-          $$=chain?chain:expr_new(E_SEQ_EXPR); }
+          expr_add_child(ec,expr_new(E_NUL)); expr_add_child(ec,expr_new(E_NUL)); expr_add_child(ec,$6);
+          $$=ec; }
     ;
 
 when_list

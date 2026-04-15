@@ -2045,6 +2045,44 @@ DESCR_t interp_eval(EXPR_t *e)
         return (e->nchildren > 2) ? interp_eval(e->children[2]) : FAILDESCR;
     }
 
+    case E_CASE: {
+        /* RK-18d: given/when smartmatch.
+         * Layout: child[0]=topic, then triples [cmpnode(E_ILIT), val, body].
+         * Default arm: cmpnode=E_NUL, val=E_NUL, body=default block. */
+        if (e->nchildren < 1) return NULVCL;
+        DESCR_t topic = interp_eval(e->children[0]);
+        int i = 1;
+        while (i + 2 < e->nchildren) {
+            EXPR_t *cmpnode = e->children[i];
+            EXPR_t *val     = e->children[i+1];
+            EXPR_t *body    = e->children[i+2];
+            i += 3;
+            if (cmpnode->kind == E_NUL) { /* default arm */
+                return interp_eval(body);
+            }
+            EKind cmp = (EKind)(cmpnode->ival);
+            DESCR_t wval = interp_eval(val);
+            int match = 0;
+            if (cmp == E_LEQ) {
+                const char *ts = IS_STR_fn(topic) ? topic.s : VARVAL_fn(topic);
+                const char *ws = IS_STR_fn(wval)  ? wval.s  : VARVAL_fn(wval);
+                match = (ts && ws && strcmp(ts, ws) == 0);
+            } else {
+                if (IS_INT_fn(topic) && IS_INT_fn(wval)) match = (topic.i == wval.i);
+                else {
+                    const char *ts = VARVAL_fn(topic);
+                    const char *ws = VARVAL_fn(wval);
+                    match = (ts && ws && strcmp(ts, ws) == 0);
+                }
+            }
+            if (match) return interp_eval(body);
+        }
+        /* also handle 2-child default at end (E_NUL cmpnode missing — safety) */
+        if (i + 1 < e->nchildren && e->children[i]->kind == E_NUL)
+            return interp_eval(e->children[i+1]);
+        return NULVCL;
+    }
+
     case E_AUGOP: {
         if (e->nchildren < 2) return NULVCL;
         EXPR_t *lhs = e->children[0];
