@@ -285,39 +285,96 @@ static Term *pl_unified_deep_copy(Term *t) {
     return term_new_atom(prolog_atom_intern("_"));
 }
 
-/*---- pl_unified_eval_arith ----*/
-static long pl_unified_eval_arith(EXPR_t *e, Term **env) {
-    if (!e) return 0;
+/*---- pl_unified_eval_arith_term — float-aware, returns Term* ----*/
+static Term *pl_unified_eval_arith_term(EXPR_t *e, Term **env) {
+    if (!e) return term_new_int(0);
+    /* helper macros */
+#define _EI(x) ({ Term *_t = pl_unified_eval_arith_term(x,env); (_t&&_t->tag==TT_INT)?_t->ival:(_t&&_t->tag==TT_FLOAT)?(long)_t->fval:0L; })
+#define _ED(x) ({ Term *_t = pl_unified_eval_arith_term(x,env); (_t&&_t->tag==TT_FLOAT)?_t->fval:(_t&&_t->tag==TT_INT)?(double)_t->ival:0.0; })
+#define _EIS(x) (pl_unified_eval_arith_term(x,env)->tag==TT_FLOAT)
+#define _EF(op,a,b) ({ Term *_la=pl_unified_eval_arith_term(a,env),*_lb=pl_unified_eval_arith_term(b,env); \
+                       int _fl=(_la&&_la->tag==TT_FLOAT)||(_lb&&_lb->tag==TT_FLOAT); \
+                       _fl?term_new_float(_ED(a) op _ED(b)):term_new_int(_EI(a) op _EI(b)); })
     switch (e->kind) {
-        case E_ILIT: return (long)e->ival;
-        case E_FLIT: return (long)e->dval;
-        case E_VAR: { Term *t = term_deref(env && e->ival >= 0 ? env[e->ival] : NULL);
-                      return (t && t->tag == TT_INT) ? t->ival : 0; }
-        case E_ADD: return pl_unified_eval_arith(e->children[0],env) + pl_unified_eval_arith(e->children[1],env);
-        case E_SUB: return pl_unified_eval_arith(e->children[0],env) - pl_unified_eval_arith(e->children[1],env);
-        case E_MUL: return pl_unified_eval_arith(e->children[0],env) * pl_unified_eval_arith(e->children[1],env);
-        case E_DIV: { long d=pl_unified_eval_arith(e->children[1],env); return d?pl_unified_eval_arith(e->children[0],env)/d:0; }
-        case E_MOD: { long d=pl_unified_eval_arith(e->children[1],env); return d?pl_unified_eval_arith(e->children[0],env)%d:0; }
+        case E_ILIT: return term_new_int((long)e->ival);
+        case E_FLIT: return term_new_float(e->dval);
+        case E_VAR: {
+            Term *t = term_deref(env && e->ival >= 0 ? env[e->ival] : NULL);
+            if (!t) return term_new_int(0);
+            return t;
+        }
+        case E_ADD: return _EF(+, e->children[0], e->children[1]);
+        case E_SUB: return _EF(-, e->children[0], e->children[1]);
+        case E_MUL: return _EF(*, e->children[0], e->children[1]);
+        case E_DIV: {
+            Term *la=pl_unified_eval_arith_term(e->children[0],env);
+            Term *lb=pl_unified_eval_arith_term(e->children[1],env);
+            int fl=(la&&la->tag==TT_FLOAT)||(lb&&lb->tag==TT_FLOAT);
+            if (fl) { double d=_ED(e->children[1]); return term_new_float(d?_ED(e->children[0])/d:0.0); }
+            else    { long  d=_EI(e->children[1]);  return term_new_int(d?_EI(e->children[0])/d:0); }
+        }
+        case E_MOD: { long d=_EI(e->children[1]); return term_new_int(d?_EI(e->children[0])%d:0); }
         case E_FNC: {
             const char *fn = e->sval ? e->sval : "";
-            if (strcmp(fn,"mod")==0&&e->nchildren==2){long d=pl_unified_eval_arith(e->children[1],env);return d?pl_unified_eval_arith(e->children[0],env)%d:0;}
-            if (strcmp(fn,"abs")==0&&e->nchildren==1){long v=pl_unified_eval_arith(e->children[0],env);return v<0?-v:v;}
-            if (strcmp(fn,"max")==0&&e->nchildren==2){long a=pl_unified_eval_arith(e->children[0],env),b=pl_unified_eval_arith(e->children[1],env);return a>b?a:b;}
-            if (strcmp(fn,"min")==0&&e->nchildren==2){long a=pl_unified_eval_arith(e->children[0],env),b=pl_unified_eval_arith(e->children[1],env);return a<b?a:b;}
-            if (strcmp(fn,"rem")==0&&e->nchildren==2){long d=pl_unified_eval_arith(e->children[1],env);return d?pl_unified_eval_arith(e->children[0],env)%d:0;}
-            if (strcmp(fn,"sign")==0&&e->nchildren==1){long v=pl_unified_eval_arith(e->children[0],env);return v>0?1:v<0?-1:0;}
-            if (strcmp(fn,"**")==0&&e->nchildren==2){long a=pl_unified_eval_arith(e->children[0],env),b=pl_unified_eval_arith(e->children[1],env);return (long)pow((double)a,(double)b);}
-            if (strcmp(fn,"/\\")==0&&e->nchildren==2){long a=pl_unified_eval_arith(e->children[0],env),b=pl_unified_eval_arith(e->children[1],env);return a&b;}
-            if (strcmp(fn,"\\/")==0&&e->nchildren==2){long a=pl_unified_eval_arith(e->children[0],env),b=pl_unified_eval_arith(e->children[1],env);return a|b;}
-            if (strcmp(fn,"xor")==0&&e->nchildren==2){long a=pl_unified_eval_arith(e->children[0],env),b=pl_unified_eval_arith(e->children[1],env);return a^b;}
-            if (strcmp(fn,"<<")==0&&e->nchildren==2){long a=pl_unified_eval_arith(e->children[0],env),b=pl_unified_eval_arith(e->children[1],env);return a<<b;}
-            if (strcmp(fn,">>")==0&&e->nchildren==2){long a=pl_unified_eval_arith(e->children[0],env),b=pl_unified_eval_arith(e->children[1],env);return a>>b;}
-            if (strcmp(fn,"\\")==0&&e->nchildren==1){long v=pl_unified_eval_arith(e->children[0],env);return ~v;}
+            /* two-arg integer bitwise / misc */
+            if (strcmp(fn,"/\\")==0&&e->nchildren==2) return term_new_int(_EI(e->children[0])&_EI(e->children[1]));
+            if (strcmp(fn,"\\/")==0&&e->nchildren==2) return term_new_int(_EI(e->children[0])|_EI(e->children[1]));
+            if (strcmp(fn,"xor")==0&&e->nchildren==2) return term_new_int(_EI(e->children[0])^_EI(e->children[1]));
+            if (strcmp(fn,"<<")==0&&e->nchildren==2)  return term_new_int(_EI(e->children[0])<<_EI(e->children[1]));
+            if (strcmp(fn,">>")==0&&e->nchildren==2)  return term_new_int(_EI(e->children[0])>>_EI(e->children[1]));
+            if (strcmp(fn,"\\")==0&&e->nchildren==1)  return term_new_int(~_EI(e->children[0]));
+            if (strcmp(fn,"mod")==0&&e->nchildren==2) { long d=_EI(e->children[1]); return term_new_int(d?_EI(e->children[0])%d:0); }
+            if (strcmp(fn,"rem")==0&&e->nchildren==2) { long d=_EI(e->children[1]); return term_new_int(d?_EI(e->children[0])%d:0); }
+            /* two-arg float-aware */
+            if (strcmp(fn,"**")==0&&e->nchildren==2) return term_new_float(pow(_ED(e->children[0]),_ED(e->children[1])));
+            if (strcmp(fn,"max")==0&&e->nchildren==2) { Term *la=pl_unified_eval_arith_term(e->children[0],env),*lb=pl_unified_eval_arith_term(e->children[1],env); int fl=(la&&la->tag==TT_FLOAT)||(lb&&lb->tag==TT_FLOAT); return fl?(_ED(e->children[0])>=_ED(e->children[1])?la:lb):(_EI(e->children[0])>=_EI(e->children[1])?la:lb); }
+            if (strcmp(fn,"min")==0&&e->nchildren==2) { Term *la=pl_unified_eval_arith_term(e->children[0],env),*lb=pl_unified_eval_arith_term(e->children[1],env); int fl=(la&&la->tag==TT_FLOAT)||(lb&&lb->tag==TT_FLOAT); return fl?(_ED(e->children[0])<=_ED(e->children[1])?la:lb):(_EI(e->children[0])<=_EI(e->children[1])?la:lb); }
+            if (strcmp(fn,"gcd")==0&&e->nchildren==2) { long a=labs(_EI(e->children[0])),b=labs(_EI(e->children[1])); while(b){long r=a%b;a=b;b=r;} return term_new_int(a); }
+            /* one-arg float ops */
+            if (e->nchildren==1) {
+                double d = _ED(e->children[0]);
+                long   i = _EI(e->children[0]);
+                int    isf = _EIS(e->children[0]);
+                if (strcmp(fn,"sqrt")==0)               return term_new_float(sqrt(d));
+                if (strcmp(fn,"sin")==0)                return term_new_float(sin(d));
+                if (strcmp(fn,"cos")==0)                return term_new_float(cos(d));
+                if (strcmp(fn,"tan")==0)                return term_new_float(tan(d));
+                if (strcmp(fn,"exp")==0)                return term_new_float(exp(d));
+                if (strcmp(fn,"log")==0)                return term_new_float(log(d));
+                if (strcmp(fn,"float")==0)              return term_new_float(d);
+                if (strcmp(fn,"float_integer_part")==0) return term_new_float(trunc(d));
+                if (strcmp(fn,"float_fractional_part")==0) return term_new_float(d - trunc(d));
+                if (strcmp(fn,"truncate")==0)           return term_new_int((long)d);
+                if (strcmp(fn,"round")==0)              return term_new_int((long)round(d));
+                if (strcmp(fn,"ceiling")==0)            return term_new_int((long)ceil(d));
+                if (strcmp(fn,"floor")==0)              return term_new_int((long)floor(d));
+                if (strcmp(fn,"abs")==0)                return isf ? term_new_float(fabs(d)) : term_new_int(i<0?-i:i);
+                if (strcmp(fn,"sign")==0)               return isf ? term_new_float(d>0?1.0:d<0?-1.0:0.0) : term_new_int(i>0?1:i<0?-1:0);
+                if (strcmp(fn,"-")==0)                  return isf ? term_new_float(-d) : term_new_int(-i);
+            }
+            /* atom constants */
+            if (strcmp(fn,"pi")==0&&e->nchildren==0) return term_new_float(M_PI);
+            if (strcmp(fn,"e")==0&&e->nchildren==0)  return term_new_float(M_E);
+            /* fallthrough: resolve via env */
             Term *t=term_deref(pl_unified_term_from_expr(e,env));
-            return (t&&t->tag==TT_INT)?t->ival:0;
+            if (!t) return term_new_int(0);
+            return t;
         }
-        default: return 0;
+        default: return term_new_int(0);
     }
+#undef _EI
+#undef _ED
+#undef _EIS
+#undef _EF
+}
+
+/*---- pl_unified_eval_arith — integer wrapper (kept for comparison callers) ----*/
+static long pl_unified_eval_arith(EXPR_t *e, Term **env) {
+    Term *t = pl_unified_eval_arith_term(e, env);
+    if (!t) return 0;
+    if (t->tag == TT_FLOAT) return (long)t->fval;
+    if (t->tag == TT_INT)   return t->ival;
+    return 0;
 }
 
 /*---- is_pl_user_call ----*/
@@ -334,6 +391,7 @@ int is_pl_user_call(EXPR_t *goal) {
         "term_string","number_codes","number_chars","char_code","upcase_atom","downcase_atom",
         "copy_term","atomic_list_concat","concat_atom","string_to_atom",
         "nb_setval","nb_getval","aggregate_all","throw","catch",
+        "phrase",
         NULL
     };
     for (int i = 0; builtins[i]; i++) if (strcmp(goal->sval, builtins[i]) == 0) return 0;
@@ -460,10 +518,10 @@ int interp_exec_pl_builtin(EXPR_t *goal, Term **env) {
                 return 1;
             }
             if (strcmp(fn,"is")==0&&arity==2){
-                long val=pl_unified_eval_arith(goal->children[1],env);
+                Term *val=pl_unified_eval_arith_term(goal->children[1],env);
                 Term *lhs=pl_unified_term_from_expr(goal->children[0],env);
                 int mark=trail_mark(trail);
-                if(!unify(lhs,term_new_int(val),trail)){trail_unwind(trail,mark);return 0;}
+                if(!unify(lhs,val,trail)){trail_unwind(trail,mark);return 0;}
                 return 1;
             }
             /* arithmetic comparisons */
@@ -1101,6 +1159,46 @@ int interp_exec_pl_builtin(EXPR_t *goal, Term **env) {
                 int mark=trail_mark(trail);
                 if(!unify(tr,res,trail)){trail_unwind(trail,mark);return 0;}
                 return 1;
+            }
+            /* phrase/2,3 — call a DCG rule: phrase(Rule, List) or phrase(Rule, List, Rest) */
+            if ((strcmp(fn,"phrase")==0) && (arity==2||arity==3)) {
+                Term *rule = term_deref(pl_unified_term_from_expr(goal->children[0], env));
+                Term *s0   = pl_unified_term_from_expr(goal->children[1], env);
+                Term *s1   = (arity==3) ? pl_unified_term_from_expr(goal->children[2], env)
+                                        : term_new_atom(prolog_atom_intern("[]"));
+                if (!rule) return 0;
+                /* Extract functor name and existing args from rule term */
+                const char *rfn = NULL;
+                int rarity = 0;
+                Term **rargs = NULL;
+                if (rule->tag == TT_ATOM) {
+                    rfn = prolog_atom_name(rule->atom_id);
+                    rarity = 0; rargs = NULL;
+                } else if (rule->tag == TT_COMPOUND) {
+                    rfn = prolog_atom_name(rule->compound.functor);
+                    rarity = rule->compound.arity;
+                    rargs = rule->compound.args;
+                }
+                if (!rfn) return 0;
+                /* Build call: rfn(rargs..., s0, s1) — arity = rarity+2 */
+                int call_arity = rarity + 2;
+                char ukey[256]; snprintf(ukey, sizeof ukey, "%s/%d", rfn, call_arity);
+                EXPR_t *uch = pl_pred_table_lookup(&g_pl_pred_table, ukey);
+                if (!uch) return 0;
+                Term **uargs = pl_env_new(call_arity);
+                for (int ui = 0; ui < rarity; ui++) uargs[ui] = term_deref(rargs[ui]);
+                uargs[rarity]   = s0;
+                uargs[rarity+1] = s1;
+                Trail *utrail = &g_pl_trail;
+                int umark = trail_mark(utrail);
+                Term **saved_env = g_pl_env;
+                g_pl_env = uargs;
+                bb_node_t uroot = pl_box_choice(uch, g_pl_env, call_arity);
+                int uok = bb_broker(uroot, BB_ONCE, NULL, NULL);
+                g_pl_env = saved_env;
+                if (!uok) trail_unwind(utrail, umark);
+                if (uargs) free(uargs);
+                return uok;
             }
             /* findall/3 — collect ALL solutions via bb_broker retry loop */
             if (strcmp(fn,"findall")==0&&arity==3){

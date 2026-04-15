@@ -654,7 +654,8 @@ static Term *pl_eval_arith_term(Term *t) {
                _aid_exp = -1, _aid_sin = -1, _aid_cos = -1, _aid_abs = -1,
                _aid_max = -1, _aid_min = -1, _aid_truncate = -1,
                _aid_round = -1, _aid_ceiling = -1, _aid_floor = -1,
-               _aid_float = -1, _aid_float_int = -1,
+               _aid_float = -1, _aid_float_int = -1, _aid_float_frac = -1,
+               _aid_gcd = -1,
                _aid_band = -1, _aid_bor = -1, _aid_bxor = -1,
                _aid_lshift = -1, _aid_rshift = -1, _aid_bnot = -1,
                _aid_msb = -1, _aid_sign = -1, _aid_pi = -1, _aid_e = -1;
@@ -676,6 +677,8 @@ static Term *pl_eval_arith_term(Term *t) {
         _aid_floor    = prolog_atom_intern("floor");
         _aid_float    = prolog_atom_intern("float");
         _aid_float_int= prolog_atom_intern("float_integer_part");
+        _aid_float_frac = prolog_atom_intern("float_fractional_part");
+        _aid_gcd      = prolog_atom_intern("gcd");
         _aid_band     = prolog_atom_intern("/\\");
         _aid_bor      = prolog_atom_intern("\\/");
         _aid_bxor     = prolog_atom_intern("xor");
@@ -716,6 +719,7 @@ static Term *pl_eval_arith_term(Term *t) {
                 if (f == _aid_pow)    return term_new_float(pow(ld, rd));
                 if (f == _aid_max)    return is_float ? (ld>=rd?lv:rv) : (li>=ri?lv:rv);
                 if (f == _aid_min)    return is_float ? (ld<=rd?lv:rv) : (li<=ri?lv:rv);
+                if (f == _aid_gcd)    { long a=li<0?-li:li, b=ri<0?-ri:ri; while(b){long r=a%b;a=b;b=r;} return term_new_int(a); }
                 if (f == _aid_band)   return term_new_int(li & ri);
                 if (f == _aid_bor)    return term_new_int(li | ri);
                 if (f == _aid_bxor)   return term_new_int(li ^ ri);
@@ -739,6 +743,7 @@ static Term *pl_eval_arith_term(Term *t) {
                 if (f == _aid_floor)    return term_new_int((long)floor(d));
                 if (f == _aid_float)    return term_new_float(d);
                 if (f == _aid_float_int)return term_new_float(trunc(d));
+                if (f == _aid_float_frac) return term_new_float(d - trunc(d));
                 if (f == _aid_bnot)     return term_new_int(~i);
                 if (f == _aid_msb)      return term_new_int(i>0 ? 63 - __builtin_clzl(i) : -1);
                 if (f == _aid_sign)     return (v->tag==TT_FLOAT) ? term_new_float(d>0?1.0:d<0?-1.0:0.0) : term_new_int(i>0?1:i<0?-1:0);
