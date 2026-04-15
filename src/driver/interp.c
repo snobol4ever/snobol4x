@@ -2116,7 +2116,12 @@ DESCR_t interp_eval(EXPR_t *e)
         DESCR_t l = interp_eval(e->children[0]);
         DESCR_t r = interp_eval(e->children[1]);
         if (IS_FAIL_fn(l) || IS_FAIL_fn(r)) return FAILDESCR;
-        /* Icon: ^ always returns real */
+        /* SNOBOL4: ** returns integer when both operands are integer and exp >= 0 */
+        if (IS_INT_fn(l) && IS_INT_fn(r) && r.i >= 0) {
+            long base_i = l.i, result = 1;
+            for (long n = r.i; n > 0; n--) result *= base_i;
+            return INTVAL(result);
+        }
         double base = IS_REAL_fn(l) ? l.r : (double)l.i;
         double exp  = IS_REAL_fn(r) ? r.r : (double)r.i;
         return (DESCR_t){ .v = DT_R, .r = pow(base, exp) };
@@ -2356,14 +2361,8 @@ DESCR_t interp_eval(EXPR_t *e)
                 const char *entry = define_entry_from_expr(e);
                 if (entry) DEFINE_fn_entry(spec, NULL, entry);
                 else       DEFINE_fn(spec, NULL);
-                /* Return function name: chars before '(' or ',' */
-                char namebuf[256];
-                size_t ni = 0;
-                for (; ni < sizeof(namebuf)-1 && spec[ni]
-                       && spec[ni] != '(' && spec[ni] != ','; ni++)
-                    namebuf[ni] = spec[ni];
-                namebuf[ni] = '\0';
-                return STRVAL(GC_strdup(namebuf));
+                /* SNOBOL4 spec: DEFINE returns null string on success */
+                return NULVCL;
             }
             return FAILDESCR;   /* malformed spec → FAIL per SIL */
         }
