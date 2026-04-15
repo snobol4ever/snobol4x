@@ -298,16 +298,94 @@ static EXPR_t *lower_clause(PlClause *cl, PredKey key) {
 Program *prolog_lower(PlProgram *pl_prog) {
     Program *prog = calloc(1, sizeof(Program));
 
+    /* ---- Pass 0: plunit prescan — track begin_tests/end_tests directives
+     * and record which suite each test/1,2 clause belongs to.
+     * Builds a parallel suite[] array indexed by clause position. */
+    #define PL_MAX_CLAUSES 2048
+    char plunit_suite[PL_MAX_CLAUSES][64];  /* suite name per clause, "" if none */
+    {
+        char cur_suite[64] = "";
+        int ci = 0;
+        for (PlClause *cl = pl_prog->head; cl && ci < PL_MAX_CLAUSES; cl = cl->next, ci++) {
+            plunit_suite[ci][0] = '\0';
+            if (!cl->head && cl->nbody > 0) {
+                /* directive — check for begin_tests/end_tests */
+                Term *d = term_deref(cl->body[0]);
+                if (d && d->tag == TT_COMPOUND && d->compound.arity >= 1) {
+                    const char *fn = prolog_atom_name(d->compound.functor);
+                    if (fn && strcmp(fn, "begin_tests") == 0) {
+                        Term *a = term_deref(d->compound.args[0]);
+                        const char *sn = NULL;
+                        if (a && a->tag == TT_ATOM)     sn = prolog_atom_name(a->atom_id);
+                        if (a && a->tag == TT_COMPOUND) sn = prolog_atom_name(a->compound.functor);
+                        if (sn) strncpy(cur_suite, sn, 63);
+                    } else if (fn && strcmp(fn, "end_tests") == 0) {
+                        cur_suite[0] = '\0';
+                    }
+                }
+            } else if (cl->head && cur_suite[0]) {
+                /* clause inside a begin_tests block — record suite */
+                strncpy(plunit_suite[ci], cur_suite, 63);
+            }
+        }
+    }
+
     /* ---- Pass 1: collect all predicate keys in order of first appearance */
     #define MAX_PREDS 512
     PredKey  keys[MAX_PREDS];
     EXPR_t  *choices[MAX_PREDS];   /* one E_CHOICE per predicate */
     int      nkeys = 0;
+    int      clause_idx = 0;  /* tracks position for plunit_suite[] lookup */
 
-    for (PlClause *cl = pl_prog->head; cl; cl = cl->next) {
+    for (PlClause *cl = pl_prog->head; cl; cl = cl->next, clause_idx++) {
         if (!cl->head) continue; /* skip directives for now */
         PredKey k = key_of_head(cl->head);
         if (k.functor < 0) continue;
+
+        /* plunit: if this clause is test/1 or test/2 inside a begin_tests block,
+         * emit a synthetic assertz(pj_test(Suite,Name,Opts,Goal)) directive stmt
+         * so the runtime can enumerate tests without clause/2. */
+        if (clause_idx < PL_MAX_CLAUSES && plunit_suite[clause_idx][0] != '\0') {
+            const char *fn = prolog_atom_name(k.functor);
+            if (fn && strcmp(fn, "test") == 0 && (k.arity == 1 || k.arity == 2)) {
+                /* Extract Name and Opts from head */
+                Term *hd = term_deref(cl->head);
+                Term *name_term = (hd->tag == TT_COMPOUND) ? term_deref(hd->compound.args[0]) : hd;
+                Term *opts_term = (k.arity == 2) ? term_deref(hd->compound.args[1]) : NULL;
+                /* Build Goal term = conjunction of body goals */
+                Term *goal_term = NULL;
+                if (cl->nbody == 0) {
+                    goal_term = term_new_atom(prolog_atom_intern("true"));
+                } else if (cl->nbody == 1) {
+                    goal_term = cl->body[0];
+                } else {
+                    int comma_id = prolog_atom_intern(",");
+                    goal_term = cl->body[cl->nbody - 1];
+                    for (int bi = cl->nbody - 2; bi >= 0; bi--) {
+                        Term *a2[2] = { cl->body[bi], goal_term };
+                        goal_term = term_new_compound(comma_id, 2, a2);
+                    }
+                }
+                /* Build assertz(pj_test(Suite, Name, Opts, Goal)) term */
+                int suite_id   = prolog_atom_intern(plunit_suite[clause_idx]);
+                int pjtest_id  = prolog_atom_intern("pj_test");
+                int assertz_id = prolog_atom_intern("assertz");
+                Term *opts_arg = opts_term ? opts_term : term_new_atom(prolog_atom_intern("[]"));
+                Term *pjargs[4] = { term_new_atom(suite_id), name_term, opts_arg, goal_term };
+                Term *pjtest    = term_new_compound(pjtest_id, 4, pjargs);
+                Term *azargs[1] = { pjtest };
+                Term *azterm    = term_new_compound(assertz_id, 1, azargs);
+                /* Emit as a directive stmt */
+                STMT_t *rs = stmt_new();
+                rs->subject = lower_term(azterm);
+                rs->lineno  = cl->lineno;
+                rs->lang    = LANG_PL;
+                if (!prog->head) prog->head = rs;
+                else             prog->tail->next = rs;
+                prog->tail = rs;
+                prog->nstmts++;
+            }
+        }
 
         /* Find or create entry */
         int found = -1;

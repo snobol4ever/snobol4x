@@ -193,27 +193,47 @@ int main(int argc, char **argv)
         );
         return 1;
     }
-    const char *input_path = argv[argi];
+    /* ── Multi-file load (U-MULTIFILE) ─────────────────────────────────────
+     * All remaining argv entries are input files.  Each is compiled with the
+     * appropriate frontend (by extension) and merged into one Program* in
+     * source order.  This enables:
+     *   scrip --ir-run lib.pl main.pl
+     *   scrip --ir-run shim.pl test_arith.pl
+     *   scrip --ir-run base.sno ext.icn main.pl   (polyglot multi-file)
+     * A single .scrip/.md file is still handled via parse_scrip_polyglot.
+     * --dump-parse/--dump-ir only act on the first file (unchanged). */
 
-    /* Set up include search dirs before parsing:
-     * 1. Directory of the input file itself
-     * 2. SNO_LIB env var (corpus root for 'lib/xxx.sno' includes)
-     * 3. Current working directory */
-    {
-        extern void sno_add_include_dir(const char *d);
-        /* dir of input file */
-        char dirbuf[4096];
-        strncpy(dirbuf, input_path, sizeof dirbuf - 1);
-        dirbuf[sizeof dirbuf - 1] = '\0';
-        char *sl = strrchr(dirbuf, '/');
-        if (sl) { *sl = '\0'; sno_add_include_dir(dirbuf); }
-        else     { sno_add_include_dir("."); }
-        /* SNO_LIB env var */
-        const char *sno_lib = getenv("SNO_LIB");
-        if (sno_lib && *sno_lib) sno_add_include_dir(sno_lib);
-        /* Auto-detect corpus root: walk up from file dir looking for lib/ subdir.
-         * Handles 'lib/math.sno' style includes without requiring SNO_LIB. */
+    extern void sno_add_include_dir(const char *d);
+
+    struct timespec _t0, _t1, _t2, _t3;
+    if (opt_bench) clock_gettime(CLOCK_MONOTONIC, &_t0);
+
+    /* Scan all input files to detect if any non-SNO language is present */
+    int first_file_argi = argi; (void)first_file_argi;
+    int has_non_sno = 0;
+    for (int fi = argi; fi < argc; fi++) {
+        const char *d = strrchr(argv[fi], '.');
+        if (d && (strcmp(d,".pl")==0 || strcmp(d,".icn")==0 ||
+                  strcmp(d,".raku")==0 || strcmp(d,".reb")==0 ||
+                  strcmp(d,".sc")==0 || strcmp(d,".scrip")==0 || strcmp(d,".md")==0))
+            has_non_sno = 1;
+    }
+
+    Program *prog = NULL;
+
+    for (; argi < argc; argi++) {
+        const char *input_path = argv[argi];
+
+        /* Add include dirs for each file's directory */
         {
+            char dirbuf[4096];
+            strncpy(dirbuf, input_path, sizeof dirbuf - 1);
+            dirbuf[sizeof dirbuf - 1] = '\0';
+            char *sl = strrchr(dirbuf, '/');
+            if (sl) { *sl = '\0'; sno_add_include_dir(dirbuf); }
+            else     { sno_add_include_dir("."); }
+            const char *sno_lib = getenv("SNO_LIB");
+            if (sno_lib && *sno_lib) sno_add_include_dir(sno_lib);
             char walk[4096];
             strncpy(walk, input_path, sizeof walk - 1);
             walk[sizeof walk - 1] = '\0';
@@ -229,82 +249,80 @@ int main(int argc, char **argv)
                 }
                 p = strrchr(walk, '/');
             }
+            sno_add_include_dir(".");
         }
-        /* cwd fallback */
-        sno_add_include_dir(".");
+
+        /* Detect language from extension */
+        const char *dot = strrchr(input_path, '.');
+        int lang_snocone  = dot && strcmp(dot, ".sc")   == 0;
+        int lang_prolog   = dot && strcmp(dot, ".pl")   == 0;
+        int lang_icon     = dot && strcmp(dot, ".icn")  == 0;
+        int lang_raku     = dot && strcmp(dot, ".raku") == 0;
+        int lang_rebus    = dot && strcmp(dot, ".reb")  == 0;
+        int lang_polyglot = dot && (strcmp(dot, ".scrip") == 0 || strcmp(dot, ".md") == 0);
+
+        Program *sub = NULL;
+
+        if (lang_polyglot) {
+            g_polyglot = 1;
+            FILE *f = fopen(input_path, "r");
+            if (!f) { fprintf(stderr, "scrip: cannot open '%s'\n", input_path); return 1; }
+            fseek(f, 0, SEEK_END); long flen = ftell(f); rewind(f);
+            char *src = malloc(flen + 1);
+            if (!src) { fprintf(stderr, "scrip: out of memory\n"); return 1; }
+            fread(src, 1, flen, f); src[flen] = '\0'; fclose(f);
+            sub = parse_scrip_polyglot(src, input_path);
+            free(src);
+        } else if (lang_snocone || lang_prolog || lang_icon || lang_raku || lang_rebus) {
+            FILE *f = fopen(input_path, "r");
+            if (!f) { fprintf(stderr, "scrip: cannot open '%s'\n", input_path); return 1; }
+            fseek(f, 0, SEEK_END); long flen = ftell(f); rewind(f);
+            char *src = malloc(flen + 1);
+            if (!src) { fprintf(stderr, "scrip: out of memory\n"); return 1; }
+            fread(src, 1, flen, f); src[flen] = '\0'; fclose(f);
+            sub = lang_raku   ? raku_compile(src, input_path)
+                : lang_prolog ? prolog_compile(src, input_path)
+                : lang_icon   ? icon_compile(src, input_path)
+                : lang_rebus  ? rebus_compile(src, input_path)
+                :               snocone_cf_compile(src, input_path);
+            free(src);
+        } else if (dump_parse || dump_parse_flat || dump_ir) {
+            /* Dump modes only process the first file */
+            FILE *f = fopen(input_path, "r");
+            if (!f) { fprintf(stderr, "scrip: cannot open '%s'\n", input_path); return 1; }
+            if (opt_bench) clock_gettime(CLOCK_MONOTONIC, &_t1);
+            Program *dprog = sno_parse(f, input_path);
+            fclose(f);
+            ir_dump_program(dprog, stdout);
+            return 0;
+        } else {
+            FILE *f = fopen(input_path, "r");
+            if (!f) { fprintf(stderr, "scrip: cannot open '%s'\n", input_path); return 1; }
+            sub = sno_parse(f, input_path);
+            fclose(f);
+            if (dump_ir_bison) { ir_dump_program(sub, stdout); return 0; }
+        }
+
+        if (!sub || !sub->head) {
+            fprintf(stderr, "scrip: parse failed for '%s'\n", input_path);
+            return 1;
+        }
+
+        /* Merge sub into accumulated prog */
+        if (!prog) {
+            prog = sub;
+        } else {
+            prog->tail->next = sub->head;
+            prog->tail       = sub->tail;
+            prog->nstmts    += sub->nstmts;
+            free(sub);
+        }
     }
 
-    FILE *f = fopen(input_path, "r");
-    if (!f) {
-        fprintf(stderr, "scrip: cannot open '%s'\n", input_path);
-        return 1;
-    }
+    if (opt_bench) clock_gettime(CLOCK_MONOTONIC, &_t1);
 
-    struct timespec _t0, _t1, _t2, _t3;
-    if (opt_bench) clock_gettime(CLOCK_MONOTONIC, &_t0);
-
-    /* ── parse ──────────────────────────────────────────────────────────────
-     * --dump-parse / --dump-parse-flat / --dump-ir  →  CMPILE (hand-written)
-     * everything else (--ir-run, --sm-run, --dump-ir-bison)  →  sno_parse (Bison/Flex)
-     * sno_parse is the proven path: PASS=190 baseline.
-     * .sc extension  →  snocone_compile() (lex+parse+lower in one call) */
-    /* detect Snocone frontend by file extension */
-    int lang_snocone = 0;
-    { const char *dot = strrchr(input_path, '.'); if (dot && strcmp(dot, ".sc") == 0) lang_snocone = 1; }
-    int lang_prolog = 0;
-    { const char *dot = strrchr(input_path, '.'); if (dot && strcmp(dot, ".pl") == 0) lang_prolog = 1; }
-    int lang_icon = 0;
-    { const char *dot = strrchr(input_path, '.'); if (dot && strcmp(dot, ".icn") == 0) lang_icon = 1; }
-    int lang_raku = 0;
-    { const char *dot = strrchr(input_path, '.'); if (dot && strcmp(dot, ".raku") == 0) lang_raku = 1; }
-    int lang_rebus = 0;
-    { const char *dot = strrchr(input_path, '.'); if (dot && strcmp(dot, ".reb") == 0) lang_rebus = 1; }
-    int lang_polyglot = 0;  /* U-13: .scrip or .md → fenced polyglot */
-    { const char *dot = strrchr(input_path, '.');
-      if (dot && (strcmp(dot, ".scrip") == 0 || strcmp(dot, ".md") == 0)) lang_polyglot = 1; }
-
-    Program *prog = NULL;
-    if (lang_polyglot) { g_polyglot = 1;
-        /* U-13: read whole file, split fenced blocks, compile each, merge into one Program* */
-        fseek(f, 0, SEEK_END); long flen = ftell(f); rewind(f);
-        char *src = malloc(flen + 1);
-        if (!src) { fprintf(stderr, "scrip: out of memory\n"); return 1; }
-        fread(src, 1, flen, f); src[flen] = '\0'; fclose(f);
-        if (opt_bench) clock_gettime(CLOCK_MONOTONIC, &_t1);
-        prog = parse_scrip_polyglot(src, input_path);
-        free(src);
-    } else if (lang_snocone || lang_prolog || lang_icon || lang_raku || lang_rebus) {
-        /* Read whole file into buffer */
-        fseek(f, 0, SEEK_END); long flen = ftell(f); rewind(f);
-        char *src = malloc(flen + 1);
-        if (!src) { fprintf(stderr, "scrip: out of memory\n"); return 1; }
-        fread(src, 1, flen, f); src[flen] = '\0'; fclose(f);
-        if (opt_bench) clock_gettime(CLOCK_MONOTONIC, &_t1);
-        prog = lang_raku   ? raku_compile(src, input_path)
-             : lang_prolog ? prolog_compile(src, input_path)
-             : lang_icon   ? icon_compile(src, input_path)
-             : lang_rebus  ? rebus_compile(src, input_path)
-             :               snocone_cf_compile(src, input_path);
-        free(src);
-    } else if (dump_parse || dump_parse_flat || dump_ir) {
-        /* --dump-parse / --dump-parse-flat / --dump-ir: bison path (CMPILE removed) */
-        fclose(f);
-        if (opt_bench) clock_gettime(CLOCK_MONOTONIC, &_t1);
-        FILE *f3 = fopen(input_path, "r");
-        if (!f3) { fprintf(stderr, "scrip: cannot re-open '%s'\n", input_path); return 1; }
-        Program *dprog = sno_parse(f3, input_path);
-        fclose(f3);
-        ir_dump_program(dprog, stdout);
-        return 0;
-    } else {
-        fclose(f);
-        if (opt_bench) clock_gettime(CLOCK_MONOTONIC, &_t1);
-        FILE *f2 = fopen(input_path, "r");
-        if (!f2) { fprintf(stderr, "scrip: cannot re-open '%s'\n", input_path); return 1; }
-        prog = sno_parse(f2, input_path);
-        fclose(f2);
-        if (dump_ir_bison) { ir_dump_program(prog, stdout); return 0; }
-    }
+    /* Primary input path (last file, used for --monitor label) */
+    const char *input_path = argv[argc - 1];
 
     if (opt_bench) clock_gettime(CLOCK_MONOTONIC, &_t2);
 
@@ -387,8 +405,8 @@ int main(int argc, char **argv)
             return 1;
         }
         return 0;
-    } else if (lang_polyglot) {
-        polyglot_execute(prog);   /* OE-7: polyglot takes priority — SM layer not yet polyglot-aware (OE-9/10/11) */
+    } else if (has_non_sno) {
+        polyglot_execute(prog);   /* OE-7: polyglot takes priority */
     } else if (mode_sm_run) {
         /* --sm-run: SM-LOWER path — IR → SM_Program → sm_interp_run.
          * Must mirror execute_program setup: build label table and register
@@ -470,11 +488,7 @@ int main(int argc, char **argv)
             if (st.pc >= sm->count) break;
         }
         sm_prog_free(sm);
-    } else if (lang_prolog) {
-        polyglot_execute(prog);
-    } else if (lang_icon) {
-        polyglot_execute(prog);
-    } else if (lang_rebus) {
+    } else if (has_non_sno) {
         polyglot_execute(prog);
     } else {
         execute_program(prog);
