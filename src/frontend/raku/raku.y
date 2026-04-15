@@ -224,6 +224,19 @@ stmt
         { $$ = expr_binary(E_ASSIGN, var_node($2), $4); }
     | KW_MY VAR_HASH '=' expr ';'
         { $$ = expr_binary(E_ASSIGN, var_node($2), $4); }
+    /* RK-19: typed variable declarations — type annotation (IDENT) silently discarded */
+    | KW_MY IDENT VAR_SCALAR '=' expr ';'
+        { free($2); $$ = expr_binary(E_ASSIGN, var_node($3), $5); }
+    | KW_MY IDENT VAR_ARRAY '=' expr ';'
+        { free($2); $$ = expr_binary(E_ASSIGN, var_node($3), $5); }
+    | KW_MY IDENT VAR_HASH '=' expr ';'
+        { free($2); $$ = expr_binary(E_ASSIGN, var_node($3), $5); }
+    | KW_MY IDENT VAR_SCALAR ';'
+        { free($2); $$ = expr_binary(E_ASSIGN, var_node($3), leaf_sval(E_QLIT, "")); }
+    | KW_MY IDENT VAR_ARRAY ';'
+        { free($2); $$ = expr_binary(E_ASSIGN, var_node($3), leaf_sval(E_QLIT, "")); }
+    | KW_MY IDENT VAR_HASH ';'
+        { free($2); $$ = expr_binary(E_ASSIGN, var_node($3), leaf_sval(E_QLIT, "")); }
     | KW_SAY expr ';'
         { EXPR_t *c=make_call("write"); expr_add_child(c,$2); $$=c; }
     | KW_PRINT expr ';'
