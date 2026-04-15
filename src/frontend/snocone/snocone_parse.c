@@ -568,12 +568,26 @@ static int parse_operand_into(const SnoconeToken *toks, int count, int i,
         return next;
     }
 
-    /* Grouping paren */
+    /* Grouping paren — fully parse the balanced interior so that unary ops
+     * like ~(v ? pat) get a complete operand before the unary token is emitted */
     if (tok->kind == SNOCONE_LPAREN) {
-        Frame f = { FRAME_GROUP, 0, out->count, tok->line };
-        fvec_push(calls, f);
-        vec_push(ops, make_pt(tok));
-        return i + 1;
+        /* find matching close paren */
+        int j = i + 1, depth = 1;
+        while (j < count && depth > 0) {
+            if (toks[j].kind == SNOCONE_LPAREN) depth++;
+            if (toks[j].kind == SNOCONE_RPAREN) depth--;
+            j++;
+        }
+        /* toks[i+1 .. j-2] is the interior (j-1 is the closing ')') */
+        int interior_start = i + 1;
+        int interior_len   = j - 1 - interior_start; /* excludes close paren */
+        if (interior_len > 0) {
+            ScParseResult inner = snocone_parse(&toks[interior_start], interior_len);
+            for (int s = 0; s < inner.count; s++)
+                vec_push(out, inner.tokens[s]);
+            free(inner.tokens);
+        }
+        return j; /* skip past closing ')' */
     }
 
     return i + 1; /* skip unknown */

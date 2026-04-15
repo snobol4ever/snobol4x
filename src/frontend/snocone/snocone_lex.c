@@ -346,6 +346,21 @@ ScTokenArray snocone_lex(const char *source)
                     continue;
                 }
 
+                /* $'...' dollar-quoted identifier: emit SNOCONE_IDENT with spelling $<content> */
+                if (c == '$' && pos + 1 < blen && buf[pos + 1] == '\'') {
+                    int s = pos + 2;
+                    int e2 = s;
+                    while (e2 < blen && buf[e2] != '\'') e2++;
+                    int clen = e2 - s;
+                    char tmp[256];
+                    tmp[0] = '$';
+                    if (clen > 0 && clen < (int)sizeof(tmp) - 1) memcpy(tmp + 1, buf + s, clen);
+                    tmp[1 + clen] = '\0';
+                    tb_push(&acc, SNOCONE_IDENT, tmp, 1 + clen, lno);
+                    pos = (e2 < blen) ? e2 + 1 : e2;
+                    continue;
+                }
+
                 /* operators: longest match */
                 {
                     int matched = 0;
@@ -452,6 +467,21 @@ ScTokenArray snocone_lex(const char *source)
                         tb_push(&acc, SNOCONE_SEMICOLON, buf + pos, 1, lno);
                     }
                     pos++;
+                    continue;
+                }
+
+                /* $'...' dollar-quoted identifier: emit SNOCONE_IDENT with spelling $<content> */
+                if (c == '$' && pos + 1 < blen && buf[pos + 1] == '\'') {
+                    int s = pos + 2;
+                    int e2 = s;
+                    while (e2 < blen && buf[e2] != '\'') e2++;
+                    int clen = e2 - s;
+                    char tmp[256];
+                    tmp[0] = '$';
+                    if (clen > 0 && clen < (int)sizeof(tmp) - 1) memcpy(tmp + 1, buf + s, clen);
+                    tmp[1 + clen] = '\0';
+                    tb_push(&acc, SNOCONE_IDENT, tmp, 1 + clen, lno);
+                    pos = (e2 < blen) ? e2 + 1 : e2;
                     continue;
                 }
 

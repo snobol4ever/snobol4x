@@ -40,8 +40,9 @@ static void  es_push(ExprStack *s, EXPR_t *e) {
     if (s->top >= STACK_MAX) { fprintf(stderr, "snocone_lower: stack overflow\n"); exit(1); }
     s->v[s->top++] = e;
 }
+static int es_current_line = 0;  /* updated by lower loop for diagnostics */
 static EXPR_t *es_pop(ExprStack *s) {
-    if (s->top <= 0) { fprintf(stderr, "snocone_lower: stack underflow\n"); return expr_new(E_NUL); }
+    if (s->top <= 0) { fprintf(stderr, "snocone_lower: stack underflow at line %d\n", es_current_line); return expr_new(E_NUL); }
     return s->v[--s->top];
 }
 static EXPR_t *es_peek(ExprStack *s) {
@@ -300,8 +301,21 @@ static int lower_token(const ScPToken *tok, ExprStack *s,
     /* ---- Assignment: pop rhs, pop lhs, push E_ASSIGN ---- */
     case SNOCONE_ASSIGN: {
         EXPR_t *rhs = es_pop(s);
+        /* When stack is empty after popping rhs, rhs is actually the
+         * scan expression from  subject ? pattern = repl  (postfix:
+         * subj pat ? repl =).  If rhs is E_SCAN and stack is empty,
+         * treat it as scan+empty-replace: push E_ASSIGN(E_SCAN, E_NUL). */
+        if (s->top == 0) {
+            EXPR_t *null_repl = expr_new(E_QLIT); null_repl->sval = strdup("");
+            EXPR_t *e = expr_binary(E_ASSIGN, rhs, null_repl);
+            es_push(s, e);
+            return 0;
+        }
         EXPR_t *lhs = es_pop(s);
-        EXPR_t *e   = expr_binary(E_ASSIGN, lhs, rhs);
+        /* If lhs is E_SCAN, the postfix is: subj pat ? repl =
+         * i.e. rhs is the replacement, lhs is the scan node — swap to
+         * produce E_ASSIGN(E_SCAN, repl) which assemble_stmt unwraps. */
+        EXPR_t *e = expr_binary(E_ASSIGN, lhs, rhs);
         es_push(s, e);
         return 0;
     }
@@ -385,12 +399,24 @@ static STMT_t *assemble_stmt(ExprStack *s, int lineno) {
     st->lineno = lineno;
 
     if (top->kind == E_ASSIGN) {
-        /* Assignment: subject = lhs, replacement = rhs */
         es_pop(s);
-        st->subject     = expr_left(top);
-        st->replacement = expr_right(top);
-        st->has_eq      = 1;
-        free(top);   /* free E_ASSIGN shell only */
+        EXPR_t *lhs = expr_left(top);
+        EXPR_t *rhs = expr_right(top);
+        free(top);
+        if (lhs && lhs->kind == E_SCAN && lhs->nchildren == 2) {
+            /* scan+replacement: (subject ? pattern) = replacement */
+            st->subject  = lhs->children[0];
+            st->pattern  = lhs->children[1];
+            lhs->children[0] = lhs->children[1] = NULL;
+            free_expr(lhs);
+            if (!rhs) { rhs = expr_new(E_QLIT); rhs->sval = strdup(""); }
+            st->replacement = rhs;
+            st->has_eq = 1;
+        } else {
+            st->subject     = lhs;
+            st->replacement = rhs;
+            st->has_eq      = 1;
+        }
     } else if (top->kind == E_SCAN && top->nchildren == 2) {
         /* Pattern match: subject ? pattern → BB_SCAN path */
         es_pop(s);
@@ -444,6 +470,7 @@ ScLowerResult snocone_lower(const ScPToken *ptoks, int count, const char *filena
         if (tok->kind == SNOCONE_EOF) break;
 
         last_line = tok->line ? tok->line : last_line;
+        es_current_line = last_line;
         lower_token(tok, &stack, filename, &result.nerrors);
     }
 
