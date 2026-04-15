@@ -144,7 +144,7 @@ extern spec_t bb_arbno(void *zeta, int entry);
 /* deferred_var_t needs bb_node_t which is defined later in this file */
 typedef struct { const char *name; bb_box_fn child_fn; void *child_state; size_t child_size; int in_progress; } deferred_var_t;
 static int g_dvar_depth = 0;  /* global recursion depth — caps mutual recursion */
-#define DVAR_MAX_DEPTH 64
+#define DVAR_MAX_DEPTH 4096
 /* bb_deferred_var() defined after bb_build (needs bb_node_t) */
 static DESCR_t bb_deferred_var(void *zeta, int entry);
 
@@ -259,11 +259,12 @@ static void flush_pending_captures(void);
 /* Box state types are now in bb_box.h (canonical).
  * lit_t / pos_t etc. were private aliases — replaced with canonical names.
  * Complex composite types (alt_t, seq_t, arbno_t) remain here. */
-#define BB_ALT_MAX_S 16
+#define BB_ALT_INIT 4
 typedef struct { bb_box_fn fn; void *state; }   bchild_t;
 typedef struct {
     int       n;
-    bchild_t children[BB_ALT_MAX_S];
+    int       cap;
+    bchild_t *children;
     int       current;
     int       position;
     spec_t    result;
@@ -275,13 +276,14 @@ typedef struct {
     spec_t    matched;
 } seq_t;
 
-#define ARBNO_MAX_S 64
+#define ARBNO_INIT 8
 typedef struct { spec_t matched; int start; } aframe_t;
 typedef struct {
     bb_box_fn  fn;
     void      *state;
     int        depth;
-    aframe_t  stack[ARBNO_MAX_S];
+    int        cap;
+    aframe_t  *stack;
 } arbno_t;
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -502,7 +504,6 @@ static spec_t bb_usercall(void *zeta, int entry)
  * Used for "pat . *func()" where func uses NRETURN to return a NAME.
  * On γ: call func to get DT_N ptr, store ptr + pending spec for conditional flush.
  * Conditional (.): flushes on overall match success via flush_pending_callcaps(). */
-#define MAX_CALLCAPS 256
 
 typedef struct callcap_s {
     bb_box_fn    child_fn;
@@ -532,13 +533,42 @@ typedef struct {
     callcap_t  *owner;          /* back-pointer for dedup keying */
 } cc_event_t;
 
-static cc_event_t  g_cc_events[MAX_CALLCAPS];
-static int         g_cc_event_count = 0;
+#define CALLCAPS_INIT 16
 
-/* g_callcap_list kept for DVAR save/restore bookkeeping */
-static callcap_t *g_callcap_list[MAX_CALLCAPS];
-static int        g_callcap_count = 0;
-static int        g_callcap_gen   = 0;   /* DYN-76: per-statement generation */
+static cc_event_t  *g_cc_events      = NULL;
+static int          g_cc_event_count = 0;
+static int          g_cc_event_cap   = 0;
+
+static callcap_t  **g_callcap_list   = NULL;
+static int          g_callcap_count  = 0;
+static int          g_callcap_cap    = 0;
+static int          g_callcap_gen    = 0;   /* DYN-76: per-statement generation */
+
+static void callcap_arrays_ensure(void)
+{
+    if (!g_cc_events) {
+        g_cc_event_cap = CALLCAPS_INIT;
+        g_cc_events    = malloc(g_cc_event_cap * sizeof(cc_event_t));
+    }
+    if (!g_callcap_list) {
+        g_callcap_cap  = CALLCAPS_INIT;
+        g_callcap_list = malloc(g_callcap_cap * sizeof(callcap_t *));
+    }
+}
+
+static void cc_events_grow(void)
+{
+    g_cc_event_cap *= 2;
+    g_cc_events = realloc(g_cc_events, g_cc_event_cap * sizeof(cc_event_t));
+    if (!g_cc_events) { fprintf(stderr, "stmt_exec: cc_events OOM\n"); abort(); }
+}
+
+static void callcap_list_grow(void)
+{
+    g_callcap_cap *= 2;
+    g_callcap_list = realloc(g_callcap_list, g_callcap_cap * sizeof(callcap_t *));
+    if (!g_callcap_list) { fprintf(stderr, "stmt_exec: callcap_list OOM\n"); abort(); }
+}
 
 static spec_t bb_callcap(void *zeta, int entry)
 {
@@ -548,7 +578,9 @@ static spec_t bb_callcap(void *zeta, int entry)
     if (entry == α) goto CC_α;
                     goto CC_β;
 
-    CC_α:  if (!ζ->immediate && !ζ->registered && g_callcap_count < MAX_CALLCAPS) {
+    CC_α:  if (!ζ->immediate && !ζ->registered) {
+               callcap_arrays_ensure();
+               if (g_callcap_count >= g_callcap_cap) callcap_list_grow();
                ζ->registered = 1;
                g_callcap_list[g_callcap_count++] = ζ;
            }
@@ -581,15 +613,14 @@ static spec_t bb_callcap(void *zeta, int entry)
                 * DYN-79: each CC_γ firing gets its own event record so that
                 * a box reused for multiple spans (e.g. *Push() matching "1"
                 * then "2") produces two distinct events in order. */
-               if (g_cc_event_count < MAX_CALLCAPS) {
-                   cc_event_t *ev = &g_cc_events[g_cc_event_count++];
-                   ev->fnc_name   = ζ->fnc_name;
-                   ev->fnc_args   = ζ->fnc_args;
-                   ev->fnc_nargs  = ζ->fnc_nargs;
-                   ev->pending    = child_r;
-                   ev->has_pending = 1;
-                   ev->owner      = ζ;
-               }
+               if (g_cc_event_count >= g_cc_event_cap) cc_events_grow();
+               cc_event_t *ev = &g_cc_events[g_cc_event_count++];
+               ev->fnc_name   = ζ->fnc_name;
+               ev->fnc_args   = ζ->fnc_args;
+               ev->fnc_nargs  = ζ->fnc_nargs;
+               ev->pending    = child_r;
+               ev->has_pending = 1;
+               ev->owner      = ζ;
                /* Keep ζ->pending/has_pending for DVAR save/restore compat */
                ζ->pending     = child_r;
                ζ->has_pending = 1;
@@ -869,10 +900,12 @@ bb_node_t bb_build(PATND_t *p)
     /* ── ALTERNATION (n-ary, direct children[] iteration) ──────────── */
     case XOR: {
         alt_t *ζ = calloc(1, sizeof(alt_t));
-        int nc = p->nchildren < BB_ALT_MAX_S ? p->nchildren : BB_ALT_MAX_S;
+        int nc = p->nchildren;
+        ζ->cap      = nc > BB_ALT_INIT ? nc : BB_ALT_INIT;
+        ζ->children = malloc(ζ->cap * sizeof(bchild_t));
         for (int i = 0; i < nc; i++) {
-            bb_node_t arm       = bb_build(p->children[i]);
-            ζ->children[i].fn  = arm.fn;
+            bb_node_t arm         = bb_build(p->children[i]);
+            ζ->children[i].fn    = arm.fn;
             ζ->children[i].state = arm.ζ;
         }
         ζ->n = nc;
@@ -885,9 +918,11 @@ bb_node_t bb_build(PATND_t *p)
     /* ── ARBNO(body) ────────────────────────────────────────────────── */
     case XARBN: {
         arbno_t *ζ = calloc(1, sizeof(arbno_t));
-        bb_node_t body  = bb_build(p->nchildren > 0 ? p->children[0] : NULL);
-        ζ->fn = body.fn;
-        ζ->state  = body.ζ;
+        bb_node_t body = bb_build(p->nchildren > 0 ? p->children[0] : NULL);
+        ζ->fn    = body.fn;
+        ζ->state = body.ζ;
+        ζ->cap   = ARBNO_INIT;
+        ζ->stack = malloc(ζ->cap * sizeof(aframe_t));
         n.fn = (bb_box_fn)bb_arbno;
         n.ζ  = ζ;
         n.ζ_size = sizeof(*ζ);
@@ -1153,8 +1188,8 @@ static DESCR_t bb_deferred_var(void *zeta, int entry)
                      * then merge inner callcaps after outer ones on success. */
                     int   dvar_cc_save = g_callcap_count;
                     int   dvar_ev_save = g_cc_event_count;
-                    callcap_t *dvar_cc_snap[MAX_CALLCAPS];
-                    cc_event_t dvar_ev_snap[MAX_CALLCAPS];
+                    callcap_t **dvar_cc_snap = dvar_cc_save ? malloc(dvar_cc_save * sizeof(callcap_t *)) : NULL;
+                    cc_event_t *dvar_ev_snap = dvar_ev_save ? malloc(dvar_ev_save * sizeof(cc_event_t))  : NULL;
                     for (int _ci = 0; _ci < dvar_cc_save; _ci++) {
                         dvar_cc_snap[_ci] = g_callcap_list[_ci];
                         g_callcap_list[_ci]->registered = 0;
@@ -1177,14 +1212,15 @@ static DESCR_t bb_deferred_var(void *zeta, int entry)
                         g_cc_event_count = dvar_ev_save;
                         for (int _ci = 0; _ci < dvar_ev_save; _ci++)
                             g_cc_events[_ci] = dvar_ev_snap[_ci];
+                        free(dvar_cc_snap); free(dvar_ev_snap);
                         goto DVAR_ω;
                     }
                     /* Success: restore outer first, then append inner */
                     {
                         int inner_count = g_callcap_count;
                         int inner_ev    = g_cc_event_count;
-                        callcap_t *inner_snap[MAX_CALLCAPS];
-                        cc_event_t inner_ev_snap[MAX_CALLCAPS];
+                        callcap_t **inner_snap    = inner_count ? malloc(inner_count * sizeof(callcap_t *)) : NULL;
+                        cc_event_t *inner_ev_snap = inner_ev    ? malloc(inner_ev    * sizeof(cc_event_t))  : NULL;
                         for (int _ci = 0; _ci < inner_count; _ci++)
                             inner_snap[_ci] = g_callcap_list[_ci];
                         for (int _ci = 0; _ci < inner_ev; _ci++)
@@ -1194,15 +1230,20 @@ static DESCR_t bb_deferred_var(void *zeta, int entry)
                             g_callcap_list[_ci] = dvar_cc_snap[_ci];
                             g_callcap_list[_ci]->registered = 1;
                         }
-                        for (int _ci = 0; _ci < inner_count && g_callcap_count < MAX_CALLCAPS; _ci++)
+                        for (int _ci = 0; _ci < inner_count; _ci++) {
+                            if (g_callcap_count >= g_callcap_cap) callcap_list_grow();
                             g_callcap_list[g_callcap_count++] = inner_snap[_ci];
-                        /* Merge events: outer first, then inner */
+                        }
                         g_cc_event_count = dvar_ev_save;
                         for (int _ci = 0; _ci < dvar_ev_save; _ci++)
                             g_cc_events[_ci] = dvar_ev_snap[_ci];
-                        for (int _ci = 0; _ci < inner_ev && g_cc_event_count < MAX_CALLCAPS; _ci++)
+                        for (int _ci = 0; _ci < inner_ev; _ci++) {
+                            if (g_cc_event_count >= g_cc_event_cap) cc_events_grow();
                             g_cc_events[g_cc_event_count++] = inner_ev_snap[_ci];
+                        }
+                        free(inner_snap); free(inner_ev_snap);
                     }
+                    free(dvar_cc_snap); free(dvar_ev_snap);
                     goto DVAR_γ;
 
     DVAR_β:         if (!ζ->child_fn)                         goto DVAR_ω;
@@ -1561,10 +1602,11 @@ int cache_test_run(const char *lit, int n_iters)
  * ══════════════════════════════════════════════════════════════════════════ */
 
 /* NV table — shared with the test driver's NV_GET_fn/NV_SET_fn stubs */
-#define NV_MAX 32
-typedef struct { char key[32]; DESCR_t val; } _nv_entry_t;
-static _nv_entry_t g_nv_table[NV_MAX];
-static int         g_nv_count = 0;
+#define NV_INIT 16
+typedef struct { char *key; DESCR_t val; } _nv_entry_t;
+static _nv_entry_t *g_nv_table = NULL;
+static int          g_nv_count = 0;
+static int          g_nv_cap   = 0;
 
 static void nv_set_str(const char *name, const char *s)
 {
@@ -1576,13 +1618,18 @@ static void nv_set_str(const char *name, const char *s)
             return;
         }
     }
-    if (g_nv_count < NV_MAX) {
-        strncpy(g_nv_table[g_nv_count].key, name, 31);
-        g_nv_table[g_nv_count].val.v    = DT_S;
-        g_nv_table[g_nv_count].val.s    = (char *)s;
-        g_nv_table[g_nv_count].val.slen = s ? (uint32_t)strlen(s) : 0;
-        g_nv_count++;
+    if (!g_nv_table) {
+        g_nv_cap   = NV_INIT;
+        g_nv_table = malloc(g_nv_cap * sizeof(_nv_entry_t));
+    } else if (g_nv_count >= g_nv_cap) {
+        g_nv_cap  *= 2;
+        g_nv_table = realloc(g_nv_table, g_nv_cap * sizeof(_nv_entry_t));
     }
+    g_nv_table[g_nv_count].key      = strdup(name);
+    g_nv_table[g_nv_count].val.v    = DT_S;
+    g_nv_table[g_nv_count].val.s    = (char *)s;
+    g_nv_table[g_nv_count].val.slen = s ? (uint32_t)strlen(s) : 0;
+    g_nv_count++;
 }
 
 static DESCR_t nv_get(const char *name)

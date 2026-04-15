@@ -33,8 +33,6 @@
 
 /* ── Label resolution table ─────────────────────────────────────────────── */
 
-#define MAX_LABELS 4096
-
 typedef struct {
     char *name;         /* SNOBOL4 label string (interned) */
     int   instr_idx;    /* SM_Program instruction index of the SM_LABEL instr */
@@ -47,22 +45,35 @@ typedef struct {
 } PatchEntry;
 
 typedef struct {
-    LabelEntry labels[MAX_LABELS];
-    int        nlabels;
+    LabelEntry *labels;
+    int         nlabels;
+    int         labels_cap;
 
-    PatchEntry patches[MAX_LABELS * 2];
-    int        npatches;
+    PatchEntry *patches;
+    int         npatches;
+    int         patches_cap;
 } LabelTable;
+
+#define LABEL_TABLE_INIT 64
 
 static void lt_init(LabelTable *lt)
 {
-    memset(lt, 0, sizeof *lt);
+    lt->labels      = malloc(LABEL_TABLE_INIT * sizeof(LabelEntry));
+    lt->labels_cap  = LABEL_TABLE_INIT;
+    lt->nlabels     = 0;
+    lt->patches     = malloc(LABEL_TABLE_INIT * sizeof(PatchEntry));
+    lt->patches_cap = LABEL_TABLE_INIT;
+    lt->npatches    = 0;
 }
 
 /* Record a defined label → its SM_LABEL instruction index */
 static void lt_define(LabelTable *lt, const char *name, int instr_idx)
 {
-    assert(lt->nlabels < MAX_LABELS);
+    if (lt->nlabels >= lt->labels_cap) {
+        lt->labels_cap *= 2;
+        lt->labels = realloc(lt->labels, lt->labels_cap * sizeof(LabelEntry));
+        if (!lt->labels) { fprintf(stderr, "sm_lower: label table OOM\n"); abort(); }
+    }
     lt->labels[lt->nlabels].name      = strdup(name);
     lt->labels[lt->nlabels].instr_idx = instr_idx;
     lt->nlabels++;
@@ -80,7 +91,11 @@ static int lt_find(const LabelTable *lt, const char *name)
 /* Record a forward-reference patch */
 static void lt_patch_later(LabelTable *lt, int jump_instr_idx, const char *name)
 {
-    assert(lt->npatches < MAX_LABELS * 2);
+    if (lt->npatches >= lt->patches_cap) {
+        lt->patches_cap *= 2;
+        lt->patches = realloc(lt->patches, lt->patches_cap * sizeof(PatchEntry));
+        if (!lt->patches) { fprintf(stderr, "sm_lower: patch table OOM\n"); abort(); }
+    }
     lt->patches[lt->npatches].jump_instr_idx = jump_instr_idx;
     lt->patches[lt->npatches].target_name    = strdup(name);
     lt->npatches++;
@@ -107,6 +122,8 @@ static void lt_free(LabelTable *lt)
 {
     for (int i = 0; i < lt->nlabels; i++)  free(lt->labels[i].name);
     for (int i = 0; i < lt->npatches; i++) free(lt->patches[i].target_name);
+    free(lt->labels);  lt->labels  = NULL;
+    free(lt->patches); lt->patches = NULL;
 }
 
 /* ── Emit a goto target (possibly forward ref) ──────────────────────────── */

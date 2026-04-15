@@ -744,11 +744,12 @@ static bb_box_fn bb_rem_emit_binary(void)
  * Strategy: recurse each child; if any returns NULL, fall back whole node.
  * Populate heap alt_t children[], emit trampoline to bb_alt.
  */
-#define BB_ALT_MAX_BIN 16
+#define BB_ALT_INIT_BIN 4
 typedef struct { bb_box_fn fn; void *state; } bin_altchild_t;
 typedef struct {
     int            n;
-    bin_altchild_t children[BB_ALT_MAX_BIN];
+    int            cap;
+    bin_altchild_t *children;
     int            current;
     int            position;
     spec_t         result;
@@ -759,22 +760,24 @@ static bb_box_fn bb_alt_emit_binary(PATND_t *p)
     int nc = p->nchildren;
     if (nc == 0) return bb_eps_emit_binary();
     if (nc == 1) return bb_build_binary_node(p->children[0]);
-    if (nc > BB_ALT_MAX_BIN) nc = BB_ALT_MAX_BIN;   /* cap at 16 — fallback for wider */
 
     bin_alt_t *z = calloc(1, sizeof(bin_alt_t));
     if (!z) return NULL;
+    z->cap      = nc > BB_ALT_INIT_BIN ? nc : BB_ALT_INIT_BIN;
+    z->children = malloc(z->cap * sizeof(bin_altchild_t));
+    if (!z->children) { free(z); return NULL; }
     z->n = nc;
 
     for (int i = 0; i < nc; i++) {
         bb_box_fn cfn = bb_build_binary_node(p->children[i]);
-        if (!cfn) { free(z); return NULL; }
+        if (!cfn) { free(z->children); free(z); return NULL; }
         z->children[i].fn    = cfn;
         z->children[i].state = NULL;  /* binary leaf — no separate zeta */
     }
 
 #define ALT_TRAM_SIZE 32
     bb_buf_t tbuf = bb_alloc(ALT_TRAM_SIZE);
-    if (!tbuf) { free(z); return NULL; }
+    if (!tbuf) { free(z->children); free(z); return NULL; }
     bb_emit_mode = EMIT_BINARY;
     bb_emit_begin(tbuf, ALT_TRAM_SIZE);
     bb_emit_byte(0x48); bb_emit_byte(0xBF);
@@ -783,7 +786,7 @@ static bb_box_fn bb_alt_emit_binary(PATND_t *p)
     bb_emit_u64((uint64_t)(uintptr_t)bb_alt);
     bb_emit_byte(0xFF); bb_emit_byte(0xE0);
     int nb = bb_emit_end();
-    if (nb <= 0 || nb > ALT_TRAM_SIZE) { bb_free(tbuf, ALT_TRAM_SIZE); free(z); return NULL; }
+    if (nb <= 0 || nb > ALT_TRAM_SIZE) { bb_free(tbuf, ALT_TRAM_SIZE); free(z->children); free(z); return NULL; }
     bb_seal(tbuf, (size_t)nb);
     return (bb_box_fn)tbuf;
 #undef ALT_TRAM_SIZE
@@ -1158,14 +1161,15 @@ static bb_box_fn bb_dsar_emit_binary(const char *name)
  *
  * arbno_t mirror (must stay in sync with bb_arbno.c):
  */
-#define ARBNO_STACK_MAX_BIN 64
+#define ARBNO_INIT_BIN 8
 typedef struct { void *σ; size_t δ; } spec_t_bin;   /* matches spec_t layout */
 typedef struct { spec_t_bin matched; int start; } arbno_frame_t_bin;
 typedef struct {
-    bb_box_fn        fn;
-    void            *state;
-    int              depth;
-    arbno_frame_t_bin stack[ARBNO_STACK_MAX_BIN];
+    bb_box_fn         fn;
+    void             *state;
+    int               depth;
+    int               cap;
+    arbno_frame_t_bin *stack;
 } arbno_t_bin;
 
 static bb_box_fn bb_arbn_emit_binary(PATND_t *p)
@@ -1180,6 +1184,9 @@ static bb_box_fn bb_arbn_emit_binary(PATND_t *p)
     if (!z) return NULL;
     z->fn    = body_fn;
     z->state = NULL;   /* binary body carries no separate ζ */
+    z->cap   = ARBNO_INIT_BIN;
+    z->stack = malloc(z->cap * sizeof(arbno_frame_t_bin));
+    if (!z->stack) { free(z); return NULL; }
 
     bb_buf_t tbuf = bb_alloc(ARBN_TRAM_SIZE);
     if (!tbuf) { free(z); return NULL; }

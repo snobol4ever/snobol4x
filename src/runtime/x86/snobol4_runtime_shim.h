@@ -178,14 +178,19 @@ static inline void finish(void)  { }
  */
 #include <setjmp.h>
 
-#define ABRT_STACK_MAX 256
-static jmp_buf *_sno_abort_stack[ABRT_STACK_MAX];
-static int      _sno_abort_depth = 0;
-static int      _sno_abort_lineno = 0;
+#define ABRT_STACK_INIT 16
+static jmp_buf **_sno_abort_stack = NULL;
+static int       _sno_abort_depth = 0;
+static int       _sno_abort_cap   = 0;
+static int       _sno_abort_lineno = 0;
 
 static inline void push_abort_handler(jmp_buf *jb) {
-    if (_sno_abort_depth < ABRT_STACK_MAX)
-        _sno_abort_stack[_sno_abort_depth++] = jb;
+    if (_sno_abort_depth >= _sno_abort_cap) {
+        _sno_abort_cap = _sno_abort_cap ? _sno_abort_cap * 2 : ABRT_STACK_INIT;
+        _sno_abort_stack = realloc(_sno_abort_stack, _sno_abort_cap * sizeof(jmp_buf *));
+        if (!_sno_abort_stack) { fprintf(stderr, "abort stack OOM\n"); abort(); }
+    }
+    _sno_abort_stack[_sno_abort_depth++] = jb;
 }
 static inline void pop_abort_handler(void) {
     if (_sno_abort_depth > 0) _sno_abort_depth--;

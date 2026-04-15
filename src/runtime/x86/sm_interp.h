@@ -12,17 +12,16 @@
 #ifndef SM_INTERP_H
 #define SM_INTERP_H
 
+#include <stdlib.h>
 #include <setjmp.h>
 #include "sm_prog.h"
 #include "snobol4.h"
 
-/* Value stack depth */
-#define SM_STACK_MAX 256
-
 /* Interpreter state */
 typedef struct {
-    DESCR_t   stack[SM_STACK_MAX];
+    DESCR_t  *stack;       /* dynamic value stack (realloc-grown) */
     int       sp;          /* stack pointer: stack[0..sp-1] are live */
+    int       stack_cap;   /* current allocated capacity */
     int       last_ok;     /* 1 = last operation succeeded, 0 = failed */
     int       pc;          /* program counter: index into SM_Program */
     jmp_buf   err_jmp;     /* per-statement error recovery (SM_STNO arms it) */

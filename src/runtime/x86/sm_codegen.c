@@ -58,14 +58,17 @@ int      g_jit_steps_done = 0;
 jmp_buf  g_jit_step_jmp;
 
 /* Pat-stack (mirrors sm_interp.c's private g_pat_stack) */
-#define JIT_PAT_STACK_MAX 128
-static DESCR_t g_jit_pat_stack[JIT_PAT_STACK_MAX];
-static int     g_jit_pat_sp = 0;
+#define JIT_PAT_STACK_INIT 16
+static DESCR_t *g_jit_pat_stack = NULL;
+static int      g_jit_pat_sp    = 0;
+static int      g_jit_pat_cap   = 0;
 
 static void jit_pat_push(DESCR_t d)
 {
-    if (g_jit_pat_sp >= JIT_PAT_STACK_MAX) {
-        fprintf(stderr, "sm_codegen: pat-stack overflow\n"); abort();
+    if (g_jit_pat_sp >= g_jit_pat_cap) {
+        g_jit_pat_cap = g_jit_pat_cap ? g_jit_pat_cap * 2 : JIT_PAT_STACK_INIT;
+        g_jit_pat_stack = realloc(g_jit_pat_stack, g_jit_pat_cap * sizeof(DESCR_t));
+        if (!g_jit_pat_stack) { fprintf(stderr, "sm_codegen: pat-stack OOM\n"); abort(); }
     }
     g_jit_pat_stack[g_jit_pat_sp++] = d;
 }
@@ -224,7 +227,9 @@ static void h_push_var(void)
 static void h_store_var(void)
 {
     DESCR_t val = POP();
-    NV_SET_fn(CUR_INS->a[0].s, val);
+    if (val.v == DT_FAIL) { STATE->last_ok = 0; return; }
+    DESCR_t stored = NV_SET_fn(CUR_INS->a[0].s, val);
+    PUSH(stored);   /* match sm_interp: SM_STORE_VAR pushes result for chained assignment */
 }
 
 static void h_pop(void) { POP(); }

@@ -70,9 +70,9 @@ seq_t *bb_seq_new(bb_box_fn lf, void *ls, bb_box_fn rf, void *rs)
 /* _XOR      ALT         alternation: try each child on α; β retries same child only */
 
 #pragma GCC diagnostic ignored "-Wmisleading-indentation"
-#define BB_ALT_MAX 16
+#define BB_ALT_INIT 4
 typedef struct { bb_box_fn fn; void *state; } bb_altchild_t;
-typedef struct { int n; bb_altchild_t children[BB_ALT_MAX]; int current; int position; spec_t result; } alt_t;
+typedef struct { int n; int cap; bb_altchild_t *children; int current; int position; spec_t result; } alt_t;
 
 DESCR_t bb_alt(void *zeta, int entry)
 {
@@ -100,7 +100,14 @@ DESCR_t bb_alt(void *zeta, int entry)
 }
 
 alt_t *bb_alt_new(int n, bb_box_fn *fns)
-{ alt_t *ζ=calloc(1,sizeof(alt_t)); ζ->n=n; for(int i=0;i<n&&i<BB_ALT_MAX;i++) ζ->children[i].fn=fns[i]; return ζ; }
+{
+    alt_t *ζ = calloc(1, sizeof(alt_t));
+    ζ->cap      = n > BB_ALT_INIT ? n : BB_ALT_INIT;
+    ζ->children = malloc(ζ->cap * sizeof(bb_altchild_t));
+    ζ->n = n;
+    for (int i = 0; i < n; i++) ζ->children[i].fn = fns[i];
+    return ζ;
+}
 
 /* ───── arb ───── */
 /* _XFARB    ARB         match 0..n chars lazily; β extends by 1 */
@@ -127,9 +134,9 @@ arb_t *bb_arb_new(void)
 /* _XARBN    ARBNO       zero-or-more greedy; zero-advance guard; β unwinds stack */
 
 #pragma GCC diagnostic ignored "-Wmisleading-indentation"
-#define ARBNO_STACK_MAX 64
+#define ARBNO_INIT 8
 typedef struct { spec_t matched; int start; } arbno_frame_t;
-typedef struct { bb_box_fn fn; void *state; int depth; arbno_frame_t stack[ARBNO_STACK_MAX]; } arbno_t;
+typedef struct { bb_box_fn fn; void *state; int depth; int cap; arbno_frame_t *stack; } arbno_t;
 
 DESCR_t bb_arbno(void *zeta, int entry)
 {
@@ -137,19 +144,24 @@ DESCR_t bb_arbno(void *zeta, int entry)
     spec_t ARBNO; spec_t br; arbno_frame_t *fr;
     if (entry==α)                                                               goto ARBNO_α;
     if (entry==β)                                                               goto ARBNO_β;
-    ARBNO_α:        ζ->depth=0; fr=&ζ->stack[0];                                
-                    fr->matched=spec(Σ+Δ,0); fr->start=Δ;                       
-    ARBNO_try:      br=spec_from_descr(ζ->fn(ζ->state,α));                                       
+    ARBNO_α:        ζ->depth=0; fr=&ζ->stack[0];
+                    fr->matched=spec(Σ+Δ,0); fr->start=Δ;
+    ARBNO_try:      br=spec_from_descr(ζ->fn(ζ->state,α));
                     if (spec_is_empty(br))                                      goto body_ω;
                                                                                 goto body_γ;
     ARBNO_β:        if (ζ->depth<=0)                                            goto ARBNO_ω;
                     ζ->depth--; fr=&ζ->stack[ζ->depth]; Δ=fr->start;            goto ARBNO_γ;
-    body_γ:         fr=&ζ->stack[ζ->depth];                                     
+    body_γ:         fr=&ζ->stack[ζ->depth];
                     if (Δ==fr->start)                                           goto ARBNO_γ_now;
-                    ARBNO=spec_cat(fr->matched,br);                             
-                    if (ζ->depth+1<ARBNO_STACK_MAX) {                           
-                        ζ->depth++; fr=&ζ->stack[ζ->depth];                     
-                        fr->matched=ARBNO; fr->start=Δ; }                       goto ARBNO_try;
+                    ARBNO=spec_cat(fr->matched,br);
+                    ζ->depth++;
+                    if (ζ->depth >= ζ->cap) {
+                        ζ->cap *= 2;
+                        ζ->stack = realloc(ζ->stack, ζ->cap * sizeof(arbno_frame_t));
+                        if (!ζ->stack) { fprintf(stderr, "bb_arbno: OOM\n"); abort(); }
+                    }
+                    fr=&ζ->stack[ζ->depth];
+                    fr->matched=ARBNO; fr->start=Δ;                             goto ARBNO_try;
     body_ω:         ARBNO=ζ->stack[ζ->depth].matched;                           goto ARBNO_γ;
     ARBNO_γ_now:    ARBNO=ζ->stack[ζ->depth].matched;                           goto ARBNO_γ;
     ARBNO_γ:                                                                    return descr_from_spec(ARBNO);
@@ -157,7 +169,14 @@ DESCR_t bb_arbno(void *zeta, int entry)
 }
 
 arbno_t *bb_arbno_new(bb_box_fn fn, void *state)
-{ arbno_t *ζ=calloc(1,sizeof(arbno_t)); ζ->fn=fn; ζ->state=state; return ζ; }
+{
+    arbno_t *ζ = calloc(1, sizeof(arbno_t));
+    ζ->fn    = fn;
+    ζ->state = state;
+    ζ->cap   = ARBNO_INIT;
+    ζ->stack = malloc(ζ->cap * sizeof(arbno_frame_t));
+    return ζ;
+}
 
 /* ───── any ───── */
 /* _XANYC    ANY         match one char if in set */

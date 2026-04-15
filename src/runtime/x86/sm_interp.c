@@ -76,14 +76,17 @@ static void pump_print(DESCR_t val, void *arg) {
     char *s = VARVAL_fn(val);
     if (s) printf("%s\n", s);
 }
-#define SM_PAT_STACK_MAX 128
-static DESCR_t g_pat_stack[SM_PAT_STACK_MAX];
-static int     g_pat_sp = 0;
+#define SM_PAT_STACK_INIT 16
+static DESCR_t *g_pat_stack = NULL;
+static int      g_pat_sp    = 0;
+static int      g_pat_cap   = 0;
 
 static void pat_push(DESCR_t d)
 {
-    if (g_pat_sp >= SM_PAT_STACK_MAX) {
-        fprintf(stderr, "sm_interp: pat-stack overflow\n"); abort();
+    if (g_pat_sp >= g_pat_cap) {
+        g_pat_cap = g_pat_cap ? g_pat_cap * 2 : SM_PAT_STACK_INIT;
+        g_pat_stack = realloc(g_pat_stack, g_pat_cap * sizeof(DESCR_t));
+        if (!g_pat_stack) { fprintf(stderr, "sm_interp: pat-stack OOM\n"); abort(); }
     }
     g_pat_stack[g_pat_sp++] = d;
 }
@@ -98,19 +101,31 @@ static DESCR_t pat_pop(void)
 
 /* ── Stack helpers ──────────────────────────────────────────────────── */
 
+#define SM_STACK_INIT 16
 void sm_state_init(SM_State *st)
 {
     memset(st, 0, sizeof *st);
-    st->sp      = 0;
-    st->last_ok = 1;
-    st->pc      = 0;
+    st->stack     = malloc(SM_STACK_INIT * sizeof(DESCR_t));
+    st->stack_cap = SM_STACK_INIT;
+    st->sp        = 0;
+    st->last_ok   = 1;
+    st->pc        = 0;
+}
+
+void sm_state_free(SM_State *st)
+{
+    free(st->stack);
+    st->stack     = NULL;
+    st->stack_cap = 0;
+    st->sp        = 0;
 }
 
 void sm_push(SM_State *st, DESCR_t d)
 {
-    if (st->sp >= SM_STACK_MAX) {
-        fprintf(stderr, "sm_interp: stack overflow\n");
-        abort();
+    if (st->sp >= st->stack_cap) {
+        st->stack_cap *= 2;
+        st->stack = realloc(st->stack, st->stack_cap * sizeof(DESCR_t));
+        if (!st->stack) { fprintf(stderr, "sm_interp: out of memory\n"); abort(); }
     }
     st->stack[st->sp++] = d;
 }
