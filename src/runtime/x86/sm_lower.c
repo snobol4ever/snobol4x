@@ -503,6 +503,7 @@ static void lower_expr(SM_Program *p, LabelTable *lt, const EXPR_t *e)
         lower_expr(p, lt, e->nchildren > 0 ? e->children[0] : NULL);
         sm_emit_i(p, SM_PUSH_LIT_I, 0);   /* no replacement */
         sm_emit(p, SM_EXEC_STMT);
+        sm_emit(p, SM_PUSH_NULL);          /* balance value stack; last_ok already set */
         return;
 
     /* ── OPSYN operator & / @ / | — dispatch via APPLY_fn(sval, args, n) ── */

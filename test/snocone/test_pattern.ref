@@ -1,0 +1,9 @@
+PASS: 1 literal match
+PASS: 2 non-match
+PASS: 3 ANY
+PASS: 4 LEN
+PASS: 5 SPAN
+PASS: 6 BREAK
+PASS: 7 ARB
+PASS: 8 alternation
+PASS: 9 capture word=hello
