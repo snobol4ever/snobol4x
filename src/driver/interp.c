@@ -127,6 +127,12 @@ STMT_t *label_lookup(const char *name)
 
 #define CALL_STACK_MAX 256
 
+/* SN-3: shadow table for params/locals whose names collide with SPITBOL builtins
+ * (e.g. LEN, ANY, SPAN — NV_SET_fn cannot override these in the SPITBOL NV store).
+ * Checked in E_VAR and NV_SET before NV_GET_fn/NV_SET_fn. */
+#define SHADOW_MAX 32
+typedef struct { char name[64]; DESCR_t val; } ShadowEntry;
+
 typedef struct {
     jmp_buf  ret_env;
     char     fname[128];    /* uppercase — also the return-value variable */
@@ -135,10 +141,42 @@ typedef struct {
     int      nsaved;
     DESCR_t  retval_cell;  /* return-value capture: bypasses NV keyword collision */
     int      retval_set;   /* 1 if retval_cell was written by body assignment */
+    ShadowEntry shadow[SHADOW_MAX]; /* SN-3: per-frame builtin-name shadows */
+    int         nshadow;
 } CallFrame;
 
 static CallFrame  call_stack[CALL_STACK_MAX];
 static int        call_depth = 0;
+
+/* SN-3: shadow table helpers — check active frames top-down */
+static int shadow_get(const char *name, DESCR_t *out) {
+    for (int d = call_depth - 1; d >= 0; d--) {
+        CallFrame *fr = &call_stack[d];
+        for (int j = 0; j < fr->nshadow; j++)
+            if (strcasecmp(fr->shadow[j].name, name) == 0) { *out = fr->shadow[j].val; return 1; }
+    }
+    return 0;
+}
+static void shadow_set_cur(const char *name, DESCR_t val) {
+    if (call_depth <= 0) return;
+    CallFrame *fr = &call_stack[call_depth - 1];
+    for (int j = 0; j < fr->nshadow; j++)
+        if (strcasecmp(fr->shadow[j].name, name) == 0) { fr->shadow[j].val = val; return; }
+    if (fr->nshadow < SHADOW_MAX) {
+        strncpy(fr->shadow[fr->nshadow].name, name, 63);
+        fr->shadow[fr->nshadow].name[63] = '\0';
+        fr->shadow[fr->nshadow].val = val;
+        fr->nshadow++;
+    }
+}
+static int shadow_has(const char *name) {
+    for (int d = call_depth - 1; d >= 0; d--) {
+        CallFrame *fr = &call_stack[d];
+        for (int j = 0; j < fr->nshadow; j++)
+            if (strcasecmp(fr->shadow[j].name, name) == 0) return 1;
+    }
+    return 0;
+}
 
 /* The program being interpreted (set in main before execute_program) */
 Program *g_prog = NULL;
@@ -246,7 +284,11 @@ static inline int NAME_SET(DESCR_t nd, DESCR_t val) {
  * KW-RETFIX: capture return-value writes into frame->retval_cell to bypass
  * NV keyword collision when user procedure name matches a keyword (e.g. "Trim"). */
 static inline void set_and_trace(const char *name, DESCR_t val) {
+    /* SN-3: if this name is in the shadow table, update shadow and skip NV_SET_fn
+     * (which would be ignored for pattern-primitive names anyway). */
+    if (shadow_has(name)) { shadow_set_cur(name, val); goto trace_hook; }
     NV_SET_fn(name, val);
+trace_hook:
     if (call_depth > 0) {
         CallFrame *fr = &call_stack[call_depth - 1];
         if (name && fr->fname[0] && strcasecmp(name, fr->fname) == 0) {
@@ -390,6 +432,16 @@ static DESCR_t call_user_function(const char *fname, DESCR_t *args, int nargs)
     kw_fnclevel = call_depth;  /* &FNCLEVEL tracks live nesting depth */
     strncpy(fr->fname, retname, sizeof(fr->fname)-1);
     fr->fname[sizeof(fr->fname)-1] = '\0';
+    fr->nshadow = 0;  /* SN-3: clear shadow table for this frame */
+    /* SN-3: register params/locals whose names collide with SPITBOL builtins
+     * (e.g. LEN, ANY, SPAN — NV_GET_fn returns the builtin descriptor, ignoring
+     * NV_SET_fn writes). Shadow table takes priority in E_VAR lookup. */
+    for (int i = 0; i < np; i++)
+        if (_is_pat_fnc_name(pnames[i]))
+            shadow_set_cur(pnames[i], (i < nargs) ? args[i] : NULVCL);
+    for (int i = 0; i < nl; i++)
+        if (_is_pat_fnc_name(lnames[i]))
+            shadow_set_cur(lnames[i], NULVCL);
     fr->saved_names = snames;
     fr->saved_vals  = svals;
     fr->nsaved      = nsaved;
@@ -1308,6 +1360,9 @@ DESCR_t interp_eval(EXPR_t *e)
 
     case E_VAR:
         if (e->sval && *e->sval) {
+            /* SN-3: shadow table takes priority — param/local named after a pattern
+             * primitive (LEN, ANY, SPAN, …) is invisible to NV_GET_fn. */
+            { DESCR_t _sv; if (shadow_get(e->sval, &_sv)) return _sv; }
             DESCR_t _vr = NV_GET_fn(e->sval);
             if (!IS_NULL(_vr)) return _vr;
             /* Zero-arg builtin (ARB, REM, FAIL, SUCCEED, etc.) stored as
