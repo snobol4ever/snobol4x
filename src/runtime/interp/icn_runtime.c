@@ -706,6 +706,25 @@ bb_node_t icn_eval_gen(EXPR_t *e) {
             }
             return (bb_node_t){ icn_bb_raku_array, z, 0 };
         }
+        /* IC-5: DT_DATA icnlist — !L yields each element */
+        if (sv.v == DT_DATA) {
+            DESCR_t tag = FIELD_GET_fn(sv, "icn_type");
+            if (tag.v == DT_S && tag.s && strcmp(tag.s, "list") == 0) {
+                int n = (int)FIELD_GET_fn(sv, "icn_size").i;
+                DESCR_t ea = FIELD_GET_fn(sv, "icn_elems");
+                DESCR_t *elems = (ea.v == DT_DATA) ? (DESCR_t *)ea.ptr : NULL;
+                icn_tbl_iterate_state_t *z = calloc(1, sizeof(*z));
+                /* Reuse tbl_iterate state: bucket=pos index into elems array,
+                 * entry=NULL (not used), tbl=NULL.  We use a custom box below. */
+                /* Use a dedicated list-iterate box */
+                icn_list_iterate_state_t *lz = calloc(1, sizeof(*lz));
+                lz->elems = elems;
+                lz->n     = n;
+                lz->pos   = 0;
+                (void)z; free(z);
+                return (bb_node_t){ icn_bb_list_iterate, lz, 0 };
+            }
+        }
         /* Icon char mode */
         icn_iterate_state_t *z = calloc(1, sizeof(*z));
         if (!IS_FAIL_fn(sv) && sv.s) {
@@ -715,13 +734,26 @@ bb_node_t icn_eval_gen(EXPR_t *e) {
         return (bb_node_t){ icn_bb_iterate, z, 0 };
     }
 
-    /* ── E_ALTERNATE: (left | right) ────────────────────────────────────── */
+    /* ── E_ALTERNATE: (a | b | c | …) n-ary ─────────────────────────────── */
     if (e->kind == E_ALTERNATE && e->nchildren >= 2) {
-        icn_alternate_state_t *z = calloc(1, sizeof(*z));
-        z->gen[0] = icn_eval_gen(e->children[0]);
-        z->gen[1] = icn_eval_gen(e->children[1]);
-        z->which  = 0;
-        return (bb_node_t){ icn_bb_alternate, z, 0 };
+        /* Build left-recursive chain: alt(alt(gen[0], gen[1]), gen[2]), ...
+         * so that exhausting each branch naturally falls through to the next. */
+        bb_node_t acc;
+        {
+            icn_alternate_state_t *z = calloc(1, sizeof(*z));
+            z->gen[0] = icn_eval_gen(e->children[0]);
+            z->gen[1] = icn_eval_gen(e->children[1]);
+            z->which  = 0;
+            acc = (bb_node_t){ icn_bb_alternate, z, 0 };
+        }
+        for (int _ai = 2; _ai < e->nchildren; _ai++) {
+            icn_alternate_state_t *z2 = calloc(1, sizeof(*z2));
+            z2->gen[0] = acc;
+            z2->gen[1] = icn_eval_gen(e->children[_ai]);
+            z2->which  = 0;
+            acc = (bb_node_t){ icn_bb_alternate, z2, 0 };
+        }
+        return acc;
     }
 
     /* ── Arithmetic / relational binop with generative operand(s) ─────────

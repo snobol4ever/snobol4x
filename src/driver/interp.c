@@ -151,6 +151,31 @@ typedef struct {
 static CallFrame  call_stack[CALL_STACK_MAX];
 static int        call_depth = 0;
 
+/* ── IC-5: E_INITIAL persistence — file-scope table keyed on EXPR_t node id ── */
+#define ICN_INIT_MAX   64
+#define ICN_INIT_SLOTS  8
+typedef struct { char nm[64]; DESCR_t val; } IcnInitSlot;
+typedef struct { int id; int ns; IcnInitSlot s[ICN_INIT_SLOTS]; } IcnInitEnt;
+static IcnInitEnt icn_init_tab[ICN_INIT_MAX];
+static int        icn_init_n = 0;
+
+/* Called just before NV restore in call_user_function to update snapshots */
+static void icn_init_update_snapshot(char **snames, DESCR_t *svals, int nsaved) {
+    /* For each init entry, check if any tracked var appears in snames (locals).
+     * If so, capture its current NV value (pre-restore = end-of-call value). */
+    for (int ei = 0; ei < icn_init_n; ei++) {
+        IcnInitEnt *ent = &icn_init_tab[ei];
+        for (int si = 0; si < ent->ns; si++) {
+            for (int ni = 0; ni < nsaved; ni++) {
+                if (snames[ni] && strcasecmp(snames[ni], ent->s[si].nm) == 0) {
+                    ent->s[si].val = NV_GET_fn(ent->s[si].nm);
+                    break;
+                }
+            }
+        }
+    }
+}
+
 /* SN-3: shadow table helpers — check active frames top-down */
 static int shadow_get(const char *name, DESCR_t *out) {
     for (int d = call_depth - 1; d >= 0; d--) {
@@ -350,6 +375,7 @@ static DESCR_t *data_field_ptr(const char *fname, DESCR_t inst) {
 
 /* SC-1: forward declarations for DATA registry (defined near _builtin_DATA below) */
 typedef struct { char name[64]; int nfields; char fields[64][64]; } ScDatType;
+static ScDatType *sc_dat_register(const char *spec);
 static ScDatType *sc_dat_find_type(const char *name);
 static ScDatType *sc_dat_find_field(const char *name, int *fidx);
 static DESCR_t    sc_dat_construct(ScDatType *t, DESCR_t *args, int nargs);
@@ -709,6 +735,8 @@ static DESCR_t call_user_function(const char *fname, DESCR_t *args, int nargs)
 
 fn_done:
     comm_return(fname, retval);  /* T-2: FUNCTION trace RETURN event */
+    /* ── IC-5: snapshot initial-block locals before they're wiped ── */
+    icn_init_update_snapshot(snames, svals, nsaved);
     /* ── Restore saved variables and pop frame ── */
     for (int i = 0; i < nsaved; i++)
         NV_SET_fn(snames[i], svals[i]);
@@ -867,7 +895,29 @@ DESCR_t interp_eval(EXPR_t *e)
                 else { const char *s=VARVAL_fn(a); printf("%s",s?s:""); }
                 return a;
             }
-            if (!strcmp(fn,"read"))  return NULVCL;
+            if (!strcmp(fn,"read") && nargs == 0) {
+                /* Icon read() — read one line from stdin, strip trailing newline.
+                 * Fails on EOF. */
+                char buf[4096];
+                if (!fgets(buf, sizeof buf, stdin)) return FAILDESCR;
+                size_t len = strlen(buf);
+                if (len > 0 && buf[len-1] == '\n') buf[--len] = '\0';
+                if (len > 0 && buf[len-1] == '\r') buf[--len] = '\0';
+                char *r = GC_malloc(len + 1); memcpy(r, buf, len + 1);
+                return STRVAL(r);
+            }
+            if (!strcmp(fn,"reads") && nargs == 1) {
+                /* Icon reads(n) — read n bytes from stdin, fail on EOF. */
+                DESCR_t nd = interp_eval(e->children[1]);
+                int n = (int)to_int(nd);
+                if (n <= 0) return FAILDESCR;
+                char *buf = GC_malloc(n + 1);
+                int got = (int)fread(buf, 1, (size_t)n, stdin);
+                if (got <= 0) return FAILDESCR;
+                buf[got] = '\0';
+                DESCR_t r; r.v = DT_S; r.slen = (uint32_t)got; r.s = buf;
+                return r;
+            }
             if (!strcmp(fn,"stop"))  { exit(0); }
             if (!strcmp(fn,"any") && nargs>=1 && icn_scan_pos>0) {
                 DESCR_t cs=interp_eval(e->children[1]);
@@ -1478,10 +1528,16 @@ DESCR_t interp_eval(EXPR_t *e)
              * member(T,k)     → return T[k] if present, else fail
              * key(T)          → generator: yields each key (via every)     */
             if (!strcmp(fn,"table") && nargs <= 2) {
-                TBBLK_t *tbl = (nargs == 2)
-                    ? table_new_args((int)to_int(interp_eval(e->children[1])),
-                                     (int)to_int(interp_eval(e->children[2])))
-                    : table_new();
+                /* Icon: table()      → empty table, default=&null
+                 *       table(x)     → empty table, default=x
+                 *       table(n,inc) → SNOBOL4 compat (ignored for Icon) */
+                TBBLK_t *tbl = table_new();
+                if (nargs == 1) {
+                    /* Icon table(dflt) — one arg is the default value */
+                    tbl->dflt = interp_eval(e->children[1]);
+                } else {
+                    tbl->dflt = NULVCL;
+                }
                 DESCR_t d; d.v = DT_T; d.slen = 0; d.tbl = tbl;
                 return d;
             }
@@ -3104,21 +3160,66 @@ DESCR_t interp_eval(EXPR_t *e)
         return STRVAL(buf);
     }
 
-    /* ── IC-5: E_INITIAL — once-only block per procedure invocation ─────── */
+    /* ── IC-5: E_INITIAL — once-only block; persists local values across calls ─ */
     case E_INITIAL: {
-        /* Use the proc node pointer as key: store "ran" flag as NV with address-derived name.
-         * We tag the EXPR_t node itself with ival=1 after first run. */
-        if (e->ival != 0) return NULVCL;   /* already ran */
-        e->ival = 1;   /* mark ran — persists since EXPR_t is GC-allocated once */
-        for (int i = 0; i < e->nchildren; i++) interp_eval(e->children[i]);
+        /* Uses file-scope icn_init_tab[] keyed on e->id.
+         * First call: run block, snapshot assigned locals.
+         * Subsequent calls: restore snapshot (updated at call exit by icn_init_update_snapshot). */
+        IcnInitEnt *ent = NULL;
+        for (int _i = 0; _i < icn_init_n; _i++)
+            if (icn_init_tab[_i].id == e->id) { ent = &icn_init_tab[_i]; break; }
+
+        if (!ent) {
+            /* ── First call: run the block ── */
+            for (int i = 0; i < e->nchildren; i++) interp_eval(e->children[i]);
+            if (icn_init_n < ICN_INIT_MAX) {
+                ent = &icn_init_tab[icn_init_n++];
+                ent->id = e->id; ent->ns = 0;
+                for (int i = 0; i < e->nchildren && ent->ns < ICN_INIT_SLOTS; i++) {
+                    EXPR_t *ch = e->children[i];
+                    if (!ch || ch->kind != E_ASSIGN || ch->nchildren < 1) continue;
+                    EXPR_t *lhs = ch->children[0];
+                    if (!lhs || lhs->kind != E_VAR || !lhs->sval) continue;
+                    IcnInitSlot *sl = &ent->s[ent->ns++];
+                    strncpy(sl->nm, lhs->sval, 63); sl->nm[63] = '\0';
+                    if (icn_frame_depth > 0 && lhs->ival >= 0 && lhs->ival < ICN_CUR.env_n)
+                        sl->val = ICN_CUR.env[lhs->ival];
+                    else
+                        sl->val = NV_GET_fn(lhs->sval);
+                }
+            }
+            e->ival = 1;
+        } else {
+            /* ── Subsequent calls: restore snapshot into frame/NV ── */
+            for (int si = 0; si < ent->ns; si++) {
+                int restored = 0;
+                if (icn_frame_depth > 0) {
+                    for (int i = 0; i < e->nchildren && !restored; i++) {
+                        EXPR_t *ch = e->children[i];
+                        if (!ch || ch->kind != E_ASSIGN || ch->nchildren < 1) continue;
+                        EXPR_t *lhs = ch->children[0];
+                        if (!lhs || lhs->kind != E_VAR || !lhs->sval) continue;
+                        if (strcasecmp(lhs->sval, ent->s[si].nm) == 0
+                            && lhs->ival >= 0 && lhs->ival < ICN_CUR.env_n) {
+                            ICN_CUR.env[lhs->ival] = ent->s[si].val;
+                            restored = 1;
+                        }
+                    }
+                }
+                if (!restored) NV_SET_fn(ent->s[si].nm, ent->s[si].val);
+            }
+        }
         return NULVCL;
     }
 
     /* ── IC-5: E_RECORD — register record type ──────────────────────────── */
     case E_RECORD: {
         /* e->sval = type name; children = field name E_VAR nodes.
-         * Build spec string "typename(f1,f2,...)" and call DEFDAT_fn. */
+         * Build spec string "typename(f1,f2,...)" and call DEFDAT_fn + sc_dat_register. */
         if (!e->sval) return NULVCL;
+        /* Only register once (EXPR_t node persists across calls) */
+        if (e->ival != 0) return NULVCL;
+        e->ival = 1;
         char spec[256]; int pos=0;
         pos += snprintf(spec+pos, sizeof(spec)-pos, "%s(", e->sval);
         for (int i = 0; i < e->nchildren && pos < (int)sizeof(spec)-2; i++) {
@@ -3129,7 +3230,19 @@ DESCR_t interp_eval(EXPR_t *e)
         if (pos < (int)sizeof(spec)-1) spec[pos++]=')';
         spec[pos]='\0';
         DEFDAT_fn(spec);
+        sc_dat_register(spec);   /* IC-5: also register in our dispatch table */
         return NULVCL;
+    }
+
+    /* ── IC-5: E_FIELD — field access: obj.fieldname ────────────────────── */
+    case E_FIELD: {
+        /* e->sval = field name; child[0] = object expression */
+        if (!e->sval || e->nchildren < 1) return NULVCL;
+        DESCR_t obj = interp_eval(e->children[0]);
+        if (IS_FAIL_fn(obj)) return FAILDESCR;
+        DESCR_t *cell = data_field_ptr(e->sval, obj);
+        if (!cell) return FAILDESCR;
+        return *cell;
     }
 
     /* ── IC-5: E_GLOBAL (declaration, skip at eval time) ───────────────── */
@@ -3182,6 +3295,14 @@ static DESCR_t *interp_eval_ref(EXPR_t *e)
         if (e->sval)
             return NV_PTR_fn(e->sval);
         return NULL;
+    }
+
+    case E_FIELD: {
+        /* obj.fieldname as lvalue — return interior ptr to field cell */
+        if (!e->sval || e->nchildren < 1) return NULL;
+        DESCR_t obj = interp_eval(e->children[0]);
+        if (IS_FAIL_fn(obj)) return NULL;
+        return data_field_ptr(e->sval, obj);
     }
 
     case E_CAPT_COND_ASGN: {

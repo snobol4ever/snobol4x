@@ -161,6 +161,7 @@ typedef struct _TBBLK_t {
     TBPAIR_t *buckets[TABLE_BUCKETS];
     int            size;
     int            init, inc;   /* constructor args for stringify: TABLE(init,inc) */
+    DESCR_t        dflt;        /* IC-5: default value returned on missing-key lookup */
 } TBBLK_t;
 
 TBBLK_t *table_new(void);

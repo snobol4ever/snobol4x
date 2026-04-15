@@ -435,7 +435,9 @@ DESCR_t subscript_get(DESCR_t arr, DESCR_t idx) {
         else if (IS_REAL_fn(idx)) { snprintf(kb,sizeof kb,"%g",idx.r); ks=kb; }
         else                      { ks = VARVAL_fn(idx); if (!ks) ks=""; }
         if (!table_has(arr.tbl, ks)) {
-            /* return table default if set (stored in init field as DESCR_t encoding) */
+            /* IC-5: return table default value if not &null */
+            if (arr.tbl->dflt.v != DT_FAIL && arr.tbl->dflt.v != 0)
+                return arr.tbl->dflt;
             return FAILDESCR;
         }
         return table_get(arr.tbl, ks);
@@ -445,7 +447,7 @@ DESCR_t subscript_get(DESCR_t arr, DESCR_t idx) {
         const char *s = arr.s ? arr.s : "";
         int slen = (int)strlen(s);
         int i = (int)to_int(idx);
-        if (i < 0) i = slen + 1 + i + 1;   /* -1 → last char position */
+        if (i < 0) i = slen + i + 1;   /* Icon: s[-1] → last char (1-based) */
         if (i < 1 || i > slen) return FAILDESCR;
         char *buf = GC_malloc(2); buf[0] = s[i-1]; buf[1] = '\0';
         return STRVAL(buf);

@@ -64,6 +64,8 @@ typedef struct { double lo; double hi; double step; double cur; }               
 DESCR_t icn_bb_to_by_real(void *zeta, int entry);
 typedef struct { const char *str; long len; long pos; char ch[2]; }                  icn_iterate_state_t;
 typedef struct { TBBLK_t *tbl; int bucket; TBPAIR_t *entry; }                        icn_tbl_iterate_state_t;
+typedef struct { DESCR_t *elems; int n; int pos; }                                   icn_list_iterate_state_t;
+DESCR_t icn_bb_list_iterate(void *zeta, int entry);
 typedef struct { const char *needle; const char *hay; int nlen; const char *next; }  icn_find_state_t;
 typedef struct {
     ucontext_t  gen_ctx;

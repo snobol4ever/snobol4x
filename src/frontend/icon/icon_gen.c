@@ -137,6 +137,23 @@ DESCR_t icn_bb_tbl_iterate(void *zeta, int entry) {
 }
 
 /*============================================================================================================================
+ * IC-5: icn_bb_list_iterate — E_ITERATE Byrd box for DT_DATA icnlist  (!L yields elements)
+ *   α: reset pos=0, return elems[0].
+ *   β: advance pos, return elems[pos].
+ *   ω: pos >= n.
+ *============================================================================================================================*/
+DESCR_t icn_bb_list_iterate(void *zeta, int entry) {
+    icn_list_iterate_state_t *z = (icn_list_iterate_state_t *)zeta;
+    if (!z->elems || z->n <= 0) return FAILDESCR;
+    if (entry == α) z->pos = 0;
+    else            z->pos++;
+    if (z->pos >= z->n) return FAILDESCR;
+    return z->elems[z->pos];
+}
+
+
+
+/*============================================================================================================================
  * B-6: icn_bb_suspend — E_SUSPEND Byrd box (coroutine wrapper)
  *
  * Wraps existing ucontext coroutine machinery from scrip.c.
