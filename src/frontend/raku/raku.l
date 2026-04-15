@@ -62,6 +62,9 @@ WS       [ \t\r]
 "return"        { return KW_RETURN; }
 "exists"        { return KW_EXISTS; }
 "delete"        { return KW_DELETE; }
+"unless"        { return KW_UNLESS; }
+"until"         { return KW_UNTIL; }
+"repeat"        { return KW_REPEAT; }
 "True"          { raku_yylval.ival = 1; return LIT_INT; }
 "False"         { raku_yylval.ival = 0; return LIT_INT; }
 "eq"            { return OP_SEQ; }

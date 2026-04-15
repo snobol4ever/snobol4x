@@ -154,7 +154,7 @@ static void add_proc(EXPR_t *e) {
 %token KW_MY KW_SAY KW_PRINT KW_IF KW_ELSE KW_ELSIF KW_WHILE KW_FOR
 %token KW_SUB KW_GATHER KW_TAKE KW_RETURN
 %token KW_GIVEN KW_WHEN KW_DEFAULT
-%token KW_EXISTS KW_DELETE
+%token KW_EXISTS KW_DELETE KW_UNLESS KW_UNTIL KW_REPEAT
 
 %token OP_RANGE OP_RANGE_EX
 %token OP_ARROW
@@ -167,6 +167,7 @@ static void add_proc(EXPR_t *e) {
 %type <node> stmt expr atom range_expr cmp_expr add_expr
 %type <node> mul_expr unary_expr postfix_expr call_expr block
 %type <node> if_stmt while_stmt for_stmt sub_decl given_stmt
+%type <node> unless_stmt until_stmt repeat_stmt
 %type <list> stmt_list arg_list param_list when_list
 
 %right '=' OP_BIND
@@ -269,6 +270,9 @@ stmt
     | while_stmt        { $$=$1; }
     | for_stmt          { $$=$1; }
     | given_stmt        { $$=$1; }
+    | unless_stmt       { $$=$1; }
+    | until_stmt        { $$=$1; }
+    | repeat_stmt       { $$=$1; }
     | sub_decl          { $$=$1; }
     ;
 
@@ -284,6 +288,26 @@ if_stmt
 while_stmt
     : KW_WHILE '(' expr ')' block
         { $$=expr_binary(E_WHILE,$3,$5); }
+    ;
+
+/* RK-20: unless — if !cond */
+unless_stmt
+    : KW_UNLESS '(' expr ')' block
+        { EXPR_t *e=expr_new(E_IF); expr_add_child(e,expr_unary(E_NOT,$3)); expr_add_child(e,$5); $$=e; }
+    | KW_UNLESS '(' expr ')' block KW_ELSE block
+        { EXPR_t *e=expr_new(E_IF); expr_add_child(e,expr_unary(E_NOT,$3)); expr_add_child(e,$5); expr_add_child(e,$7); $$=e; }
+    ;
+
+/* RK-20: until — loop while cond is falsy */
+until_stmt
+    : KW_UNTIL '(' expr ')' block
+        { EXPR_t *e=expr_new(E_UNTIL); expr_add_child(e,$3); expr_add_child(e,$5); $$=e; }
+    ;
+
+/* RK-20: repeat — unconditional loop (use last to break) */
+repeat_stmt
+    : KW_REPEAT block
+        { EXPR_t *e=expr_new(E_REPEAT); expr_add_child(e,$2); $$=e; }
     ;
 
 for_stmt

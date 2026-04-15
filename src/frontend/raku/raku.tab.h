@@ -107,20 +107,23 @@ typedef struct ExprList {
     KW_DEFAULT = 280,              /* KW_DEFAULT  */
     KW_EXISTS = 281,               /* KW_EXISTS  */
     KW_DELETE = 282,               /* KW_DELETE  */
-    OP_RANGE = 283,                /* OP_RANGE  */
-    OP_RANGE_EX = 284,             /* OP_RANGE_EX  */
-    OP_ARROW = 285,                /* OP_ARROW  */
-    OP_EQ = 286,                   /* OP_EQ  */
-    OP_NE = 287,                   /* OP_NE  */
-    OP_LE = 288,                   /* OP_LE  */
-    OP_GE = 289,                   /* OP_GE  */
-    OP_SEQ = 290,                  /* OP_SEQ  */
-    OP_SNE = 291,                  /* OP_SNE  */
-    OP_AND = 292,                  /* OP_AND  */
-    OP_OR = 293,                   /* OP_OR  */
-    OP_BIND = 294,                 /* OP_BIND  */
-    OP_DIV = 295,                  /* OP_DIV  */
-    UMINUS = 296                   /* UMINUS  */
+    KW_UNLESS = 283,               /* KW_UNLESS  */
+    KW_UNTIL = 284,                /* KW_UNTIL  */
+    KW_REPEAT = 285,               /* KW_REPEAT  */
+    OP_RANGE = 286,                /* OP_RANGE  */
+    OP_RANGE_EX = 287,             /* OP_RANGE_EX  */
+    OP_ARROW = 288,                /* OP_ARROW  */
+    OP_EQ = 289,                   /* OP_EQ  */
+    OP_NE = 290,                   /* OP_NE  */
+    OP_LE = 291,                   /* OP_LE  */
+    OP_GE = 292,                   /* OP_GE  */
+    OP_SEQ = 293,                  /* OP_SEQ  */
+    OP_SNE = 294,                  /* OP_SNE  */
+    OP_AND = 295,                  /* OP_AND  */
+    OP_OR = 296,                   /* OP_OR  */
+    OP_BIND = 297,                 /* OP_BIND  */
+    OP_DIV = 298,                  /* OP_DIV  */
+    UMINUS = 299                   /* UMINUS  */
   };
   typedef enum raku_yytokentype raku_yytoken_kind_t;
 #endif
@@ -137,7 +140,7 @@ union RAKU_YYSTYPE
     EXPR_t   *node;
     ExprList *list;
 
-#line 141 "raku.tab.h"
+#line 144 "raku.tab.h"
 
 };
 typedef union RAKU_YYSTYPE RAKU_YYSTYPE;
