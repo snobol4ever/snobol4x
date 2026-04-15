@@ -440,7 +440,7 @@ static DESCR_t call_user_function(const char *fname, DESCR_t *args, int nargs)
                          * child is E_QLIT "$B" (literal) or E_VAR X (runtime indirect). */
                         EXPR_t *ic = s->subject->children[0];
                         if (ic->kind == E_QLIT && ic->sval) {
-                            subj_name = ic->sval;              /* $'name' — literal */
+                            subj_name = ic->sval;  /* $'name' — literal name, use directly */
                         } else if (ic->kind == E_VAR && ic->sval) {
                             DESCR_t xv = NV_GET_fn(ic->sval); /* $X — indirect */
                             subj_name = VARVAL_fn(xv);
@@ -2578,7 +2578,7 @@ void execute_program(Program *prog)
                 /* $'$B' or $X as subject — resolve to variable name for write-back */
                 EXPR_t *ic = s->subject->children[0];
                 if (ic->kind == E_QLIT && ic->sval) {
-                    subj_name = ic->sval;
+                    subj_name = ic->sval;  /* $'name' — literal name, use directly */
                 } else if (ic->kind == E_VAR && ic->sval) {
                     DESCR_t xv = NV_GET_fn(ic->sval);
                     subj_name = VARVAL_fn(xv);
@@ -2679,14 +2679,17 @@ void execute_program(Program *prog)
         /* ── indirect assignment: $expr = rhs ─────────────────────── */
         } else if (s->has_eq && s->subject &&
                    s->subject->kind == E_INDIRECT) {
-            DESCR_t name_d = interp_eval(s->subject->nchildren > 0
-                                         ? s->subject->children[0] : NULL);
-            const char *nm = VARVAL_fn(name_d);
-            if (!nm || !*nm) {
+            EXPR_t *ichild = s->subject->nchildren > 0 ? s->subject->children[0] : NULL;
+            DESCR_t repl_val = s->replacement ? interp_eval(s->replacement) : NULVCL;
+            if (IS_FAIL_fn(repl_val)) {
                 succeeded = 0;
             } else {
-                DESCR_t repl_val = s->replacement ? interp_eval(s->replacement) : NULVCL;
-                if (IS_FAIL_fn(repl_val)) {
+                /* $expr = rhs: evaluate expr to get string name, assign rhs to that var.
+                 * $UTF_Array[i,2] means: get string value of UTF_Array[i,2], use as var name.
+                 * This is always string-name indirection — never a subscript lvalue. */
+                DESCR_t name_d = ichild ? interp_eval(ichild) : NULVCL;
+                const char *nm = VARVAL_fn(name_d);
+                if (!nm || !*nm) {
                     succeeded = 0;
                 } else {
                     set_and_trace(nm, repl_val);
