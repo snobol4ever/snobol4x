@@ -28,7 +28,11 @@
  * provides real implementations. Otherwise inline stubs keep normal builds
  * free of any CSNOBOL4 dependency. */
 #ifdef WITH_CSNOBOL4
-/* CsnNvPair + csnobol4_run_steps + csn_nv_snapshot_free from csnobol4_shim.c */
+/* Type and declarations — definitions live in csnobol4_shim.c */
+typedef struct { char *name; char *val_str; } CsnNvPair;
+int  csnobol4_run_steps(const char *sno_path, int step_limit,
+                        CsnNvPair **out_pairs, int *out_count);
+void csn_nv_snapshot_free(CsnNvPair *pairs, int n);
 #else
 /* Inline stubs — normal scrip build has no CSNOBOL4 dependency */
 typedef struct { char *name; char *val_str; } CsnNvPair;

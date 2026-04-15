@@ -131,16 +131,17 @@ CSN_A   ?= /home/claude/csnobol4/libcsnobol4.a
 CSN_INC ?= /home/claude/csnobol4
 
 scrip-monitor:
-	mkdir -p $(OBJ)
-	$(MAKE) -f Makefile _scrip_objs
+	@# Build all scrip objects, then relink with CSNOBOL4 4th executor
+	$(MAKE) -f Makefile scrip
 	$(CC) $(CRT) -DWITH_CSNOBOL4=1 -I$(CSN_INC) \
-	      -c $(SRC)/driver/csnobol4_shim.c -o $(OBJ)/csnobol4_shim.o
+	      -c $(SRC)/driver/csnobol4_shim.c -o $(OBJ)/csnobol4_shim_csn.o
 	$(CC) $(CRT) -DWITH_CSNOBOL4=1 \
 	      -c $(SRC)/driver/sync_monitor.c -o $(OBJ)/sync_monitor_csn.o
 	$(CC) -m64 -no-pie \
-	      $(OBJ)/csnobol4_shim.o $(OBJ)/sync_monitor_csn.o \
-	      $(filter-out $(OBJ)/sync_monitor.o, $(wildcard $(OBJ)/*.o)) \
-	      $(CSN_A) $(LIBS) -o scrip-monitor
+	      $(OBJ)/csnobol4_shim_csn.o $(OBJ)/sync_monitor_csn.o \
+	      $(filter-out $(OBJ)/sync_monitor.o $(OBJ)/csnobol4_shim.o $(OBJ)/scrip_driver.o, $(wildcard $(OBJ)/*.o)) \
+	      $(OBJ)/scrip_driver.o \
+	      $(CSN_A) $(LIBS) -lutil -ldl -lz -lbz2 -o scrip-monitor
 	@echo "Built: scrip-monitor (with CSNOBOL4 4th executor)"
 
 # ── monitor_ipc.so ────────────────────────────────────────────────────────────
