@@ -28,6 +28,7 @@ extern Program *sno_parse(FILE *f, const char *filename);
 #include "frontend/prolog/term.h"
 #include "frontend/prolog/prolog_runtime.h"
 #include "frontend/prolog/prolog_atom.h"
+#include "frontend/raku/raku_re.h"
 #include "frontend/prolog/prolog_builtin.h"
 #include "frontend/prolog/pl_broker.h"
 #include "frontend/icon/icon_driver.h"
@@ -1298,8 +1299,24 @@ DESCR_t interp_eval(EXPR_t *e)
                     extern int exec_stmt(const char *, DESCR_t *, DESCR_t, DESCR_t *, int);
                     return exec_stmt(NULL, &sd, pd, NULL, 0) ? INTVAL(1) : FAILDESCR;
                 }
-                const char *needle = VARVAL_fn(pd); if (!needle) needle = "";
-                return strstr(subj, needle) ? INTVAL(1) : FAILDESCR;
+                const char *pat = VARVAL_fn(pd); if (!pat) pat = "";
+                { Raku_nfa *nfa = raku_nfa_build(pat);
+                  if (!nfa) return FAILDESCR;
+                  int hit = raku_nfa_match(nfa, subj);
+                  raku_nfa_free(nfa);
+                  return hit ? INTVAL(1) : FAILDESCR;
+                }
+            }
+            if (!strcmp(fn,"raku_nfa_compile") && nargs == 1) {
+                /* RK-32: compile pattern string -> NFA, print state count, return 0 */
+                DESCR_t pd = interp_eval(e->children[1]);
+                const char *pat = VARVAL_fn(pd); if (!pat) pat = "";
+                { Raku_nfa *nfa = raku_nfa_build(pat);
+                  if (!nfa) { printf("NFA:%s:ERROR\n", pat); return INTVAL(0); }
+                  printf("NFA:%s:states=%d\n", pat, raku_nfa_state_count(nfa));
+                  raku_nfa_free(nfa);
+                }
+                return INTVAL(0);
             }
             if (!strcmp(fn,"raku_uc") || (!strcmp(fn,"uc") && nargs == 1)) {
                 DESCR_t sd = interp_eval(e->children[1]);

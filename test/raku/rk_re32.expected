@@ -1,0 +1,6 @@
+NFA:\d+:states=4
+NFA:[a-z]+:states=4
+NFA:a|b:states=5
+NFA:.*:states=4
+NFA:^x$:states=4
+rk_re32 ok

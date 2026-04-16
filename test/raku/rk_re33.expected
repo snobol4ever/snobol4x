@@ -1,0 +1,12 @@
+digit match ok
+no digit ok
+lower match ok
+no lower ok
+alt a ok
+no alt ok
+dotstar empty ok
+dotstar str ok
+anchor ok
+anchor long ok
+anchor empty ok
+rk_re33 ok

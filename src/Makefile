@@ -72,7 +72,8 @@ RUNTIME_X86 = \
 FRONTEND_RAKU = \
     frontend/raku/raku.tab.c \
     frontend/raku/raku.lex.c \
-    frontend/raku/raku_driver.c
+    frontend/raku/raku_driver.c \
+    frontend/raku/raku_re.c
 
 ICN_RUNTIME = \
     runtime/interp/icn_runtime.c
