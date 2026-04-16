@@ -28,6 +28,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <ctype.h>
 #include <gc/gc.h>
 #include "snobol4.h"   /* FNCEX_fn, FUNC_NPARAMS_fn */
 
@@ -377,9 +378,16 @@ static void lower_expr(SM_Program *p, LabelTable *lt, const EXPR_t *e)
     case E_VAR:
         sm_emit_s(p, SM_PUSH_VAR, e->sval ? e->sval : "");
         return;
-    case E_KEYWORD:
-        sm_emit_s(p, SM_PUSH_VAR, e->sval ? e->sval : "");
+    case E_KEYWORD: {
+        /* Keywords are registered uppercase (LCASE, UCASE, etc.) but the lexer
+         * preserves the source case after stripping '&'. Uppercase before lookup. */
+        const char *kraw = e->sval ? e->sval : "";
+        char kup[64]; int ki = 0;
+        while (kraw[ki] && ki < 63) { kup[ki] = (char)toupper((unsigned char)kraw[ki]); ki++; }
+        kup[ki] = '\0';
+        sm_emit_s(p, SM_PUSH_VAR, kup);
         return;
+    }
     case E_INDIRECT:
         /* $expr — eval name-string, look up variable → push value on value stack */
         lower_expr(p, lt, e->nchildren > 0 ? e->children[0] : NULL);
@@ -447,8 +455,16 @@ static void lower_expr(SM_Program *p, LabelTable *lt, const EXPR_t *e)
         lower_expr(p, lt, e->nchildren > 1 ? e->children[1] : NULL);
         if (e->nchildren > 0 && e->children[0]) {
             const EXPR_t *lhs = e->children[0];
-            if (lhs->kind == E_VAR || lhs->kind == E_KEYWORD)
+            if (lhs->kind == E_VAR)
                 sm_emit_s(p, SM_STORE_VAR, lhs->sval ? lhs->sval : "");
+            else if (lhs->kind == E_KEYWORD) {
+                /* uppercase keyword name for NV store, matching read path */
+                const char *kraw = lhs->sval ? lhs->sval : "";
+                char kup[64]; int ki = 0;
+                while (kraw[ki] && ki < 63) { kup[ki] = (char)toupper((unsigned char)kraw[ki]); ki++; }
+                kup[ki] = '\0';
+                sm_emit_s(p, SM_STORE_VAR, kup);
+            }
             else if (lhs->kind == E_FNC && lhs->sval) {
                 /* Field mutator: fname(obj) = val  →  push obj, SM_CALL fname_SET 2
                  * Stack on entry to setter: [val, obj] (val pushed first above) */
