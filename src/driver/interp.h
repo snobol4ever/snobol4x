@@ -46,6 +46,7 @@ extern ScripModuleRegistry g_registry;
 /* polyglot_init declared in polyglot.h — forward ref for execute_program */
 void polyglot_init(Program *prog, uint32_t lang_mask);
 uint32_t polyglot_lang_mask(Program *prog);
+void icn_record_register(const char *spec);  /* IC-5: register record type at init time */
 
 /* ── Label table ───────────────────────────────────────────────────────── */
 extern int label_count;     /* needed by polyglot_init for sno_label_start */

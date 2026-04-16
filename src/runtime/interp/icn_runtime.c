@@ -380,6 +380,7 @@ DESCR_t icn_call_proc(EXPR_t *proc, DESCR_t *args, int nargs) {
     else result = FAILDESCR;
 
     /* Pop frame — restores caller's ICN_CUR automatically */
+    icn_init_save_frame();   /* IC-5: persist initial-block statics before env is gone */
     icn_frame_depth--;
     return result;
 }

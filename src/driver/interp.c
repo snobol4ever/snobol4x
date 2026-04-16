@@ -176,6 +176,28 @@ static void icn_init_update_snapshot(char **snames, DESCR_t *svals, int nsaved) 
     }
 }
 
+/* IC-5: Save current ICN frame's local values back into icn_init_tab snapshots.
+ * Called by icn_call_proc just before popping the frame, so initial-block
+ * statics (x in "initial x := 10") persist across calls. */
+void icn_init_save_frame(void) {
+    if (icn_frame_depth <= 0) return;
+    IcnFrame *f = &icn_frame_stack[icn_frame_depth - 1];
+    for (int ei = 0; ei < icn_init_n; ei++) {
+        IcnInitEnt *ent = &icn_init_tab[ei];
+        for (int si = 0; si < ent->ns; si++) {
+            /* Find this variable's slot in the current frame scope */
+            int slot = icn_scope_get(&f->sc, ent->s[si].nm);
+            if (slot >= 0 && slot < f->env_n) {
+                ent->s[si].val = f->env[slot];
+            } else {
+                /* Global variable — read from NV */
+                ent->s[si].val = NV_GET_fn(ent->s[si].nm);
+            }
+        }
+    }
+}
+
+
 /* SN-3: shadow table helpers — check active frames top-down */
 static int shadow_get(const char *name, DESCR_t *out) {
     for (int d = call_depth - 1; d >= 0; d--) {
@@ -868,6 +890,13 @@ DESCR_t interp_eval(EXPR_t *e)
                 if (!IS_FAIL_fn(base)) {
                     DESCR_t idx = interp_eval(lhs->children[1]);
                     if (!IS_FAIL_fn(idx)) subscript_set(base, idx, val);
+                }
+            } else if (lhs && lhs->kind == E_FIELD && lhs->sval && lhs->nchildren >= 1) {
+                /* p.x := val  — record field assignment in Icon frame */
+                DESCR_t obj = interp_eval(lhs->children[0]);
+                if (!IS_FAIL_fn(obj)) {
+                    DESCR_t *cell = data_field_ptr(lhs->sval, obj);
+                    if (cell) *cell = val;
                 }
             }
             return val;
@@ -1881,6 +1910,19 @@ DESCR_t interp_eval(EXPR_t *e)
             /* ── IC-5: swap(L, k) is actually handled as E_SWAP op ─────── */
             /* ── IC-5: size *L for DT_DATA lists ──────────────────────────
              * E_SIZE is handled below; nothing to add in E_FNC.           */
+
+            /* ── IC-5: record constructor — Icon puts name in children[0]->sval,
+             * not in e->sval, so the shared E_FNC handler misses it.
+             * Look up fn in sc_dat registry; if found, construct instance. */
+            {
+                ScDatType *_dt = sc_dat_find_type(fn);
+                if (_dt) {
+                    DESCR_t _args[ICN_SLOT_MAX];
+                    for (int _j = 0; _j < nargs && _j < ICN_SLOT_MAX; _j++)
+                        _args[_j] = interp_eval(e->children[1+_j]);
+                    return sc_dat_construct(_dt, _args, nargs);
+                }
+            }
 
             return NULVCL;
         }
@@ -4125,6 +4167,20 @@ static ScDatType *sc_dat_register(const char *spec) {
     }
     sc_dat_ntypes++;
     return t;
+}
+
+/* Public wrapper: register an Icon/SNOBOL4 record type spec from polyglot_init.
+ * Also calls DEFDAT_fn so the SPITBOL runtime knows the type. */
+void icn_record_register(const char *spec) {
+    if (!spec || !*spec) return;
+    /* Skip if already registered (polyglot_init may see the same file twice) */
+    const char *p = spec;
+    char name[64]; int ni = 0;
+    while (*p && *p != '(' && ni < 63) name[ni++] = *p++;
+    name[ni] = '\0';
+    if (sc_dat_find_type(name)) return;   /* already registered */
+    DEFDAT_fn(spec);
+    sc_dat_register(spec);
 }
 
 /* Look up a DATA type by constructor name (case-insensitive) */

@@ -149,6 +149,20 @@ void polyglot_init(Program *prog, uint32_t lang_mask)
                     if (proc->children[_gi] && proc->children[_gi]->sval)
                         icn_global_register(proc->children[_gi]->sval);
             }
+            if (proc->kind == E_RECORD && proc->sval && *proc->sval) {
+                /* IC-5: record type declaration — register before main() runs */
+                char spec[256]; int pos = 0;
+                pos += snprintf(spec+pos, sizeof(spec)-pos, "%s(", proc->sval);
+                for (int _ri = 0; _ri < proc->nchildren && pos < (int)sizeof(spec)-2; _ri++) {
+                    if (_ri > 0) spec[pos++] = ',';
+                    const char *fn2 = (proc->children[_ri] && proc->children[_ri]->sval)
+                                      ? proc->children[_ri]->sval : "";
+                    pos += snprintf(spec+pos, sizeof(spec)-pos, "%s", fn2);
+                }
+                if (pos < (int)sizeof(spec)-1) spec[pos++] = ')';
+                spec[pos] = '\0';
+                icn_record_register(spec);
+            }
             if (proc->kind == E_FNC && proc->sval && *proc->sval) {
                 const char *name = proc->sval;
 
