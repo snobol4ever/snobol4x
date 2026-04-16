@@ -68,6 +68,7 @@ char *VARVAL_fn(DESCR_t v);
 
 /* ── RT-1: SIL-faithful INVOKE / ARGVAL (invoke.c) ── */
 DESCR_t INVOKE_fn(const char *name, DESCR_t *args, int nargs); /* SIL INVOKE */
+DESCR_t sc_dat_field_call(const char *name, DESCR_t *args, int nargs); /* DATA field dispatch for SM */
 DESCR_t ARGVAL_fn(DESCR_t d);       /* SIL ARGVAL — evaluate one argument    */
 DESCR_t VARVAL_d_fn(DESCR_t d);     /* SIL VARVAL — coerce to STRING         */
 DESCR_t INTVAL_fn(DESCR_t d);       /* SIL INTVAL — coerce to INTEGER        */

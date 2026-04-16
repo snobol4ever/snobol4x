@@ -4016,7 +4016,7 @@ DESCR_t _usercall_hook(const char *name, DESCR_t *args, int nargs) {
     if (strcasecmp(name, "IDENT") == 0)  return _builtin_IDENT(args, nargs);
     if (strcasecmp(name, "DIFFER") == 0) return _builtin_DIFFER(args, nargs);
     if (strcasecmp(name, "DATA") == 0)   return _builtin_DATA(args, nargs);
-    /* SC-1: DATA constructor/field-accessor dispatch via sc_dat registry.
+    /* SC-1: DATA constructor/field-accessor/field-mutator dispatch via sc_dat registry.
      * Must precede label lookup so struct names shadow any same-named labels. */
     {
         ScDatType *_dt = sc_dat_find_type(name);
@@ -4024,6 +4024,17 @@ DESCR_t _usercall_hook(const char *name, DESCR_t *args, int nargs) {
         int _fi = 0;
         ScDatType *_ft = sc_dat_find_field(name, &_fi);
         if (_ft && nargs >= 1) return sc_dat_field_get(name, args[0]);
+        /* Field mutator: fname_SET(rhs, obj) — sm_lower emits this for fname(obj)=rhs.
+         * Strip the _SET suffix, look up the field, write through data_field_ptr. */
+        size_t _nlen = strlen(name);
+        if (_nlen > 4 && strcasecmp(name + _nlen - 4, "_SET") == 0 && nargs >= 2) {
+            char _fname[128];
+            size_t _flen = _nlen - 4;
+            if (_flen >= sizeof(_fname)) _flen = sizeof(_fname) - 1;
+            memcpy(_fname, name, _flen); _fname[_flen] = '\0';
+            DESCR_t *_cell = data_field_ptr(_fname, args[1]);
+            if (_cell) { *_cell = args[0]; return args[0]; }
+        }
     }
     /* Check for a body label (user-defined function) */
     const char *_entry = FUNC_ENTRY_fn(name);
@@ -4281,6 +4292,35 @@ static DESCR_t sc_dat_field_get(const char *fname, DESCR_t obj) {
     DESCR_t *cell = data_field_ptr(fname, obj);
     if (!cell) return FAILDESCR;
     return *cell;
+}
+
+/* sc_dat_field_call — public entry for SM-run DATA dispatch.
+ * Called from sm_interp SM_CALL handler when args[0] is DT_DATA, to give
+ * DATA field accessors/mutators/constructors priority over same-named builtins
+ * (e.g. DATA field named 'real' must win over REAL() builtin when arg is DT_DATA).
+ * Returns FAILDESCR if name is not a DATA constructor/field — caller falls through
+ * to normal INVOKE_fn dispatch.
+ * Convention for mutators: name ends in _SET, args[0]=rhs, args[1]=obj. */
+DESCR_t sc_dat_field_call(const char *name, DESCR_t *args, int nargs) {
+    if (!name || nargs < 1) return FAILDESCR;
+    /* Constructor: name matches a DATA type name */
+    ScDatType *_dt = sc_dat_find_type(name);
+    if (_dt) return sc_dat_construct(_dt, args, nargs);
+    /* Field accessor: name matches a field, arg is DT_DATA instance */
+    int _fi = 0;
+    ScDatType *_ft = sc_dat_find_field(name, &_fi);
+    if (_ft) return sc_dat_field_get(name, args[0]);
+    /* Field mutator: name ends in _SET — strip suffix, check field */
+    size_t _nlen = strlen(name);
+    if (_nlen > 4 && strcasecmp(name + _nlen - 4, "_SET") == 0 && nargs >= 2) {
+        char _fname[128];
+        size_t _flen = _nlen - 4;
+        if (_flen >= sizeof(_fname)) _flen = sizeof(_fname) - 1;
+        memcpy(_fname, name, _flen); _fname[_flen] = '\0';
+        DESCR_t *_cell = data_field_ptr(_fname, args[1]);
+        if (_cell) { *_cell = args[0]; return args[0]; }
+    }
+    return FAILDESCR;
 }
 
 /* ── DATA() builtin ─────────────────────────────────────────────────────── */

@@ -648,7 +648,18 @@ int sm_interp_run(SM_Program *prog, SM_State *st)
             DESCR_t args[32];
             for (int k = nargs - 1; k >= 0; k--)
                 args[k] = sm_pop(st);
-            DESCR_t result = INVOKE_fn(name, args, nargs);
+            /* DATA field accessor/mutator/constructor: when first arg is a DATA
+             * instance (or name ends in _SET with second arg DT_DATA), give
+             * DATA field dispatch priority over same-named builtins (e.g. 'real'). */
+            DESCR_t result = FAILDESCR;
+            int _data_first = (nargs >= 1 && args[0].v == DT_DATA);
+            int _data_set   = (nargs >= 2 && args[1].v == DT_DATA && name &&
+                               strlen(name) > 4 &&
+                               strcasecmp(name + strlen(name) - 4, "_SET") == 0);
+            if (_data_first || _data_set)
+                result = sc_dat_field_call(name, args, nargs);
+            if (result.v == DT_FAIL || (!_data_first && !_data_set))
+                result = INVOKE_fn(name, args, nargs);
             /* NRETURN: user fn returned DT_N — dereference like tree-walk E_FNC */
             if (IS_NAMEPTR(result))      result = NAME_DEREF_PTR(result);
             else if (IS_NAMEVAL(result)) result = NV_GET_fn(result.s);

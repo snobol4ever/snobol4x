@@ -88,6 +88,7 @@ extern DESCR_t  NV_SET_fn(const char *name, DESCR_t val);  /* RT-5 */
 extern char    *VARVAL_fn(DESCR_t d);
 extern DESCR_t  CONCAT_fn(DESCR_t l, DESCR_t r);
 extern DESCR_t  INVOKE_fn(const char *name, DESCR_t *args, int nargs);
+extern DESCR_t  sc_dat_field_call(const char *name, DESCR_t *args, int nargs);
 extern DESCR_t  NAME_fn(const char *name);
 extern int      exec_stmt(const char *subj_name, DESCR_t *subj_var,
                           DESCR_t pat, DESCR_t *repl, int has_repl);
@@ -446,7 +447,17 @@ static void h_call(void)
     DESCR_t args[32];
     if (nargs > 32) nargs = 32;
     for (int k = nargs - 1; k >= 0; k--) args[k] = POP();
-    DESCR_t result = INVOKE_fn(name, args, nargs);
+    /* DATA field accessor/mutator/constructor: give DATA dispatch priority over
+     * same-named builtins (e.g. field 'real' vs REAL() builtin). */
+    DESCR_t result = FAILDESCR;
+    int _data_first = (nargs >= 1 && args[0].v == DT_DATA);
+    int _data_set   = (nargs >= 2 && args[1].v == DT_DATA && name &&
+                       strlen(name) > 4 &&
+                       strcasecmp(name + strlen(name) - 4, "_SET") == 0);
+    if (_data_first || _data_set)
+        result = sc_dat_field_call(name, args, nargs);
+    if (result.v == DT_FAIL || (!_data_first && !_data_set))
+        result = INVOKE_fn(name, args, nargs);
     if (IS_NAMEPTR(result))      result = NAME_DEREF_PTR(result);
     else if (IS_NAMEVAL(result)) result = NV_GET_fn(result.s);
     PUSH(result);
