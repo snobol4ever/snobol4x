@@ -605,6 +605,30 @@ static DESCR_t icn_bb_cat_gen(void *zeta, int entry) {
     return result;
 }
 
+/*----------------------------------------------------------------------------------------------------------------------------
+ * icn_bb_assign_gen — E_ASSIGN with generative RHS  (x := gen_expr)
+ *
+ * IC-6 fix for  every (x := (1|2|3|4)) > 2 & write(x):
+ * Pumps the RHS generator each tick, writes the result into the target
+ * variable slot (or NV), and returns the value so binop_gen can test it.
+ *   α: pump RHS α, write var, return value (or ω if RHS immediately fails).
+ *   β: pump RHS β, write var, return value (or ω if RHS exhausted).
+ *--------------------------------------------------------------------------------------------------------------------------*/
+typedef struct { bb_node_t rhs_gen; EXPR_t *lhs; } icn_assign_gen_state_t;
+static DESCR_t icn_bb_assign_gen(void *zeta, int entry) {
+    icn_assign_gen_state_t *z = (icn_assign_gen_state_t *)zeta;
+    DESCR_t val = z->rhs_gen.fn(z->rhs_gen.ζ, entry);
+    if (IS_FAIL_fn(val)) return FAILDESCR;
+    /* Write value into target variable */
+    EXPR_t *lhs = z->lhs;
+    if (lhs && lhs->kind == E_VAR) {
+        int slot = (int)lhs->ival;
+        if (slot >= 0 && slot < ICN_CUR.env_n) { ICN_CUR.env[slot] = val; }
+        else if (slot < 0 && lhs->sval && lhs->sval[0] != '&') NV_SET_fn(lhs->sval, val);
+    }
+    return val;
+}
+
 bb_node_t icn_eval_gen(EXPR_t *e) {
     if (!e) {
         icn_oneshot_state_t *z = calloc(1, sizeof(*z));
@@ -786,18 +810,31 @@ bb_node_t icn_eval_gen(EXPR_t *e) {
         }
     }
 
-    /* ── E_CAT: ("str" || gen_expr) — pump generator child, re-eval concat each tick ── */
-    if (e->kind == E_CAT && e->nchildren >= 1) {
-        for (int _ci = 0; _ci < e->nchildren; _ci++) {
-            if (icn_is_gen(e->children[_ci])) {
-                EXPR_t *leaf = icn_find_leaf_gen(e->children[_ci]);
-                if (!leaf) leaf = e->children[_ci];
-                icn_cat_gen_state_t *z = calloc(1, sizeof(*z));
-                z->gen      = icn_eval_gen(leaf);
-                z->cat_expr = e;
-                z->leaf     = leaf;
-                return (bb_node_t){ icn_bb_cat_gen, z, 0 };
-            }
+    /* ── E_CAT: ("str" || gen_expr) — two sub-cases:
+     *   (a) BOTH children generative → cross-product via icn_bb_binop_gen (IC-6 fix)
+     *       e.g. ("a"|"b") || ("x"|"y") → ax ay bx by
+     *   (b) ONE child generative → pump that generator, re-eval full E_CAT each tick ── */
+    if (e->kind == E_CAT && e->nchildren >= 2) {
+        int l_gen = icn_is_gen(e->children[0]);
+        int r_gen = icn_is_gen(e->children[1]);
+        if (l_gen && r_gen) {
+            /* Cross-product: reuse icn_bb_binop_gen with CONCAT op */
+            icn_binop_gen_state_t *z = calloc(1, sizeof(*z));
+            z->left     = icn_eval_gen(e->children[0]);
+            z->right    = icn_eval_gen(e->children[1]);
+            z->op       = ICN_BINOP_CONCAT;
+            z->is_relop = 0;
+            return (bb_node_t){ icn_bb_binop_gen, z, 0 };
+        }
+        if (l_gen || r_gen) {
+            int gi = l_gen ? 0 : 1;
+            EXPR_t *leaf = icn_find_leaf_gen(e->children[gi]);
+            if (!leaf) leaf = e->children[gi];
+            icn_cat_gen_state_t *z = calloc(1, sizeof(*z));
+            z->gen      = icn_eval_gen(leaf);
+            z->cat_expr = e;
+            z->leaf     = leaf;
+            return (bb_node_t){ icn_bb_cat_gen, z, 0 };
         }
     }
 
@@ -919,6 +956,17 @@ bb_node_t icn_eval_gen(EXPR_t *e) {
         z->children = e->children;
         z->n        = e->nchildren;
         return (bb_node_t){ icn_bb_seq_expr, z, 0 };
+    }
+
+    /* ── E_ASSIGN with generative RHS — IC-6 fix for (x:=alt)>2 filter pattern ──
+     * e.g.  every (x := (1|2|3|4)) > 2 & write(x)
+     * Pumps the RHS generator on each α/β tick and writes the result into the
+     * target variable slot before returning it (so binop_gen sees each alt value). */
+    if (e->kind == E_ASSIGN && e->nchildren >= 2 && icn_is_gen(e->children[1])) {
+        icn_assign_gen_state_t *z = calloc(1, sizeof(*z));
+        z->rhs_gen = icn_eval_gen(e->children[1]);
+        z->lhs     = e->children[0];
+        return (bb_node_t){ icn_bb_assign_gen, z, 0 };
     }
 
     /* ── E_VAR / E_INTLIT / scalar literals — lazy box (re-evaluates each α pump)
