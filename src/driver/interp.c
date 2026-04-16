@@ -2895,7 +2895,7 @@ DESCR_t interp_eval(EXPR_t *e)
     }
     case E_ARBNO: {
         if (e->nchildren < 1) return pat_arb(); /* degenerate */
-        DESCR_t inner = interp_eval(e->children[0]);
+        DESCR_t inner = interp_eval_pat(e->children[0]);
         return pat_arbno(inner);
     }
 

@@ -195,9 +195,10 @@ typedef struct {
 extern void *bb_dvar_bin_new(const char *name);
 
 /* bb_arbno, bb_fail, bb_atp are in separate .c files — directly linkable */
-extern spec_t bb_arbno(void *zeta, int entry);
+extern DESCR_t bb_arbno(void *zeta, int entry);
+extern void   *bb_arbno_new(bb_box_fn fn, void *state);
 extern spec_t bb_fail(void *zeta, int entry);
-extern spec_t bb_atp(void *zeta, int entry);
+extern DESCR_t bb_atp(void *zeta, int entry);
 
 static bb_box_fn bb_build_binary_node(PATND_t *p);
 
@@ -1180,13 +1181,11 @@ static bb_box_fn bb_arbn_emit_binary(PATND_t *p)
     bb_box_fn body_fn = bb_build_binary_node(body_p);
     if (!body_fn) return NULL;   /* child unsupported → C fallback */
 
-    arbno_t_bin *z = calloc(1, sizeof(arbno_t_bin));
+    /* Use bb_arbno_new to allocate the canonical arbno_t (correct frame layout).
+     * Previously used arbno_t_bin mirror with spec_t_bin.δ=size_t vs spec_t.δ=int
+     * causing frame size mismatch and corrupt stack indexing in bb_arbno. */
+    void *z = bb_arbno_new(body_fn, NULL);
     if (!z) return NULL;
-    z->fn    = body_fn;
-    z->state = NULL;   /* binary body carries no separate ζ */
-    z->cap   = ARBNO_INIT_BIN;
-    z->stack = malloc(z->cap * sizeof(arbno_frame_t_bin));
-    if (!z->stack) { free(z); return NULL; }
 
     bb_buf_t tbuf = bb_alloc(ARBN_TRAM_SIZE);
     if (!tbuf) { free(z); return NULL; }

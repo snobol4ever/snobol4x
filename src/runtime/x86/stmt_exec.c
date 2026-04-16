@@ -448,14 +448,12 @@ void bin_audit_print(void)
  * On beta: fail — cursor-capture has no meaningful backtrack semantics. */
 /* atp_t defined in bb_box.h */
 
-static spec_t bb_atp(void *zeta, int entry)
+static DESCR_t bb_atp(void *zeta, int entry)
 {
     atp_t *ζ = zeta;
 
     if (entry == α) goto ATP_α;
                     goto ATP_β;
-
-    spec_t ATP;
 
     ATP_α:  ζ->done = 1;   /* mark for β — no backtrack */
             if (ζ->varname && ζ->varname[0]) {
@@ -464,11 +462,8 @@ static spec_t bb_atp(void *zeta, int entry)
                 val.i = (int64_t)Δ;
                 NV_SET_fn(ζ->varname, val);
             }
-            ATP = spec(Σ + Δ, 0);       goto ATP_γ;
-    ATP_β:                               goto ATP_ω;
-
-    ATP_γ:                               return ATP;
-    ATP_ω:                               return spec_empty;
+            return descr_from_spec(spec(Σ + Δ, 0));
+    ATP_β:  return FAILDESCR;
 }
 
 /* ── USERCALL box — deferred SNOBOL4 user function call at match time ────────
@@ -1186,16 +1181,18 @@ static DESCR_t bb_deferred_var(void *zeta, int entry)
                             }
                         }
 
-                        /* Reset child match state for a clean α.
-                         * If rebuilt, ζ is already fresh (calloc).
-                         * If reused, memset to 0 to clear prior match state.
-                         *
-                         * DYN-12 FIX: do NOT memset bb_lit nodes — their lit/len
-                         * fields are configuration, not mutable match state.
-                         * Memset zeroes len, causing bb_lit to match everywhere
-                         * with δ=0. Only memset nodes whose child_fn is NOT bb_lit. */
-                        if (!rebuilt && ζ->child_state && ζ->child_size
-                                && ζ->child_fn != (bb_box_fn)bb_lit)
+                        /* DYN-12 extended: do NOT memset config-only boxes.
+                         * Config-only boxes have state that is purely build-time
+                         * configuration (e.g. chars ptr in bb_any/bb_notany/bb_span/
+                         * bb_brk). Zeroing nulls the ptr -> strchr(NULL,...) -> fail
+                         * on every ARBNO retry iteration. bb_lit already excluded
+                         * (DYN-12); extend guard to all config-only box types. */
+                        int _config_only = (ζ->child_fn == (bb_box_fn)bb_lit
+                                         || ζ->child_fn == (bb_box_fn)bb_any
+                                         || ζ->child_fn == (bb_box_fn)bb_notany
+                                         || ζ->child_fn == (bb_box_fn)bb_span
+                                         || ζ->child_fn == (bb_box_fn)bb_brk);
+                        if (!rebuilt && ζ->child_state && ζ->child_size && !_config_only)
                             memset(ζ->child_state, 0, ζ->child_size);
                     }
                     if (!ζ->child_fn) { g_dvar_depth--; goto DVAR_ω; }
