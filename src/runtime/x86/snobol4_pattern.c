@@ -486,7 +486,12 @@ int subscript_set(DESCR_t arr, DESCR_t idx, DESCR_t val) {
         return 1;
     }
     if (arr.v == DT_T) {
-        table_set(arr.tbl, VARVAL_fn(idx), val);
+        /* C5-4: preserve the original key descriptor (DT_I vs DT_S) so SORT()
+         * sees typed keys and applies algebraic-vs-lex ordering per SPITBOL
+         * manual pp.240–241. VARVAL_fn(idx) stringifies for hash lookup only;
+         * the live descriptor `idx` carries the type and is passed through. */
+        const char *k = VARVAL_fn(idx);
+        table_set_descr(arr.tbl, k ? k : "", idx, val);
         return 1;
     }
     /* SIL NONARY → ERRTYP,3 → FTLTST */
