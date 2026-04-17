@@ -65,6 +65,11 @@ typedef struct NamEntry {
     const char     *fnc_name;  /* function name                                 */
     DESCR_t        *fnc_args;  /* static arg array (may be NULL)                */
     int             fnc_nargs;
+    /* TL-2: arg *names* for flush-time resolution.  When fnc_arg_names is
+     * non-NULL NAM_commit calls NV_GET_fn(name) per entry at commit time,
+     * after all in-order earlier . captures have already written their vars. */
+    char          **fnc_arg_names;
+    int             fnc_n_arg_names;
     const char     *cc_substr; /* GC_malloc'd matched text (epsilon → "")       */
     int             cc_slen;
 
@@ -173,6 +178,15 @@ void NAM_push(const char *var, DESCR_t *ptr, int dt,
 void NAM_push_callcap(const char *fnc_name, DESCR_t *fnc_args, int fnc_nargs,
                       const char *matched_text, int matched_len)
 {
+    NAM_push_callcap_named(fnc_name, fnc_args, fnc_nargs, NULL, 0,
+                            matched_text, matched_len);
+}
+
+void NAM_push_callcap_named(const char *fnc_name,
+                             DESCR_t *fnc_args, int fnc_nargs,
+                             char **fnc_arg_names, int fnc_n_arg_names,
+                             const char *matched_text, int matched_len)
+{
     if (!nam_stack) {
         fprintf(stderr, "nmd: NAM_push_callcap with no active frame — ignored\n");
         return;
@@ -183,6 +197,8 @@ void NAM_push_callcap(const char *fnc_name, DESCR_t *fnc_args, int fnc_nargs,
     e->fnc_name  = fnc_name;   /* points into PATND_t — stable lifetime        */
     e->fnc_args  = fnc_args;
     e->fnc_nargs = fnc_nargs;
+    e->fnc_arg_names   = fnc_arg_names;
+    e->fnc_n_arg_names = fnc_n_arg_names;
 
     if (matched_text && matched_len > 0) {
         char *copy = GC_MALLOC((size_t)matched_len + 1);
@@ -273,7 +289,27 @@ void NAM_commit(int cookie)
              * cell, not the DT_N descriptor itself.  Writing name_d was
              * dropping a stale 1-byte fragment (cursor/offset, often \t) into
              * the cell, breaking expr_eval.sno and any (PAT . *fn()) idiom. */
-            DESCR_t name_d = g_user_call_hook(e->fnc_name, e->fnc_args, e->fnc_nargs);
+            /* TL-2: if arg *names* are attached, resolve them now via
+             * NV_GET_fn.  This is the flush-time lookup — every earlier
+             * . capture in the NAM list has already been processed above
+             * (oldest→newest walk), so the variable written by e.g.
+             * (word . tag) holds the matched text by the time *cb(tag)
+             * resolves tag here. */
+            DESCR_t *call_args = e->fnc_args;
+            int      call_n    = e->fnc_nargs;
+            DESCR_t  resolved_buf[8];
+            DESCR_t *resolved  = NULL;
+            if (e->fnc_arg_names && e->fnc_n_arg_names > 0) {
+                extern DESCR_t NV_GET_fn(const char *);
+                call_n = e->fnc_n_arg_names;
+                resolved = (call_n <= 8) ? resolved_buf
+                                         : (DESCR_t *)GC_MALLOC((size_t)call_n * sizeof(DESCR_t));
+                for (int k = 0; k < call_n; k++) {
+                    resolved[k] = NV_GET_fn(e->fnc_arg_names[k] ? e->fnc_arg_names[k] : "");
+                }
+                call_args = resolved;
+            }
+            DESCR_t name_d = g_user_call_hook(e->fnc_name, call_args, call_n);
             DESCR_t *cell = (name_d.v == DT_N && name_d.ptr)
                             ? (DESCR_t *)name_d.ptr : NULL;
             if (cell) {

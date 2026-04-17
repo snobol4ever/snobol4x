@@ -515,6 +515,12 @@ typedef struct callcap_s {
     int          has_pending;
     int          registered;
     int          last_gen;      /* DYN-76: generation at last CC_α registration */
+    /* TL-2: arg *names* for flush-time variable resolution (see snobol4_patnd.h).
+     * If fnc_arg_names is non-NULL, the . path passes names to NAM_push_callcap
+     * (which forwards to NAM_commit for NV_GET_fn resolution); the $ path
+     * resolves in CC_γ_core's immediate branch directly. */
+    char       **fnc_arg_names;
+    int          fnc_n_arg_names;
 } callcap_t;
 
 /* DYN-79: per-firing event record.  A single callcap_t box (e.g. the *Push()
@@ -594,23 +600,46 @@ static DESCR_t bb_callcap(void *zeta, int entry)
            if (ζ->immediate) {
                /* $ — call NOW, write immediately, passing matched text as arg[0] */
                if (g_user_call_hook && ζ->fnc_name) {
-                   int total = 1 + ζ->fnc_nargs;
+                   /* TL-2: if arg names are set, resolve each via NV_GET_fn now.
+                    * For $ immediate there is no NAM_commit step, so this is the
+                    * flush point.  Any earlier $ capture in the same pattern has
+                    * already written its variable; any earlier . capture has NOT
+                    * (that happens at NAM_commit) — matches oracle semantics which
+                    * lookup occurs when the pattern element is actually reached. */
+                   DESCR_t *static_args = ζ->fnc_args;
+                   int      nstatic     = ζ->fnc_nargs;
+                   DESCR_t  resolved_buf[8];
+                   DESCR_t *resolved    = NULL;
+                   if (ζ->fnc_arg_names && ζ->fnc_n_arg_names > 0) {
+                       nstatic = ζ->fnc_n_arg_names;
+                       resolved = (nstatic <= 8) ? resolved_buf
+                                                 : (DESCR_t *)GC_MALLOC((size_t)nstatic * sizeof(DESCR_t));
+                       for (int k = 0; k < nstatic; k++) {
+                           resolved[k] = NV_GET_fn(ζ->fnc_arg_names[k] ? ζ->fnc_arg_names[k] : "");
+                       }
+                       static_args = resolved;
+                   }
+                   int total = 1 + nstatic;
                    DESCR_t *args = (DESCR_t *)GC_MALLOC((size_t)total * sizeof(DESCR_t));
                    char *buf = (char *)GC_MALLOC((size_t)child_r.δ + 1);
                    if (child_r.σ && child_r.δ > 0) memcpy(buf, child_r.σ, (size_t)child_r.δ);
                    buf[child_r.δ] = '\0';
                    args[0].v = DT_S; args[0].slen = (uint32_t)child_r.δ;
                    args[0].s = buf;  /* do NOT set .ptr — shares union with .s */
-                   for (int _j = 0; _j < ζ->fnc_nargs; _j++) args[_j+1] = ζ->fnc_args[_j];
+                   for (int _j = 0; _j < nstatic; _j++) args[_j+1] = static_args[_j];
                    DESCR_t name_d = g_user_call_hook(ζ->fnc_name, args, total);
                    DESCR_t *cell = (name_d.v == DT_N && name_d.ptr) ? (DESCR_t*)name_d.ptr : NULL;
                    if (cell) *cell = args[0];
                }
            } else {
                /* . — queue into unified NAM list so captures and callcaps
-                * flush in left-to-right pattern order at NAM_commit (SC-26). */
-               NAM_push_callcap(ζ->fnc_name, ζ->fnc_args, ζ->fnc_nargs,
-                                child_r.σ, (int)child_r.δ);
+                * flush in left-to-right pattern order at NAM_commit (SC-26).
+                * TL-2: pass arg_names through; NAM_commit will resolve via
+                * NV_GET_fn after in-order earlier . captures have written. */
+               NAM_push_callcap_named(ζ->fnc_name,
+                                       ζ->fnc_args, ζ->fnc_nargs,
+                                       ζ->fnc_arg_names, ζ->fnc_n_arg_names,
+                                       child_r.σ, (int)child_r.δ);
                /* Keep ζ->pending/has_pending for DVAR save/restore compat */
                ζ->pending     = child_r;
                ζ->has_pending = 1;
@@ -626,9 +655,24 @@ static DESCR_t bb_callcap(void *zeta, int entry)
 /* M-DYN-B10: expose bb_callcap + ctor for bb_build_bin.c trampolines */
 DESCR_t bb_callcap_exported(void *zeta, int entry) { return bb_callcap(zeta, entry); }
 
+/* Forward decl: the named variant is defined just below. */
+callcap_t *bb_callcap_new_named(bb_box_fn child_fn, void *child_state,
+                                 const char *fnc_name, DESCR_t *fnc_args,
+                                 int fnc_nargs, int immediate,
+                                 char **fnc_arg_names, int fnc_n_arg_names);
+
 callcap_t *bb_callcap_new(bb_box_fn child_fn, void *child_state,
                            const char *fnc_name, DESCR_t *fnc_args,
                            int fnc_nargs, int immediate)
+{
+    return bb_callcap_new_named(child_fn, child_state, fnc_name,
+                                 fnc_args, fnc_nargs, immediate, NULL, 0);
+}
+
+callcap_t *bb_callcap_new_named(bb_box_fn child_fn, void *child_state,
+                                 const char *fnc_name, DESCR_t *fnc_args,
+                                 int fnc_nargs, int immediate,
+                                 char **fnc_arg_names, int fnc_n_arg_names)
 {
     callcap_t *ζ = calloc(1, sizeof(callcap_t));
     if (!ζ) return NULL;
@@ -638,6 +682,8 @@ callcap_t *bb_callcap_new(bb_box_fn child_fn, void *child_state,
     ζ->fnc_args    = fnc_args;
     ζ->fnc_nargs   = fnc_nargs;
     ζ->immediate   = immediate;
+    ζ->fnc_arg_names    = fnc_arg_names;
+    ζ->fnc_n_arg_names  = fnc_n_arg_names;
     return ζ;
 }
 
@@ -948,6 +994,9 @@ bb_node_t bb_build(PATND_t *p)
         ζ->fnc_args    = p->args;
         ζ->fnc_nargs   = p->nargs;
         ζ->immediate   = 0;
+        /* TL-2: propagate arg names for flush-time resolution (see CC_γ_core). */
+        ζ->fnc_arg_names   = p->arg_names;
+        ζ->fnc_n_arg_names = p->n_arg_names;
         n.fn = (bb_box_fn)bb_callcap;
         n.ζ  = ζ;
         n.ζ_size = sizeof(*ζ);

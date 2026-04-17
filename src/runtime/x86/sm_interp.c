@@ -15,6 +15,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <gc/gc.h>
 
 /* ── Pattern runtime (M-SCRIP-U4) ──────────────────────────────────────── */
 #include "snobol4.h"   /* DESCR_t, PATND_t, DT_* */
@@ -463,6 +464,9 @@ int sm_interp_run(SM_Program *prog, SM_State *st)
 
         case SM_PAT_CAPTURE_FN: {
             /* . *func() or $ *func() — a[0].s = function name, a[1].i = 0(cond)/1(imm).
+             * a[2].s (TL-2): optional '\t'-separated arg *names* for flush-time
+             * resolution — set when every arg of *func() is a plain E_VAR.
+             * When NULL, legacy path (no args, pat_assign_callcap).
              * Use pat_assign_callcap → XCALLCAP node, handled by bb_build/bb_callcap
              * in the byrd-box path.  bb_callcap calls g_user_call_hook(fname, args, 0)
              * at match time (deferred for '.', immediate for '$'), which fires the
@@ -470,8 +474,30 @@ int sm_interp_run(SM_Program *prog, SM_State *st)
              * The old DT_E/pat_assign_cond approach only worked via the snobol4_pattern.c
              * materialise() path, which --sm-run does not use. */
             DESCR_t child = pat_pop();
-            const char *fname = ins->a[0].s ? ins->a[0].s : "";
-            pat_push(pat_assign_callcap(child, fname, NULL, 0));
+            const char *fname    = ins->a[0].s ? ins->a[0].s : "";
+            const char *namelist = ins->a[2].s;
+            if (namelist && namelist[0]) {
+                /* Split on '\t' into GC-lifetime name array */
+                int nnames = 1;
+                for (const char *q = namelist; *q; q++) if (*q == '\t') nnames++;
+                char **names = (char **)GC_MALLOC((size_t)nnames * sizeof(char *));
+                int ni = 0;
+                const char *start = namelist;
+                for (const char *q = namelist; ; q++) {
+                    if (*q == '\t' || *q == '\0') {
+                        size_t len = (size_t)(q - start);
+                        char *nm = (char *)GC_MALLOC(len + 1);
+                        memcpy(nm, start, len);
+                        nm[len] = '\0';
+                        names[ni++] = nm;
+                        if (*q == '\0') break;
+                        start = q + 1;
+                    }
+                }
+                pat_push(pat_assign_callcap_named(child, fname, NULL, 0, names, nnames));
+            } else {
+                pat_push(pat_assign_callcap(child, fname, NULL, 0));
+            }
             break;
         }
 

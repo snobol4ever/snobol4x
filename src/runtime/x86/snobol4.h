@@ -243,6 +243,13 @@ void    NAM_push(const char *var, DESCR_t *ptr, int dt,
  *   callcaps flush in left-to-right pattern order at NAM_commit time.    */
 void    NAM_push_callcap(const char *fnc_name, DESCR_t *fnc_args, int fnc_nargs,
                          const char *matched_text, int matched_len);
+/* TL-2: named variant — also records arg variable names for flush-time
+ * resolution at NAM_commit time (after in-order earlier . captures have
+ * written their vars). */
+void    NAM_push_callcap_named(const char *fnc_name,
+                               DESCR_t *fnc_args, int fnc_nargs,
+                               char **fnc_arg_names, int fnc_n_arg_names,
+                               const char *matched_text, int matched_len);
 
 /* NAM_save: snapshot current naming-list top; returns opaque cookie.        */
 int     NAM_save(void);
@@ -465,6 +472,9 @@ DESCR_t pat_ref_val(DESCR_t nameVal);
 DESCR_t pat_assign_imm(DESCR_t child, DESCR_t var);
 DESCR_t pat_assign_cond(DESCR_t child, DESCR_t var);
 DESCR_t pat_assign_callcap(DESCR_t child, const char *fnc_name, DESCR_t *args, int nargs);
+DESCR_t pat_assign_callcap_named(DESCR_t child, const char *fnc_name,
+                                  DESCR_t *args, int nargs,
+                                  char **arg_names, int n_arg_names);
 DESCR_t var_as_pattern(DESCR_t v);
 DESCR_t pat_user_call(const char *name, DESCR_t *args, int nargs);
 

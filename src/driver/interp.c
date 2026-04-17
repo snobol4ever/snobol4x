@@ -3073,6 +3073,20 @@ DESCR_t interp_eval(EXPR_t *e)
             /* Deferred-function target — build XCALLCAP, don't call now */
             EXPR_t *fnc = tgt->children[0];
             int na = fnc->nchildren;
+            /* TL-2: when every arg is a plain E_VAR, store *names* and defer
+             * lookup to flush time (NAM_commit).  This matches oracle semantics
+             * where args are resolved AFTER earlier . captures in the same
+             * pattern have written their variables. */
+            int all_vars = (na > 0);
+            for (int i = 0; i < na; i++) {
+                EXPR_t *c = fnc->children[i];
+                if (!c || c->kind != E_VAR || !c->sval) { all_vars = 0; break; }
+            }
+            if (all_vars) {
+                char **names = (char **)GC_malloc(na * sizeof(char *));
+                for (int i = 0; i < na; i++) names[i] = (char *)fnc->children[i]->sval;
+                return pat_assign_callcap_named(pat, fnc->sval, NULL, 0, names, na);
+            }
             DESCR_t *av = na > 0 ? GC_malloc(na * sizeof(DESCR_t)) : NULL;
             for (int i = 0; i < na; i++) av[i] = interp_eval(fnc->children[i]);
             return pat_assign_callcap(pat, fnc->sval, av, na);
@@ -3085,6 +3099,16 @@ DESCR_t interp_eval(EXPR_t *e)
                 && tgt->children[0]->kind == E_FNC && tgt->children[0]->sval) {
             EXPR_t *fnc = tgt->children[0];
             int na = fnc->nchildren;
+            int all_vars = (na > 0);
+            for (int i = 0; i < na; i++) {
+                EXPR_t *c = fnc->children[i];
+                if (!c || c->kind != E_VAR || !c->sval) { all_vars = 0; break; }
+            }
+            if (all_vars) {
+                char **names = (char **)GC_malloc(na * sizeof(char *));
+                for (int i = 0; i < na; i++) names[i] = (char *)fnc->children[i]->sval;
+                return pat_assign_callcap_named(pat, fnc->sval, NULL, 0, names, na);
+            }
             DESCR_t *av = na > 0 ? GC_malloc(na * sizeof(DESCR_t)) : NULL;
             for (int i = 0; i < na; i++) av[i] = interp_eval(fnc->children[i]);
             return pat_assign_callcap(pat, fnc->sval, av, na);

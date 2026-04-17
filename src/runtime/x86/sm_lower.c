@@ -170,6 +170,40 @@ static int emit_goto(SM_Program *p, LabelTable *lt,
 /* Forward declaration */
 static void lower_expr(SM_Program *p, LabelTable *lt, const EXPR_t *e);
 
+/* TL-2: extract arg *names* from a *fn(var,var,...) E_FNC subtree so
+ * SM_PAT_CAPTURE_FN can carry them in a[2].s for flush-time resolution.
+ *
+ * Returns:
+ *   NULL  — if the E_FNC has no children, any child is not E_VAR with a
+ *           non-NULL sval, or allocation failed.  Callers treat NULL as
+ *           "fall back to legacy eager-eval path" (pat_assign_callcap with
+ *           NULL args).
+ *   non-NULL — a GC_strdup-lifetime '\t'-separated list of variable names.
+ *
+ * '\t' is safe because SNOBOL4 identifiers match [A-Za-z_$.][...], never
+ * containing whitespace.  Callers split on '\t' to recover individual names. */
+static const char *sm_pat_capture_fn_arg_names(const EXPR_t *fnc)
+{
+    if (!fnc || fnc->nchildren <= 0) return NULL;
+    size_t total_len = 0;
+    for (int i = 0; i < fnc->nchildren; i++) {
+        const EXPR_t *c = fnc->children[i];
+        if (!c || c->kind != E_VAR || !c->sval) return NULL;
+        total_len += strlen(c->sval) + 1;  /* name + separator/terminator */
+    }
+    char *buf = (char *)GC_MALLOC(total_len);
+    if (!buf) return NULL;
+    char *p = buf;
+    for (int i = 0; i < fnc->nchildren; i++) {
+        const char *name = fnc->children[i]->sval;
+        size_t n = strlen(name);
+        memcpy(p, name, n);
+        p += n;
+        *p++ = (i + 1 < fnc->nchildren) ? '\t' : '\0';
+    }
+    return buf;
+}
+
 static void lower_pat_expr(SM_Program *p, LabelTable *lt, const EXPR_t *e)
 {
     if (!e) return;
@@ -282,6 +316,11 @@ static void lower_pat_expr(SM_Program *p, LabelTable *lt, const EXPR_t *e)
                 int idx = sm_emit_s(p, SM_PAT_CAPTURE_FN,
                                     var_expr->children[0]->sval);
                 p->instrs[idx].a[1].i = 0;  /* conditional */
+                /* TL-2: if every arg is a plain E_VAR, stash the names in a[2].s
+                 * as '\t'-separated so they can be resolved at flush time.
+                 * Leave a[2].s NULL for the general (arbitrary expression) case
+                 * so the runtime falls back to the legacy eager-eval path. */
+                p->instrs[idx].a[2].s = sm_pat_capture_fn_arg_names(var_expr->children[0]);
             } else {
                 int idx = sm_emit_s(p, SM_PAT_CAPTURE, var_expr->sval);
                 p->instrs[idx].a[1].i = 0;  /* conditional */
@@ -302,6 +341,7 @@ static void lower_pat_expr(SM_Program *p, LabelTable *lt, const EXPR_t *e)
                 int idx = sm_emit_s(p, SM_PAT_CAPTURE_FN,
                                     var_expr->children[0]->sval);
                 p->instrs[idx].a[1].i = 1;  /* immediate */
+                p->instrs[idx].a[2].s = sm_pat_capture_fn_arg_names(var_expr->children[0]);
             } else {
                 int idx = sm_emit_s(p, SM_PAT_CAPTURE, var_expr->sval);
                 p->instrs[idx].a[1].i = 1;  /* immediate */

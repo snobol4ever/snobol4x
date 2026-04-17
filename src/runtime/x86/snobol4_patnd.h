@@ -57,6 +57,14 @@ struct _PATND_t {
     DESCR_t      var;            /* XFNME/XNME capture target; XVAR value */
     DESCR_t     *args;           /* XATP args */
     int          nargs;          /* XATP nargs */
+    /* TL-2: for XCALLCAP *fn(var) captures, arg *names* captured at pattern-build
+     * time, to be resolved at flush time (NAM_commit / CC_γ_core immediate branch)
+     * after in-order prior . captures have written the variable.  Only populated
+     * when every arg of the *fn() call is a plain E_VAR.  If arg_names==NULL the
+     * args/nargs fields above carry pre-evaluated DESCR_t snapshots (legacy path).
+     */
+    char       **arg_names;      /* XCALLCAP: GC-allocated array of arg var names */
+    int          n_arg_names;    /* XCALLCAP: count of arg_names; 0 means unused  */
 };
 
 /* Convenience: single-child access for XARBN/XFNCE/XFNME/XNME */

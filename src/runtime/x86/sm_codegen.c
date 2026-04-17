@@ -45,6 +45,7 @@
 #include <stdint.h>
 #include <math.h>
 #include <setjmp.h>
+#include <gc/gc.h>
 
 /* ── JIT execution state (globals shared with handler functions) ──────── */
 
@@ -374,12 +375,35 @@ static void h_pat_capture(void)
 static void h_pat_capture_fn(void)
 {
     /* . *func() or $ *func() — a[0].s = function name.
+     * a[2].s (TL-2): optional '\t'-separated arg *names* for flush-time
+     * resolution — set when every arg of *func() is a plain E_VAR.
      * Use pat_assign_callcap → XCALLCAP, handled by bb_build/bb_callcap.
      * The old DT_E/pat_assign_cond approach only worked via materialise()
      * which is not used in the byrd-box (--sm-run / --jit-emit) path. */
     DESCR_t child  = jit_pat_pop();
     const char *fname = CUR_INS->a[0].s ? CUR_INS->a[0].s : "";
-    jit_pat_push(pat_assign_callcap(child, fname, NULL, 0));
+    const char *namelist = CUR_INS->a[2].s;
+    if (namelist && namelist[0]) {
+        int nnames = 1;
+        for (const char *q = namelist; *q; q++) if (*q == '\t') nnames++;
+        char **names = (char **)GC_MALLOC((size_t)nnames * sizeof(char *));
+        int ni = 0;
+        const char *start = namelist;
+        for (const char *q = namelist; ; q++) {
+            if (*q == '\t' || *q == '\0') {
+                size_t len = (size_t)(q - start);
+                char *nm = (char *)GC_MALLOC(len + 1);
+                memcpy(nm, start, len);
+                nm[len] = '\0';
+                names[ni++] = nm;
+                if (*q == '\0') break;
+                start = q + 1;
+            }
+        }
+        jit_pat_push(pat_assign_callcap_named(child, fname, NULL, 0, names, nnames));
+    } else {
+        jit_pat_push(pat_assign_callcap(child, fname, NULL, 0));
+    }
 }
 
 static void h_exec_stmt(void)

@@ -351,8 +351,20 @@ DESCR_t pat_assign_cond(DESCR_t child, DESCR_t var) {
 
 /* pat_assign_callcap — builds XCALLCAP node for "pat . *func(args)" patterns.
  * The function is called at match time (not build time) to get the DT_N lvalue.
- * fnc_name/args/nargs stored in STRVAL_fn/args/nargs fields of PATND_t. */
+ * fnc_name/args/nargs stored in STRVAL_fn/args/nargs fields of PATND_t.
+ *
+ * TL-2: also records arg *names* for flush-time resolution when every arg is a
+ * plain variable.  If arg_names==NULL the legacy snapshot path (args/nargs)
+ * applies; if arg_names is non-NULL the resolver at NAM_commit (or CC_γ_core
+ * immediate branch) does NV_GET_fn(name) per arg to get the value that was
+ * written by an earlier in-order . capture in the same pattern. */
 DESCR_t pat_assign_callcap(DESCR_t child, const char *fnc_name, DESCR_t *args, int nargs) {
+    return pat_assign_callcap_named(child, fnc_name, args, nargs, NULL, 0);
+}
+
+DESCR_t pat_assign_callcap_named(DESCR_t child, const char *fnc_name,
+                                  DESCR_t *args, int nargs,
+                                  char **arg_names, int n_arg_names) {
     PATND_t *p = spat_new(XCALLCAP);
     PATND_t *ch = pat_to_patnd(child);
     PATND_t *arr[1] = { ch };
@@ -360,6 +372,8 @@ DESCR_t pat_assign_callcap(DESCR_t child, const char *fnc_name, DESCR_t *args, i
     p->STRVAL_fn = fnc_name ? GC_strdup(fnc_name) : "";
     p->args  = args;
     p->nargs = nargs;
+    p->arg_names   = arg_names;
+    p->n_arg_names = n_arg_names;
     return spat_val(p);
 }
 

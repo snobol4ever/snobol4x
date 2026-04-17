@@ -177,12 +177,19 @@ typedef struct {
     void        *fnc_args;    /* DESCR_t* — opaque to bb_build.c */
     int          fnc_nargs;
     int          immediate;
+    /* TL-2: mirror of the new arg-name slots at the tail of the ctor-set fields.
+     * Zeroed by calloc in bb_callcap_new — a NULL fnc_arg_names disables the
+     * flush-time name-resolution path (identical to pre-TL-2 behavior). */
     /* remaining fields (pending, has_pending, registered, last_gen,
-       resolved_ptr) are zeroed by calloc — correct initial state */
+       resolved_ptr, fnc_arg_names, fnc_n_arg_names) are zeroed by calloc */
 } callcap_t_bin;
 extern void *bb_callcap_new(bb_box_fn child_fn, void *child_state,
                              const char *fnc_name, void *fnc_args,
                              int fnc_nargs, int immediate);
+extern void *bb_callcap_new_named(bb_box_fn child_fn, void *child_state,
+                                   const char *fnc_name, void *fnc_args,
+                                   int fnc_nargs, int immediate,
+                                   char **fnc_arg_names, int fnc_n_arg_names);
 
 /* Mirror of deferred_var_t from stmt_exec.c */
 typedef struct {
@@ -1225,9 +1232,10 @@ static bb_box_fn bb_callcap_emit_binary(PATND_t *p)
     bb_box_fn child_fn = bb_build_binary_node(child_p);
     if (!child_fn) return NULL;
 
-    void *z = bb_callcap_new(child_fn, NULL,
-                              p->STRVAL_fn, (void *)p->args,
-                              p->nargs, 0 /* immediate=0: . not $ */);
+    void *z = bb_callcap_new_named(child_fn, NULL,
+                                    p->STRVAL_fn, (void *)p->args,
+                                    p->nargs, 0 /* immediate=0: . not $ */,
+                                    p->arg_names, p->n_arg_names);
     if (!z) return NULL;
 
     bb_buf_t tbuf = bb_alloc(CALLCAP_TRAM_SIZE);
