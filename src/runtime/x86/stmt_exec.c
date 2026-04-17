@@ -568,7 +568,7 @@ static void callcap_list_grow(void)
     if (!g_callcap_list) { fprintf(stderr, "stmt_exec: callcap_list OOM\n"); abort(); }
 }
 
-static spec_t bb_callcap(void *zeta, int entry)
+static DESCR_t bb_callcap(void *zeta, int entry)
 {
     callcap_t *ζ = zeta;
     spec_t child_r;
@@ -616,15 +616,15 @@ static spec_t bb_callcap(void *zeta, int entry)
                ζ->has_pending = 1;
                ζ->resolved_ptr = NULL;
            }
-           return child_r;
+           return descr_from_spec(child_r);
     }
 
     CC_ω:  ζ->has_pending = 0;
-           return spec_empty;
+           return FAILDESCR;
 }
 
 /* M-DYN-B10: expose bb_callcap + ctor for bb_build_bin.c trampolines */
-spec_t bb_callcap_exported(void *zeta, int entry) { return bb_callcap(zeta, entry); }
+DESCR_t bb_callcap_exported(void *zeta, int entry) { return bb_callcap(zeta, entry); }
 
 callcap_t *bb_callcap_new(bb_box_fn child_fn, void *child_state,
                            const char *fnc_name, DESCR_t *fnc_args,

@@ -164,7 +164,7 @@ extern capture_t_bin *bb_capture_new(bb_box_fn child_fn, void *child_state,
                                      const char *varname, void *var_ptr, int immediate);
 
 /* M-DYN-B10: exported shims for static box functions in stmt_exec.c */
-extern spec_t bb_callcap_exported(void *zeta, int entry);
+extern DESCR_t bb_callcap_exported(void *zeta, int entry);
 extern spec_t bb_deferred_var_exported(void *zeta, int entry);
 
 /* Mirror of callcap_t fields needed by bb_callcap_new — only the ctor fields.

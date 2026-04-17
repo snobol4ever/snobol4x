@@ -145,7 +145,7 @@ STMT_t *label_lookup(const char *name)
 {
     if (!name || !*name) return NULL;
     for (int i = 0; i < label_count; i++)
-        if (strcasecmp(label_table[i].name, name) == 0)
+        if (strcmp(label_table[i].name, name) == 0)
             return label_table[i].stmt;
     return NULL;
 }
