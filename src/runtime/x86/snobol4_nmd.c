@@ -267,10 +267,22 @@ void NAM_commit(int cookie)
              * Prepending the captured substring as args[0] was wrong: it shifted
              * all explicit args by 1, so param[0] got "" (epsilon match) instead
              * of the intended first argument.  CSNOBOL4 confirms no prepend. */
+            /* Bug #1c fix: the NAME returned by *fn() is the target cell for
+             * the . conditional assignment.  We must write the MATCHED TEXT
+             * (e->cc_substr / e->cc_slen — captured in bb_callcap) into that
+             * cell, not the DT_N descriptor itself.  Writing name_d was
+             * dropping a stale 1-byte fragment (cursor/offset, often \t) into
+             * the cell, breaking expr_eval.sno and any (PAT . *fn()) idiom. */
             DESCR_t name_d = g_user_call_hook(e->fnc_name, e->fnc_args, e->fnc_nargs);
             DESCR_t *cell = (name_d.v == DT_N && name_d.ptr)
                             ? (DESCR_t *)name_d.ptr : NULL;
-            if (cell) *cell = name_d;
+            if (cell) {
+                DESCR_t val;
+                val.v    = DT_S;
+                val.slen = (uint32_t)e->cc_slen;
+                val.s    = (char *)(e->cc_substr ? e->cc_substr : "");
+                *cell = val;
+            }
         }
     }
 
