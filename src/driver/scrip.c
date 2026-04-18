@@ -300,6 +300,12 @@ int main(int argc, char **argv)
                 : lang_rebus  ? rebus_compile(src, input_path)
                 :               snocone_cf_compile(src, input_path);
             free(src);
+            /* SC-26 investigation: allow --dump-ir on Snocone .sc files so
+             * we can diff Snocone IR vs SNOBOL4 IR for the same program. */
+            if (lang_snocone && dump_ir && sub) {
+                ir_dump_program(sub, stdout);
+                return 0;
+            }
         } else if (dump_parse || dump_parse_flat || dump_ir) {
             /* Dump modes only process the first file */
             FILE *f = fopen(input_path, "r");
