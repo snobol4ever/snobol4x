@@ -270,7 +270,7 @@ jmp_buf  g_ir_step_jmp;
 static const char *define_spec_from_expr(EXPR_t *subj)
 {
     if (!subj || subj->kind != E_FNC) return NULL;
-    if (!subj->sval || strcasecmp(subj->sval, "DEFINE") != 0) return NULL;
+    if (!subj->sval || strcmp(subj->sval, "DEFINE") != 0) return NULL;  /* SN-19 */
     if (subj->nchildren < 1 || !subj->children[0]) return NULL;
     EXPR_t *arg = subj->children[0];
     if (arg->kind == E_QLIT) return arg->sval;
@@ -297,7 +297,7 @@ static const char *define_spec_from_expr(EXPR_t *subj)
 static const char *define_entry_from_expr(EXPR_t *subj)
 {
     if (!subj || subj->kind != E_FNC) return NULL;
-    if (!subj->sval || strcasecmp(subj->sval, "DEFINE") != 0) return NULL;
+    if (!subj->sval || strcmp(subj->sval, "DEFINE") != 0) return NULL;  /* SN-19 */
     if (subj->nchildren < 2 || !subj->children[1]) return NULL;
     EXPR_t *arg2 = subj->children[1];
     /* .label_name → E_NAME(E_VAR sval="label_name") or E_CAPT_COND_ASGN */
@@ -500,7 +500,7 @@ static DESCR_t call_user_function(const char *fname, DESCR_t *args, int nargs)
          * is shared.  Record the pre-call global (already in svals[0]), then
          * write the arg.  The body writes retname= to set return value — same
          * NV cell as the param, which is correct SIL behaviour. */
-        if (strcasecmp(pnames[i], retname) == 0)
+        if (strcmp(pnames[i], retname) == 0)  /* SN-19: both canonical from lexer */
             svals[1+i] = svals[0];          /* dedup: same original global */
         else
             svals[1+i] = NV_GET_fn(pnames[i]);
@@ -627,7 +627,7 @@ static DESCR_t call_user_function(const char *fname, DESCR_t *args, int nargs)
                      * kw_rtntype is set by call_user_function before it returns and
                      * is still valid here (no nested call between interp_eval return
                      * and this check). Re-fetch from the function's return variable. */
-                    if (strcasecmp(kw_rtntype, "NRETURN") == 0
+                    if (strcmp(kw_rtntype, "NRETURN") == 0      /* SN-19: literal uppercase */
                             && s->replacement && s->replacement->kind == E_FNC
                             && s->replacement->sval) {
                         DESCR_t raw = NV_GET_fn(s->replacement->sval);
@@ -675,7 +675,7 @@ static DESCR_t call_user_function(const char *fname, DESCR_t *args, int nargs)
                     /* ITEM(arr,i[,j]) = val  or  field(obj) = val at statement level */
                     DESCR_t rv = s->replacement ? interp_eval(s->replacement) : NULVCL;
                     if (!IS_FAIL_fn(rv)) {
-                        if (strcasecmp(s->subject->sval, "ITEM") == 0 && s->subject->nchildren >= 2) {
+                        if (strcmp(s->subject->sval, "ITEM") == 0 && s->subject->nchildren >= 2) {  /* SN-19 */
                             DESCR_t base = interp_eval(s->subject->children[0]);
                             DESCR_t idx  = interp_eval(s->subject->children[1]);
                             if (!IS_FAIL_fn(base) && !IS_FAIL_fn(idx)) {
@@ -759,18 +759,18 @@ static DESCR_t call_user_function(const char *fname, DESCR_t *args, int nargs)
                 }
 
                 if (target) {
-                        if (strcasecmp(target, "END") == 0) break;
-                    if (strcasecmp(target, "RETURN") == 0) {
+                        if (strcmp(target, "END") == 0) break;  /* SN-19: canonical */
+                    if (strcmp(target, "RETURN") == 0) {  /* SN-19: canonical from lexer */
                         retval = fr->retval_set ? fr->retval_cell : NV_GET_fn(fr->fname);
                         strncpy(kw_rtntype, "RETURN",  sizeof(kw_rtntype)-1);
                         goto fn_done;
                     }
-                    if (strcasecmp(target, "FRETURN") == 0) {
+                    if (strcmp(target, "FRETURN") == 0) {  /* SN-19 */
                         retval = FAILDESCR;
                         strncpy(kw_rtntype, "FRETURN", sizeof(kw_rtntype)-1);
                         goto fn_done;
                     }
-                    if (strcasecmp(target, "NRETURN") == 0) {
+                    if (strcmp(target, "NRETURN") == 0) {  /* SN-19 */
                         /* NRETURN: return DT_N from fn return var as-is;
                          * caller (E_FNC) applies NAME_DEREF (slen discriminates
                          * NAMEPTR from NAMEVAL). */
@@ -2686,7 +2686,7 @@ DESCR_t interp_eval(EXPR_t *e)
             }
         }
         else if (lv && lv->kind == E_FNC && lv->sval && lv->nchildren >= 1) {
-            if (strcasecmp(lv->sval, "ITEM") == 0 && lv->nchildren >= 2) {
+            if (strcmp(lv->sval, "ITEM") == 0 && lv->nchildren >= 2) {  /* SN-19 */
                 /* ITEM(arr, i [,j]) = val — programmatic subscript setter */
                 DESCR_t base = interp_eval(lv->children[0]);
                 if (!IS_FAIL_fn(base)) {
@@ -2850,7 +2850,7 @@ DESCR_t interp_eval(EXPR_t *e)
         /* DEFINE('spec'[,'entry']) — register user function.
          * SIL DEFIFN returns the function name string on success (DIFFER-able).
          * Extract name = everything before '(' or ',' in spec. */
-        if (strcasecmp(e->sval, "DEFINE") == 0) {
+        if (strcmp(e->sval, "DEFINE") == 0) {  /* SN-19: AST token, canonical */
             const char *spec = define_spec_from_expr(e);
             if (spec && *spec) {
                 const char *entry = define_entry_from_expr(e);
@@ -2927,19 +2927,19 @@ DESCR_t interp_eval(EXPR_t *e)
          * DIFFER(S,T) succeeds iff they differ in type OR value. DIFFER(S) succeeds iff S != ''.
          * Both return NULVCL on success. */
         /* EVAL/CODE: binary _EVAL_/_CODE_ are stubs; route through our full impl. */
-        if (strcasecmp(e->sval, "EVAL") == 0) {
+        if (strcmp(e->sval, "EVAL") == 0) {  /* SN-19 */
             if (nargs < 1) return FAILDESCR;
             extern DESCR_t EVAL_fn(DESCR_t);
             DESCR_t _er = EVAL_fn(args[0]);
             return _er;
         }
-        if (strcasecmp(e->sval, "CODE") == 0) {
+        if (strcmp(e->sval, "CODE") == 0) {  /* SN-19 */
             if (nargs < 1) return FAILDESCR;
             const char *_cs = VARVAL_fn(args[0]);
             extern DESCR_t code(const char *);
             return (_cs && *_cs) ? code(_cs) : FAILDESCR;
         }
-        if (strcasecmp(e->sval, "IDENT") == 0) {
+        if (strcmp(e->sval, "IDENT") == 0) {  /* SN-19 */
             if (nargs == 1) {
                 /* IDENT(S) — succeed if S is null string */
                 return IS_NULL_fn(args[0]) ? NULVCL : FAILDESCR;
@@ -2957,7 +2957,7 @@ DESCR_t interp_eval(EXPR_t *e)
                 return strcmp(sa, sb) == 0 ? NULVCL : FAILDESCR;
             }
         }
-        if (strcasecmp(e->sval, "DIFFER") == 0) {
+        if (strcmp(e->sval, "DIFFER") == 0) {  /* SN-19 */
             if (nargs == 1) {
                 return IS_NULL_fn(args[0]) ? FAILDESCR : NULVCL;
             }
@@ -4254,7 +4254,7 @@ void execute_program(Program *prog)
             DESCR_t repl_val = s->replacement ? interp_eval(s->replacement) : NULVCL;
             if (IS_FAIL_fn(repl_val)) {
                 succeeded = 0;
-            } else if (strcasecmp(s->subject->sval, "ITEM") == 0 &&
+            } else if (strcmp(s->subject->sval, "ITEM") == 0 &&  /* SN-19 */
                        s->subject->nchildren >= 2) {
                 DESCR_t base = interp_eval(s->subject->children[0]);
                 DESCR_t idx  = interp_eval(s->subject->children[1]);
@@ -4318,9 +4318,9 @@ void execute_program(Program *prog)
         do_goto:
         if (target) {
             /* Check for END pseudo-label */
-            if (strcasecmp(target, "END") == 0) break;
+            if (strcmp(target, "END") == 0) break;  /* SN-19: canonical */
             /* RETURN/FRETURN at top-level (outside a call) → treat as END */
-            if (strcasecmp(target, "RETURN") == 0 || strcasecmp(target, "FRETURN") == 0) break;
+            if (strcmp(target, "RETURN") == 0 || strcmp(target, "FRETURN") == 0) break;  /* SN-19 */
             STMT_t *dest = label_lookup(target);
             if (dest) { s = dest; continue; }
             /* Unknown label — Error 24: Undefined or erroneous goto */
@@ -4437,17 +4437,17 @@ DESCR_t _builtin_DATA(DESCR_t *args, int nargs);
 DESCR_t _usercall_hook(const char *name, DESCR_t *args, int nargs) {
     /* S-10 fix: handle scrip.c-only predicates directly so *IDENT(x)/*DIFFER(x)
      * in pattern context correctly fail/succeed via bb_usercall -> g_user_call_hook. */
-    if (strcasecmp(name, "IDENT") == 0)  return _builtin_IDENT(args, nargs);
-    if (strcasecmp(name, "DIFFER") == 0) return _builtin_DIFFER(args, nargs);
-    if (strcasecmp(name, "DATA") == 0)   return _builtin_DATA(args, nargs);
+    if (strcmp(name, "IDENT") == 0)  return _builtin_IDENT(args, nargs);  /* SN-19 */
+    if (strcmp(name, "DIFFER") == 0) return _builtin_DIFFER(args, nargs); /* SN-19 */
+    if (strcmp(name, "DATA") == 0)   return _builtin_DATA(args, nargs);   /* SN-19 */
     /* ITEM(arr,i) read and ITEM_SET(rhs,arr,i) write — SM emits these for ITEM() syntax.
      * ITEM read: args[0]=arr, args[1]=i, [args[2]=j for 2D].
      * ITEM_SET write: args[0]=rhs, args[1]=arr, args[2]=i, [args[3]=j for 2D]. */
-    if (strcasecmp(name, "ITEM") == 0 && nargs >= 2) {
+    if (strcmp(name, "ITEM") == 0 && nargs >= 2) {        /* SN-19 */
         if (nargs >= 3) return subscript_get2(args[0], args[1], args[2]);
         return subscript_get(args[0], args[1]);
     }
-    if (strcasecmp(name, "ITEM_SET") == 0 && nargs >= 3) {
+    if (strcmp(name, "ITEM_SET") == 0 && nargs >= 3) {    /* SN-19 */
         DESCR_t rhs = args[0], arr = args[1], idx = args[2];
         if (nargs >= 4) { subscript_set2(arr, idx, args[3], rhs); }
         else            { subscript_set(arr, idx, rhs); }
