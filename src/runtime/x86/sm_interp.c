@@ -571,9 +571,12 @@ int sm_interp_run(SM_Program *prog, SM_State *st)
                 if (IS_NAMEPTR(name_d)) {
                     val = NAME_DEREF_PTR(name_d);   /* interior ptr → value directly */
                 } else if (IS_NAMEVAL(name_d)) {
-                    val = NV_GET_fn(name_d.s);       /* name string → value of that var */
+                    char *fn = GC_strdup(name_d.s); sno_fold_name(fn);  /* SN-19 */
+                    val = NV_GET_fn(fn);             /* name string → value of that var */
                 } else {
-                    const char *vname = VARVAL_fn(name_d);
+                    const char *vname0 = VARVAL_fn(name_d);
+                    char *vname = (vname0 && *vname0) ? GC_strdup(vname0) : NULL;
+                    if (vname) sno_fold_name(vname);                     /* SN-19 */
                     val = (vname && *vname) ? NV_GET_fn(vname) : NULVCL;
                 }
                 sm_push(st, val);
@@ -588,8 +591,10 @@ int sm_interp_run(SM_Program *prog, SM_State *st)
                  * yet in the NV table (e.g. OPSYN(.facto,'fact') before facto
                  * is ever read/written). */
                 DESCR_t name_d = sm_pop(st);
-                const char *vname = VARVAL_fn(name_d);
-                sm_push(st, NAMEVAL(GC_strdup(vname ? vname : "")));
+                const char *vname0 = VARVAL_fn(name_d);
+                char *vname = GC_strdup(vname0 ? vname0 : "");
+                sno_fold_name(vname);                                    /* SN-19 */
+                sm_push(st, NAMEVAL(vname));
                 st->last_ok = 1;
                 break;
             }
@@ -601,9 +606,12 @@ int sm_interp_run(SM_Program *prog, SM_State *st)
                     /* $(.var) — write through name pointer directly */
                     *(DESCR_t*)name_d.ptr = val; ok = 1;
                 } else if (IS_NAMEVAL(name_d)) {
-                    NV_SET_fn(name_d.s, val); ok = 1;
+                    char *fn = GC_strdup(name_d.s); sno_fold_name(fn);  /* SN-19 */
+                    NV_SET_fn(fn, val); ok = 1;
                 } else {
-                    const char *vname = VARVAL_fn(name_d);
+                    const char *vname0 = VARVAL_fn(name_d);
+                    char *vname = (vname0 && *vname0) ? GC_strdup(vname0) : NULL;
+                    if (vname) sno_fold_name(vname);                     /* SN-19 */
                     if (vname && *vname) { NV_SET_fn(vname, val); ok = 1; }
                     /* else: empty/null name — fail the statement */
                 }

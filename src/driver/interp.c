@@ -4122,6 +4122,11 @@ void execute_program(Program *prog)
                     DESCR_t nd = interp_eval(ic);
                     subj_name = VARVAL_fn(nd);
                 }
+                if (subj_name) {
+                    /* SN-19: $name as subject — lex-fold the runtime-sourced name */
+                    char *fn = GC_strdup(subj_name); sno_fold_name(fn);
+                    subj_name = fn;
+                }
                 if (subj_name && s->pattern) {
                     subj_val = NV_GET_fn(subj_name);
                 } else if (!subj_name)
@@ -4224,10 +4229,11 @@ void execute_program(Program *prog)
                  * $UTF_Array[i,2] means: get string value of UTF_Array[i,2], use as var name.
                  * This is always string-name indirection — never a subscript lvalue. */
                 DESCR_t name_d = ichild ? interp_eval(ichild) : NULVCL;
-                const char *nm = VARVAL_fn(name_d);
-                if (!nm || !*nm) {
+                const char *nm0 = VARVAL_fn(name_d);
+                if (!nm0 || !*nm0) {
                     succeeded = 0;
                 } else {
+                    char *nm = GC_strdup(nm0); sno_fold_name(nm);  /* SN-19 */
                     set_and_trace(nm, repl_val);
                     succeeded = 1;
                 }
