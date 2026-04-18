@@ -413,13 +413,17 @@ static int _expr_is_pat(EXPR_t *e) {
     return 0;
 }
 
-/* BP-1: return interior ptr into DATA instance field, or NULL if not found */
+/* BP-1: return interior ptr into DATA instance field, or NULL if not found.
+ * SN-19 arch fix: case-policy-neutral shared runtime. Each frontend enforces
+ * its own case policy at ingest (SNOBOL4 lex-folds + _builtin_DATA pre-folds;
+ * Icon/Raku preserve). Within one language, stored fields and lookup keys
+ * have identical case convention — plain strcmp is correct by construction. */
 static DESCR_t *data_field_ptr(const char *fname, DESCR_t inst) {
     if (inst.v < DT_DATA || !inst.u) return NULL;
     DATBLK_t *blk = inst.u->type;
     if (!blk) return NULL;
     for (int i = 0; i < blk->nfields; i++)
-        if (blk->fields[i] && strcasecmp(blk->fields[i], fname) == 0)
+        if (blk->fields[i] && strcmp(blk->fields[i], fname) == 0)
             return &inst.u->fields[i];
     return NULL;
 }
@@ -4645,6 +4649,9 @@ static ScDatType *sc_dat_register(const char *spec) {
     if (sc_dat_ntypes >= SC_DAT_MAX_TYPES) return NULL;
     ScDatType *t = &sc_dat_types[sc_dat_ntypes];
     memset(t, 0, sizeof *t);
+    /* SN-19 arch fix: sc_dat_register is case-policy-neutral shared runtime
+     * serving SNOBOL4 (case-insensitive, caller pre-folds), Icon/Raku
+     * (case-sensitive, caller passes verbatim). Store exactly as given. */
     /* parse name */
     const char *p = spec;
     int ni = 0;
@@ -4760,8 +4767,13 @@ DESCR_t sc_dat_field_call(const char *name, DESCR_t *args, int nargs) {
 /* ── DATA() builtin ─────────────────────────────────────────────────────── */
 DESCR_t _builtin_DATA(DESCR_t *args, int nargs) {
     if (nargs < 1) return FAILDESCR;
-    const char *spec = VARVAL_fn(args[0]);
-    if (!spec || !*spec) return FAILDESCR;
+    const char *raw_spec = VARVAL_fn(args[0]);
+    if (!raw_spec || !*raw_spec) return FAILDESCR;
+    /* SN-19 arch: _builtin_DATA is SNOBOL4's ingest boundary for DATA(). The
+     * underlying DEFDAT_fn/sc_dat_register are case-policy-neutral; SNOBOL4
+     * pre-folds here so its case-insensitive semantics reach the runtime. */
+    char *spec = GC_strdup(raw_spec);
+    sno_fold_name(spec);
     DEFDAT_fn(spec);              /* register in SPITBOL runtime (for DATATYPE() etc.) */
     sc_dat_register(spec);        /* register in our dispatch table */
     return NULVCL;

@@ -1175,8 +1175,13 @@ static int fn_has_builtin(const char *name);  /* forward — defined after FNCBL
 static void _func_init(void);  /* forward */
 static DESCR_t _DATA_(DESCR_t *a, int n) {
     if (n < 1) return NULVCL;
-    const char *spec = VARVAL_fn(a[0]);
-    if (!spec || !*spec) return NULVCL;
+    const char *raw_spec = VARVAL_fn(a[0]);
+    if (!raw_spec || !*raw_spec) return NULVCL;
+
+    /* SN-19 arch: _DATA_ is SNOBOL4's runtime DATA() boundary. Pre-fold the
+     * spec here once; DEFDAT_fn is case-policy-neutral shared runtime. */
+    char *spec = GC_strdup(raw_spec);
+    sno_fold_name(spec);
 
     /* Register the type in snobol4's DATBLK_t list */
     DEFDAT_fn(spec);
@@ -2027,10 +2032,11 @@ void DEFDAT_fn(const char *spec) {
     if (close) *close = '\0';
 
     DATBLK_t *t = GC_malloc(sizeof(DATBLK_t));
-    /* SN-19: fold typename at ingest (was hard toupper) */
-    char *uname = GC_strdup(name);
-    sno_fold_name(uname);
-    t->name = uname;
+    /* SN-19 arch fix: DEFDAT_fn is case-policy-neutral shared runtime, called
+     * from SNOBOL4 (case-insensitive), Icon and Raku (case-sensitive). Each
+     * language's frontend owns fold policy — SNOBOL4 pre-folds before calling,
+     * Icon/Raku pass verbatim. Store name exactly as given. */
+    t->name = GC_strdup(name);
 
     /* Count and extract fields */
     int nfields = 0;
@@ -2048,7 +2054,7 @@ void DEFDAT_fn(const char *spec) {
         while (*tok == ' ') tok++;
         char *end = tok + strlen(tok) - 1;
         while (end > tok && *end == ' ') *end-- = '\0';
-        char *fld = GC_strdup(tok); sno_fold_name(fld);  /* SN-19: fold field at ingest */
+        char *fld = GC_strdup(tok);  /* SN-19 arch fix: case-policy-neutral */
         t->fields[i] = fld;
         tok = strtok(NULL, ",");
     }
