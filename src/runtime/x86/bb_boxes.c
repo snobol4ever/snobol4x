@@ -411,7 +411,7 @@ DESCR_t bb_bal(void *zeta, int entry)
             else if (c == ')') {
                 if (depth == 0) break;   /* unmatched ')' stops scan */
                 depth--; pos++;
-                if (depth == 0) break;   /* consumed one balanced group — stop */
+                /* depth==0 after closing: continue scanning for more balanced content */
             } else { pos++; }
         }
         ζ->δ = pos - Δ;

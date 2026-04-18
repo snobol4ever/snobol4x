@@ -468,9 +468,13 @@ static DESCR_t bb_atp(void *zeta, int entry)
     ATP_β:  return FAILDESCR;
 }
 
-/* ── USERCALL box — deferred SNOBOL4 user function call at match time ────────
- * On alpha: call g_user_call_hook(name, args, nargs) for side effect; succeed epsilon.
- * On beta: fail — side-effect calls have no backtrack semantics (once-only). */
+/* ── USERCALL box — *fn() bare pattern side-effect call ──────────────────────
+ * Bug #1d fix: defer via NAM_push_callcap so the call fires at NAM_commit
+ * (overall pattern success) rather than at match-time alpha.  Failed ARBNO
+ * trials / ALT arms that include *fn() no longer fire the function — the NAM
+ * rollback on backtrack discards the pending callcap entry before commit.
+ * On alpha: record deferred call (epsilon match); succeed.
+ * On beta: fail — no re-try semantics for side-effect calls. */
 typedef struct {
     const char *name;
     DESCR_t    *args;
@@ -487,10 +491,7 @@ static spec_t bb_usercall(void *zeta, int entry)
                     goto UC_β;
 
     UC_α:  ζ->done = 1;
-           if (g_user_call_hook && ζ->name) {
-               DESCR_t _uc_r = g_user_call_hook(ζ->name, ζ->args, ζ->nargs);
-               if (IS_FAIL_fn(_uc_r)) goto UC_β;  /* func failed: fail the box (DYN-74) */
-           }
+           NAM_push_callcap(ζ->name, ζ->args, ζ->nargs, NULL, 0);
            UC = spec(Σ + Δ, 0);           goto UC_γ;
     UC_β:                                  goto UC_ω;
 
