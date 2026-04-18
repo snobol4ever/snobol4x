@@ -2554,15 +2554,15 @@ typedef struct _FNCBLK_t {
 static FNCBLK_t *_func_buckets[FUNC_BUCKETS];
 static int        _func_init_done = 0;
 
+/* forward decl — _func_hash defined below after _func_init */
+static unsigned _func_hash(const char *name);
+
 /* fn_has_builtin — returns 1 if a C-backed (fn!=NULL) entry exists for name.
- * Must use the same hash as _func_hash (h*33^toupper, mod FUNC_BUCKETS). */
+ * SN-19 stage-2: names arrive canonical (folded at ingest); use _func_hash directly. */
 static int fn_has_builtin(const char *name) {
     if (!name) return 0;
     _func_init();
-    unsigned h = 5381;
-    for (const char *p = name; *p; p++)
-        h = h * 33 ^ (unsigned char)toupper((unsigned char)*p);
-    h %= FUNC_BUCKETS;
+    unsigned h = _func_hash(name);
     for (FNCBLK_t *e = _func_buckets[h]; e; e = e->next)
         if (strcmp(e->name, name) == 0 && e->fn != NULL) return 1;
     return 0;
@@ -2790,7 +2790,8 @@ DESCR_t APPLY_fn(const char *name, DESCR_t *args, int nargs) {
     return FAILDESCR;
 }
 
-/* ARG(fname, n) — return uppercase name of nth parameter (1-based).
+/* ARG(fname, n) — return name of nth parameter (1-based).
+ * SN-19 stage-2: params arrive canonical via _parse_define_spec fold, no runtime toupper needed.
  * Fails if fname not found or n out of bounds. */
 static DESCR_t _ARG_(DESCR_t *a, int n) {
     if (n < 2) return FAILDESCR;
@@ -2802,17 +2803,14 @@ static DESCR_t _ARG_(DESCR_t *a, int n) {
     for (FNCBLK_t *e = _func_buckets[h]; e; e = e->next) {
         if (strcmp(e->name, fname) == 0) {
             if (idx < 1 || idx > (int64_t)e->nparams) return FAILDESCR;
-            const char *pname = e->params[idx - 1];
-            size_t len = strlen(pname);
-            char *up = GC_malloc(len + 1);
-            for (size_t i = 0; i <= len; i++) up[i] = (char)toupper((unsigned char)pname[i]);
-            return STRVAL(up);
+            return STRVAL(GC_strdup(e->params[idx - 1]));
         }
     }
     return FAILDESCR;
 }
 
-/* LOCAL(fname, n) — return uppercase name of nth local variable (1-based).
+/* LOCAL(fname, n) — return name of nth local variable (1-based).
+ * SN-19 stage-2: locals arrive canonical via _parse_define_spec fold.
  * Fails if fname not found or n out of bounds. */
 static DESCR_t _LOCAL_(DESCR_t *a, int n) {
     if (n < 2) return FAILDESCR;
@@ -2824,11 +2822,7 @@ static DESCR_t _LOCAL_(DESCR_t *a, int n) {
     for (FNCBLK_t *e = _func_buckets[h]; e; e = e->next) {
         if (strcmp(e->name, fname) == 0) {
             if (idx < 1 || idx > (int64_t)e->nlocals) return FAILDESCR;
-            const char *lname = e->locals[idx - 1];
-            size_t len = strlen(lname);
-            char *up = GC_malloc(len + 1);
-            for (size_t i = 0; i <= len; i++) up[i] = (char)toupper((unsigned char)lname[i]);
-            return STRVAL(up);
+            return STRVAL(GC_strdup(e->locals[idx - 1]));
         }
     }
     return FAILDESCR;
@@ -2860,6 +2854,7 @@ static DESCR_t _DEFINE_(DESCR_t *a, int n) {
  * SIL FIELDS proc (v311.sil:6353):  returns the name of the Nth field
  * of a DATA()-defined datatype whose constructor is fname.
  * Fields are the parameter names from the DATA() prototype.
+ * SN-19 stage-2: field names arrive canonical via DEFDAT_fn ingest fold.
  * Fails if fname unknown, not a DATA type, or n out of range. */
 static DESCR_t _FIELD_(DESCR_t *a, int n) {
     if (n < 2) return FAILDESCR;
@@ -2872,11 +2867,7 @@ static DESCR_t _FIELD_(DESCR_t *a, int n) {
         if (strcmp(e->name, fname) == 0) {
             /* Fields = params of the DATA prototype */
             if (idx < 1 || idx > (int64_t)e->nparams) return FAILDESCR;
-            const char *fname2 = e->params[idx - 1];
-            size_t len = strlen(fname2);
-            char *up = GC_malloc(len + 1);
-            for (size_t i = 0; i <= len; i++) up[i] = (char)toupper((unsigned char)fname2[i]);
-            return STRVAL(up);
+            return STRVAL(GC_strdup(e->params[idx - 1]));
         }
     }
     return FAILDESCR;

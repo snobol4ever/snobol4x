@@ -224,12 +224,13 @@ void icn_init_save_frame(void) {
 }
 
 
-/* SN-3: shadow table helpers — check active frames top-down */
+/* SN-3: shadow table helpers — check active frames top-down
+ * SN-19 stage-2: names arrive canonical (folded at lex/ingest), plain strcmp is correct. */
 static int shadow_get(const char *name, DESCR_t *out) {
     for (int d = call_depth - 1; d >= 0; d--) {
         CallFrame *fr = &call_stack[d];
         for (int j = 0; j < fr->nshadow; j++)
-            if (strcasecmp(fr->shadow[j].name, name) == 0) { *out = fr->shadow[j].val; return 1; }
+            if (strcmp(fr->shadow[j].name, name) == 0) { *out = fr->shadow[j].val; return 1; }
     }
     return 0;
 }
@@ -237,7 +238,7 @@ static void shadow_set_cur(const char *name, DESCR_t val) {
     if (call_depth <= 0) return;
     CallFrame *fr = &call_stack[call_depth - 1];
     for (int j = 0; j < fr->nshadow; j++)
-        if (strcasecmp(fr->shadow[j].name, name) == 0) { fr->shadow[j].val = val; return; }
+        if (strcmp(fr->shadow[j].name, name) == 0) { fr->shadow[j].val = val; return; }
     if (fr->nshadow < SHADOW_MAX) {
         strncpy(fr->shadow[fr->nshadow].name, name, 63);
         fr->shadow[fr->nshadow].name[63] = '\0';
@@ -249,7 +250,7 @@ static int shadow_has(const char *name) {
     for (int d = call_depth - 1; d >= 0; d--) {
         CallFrame *fr = &call_stack[d];
         for (int j = 0; j < fr->nshadow; j++)
-            if (strcasecmp(fr->shadow[j].name, name) == 0) return 1;
+            if (strcmp(fr->shadow[j].name, name) == 0) return 1;
     }
     return 0;
 }
@@ -367,7 +368,8 @@ static inline void set_and_trace(const char *name, DESCR_t val) {
 trace_hook:
     if (call_depth > 0) {
         CallFrame *fr = &call_stack[call_depth - 1];
-        if (name && fr->fname[0] && strcasecmp(name, fr->fname) == 0) {
+        /* SN-19 stage-2: names arrive canonical, plain strcmp is correct */
+        if (name && fr->fname[0] && strcmp(name, fr->fname) == 0) {
             fr->retval_cell = val;
             fr->retval_set  = 1;
         }
@@ -385,8 +387,9 @@ static const char *PAT_FNC_NAMES[] = {
 };
 static int _is_pat_fnc_name(const char *s) {
     if (!s) return 0;
+    /* SN-19 stage-2: AST sval arrives canonical from lexer fold, plain strcmp correct */
     for (int i = 0; PAT_FNC_NAMES[i]; i++)
-        if (strcasecmp(s, PAT_FNC_NAMES[i]) == 0) return 1;
+        if (strcmp(s, PAT_FNC_NAMES[i]) == 0) return 1;
     return 0;
 }
 
@@ -469,8 +472,9 @@ static DESCR_t call_user_function(const char *fname, DESCR_t *args, int nargs)
     /* For OPSYN aliases: fname="facto", entry_label="fact" — entry_label IS a registered
      * function whose body writes "fact=...".  Use entry_label as the return-value slot.
      * For alternate-entry: fname="fact2", entry_label="fact2_entry" — entry_label is just
-     * a label, NOT a registered function; body still writes "fact2=...".  Use fname. */
-    if (entry_pre && strcasecmp(entry_pre, fname) != 0 && FNCEX_fn(entry_pre))
+     * a label, NOT a registered function; body still writes "fact2=...".  Use fname.
+     * SN-19 stage-2: both names arrive canonical, plain strcmp is correct. */
+    if (entry_pre && strcmp(entry_pre, fname) != 0 && FNCEX_fn(entry_pre))
         retname = entry_pre;
 
     /* ── Save current values of retname-var, params, locals ── */
@@ -4454,9 +4458,10 @@ DESCR_t _usercall_hook(const char *name, DESCR_t *args, int nargs) {
         ScDatType *_ft = sc_dat_find_field(name, &_fi);
         if (_ft && nargs >= 1) return sc_dat_field_get(name, args[0]);
         /* Field mutator: fname_SET(rhs, obj) — sm_lower emits this for fname(obj)=rhs.
-         * Strip the _SET suffix, look up the field, write through data_field_ptr. */
+         * Strip the _SET suffix, look up the field, write through data_field_ptr.
+         * SN-19 stage-2: name arrives canonical, suffix emitted canonical, strcmp correct */
         size_t _nlen = strlen(name);
-        if (_nlen > 4 && strcasecmp(name + _nlen - 4, "_SET") == 0 && nargs >= 2) {
+        if (_nlen > 4 && strcmp(name + _nlen - 4, "_SET") == 0 && nargs >= 2) {
             char _fname[128];
             size_t _flen = _nlen - 4;
             if (_flen >= sizeof(_fname)) _flen = sizeof(_fname) - 1;
