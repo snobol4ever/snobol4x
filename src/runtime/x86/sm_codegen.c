@@ -227,6 +227,20 @@ static void h_push_var(void)
     PUSH(NV_GET_fn(CUR_INS->a[0].s));
 }
 
+/* SN-9a: frozen DT_E descriptor for *expr / EVAL().  Mirrors sm_interp.c
+ * SM_PUSH_EXPR handler.  Note the union-aliasing hazard — d.s and d.ptr
+ * share a union, so .ptr must be written last after .slen = 0 (same
+ * ordering rule as the four constructor sites fixed at SN-6b). */
+static void h_push_expr(void)
+{
+    DESCR_t d;
+    d.v    = DT_E;
+    d.slen = 0;
+    d.ptr  = CUR_INS->a[0].ptr;
+    PUSH(d);
+    STATE->last_ok = 1;
+}
+
 static void h_store_var(void)
 {
     DESCR_t val = POP();
@@ -600,6 +614,7 @@ static void init_handler_table(void)
     g_handlers[SM_PUSH_LIT_F] = h_push_lit_f;
     g_handlers[SM_PUSH_NULL]  = h_push_null;
     g_handlers[SM_PUSH_VAR]   = h_push_var;
+    g_handlers[SM_PUSH_EXPR]  = h_push_expr;
     g_handlers[SM_STORE_VAR]  = h_store_var;
     g_handlers[SM_POP]        = h_pop;
 
