@@ -124,10 +124,11 @@ void name_init_as_call(NAME_t *nm,
 /* call NAME_pop.  The stack rolls and unrolls itself through the γ/β/ω     */
 /* cascade — no separate commit/discard bureaucracy.                         */
 /*                                                                            */
-/* Two combinator helpers handle the rare non-LIFO paths: bb_alt's           */
-/* next-arm transition and bb_arbno's zero-advance / body-ω escapes can     */
-/* abandon a γ-succeeded child without β-asking it to pop.  The helpers    */
-/* snapshot top and bulk-drop back down.                                     */
+/* SN-23d added NAME_pop_top() for the handle-free LIFO drop used by bb_cap  */
+/* (γ's push handle isn't threaded through to β/ω).                          */
+/*                                                                            */
+/* SN-23e removed NAME_top / NAME_pop_above / NAME_save / NAME_discard —    */
+/* all callers were rewired to ctx_enter/leave or LIFO pop_top in SN-23a..d. */
 /*                                                                            */
 /* Handles are opaque pointers; pass to NAME_pop exactly once.              */
 /*---------------------------------------------------------------------------*/
@@ -135,8 +136,5 @@ void name_init_as_call(NAME_t *nm,
 void *NAME_push      (const NAME_t *nm, const char *substr, int slen);
 void  NAME_pop       (void *handle);
 void  NAME_pop_top   (void);             /* SN-23d: drop topmost live slot  */
-
-int   NAME_top       (void);             /* current stack depth              */
-void  NAME_pop_above (int saved_top);    /* drop slots [saved_top..top)      */
 
 #endif /* NAME_T_H */

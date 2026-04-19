@@ -251,18 +251,13 @@ void   *NAME_push_callcap_named(const char *fnc_name,
  * Safe if handle is NULL or the entry's frame has already been popped.   */
 void    NAME_pop(void *handle);
 
-/* NAME_save: snapshot current naming-list top; returns opaque cookie.        */
-int     NAME_save(void);
+/* NAME_commit: on pattern success — assign all live entries in the active
+ * ctx through name_commit_value (DT_E thaw / NV_SET_fn / interior-pointer
+ * write, per slot kind), then clear the ctx.  Called once per successful
+ * statement-level match (at stmt_exec Phase 3 success) or EVAL'd pattern.  */
+void    NAME_commit(void);
 
-/* NAME_commit: on pattern success — assign all entries since cookie.
- *   DT_E  → thaw via EVAL_fn inside name_commit_value
- *   else  → NV_SET_fn or interior-pointer write                             */
-void    NAME_commit(int cookie);
-
-/* NAME_discard: mid-scan reset — clear entries since cookie.                 */
-void    NAME_discard(int cookie);
-
-/* ── SN-23a: per-context NAM stack (dormant until SN-23b..c adopt it) ───── */
+/* ── SN-23a: per-context NAM stack (adopted by SN-23b..c callers) ──────── */
 
 /* NAME_ctx_t — per-match NAM stack frame.  Struct is exposed so callers
  * can stack-allocate; the `entries` pointer is opaque (the slot type
@@ -276,8 +271,8 @@ typedef struct NAME_ctx_s {
 } NAME_ctx_t;
 
 /* NAME_ctx_enter: push ctx onto the ctx chain; subsequent NAME_push /
- * NAME_pop / NAME_top / NAME_pop_above / NAME_commit operate on ctx.
- * The ctx struct is populated in place — caller owns the storage.        */
+ * NAME_pop / NAME_pop_top / NAME_commit operate on ctx.  The ctx struct
+ * is populated in place — caller owns the storage.                        */
 void    NAME_ctx_enter(NAME_ctx_t *ctx);
 
 /* NAME_ctx_leave: restore parent ctx.  No-op if current ctx is the root. */

@@ -1,53 +1,55 @@
 /*
  * snobol4_nmd.c — SIL Naming List (§NMD)
  *
- * ARCHITECTURE (SN-23a — per-context NAM stack layer):
+ * ARCHITECTURE (SN-23e — collapsed API: push + pop + commit + ctx-brackets):
  *
- *   The NAM stack is now owned by a NAME_ctx_t, not by a file-scope global.
- *   A static root ctx (g_root_ctx) wraps the legacy g_stack/g_cap/g_top
- *   globals; g_ctx_current points at the active ctx.  All ops route through
- *   g_ctx_current, so behavior is identical to the flat-stack era as long
- *   as no caller enters a child ctx.
+ *   The NAM stack is owned by a NAME_ctx_t, not by a file-scope global.
+ *   A static root ctx (g_root_ctx) wraps the original entries array and
+ *   top counter; g_ctx_current points at the active ctx.  All ops route
+ *   through g_ctx_current.  Nested matches (EVAL-inside-match, recursive
+ *   patterns with their own scan frame) each create a child ctx via
+ *   NAME_ctx_enter, so inner captures can never leak into the outer.
  *
  *     ctx.entries: [ 0 | 1 | 2 | ... | top-1 ]    grows right
  *
- *   Two primary operations drive all pattern-time capture bookkeeping:
+ *   Complete public API — five ops, period:
  *
- *     NAME_push(nm, substr, slen)  — append slot; return handle (index).
- *     NAME_pop(handle)              — drop that slot (LIFO from top).
- *
- *   Two bracket operations frame statement-match and EVAL contexts (legacy
- *   API, unchanged in SN-23a):
- *
- *     NAME_save()                   — snapshot current top (returns cookie).
- *     NAME_commit(cookie)           — walk stack[cookie..top), fire each
- *                                     through name_commit_value; top = cookie.
- *     NAME_discard(cookie)          — top = cookie (drop, don't fire).
- *
- *   SN-23a adds two ctx brackets (dormant until callers adopt them, landing
- *   in SN-23b..c):
- *
- *     NAME_ctx_enter(ctx)           — make ctx the active stack; parent saved.
- *     NAME_ctx_leave()              — restore parent; ctx's entries dropped.
+ *     NAME_push(nm, substr, slen)   — append slot; return handle (index).
+ *                                     Every box γ calls this on match.
+ *     NAME_pop(handle)              — drop that specific slot (LIFO by index).
+ *     NAME_pop_top()                — drop whatever's on top (handle-free; used
+ *                                     by bb_cap where the push handle is not
+ *                                     threaded through to β/ω).
+ *     NAME_commit()                 — walk the active ctx oldest→newest,
+ *                                     fire each live slot via
+ *                                     name_commit_value, then reset top=0.
+ *                                     Called once, on outer match success.
+ *     NAME_ctx_enter(ctx) / NAME_ctx_leave()
+ *                                   — bracket a nested scan / EVAL frame.
  *
  * EVERY box γ push has a matching β/ω pop — boxes own and self-unwind
  * their own slots.  There is never "leftover" pushed state once a box
- * has backtracked or failed out.  Commit at the statement-match bracket
- * walks entries in push order (oldest → newest) to preserve the
- * capture-before-callcap semantics fixed in SC-26.
+ * has backtracked or failed out.  NAME_commit walks entries in push
+ * order (oldest → newest) to preserve the capture-before-callcap
+ * semantics fixed in SC-26.
  *
- * LEGACY SHIMS:
+ * HISTORY:
  *
- *   NAME_save / NAME_commit / NAME_discard / NAME_push_callcap* /
- *   NAME_top / NAME_pop_above remain as thin wrappers around the core
- *   NAME_push / NAME_pop protocol.  SN-22a+b removed the last in-box
- *   callers of NAME_mark / NAME_rollback_to (bb_alt, bb_arbno); those
- *   two shims were deleted in SN-22c.  SN-23 will collapse the bracket
- *   API onto NAME_ctx_enter/leave across SN-23b..e.
+ *   SN-20   — box-owned self-unwind (NAME_pop on β/ω).
+ *   SN-21   — unified NAME_t + flat NAM stack, one push/pop API.
+ *   SN-22a+b — removed NAME_mark / NAME_rollback_to call sites from
+ *              bb_alt and bb_arbno; their definitions deleted in SN-22c.
+ *   SN-23a   — introduced NAME_ctx_t and ctx-enter/leave.
+ *   SN-23b+c — rewired stmt_exec Phase 3 and EVAL frame to ctx brackets;
+ *              NAME_save/NAME_discard no longer live-used.
+ *   SN-23d   — bb_cap dropped nam_handle; NAME_pop_top() introduced.
+ *   SN-23e   — deleted NAME_save, NAME_discard, NAME_top, NAME_pop_above.
+ *              NAME_commit dropped its cookie argument (always 0 under
+ *              ctx nesting).  API surface: 9 entries → 5.
  *
  * AUTHORS: Lon Jones Cherryholmes · Claude Opus 4.7
  * DATE:    2026-04-19
- * SPRINT:  SN-23a
+ * SPRINT:  SN-23e
  */
 
 #include <stdio.h>
@@ -224,49 +226,13 @@ void NAME_pop_top(void)
 }
 
 /*===========================================================================*/
-/* NAME_top — current stack depth                                             */
-/*===========================================================================*/
-
-int NAME_top(void)
-{
-    return g_ctx_current->top;
-}
-
-/*===========================================================================*/
-/* NAME_pop_above — bulk drop slots [saved_top..top) without firing           */
+/* NAME_push_callcap / NAME_push_callcap_named — NM_CALL entry.               */
 /*                                                                            */
-/* Used internally by NAME_commit / NAME_discard.  The in-box callers       */
-/* (bb_alt's next-arm switch, bb_arbno's body-ω / zero-advance escapes)     */
-/* were removed in SN-22a+b once per-box self-unwind was complete.          */
+/* Convenience wrappers around NAME_push for the pat . *fn() XCALLCAP case.  */
+/* Slated for deletion in SN-23f — zero live callers remain (bb_cap builds    */
+/* the NAME_t and calls NAME_push directly).                                  */
 /*===========================================================================*/
 
-void NAME_pop_above(int saved_top)
-{
-    NAME_ctx_t *ctx = g_ctx_current;
-    if (saved_top < 0) saved_top = 0;
-    if (saved_top > ctx->top) saved_top = ctx->top;
-    ctx->top = saved_top;
-}
-
-/*===========================================================================*/
-/* NOTE — statement/EVAL commit walks live at the call sites.  stmt_exec.c  */
-/* on match success walks stack[saved..top) through name_commit_value,       */
-/* then NAME_pop_above(saved).  On failure it just NAME_pop_above(saved).   */
-/* EVAL always NAME_pop_above(saved) — captures inside an EVAL'd expression */
-/* are local to that expression and never propagate out.                     */
-/*===========================================================================*/
-
-/*===========================================================================*/
-/* ─── LEGACY SHIMS (reduced in SN-22c; to be collapsed in SN-23b..e) ────── */
-/*===========================================================================*/
-
-/* NAME_save — "push frame" becomes "snapshot current top". */
-int NAME_save(void)
-{
-    return NAME_top();
-}
-
-/* NAME_push_callcap / NAME_push_callcap_named — NM_CALL entry. */
 void *NAME_push_callcap(const char *fnc_name, DESCR_t *fnc_args, int fnc_nargs,
                        const char *matched_text, int matched_len)
 {
@@ -285,6 +251,16 @@ void *NAME_push_callcap_named(const char *fnc_name,
     return NAME_push(&nm, matched_text, matched_len);
 }
 
+/*===========================================================================*/
+/* NAME_commit — walk the active ctx, fire each live slot, clear the stack.   */
+/*                                                                            */
+/* DT_S entries are fired with last-write-wins dedup (scan forward until an   */
+/* NM_CALL barrier; if a later slot targets the same variable, skip this one).*/
+/* Walk is oldest → newest to preserve capture-before-callcap ordering        */
+/* (SC-26 invariant: (.) captures like tag/wrd must be assigned before the    */
+/* (. *fn()) callcaps like push_list/push_item that read them).               */
+/*===========================================================================*/
+
 /* same_var_target — last-write-wins dedup helper used inline below. */
 static int same_var_target(const NAME_entry_t *a, const NAME_entry_t *b)
 {
@@ -297,22 +273,12 @@ static int same_var_target(const NAME_entry_t *a, const NAME_entry_t *b)
     return 0;
 }
 
-/* NAME_commit — walk slots [cookie..top), fire DT_S entries with
- * last-write-wins dedup (stop at intervening NM_CALL), then drop the
- * range via NAME_pop_above.  Operates on the active ctx. */
-void NAME_commit(int cookie)
+void NAME_commit(void)
 {
     NAME_ctx_t *ctx = g_ctx_current;
-    int mark = cookie;
-    if (mark < 0) mark = 0;
-    if (mark > ctx->top) mark = ctx->top;
-
     NAME_entry_t *es = ctx_entries(ctx);
 
-    /* Unified commit with last-write-wins dedup.  Walk in push order
-     * (oldest → newest) so (.) captures preceding (. *fn()) callcaps
-     * fire first, matching SC-26 semantics. */
-    for (int i = mark; i < ctx->top; i++) {
+    for (int i = 0; i < ctx->top; i++) {
         NAME_entry_t *e = &es[i];
         if (!e->live) continue;
 
@@ -332,11 +298,5 @@ void NAME_commit(int cookie)
         name_commit_value(&e->name, val);
     }
 
-    NAME_pop_above(mark);
-}
-
-/* NAME_discard — drop entries [cookie..top). */
-void NAME_discard(int cookie)
-{
-    NAME_pop_above(cookie);
+    ctx->top = 0;
 }

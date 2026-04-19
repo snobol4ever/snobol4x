@@ -1255,15 +1255,14 @@ int exec_stmt(const char  *subj_name,
     typedef struct { int start; int end; } scan_result_t;
     scan_result_t scan_res = { -1, -1 };
 
-    /* SN-23b: enter a fresh NAM ctx for this scan.  Replaces the pre-SN-23
-     * NAME_save() cookie: every push during BB_SCAN lands in scan_ctx, and
-     * on failure NAME_ctx_leave() drops the entire ctx (equivalent to the
-     * old NAME_discard(cookie) reset), while on success NAME_commit(0) walks
-     * the whole ctx before NAME_ctx_leave() tears it down.  Box self-unwind
-     * (SN-22d invariant) means scan_ctx.top is already 0 at BB_SCAN return
-     * regardless of pattern outcome; the walk-and-fire still runs because
-     * commit fires entries whose pushes were NOT undone (NM_CALL pushes
-     * that bb_cap keeps alive on γ — see bb_boxes.c:559). */
+    /* SN-23b+e: enter a fresh NAM ctx for this scan.  Every push during
+     * BB_SCAN lands in scan_ctx; on failure NAME_ctx_leave() drops the
+     * entire ctx, and on success NAME_commit() walks the whole ctx before
+     * NAME_ctx_leave() tears it down.  Box self-unwind (SN-22d invariant)
+     * means scan_ctx.top is already 0 at BB_SCAN return regardless of
+     * pattern outcome; the walk-and-fire still runs because commit fires
+     * entries whose pushes were NOT undone (NM_CALL pushes that bb_cap
+     * keeps alive on γ — see bb_boxes.c:559). */
     clear_pending_flags();
     NAME_ctx_t scan_ctx;
     NAME_ctx_enter(&scan_ctx);
@@ -1303,9 +1302,10 @@ Phase4:
     /* Flush all conditional captures and deferred callcaps in left-to-right
      * pattern order — SC-26 fix: unified list in NAME_commit ensures captures
      * (tag, wrd) are assigned before the callcaps (push_list, push_item) that
-     * read them.  SN-23b: NAME_commit(0) walks the whole scan_ctx; then
-     * NAME_ctx_leave() restores the parent ctx (typically the root). */
-    NAME_commit(0);                 /* SN-23b: walk whole ctx, fire captures + callcaps */
+     * read them.  SN-23e: NAME_commit walks the whole active ctx (no cookie
+     * — nested contexts replace the cookie mechanism), then NAME_ctx_leave()
+     * restores the parent ctx (typically the root). */
+    NAME_commit();                  /* SN-23e: walk whole ctx, fire captures + callcaps */
     NAME_ctx_leave();               /* SN-23b: tear down scan_ctx, restore parent      */
     flush_pending_captures();       /* legacy pending reset — keeps g_capture_list clean */
 
