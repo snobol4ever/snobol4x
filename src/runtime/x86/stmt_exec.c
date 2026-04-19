@@ -390,17 +390,31 @@ typedef struct {
     void       *nam_handle;   /* SN-20: pop on backtrack */
 } usercall_t;
 
-/* SN-17 fix (Porter Bug #1d root cause):
- * bb_usercall was declared to return spec_t but is invoked via the bb_box_fn
- * pointer which expects DESCR_t.  spec_t { σ, δ } and DESCR_t { v, slen, union }
- * have the same 16-byte size but DIFFERENT layout (σ at offset 0 vs v at offset 0).
- * The caller (bb_seq via spec_from_descr) read the pointer bits of Σ+Δ as d.v,
- * saw it was not DT_S, and treated the match as failure.  Consequence: any
- * pattern of the form `*fn() other_box` in a sequence silently failed when
- * `*fn()` should have matched epsilon.  Porter's guard idiom relies on exactly
- * this shape (`*g_m_gt_0() (epsilon . *s_ee())`), which is why all Porter steps
- * that use a *guard() before (epsilon . *action()) never fired.
- * Fix: return DESCR_t via descr_from_spec, same as bb_atp, bb_not, bb_int etc. */
+/* SN-17d (Porter FAIL-propagation fix):
+ *
+ * Before SN-17d, bb_usercall at α pushed a deferred NM_CALL onto the NAM stack
+ * and returned epsilon — the function's real return value was ignored until
+ * name_commit_value(NM_CALL) fired at overall-pattern commit time, which is
+ * AFTER the pattern has already succeeded.  A failing guard like
+ *   'abate' *g_m_gt_0() ...
+ * would match at every position because the guard's FAIL couldn't propagate
+ * back into the match engine.
+ *
+ * Fix: for bare *fn() (no leading `.` / `$` — those take a different path via
+ * XCALLCAP / NM_CALL), invoke g_user_call_hook eagerly at α and check the
+ * return.  If it's FAIL (or a DT_P XFAIL pattern — the "g_fn = FAIL" shape
+ * noted in the goal file), the box fails at α.  Otherwise it matches epsilon.
+ * No NAM push needed — there's nothing to defer.
+ *
+ * The earlier SN-20 NAM-push/pop bookkeeping is redundant for this path:
+ * NAME_push_callcap existed to carry the call across backtracking so the
+ * call would fire at commit.  Now the call has already fired; no further
+ * deferral is needed.  The `.` / `$` capture forms still use NM_CALL via
+ * bb_cap / NAME_push_callcap — that path is untouched.
+ *
+ * (The earlier SN-17 spec_t-vs-DESCR_t layout fix for the bb_box_fn return
+ * type is preserved — we still return via descr_from_spec / FAILDESCR.)
+ */
 static DESCR_t bb_usercall(void *zeta, int entry)
 {
     usercall_t *ζ = zeta;
@@ -410,17 +424,23 @@ static DESCR_t bb_usercall(void *zeta, int entry)
                     goto UC_β;
 
     UC_α:  ζ->done = 1;
-           /* SN-20: store handle so UC_ω (failure exit) can pop symmetrically.
-            * bare *fn() has no β retry semantics — UC_β just fails outright — so
-            * the only pop we need is on UC_ω. */
-           ζ->nam_handle = NAME_push_callcap(ζ->name, ζ->args, ζ->nargs, NULL, 0);
+           if (g_user_call_hook && ζ->name && ζ->name[0]) {
+               DESCR_t r = g_user_call_hook(ζ->name, ζ->args, ζ->nargs);
+               /* Two failure shapes to handle:
+                *   DT_FAIL (99)                        — FRETURN / explicit FAIL
+                *   DT_P wrapping XFAIL PATND node     — user wrote `fn = FAIL`
+                *                                        and PATND_t for FAIL leaked
+                *                                        through (spec guard-idiom).
+                * Anything else (null string, number, string, ordinary pattern)
+                * counts as success — bare *fn() match is epsilon. */
+               if (IS_FAIL_fn(r))                         goto UC_ω;
+               if (r.v == DT_P && r.p && r.p->kind == XFAIL) goto UC_ω;
+           }
            UC = spec(Σ + Δ, 0);           goto UC_γ;
     UC_β:                                  goto UC_ω;
 
     UC_γ:                                  return descr_from_spec(UC);
-    UC_ω:  /* SN-20: pop our deferred registration if this box never reached commit. */
-           if (ζ->nam_handle) { NAME_pop(ζ->nam_handle); ζ->nam_handle = NULL; }
-                                           return FAILDESCR;
+    UC_ω:                                  return FAILDESCR;
 }
 
 /* ── CALLCAP (pat . *fn() / pat $ *fn()) — DELETED in SN-21e.
