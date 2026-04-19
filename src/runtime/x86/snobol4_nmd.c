@@ -15,10 +15,10 @@
  *
  *   Two bracket operations frame statement-match and EVAL contexts:
  *
- *     NAME_mark()                   — snapshot current top.
- *     NAME_commit_above(mark)       — walk stack[mark..top), fire each
- *                                     through name_commit_value; top = mark.
- *     NAME_discard_above(mark)      — top = mark (drop, don't fire).
+ *     NAME_save()                   — snapshot current top (returns cookie).
+ *     NAME_commit(cookie)           — walk stack[cookie..top), fire each
+ *                                     through name_commit_value; top = cookie.
+ *     NAME_discard(cookie)          — top = cookie (drop, don't fire).
  *
  * EVERY box γ push has a matching β/ω pop — boxes own and self-unwind
  * their own slots.  There is never "leftover" pushed state once a box
@@ -28,11 +28,12 @@
  *
  * LEGACY SHIMS:
  *
- *   NAME_save / NAM_push / NAME_push_callcap* / NAME_pop / NAME_commit /
- *   NAME_discard / NAM_pop / NAME_mark / NAME_rollback_to remain as thin
- *   wrappers mapping to the new API for the duration of SN-21b..SN-21d,
- *   so stmt_exec.c, bb_boxes.c, and eval_code.c still compile.  They
- *   are deleted in SN-21e.
+ *   NAME_save / NAME_commit / NAME_discard / NAME_push_callcap* /
+ *   NAME_top / NAME_pop_above remain as thin wrappers around the core
+ *   NAME_push / NAME_pop protocol.  SN-22a+b removed the last in-box
+ *   callers of NAME_mark / NAME_rollback_to (bb_alt, bb_arbno); those
+ *   two shims were deleted in SN-22c.  SN-22 followups may further
+ *   reduce this surface — see GOAL-LANG-SNOBOL4.md SN-22c/d.
  *
  * AUTHORS: Lon Jones Cherryholmes · Claude Opus 4.7
  * DATE:    2026-04-19
@@ -246,16 +247,4 @@ void NAME_commit(int cookie)
 void NAME_discard(int cookie)
 {
     NAME_pop_above(cookie);
-}
-
-/* NAME_mark — opaque pointer-cookie wrapping NAME_top(). */
-void *NAME_mark(void)
-{
-    return (void *)(intptr_t)(NAME_top() + 1);
-}
-
-/* NAME_rollback_to — SN-20: no-op by design (boxes self-unwind). */
-void NAME_rollback_to(void *mark)
-{
-    (void)mark;
 }

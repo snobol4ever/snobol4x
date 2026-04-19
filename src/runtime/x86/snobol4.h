@@ -262,15 +262,6 @@ void    NAME_commit(int cookie);
 /* NAME_discard: mid-scan reset — clear entries since cookie.                 */
 void    NAME_discard(int cookie);
 
-/* NAME_mark / NAME_rollback_to — intra-frame high-water checkpoint.
- *   Pattern combinators that backtrack internally (bb_alt, bb_arbno, etc.)
- *   can NAME_mark() on entry to a trial branch and NAME_rollback_to(mark)
- *   when that branch fails, discarding any entries appended during the
- *   failed trial.  The returned mark is an opaque pointer to the frame's
- *   tail at the moment of the call (NULL = frame was empty).            */
-void   *NAME_mark(void);
-void    NAME_rollback_to(void *mark);
-
 /* ============================================================
  * Counter stack (nPush/nInc/nDec/nTop/nPop)
  * ============================================================ */
