@@ -83,6 +83,11 @@ extern DESCR_t (*g_user_call_hook)(const char *name, DESCR_t *args, int nargs);
 #include "bb_build.h"
 #include "../x86/bb_flat.h"     /* bb_lit_emit_binary — M-DYN-B1 */
 
+/* SN-6b: DT_E thaw in bb_deferred_var needs EXPR_t + E_FNC/E_VAR kinds and
+ * eval_node() for argument evaluation. Mirrors snobol4_pattern.c's pat_to_patnd. */
+#include "../../ir/ir.h"
+extern DESCR_t eval_node(EXPR_t *e);
+
 /* In the full-runtime build, include bb_box.h after snobol4.h.
  * bb_box.h now uses spec_t (not spec_t) so no collision with engine. */
 #include "bb_box.h"
@@ -924,6 +929,68 @@ static DESCR_t bb_deferred_var(void *zeta, int entry)
                         DESCR_t val = NV_GET_fn(ζ->name);
                         bb_node_t child;
                         int rebuilt = 0;
+
+#ifndef STMT_EXEC_STANDALONE
+                        /* ── SN-6b: DT_E thaw ─────────────────────────────
+                         * If the variable holds a frozen expression (DT_E),
+                         * coerce it to a pattern value (DT_P) HERE, so the
+                         * DT_P branch below can build the child box graph.
+                         *
+                         * Without this thaw, DT_E falls into the final else
+                         * and becomes bb_eps — silently matching epsilon and
+                         * dropping all nested *fn() side effects.  That's
+                         * the expr_eval `(1+2)*3 → 3` / `-3+10 → 10` bug.
+                         *
+                         * Template lifted verbatim from pat_to_patnd in
+                         * snobol4_pattern.c:220-253.  E_FNC → pat_user_call
+                         * builds an XATP that fires at match time (deferred
+                         * side-effect call).  E_VAR → var_as_pattern builds
+                         * an XVAR that re-resolves at match time (recursive
+                         * grammar case: expr0 = *constant).  Anything else
+                         * falls back to PATVAL_fn (strict thaw), which is
+                         * equivalent to SPITBOL's PATVAL semantics.
+                         * ──────────────────────────────────────────────── */
+                        if (val.v == DT_E) {
+                            EXPR_t *frozen = (EXPR_t *)val.ptr;
+                            if (!frozen) {
+                                /* null DT_E — propagate failure (do not epsilon) */
+                                g_dvar_depth--;
+                                goto DVAR_ω;
+                            }
+                            if (frozen->kind == E_FNC) {
+                                /* *func(args...) — build XATP via pat_user_call */
+                                int nargs = frozen->nchildren;
+                                DESCR_t *args = NULL;
+                                if (nargs > 0) {
+                                    args = (DESCR_t *)alloca((size_t)nargs * sizeof(DESCR_t));
+                                    for (int i = 0; i < nargs; i++)
+                                        args[i] = eval_node(frozen->children[i]);
+                                }
+                                const char *fname = frozen->sval ? frozen->sval : "";
+                                val = pat_user_call(fname, args, nargs);
+                            } else if (frozen->kind == E_VAR && frozen->sval) {
+                                /* *varname — re-resolve directly via NV_GET_fn.
+                                 * Going through var_as_pattern→XVAR would add
+                                 * another layer of indirection (a nested
+                                 * bb_deferred_var) whose child match was
+                                 * observed to FAIL at α during probing.  Since
+                                 * bb_deferred_var IS the deferred re-resolve
+                                 * box, we skip the indirection and fetch the
+                                 * underlying value directly. */
+                                val = NV_GET_fn(frozen->sval);
+                            } else {
+                                /* Other frozen expression: strict thaw via PATVAL_fn */
+                                val = PATVAL_fn(val);
+                            }
+                            if (val.v == DT_FAIL) {
+                                g_dvar_depth--;
+                                goto DVAR_ω;
+                            }
+                            /* val is now DT_P (or DT_S if PATVAL_fn coerced
+                             * a non-pattern result to a literal).  Fall
+                             * through to the existing dispatch. */
+                        }
+#endif
 
                         if (val.v == DT_P && val.p) {
                             if (val.p != ζ->child_state || !ζ->child_fn) {

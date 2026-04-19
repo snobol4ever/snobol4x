@@ -3031,9 +3031,9 @@ DESCR_t interp_eval(EXPR_t *e)
          * interp_eval_pat handles the pattern-context path (*var, *func). */
         DESCR_t d;
         d.v    = DT_E;
-        d.ptr  = child;
         d.slen = 0;
-        d.s    = NULL;
+        d.s    = NULL;    /* clear union first... */
+        d.ptr  = child;   /* ...then store ptr last (ptr and s share union) */
         return d;
     }
 

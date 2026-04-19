@@ -942,9 +942,9 @@ DESCR_t compile_to_expression(const char *src) {
 
     DESCR_t d;
     d.v    = DT_E;
-    d.ptr  = tree;
     d.slen = 0;
-    d.s    = NULL;
+    d.s    = NULL;   /* clear union first... */
+    d.ptr  = tree;   /* ...then store ptr last (ptr and s share union) */
     return d;
 }
 

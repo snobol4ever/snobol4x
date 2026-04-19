@@ -90,9 +90,9 @@ DESCR_t eval_node(EXPR_t *e)
         {
             DESCR_t d;
             d.v    = DT_E;
-            d.ptr  = e->children[0];   /* frozen EXPR_t* child */
             d.slen = 0;
-            d.s    = NULL;
+            d.s    = NULL;           /* clear union first... */
+            d.ptr  = e->children[0]; /* ...then store ptr last (ptr and s share union) */
             return d;
         }
 
@@ -602,9 +602,9 @@ DESCR_t CONVE_fn(DESCR_t str_d)
 
     DESCR_t d;
     d.v    = DT_E;
-    d.ptr  = tree;   /* frozen EXPR_t* */
     d.slen = 0;
-    d.s    = NULL;
+    d.s    = NULL;   /* clear union first... */
+    d.ptr  = tree;   /* ...then store ptr last (ptr and s share union) */
     return d;
 }
 
