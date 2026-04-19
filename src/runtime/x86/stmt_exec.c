@@ -1181,67 +1181,29 @@ static DESCR_t bb_deferred_var(void *zeta, int entry)
                             memset(ζ->child_state, 0, ζ->child_size);
                     }
                     if (!ζ->child_fn) { g_dvar_depth--; goto DVAR_ω; }
-                    /* DYN-76: scoped callcap save/restore for recursive DVAR.
-                     * Snapshot outer registrations, run child with fresh scope,
-                     * then merge inner callcaps after outer ones on success. */
-                    int   dvar_cc_save = g_callcap_count;
-                    int   dvar_ev_save = g_cc_event_count;
-                    callcap_t **dvar_cc_snap = dvar_cc_save ? malloc(dvar_cc_save * sizeof(callcap_t *)) : NULL;
-                    cc_event_t *dvar_ev_snap = dvar_ev_save ? malloc(dvar_ev_save * sizeof(cc_event_t))  : NULL;
-                    for (int _ci = 0; _ci < dvar_cc_save; _ci++) {
-                        dvar_cc_snap[_ci] = g_callcap_list[_ci];
-                        g_callcap_list[_ci]->registered = 0;
-                    }
-                    for (int _ci = 0; _ci < dvar_ev_save; _ci++)
-                        dvar_ev_snap[_ci] = g_cc_events[_ci];
-                    g_callcap_count  = 0;
-                    g_cc_event_count = 0;
+                    /* SN-20 session 18: the legacy g_callcap_list / g_cc_events
+                     * snapshot/restore dance is GONE. Rationale:
+                     *
+                     *   Every bb_callcap push is a NAM_push_callcap_named() entry
+                     *   in the single NAM frame owned by exec_stmt. CC_β and CC_ω
+                     *   self-unwind via NAM_pop_one(handle). Nothing about the
+                     *   legacy g_callcap_list registry affects NAM_commit — that
+                     *   walks the NAM frame directly. Snapshotting/restoring a
+                     *   registry that has no dispatch role was both unnecessary
+                     *   and actively harmful: it zeroed outer `registered` flags
+                     *   during child execution, which interfered with the inner
+                     *   CC_α registration path and corrupted the box graph when
+                     *   bb_deferred_var wrapped any pattern containing . *fn().
+                     *
+                     * Same-box β symmetry (lvalue-kind agnostic): PAT . var and
+                     * PAT . *fn() are the same γ/β/ω state machine with different
+                     * commit-time lvalue resolution. Both push into NAM; both
+                     * self-unwind on backtrack. bb_deferred_var is an ordinary
+                     * combinator that forwards α to its child — no special
+                     * bookkeeping required. */
                     DVAR = spec_from_descr(ζ->child_fn(ζ->child_state, α));
                     g_dvar_depth--;
-                    if (spec_is_empty(DVAR)) {
-                        /* Failure: discard inner, restore outer */
-                        for (int _ci = 0; _ci < g_callcap_count; _ci++)
-                            g_callcap_list[_ci]->registered = 0;
-                        g_callcap_count = dvar_cc_save;
-                        for (int _ci = 0; _ci < dvar_cc_save; _ci++) {
-                            g_callcap_list[_ci] = dvar_cc_snap[_ci];
-                            g_callcap_list[_ci]->registered = 1;
-                        }
-                        g_cc_event_count = dvar_ev_save;
-                        for (int _ci = 0; _ci < dvar_ev_save; _ci++)
-                            g_cc_events[_ci] = dvar_ev_snap[_ci];
-                        free(dvar_cc_snap); free(dvar_ev_snap);
-                        goto DVAR_ω;
-                    }
-                    /* Success: restore outer first, then append inner */
-                    {
-                        int inner_count = g_callcap_count;
-                        int inner_ev    = g_cc_event_count;
-                        callcap_t **inner_snap    = inner_count ? malloc(inner_count * sizeof(callcap_t *)) : NULL;
-                        cc_event_t *inner_ev_snap = inner_ev    ? malloc(inner_ev    * sizeof(cc_event_t))  : NULL;
-                        for (int _ci = 0; _ci < inner_count; _ci++)
-                            inner_snap[_ci] = g_callcap_list[_ci];
-                        for (int _ci = 0; _ci < inner_ev; _ci++)
-                            inner_ev_snap[_ci] = g_cc_events[_ci];
-                        g_callcap_count = dvar_cc_save;
-                        for (int _ci = 0; _ci < dvar_cc_save; _ci++) {
-                            g_callcap_list[_ci] = dvar_cc_snap[_ci];
-                            g_callcap_list[_ci]->registered = 1;
-                        }
-                        for (int _ci = 0; _ci < inner_count; _ci++) {
-                            if (g_callcap_count >= g_callcap_cap) callcap_list_grow();
-                            g_callcap_list[g_callcap_count++] = inner_snap[_ci];
-                        }
-                        g_cc_event_count = dvar_ev_save;
-                        for (int _ci = 0; _ci < dvar_ev_save; _ci++)
-                            g_cc_events[_ci] = dvar_ev_snap[_ci];
-                        for (int _ci = 0; _ci < inner_ev; _ci++) {
-                            if (g_cc_event_count >= g_cc_event_cap) cc_events_grow();
-                            g_cc_events[g_cc_event_count++] = inner_ev_snap[_ci];
-                        }
-                        free(inner_snap); free(inner_ev_snap);
-                    }
-                    free(dvar_cc_snap); free(dvar_ev_snap);
+                    if (spec_is_empty(DVAR))                  goto DVAR_ω;
                     goto DVAR_γ;
 
     DVAR_β:         if (!ζ->child_fn)                         goto DVAR_ω;
