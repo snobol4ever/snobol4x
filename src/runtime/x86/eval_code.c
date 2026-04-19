@@ -555,15 +555,21 @@ DESCR_t EXPVAL_fn(DESCR_t expr_d)
         int         save_omega = Ω;
         int         save_delta = Δ;
 
-        /* Save NAM frame (SIL: NAMICL/NHEDCL) — push fresh frame */
-        int nam_cookie = NAME_save();
+        /* Save NAM frame (SIL: NAMICL/NHEDCL) — push fresh ctx.
+         * SN-23c: replaces NAME_save()/NAME_discard(cookie) with a child
+         * ctx.  Captures inside an EVAL'd expression are local to that
+         * expression: the child ctx's entries die on leave, never
+         * escaping into the outer match's commit range.  Exactly the
+         * semantics the old discard was approximating. */
+        NAME_ctx_t eval_ctx;
+        NAME_ctx_enter(&eval_ctx);
 
         DESCR_t result = eval_node((EXPR_t *)expr_d.ptr);
 
-        /* Restore NAM frame — discard any captures from this expression's
-         * internal patterns (do NOT commit — captures inside an EXPRESSION
-         * are local and must not propagate out). */
-        NAME_discard(nam_cookie);
+        /* Restore NAM frame — tear down eval_ctx.  Captures inside an
+         * EXPRESSION are local and do not propagate out (same semantics
+         * as the pre-SN-23c NAME_discard). */
+        NAME_ctx_leave();
 
         /* Restore subject globals */
         Σ = save_sigma;

@@ -264,10 +264,16 @@ void    NAME_discard(int cookie);
 
 /* ── SN-23a: per-context NAM stack (dormant until SN-23b..c adopt it) ───── */
 
-/* Opaque handle; full struct lives in snobol4_nmd.c.  Callers allocate
- * the struct (typically stack-local, zero-init) and pass its address to
- * NAME_ctx_enter; NAME_ctx_leave restores the parent context. */
-typedef struct NAME_ctx_s NAME_ctx_t;
+/* NAME_ctx_t — per-match NAM stack frame.  Struct is exposed so callers
+ * can stack-allocate; the `entries` pointer is opaque (the slot type
+ * NAME_entry_t is file-local to snobol4_nmd.c).  Callers must NOT read
+ * or write any field directly — only pass the address to ctx_enter/leave. */
+typedef struct NAME_ctx_s {
+    void              *entries;   /* opaque NAME_entry_t[]; managed internally */
+    int                cap;
+    int                top;
+    struct NAME_ctx_s *parent;
+} NAME_ctx_t;
 
 /* NAME_ctx_enter: push ctx onto the ctx chain; subsequent NAME_push /
  * NAME_pop / NAME_top / NAME_pop_above / NAME_commit operate on ctx.

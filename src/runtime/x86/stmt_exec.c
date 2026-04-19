@@ -1248,28 +1248,26 @@ int exec_stmt(const char  *subj_name,
     int match_end   = -1;
 
     /* U-9: drive root box via bb_broker BB_SCAN.
-     * RT-4: save NAM cookie before scan; discard on each attempt; commit on success.
+     * SN-23b: per-match NAM ctx replaces the cookie-based save/commit
+     * bracket.  Outer-exec_stmt / EVAL nesting is now handled by ctx
+     * isolation: the inner ctx sees only its own pushes, and outer
+     * entries are unreachable until NAME_ctx_leave restores the parent.
      * kw_anchor: temporarily clamp Ω to 0 so bb_broker only tries position 0. */
     typedef struct { int start; int end; } scan_result_t;
     scan_result_t scan_res = { -1, -1 };
 
-    /* RT-4: reset stale pending captures before the scan sweep.
-     * SN-22d: the NAME_save()/NAME_discard(cookie) pair that used to live
-     * here (a save then immediate discard to the saved depth — literally a
-     * no-op) has been deleted.  Likewise the NAME_discard(cookie) on the
-     * :F path.  Both relied on "just in case" reasoning that SN-20 made
-     * obsolete: box self-unwind guarantees every γ-push has a matching
-     * β/ω-pop by the time BB_SCAN returns, whether the overall pattern
-     * succeeded or failed.  bb_seq walks right β then left β on failure;
-     * bb_alt walks each arm's β on next-arm switch; bb_arbno walks body
-     * β on each depth retry; bb_cap pops its NAM handle on its own β/ω
-     * paths.  So g_top is already at the pre-scan level on BB_SCAN
-     * return.  We still save nam_cookie because NAME_commit() below
-     * needs the lower bound — on a nested exec_stmt (EVAL inside an
-     * outer pattern's match), we must only commit entries pushed during
-     * THIS match, not the outer match's in-progress pushes. */
+    /* SN-23b: enter a fresh NAM ctx for this scan.  Replaces the pre-SN-23
+     * NAME_save() cookie: every push during BB_SCAN lands in scan_ctx, and
+     * on failure NAME_ctx_leave() drops the entire ctx (equivalent to the
+     * old NAME_discard(cookie) reset), while on success NAME_commit(0) walks
+     * the whole ctx before NAME_ctx_leave() tears it down.  Box self-unwind
+     * (SN-22d invariant) means scan_ctx.top is already 0 at BB_SCAN return
+     * regardless of pattern outcome; the walk-and-fire still runs because
+     * commit fires entries whose pushes were NOT undone (NM_CALL pushes
+     * that bb_cap keeps alive on γ — see bb_boxes.c:559). */
     clear_pending_flags();
-    int nam_cookie = NAME_save();
+    NAME_ctx_t scan_ctx;
+    NAME_ctx_enter(&scan_ctx);
 
     int saved_Ω = Ω;
     if (kw_anchor) Ω = 0;   /* clamp: bb_broker BB_SCAN tries 0..Ω */
@@ -1282,8 +1280,11 @@ int exec_stmt(const char  *subj_name,
                                                               goto Phase4;
     }
 
-    /* match failed → :F  (SN-22d: no NAME_discard needed — box self-unwind
-     * has already restored g_top to its pre-scan level) */
+    /* match failed → :F  (SN-23b: leave the scan ctx; its entries are
+     * dropped.  Box self-unwind has already popped all γ-pushes; any
+     * straggler entries — shouldn't exist, but the ctx teardown is
+     * safe either way — die with the ctx). */
+    NAME_ctx_leave();
                                                               return 0;
 
 Phase4:
@@ -1295,13 +1296,18 @@ Phase4:
      * Exception: subj_name=NULL + subj_var provided = test/convenience
      * wrapper (exec_stmt_args).  We allow direct write in that case.
      */
-    if (has_repl && repl && !subj_name && !subj_var)          return 0;
+    if (has_repl && repl && !subj_name && !subj_var) {
+        NAME_ctx_leave();  /* SN-23b: leave the scan ctx before :F return */
+                                                              return 0;
+    }
 
     /* Flush all conditional captures and deferred callcaps in left-to-right
      * pattern order — SC-26 fix: unified list in NAME_commit ensures captures
      * (tag, wrd) are assigned before the callcaps (push_list, push_item) that
-     * read them. */
-    NAME_commit(nam_cookie);         /* RT-4 + SC-26: assign captures, fire callcaps */
+     * read them.  SN-23b: NAME_commit(0) walks the whole scan_ctx; then
+     * NAME_ctx_leave() restores the parent ctx (typically the root). */
+    NAME_commit(0);                 /* SN-23b: walk whole ctx, fire captures + callcaps */
+    NAME_ctx_leave();               /* SN-23b: tear down scan_ctx, restore parent      */
     flush_pending_captures();       /* legacy pending reset — keeps g_capture_list clean */
 
     if (!has_repl || !repl)                                   goto Success;

@@ -74,23 +74,23 @@ typedef struct {
 /*===========================================================================*/
 /* NAME_ctx_t — per-context NAM stack (SN-23a)                                */
 /*                                                                            */
-/* Each ctx owns its own entries[] / top / cap; a parent pointer links the   */
-/* ctx stack so NAME_ctx_leave can restore the previous active ctx.  The    */
-/* root ctx (g_root_ctx) is statically allocated and starts active;         */
-/* NAME_ctx_enter/leave nest child ctxs on top.                             */
+/* The struct is defined in snobol4.h (as an exposed POD with an opaque      */
+/* `void *entries` field) so callers can stack-allocate without pulling      */
+/* in NAME_entry_t.  Internally we just cast `entries` to NAME_entry_t*     */
+/* at use.  The root ctx (g_root_ctx) is statically allocated and starts    */
+/* active; NAME_ctx_enter/leave nest child ctxs on top.                     */
 /*===========================================================================*/
-
-struct NAME_ctx_s {
-    NAME_entry_t      *entries;
-    int                cap;
-    int                top;
-    struct NAME_ctx_s *parent;   /* restored on NAME_ctx_leave                 */
-};
 
 /* The root ctx owns the legacy global stack.  It has no parent and is     */
 /* never popped — NAME_ctx_leave on the root is a safe no-op.              */
 static NAME_ctx_t  g_root_ctx  = { NULL, 0, 0, NULL };
 static NAME_ctx_t *g_ctx_current = &g_root_ctx;
+
+/* Internal accessor: cast the ctx's opaque entries to the slot type. */
+static inline NAME_entry_t *ctx_entries(NAME_ctx_t *ctx)
+{
+    return (NAME_entry_t *)ctx->entries;
+}
 
 /*===========================================================================*/
 /* Internal helpers — all ops route through the active ctx                    */
@@ -102,8 +102,9 @@ static void ctx_ensure_capacity(NAME_ctx_t *ctx, int need)
     int newcap = ctx->cap ? ctx->cap * 2 : 64;
     while (newcap < need) newcap *= 2;
     NAME_entry_t *fresh = (NAME_entry_t *)GC_MALLOC((size_t)newcap * sizeof(NAME_entry_t));
-    if (ctx->entries && ctx->top > 0)
-        memcpy(fresh, ctx->entries, (size_t)ctx->top * sizeof(NAME_entry_t));
+    NAME_entry_t *old   = ctx_entries(ctx);
+    if (old && ctx->top > 0)
+        memcpy(fresh, old, (size_t)ctx->top * sizeof(NAME_entry_t));
     ctx->entries = fresh;
     ctx->cap     = newcap;
 }
@@ -168,7 +169,7 @@ void *NAME_push(const NAME_t *nm, const char *substr, int slen)
     ctx_ensure_capacity(ctx, ctx->top + 1);
 
     int idx = ctx->top;
-    NAME_entry_t *e = &ctx->entries[idx];
+    NAME_entry_t *e = &ctx_entries(ctx)[idx];
     e->live      = 1;
     e->name      = *nm;
     e->substr    = dup_substr(substr, slen);
@@ -192,11 +193,12 @@ void NAME_pop(void *handle)
     int idx = handle_to_idx(handle);
     if (idx < 0 || idx >= ctx->top) return;
 
-    NAME_entry_t *e = &ctx->entries[idx];
+    NAME_entry_t *es = ctx_entries(ctx);
+    NAME_entry_t *e  = &es[idx];
     if (!e->live) return;
     e->live = 0;
 
-    while (ctx->top > 0 && !ctx->entries[ctx->top - 1].live) ctx->top--;
+    while (ctx->top > 0 && !es[ctx->top - 1].live) ctx->top--;
 }
 
 /*===========================================================================*/
@@ -283,17 +285,19 @@ void NAME_commit(int cookie)
     if (mark < 0) mark = 0;
     if (mark > ctx->top) mark = ctx->top;
 
+    NAME_entry_t *es = ctx_entries(ctx);
+
     /* Unified commit with last-write-wins dedup.  Walk in push order
      * (oldest → newest) so (.) captures preceding (. *fn()) callcaps
      * fire first, matching SC-26 semantics. */
     for (int i = mark; i < ctx->top; i++) {
-        NAME_entry_t *e = &ctx->entries[i];
+        NAME_entry_t *e = &es[i];
         if (!e->live) continue;
 
         if (e->name.kind == NM_VAR || e->name.kind == NM_PTR) {
             int superseded = 0;
             for (int j = i + 1; j < ctx->top; j++) {
-                NAME_entry_t *f = &ctx->entries[j];
+                NAME_entry_t *f = &es[j];
                 if (!f->live) continue;
                 if (f->name.kind == NM_CALL) break;
                 if (same_var_target(e, f)) { superseded = 1; break; }
