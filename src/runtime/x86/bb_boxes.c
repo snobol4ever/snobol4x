@@ -531,7 +531,13 @@ DESCR_t bb_cap(void *zeta, int entry)
     if (entry == α)                                                             goto CAP_α;
     if (entry == β)                                                             goto CAP_β;
 
-    CAP_α:       if (!ζ->immediate) register_capture(ζ);
+    CAP_α:       /* SN-23d-follow-up: defeat M-DYN-OPT cache poisoning.
+                  * cache_get_fresh memcpys the dirty template into each
+                  * fresh copy, so has_pending may arrive set from a prior
+                  * match's execution.  Reset it at α so β/ω's guard
+                  * reflects only THIS α's push. */
+                 ζ->has_pending = 0;
+                 if (!ζ->immediate) register_capture(ζ);
                  cr = spec_from_descr(ζ->fn(ζ->state, α));
                  if (spec_is_empty(cr))                                         goto CAP_ω;
                                                                                 goto CAP_γ_core;
