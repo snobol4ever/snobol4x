@@ -137,77 +137,45 @@ void NAME_pop(void *handle)
 }
 
 /*===========================================================================*/
-/* NAME_mark — snapshot top                                                   */
+/* NAME_top — current stack depth                                             */
 /*===========================================================================*/
 
-int NAME_mark(void)
+int NAME_top(void)
 {
     return g_top;
 }
 
 /*===========================================================================*/
-/* NAME_commit_above — fire entries [mark..top) in push order; top = mark     */
+/* NAME_pop_above — bulk drop slots [saved_top..top) without firing           */
+/*                                                                            */
+/* Used by bb_alt's next-arm switch, bb_arbno's body-ω / zero-advance        */
+/* escapes, and statement/EVAL failure paths — anywhere a γ-succeeded        */
+/* child was abandoned without β-asking it to pop.                           */
 /*===========================================================================*/
 
-static int same_var_target(const NAM_entry_t *a, const NAM_entry_t *b)
+void NAME_pop_above(int saved_top)
 {
-    if (a->name.kind != b->name.kind) return 0;
-    if (a->name.kind == NM_PTR)
-        return a->name.var_ptr && a->name.var_ptr == b->name.var_ptr;
-    if (a->name.kind == NM_VAR)
-        return a->name.var_name && b->name.var_name
-               && strcmp(a->name.var_name, b->name.var_name) == 0;
-    return 0;
-}
-
-void NAME_commit_above(int mark)
-{
-    if (mark < 0) mark = 0;
-    if (mark > g_top) mark = g_top;
-
-    for (int i = mark; i < g_top; i++) {
-        NAM_entry_t *e = &g_stack[i];
-        if (!e->live) continue;
-
-        /* Last-write-wins dedup for NM_VAR / NM_PTR — stop at intervening NM_CALL. */
-        if (e->name.kind == NM_VAR || e->name.kind == NM_PTR) {
-            int superseded = 0;
-            for (int j = i + 1; j < g_top; j++) {
-                NAM_entry_t *f = &g_stack[j];
-                if (!f->live) continue;
-                if (f->name.kind == NM_CALL) break;
-                if (same_var_target(e, f)) { superseded = 1; break; }
-            }
-            if (superseded) continue;
-        }
-
-        DESCR_t val = { .v = DT_S, .slen = (uint32_t)e->slen,
-                        .s = (char *)e->substr };
-        name_commit_value(&e->name, val);
-    }
-
-    g_top = mark;
+    if (saved_top < 0) saved_top = 0;
+    if (saved_top > g_top) saved_top = g_top;
+    g_top = saved_top;
 }
 
 /*===========================================================================*/
-/* NAME_discard_above — drop [mark..top) without firing                       */
+/* NOTE — statement/EVAL commit walks live at the call sites.  stmt_exec.c  */
+/* on match success walks stack[saved..top) through name_commit_value,       */
+/* then NAME_pop_above(saved).  On failure it just NAME_pop_above(saved).   */
+/* EVAL always NAME_pop_above(saved) — captures inside an EVAL'd expression */
+/* are local to that expression and never propagate out.                     */
 /*===========================================================================*/
-
-void NAME_discard_above(int mark)
-{
-    if (mark < 0) mark = 0;
-    if (mark > g_top) mark = g_top;
-    g_top = mark;
-}
 
 /*===========================================================================*/
 /* ─── LEGACY SHIMS (deleted in SN-21e) ──────────────────────────────────── */
 /*===========================================================================*/
 
-/* NAM_save — "push frame" becomes "read current top". */
+/* NAM_save — "push frame" becomes "snapshot current top". */
 int NAM_save(void)
 {
-    return NAME_mark();
+    return NAME_top();
 }
 
 /* NAM_pop — old "pop frame" is a no-op in the flat model. */
@@ -255,7 +223,21 @@ void NAM_pop_one(void *handle)
     NAME_pop(handle);
 }
 
-/* NAM_commit — honours legacy DT_K / DT_E then DT_S commit pass. */
+/* same_var_target — last-write-wins dedup helper used inline below. */
+static int same_var_target(const NAM_entry_t *a, const NAM_entry_t *b)
+{
+    if (a->name.kind != b->name.kind) return 0;
+    if (a->name.kind == NM_PTR)
+        return a->name.var_ptr && a->name.var_ptr == b->name.var_ptr;
+    if (a->name.kind == NM_VAR)
+        return a->name.var_name && b->name.var_name
+               && strcmp(a->name.var_name, b->name.var_name) == 0;
+    return 0;
+}
+
+/* NAM_commit — walk slots [cookie..top), honour legacy DT_K / DT_E, then
+ * fire DT_S entries with last-write-wins dedup (stop at intervening NM_CALL),
+ * then drop the range via NAME_pop_above. */
 void NAM_commit(int cookie)
 {
     extern DESCR_t EVAL_fn(DESCR_t);
@@ -264,12 +246,11 @@ void NAM_commit(int cookie)
     if (mark < 0) mark = 0;
     if (mark > g_top) mark = g_top;
 
-    /* Pass 1: legacy non-DT_S dispatch.  Handle them and tombstone the slot
-     * so the DT_S pass skips it. */
+    /* Pass 1: legacy non-DT_S dispatch — tombstone the slot so pass 2 skips. */
     for (int i = mark; i < g_top; i++) {
         NAM_entry_t *e = &g_stack[i];
         if (!e->live) continue;
-        if (e->name.kind == NM_CALL) continue;    /* always DT_S */
+        if (e->name.kind == NM_CALL) continue;     /* NM_CALL always DT_S   */
         int dt = e->legacy_dt;
         if (dt == DT_S) continue;
 
@@ -296,20 +277,42 @@ void NAM_commit(int cookie)
         }
     }
 
-    /* Pass 2: unified DT_S commit via NAME_commit_above. */
-    NAME_commit_above(mark);
+    /* Pass 2: unified DT_S commit with last-write-wins dedup.  Walk in
+     * push order (oldest → newest) so (.) captures preceding (. *fn())
+     * callcaps fire first, matching SC-26 semantics. */
+    for (int i = mark; i < g_top; i++) {
+        NAM_entry_t *e = &g_stack[i];
+        if (!e->live) continue;
+
+        if (e->name.kind == NM_VAR || e->name.kind == NM_PTR) {
+            int superseded = 0;
+            for (int j = i + 1; j < g_top; j++) {
+                NAM_entry_t *f = &g_stack[j];
+                if (!f->live) continue;
+                if (f->name.kind == NM_CALL) break;
+                if (same_var_target(e, f)) { superseded = 1; break; }
+            }
+            if (superseded) continue;
+        }
+
+        DESCR_t val = { .v = DT_S, .slen = (uint32_t)e->slen,
+                        .s = (char *)e->substr };
+        name_commit_value(&e->name, val);
+    }
+
+    NAME_pop_above(mark);
 }
 
-/* NAM_discard — clear current frame entries. */
+/* NAM_discard — drop entries [cookie..top). */
 void NAM_discard(int cookie)
 {
-    NAME_discard_above(cookie);
+    NAME_pop_above(cookie);
 }
 
-/* NAM_mark — opaque pointer-cookie wrapping NAME_mark(). */
+/* NAM_mark — opaque pointer-cookie wrapping NAME_top(). */
 void *NAM_mark(void)
 {
-    return (void *)(intptr_t)(NAME_mark() + 1);
+    return (void *)(intptr_t)(NAME_top() + 1);
 }
 
 /* NAM_rollback_to — SN-20: no-op by design (boxes self-unwind). */

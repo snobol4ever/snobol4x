@@ -117,21 +117,23 @@ void name_init_as_call(NAME_t *nm,
 /*---------------------------------------------------------------------------*/
 /* Flat NAME stack — primary API (SN-21b).                                    */
 /*                                                                            */
-/* Two primary ops: NAME_push / NAME_pop — every box γ push is matched by   */
-/* that box's own β/ω pop.  The stack unrolls itself as boxes backtrack.    */
+/* Two primary ops match the Python generator `push; yield; pop` idiom:      */
+/* every capture box's γ calls NAME_push before γ-return; every β and ω     */
+/* call NAME_pop.  The stack rolls and unrolls itself through the γ/β/ω     */
+/* cascade — no separate commit/discard bureaucracy.                         */
 /*                                                                            */
-/* Two bracket ops: NAME_mark / NAME_commit_above / NAME_discard_above —    */
-/* used at the statement-pattern boundary and at EVAL (DT_E thaw) boundary  */
-/* to either fire or drop all entries pushed within the bracket.             */
+/* Two combinator helpers handle the rare non-LIFO paths: bb_alt's           */
+/* next-arm transition and bb_arbno's zero-advance / body-ω escapes can     */
+/* abandon a γ-succeeded child without β-asking it to pop.  The helpers    */
+/* snapshot top and bulk-drop back down.                                     */
 /*                                                                            */
 /* Handles are opaque pointers; pass to NAME_pop exactly once.              */
 /*---------------------------------------------------------------------------*/
 
-void *NAME_push(const NAME_t *nm, const char *substr, int slen);
-void  NAME_pop (void *handle);
+void *NAME_push      (const NAME_t *nm, const char *substr, int slen);
+void  NAME_pop       (void *handle);
 
-int   NAME_mark(void);
-void  NAME_commit_above (int mark);
-void  NAME_discard_above(int mark);
+int   NAME_top       (void);             /* current stack depth              */
+void  NAME_pop_above (int saved_top);    /* drop slots [saved_top..top)      */
 
 #endif /* NAME_T_H */
