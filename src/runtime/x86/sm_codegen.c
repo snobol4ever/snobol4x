@@ -673,6 +673,20 @@ static void h_call(void)
     DESCR_t args[32];
     if (nargs > 32) nargs = 32;
     for (int k = nargs - 1; k >= 0; k--) args[k] = POP();
+    /* SN-9c-d: SN-6 parity with sm_interp.c:799-810.  SNOBOL4 semantics — if
+     * any argument is FAIL, the call fails without invoking the function.
+     * This is what allows CHARS + SIZE(INPUT) :F(DONE) to branch when INPUT
+     * hits EOF: INPUT returns FAILDESCR → SIZE receives it → SIZE would
+     * swallow it and return 0, but we catch the FAIL here before the call.
+     * Without this, the loop-exit :F branch never fires and fileinfo.sno
+     * hangs (accumulator stays at same value forever). */
+    for (int k = 0; k < nargs; k++) {
+        if (args[k].v == DT_FAIL) {
+            PUSH(FAILDESCR);
+            STATE->last_ok = 0;
+            return;
+        }
+    }
     /* DATA field accessor/mutator/constructor: give DATA dispatch priority over
      * same-named builtins (e.g. field 'real' vs REAL() builtin). */
     DESCR_t result = FAILDESCR;
