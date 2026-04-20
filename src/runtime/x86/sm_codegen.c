@@ -528,28 +528,74 @@ static void h_call(void)
     int         nargs = (int)CUR_INS->a[1].i;
 
     if (name && strcmp(name, "INDIR_GET") == 0) {
+        /* $expr: pop descriptor, look up variable, push its value.  Must fold
+         * the name to SNOBOL4 canonical case (SN-19) or $'bal' won't find the
+         * variable the parser stored as BAL.  Parity with sm_interp.c:644. */
         DESCR_t name_d = POP(), val;
-        if (IS_NAMEPTR(name_d))       val = NAME_DEREF_PTR(name_d);
-        else if (IS_NAMEVAL(name_d))  val = NV_GET_fn(name_d.s);
-        else { const char *vn = VARVAL_fn(name_d); val = (vn && *vn) ? NV_GET_fn(vn) : NULVCL; }
+        if (IS_NAMEPTR(name_d)) {
+            val = NAME_DEREF_PTR(name_d);
+        } else if (IS_NAMEVAL(name_d)) {
+            char *fn = GC_strdup(name_d.s); sno_fold_name(fn);  /* SN-19 */
+            val = NV_GET_fn(fn);
+        } else {
+            const char *vn0 = VARVAL_fn(name_d);
+            char *vn = (vn0 && *vn0) ? GC_strdup(vn0) : NULL;
+            if (vn) sno_fold_name(vn);                          /* SN-19 */
+            val = (vn && *vn) ? NV_GET_fn(vn) : NULVCL;
+        }
         PUSH(val); STATE->last_ok = 1; return;
     }
     if (name && strcmp(name, "NAME_PUSH") == 0) {
-        DESCR_t nd = POP(); const char *vn = VARVAL_fn(nd);
-        PUSH(NAMEVAL(GC_strdup(vn ? vn : ""))); STATE->last_ok = 1; return;
+        /* .X: pop name string, push DT_N NAMEVAL descriptor with folded name
+         * so downstream lookups hit the same NV key the parser produced. */
+        DESCR_t nd = POP();
+        const char *vn0 = VARVAL_fn(nd);
+        char *vn = GC_strdup(vn0 ? vn0 : "");
+        sno_fold_name(vn);                                      /* SN-19 */
+        PUSH(NAMEVAL(vn)); STATE->last_ok = 1; return;
     }
     if (name && strcmp(name, "ASGN_INDIR") == 0) {
+        /* $name = val: same folding rule — must hit the same NV key. */
         DESCR_t nd = POP(), val = POP();
         int ok = 0;
         if (IS_NAMEPTR(nd)) {
             *(DESCR_t*)nd.ptr = val; ok = 1;
         } else if (IS_NAMEVAL(nd)) {
-            NV_SET_fn(nd.s, val); ok = 1;
+            char *fn = GC_strdup(nd.s); sno_fold_name(fn);      /* SN-19 */
+            NV_SET_fn(fn, val); ok = 1;
         } else {
-            const char *vn = VARVAL_fn(nd);
+            const char *vn0 = VARVAL_fn(nd);
+            char *vn = (vn0 && *vn0) ? GC_strdup(vn0) : NULL;
+            if (vn) sno_fold_name(vn);                          /* SN-19 */
             if (vn && *vn) { NV_SET_fn(vn, val); ok = 1; }
         }
         PUSH(val); STATE->last_ok = ok; return;
+    }
+    if (name && strcmp(name, "NRETURN_ASGN") == 0) {
+        /* NRETURN lvalue assignment: fname() = rhs
+         * Encoding: a[0].s = "NRETURN_ASGN", a[1].s = function name (the
+         * sm_lower pass overwrites a[1].s after sm_emit_si set a[1].i=1).
+         * Stack: [rhs].  Call zero-param user fn; if it returns DT_N write
+         * through the name, else try fname_SET(rhs, result) field mutator.
+         * Parity with sm_interp.c:704. */
+        const char *fname = CUR_INS->a[1].s;
+        DESCR_t rhs = POP();
+        DESCR_t fres = INVOKE_fn(fname, NULL, 0);
+        int ok = 0;
+        if (IS_NAMEPTR(fres)) { NAME_DEREF_PTR(fres) = rhs; ok = 1; }
+        else if (IS_NAMEVAL(fres)) {
+            char *fn = GC_strdup(fres.s); sno_fold_name(fn);    /* SN-19 */
+            NV_SET_fn(fn, rhs); ok = 1;
+        }
+        else {
+            /* Field mutator fallback: fname_SET(rhs, obj) */
+            char setname[256];
+            snprintf(setname, sizeof(setname), "%s_SET", fname ? fname : "");
+            DESCR_t sargs[2] = { rhs, fres };
+            DESCR_t sr = INVOKE_fn(setname, sargs, 2);
+            ok = (sr.v != DT_FAIL);
+        }
+        PUSH(rhs); STATE->last_ok = ok; return;
     }
     if (name && strcmp(name, "IDX") == 0) {
         if (nargs == 2) {
