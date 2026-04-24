@@ -2346,7 +2346,13 @@ int nv_snapshot(NvPair **out) {
         for (NV_t *e = _var_buckets[i]; e; e = e->next)
             if (!IS_NULL(e->val)) count++;
     if (count == 0) { *out = NULL; return 0; }
-    NvPair *pairs = malloc((size_t)count * sizeof(NvPair));
+    /* SN-26c-char-ir: GC_MALLOC so DT_S pointers held by pairs[] are scanned
+     * as GC roots.  With malloc(), once nv_restore/NV_CLEAR_fn removes the
+     * NV table's references to captured strings, the bytes become unreachable
+     * and get reclaimed on the next collection — leaving stale pointers in
+     * this snapshot that snap_diff later dereferences as garbage (the classic
+     * '\\n~' tail pattern observed at beauty stmt 18). */
+    NvPair *pairs = GC_MALLOC((size_t)count * sizeof(NvPair));
     if (!pairs) { *out = NULL; return 0; }
     int idx = 0;
     for (int i = 0; i < VAR_BUCKETS; i++)

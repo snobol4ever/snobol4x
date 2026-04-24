@@ -163,7 +163,7 @@ void exec_snapshot_restore(const ExecSnapshot *s) {
  *----------------------------------------------------------------------*/
 void exec_snapshot_free(ExecSnapshot *s) {
     if (!s) return;
-    free(s->nv_pairs);
+    /* SN-26c-char-ir: nv_pairs is now GC_MALLOC'd; GC reclaims.  Do not free(). */
     s->nv_pairs = NULL;
     s->nv_count = 0;
     free(s->label_path);
