@@ -214,6 +214,18 @@ int sm_interp_run(SM_Program *prog, SM_State *st)
             static int g_sm_stno = 0;
             comm_stno(++g_sm_stno);
             st->sp = 0;   /* reset value stack at each statement boundary */
+            /* SN-26c-stmt637 probe: trace each SM step -> source stmt number */
+            {
+                static int s_trace_init = 0, s_trace_on = 0;
+                if (!s_trace_init) {
+                    const char *e = getenv("ONE4ALL_STEP_TRACE");
+                    s_trace_on = (e && e[0] == '1');
+                    s_trace_init = 1;
+                }
+                if (s_trace_on)
+                    fprintf(stderr, "SMSTEP %d sm_stno=%d pc=%d\n",
+                            g_sm_steps_done + 1, g_sm_stno, st->pc);
+            }
             /* IM-4: step-limit */
             if (g_sm_step_limit > 0 && g_sm_steps_done++ >= g_sm_step_limit)
                 longjmp(g_sm_step_jmp, 1);

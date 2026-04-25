@@ -4065,6 +4065,20 @@ void execute_program(Program *prog)
         if (s->is_end) break;  /* U-23: polyglot multi-section dispatch handles remaining modules */
         comm_stno(++stno);
 
+        /* SN-26c-stmt637 probe: trace each IR step -> source stmt number */
+        {
+            static int s_trace_init = 0, s_trace_on = 0;
+            if (!s_trace_init) {
+                const char *e = getenv("ONE4ALL_STEP_TRACE");
+                s_trace_on = (e && e[0] == '1');
+                s_trace_init = 1;
+            }
+            if (s_trace_on)
+                fprintf(stderr, "IRSTEP %d stno=%d lang=%d label=%s\n",
+                        g_ir_steps_done + 1, stno, s->lang,
+                        (s->label && s->label[0]) ? s->label : "-");
+        }
+
         /* IM-3: step-limit — stop after exactly g_ir_step_limit statements */
         if (g_ir_step_limit > 0 && g_ir_steps_done++ >= g_ir_step_limit)
             longjmp(g_ir_step_jmp, 1);
