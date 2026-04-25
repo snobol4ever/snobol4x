@@ -83,8 +83,13 @@ static void lt_define(LabelTable *lt, const char *name, int instr_idx)
 /* Find a label by name; returns instr_idx or -1 */
 static int lt_find(const LabelTable *lt, const char *name)
 {
+    /* SN-26c-stmt637: case-SENSITIVE label compare per SN-31 (case-sensitive
+     * default).  strcasecmp here collided distinct labels like `visitEnd` and
+     * `VisitEnd` (both present in beauty.sno via the double-function trick),
+     * sending SM gotos to the wrong target.  IR's goto resolution
+     * (interp.c lookup_label_stmt) is case-sensitive — this matches that. */
     for (int i = 0; i < lt->nlabels; i++)
-        if (strcasecmp(lt->labels[i].name, name) == 0)
+        if (strcmp(lt->labels[i].name, name) == 0)
             return lt->labels[i].instr_idx;
     return -1;
 }
