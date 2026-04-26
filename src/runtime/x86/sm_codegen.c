@@ -487,9 +487,15 @@ static void h_pat_capture_fn(void)
                 start = q + 1;
             }
         }
-        jit_pat_push(pat_assign_callcap_named(child, fname, NULL, 0, names, nnames));
+        int is_imm = (int)CUR_INS->a[1].i;  /* SN-26c-parseerr-f */
+        jit_pat_push(is_imm
+            ? pat_assign_callcap_named_imm(child, fname, NULL, 0, names, nnames)
+            : pat_assign_callcap_named(child, fname, NULL, 0, names, nnames));
     } else {
-        jit_pat_push(pat_assign_callcap(child, fname, NULL, 0));
+        int is_imm = (int)CUR_INS->a[1].i;  /* SN-26c-parseerr-f */
+        jit_pat_push(is_imm
+            ? pat_assign_callcap_named_imm(child, fname, NULL, 0, NULL, 0)
+            : pat_assign_callcap(child, fname, NULL, 0));
     }
 }
 
@@ -507,8 +513,10 @@ static void h_pat_capture_fn_args(void)
     for (int i = nargs - 1; i >= 0; i--) argv[i] = POP();
     DESCR_t child = jit_pat_pop();
     const char *fname = CUR_INS->a[0].s ? CUR_INS->a[0].s : "";
-    (void)CUR_INS->a[1].i;  /* kind carried via NM_CALL NameKind_t, not args */
-    jit_pat_push(pat_assign_callcap(child, fname, argv, nargs));
+    int is_imm = (int)CUR_INS->a[1].i;  /* SN-26c-parseerr-f: 0=cond(.) 1=imm($) */
+    jit_pat_push(is_imm
+        ? pat_assign_callcap_named_imm(child, fname, argv, nargs, NULL, 0)
+        : pat_assign_callcap(child, fname, argv, nargs));
 }
 
 static void h_pat_usercall(void)

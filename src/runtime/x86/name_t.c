@@ -29,9 +29,12 @@ DESCR_t EVAL_fn(DESCR_t expr);
 /* name_commit_value — commit `value` into the location described by *nm     */
 /*---------------------------------------------------------------------------*/
 
-void name_commit_value(const NAME_t *nm, DESCR_t value)
+/* Returns 0 on success, -1 on failure.
+ * Failure only possible for NM_CALL when the called function FRETURNs —
+ * used by bb_cap immediate ($) path to propagate failure into the pattern. */
+int name_commit_value(const NAME_t *nm, DESCR_t value)
 {
-    if (!nm) return;
+    if (!nm) return 0;
 
     /* SN-21e: DT_E thaw.  If a pattern-context *var held a frozen expression,
      * the match-time value arrives here as DT_E; EVAL_fn drives it through
@@ -44,24 +47,24 @@ void name_commit_value(const NAME_t *nm, DESCR_t value)
     case NM_VAR:
         if (nm->var_name && nm->var_name[0])
             NV_SET_fn(nm->var_name, value);
-        return;
+        return 0;
 
     case NM_PTR:
         if (nm->var_ptr)
             *nm->var_ptr = value;
-        return;
+        return 0;
 
     case NM_IDX:
         /* Reserved — A[i,j] path is still ad-hoc; SN-21c+ will land real
          * evaluation + commit here.  No-op for now so accidental use is
          * visible rather than crashing. */
-        return;
+        return 0;
 
     case NM_CALL:
         /* Indirect call (pat . *fn()): invoke fn, obtain DT_N return, then
          * write value into the cell that DT_N points at.  Arg-name-deferred
          * resolution (TL-2) happens here if fnc_arg_names is set. */
-        if (!g_user_call_hook || !nm->fnc_name || !nm->fnc_name[0]) return;
+        if (!g_user_call_hook || !nm->fnc_name || !nm->fnc_name[0]) return 0;
 
         DESCR_t *call_args = nm->fnc_args;
         int      call_n    = nm->fnc_nargs;
@@ -117,8 +120,8 @@ void name_commit_value(const NAME_t *nm, DESCR_t value)
                     case DT_FAIL: kind = "DT_FAIL"; break;
                 }
                 const char *str = (call_args[k].v == DT_S && call_args[k].s) ? call_args[k].s : "";
-                const char *raw_kind = "?";
-                switch ((int)nm->fnc_args[k].v) {
+                const char *raw_kind = nm->fnc_args ? "?" : "(name)";
+                if (nm->fnc_args) { switch ((int)nm->fnc_args[k].v) {
                     case DT_SNUL: raw_kind = "DT_SNUL"; break;
                     case DT_S:    raw_kind = "DT_S";    break;
                     case DT_E:    raw_kind = "DT_E";    break;
@@ -127,16 +130,20 @@ void name_commit_value(const NAME_t *nm, DESCR_t value)
                     case DT_N:    raw_kind = "DT_N";    break;
                     case DT_P:    raw_kind = "DT_P";    break;
                     case DT_FAIL: raw_kind = "DT_FAIL"; break;
-                }
+                } }
                 fprintf(stderr, "  arg[%d] raw v=%s   eff v=%s s=\"%s\"\n",
                         k, raw_kind, kind, str);
             }
         }
         DESCR_t *cell  = (name_d.v == DT_N && name_d.ptr)
                          ? (DESCR_t *)name_d.ptr : NULL;
-        if (cell) *cell = value;
-        return;
+        /* SN-26c-parseerr-f: if fn FRETURNs (no DT_N cell), return -1 so
+         * bb_cap's immediate ($) path can propagate failure into the pattern. */
+        if (!cell) return -1;
+        *cell = value;
+        return 0;
     }
+    return 0;
 }
 
 /*---------------------------------------------------------------------------*/

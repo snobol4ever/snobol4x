@@ -65,6 +65,7 @@ struct _PATND_t {
      */
     char       **arg_names;      /* XCALLCAP: GC-allocated array of arg var names */
     int          n_arg_names;    /* XCALLCAP: count of arg_names; 0 means unused  */
+    int          imm;            /* XCALLCAP: 1 = immediate ($) semantics, 0 = conditional (.) */
 };
 
 /* Convenience: single-child access for XARBN/XFNCE/XFNME/XNME */

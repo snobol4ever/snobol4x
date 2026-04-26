@@ -466,6 +466,10 @@ DESCR_t pat_assign_callcap(DESCR_t child, const char *fnc_name, DESCR_t *args, i
 DESCR_t pat_assign_callcap_named(DESCR_t child, const char *fnc_name,
                                   DESCR_t *args, int nargs,
                                   char **arg_names, int n_arg_names);
+/* SN-26c-parseerr-f: immediate ($) variant of XCALLCAP for "pat $ *fn(args)" */
+DESCR_t pat_assign_callcap_named_imm(DESCR_t child, const char *fnc_name,
+                                      DESCR_t *args, int nargs,
+                                      char **arg_names, int n_arg_names);
 DESCR_t var_as_pattern(DESCR_t v);
 DESCR_t pat_user_call(const char *name, DESCR_t *args, int nargs);
 

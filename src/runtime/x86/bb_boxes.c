@@ -566,7 +566,9 @@ DESCR_t bb_cap(void *zeta, int entry)
                      if (cr.σ && cr.δ > 0) memcpy(s, cr.σ, (size_t)cr.δ);
                      s[cr.δ] = '\0';
                      DESCR_t val = { .v = DT_S, .slen = (uint32_t)cr.δ, .s = s };
-                     name_commit_value(&ζ->name, val);
+                     /* SN-26c-parseerr-f: NM_CALL returns -1 when fn FRETURNs.
+                      * Propagate as pattern failure so "$ *fn(args)" acts as a guard. */
+                     if (name_commit_value(&ζ->name, val) < 0)              goto CAP_ω;
                  } else {
                      /* XNME (.): push the lvalue + matched substring onto the
                       * NAM ctx.  Statement-level NAME_commit walks the slots

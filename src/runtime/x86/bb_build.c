@@ -1199,7 +1199,7 @@ static bb_box_fn bb_callcap_emit_binary(PATND_t *p)
                                p->STRVAL_fn,
                                (DESCR_t *)p->args, p->nargs,
                                p->arg_names, p->n_arg_names,
-                               0 /* immediate=0: . not $ */);
+                               p->imm /* SN-26c-parseerr-f: 0=. 1=$ */);
     if (!z) return NULL;
 
     bb_buf_t tbuf = bb_alloc(CALLCAP_TRAM_SIZE);

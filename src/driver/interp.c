@@ -114,6 +114,7 @@ extern int exec_stmt(const char *subj_name,
 extern const char *Σ;
 extern int         Ω;
 extern int         Δ;
+extern int         Σlen;
 
 /* ══════════════════════════════════════════════════════════════════════════
  * label_table — map SNOBOL4 source labels → STMT_t*
@@ -535,6 +536,14 @@ static DESCR_t call_user_function(const char *fname, DESCR_t *args, int nargs)
 
     DESCR_t retval = NULVCL;
 
+    /* SN-26c-parseerr-f: save outer scan context so a recursive call to
+     * exec_stmt inside the function body (e.g. "subject pattern" in match())
+     * doesn't clobber the caller's Σ/Δ/Ω/Σlen globals. */
+    const char *saved_Σ    = Σ;
+    int         saved_Δ    = Δ;
+    int         saved_Ω    = Ω;
+    int         saved_Σlen = Σlen;
+
     comm_call(fname);   /* T-2: FUNCTION trace CALL event */
 
     int ret_kind = setjmp(fr->ret_env);
@@ -805,6 +814,11 @@ static DESCR_t call_user_function(const char *fname, DESCR_t *args, int nargs)
     }
 
 fn_done:
+    /* SN-26c-parseerr-f: restore outer scan context clobbered by recursive exec_stmt */
+    Σ    = saved_Σ;
+    Δ    = saved_Δ;
+    Ω    = saved_Ω;
+    Σlen = saved_Σlen;
     comm_return(fname, retval);  /* T-2: FUNCTION trace RETURN event */
     /* ── IC-5: snapshot initial-block locals before they're wiped ── */
     icn_init_update_snapshot(snames, svals, nsaved);
@@ -3191,15 +3205,38 @@ DESCR_t interp_eval(EXPR_t *e)
         EXPR_t *tgt = e->children[1];
         if (tgt->kind == E_DEFER && tgt->nchildren == 1
                 && tgt->children[0]->kind == E_FNC && tgt->children[0]->sval) {
+            /* SN-26c-parseerr-f: "pat $ *fn(args)" — deferred-call immediate capture.
+             * Mirror E_CAPT_COND_ASGN logic: build XCALLCAP with imm=1 so the
+             * function is called at match time (not build time) with current arg
+             * values.  This is critical when args are set by prior $ captures in
+             * the same pattern (e.g. beauty's "SPAN $ tx $ *match(list, pattern)").
+             * Calling fn eagerly at build time reads empty vars → fn returns fail
+             * → match guard silently vanishes. */
             EXPR_t *fnc = tgt->children[0];
             int na = fnc->nchildren;
+            int all_vars = (na > 0);
+            for (int i = 0; i < na; i++) {
+                EXPR_t *c = fnc->children[i];
+                if (!c || c->kind != E_VAR || !c->sval) { all_vars = 0; break; }
+            }
+            if (all_vars) {
+                char **names = (char **)GC_malloc(na * sizeof(char *));
+                for (int i = 0; i < na; i++) names[i] = (char *)fnc->children[i]->sval;
+                return pat_assign_callcap_named_imm(pat, fnc->sval, NULL, 0, names, na);
+            }
+            /* Mixed args: defer E_VAR and E_FNC; evaluate literals eagerly. */
             DESCR_t *av = na > 0 ? GC_malloc(na * sizeof(DESCR_t)) : NULL;
-            for (int i = 0; i < na; i++) av[i] = interp_eval(fnc->children[i]);
-            DESCR_t name_d = call_user_function(fnc->sval, av, na);
-            if (IS_NAME(name_d) && name_d.ptr)
-                return pat_assign_imm(pat, name_d);
-            const char *nm2 = VARVAL_fn(name_d);
-            return nm2 ? pat_assign_imm(pat, STRVAL((char*)nm2)) : pat;
+            for (int i = 0; i < na; i++) {
+                EXPR_t *arg = fnc->children[i];
+                if (arg && (arg->kind == E_FNC || arg->kind == E_VAR)) {
+                    av[i].v = DT_E;
+                    av[i].ptr = arg;
+                    av[i].slen = 0;
+                } else {
+                    av[i] = interp_eval(arg);
+                }
+            }
+            return pat_assign_callcap_named_imm(pat, fnc->sval, av, na, NULL, 0);
         }
         EXPR_t *tgt2 = e->children[1];
         const char *nm = tgt2->sval;

@@ -100,7 +100,7 @@ typedef struct NAME_s {
 /* of the subject; for DT_E thaw, callers should evaluate before calling.     */
 /*---------------------------------------------------------------------------*/
 
-void name_commit_value(const NAME_t *nm, DESCR_t value);
+int  name_commit_value(const NAME_t *nm, DESCR_t value); /* 0=ok -1=fail (NM_CALL FRETURN) */
 
 /*---------------------------------------------------------------------------*/
 /* name_init_as_var / name_init_as_ptr / name_init_as_call                   */

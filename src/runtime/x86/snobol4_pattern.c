@@ -374,6 +374,26 @@ DESCR_t pat_assign_callcap_named(DESCR_t child, const char *fnc_name,
     p->nargs = nargs;
     p->arg_names   = arg_names;
     p->n_arg_names = n_arg_names;
+    p->imm = 0;
+    return spat_val(p);
+}
+
+/* SN-26c-parseerr-f: "pat $ *fn(args)" — same as XCALLCAP but immediate ($) assign.
+ * Function called at match time with deferred args; result used as lvalue,
+ * matched text written immediately (not buffered for statement-success flush). */
+DESCR_t pat_assign_callcap_named_imm(DESCR_t child, const char *fnc_name,
+                                      DESCR_t *args, int nargs,
+                                      char **arg_names, int n_arg_names) {
+    PATND_t *p = spat_new(XCALLCAP);
+    PATND_t *ch = pat_to_patnd(child);
+    PATND_t *arr[1] = { ch };
+    patnd_set_children(p, arr, 1);
+    p->STRVAL_fn = fnc_name ? GC_strdup(fnc_name) : "";
+    p->args  = args;
+    p->nargs = nargs;
+    p->arg_names   = arg_names;
+    p->n_arg_names = n_arg_names;
+    p->imm = 1;
     return spat_val(p);
 }
 

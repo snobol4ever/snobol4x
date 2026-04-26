@@ -534,9 +534,15 @@ int sm_interp_run(SM_Program *prog, SM_State *st)
                         start = q + 1;
                     }
                 }
-                pat_push(pat_assign_callcap_named(child, fname, NULL, 0, names, nnames));
+                int is_imm = (int)ins->a[1].i;
+                pat_push(is_imm
+                    ? pat_assign_callcap_named_imm(child, fname, NULL, 0, names, nnames)
+                    : pat_assign_callcap_named(child, fname, NULL, 0, names, nnames));
             } else {
-                pat_push(pat_assign_callcap(child, fname, NULL, 0));
+                int is_imm = (int)ins->a[1].i;
+                pat_push(is_imm
+                    ? pat_assign_callcap_named_imm(child, fname, NULL, 0, NULL, 0)
+                    : pat_assign_callcap(child, fname, NULL, 0));
             }
             break;
         }
@@ -555,12 +561,10 @@ int sm_interp_run(SM_Program *prog, SM_State *st)
             for (int i = nargs - 1; i >= 0; i--) argv[i] = sm_pop(st);
             DESCR_t child = pat_pop();
             const char *fname = ins->a[0].s ? ins->a[0].s : "";
-            (void)ins->a[1].i;  /* kind: pat_assign_callcap handles cond/imm via the
-                                 * NM_CALL NameKind_t; the cond-vs-imm distinction is
-                                 * carried by the NAM flavour, not the args.  The legacy
-                                 * SM_PAT_CAPTURE_FN path also ignores kind here
-                                 * (pat_assign_callcap is the same call). */
-            pat_push(pat_assign_callcap(child, fname, argv, nargs));
+            int is_imm = (int)ins->a[1].i;  /* SN-26c-parseerr-f: 0=cond(.) 1=imm($) */
+            pat_push(is_imm
+                ? pat_assign_callcap_named_imm(child, fname, argv, nargs, NULL, 0)
+                : pat_assign_callcap(child, fname, argv, nargs));
             break;
         }
 

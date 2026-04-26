@@ -807,7 +807,7 @@ bb_node_t bb_build(PATND_t *p)
                                     p->STRVAL_fn,
                                     p->args, p->nargs,
                                     p->arg_names, p->n_arg_names,
-                                    0 /*immediate=0: . not $*/);
+                                    p->imm /*SN-26c-parseerr-f: 0=. 1=$ */);
         n.fn = bb_cap;
         n.ζ  = ζ;
         n.ζ_size = sizeof(*ζ);
